@@ -1,5 +1,6 @@
-// Front door of the compiler for 0.1 step 1: read text or JSON into canonical
-// IR, validate it against the closed schema, resolve names and hash it.
+// Front door of the compiler: read text or JSON into canonical IR, validate it
+// against the closed schema, resolve names, run the static checks (Gate 1)
+// and hash it.
 
 import { hasErrors, type Diagnostic, type Span } from "./diag.js";
 import { hashProgram, type ProgramHashes } from "./hash.js";
@@ -9,6 +10,7 @@ import { validateIr } from "./ir/validate.js";
 import { parseStrictJson, type Json } from "./json/strict-json.js";
 import { parseMdt } from "./parse/parser.js";
 import { resolveNames } from "./resolve/resolve.js";
+import { staticCheck } from "./check/static.js";
 
 export type SourceKind = "mdt" | "json";
 
@@ -52,6 +54,8 @@ export function check(text: string, kind: SourceKind): CheckResult {
   const diagnostics = [...loaded.diagnostics];
   if (!loaded.program || hasErrors(diagnostics)) return { ...loaded, diagnostics, ok: false };
   diagnostics.push(...resolveNames(loaded.program, loaded.spans));
+  // Static checks assume every name resolves.
+  if (!hasErrors(diagnostics)) diagnostics.push(...staticCheck(loaded.program, loaded.spans));
   const ok = !hasErrors(diagnostics);
   const result: CheckResult = { ...loaded, diagnostics, ok };
   if (ok) result.hashes = hashProgram(loaded.program as unknown as Json);

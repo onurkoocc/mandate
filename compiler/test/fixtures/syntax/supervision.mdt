@@ -1,19 +1,21 @@
 // Doc 4 §7.4 disjoint writes, §8.7 supervision, §10.4 typed verify, §6.4 tests.
 module company.devflow @ 0.1
 
-use std.{fs, human, git, test}
+use std.{fs, human, git, model, test}
 use company.domain.{Issue, Patch, TestSet, PullRequestDraft}
 
 capability RepoWrite = fs.write("/work/repo/src", "/work/repo/test")
+capability Model     = model.infer(tier: standard)
+capability PR        = git.pr("company/backend")
 
 agent Implementer {
-  caps  RepoWrite
+  caps  RepoWrite, Model
   budget { steps: 80 }
   skill apply(issue: Issue) -> Inferred<Patch> ! {Fs.Write, Model}
 }
 
 agent TestWriter {
-  caps  RepoWrite
+  caps  RepoWrite, Model
   budget { steps: 40 }
   skill regression(issue: Issue) -> Inferred<TestSet> ! {Fs.Write, Model}
 }
@@ -27,7 +29,7 @@ contract Ready(issue: Issue, pr: PullRequestDraft) {
 }
 
 workflow Split(issue: Issue) -> Bool
-  caps    RepoWrite
+  caps    RepoWrite, Model, PR
   budget  { spend: 12 USD, time: 1h }
 {
   par supervise fail_fast {

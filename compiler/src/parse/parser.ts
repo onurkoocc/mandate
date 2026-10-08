@@ -16,6 +16,7 @@
 
 import { diag, DiagnosticError, type Diagnostic, type Span } from "../diag.js";
 import { canonicalize } from "../json/jcs.js";
+import { DATA_CLASSES, type DataClass } from "../std/std.js";
 import type { Json } from "../json/strict-json.js";
 import {
   LANGUAGE_VERSION,
@@ -334,6 +335,14 @@ class Parser {
     }
     const def: Def = { kind: "type", type };
     if (generics) def.generics = generics;
+    if (!this.t.nl && this.eatW("classified")) {
+      const ct = this.t;
+      const cls = this.ident("a data class");
+      if (!(DATA_CLASSES as string[]).includes(cls)) {
+        this.fail(`Unknown data class '${cls}'; expected one of ${DATA_CLASSES.join(", ")}.`, ct);
+      }
+      def.class = cls as DataClass;
+    }
     return [name, def, nameTok];
   }
 

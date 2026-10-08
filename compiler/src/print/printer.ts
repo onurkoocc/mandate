@@ -68,7 +68,7 @@ function printDef(name: string, d: Def): string {
       return `capability ${name} = ${expr(d.value, 0, "")}`;
     case "type": {
       const g = d.generics ? `<${d.generics.join(", ")}>` : "";
-      return `type ${name}${g} = ${typeDef(d.type)}`;
+      return `type ${name}${g} = ${typeDef(d.type)}${d.class ? ` classified ${d.class}` : ""}`;
     }
     case "const":
       return `let ${name}${d.type ? `: ${type(d.type)}` : ""} = ${expr(d.value, 0, "")}`;

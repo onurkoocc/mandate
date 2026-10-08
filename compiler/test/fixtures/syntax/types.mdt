@@ -25,3 +25,6 @@ type DelegateError = Timeout | BudgetExceeded | Throttled(retry_after: Duration)
 
 type FailureKind = InvalidTool | InvalidArguments | SchemaMismatch | Stuck
                  | StepLimit | GoalNotMet | DependencyFailed
+
+// §5.5 data classes
+type CustomerRecord = { name: Text, iban: Text } classified restricted

@@ -24,7 +24,7 @@ A conforming reader rejects, rather than repairs:
 
 Schema validity is necessary, not sufficient: names are then resolved
 (E0120), and the static checks (types, effects, capabilities, budgets,
-contracts, delegation) run on the result.
+contracts, delegation) run on the result. See [`checks.md`](checks.md).
 
 ## Canonical form
 

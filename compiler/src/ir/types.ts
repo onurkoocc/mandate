@@ -48,6 +48,8 @@ export interface TypeDef {
   kind: "type";
   generics?: string[];
   type: TypeExpr;
+  /** Data class of values of this type (§5.5); `public` when absent. */
+  class?: "public" | "internal" | "confidential" | "restricted";
 }
 
 export interface CapabilityDef {

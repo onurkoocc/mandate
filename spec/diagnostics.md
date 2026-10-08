@@ -16,7 +16,7 @@ implementation.
 | MDT-E0102 | Duplicate JSON key | S01 | assigned |
 | MDT-E0103 | Unsupported language version | S02 | assigned |
 | MDT-E0104 | IR schema violation | S02 | assigned; unknown fields are errors |
-| MDT-E0105 | Resource limit exceeded | — | assigned; limits from §3.4 |
+| MDT-E0105 | Resource limit exceeded | — | assigned; limits from §3.4, including 1000 expanded nodes per workflow |
 | MDT-E0106 | Number not representable | S11 | assigned |
 | MDT-E0107 | Invalid Unicode | S11 | assigned |
 | MDT-E0108 | Malformed JSON | — | assigned |
@@ -27,5 +27,50 @@ implementation.
 
 `mandate explain <code>` prints the explanation for each code.
 
-The type, effect, capability, budget, contract and delegation families
-(E02xx–E07xx) arrive with the static checks.
+## Static checks (Gate 1)
+
+These run after name resolution (`mandate check`). Codes named in doc 4 keep
+their meaning; the ones marked *assigned* fill gaps the design leaves open.
+Warnings (`W…`) never make a check fail.
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E0201 | Type mismatch | — | Appendix B |
+| MDT-E0202 | Unknown field | — | assigned |
+| MDT-E0203 | Missing field | — | assigned |
+| MDT-E0210 | Inferred value where T is expected | V01, V08 | Appendix B |
+| MDT-E0211 | Untrusted value where T is expected | — | assigned |
+| MDT-E0212 | Verified against a different contract | — | Appendix B |
+| MDT-E0213 | Protected type produced by a program | S08 | assigned |
+| MDT-E0215 | Untrusted text in an instruction position | V02 | Appendix B |
+| MDT-E0220 | Data class above what the model may receive | V04 | Appendix B |
+| MDT-E0230 | Non-exhaustive switch | S05, V07 | Appendix B |
+| MDT-E0231 | Switch on a raw decision | — | assigned |
+| MDT-W0232 | Choice without an out-of-scope option | — | assigned |
+| MDT-E0233 | Too many Choice options | — | assigned |
+| MDT-W0207 | peek on model output | — | assigned |
+| MDT-E0301 | Capability not in scope | — | Appendix B |
+| MDT-E0305 | Capability widened | — | Appendix B |
+| MDT-W0310 | Unused capability | — | Appendix B |
+| MDT-E0320 | Overlapping writes in par | V03 | Appendix B |
+| MDT-E0401 | Undeclared effect | — | Appendix B |
+| MDT-E0402 | Unknown effect | — | assigned |
+| MDT-E0403 | Missing idempotency | — | Appendix B |
+| MDT-E0405 | Irreversible effect without human approval | — | Appendix B |
+| MDT-E0408 | External write outside a workflow | S07 | Appendix B |
+| MDT-E0501 | Child budgets exceed the parent | — | Appendix B |
+| MDT-E0502 | Unbounded loop or recursion | S04, S06 | Appendix B |
+| MDT-E0503 | Agent loop without a step limit | — | Appendix B |
+| MDT-E0504 | Budget currency mismatch | — | assigned |
+| MDT-W0601 | Static criterion checked at run time | — | Appendix B names E0601 and says it falls back to a warning |
+| MDT-E0603 | Criterion satisfied only by review | — | Appendix B |
+| MDT-E0701 | Delegated authority not a subset | — | Appendix B |
+| MDT-E0710 | restart_all over external effects | — | Appendix B |
+| MDT-E0711 | Dynamic spawn | V05 | Appendix B |
+| MDT-E0712 | UnknownOutcome restarted | V06 | Appendix B |
+| MDT-E0713 | Too many restarts | — | assigned |
+
+Deferred to the runtime step: E0406 (commit without authorize) and E0407
+(an Authorization consumed twice) need the prepare → authorize → commit
+expansion; S09 (unlocked module) needs the lock file; W0504 needs model
+tariffs.

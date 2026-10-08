@@ -24,6 +24,9 @@ export const BUILTIN_TYPES = new Set([
 /** Functions available without an import. */
 export const BUILTIN_FUNCTIONS = new Set(["quote", "peek", "len", "caps_diff", "review", "eval", "evidence"]);
 
+/** Supervision strategies (§8.7), usable on their own after `on error(…) =>`. */
+export const SUPERVISION_STRATEGIES = new Set(["restart", "restart_all", "fail_fast", "degrade", "reconcile"]);
+
 interface Scope {
   names: Set<string>;
   parent?: Scope;
@@ -290,9 +293,18 @@ class Resolver {
         case "return":
           if (s.value) this.expr(s.value, `${path}/value`, c);
           break;
-        case "on_error":
-          this.expr(s.then, `${path}/then`, { ...c, scope: { names: patternBinds(s.pattern), parent: scope } });
+        case "on_error": {
+          const inner = { ...c, scope: { names: patternBinds(s.pattern), parent: scope } };
+          // A bare supervision strategy (`=> reconcile`, `=> restart(max: 2)`) is not a value reference.
+          const t = s.then;
+          const strategy = t.op === "var" ? t : t.op === "call" && t.callee.op === "var" ? t.callee : undefined;
+          if (strategy && SUPERVISION_STRATEGIES.has(strategy.name) && !this.lookup(strategy.name, inner.scope)) {
+            if (t.op === "call") this.args(t.args, `${path}/then/args`, { ...inner, symbolic: true });
+          } else {
+            this.expr(t, `${path}/then`, inner);
+          }
           break;
+        }
         case "run":
           this.expr(s.target, `${path}/target`, { ...c, symbolic: true });
           break;
