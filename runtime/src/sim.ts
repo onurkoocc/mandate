@@ -21,6 +21,7 @@ import type {
   VerifierAdapter,
   VerifyRequest,
 } from "./adapters.js";
+import type { Enforceable, MxcPolicy, SandboxHost } from "./sandbox.js";
 import { digest, type Value } from "./values.js";
 
 export class SimClock implements Clock {
@@ -184,6 +185,47 @@ export class SimTool implements ToolAdapter {
   /** Distinct operations the remote system applied. */
   appliedCount(): number {
     return this.applied.size;
+  }
+}
+
+/** Everything MXC can enforce on a current Windows 11 or Linux host; tests take parts away. */
+export const FULL_SANDBOX: Enforceable = {
+  backends: ["process", "session"],
+  modes: ["enforcement", "learning", "permissive"],
+  filesystem: true,
+  network: "host_allow_list",
+  exec: "args_prefix",
+  timeout: true,
+  ui: true,
+};
+
+/** A sandbox host that enforces what `can` says and records what it was asked to create. */
+export class SimSandboxHost implements SandboxHost {
+  readonly created: Array<{ handle: string; policy: MxcPolicy }> = [];
+  readonly destroyed: string[] = [];
+  probes = 0;
+
+  constructor(readonly can: Enforceable = FULL_SANDBOX) {}
+
+  async probe(): Promise<Enforceable> {
+    this.probes++;
+    return this.can;
+  }
+
+  async create(policy: MxcPolicy): Promise<string> {
+    const handle = `sbx-${this.created.length + 1}`;
+    this.created.push({ handle, policy });
+    return handle;
+  }
+
+  async destroy(handle: string): Promise<"destroyed"> {
+    this.destroyed.push(handle);
+    return "destroyed";
+  }
+
+  /** Sandboxes created and not destroyed yet. */
+  open(): string[] {
+    return this.created.map((c) => c.handle).filter((h) => !this.destroyed.includes(h));
   }
 }
 

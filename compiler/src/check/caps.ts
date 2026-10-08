@@ -16,6 +16,10 @@ export interface CapVal {
   scope?: string[];
   /** For model.infer: the highest data class it may receive. */
   maxClass?: DataClass;
+  /** For model.infer: the model tier, e.g. `standard`. */
+  tier?: string;
+  /** For exec: the argument prefixes a command may start with. */
+  argsPrefix?: string[][];
 }
 
 /** Dotted path of a callee such as `fs.read` or `git.pr`, if it is one. */
@@ -75,6 +79,11 @@ export function capFromCall(e: Expr): CapVal | undefined {
       const c = named("commands");
       const v = c && literalStrings(c.value);
       if (v) cap.scope = v;
+      const p = named("args_prefix");
+      if (p && p.value.op === "list") {
+        const prefixes = p.value.items.map((i) => (i.op === "list" ? literalStrings(i) : undefined));
+        if (prefixes.every((x) => x !== undefined)) cap.argsPrefix = prefixes as string[][];
+      }
       break;
     }
   }
@@ -82,6 +91,9 @@ export function capFromCall(e: Expr): CapVal | undefined {
     const m = named("max_class");
     const s = m && symbol(m.value);
     cap.maxClass = s && (DATA_CLASSES as string[]).includes(s) ? (s as DataClass) : DEFAULT_MODEL_MAX_CLASS;
+    const t = named("tier");
+    const tier = t && symbol(t.value);
+    if (tier) cap.tier = tier;
   }
   return cap;
 }

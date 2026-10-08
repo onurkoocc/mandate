@@ -2,7 +2,7 @@
 // nondeterministic step goes through one of these, and its result is journaled
 // before the program sees it, so replay never calls them again (INV-09).
 
-import type { Budget, RetryClass, TypeExpr } from "@mandate/compiler";
+import type { Budget, RetryClass, SandboxRequirement, TypeExpr } from "@mandate/compiler";
 import type { Value } from "./values.js";
 
 export interface Cost {
@@ -39,6 +39,11 @@ export interface DelegateRequest {
   /** 0 for the first try; restarts reuse the operation and raise the attempt (§8.7). */
   attempt: number;
   commandId: string;
+  /**
+   * What the agent's sandbox must enforce, built from this delegation's grant
+   * and time budget (§7.3, §7.5). Absent for remote agents, which run elsewhere.
+   */
+  sandbox?: SandboxRequirement;
 }
 
 export interface AgentAdapter {

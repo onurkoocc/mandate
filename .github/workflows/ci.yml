@@ -40,3 +40,4 @@ jobs:
         run: |
           node compiler/dist/cli.js check examples/fixbug/fixbug.mdt
           node compiler/dist/cli.js check examples/fixbug/fixbug.ir.json
+          node compiler/dist/cli.js sandbox examples/fixbug/fixbug.ir.json > /dev/null

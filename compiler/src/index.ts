@@ -14,3 +14,4 @@ export { printProgram } from "./print/printer.js";
 export { resolveNames } from "./resolve/resolve.js";
 export { calleePath, capFromCall, type CapVal } from "./check/caps.js";
 export { DECISION_POLICIES, STD_EFFECTS, STD_FNS } from "./std/std.js";
+export { requirementFor, sandboxRequirements, SANDBOX_REQUIREMENT_FORMAT, type SandboxRequirement } from "./target/sandbox.js";

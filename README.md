@@ -21,13 +21,14 @@ anything runs. This repository holds the 0.1 reference implementation.
    supervision, cancellation, replay, Temporal scheduling, and simulated
    adapters with fault injection. See [`spec/runtime.md`](spec/runtime.md).
 4. **End to end (this step):** the FixBug workflow running against
-   simulated adapters, directly and through Temporal (done); sandbox policy
-   generation; and a compact core spec.
+   simulated adapters, directly and through Temporal (done); sandbox
+   requirements and an MXC adapter, see [`spec/sandbox.md`](spec/sandbox.md)
+   (done); and a compact core spec.
 
 ## Layout
 
 ```text
-spec/        IR schema, IR rules, static checks, diagnostic codes
+spec/        IR schema, IR rules, static checks, diagnostic codes, runtime, sandboxes
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
 examples/    example programs; fixbug/ is the design document's §20 workflow
@@ -41,6 +42,7 @@ npm run build
 node compiler/dist/cli.js check examples/fixbug/fixbug.mdt
 node compiler/dist/cli.js check examples/fixbug/fixbug.ir.json --json
 node compiler/dist/cli.js fmt examples/fixbug/fixbug.ir.json
+node compiler/dist/cli.js sandbox examples/fixbug/fixbug.mdt --agent Implementer
 node compiler/dist/cli.js explain E0320
 npm test
 ```
@@ -52,6 +54,7 @@ npm test
 | `fmt <file>` | Print the `.mdt` projection of a program |
 | `hash <file>` | Print the program hash and one hash per definition |
 | `patch <program> <patch.json> [--json]` | Apply `{ "base": "sha256:…", "ops": [ … ] }` |
+| `sandbox <file> [--agent <name>]` | Print each local agent's sandbox requirement, or one agent's |
 | `explain <code>` | Explain a diagnostic code |
 
 Exit status is 1 when an error diagnostic is reported and 2 on usage errors.
@@ -127,6 +130,11 @@ adapters:
 `temporal.test.ts` runs the same workflow under Temporal. The approval
 wakes the run, and a worker that crashes after commit still opens one PR.
 
+`sandbox.test.ts` runs FixBug's five agents in five MXC sandboxes, one per
+agent. Implementer may write only `/work/repo/src`, and TestWriter only
+`/work/repo/test`. A host that cannot enforce a requirement never starts the
+agent (G05).
+
 These cases from §25 are covered:
 
 | Case | Behavior | Test file |
@@ -147,6 +155,7 @@ These cases from §25 are covered:
 | R16 | An unknown charge keeps its reservation until it is settled | `budget` |
 | S09 | Unlocked modules, changed packages and failing checks are refused at load | `messages` |
 | E0406, E0407 | Commit needs a matching, unconsumed, unexpired authorization | `effects` |
+| G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox` |
 
 R11 and R12 are about `map`, which the 0.1 IR does not have yet; `budget`
 tests that `par` results are bound by branch name instead.

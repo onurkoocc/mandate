@@ -188,4 +188,8 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Too many restarts",
     explain: "restart(max: n) asks for more than 5 retries.",
   },
+  "MDT-E0902": {
+    title: "Sandbox requirement cannot be enforced",
+    explain: "The sandbox adapter probed the host and it cannot enforce part of an agent's sandbox requirement: a backend, a path, host or command allow-list, a timeout, or a scope that is not statically known. The run refuses to start the agent (unsupported_sandbox_profile) instead of running it with less isolation (INV-11, G05).",
+  },
 };
