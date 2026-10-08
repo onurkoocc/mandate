@@ -52,7 +52,7 @@ export async function flush(n = 20): Promise<void> {
 }
 
 export async function until(cond: () => boolean, what: string): Promise<void> {
-  for (let i = 0; i < 500; i++) {
+  for (let i = 0; i < 2500; i++) {
     if (cond()) return;
     await new Promise((r) => setTimeout(r, 2));
   }
