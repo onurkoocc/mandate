@@ -13,11 +13,13 @@ anything runs. This repository holds the 0.1 reference implementation.
    strict JSON reading, JCS + SHA-256 hashing, the `.mdt` text projection
    (parser and printer), name resolution, JSON diagnostics with repair
    patches, IR patches with `stale_base`, and the `mandate` CLI.
-2. **Static checks, Gate 1 (this step):** epistemic types and data
+2. **Static checks, Gate 1 (done):** epistemic types and data
    classes, effects, capabilities and disjoint writes, budgets, delegation,
    contracts and supervision. See [`spec/checks.md`](spec/checks.md).
-3. **Runtime (Gate 2):** TypeScript + Temporal + PostgreSQL; event journal,
-   prepare → authorize → commit, budget reservations, supervision.
+3. **Runtime, Gate 2 (this step):** TypeScript + PostgreSQL; event
+   journal, prepare → authorize → commit, budget reservations, supervision,
+   cancellation, replay, and simulated adapters with fault injection. See
+   [`spec/runtime.md`](spec/runtime.md). Temporal scheduling follows as 3b.
 4. **End to end:** the FixBug workflow running against simulated adapters,
    sandbox policy generation, and a compact core spec.
 
@@ -26,6 +28,7 @@ anything runs. This repository holds the 0.1 reference implementation.
 ```text
 spec/        IR schema, IR rules, static checks, diagnostic codes
 compiler/    reference compiler (TypeScript)
+runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
 examples/    example programs; fixbug/ is the design document's §20 workflow
 ```
 
@@ -81,9 +84,43 @@ document's §25 are covered:
 | V07 | A switch on a decision handles `Uncertain` | E0230 |
 | V08 | A decision cannot reach a critical effect directly | E0210 |
 
-S09 (unlocked modules) needs the lock file and arrives with the runtime.
+S09 (load-time verification) is covered by the runtime, below.
 `compiler/test/static.test.ts` also checks the §20 FixBug table: 18.5 USD of
 child budgets inside 20 USD, delegated capabilities inside the workflow's,
 disjoint writes for the two parallel agents, step limits, review never
 counted alone, and a verified, idempotent PR. It also applies one mutation
 per rule to FixBug and checks that the rule fires.
+
+## Runtime
+
+The runtime's tests run on in-process PGlite by default. To run them on a
+PostgreSQL server instead (one schema per test file):
+
+```sh
+MANDATE_TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/db npm test -w runtime
+```
+
+Tests live in `runtime/test`. `smoke.test.ts` runs FixBug end to end on
+simulated adapters. These cases from §25 are covered:
+
+| Case | Behavior | Test file |
+|---|---|---|
+| R01 | A journaled result is not fetched again after a crash | `recovery` |
+| R02 | A committed action survives a crash; idempotent, reconcilable, non-retryable | `recovery` |
+| R03 | Duplicate messages are ignored; the same key with another payload is refused | `messages` |
+| R04 | A lost response becomes `unknown_outcome` and is reconciled, not retried blindly | `effects` |
+| R05 | A non-retryable timeout is never dispatched again | `effects` |
+| R06 | A worker with an old fence cannot overwrite the newer result | `recovery` |
+| R07 | Two siblings cannot both reserve what only one fits | `budget` |
+| R08 | Cancel before commit: nothing is sent | `effects` |
+| R09 | Cancel after dispatch: the real result is followed and reported | `effects` |
+| R10 | A failed sibling does not end the run while an action is in flight | `effects` |
+| R13 | Replay makes no adapter call | `recovery` |
+| R14 | Purged payloads make replay report `incomplete_replay` | `recovery` |
+| R15 | No dispatch after an approval deadline | `effects` |
+| R16 | An unknown charge keeps its reservation until it is settled | `budget` |
+| S09 | Unlocked modules, changed packages and failing checks are refused at load | `messages` |
+| E0406, E0407 | Commit needs a matching, unconsumed, unexpired authorization | `effects` |
+
+R11 and R12 are about `map`, which the 0.1 IR does not have yet; `budget`
+tests that `par` results are bound by branch name instead.

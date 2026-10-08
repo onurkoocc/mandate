@@ -3,7 +3,8 @@
   "private": true,
   "description": "Mandate: an agent-native coordination and contract language (reference implementation 0.1)",
   "workspaces": [
-    "compiler"
+    "compiler",
+    "runtime"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
