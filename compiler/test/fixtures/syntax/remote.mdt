@@ -1,0 +1,14 @@
+// Doc 4 §9.3: binding a remote A2A agent.
+module company.billing @ 0.1
+
+use std.{net}
+use company.domain.{OrderRef, RefundQuote}
+
+agent remote BillingAgent = a2a("https://billing.partner.example/.well-known/agent-card.json")
+  version  "1.0"
+  require  signed_card(issuer: "partner.example")
+  trust    untrusted
+  caps     net.https(hosts: ["billing.partner.example"])
+  skills {
+    quote_refund(order: OrderRef) -> RefundQuote
+  }

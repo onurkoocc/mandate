@@ -1,0 +1,10 @@
+// Doc 4 §4.3 capability declarations.
+module company.devflow @ 0.1
+
+use std.{fs, net, model, money}
+
+capability RepoRead  = fs.read("/work/repo")
+capability RepoWrite = fs.write("/work/repo/src", "/work/repo/test")
+capability CIApi     = net.https(hosts: ["ci.internal.example"], methods: [GET, POST])
+capability ModelStd  = model.infer(tier: standard, providers: [anthropic, openai])
+capability Spend20   = money.spend(max: 20 USD, per: workflow_run)

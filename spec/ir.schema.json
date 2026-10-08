@@ -1,0 +1,1664 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mandate.dev/spec/ir/0.1/schema.json",
+  "title": "Mandate canonical IR 0.1",
+  "description": "Closed schema for the canonical IR (Doc 4 §3.2-§3.5). Unknown fields are errors. Schema validity does not replace type, effect, capability or budget checking.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "language",
+    "module",
+    "version",
+    "defs"
+  ],
+  "properties": {
+    "language": {
+      "const": "mandate/0.1"
+    },
+    "module": {
+      "$ref": "#/$defs/QName"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)*([-+][0-9A-Za-z.]+)?$"
+    },
+    "uses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "module": {
+            "$ref": "#/$defs/QName"
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Name"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "module"
+        ]
+      }
+    },
+    "defs": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Def"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/QName"
+      }
+    },
+    "tests": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Test"
+      }
+    }
+  },
+  "$defs": {
+    "Name": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "QName": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+    },
+    "Param": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Name"
+        },
+        "type": {
+          "$ref": "#/$defs/TypeExpr"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type"
+      ]
+    },
+    "Params": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Param"
+      }
+    },
+    "Money": {
+      "type": "object",
+      "properties": {
+        "micros": {
+          "type": "integer"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "micros",
+        "currency"
+      ]
+    },
+    "Budget": {
+      "type": "object",
+      "properties": {
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "spend": {
+          "$ref": "#/$defs/Money"
+        },
+        "time": {
+          "type": "object",
+          "properties": {
+            "ms": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "ms"
+          ]
+        },
+        "steps": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "Arg": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Name"
+        },
+        "value": {
+          "$ref": "#/$defs/Expr"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value"
+      ]
+    },
+    "Args": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Arg"
+      }
+    },
+    "CallSpec": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Name"
+        },
+        "args": {
+          "$ref": "#/$defs/Args"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "EffectRef": {
+      "type": "object",
+      "properties": {
+        "effect": {
+          "$ref": "#/$defs/QName"
+        },
+        "args": {
+          "$ref": "#/$defs/Args"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "effect"
+      ]
+    },
+    "Effects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/EffectRef"
+      }
+    },
+    "Variant": {
+      "type": "object",
+      "properties": {
+        "tag": {
+          "$ref": "#/$defs/Name"
+        },
+        "fields": {
+          "$ref": "#/$defs/Params"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "tag"
+      ]
+    },
+    "TypeExpr": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "$ref": "#/$defs/QName"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TypeExpr"
+              },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "ref"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "record": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/TypeExpr"
+              },
+              "propertyNames": {
+                "$ref": "#/$defs/Name"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "record"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "enum": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Name"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "enum"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "union": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Variant"
+              },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "union"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "refine": {
+              "$ref": "#/$defs/TypeExpr"
+            },
+            "where": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "refine",
+            "where"
+          ]
+        }
+      ]
+    },
+    "TemplatePart": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "text"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "expr": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "expr"
+          ]
+        }
+      ]
+    },
+    "Pattern": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "p"
+      },
+      "required": [
+        "p"
+      ],
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "p": {
+              "const": "wild"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "p"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "p": {
+              "const": "bind"
+            },
+            "name": {
+              "$ref": "#/$defs/Name"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "p",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "p": {
+              "const": "tag"
+            },
+            "tag": {
+              "$ref": "#/$defs/Name"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Pattern"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "p",
+            "tag"
+          ]
+        }
+      ]
+    },
+    "Expr": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "op"
+      },
+      "required": [
+        "op"
+      ],
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "int"
+            },
+            "value": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "dec"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^-?[0-9]+\\.[0-9]+$"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "text"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "bool"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "money"
+            },
+            "micros": {
+              "type": "integer"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "micros",
+            "currency"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "duration"
+            },
+            "ms": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "ms"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "list"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "items"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "set"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "items"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "template"
+            },
+            "parts": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TemplatePart"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "parts"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "prompt"
+            },
+            "parts": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TemplatePart"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "parts"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "var"
+            },
+            "name": {
+              "$ref": "#/$defs/Name"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "field"
+            },
+            "of": {
+              "$ref": "#/$defs/Expr"
+            },
+            "name": {
+              "$ref": "#/$defs/Name"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "of",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "call"
+            },
+            "callee": {
+              "$ref": "#/$defs/Expr"
+            },
+            "args": {
+              "$ref": "#/$defs/Args"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "callee",
+            "args"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "unary"
+            },
+            "uop": {
+              "enum": [
+                "not",
+                "neg"
+              ]
+            },
+            "of": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "uop",
+            "of"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "binary"
+            },
+            "bop": {
+              "enum": [
+                "and",
+                "or",
+                "==",
+                "!=",
+                "<",
+                "<=",
+                ">",
+                ">=",
+                "in",
+                "subseteq",
+                "+",
+                "-",
+                "*",
+                "/"
+              ]
+            },
+            "left": {
+              "$ref": "#/$defs/Expr"
+            },
+            "right": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "bop",
+            "left",
+            "right"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "range"
+            },
+            "from": {
+              "$ref": "#/$defs/Expr"
+            },
+            "to": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "from",
+            "to"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "record"
+            },
+            "type": {
+              "$ref": "#/$defs/QName"
+            },
+            "fields": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Expr"
+              },
+              "propertyNames": {
+                "$ref": "#/$defs/Name"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "type",
+            "fields"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "infer"
+            },
+            "type": {
+              "$ref": "#/$defs/TypeExpr"
+            },
+            "from": {
+              "$ref": "#/$defs/Expr"
+            },
+            "using": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "type",
+            "from"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "delegate"
+            },
+            "agent": {
+              "$ref": "#/$defs/Name"
+            },
+            "skill": {
+              "$ref": "#/$defs/Name"
+            },
+            "args": {
+              "$ref": "#/$defs/Args"
+            },
+            "caps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "budget": {
+              "$ref": "#/$defs/Budget"
+            },
+            "isolated": {
+              "const": true
+            },
+            "timeout": {
+              "$ref": "#/$defs/Expr"
+            },
+            "supervise": {
+              "$ref": "#/$defs/CallSpec"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "agent",
+            "skill",
+            "args"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "spawn"
+            },
+            "agent": {
+              "$ref": "#/$defs/Name"
+            },
+            "skill": {
+              "$ref": "#/$defs/Name"
+            },
+            "args": {
+              "$ref": "#/$defs/Args"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "agent",
+            "skill",
+            "args"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "await"
+            },
+            "of": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "of"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "verify"
+            },
+            "value": {
+              "$ref": "#/$defs/Expr"
+            },
+            "contract": {
+              "$ref": "#/$defs/Name"
+            },
+            "args": {
+              "$ref": "#/$defs/Args"
+            },
+            "on_unmet": {
+              "type": "object",
+              "properties": {
+                "bind": {
+                  "$ref": "#/$defs/Name"
+                },
+                "then": {
+                  "$ref": "#/$defs/Expr"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "bind",
+                "then"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "value",
+            "contract",
+            "args"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "effect"
+            },
+            "name": {
+              "$ref": "#/$defs/QName"
+            },
+            "args": {
+              "$ref": "#/$defs/Args"
+            },
+            "idempotent_by": {
+              "$ref": "#/$defs/Expr"
+            },
+            "compensate": {
+              "$ref": "#/$defs/QName"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "name",
+            "args"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "escalate"
+            },
+            "to": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "to"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "pause"
+            },
+            "then": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "switch"
+            },
+            "on": {
+              "$ref": "#/$defs/Expr"
+            },
+            "cases": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pattern": {
+                    "$ref": "#/$defs/Pattern"
+                  },
+                  "then": {
+                    "$ref": "#/$defs/Expr"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "pattern",
+                  "then"
+                ]
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "on",
+            "cases"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "try"
+            },
+            "of": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "of"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "block"
+            },
+            "body": {
+              "$ref": "#/$defs/Block"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "body"
+          ]
+        }
+      ]
+    },
+    "Block": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Stmt"
+      }
+    },
+    "Stmt": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "op"
+      },
+      "required": [
+        "op"
+      ],
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "let"
+            },
+            "name": {
+              "$ref": "#/$defs/Name"
+            },
+            "type": {
+              "$ref": "#/$defs/TypeExpr"
+            },
+            "value": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "name",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "par"
+            },
+            "supervise": {
+              "$ref": "#/$defs/CallSpec"
+            },
+            "branches": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Expr"
+              },
+              "propertyNames": {
+                "$ref": "#/$defs/Name"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "branches"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "if"
+            },
+            "cond": {
+              "$ref": "#/$defs/Expr"
+            },
+            "then": {
+              "$ref": "#/$defs/Block"
+            },
+            "else": {
+              "$ref": "#/$defs/Block"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "cond",
+            "then"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "loop"
+            },
+            "max_iter": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "until": {
+              "$ref": "#/$defs/Expr"
+            },
+            "body": {
+              "$ref": "#/$defs/Block"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "return"
+            },
+            "value": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "on_error"
+            },
+            "pattern": {
+              "$ref": "#/$defs/Pattern"
+            },
+            "then": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "pattern",
+            "then"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "run"
+            },
+            "target": {
+              "$ref": "#/$defs/Expr"
+            },
+            "expect": {
+              "$ref": "#/$defs/Name"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "target",
+            "expect"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "expr"
+            },
+            "value": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "value"
+          ]
+        }
+      ]
+    },
+    "Verifier": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "static": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "static"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "call": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "call"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "all": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Verifier"
+              },
+              "minItems": 2
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "all"
+          ]
+        }
+      ]
+    },
+    "Criterion": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "by": {
+          "$ref": "#/$defs/Verifier"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "description",
+        "by"
+      ]
+    },
+    "Skill": {
+      "type": "object",
+      "properties": {
+        "params": {
+          "$ref": "#/$defs/Params"
+        },
+        "returns": {
+          "$ref": "#/$defs/TypeExpr"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "budget": {
+          "$ref": "#/$defs/Budget"
+        },
+        "body": {
+          "$ref": "#/$defs/Block"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "params",
+        "returns",
+        "effects"
+      ]
+    },
+    "Def": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "kind"
+      },
+      "required": [
+        "kind"
+      ],
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "type"
+            },
+            "generics": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Name"
+              },
+              "minItems": 1
+            },
+            "type": {
+              "$ref": "#/$defs/TypeExpr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "capability"
+            },
+            "value": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "const"
+            },
+            "type": {
+              "$ref": "#/$defs/TypeExpr"
+            },
+            "value": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "fn"
+            },
+            "pub": {
+              "const": true
+            },
+            "params": {
+              "$ref": "#/$defs/Params"
+            },
+            "returns": {
+              "$ref": "#/$defs/TypeExpr"
+            },
+            "effects": {
+              "$ref": "#/$defs/Effects"
+            },
+            "budget": {
+              "$ref": "#/$defs/Budget"
+            },
+            "body": {
+              "$ref": "#/$defs/Block"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "params",
+            "returns",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "extern"
+            },
+            "lang": {
+              "enum": [
+                "py",
+                "ts",
+                "java"
+              ]
+            },
+            "file": {
+              "type": "string"
+            },
+            "symbol": {
+              "$ref": "#/$defs/Name"
+            },
+            "params": {
+              "$ref": "#/$defs/Params"
+            },
+            "returns": {
+              "$ref": "#/$defs/TypeExpr"
+            },
+            "effects": {
+              "$ref": "#/$defs/Effects"
+            },
+            "idempotent_by": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "lang",
+            "file",
+            "symbol",
+            "params",
+            "returns",
+            "effects"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "effect"
+            },
+            "params": {
+              "$ref": "#/$defs/Params"
+            },
+            "returns": {
+              "$ref": "#/$defs/TypeExpr"
+            },
+            "requires_caps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              },
+              "minItems": 1
+            },
+            "critical": {
+              "const": true
+            },
+            "irreversible": {
+              "const": true
+            },
+            "idempotency_required": {
+              "const": true
+            },
+            "retry_class": {
+              "enum": [
+                "read_only",
+                "idempotent",
+                "reconcilable",
+                "non_retryable"
+              ]
+            },
+            "compensation": {
+              "$ref": "#/$defs/QName"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "params",
+            "returns"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "agent"
+            },
+            "role": {
+              "type": "string"
+            },
+            "model": {
+              "$ref": "#/$defs/Name"
+            },
+            "remote": {
+              "type": "object",
+              "properties": {
+                "bind": {
+                  "$ref": "#/$defs/Expr"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "require": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/Expr"
+                  },
+                  "minItems": 1
+                },
+                "trust": {
+                  "enum": [
+                    "trusted",
+                    "untrusted"
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "bind"
+              ]
+            },
+            "caps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "budget": {
+              "$ref": "#/$defs/Budget"
+            },
+            "skills": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Skill"
+              },
+              "propertyNames": {
+                "$ref": "#/$defs/Name"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "caps",
+            "skills"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "workflow"
+            },
+            "params": {
+              "$ref": "#/$defs/Params"
+            },
+            "returns": {
+              "$ref": "#/$defs/TypeExpr"
+            },
+            "caps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "budget": {
+              "$ref": "#/$defs/Budget"
+            },
+            "ensures": {
+              "$ref": "#/$defs/Expr"
+            },
+            "body": {
+              "$ref": "#/$defs/Block"
+            },
+            "on": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "event": {
+                    "$ref": "#/$defs/Name"
+                  },
+                  "then": {
+                    "$ref": "#/$defs/Expr"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "event",
+                  "then"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "params",
+            "returns",
+            "caps",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "contract"
+            },
+            "params": {
+              "$ref": "#/$defs/Params"
+            },
+            "require": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              },
+              "minItems": 1
+            },
+            "accept": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Criterion"
+              },
+              "propertyNames": {
+                "$ref": "#/$defs/Name"
+              }
+            },
+            "invariant": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Criterion"
+              },
+              "propertyNames": {
+                "$ref": "#/$defs/Name"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "params",
+            "accept"
+          ]
+        }
+      ]
+    },
+    "Test": {
+      "type": "object",
+      "properties": {
+        "handlers": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Expr"
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/Name"
+          }
+        },
+        "body": {
+          "$ref": "#/$defs/Block"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "body"
+      ]
+    }
+  }
+}

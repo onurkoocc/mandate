@@ -1,0 +1,100 @@
+// Multi-agent bugfix workflow (design doc 4, §20).
+// Discovery → acceptance contract → implementation → evidence → delivery.
+
+module company.devflow @ 0.1
+
+use std.{fs, net, model, git, test, human, exec}
+use company.domain.{Issue, Patch, TestSet, PullRequest, PullRequestDraft}
+
+// ── Capabilities ──────────────────────────────────────────────────────────
+capability RepoRead  = fs.read("/work/repo")
+capability SrcWrite  = fs.write("/work/repo/src")
+capability TestWrite = fs.write("/work/repo/test")
+capability Build     = exec(commands: ["mvn"], args_prefix: [["-q", "test"], ["-q", "verify"]])
+capability ModelStd  = model.infer(tier: standard)
+capability ModelEco  = model.infer(tier: economy)
+capability PR        = git.pr("company/backend")
+
+// ── Types ─────────────────────────────────────────────────────────────────
+type Finding = { file: Path, line: Int where line >= 1, claim: Text, evidence: EvidenceRef }
+type FixPlan = { steps: List<Text> where len(steps) in 1..12, touches: Set<Path>, risks: List<Text> }
+type Review  = { counterexamples: List<Text>, blocking: Bool }
+
+// ── Acceptance contract ───────────────────────────────────────────────────
+contract FixAccepted(issue: Issue, pr: PullRequestDraft) {
+  require issue.reproducible
+  accept regression_test "A regression test fails before the fix and passes after it"
+    by test.red_then_green(pr.patch, pr.tests)
+  accept scope_respected "The change stays inside the task scope"
+    by static pr.patch.files ⊆ issue.scope
+  accept suite_green "The existing test suite passes"
+    by test.suite(["unit", "integration"])
+  accept no_blocking_review "Independent review found no blocking issue"
+    by static not pr.review.blocking
+       and review(model: standard, isolated)        // never enough on its own; paired with a static check
+  accept owner_approved "The code owner approved"
+    by human.approve(role: "code_owner")
+}
+
+// ── Agents ────────────────────────────────────────────────────────────────
+agent Explorer {
+  role   "Finds where the bug is, with evidence. Does not change code."
+  caps   RepoRead, ModelStd
+  budget { tokens: 400k, time: 15m, spend: 3 USD, steps: 40 }
+  skill locate(issue: Issue) -> Inferred<List<Finding>> ! {Fs.Read, Model}
+}
+
+agent Planner {
+  role   "Turns findings into the smallest fix plan, split by behavior."
+  caps   ModelStd
+  budget { tokens: 150k, spend: 1.5 USD, steps: 10 }
+  skill plan(issue: Issue, findings: Inferred<List<Finding>>) -> Inferred<FixPlan> ! {Model}
+}
+
+agent Implementer {
+  role   "Applies the plan, only in the files it may change."
+  caps   RepoRead, SrcWrite, Build, ModelStd
+  budget { tokens: 800k, time: 45m, spend: 8 USD, steps: 80 }
+  skill apply(plan: Inferred<FixPlan>) -> Inferred<Patch> ! {Fs.Read, Fs.Write, Exec, Model}
+}
+
+agent TestWriter {
+  role   "Writes the regression test that catches the bug."
+  caps   RepoRead, TestWrite, Build, ModelStd
+  budget { tokens: 300k, time: 20m, spend: 3 USD, steps: 40 }
+  skill regression(issue: Issue) -> Inferred<TestSet> ! {Fs.Read, Fs.Write, Exec, Model}
+}
+
+agent Reviewer {
+  role   "Looks for counterexamples to the diff: concurrency, repeated messages, partial failure, unauthorized users."
+  caps   RepoRead, ModelStd
+  budget { tokens: 300k, spend: 3 USD, steps: 30 }
+  skill counterexamples(patch: Inferred<Patch>, tests: Inferred<TestSet>)
+        -> Inferred<Review> ! {Fs.Read, Model}
+}
+
+// ── Workflow ──────────────────────────────────────────────────────────────
+workflow FixBug(issue: Issue) -> PullRequest
+  caps    RepoRead, SrcWrite, TestWrite, Build, ModelStd, PR
+  budget  { spend: 20 USD, time: 3h }
+{
+  let findings = delegate Explorer.locate(issue)
+  let plan     = delegate Planner.plan(issue, findings)
+
+  par {
+    patch = delegate Implementer.apply(plan)
+    tests = delegate TestWriter.regression(issue)
+  }
+
+  let review = delegate Reviewer.counterexamples(patch, tests) isolated
+
+  let draft = PullRequestDraft { issue, patch, tests, review }
+  let checked = verify draft against FixAccepted(issue, draft)
+    on unmet(c) => escalate human("Open acceptance criteria: {c}")
+
+  effect git.open_pr(checked)
+    idempotent_by issue.id
+    compensate    git.close_pr      // 0.1: never runs automatically; offered to a human (§8.5)
+}
+
+on budget_exceeded in FixBug => pause and human.ask("Budget exceeded. Continue or cancel?")

@@ -1,0 +1,13 @@
+// Doc 4 §4.4: a function with an effect set, a budget and a prompt template.
+module company.devflow @ 0.1
+
+use company.domain.{LogSummary}
+
+fn summarize_log(log: Text) -> Inferred<LogSummary> ! {Model}
+  budget { tokens: 30k }
+{
+  infer LogSummary from prompt"""
+    Summarize the failures in the test output below.
+    {quote(log)}
+  """
+}

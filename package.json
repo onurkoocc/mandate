@@ -1,0 +1,16 @@
+{
+  "name": "mandate",
+  "private": true,
+  "description": "Mandate: an agent-native coordination and contract language (reference implementation 0.1)",
+  "workspaces": [
+    "compiler"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm test --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
