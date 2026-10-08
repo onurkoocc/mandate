@@ -20,15 +20,18 @@ anything runs. This repository holds the 0.1 reference implementation.
    event journal, prepare → authorize → commit, budget reservations,
    supervision, cancellation, replay, Temporal scheduling, and simulated
    adapters with fault injection. See [`spec/runtime.md`](spec/runtime.md).
-4. **End to end (this step):** the FixBug workflow running against
-   simulated adapters, directly and through Temporal (done); sandbox
-   requirements and an MXC adapter, see [`spec/sandbox.md`](spec/sandbox.md)
-   (done); and a compact core spec.
+4. **End to end (done):** the FixBug workflow running against simulated
+   adapters, directly and through Temporal; sandbox requirements and an MXC
+   adapter, see [`spec/sandbox.md`](spec/sandbox.md); and the compact core
+   spec, [`spec/core.md`](spec/core.md).
+
+Start with [`spec/core.md`](spec/core.md): the language on one page, small
+enough for an agent's context.
 
 ## Layout
 
 ```text
-spec/        IR schema, IR rules, static checks, diagnostic codes, runtime, sandboxes
+spec/        core spec, IR schema and rules, static checks, diagnostic codes, runtime, sandboxes
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
 examples/    example programs; fixbug/ is the design document's §20 workflow
