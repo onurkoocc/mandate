@@ -83,7 +83,7 @@ describe("R08, R09: cancellation is ordered against dispatch", () => {
     const run = await start(w, "Notify", "r8b", { authorize: byOwner() });
     const wait = waiting(run.waiting);
     expect((await w.rt.cancelRun("r8b")).state).toBe("cancelled");
-    const late = await w.rt.decideAction("r8b", { sender: "alice", messageId: "m1" }, { commandId: wait.command, actionDigest: wait.digest, approve: true, by: "alice" });
+    const late = await w.rt.decideAction("r8b", { sender: "alice", messageId: "m1" }, { commandId: wait.command, digest: wait.digest, approve: true, by: "alice" });
     expect(late.state).toBe("cancelled");
     expect(tool.executions).toHaveLength(0);
   });
@@ -152,8 +152,8 @@ describe("Authorization by a person (§8.8, G02) and its deadline (R15)", () => 
     const wait = waiting(run.waiting);
     expect(wait.command).toMatch(/\/authorize$/);
     const msg = { sender: "alice", messageId: "m1" };
-    await expect(w.rt.decideAction("h1", msg, { commandId: wait.command, actionDigest: "sha256:other", approve: true, by: "alice" })).rejects.toMatchObject({ code: "decision_digest_mismatch" });
-    const done = await w.rt.decideAction("h1", { sender: "alice", messageId: "m2" }, { commandId: wait.command, actionDigest: wait.digest, approve: true, by: "alice" });
+    await expect(w.rt.decideAction("h1", msg, { commandId: wait.command, digest: "sha256:other", approve: true, by: "alice" })).rejects.toMatchObject({ code: "decision_digest_mismatch" });
+    const done = await w.rt.decideAction("h1", { sender: "alice", messageId: "m2" }, { commandId: wait.command, digest: wait.digest, approve: true, by: "alice" });
     expect(done.state).toBe("succeeded");
     expect(tool.executions).toHaveLength(1);
     const [auth] = await w.db.query("select authorization_id, decided_by, consumed_by from authorizations where run_id = $1", ["h1"]);
@@ -164,7 +164,7 @@ describe("Authorization by a person (§8.8, G02) and its deadline (R15)", () => 
     const tool = new SimTool("git.comment");
     const w = await world(NOTIFY, { tools: [tool] });
     const wait = waiting((await start(w, "Notify", "h2", { authorize: byOwner() })).waiting);
-    const run = await w.rt.decideAction("h2", { sender: "bob", messageId: "m1" }, { commandId: wait.command, actionDigest: wait.digest, approve: false, by: "bob" });
+    const run = await w.rt.decideAction("h2", { sender: "bob", messageId: "m1" }, { commandId: wait.command, digest: wait.digest, approve: false, by: "bob" });
     expect(run.state).toBe("failed");
     expect(run.error).toEqual({ $tag: "Rejected", $args: [{ denied_by: "bob" }] });
     expect(tool.executions).toHaveLength(0);
@@ -183,7 +183,7 @@ describe("Authorization by a person (§8.8, G02) and its deadline (R15)", () => 
 
     const wait = waiting((await start(w, "Notify", "r15b", { authorize: byOwner(60_000) })).waiting);
     w.clock.advance(61_000);
-    const late = await w.rt.decideAction("r15b", { sender: "alice", messageId: "m1" }, { commandId: wait.command, actionDigest: wait.digest, approve: true, by: "alice" });
+    const late = await w.rt.decideAction("r15b", { sender: "alice", messageId: "m1" }, { commandId: wait.command, digest: wait.digest, approve: true, by: "alice" });
     expect(late.state).toBe("failed");
     expect(tool.executions).toHaveLength(0);
   });

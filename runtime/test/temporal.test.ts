@@ -15,6 +15,7 @@ import { SimAgents, SimTool, wallClock } from "../src/sim.js";
 import { createWorker, TemporalDriver, workflowsPath } from "../src/temporal/index.js";
 import { isObj } from "../src/values.js";
 import { closeAll, world, type World } from "./helpers.js";
+import { BUG, FIXBUG, fixbugAgents, RESULTS, USD, waitOf } from "./fixbug.js";
 import { ASK, FIX, ISSUE, NOTIFY } from "./programs.js";
 
 let env: TestWorkflowEnvironment;
@@ -109,7 +110,7 @@ describe("Temporal schedules runs", () => {
       await stateOf(s, "t5", "waiting");
       const w = (await s.control.getRun("t5")).waiting;
       const req = isObj(w) && isObj(w["request"]) ? w["request"] : {};
-      await s.control.decideAction("t5", { sender: "alice", messageId: "m1" }, { commandId: String(isObj(w) ? w["command"] : ""), actionDigest: String(req["action_digest"]), approve: true, by: "alice" });
+      await s.control.decideAction("t5", { sender: "alice", messageId: "m1" }, { commandId: String(isObj(w) ? w["command"] : ""), digest: String(req["action_digest"]), approve: true, by: "alice" });
       return s.driver.result("t5");
     });
     expect(done.state).toBe("succeeded");
@@ -152,5 +153,28 @@ describe("Temporal schedules runs", () => {
     });
     expect(done.state).toBe("succeeded");
     expect(tool.executions).toHaveLength(1);
+  });
+
+  it("runs FixBug end to end: the code owner's approval wakes it, and a crash after commit opens one PR", async () => {
+    const pr = new SimTool("git.open_pr");
+    const s = await scheduled(FIXBUG, { tools: [pr], agents: fixbugAgents() });
+    s.faults.arm("after_commit");
+    await s.control.startRun({ pkg: s.pkg, workflow: "FixBug", input: BUG, runId: "t9" });
+    const done = await s.serve(async () => {
+      await stateOf(s, "t9", "waiting");
+      const wait = waitOf((await s.control.getRun("t9")).waiting);
+      expect(wait.request).toMatchObject({ contract: "FixAccepted", criterion: "owner_approved", role: "code_owner" });
+      expect(pr.prepares).toHaveLength(0);
+      await s.control.decideAction("t9", { sender: "carol", messageId: "m1" }, { commandId: wait.command, digest: String(wait.request["subject_digest"]), approve: true, by: "carol" });
+      return s.driver.result("t9");
+    });
+    expect(done.state).toBe("succeeded");
+    expect(pr.appliedCount()).toBe(1);
+    expect(Object.keys(RESULTS).map((k) => s.agents.count(k))).toEqual([1, 1, 1, 1, 1]);
+    expect((await s.control.evidence("t9")).every((e) => e.passed)).toBe(true);
+    expect((await s.control.budgetReport("t9")).dimensions).toEqual([{ dimension: "spend:USD", limit: 20 * USD, settled: 11 * USD, reserved: 0, available: 9 * USD }]);
+    // Started, woken by the approval, and resumed by Temporal's retry after the crash.
+    const leases = (await s.control.journal.events("t9")).filter((e) => e.type === "lease_acquired");
+    expect(leases).toHaveLength(3);
   });
 });
