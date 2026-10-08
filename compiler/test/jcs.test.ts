@@ -5,6 +5,7 @@ import { domainHash } from "../src/hash.js";
 import { canonicalize } from "../src/json/jcs.js";
 import { parseStrictJson } from "../src/json/strict-json.js";
 import { LIMITS } from "../src/limits.js";
+import { BUILTIN_EFFECTS, CAP_CTORS } from "../src/std/std.js";
 import { check } from "../src/check.js";
 import { codes, minimal, readRepo } from "./helpers.js";
 
@@ -59,6 +60,18 @@ describe("spec", () => {
   it("documents every diagnostic code the compiler emits", () => {
     const doc = readRepo("spec/diagnostics.md");
     for (const code of Object.keys(CODES)) expect(doc).toContain(code);
+  });
+
+  it("keeps the core spec inside the context budget and in step with the language (Doc 4 G8)", () => {
+    const core = readRepo("spec/core.md");
+    // About 3 characters per token is a conservative estimate for English prose with code.
+    expect(core.length).toBeLessThanOrEqual(8000 * 3);
+    const schema = readRepo("spec/ir.schema.json");
+    const kinds = [...schema.matchAll(/"kind":\s*\{\s*"const":\s*"([a-z]+)"/g)].map((m) => m[1]!);
+    expect(kinds.length).toBeGreaterThan(0);
+    for (const k of kinds) expect(core).toContain(`| \`${k}\` |`);
+    for (const e of BUILTIN_EFFECTS) expect(core).toContain(`\`${e}\``);
+    for (const c of Object.keys(CAP_CTORS)) expect(core).toContain(`\`${c}(`);
   });
 
   it("publishes a closed schema", () => {
