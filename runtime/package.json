@@ -2,8 +2,18 @@
   "name": "@mandate/runtime",
   "version": "0.1.0",
   "private": true,
-  "description": "Mandate 0.1 reference runtime: journal, prepare/authorize/commit, budget ledger, supervision",
+  "description": "Mandate 0.1 reference runtime: journal, prepare/authorize/commit, budget ledger, supervision, Temporal scheduling",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./temporal": {
+      "types": "./dist/temporal/index.d.ts",
+      "default": "./dist/temporal/index.js"
+    }
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -14,9 +24,14 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@mandate/compiler": "0.1.0",
+    "@temporalio/activity": "^1.24.0",
+    "@temporalio/client": "^1.24.0",
+    "@temporalio/worker": "^1.24.0",
+    "@temporalio/workflow": "^1.24.0",
     "pg": "^8.23.1"
   },
   "devDependencies": {
+    "@temporalio/testing": "^1.24.0",
     "@types/node": "^22.20.5",
     "@types/pg": "^8.23.1",
     "typescript": "^5.9.3",

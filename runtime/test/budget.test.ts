@@ -10,9 +10,29 @@ afterAll(closeAll);
 
 describe("R07: reservations are taken atomically with dispatch", () => {
   it("parallel siblings cannot both reserve what only one fits", async () => {
-    const w = await world(BOTH);
+    // The first call is held, so its reservation is still active when the
+    // sibling tries to reserve; otherwise the two could run one after the other.
+    const gate = deferred<void>();
+    const held = async () => {
+      await gate.promise;
+      return { ok: "done", cost: { steps: 1 } };
+    };
+    const w = await world(BOTH, { agents: new SimAgents().on("Worker.fix", held).on("Worker.test", held) });
+    let refused = 0;
+    const dispatch = w.rt.journal.dispatch.bind(w.rt.journal);
+    w.rt.journal.dispatch = async (...a) => {
+      try {
+        return await dispatch(...a);
+      } catch (e) {
+        refused++;
+        throw e;
+      }
+    };
     // Each delegate reserves the agent's budget (5 steps); the caller allows 7.
-    const run = await start(w, "Both", "r7", { limits: { steps: 7 } });
+    const p = start(w, "Both", "r7", { limits: { steps: 7 } });
+    await until(() => refused === 1 && w.agents.count() === 1, "one dispatch refused, one in flight");
+    gate.resolve();
+    const run = await p;
     expect(w.agents.count()).toBe(1);
     expect(run.state).toBe("waiting");
     expect(run.waiting).toMatchObject({ kind: "budget_exceeded", detail: { $tag: "BudgetExceeded", $args: [{ dimension: "steps", requested: 5, available: 2 }] } });

@@ -189,6 +189,7 @@ export class SimTool implements ToolAdapter {
 
 export interface Sim {
   adapters: Adapters;
+  /** The simulated clock; unused when `simulate` was given another clock. */
   clock: SimClock;
   agents: SimAgents;
   model: SimModel;
@@ -197,7 +198,13 @@ export interface Sim {
   tools: Record<string, SimTool>;
 }
 
-export function simulate(o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; seed?: number } = {}): Sim {
+/** The wall clock, for runs whose timers a real scheduler (Temporal) keeps. */
+export const wallClock: Clock = {
+  now: () => Date.now(),
+  sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+};
+
+export function simulate(o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; seed?: number; clock?: Clock } = {}): Sim {
   const clock = new SimClock();
   const agents = o.agents ?? new SimAgents();
   const model = o.model ?? new SimModel();
@@ -210,5 +217,5 @@ export function simulate(o: { tools?: SimTool[]; agents?: SimAgents; model?: Sim
     seed = (seed * 1103515245 + 12345) % 2 ** 31;
     return seed / 2 ** 31;
   };
-  return { adapters: { agents, model, verifier, reads, tools, clock, random }, clock, agents, model, verifier, reads, tools };
+  return { adapters: { agents, model, verifier, reads, tools, clock: o.clock ?? clock, random }, clock, agents, model, verifier, reads, tools };
 }
