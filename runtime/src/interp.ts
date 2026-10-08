@@ -599,19 +599,16 @@ export class Interpreter {
     for (let i = 0; i < (c.require ?? []).length; i++) {
       if (!truthy(unwrap(await this.expr(c.require![i]!, cctx, `${path}/contract/require/${i}`)))) unmet.push(`require/${i}`);
     }
-    // Criteria a person decides come last, and only once every other one is
-    // met: nobody is asked to approve a change whose checks already failed.
-    const criteria = (["accept", "invariant"] as const).flatMap((group) =>
-      Object.keys(c[group] ?? {})
-        .sort()
-        .map((name) => ({ name, by: c[group]![name]!.by, path: `${path}/contract/${group}/${name}` })),
-    );
-    const human = criteria.filter((k) => needsPerson(k.by));
-    for (const k of criteria.filter((x) => !needsPerson(x.by))) {
-      if (!(await this.criterion(k.by, e.contract, k.name, cctx, k.path, evidence))) unmet.push(k.name);
-    }
-    for (const k of human) {
-      if (unmet.length || !(await this.criterion(k.by, e.contract, k.name, cctx, k.path, evidence))) unmet.push(k.name);
+    // Criteria run in order of their method (§10.4): static, then tests,
+    // then evals and reviews, then people; by name within each. A person is
+    // asked only once every other criterion is met: nobody approves a change
+    // whose checks already failed.
+    const criteria = (["accept", "invariant"] as const)
+      .flatMap((group) => Object.keys(c[group] ?? {}).map((name) => ({ name, by: c[group]![name]!.by, path: `${path}/contract/${group}/${name}` })))
+      .sort((a, b) => methodRank(a.by) - methodRank(b.by) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const k of criteria) {
+      if (methodRank(k.by) === HUMAN_RANK && unmet.length) unmet.push(k.name);
+      else if (!(await this.criterion(k.by, e.contract, k.name, cctx, k.path, evidence))) unmet.push(k.name);
     }
     if (!unmet.length) return verified(subject, e.contract, evidence.sort());
     if (e.on_unmet) {
@@ -853,6 +850,17 @@ export class SiblingStopped extends Error {
 /** A criterion satisfied by a person: `human.approve(…)` (§10). */
 function needsPerson(v: Verifier): boolean {
   return "call" in v && v.call.op === "call" && calleePath(v.call.callee) === "human.approve";
+}
+
+const HUMAN_RANK = 3;
+
+/** Where a criterion runs in `verify` (§10.4): static 0, test 1, eval and review 2, human 3; `all` runs with its last part. */
+function methodRank(v: Verifier): number {
+  if ("all" in v) return Math.max(0, ...v.all.map(methodRank));
+  if ("static" in v) return 0;
+  if (needsPerson(v)) return HUMAN_RANK;
+  const m = v.call.op === "call" ? calleePath(v.call.callee) : undefined;
+  return m?.startsWith("test.") ? 1 : 2;
 }
 
 function replayed(row: CommandRow | undefined, id: string): Value {

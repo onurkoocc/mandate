@@ -128,8 +128,10 @@ until `ReconcileAction` resolves it (R04, R05).
 
 ## Contracts and evidence (§10)
 
-`verify x against C(…)` checks C's `require` clauses, then its criteria.
-Each check records one evidence row: contract, criterion, method, passed,
+`verify x against C(…)` checks C's `require` clauses, then its criteria
+in order of their method: static checks, tests, evals and reviews, then
+people; by name within each group. A criterion that combines methods runs
+with its last one. Each check records one evidence row: contract, criterion, method, passed,
 and detail. A criterion that names several checks (`static … and
 review(…)`) records one row per check, so a review is never the only
 evidence for it. Only when every criterion passed does the value become

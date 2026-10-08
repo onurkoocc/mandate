@@ -37,7 +37,8 @@ describe("FixBug runs end to end", () => {
     const wait = waitOf(waiting.waiting);
     expect(wait.command).toBe("/defs/FixBug/body/5/value/contract/accept/owner_approved/call");
     expect(wait.request).toMatchObject({ contract: "FixAccepted", criterion: "owner_approved", role: "code_owner" });
-    expect(w.verifier.calls.map((c) => c.criterion).sort()).toEqual(["no_blocking_review", "regression_test", "suite_green"]);
+    // Tests before the review, as §10.4 orders them.
+    expect(w.verifier.calls.map((c) => c.criterion)).toEqual(["regression_test", "suite_green", "no_blocking_review"]);
     expect(w.pr.prepares).toHaveLength(0);
 
     // A decision about some other subject is refused; the owner's approval is not.
