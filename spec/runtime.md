@@ -6,14 +6,19 @@ PostgreSQL. Section numbers refer to the design document (Doc 4).
 
 ## Scope
 
-This change, step 3a, is the PostgreSQL-backed core. A worker drives a run
-in-process, and `Runtime.resume` starts a new worker after a crash. Step 3b
-adds Temporal as the scheduler: it will start workers, hold timers and
-retry them. PostgreSQL stays the authority for the journal, authorizations,
-the budget ledger and actions, so 3b changes who calls `resume`, not what a
-run may do.
+The runtime has two parts:
 
-Two drivers share one interface (`runtime/src/db.ts`):
+- **The PostgreSQL-backed core.** A worker drives a run, and
+  `Runtime.resume` starts a new worker after a crash.
+- **Temporal scheduling** (`@mandate/runtime/temporal`). Temporal decides
+  when `resume` runs: it starts and retries workers, holds deadline timers,
+  and wakes a run after a control call.
+
+PostgreSQL stays the authority for the journal, authorizations, the budget
+ledger and actions. So the scheduler changes who calls `resume`, not what a
+run may do. Without Temporal, the caller's process drives a run inline.
+
+Two database drivers share one interface (`runtime/src/db.ts`):
 
 - **node-postgres** for a PostgreSQL server.
 - **PGlite**, PostgreSQL compiled to WebAssembly, for in-process tests and
@@ -175,9 +180,47 @@ points:
 - after commit;
 - after the adapter returned.
 
+## Temporal scheduling (§16.1)
+
+Temporal's history holds only scheduling. There is no distributed
+transaction between it and PostgreSQL. Each run has one workflow, with the
+id `mandate-run/<run id>`, and the workflow loops:
+
+1. It calls the `drive` activity, which runs `Runtime.resume`.
+2. If the run is terminal, the workflow ends with the run's state.
+3. If the run is waiting or needs attention, the workflow sleeps until a
+   `wake` signal arrives, or until the deadline of the wait the run is in.
+4. On a signal it drives the run again. When the deadline passes, the
+   `expire` activity runs `Runtime.tick`, which expires the wait and drives
+   the run on (R15).
+
+Activities heartbeat. When a worker dies, Temporal retries the activity on
+another worker, which takes a new lease and resumes from the journal. The
+lease fence stops the old attempt from writing. An activity retry is never
+the business idempotency: commands and actions are deduplicated in
+PostgreSQL.
+
+With a `TemporalDriver`, the control API only records decisions:
+- `StartRun` starts the run's workflow.
+- `SubmitInput`, `DecideAction`, `CancelRun`, `ReconcileAction` and `tick`
+  record their decision in PostgreSQL and signal the workflow.
+
+The worker's own `Runtime` has no driver, because it is the one that
+drives runs.
+
+The same mechanisms are tested under Temporal against a local dev server:
+- a crash after a recorded result (R01) and after commit (R02);
+- input and approval;
+- a deadline timer (R15);
+- cancel;
+- reconciliation (R04).
+
 ## Not in this runtime yet
 
-- **Temporal scheduling** (step 3b).
+- **Continue-as-new.** A run that waits very many times grows its workflow
+  history; the workflow does not yet start a fresh history.
+- **Restart backoff as a durable timer.** The backoff wait happens inside
+  the `drive` activity, not on a Temporal timer.
 - **`map`, and so R11 by input index and R12.** The 0.1 IR has no `map`.
   `par` results are bound by name, and that binding is tested in its place.
 - **Continuing after `budget_exceeded`.** The control API has no operation

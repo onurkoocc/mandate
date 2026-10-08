@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { check } from "@mandate/compiler";
 import { expect } from "vitest";
 import { ISSUE } from "./programs.js";
+import type { Clock } from "../src/adapters.js";
 import { openDb, type Db } from "../src/db.js";
 import { Faults } from "../src/faults.js";
 import { buildPackage, Runtime, type Package, type StartOptions } from "../src/runtime.js";
@@ -25,7 +26,7 @@ let shared: Promise<Db> | undefined;
  * PGlite by default, or a fresh schema on the PostgreSQL server named by
  * MANDATE_TEST_DATABASE_URL.
  */
-export async function world(src: string, o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads } = {}): Promise<World> {
+export async function world(src: string, o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; clock?: Clock } = {}): Promise<World> {
   const r = check(src, "mdt");
   expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
   const url = process.env["MANDATE_TEST_DATABASE_URL"];

@@ -16,10 +16,10 @@ anything runs. This repository holds the 0.1 reference implementation.
 2. **Static checks, Gate 1 (done):** epistemic types and data
    classes, effects, capabilities and disjoint writes, budgets, delegation,
    contracts and supervision. See [`spec/checks.md`](spec/checks.md).
-3. **Runtime, Gate 2 (this step):** TypeScript + PostgreSQL; event
-   journal, prepare → authorize → commit, budget reservations, supervision,
-   cancellation, replay, and simulated adapters with fault injection. See
-   [`spec/runtime.md`](spec/runtime.md). Temporal scheduling follows as 3b.
+3. **Runtime, Gate 2 (this step):** TypeScript + Temporal + PostgreSQL;
+   event journal, prepare → authorize → commit, budget reservations,
+   supervision, cancellation, replay, Temporal scheduling, and simulated
+   adapters with fault injection. See [`spec/runtime.md`](spec/runtime.md).
 4. **End to end:** the FixBug workflow running against simulated adapters,
    sandbox policy generation, and a compact core spec.
 
@@ -100,8 +100,12 @@ PostgreSQL server instead (one schema per test file):
 MANDATE_TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/db npm test -w runtime
 ```
 
+`temporal.test.ts` starts a local Temporal dev server. The SDK downloads it,
+or `TEMPORAL_CLI_PATH` points at an existing `temporal` binary.
+
 Tests live in `runtime/test`. `smoke.test.ts` runs FixBug end to end on
-simulated adapters. These cases from §25 are covered:
+simulated adapters. `temporal.test.ts` drives runs through Temporal. These
+cases from §25 are covered:
 
 | Case | Behavior | Test file |
 |---|---|---|

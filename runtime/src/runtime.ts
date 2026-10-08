@@ -75,6 +75,17 @@ export type ReplayResult =
   | { status: "failed"; error: Value }
   | { status: "attention_required"; reason: Value };
 
+/**
+ * Who moves a run forward after a control call. Without one, the caller's
+ * process does it inline (`resume`). With one, such as the Temporal driver,
+ * control calls only record their decision in PostgreSQL and wake the run's
+ * scheduler, which calls `resume` from its own worker.
+ */
+export interface Driver {
+  start(runId: string): Promise<void>;
+  wake(runId: string): Promise<void>;
+}
+
 export class Runtime {
   readonly journal: Journal;
   readonly faults: Faults;
@@ -84,6 +95,7 @@ export class Runtime {
     readonly db: Db,
     readonly adapters: Adapters,
     faults?: Faults,
+    readonly driver?: Driver,
   ) {
     this.journal = new Journal(db, () => adapters.clock.now());
     this.faults = faults ?? new Faults();
@@ -107,7 +119,13 @@ export class Runtime {
       await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits });
     });
     this.packages.set(o.pkg.hash, o.pkg);
-    return this.resume(runId);
+    return this.drive(runId, true);
+  }
+
+  private async drive(runId: string, start = false): Promise<RunRow> {
+    if (!this.driver) return this.resume(runId);
+    await (start ? this.driver.start(runId) : this.driver.wake(runId));
+    return this.journal.run(runId);
   }
 
   /** Starts a new worker on the run: takes the lease (fence + 1) and drives the body against the journal. */
@@ -225,7 +243,7 @@ export class Runtime {
   /** Answers a wait opened by human.ask, escalate or pause; then resumes the run. */
   async submitInput(runId: string, msg: Message, commandId: string, value: Value): Promise<RunRow> {
     const fresh = await this.resolveWait(runId, msg, commandId, "input", { commandId, value }, async () => ({ state: "succeeded", result: value }));
-    return fresh ? this.resume(runId) : this.journal.run(runId);
+    return fresh ? this.drive(runId) : this.journal.run(runId);
   }
 
   /**
@@ -256,7 +274,7 @@ export class Runtime {
       await this.journal.event(tx, runId, "action_authorized", { authorization: id, digest: d.actionDigest, by: d.by });
       return { state: "succeeded", result: { approved: true, by: d.by, authorization_id: id } };
     });
-    return fresh ? this.resume(runId) : this.journal.run(runId);
+    return fresh ? this.drive(runId) : this.journal.run(runId);
   }
 
   /** Expires waits whose deadline has passed: no dispatch happens after a deadline (R15). */
@@ -276,7 +294,7 @@ export class Runtime {
       ]);
       await this.journal.event(tx, runId, "wait_expired", { command: String(w["command"]) });
     });
-    return this.resume(runId);
+    return this.drive(runId);
   }
 
   private async resolveWait(
@@ -323,6 +341,7 @@ export class Runtime {
       return run.state === "waiting" || run.state === "accepted" || run.state === "attention_required";
     });
     if (idle) await this.closeCancelled(runId);
+    if (this.driver) await this.driver.wake(runId);
     return this.journal.run(runId);
   }
 
@@ -343,7 +362,7 @@ export class Runtime {
     if ("applied" in r) await this.journal.finishAction(runId, undefined, operationKey, "confirmed", { receipt: r.applied });
     else if ("notApplied" in r) await this.journal.finishAction(runId, undefined, operationKey, "prepared", { detail: { not_applied: r.notApplied } });
     else return this.journal.run(runId);
-    return this.resume(runId);
+    return this.drive(runId);
   }
 
   /** A charge that arrives after a timeout or a cancellation (R16). */
