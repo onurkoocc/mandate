@@ -70,7 +70,13 @@ Warnings (`W…`) never make a check fail.
 | MDT-E0712 | UnknownOutcome restarted | V06 | Appendix B |
 | MDT-E0713 | Too many restarts | — | assigned |
 
-Deferred to the runtime step: E0406 (commit without authorize) and E0407
-(an Authorization consumed twice) need the prepare → authorize → commit
-expansion; S09 (unlocked module) needs the lock file; W0504 needs model
-tariffs.
+The runtime checks E0406 (commit without a matching authorization) and
+E0407 (an authorization consumed twice) at commit, and S09 (an unlocked
+module) at load; see [`runtime.md`](runtime.md). W0504 needs model tariffs
+and is not reported yet.
+
+## Target generation
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E0902 | Sandbox requirement cannot be enforced | G05 | Appendix B; raised by the sandbox adapter as `unsupported_sandbox_profile` |

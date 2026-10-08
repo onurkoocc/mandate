@@ -6,6 +6,7 @@
 //   mandate fmt <file>                     print the .mdt projection of the IR
 //   mandate hash <file>                    print program and definition hashes
 //   mandate patch <program> <patch.json>   apply an IR patch (see `patch` below)
+//   mandate sandbox <file> [--agent <name>] print each agent's sandbox requirement
 //   mandate explain <code>                 explain a diagnostic code
 //
 // <file> is .mdt text or .json canonical IR. Exit status is 1 when any error
@@ -20,6 +21,7 @@ import type { Json } from "./json/strict-json.js";
 import { parseStrictJson } from "./json/strict-json.js";
 import { applyPatch, type PatchOp } from "./patch/patch.js";
 import { printProgram } from "./print/printer.js";
+import { sandboxRequirements } from "./target/sandbox.js";
 
 function usage(): never {
   process.stderr.write(
@@ -30,6 +32,7 @@ function usage(): never {
       "  fmt <file>",
       "  hash <file>",
       "  patch <program> <patch.json> [--json]   patch.json: { \"base\": \"sha256:…\", \"ops\": [ … ] }",
+      "  sandbox <file> [--agent <name>]",
       "  explain <code>",
       "",
     ].join("\n"),
@@ -56,8 +59,11 @@ function report(diags: Diagnostic[], file: string, asJson: boolean, extra: Recor
 
 function main(argv: string[]): void {
   const [cmd, ...rest] = argv;
-  const flags = new Set(rest.filter((a) => a.startsWith("--")));
-  const args = rest.filter((a) => !a.startsWith("--"));
+  const agentAt = rest.indexOf("--agent");
+  const agent = agentAt >= 0 ? (rest[agentAt + 1] ?? usage()) : undefined;
+  const plain = agentAt >= 0 ? rest.filter((_, i) => i !== agentAt && i !== agentAt + 1) : rest;
+  const flags = new Set(plain.filter((a) => a.startsWith("--")));
+  const args = plain.filter((a) => !a.startsWith("--"));
   const asJson = flags.has("--json");
 
   switch (cmd) {
@@ -125,6 +131,23 @@ function main(argv: string[]): void {
         }
       }
       process.exit(r.ok ? 0 : 1);
+    }
+    // falls through
+    case "sandbox": {
+      const file = args[0] ?? usage();
+      const r = check(read(file), kindOf(file));
+      if (!r.ok) {
+        report(r.diagnostics, file, asJson);
+        process.exit(1);
+      }
+      const all = sandboxRequirements(r.program!);
+      if (agent !== undefined && !Object.hasOwn(all, agent)) {
+        process.stderr.write(`mandate: no local agent ${agent} in ${file}\n`);
+        process.exit(2);
+      }
+      const out = agent !== undefined ? all[agent] : { program: r.hashes!.program, requirements: all };
+      process.stdout.write(JSON.stringify(out, null, 2) + "\n");
+      process.exit(0);
     }
     // falls through
     case "explain": {

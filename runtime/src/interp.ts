@@ -16,6 +16,8 @@ import {
   calleePath,
   capFromCall,
   DECISION_POLICIES,
+  hashProgram,
+  requirementFor,
   STD_EFFECTS,
   STD_FNS,
   type Arg,
@@ -25,6 +27,7 @@ import {
   type Def,
   type EffectDef,
   type Expr,
+  type Json,
   type Pattern,
   type Program,
   type Stmt,
@@ -32,7 +35,7 @@ import {
   type Verifier,
   type WorkflowDef,
 } from "@mandate/compiler";
-import type { Adapters, CapGrant, Cost, Outcome, ToolAdapter } from "./adapters.js";
+import type { Adapters, Cost, Outcome, ToolAdapter } from "./adapters.js";
 import type { Faults } from "./faults.js";
 import type { ActionRow, CommandRow, Journal } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
@@ -527,8 +530,10 @@ export class Interpreter {
     const skill = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill]! : undefined;
     if (!skill) throw new Violation("unknown_skill", `No skill '${e.agent}.${e.skill}'.`);
     const { pos } = await this.args(e.args, ctx, path);
-    const caps = this.grants(e.agent, e.caps ?? [], path);
+    const granted = this.grants(e.agent, e.caps ?? [], path);
+    const caps = granted.map((c) => (c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor }));
     const budget = e.budget ?? skill.budget ?? agent.budget;
+    const sandbox = agent.remote ? undefined : requirementFor({ agent: e.agent, def: this.defHash(e.agent) }, granted, budget?.time?.ms ?? null);
     const sup = e.supervise;
     const max = sup?.name === "restart" ? Number(constValue(sup.args?.find((a) => a.name === "max")?.value ?? { op: "int", value: 1 })) : 0;
     const backoff = sup?.name === "restart" ? Number(constValue(sup.args?.find((a) => a.name === "backoff")?.value ?? { op: "duration", ms: 0 })) : 0;
@@ -540,7 +545,8 @@ export class Interpreter {
           "delegate",
           { agent: e.agent, skill: e.skill, args: pos, caps: caps as unknown as Value, isolated: !!e.isolated },
           budget,
-          () => this.o.adapters.agents.run({ agent: e.agent, skill: e.skill, args: pos, caps, isolated: !!e.isolated, attempt, commandId: id, ...(budget ? { budget } : {}) }),
+          () =>
+            this.o.adapters.agents.run({ agent: e.agent, skill: e.skill, args: pos, caps, isolated: !!e.isolated, attempt, commandId: id, ...(budget ? { budget } : {}), ...(sandbox ? { sandbox } : {}) }),
           ctx.siblings,
           `${e.agent}.${e.skill}`,
         );
@@ -554,8 +560,15 @@ export class Interpreter {
     }
   }
 
+  private hashes?: Record<string, string>;
+
+  private defHash(name: string): string {
+    this.hashes ??= hashProgram(this.o.program as unknown as Json).defs;
+    return this.hashes[name]!;
+  }
+
   /** Capabilities handed to a delegate: A.caps ∩ avail(ctx), with `with caps` narrowing its own kinds (C2, §9.1). */
-  private grants(agentName: string, withCaps: Expr[], path: string): CapGrant[] {
+  private grants(agentName: string, withCaps: Expr[], path: string): CapVal[] {
     const agent = this.def(agentName) as Extract<Def, { kind: "agent" }>;
     const wfName = path.split("/")[2]!;
     const wf = this.def(wfName);
@@ -567,7 +580,8 @@ export class Interpreter {
       const kinds = new Set(given.map((g) => g.ctor));
       out = [...out.filter((c) => !kinds.has(c.ctor)), ...given];
     }
-    return out.map((c) => (c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor })).sort((a, b) => (JSON.stringify(a) < JSON.stringify(b) ? -1 : 1));
+    const key = (c: CapVal): string => JSON.stringify(c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor });
+    return out.sort((a, b) => (key(a) < key(b) ? -1 : 1));
   }
 
   private cap(e: Expr): CapVal | undefined {
@@ -579,7 +593,10 @@ export class Interpreter {
       const base = this.cap(e.callee.of);
       if (!base) return undefined;
       const scope = e.args.flatMap((a) => (a.value.op === "text" ? [a.value.value] : []));
-      return scope.length === e.args.length ? { ...base, scope } : base;
+      if (scope.length === e.args.length) return { ...base, scope };
+      // A narrowing that is not literal leaves the scope unknown, never the base's wider one.
+      const { scope: _dropped, ...unknown } = base;
+      return unknown;
     }
     return capFromCall(e);
   }
