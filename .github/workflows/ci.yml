@@ -8,6 +8,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mandate
+          POSTGRES_PASSWORD: mandate
+          POSTGRES_DB: mandate_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mandate"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,6 +32,10 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
+      - name: Runtime tests on PostgreSQL
+        run: npm test -w runtime
+        env:
+          MANDATE_TEST_DATABASE_URL: postgresql://mandate:mandate@localhost:5432/mandate_test
       - name: Check the FixBug example
         run: |
           node compiler/dist/cli.js check examples/fixbug/fixbug.mdt

@@ -1,0 +1,187 @@
+# Mandate 0.1 runtime
+
+This is the reference runtime in `runtime/`. It runs a checked package
+against adapters and keeps every decision that must survive a crash in
+PostgreSQL. Section numbers refer to the design document (Doc 4).
+
+## Scope
+
+This change, step 3a, is the PostgreSQL-backed core. A worker drives a run
+in-process, and `Runtime.resume` starts a new worker after a crash. Step 3b
+adds Temporal as the scheduler: it will start workers, hold timers and
+retry them. PostgreSQL stays the authority for the journal, authorizations,
+the budget ledger and actions, so 3b changes who calls `resume`, not what a
+run may do.
+
+Two drivers share one interface (`runtime/src/db.ts`):
+
+- **node-postgres** for a PostgreSQL server.
+- **PGlite**, PostgreSQL compiled to WebAssembly, for in-process tests and
+  local runs.
+
+## Storage
+
+| Table | Holds |
+|---|---|
+| `packages` | Content-addressed packages: program and lock |
+| `runs` | State, revision, lease fence, cancel flag, waiting / attention / result / error / summary |
+| `events` | The run's append-only event log |
+| `commands` | One row per nondeterministic step: request digest, state, result or error, cost |
+| `budgets` | Limit and settled amount per dimension (`tokens`, `steps`, `spend:<currency>`) |
+| `reservations` | Upper-bound reservations per command and dimension |
+| `actions` | External actions: digest, frozen parameters, retry class, state, receipt |
+| `authorizations` | Bound to one action digest, with an expiry; `consumed_by` is unique |
+| `evidence` | Contract criteria results that back a `Verified` value |
+| `inbox` | Inbound message keys with their payload digests |
+| `outbox` | Committed actions waiting for, or past, delivery |
+
+Every write that must be atomic runs in one transaction that first locks the
+run's row (`select … for update`). This covers reserve plus dispatch,
+consuming an authorization plus writing the outbox, cancel against dispatch,
+and recording a result. Writers of one run are serialized that way.
+
+## Commands and replay (§8.3)
+
+The workflow body is deterministic. Each step that is not deterministic is
+a command: delegates, model calls, verifier calls, reads, time, randomness
+and waits for people. A command's id is the IR path of the node that issued
+it. Three suffixes extend the path:
+
+- `@i` for a loop iteration;
+- `#n` for a restart attempt;
+- `>fn/body` for an inlined function.
+
+Before a command runs, the journal is asked for its result. Recovering from
+a crash means running the same body again, and so does `ReplayRun`. If the
+journal recorded a command with a different request digest, the run stops
+with the violation `nondeterministic_replay`.
+
+A command is at least once. A crash between the call and its record sends
+the call again. External effects are protected separately, as described
+below.
+
+## Budget (§8.6)
+
+A command reserves its upper-bound cost when it is dispatched, in the same
+transaction:
+
+```text
+available = limit − settled − active reservations
+```
+
+If the reservation does not fit, the command is refused with
+`BudgetExceeded`. A known cost settles and closes the reservation. If the
+cost is `"unknown"`, the reservation stays active until `settleCharge`
+reports the real charge (R16). Run limits are the minimum of the
+workflow's budget and the caller's limits.
+
+## External effects (§8.5, §8.8, §8.9)
+
+1. **Prepare.** The adapter validates the parameters. The runtime then
+   freezes them into an action digest. The digest covers the package, run,
+   node, effect, adapter id, adapter contract digest, parameters, evidence
+   and idempotency key. The operation key is derived from the tenant, run,
+   node and action digest.
+2. **Authorize.** By default, policy authorizes the action, and a person
+   authorizes an irreversible one; `StartRun` can override this per effect.
+   A person's approval applies only to the digest they saw, and only before
+   the wait's deadline (R15).
+3. **Commit.** One transaction does four things:
+   - checks that the authorization exists and matches the digest (E0406);
+   - checks that it was not consumed by another action (E0407) and has not
+     expired;
+   - checks that the run was not cancelled (R08);
+   - consumes the authorization and writes the outbox record.
+
+   Only after that is the adapter called.
+
+At run time, a parameter declared `Verified<T, C>` must carry evidence for
+`C` (INV-13). Without it the effect fails with `PolicyDenied`.
+
+A worker may find an action already dispatched, because the previous worker
+died after commit. The adapter's retry class then decides what happens:
+
+| Retry class | On resume |
+|---|---|
+| `idempotent` | Sent again under the same operation key; the remote system applies it once |
+| `reconcilable` | The system of record is asked first; sent only with proof it was not applied |
+| `non_retryable` | Never sent again; the action becomes `unknown_outcome` |
+
+An `unknown_outcome` is never retried blindly. The run needs attention
+until `ReconcileAction` resolves it (R04, R05).
+
+## Supervision and `par` (§7.4, §8.7)
+
+- **Restart.** `supervise restart(max, backoff)` restarts a delegate on
+  `Timeout` or `SkillFailed`, and never on other faults. Backoff is
+  exponential with jitter. The jitter is a journaled command, so replay
+  neither draws it again nor waits.
+- **Branch results.** `par` branches start together, and their results are
+  bound by branch name, never by completion order.
+- **`fail_fast`.** Under `fail_fast` (the default), the first fault stops
+  the other branches before their next dispatch. The block still ends only
+  when every branch has settled, so an external action already in flight is
+  followed to its result (R10).
+
+## Run states
+
+| State | Meaning |
+|---|---|
+| `accepted`, `running` | Created; a worker holds the lease |
+| `waiting` | For input, a decision, or a person after `budget_exceeded` |
+| `attention_required` | An action has an unknown outcome, or an invariant was violated |
+| `succeeded`, `failed`, `cancelled` | Terminal |
+
+No run reaches a clean terminal state while one of its actions is
+`dispatched` or `unknown_outcome` (INV-12). Cancelling a run records the
+request; it does not erase anything. A dispatch after the cancel request is
+refused. An action already in flight is followed to its real result and
+listed in the run's summary (R09).
+
+## Load-time verification (§3.5, S09)
+
+`StartRun` does not trust whoever built the package. It:
+
+- recomputes the program and package hashes;
+- requires every imported non-std module to be pinned in the lock;
+- runs the compiler's checks on the canonical IR again.
+
+## Control API (§16.1)
+
+| Operation | `Runtime` method |
+|---|---|
+| `StartRun` | `startRun` (and `resume` for a new worker) |
+| `GetRun` | `getRun` |
+| `SubmitInput` | `submitInput` |
+| `DecideAction` | `decideAction` |
+| `CancelRun` | `cancelRun` |
+| `ReconcileAction` | `reconcileAction` |
+| `ReplayRun` | `replayRun` (adapters that refuse every call) |
+
+`tick` expires decision waits whose deadline passed. `settleCharge` records
+a late charge, and `purgePayloads` applies retention, after which a replay
+reports `incomplete_replay` (R14). Inbound messages are deduplicated by
+`(tenant, sender, message_id)`. The same key with a different payload is
+refused, never silently chosen (R03).
+
+Simulated adapters (`runtime/src/sim.ts`) can confirm, reject, lose a
+response, time out, or hold a call until the test releases it. Fault
+injection (`runtime/src/faults.ts`) can stop a worker at any of these
+points:
+
+- after dispatch;
+- before the result is recorded;
+- after it is recorded;
+- after commit;
+- after the adapter returned.
+
+## Not in this runtime yet
+
+- **Temporal scheduling** (step 3b).
+- **`map`, and so R11 by input index and R12.** The 0.1 IR has no `map`.
+  `par` results are bound by name, and that binding is tested in its place.
+- **Continuing after `budget_exceeded`.** The control API has no operation
+  that raises a run's limits, so the run waits and can be cancelled.
+- **Expected-revision checks on `SubmitInput` and `DecideAction`.**
+- **The adapter contract's `ValidateBinding` and `Cancel`.**
+- **Automatic compensation.** 0.1 offers it to a person and never runs it.

@@ -13,7 +13,7 @@ import type { Json } from "./json/strict-json.js";
 
 export const LANGUAGE = "mandate/0.1";
 
-export type HashDomain = "program" | "def" | "package" | "run" | "action";
+export type HashDomain = "program" | "def" | "package" | "run" | "action" | "operation" | "request";
 
 export function domainHash(domain: HashDomain, value: Json): string {
   const h = createHash("sha256");
