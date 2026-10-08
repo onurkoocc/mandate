@@ -63,6 +63,7 @@ create table if not exists commands (
   state text not null,
   fence integer not null,
   request_digest text not null,
+  label text,
   result jsonb,
   error jsonb,
   cost jsonb,

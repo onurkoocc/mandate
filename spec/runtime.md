@@ -80,6 +80,17 @@ cost is `"unknown"`, the reservation stays active until `settleCharge`
 reports the real charge (R16). Run limits are the minimum of the
 workflow's budget and the caller's limits.
 
+A delegate reserves the budget written at the call, else the skill's, else
+the agent's: the same budget the compiler adds up for E0501. `time` is a
+deadline, not a ledger dimension, so it is not reserved.
+
+`budgetReport` returns the run's budget table:
+
+- per dimension: limit, settled, active reservations and what is available;
+- per command that reserved or spent anything: its label (`Agent.skill`
+  for a delegate), what it reserved, which reservations are still open, and
+  the cost it reported (`"unknown"` until a late charge is settled).
+
 ## External effects (§8.5, §8.8, §8.9)
 
 1. **Prepare.** The adapter validates the parameters. The runtime then
@@ -114,6 +125,37 @@ died after commit. The adapter's retry class then decides what happens:
 
 An `unknown_outcome` is never retried blindly. The run needs attention
 until `ReconcileAction` resolves it (R04, R05).
+
+## Contracts and evidence (§10)
+
+`verify x against C(…)` checks C's `require` clauses, then its criteria
+in order of their method: static checks, tests, evals and reviews, then
+people; by name within each group. A criterion that combines methods runs
+with its last one. Each check records one evidence row: contract, criterion, method, passed,
+and detail. A criterion that names several checks (`static … and
+review(…)`) records one row per check, so a review is never the only
+evidence for it. Only when every criterion passed does the value become
+`Verified<T, C>`, carrying the ids of its evidence. The ids also enter the
+action digest of any effect that receives the value.
+
+A criterion `human.approve(role: r)` is a wait for a person, not a
+verifier call:
+
+- It is asked last, and only once every other criterion has passed. Nobody
+  is asked to approve a change whose checks already failed; the criterion
+  is then reported unmet without asking.
+- The wait's request names the contract, the criterion, the role and the
+  contract's arguments, and a `subject_digest` over them. `DecideAction`
+  must name that digest, so a decision applies only to what the person was
+  shown (G02).
+- An approval is evidence for the criterion, with who decided as its
+  detail. It authorizes no action; external effects are still authorized
+  on their own (below).
+
+Unmet criteria go to `on unmet(c)`, or else fail the verify with
+`Rejected`. An answer to an `escalate` there is the escalation's value,
+never a `Verified` one, so an effect that requires the contract still
+refuses it (INV-13).
 
 ## Supervision and `par` (§7.4, §8.7)
 
@@ -156,9 +198,9 @@ listed in the run's summary (R09).
 | Operation | `Runtime` method |
 |---|---|
 | `StartRun` | `startRun` (and `resume` for a new worker) |
-| `GetRun` | `getRun` |
+| `GetRun` | `getRun`, with `budgetReport` and `evidence` |
 | `SubmitInput` | `submitInput` |
-| `DecideAction` | `decideAction` |
+| `DecideAction` | `decideAction`: an action's approval, or a contract's `human.approve` |
 | `CancelRun` | `cancelRun` |
 | `ReconcileAction` | `reconcileAction` |
 | `ReplayRun` | `replayRun` (adapters that refuse every call) |

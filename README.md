@@ -16,12 +16,13 @@ anything runs. This repository holds the 0.1 reference implementation.
 2. **Static checks, Gate 1 (done):** epistemic types and data
    classes, effects, capabilities and disjoint writes, budgets, delegation,
    contracts and supervision. See [`spec/checks.md`](spec/checks.md).
-3. **Runtime, Gate 2 (this step):** TypeScript + Temporal + PostgreSQL;
+3. **Runtime, Gate 2 (done):** TypeScript + Temporal + PostgreSQL;
    event journal, prepare → authorize → commit, budget reservations,
    supervision, cancellation, replay, Temporal scheduling, and simulated
    adapters with fault injection. See [`spec/runtime.md`](spec/runtime.md).
-4. **End to end:** the FixBug workflow running against simulated adapters,
-   sandbox policy generation, and a compact core spec.
+4. **End to end (this step):** the FixBug workflow running against
+   simulated adapters, directly and through Temporal (done); sandbox policy
+   generation; and a compact core spec.
 
 ## Layout
 
@@ -103,9 +104,30 @@ MANDATE_TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/db npm test -w r
 `temporal.test.ts` starts a local Temporal dev server. The SDK downloads it,
 or `TEMPORAL_CLI_PATH` points at an existing `temporal` binary.
 
-Tests live in `runtime/test`. `smoke.test.ts` runs FixBug end to end on
-simulated adapters. `temporal.test.ts` drives runs through Temporal. These
-cases from §25 are covered:
+Tests live in `runtime/test`. `temporal.test.ts` drives runs through
+Temporal.
+
+`fixbug.test.ts` runs the §20 FixBug workflow end to end on simulated
+adapters:
+
+- **Happy path.** Explorer, Planner, then Implementer and TestWriter in
+  parallel, then an isolated Reviewer. The acceptance contract is checked,
+  and the run waits for the code owner. After the approval it opens exactly
+  one PR. The test checks:
+  - the evidence for every criterion;
+  - the budget table: 18.5 USD of agent budgets reserved within 20 USD,
+    11 USD reserved while the two parallel agents run, 11 USD settled;
+  - a replay that calls no adapter.
+- **A failing check.** It is escalated, and the code owner is never asked.
+- **A declined approval.** It is escalated too, and a person's answer to
+  the escalation cannot stand in for the evidence: no PR is prepared.
+- **A caller limit below the agents' budgets.** It stops at
+  `budget_exceeded` before the Implementer runs.
+
+`temporal.test.ts` runs the same workflow under Temporal. The approval
+wakes the run, and a worker that crashes after commit still opens one PR.
+
+These cases from §25 are covered:
 
 | Case | Behavior | Test file |
 |---|---|---|

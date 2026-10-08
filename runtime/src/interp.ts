@@ -483,12 +483,12 @@ export class Interpreter {
    * otherwise dispatched (with its upper-bound cost reserved), called, and
    * recorded. Fault-injection points sit between the steps.
    */
-  private async command(id: string, kind: string, request: Value, reserve: Cost | Budget | undefined, call: () => Promise<Outcome>, siblings?: Siblings): Promise<Value> {
+  private async command(id: string, kind: string, request: Value, reserve: Cost | Budget | undefined, call: () => Promise<Outcome>, siblings?: Siblings, label?: string): Promise<Value> {
     const requestDigest = digest("request", { kind, request });
     const { journal, runId, fence, faults } = this.o;
     if (this.o.replay) return replayed(await journal.command(runId, id), id);
     if (siblings?.failed) throw new SiblingStopped();
-    const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest }, reserve);
+    const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, reserve);
     if (prior) return replayed(prior, id);
     faults.check("after_dispatch", { id, kind });
     const outcome = await call();
@@ -518,7 +518,7 @@ export class Interpreter {
     const input = await this.expr(e.from, ctx, `${path}/from`);
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
     const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}) };
-    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), ctx.siblings);
+    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), ctx.siblings, "infer");
   }
 
   private async delegate(e: Extract<Expr, { op: "delegate" }>, ctx: Ctx, path: string): Promise<Value> {
@@ -542,6 +542,7 @@ export class Interpreter {
           budget,
           () => this.o.adapters.agents.run({ agent: e.agent, skill: e.skill, args: pos, caps, isolated: !!e.isolated, attempt, commandId: id, ...(budget ? { budget } : {}) }),
           ctx.siblings,
+          `${e.agent}.${e.skill}`,
         );
       } catch (f) {
         // restart reruns the same operation with the same input; never on UnknownOutcome (§8.7).
@@ -598,12 +599,16 @@ export class Interpreter {
     for (let i = 0; i < (c.require ?? []).length; i++) {
       if (!truthy(unwrap(await this.expr(c.require![i]!, cctx, `${path}/contract/require/${i}`)))) unmet.push(`require/${i}`);
     }
-    for (const group of ["accept", "invariant"] as const) {
-      const criteria = c[group] ?? {};
-      for (const name of Object.keys(criteria).sort()) {
-        const ok = await this.criterion(criteria[name]!.by, c, e.contract, name, cctx, `${path}/contract/${group}/${name}`, evidence);
-        if (!ok) unmet.push(name);
-      }
+    // Criteria run in order of their method (§10.4): static, then tests,
+    // then evals and reviews, then people; by name within each. A person is
+    // asked only once every other criterion is met: nobody approves a change
+    // whose checks already failed.
+    const criteria = (["accept", "invariant"] as const)
+      .flatMap((group) => Object.keys(c[group] ?? {}).map((name) => ({ name, by: c[group]![name]!.by, path: `${path}/contract/${group}/${name}` })))
+      .sort((a, b) => methodRank(a.by) - methodRank(b.by) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const k of criteria) {
+      if (methodRank(k.by) === HUMAN_RANK && unmet.length) unmet.push(k.name);
+      else if (!(await this.criterion(k.by, e.contract, k.name, cctx, k.path, evidence))) unmet.push(k.name);
     }
     if (!unmet.length) return verified(subject, e.contract, evidence.sort());
     if (e.on_unmet) {
@@ -612,10 +617,10 @@ export class Interpreter {
     throw new Fault("Rejected", [{ contract: e.contract, unmet }]);
   }
 
-  private async criterion(v: Verifier, c: ContractDef, contract: string, name: string, ctx: Ctx, path: string, evidence: string[]): Promise<boolean> {
+  private async criterion(v: Verifier, contract: string, name: string, ctx: Ctx, path: string, evidence: string[]): Promise<boolean> {
     if ("all" in v) {
       let ok = true;
-      for (let i = 0; i < v.all.length; i++) ok = (await this.criterion(v.all[i]!, c, contract, name, ctx, `${path}/all/${i}`, evidence)) && ok;
+      for (let i = 0; i < v.all.length; i++) ok = (await this.criterion(v.all[i]!, contract, name, ctx, `${path}/all/${i}`, evidence)) && ok;
       return ok;
     }
     let passed: boolean;
@@ -625,6 +630,11 @@ export class Interpreter {
       // A static criterion the compiler could not prove is checked here (W0601).
       method = "static";
       passed = truthy(unwrap(await this.expr(v.static, ctx, `${path}/static`)));
+    } else if (needsPerson(v)) {
+      method = "human.approve";
+      const r = await this.approval((v as { call: Extract<Expr, { op: "call" }> }).call, contract, name, ctx, `${path}/call`);
+      passed = r["approved"] === true;
+      detail = { by: r["by"] ?? null, role: r["role"] ?? null };
     } else {
       const call = v.call;
       method = call.op === "call" ? (calleePath(call.callee) ?? "call") : "call";
@@ -632,10 +642,18 @@ export class Interpreter {
       // settings, not variables: an unbound bare name is passed as its text.
       const symbolic = call.op === "call" ? call.args.map((a) => (a.value.op === "var" && this.isModulePath(a.value, ctx) ? { ...a, value: { op: "text" as const, value: a.value.name } } : a)) : [];
       const { pos, named } = call.op === "call" ? await this.args(symbolic, ctx, `${path}/call`) : { pos: [], named: {} };
-      const r = await this.command(`${path}/call`, "verify", { method, args: pos, named, contract, criterion: name }, undefined, async () => {
-        const res = await this.o.adapters.verifier.check({ method, args: pos, named, contract, criterion: name });
-        return { ok: { passed: res.passed, detail: res.detail ?? null } };
-      });
+      const r = await this.command(
+        `${path}/call`,
+        "verify",
+        { method, args: pos, named, contract, criterion: name },
+        undefined,
+        async () => {
+          const res = await this.o.adapters.verifier.check({ method, args: pos, named, contract, criterion: name });
+          return { ok: { passed: res.passed, detail: res.detail ?? null } };
+        },
+        undefined,
+        `${contract}.${name}`,
+      );
       passed = isObj(r) && r["passed"] === true;
       detail = isObj(r) ? (r["detail"] ?? null) : null;
     }
@@ -643,6 +661,28 @@ export class Interpreter {
     if (!this.o.replay) await this.o.journal.recordEvidence(this.o.runId, { id, contract, criterion: name, method, passed, detail });
     if (passed) evidence.push(id);
     return passed;
+  }
+
+  /**
+   * `human.approve(role: r)` as an acceptance criterion: a wait for a person.
+   * The request names a digest of the contract's arguments, so a decision
+   * applies only to the subject the person was shown (G02). An approval here
+   * is evidence for the criterion; it authorizes no action.
+   */
+  private async approval(call: Extract<Expr, { op: "call" }>, contract: string, criterion: string, ctx: Ctx, id: string): Promise<Obj> {
+    const { named } = await this.args(call.args, ctx, id);
+    const c = this.def(contract) as ContractDef;
+    const subject = plain(c.params.map((p) => this.variable(p.name, ctx)));
+    const role = named["role"] ?? null;
+    const decision = await this.wait(id, "decision", {
+      contract,
+      criterion,
+      role,
+      subject,
+      subject_digest: digest("request", { contract, criterion, subject }),
+      deadline: null,
+    });
+    return isObj(decision) ? { ...decision, role } : { approved: false, role };
   }
 
   // ── external effects: prepare → authorize → commit (§8.8) ─────────────
@@ -805,6 +845,22 @@ export class SiblingStopped extends Error {
   constructor() {
     super("stopped: a sibling branch failed");
   }
+}
+
+/** A criterion satisfied by a person: `human.approve(…)` (§10). */
+function needsPerson(v: Verifier): boolean {
+  return "call" in v && v.call.op === "call" && calleePath(v.call.callee) === "human.approve";
+}
+
+const HUMAN_RANK = 3;
+
+/** Where a criterion runs in `verify` (§10.4): static 0, test 1, eval and review 2, human 3; `all` runs with its last part. */
+function methodRank(v: Verifier): number {
+  if ("all" in v) return Math.max(0, ...v.all.map(methodRank));
+  if ("static" in v) return 0;
+  if (needsPerson(v)) return HUMAN_RANK;
+  const m = v.call.op === "call" ? calleePath(v.call.callee) : undefined;
+  return m?.startsWith("test.") ? 1 : 2;
 }
 
 function replayed(row: CommandRow | undefined, id: string): Value {

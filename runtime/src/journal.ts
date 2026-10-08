@@ -39,6 +39,21 @@ export interface RunRow {
   summary: Value;
 }
 
+export interface EvidenceRow {
+  evidence_id: string;
+  contract: string;
+  criterion: string;
+  method: string;
+  passed: boolean;
+  detail: Value;
+}
+
+export interface BudgetReport {
+  dimensions: Array<{ dimension: string; limit: number; settled: number; reserved: number; available: number }>;
+  /** Commands in command-id order. `reserved` is the upper bound taken at dispatch; `open` lists dimensions still reserved. */
+  commands: Array<{ command: string; kind: string; label: string | null; state: string; reserved: Record<string, number>; open: string[]; cost: Cost | "unknown" | null }>;
+}
+
 export type CommandState = "dispatched" | "waiting" | "succeeded" | "failed";
 
 export interface CommandRow {
@@ -174,7 +189,7 @@ export class Journal {
   async dispatch(
     runId: string,
     fence: number,
-    cmd: { id: string; kind: string; digest: string },
+    cmd: { id: string; kind: string; digest: string; label?: string },
     reserve: Cost | Budget | undefined,
   ): Promise<CommandRow | undefined> {
     return this.db.tx(async (tx) => {
@@ -192,9 +207,9 @@ export class Journal {
       }
       await this.reserve(tx, runId, cmd.id, costDims(reserve));
       await tx.query(
-        `insert into commands (run_id, command_id, kind, state, fence, request_digest) values ($1, $2, $3, 'dispatched', $4, $5)
+        `insert into commands (run_id, command_id, kind, state, fence, request_digest, label) values ($1, $2, $3, 'dispatched', $4, $5, $6)
          on conflict (run_id, command_id) do update set state = 'dispatched', fence = $4`,
-        [runId, cmd.id, cmd.kind, fence, cmd.digest],
+        [runId, cmd.id, cmd.kind, fence, cmd.digest, cmd.label ?? null],
       );
       await this.event(tx, runId, "command_dispatched", { command: cmd.id, kind: cmd.kind, reserved: costDims(reserve) });
       return undefined;
@@ -291,6 +306,40 @@ export class Journal {
       [runId],
     );
     return Object.fromEntries(rows.map((r) => [String(r["dimension"]), { limit: num(r["limit_value"]), settled: num(r["settled"]), reserved: num(r["reserved"]) }]));
+  }
+
+  /**
+   * The run's budget table (§8.6): per dimension, the limit, what was settled,
+   * what is still reserved and what is left; and per command that reserved or
+   * spent anything, its reservation and its reported cost.
+   */
+  async budgetReport(runId: string): Promise<BudgetReport> {
+    const dims = await this.budget(runId);
+    const rows = await this.db.query<Row>(
+      `select c.command_id, c.kind, c.label, c.state, c.cost, r.dimension, r.amount, r.state as reservation
+       from commands c left join reservations r on r.run_id = c.run_id and r.command_id = c.command_id
+       where c.run_id = $1
+       order by c.command_id, r.dimension`,
+      [runId],
+    );
+    const commands = new Map<string, BudgetReport["commands"][number]>();
+    for (const r of rows) {
+      const id = String(r["command_id"]);
+      let c = commands.get(id);
+      if (!c) {
+        c = { command: id, kind: String(r["kind"]), label: (r["label"] ?? null) as string | null, state: String(r["state"]), reserved: {}, open: [], cost: (r["cost"] ?? null) as Cost | "unknown" | null };
+        commands.set(id, c);
+      }
+      if (r["dimension"] !== null && r["dimension"] !== undefined) {
+        const dim = String(r["dimension"]);
+        c.reserved[dim] = num(r["amount"]);
+        if (r["reservation"] === "active") c.open.push(dim);
+      }
+    }
+    return {
+      dimensions: Object.entries(dims).map(([dimension, d]) => ({ dimension, ...d, available: d.limit - d.settled - d.reserved })),
+      commands: [...commands.values()].filter((c) => Object.keys(c.reserved).length || c.cost !== null),
+    };
   }
 
   // ── external actions: prepare → authorize → commit (§8.8) ─────────────
@@ -399,6 +448,18 @@ export class Journal {
       await tx.query("update outbox set state = $2, attempts = attempts + 1 where operation_key = $1", [operationKey, state === "prepared" ? "pending" : "done"]);
       await this.event(tx, runId, `action_${state}`, { operation: operationKey, ...(data.detail !== undefined ? { detail: data.detail } : {}) });
     });
+  }
+
+  async evidence(runId: string): Promise<EvidenceRow[]> {
+    const rows = await this.db.query<Row>("select evidence_id, contract, criterion, method, passed, detail from evidence where run_id = $1 order by criterion, method, evidence_id", [runId]);
+    return rows.map((r) => ({
+      evidence_id: String(r["evidence_id"]),
+      contract: String(r["contract"]),
+      criterion: String(r["criterion"]),
+      method: String(r["method"]),
+      passed: Boolean(r["passed"]),
+      detail: (r["detail"] ?? null) as Value,
+    }));
   }
 
   async recordEvidence(runId: string, e: { id: string; contract: string; criterion: string; method: string; passed: boolean; detail?: Value }): Promise<void> {

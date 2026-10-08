@@ -9,7 +9,7 @@ import type { Adapters, Cost } from "./adapters.js";
 import type { Db, Row } from "./db.js";
 import { Faults } from "./faults.js";
 import { Interpreter, ReplayEnd, type Policy } from "./interp.js";
-import { costDims, Journal, TERMINAL, type ActionRow, type RunRow } from "./journal.js";
+import { costDims, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type RunRow } from "./journal.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { digest, isObj, type Obj, type Value } from "./values.js";
 
@@ -238,6 +238,16 @@ export class Runtime {
     return this.journal.run(runId);
   }
 
+  /** The run's budget table: limits, settled, reserved and available per dimension, and each command's share (§8.6). */
+  budgetReport(runId: string): Promise<BudgetReport> {
+    return this.journal.budgetReport(runId);
+  }
+
+  /** Contract criteria results recorded for the run: the evidence behind its Verified values (§10). */
+  evidence(runId: string): Promise<EvidenceRow[]> {
+    return this.journal.evidence(runId);
+  }
+
   // ── SubmitInput / DecideAction ────────────────────────────────────────
 
   /** Answers a wait opened by human.ask, escalate or pause; then resumes the run. */
@@ -247,31 +257,40 @@ export class Runtime {
   }
 
   /**
-   * A person's decision on a prepared action. It applies only to the action
-   * digest they saw (G02), only before the wait's deadline (R15), and an
-   * approval becomes an authorization bound to that digest.
+   * A person's decision. It applies only to the digest they saw (G02) and
+   * only before the wait's deadline (R15). The wait is either:
+   *
+   * - a prepared action (`request.action_digest`): an approval becomes an
+   *   authorization bound to that digest;
+   * - a contract criterion `human.approve` (`request.subject_digest`): an
+   *   approval is evidence for the criterion and authorizes nothing.
    */
-  async decideAction(runId: string, msg: Message, d: { commandId: string; actionDigest: string; approve: boolean; by: string }): Promise<RunRow> {
+  async decideAction(runId: string, msg: Message, d: { commandId: string; digest: string; approve: boolean; by: string }): Promise<RunRow> {
     type Resolution = { state: "succeeded"; result: Value } | { state: "failed"; error: Value };
     const fresh = await this.resolveWait(runId, msg, d.commandId, "decision", d as unknown as Value, async (tx, request, run): Promise<Resolution> => {
-      if (!isObj(request) || request["action_digest"] !== d.actionDigest) {
-        throw new Violation("decision_digest_mismatch", "The decision names a different action than the one waiting for approval.");
+      const criterion = isObj(request) && typeof request["subject_digest"] === "string";
+      const bound = isObj(request) ? (criterion ? request["subject_digest"] : request["action_digest"]) : undefined;
+      if (bound !== d.digest) {
+        throw new Violation("decision_digest_mismatch", "The decision names something other than what is waiting for approval.");
       }
-      const deadline = request["deadline"];
+      const deadline = isObj(request) ? request["deadline"] : null;
       if (typeof deadline === "number" && this.adapters.clock.now() >= deadline) {
         return { state: "failed", error: { tag: "Rejected", args: ["approval_expired"] } };
       }
-      if (!d.approve) return { state: "succeeded", result: { approved: false, by: d.by } };
-      const id = digest("operation", { authorize: d.actionDigest, by: d.by, message: msg.messageId });
+      if (!d.approve || criterion) {
+        if (criterion) await this.journal.event(tx, runId, d.approve ? "criterion_approved" : "criterion_denied", { command: d.commandId, by: d.by });
+        return { state: "succeeded", result: { approved: d.approve, by: d.by } };
+      }
+      const id = digest("operation", { authorize: d.digest, by: d.by, message: msg.messageId });
       const ttl = (run.policy as unknown as Policy).authorizationTtlMs ?? 15 * 60_000;
       await tx.query("insert into authorizations (authorization_id, run_id, action_digest, decided_by, expires_at) values ($1, $2, $3, $4, $5) on conflict do nothing", [
         id,
         runId,
-        d.actionDigest,
+        d.digest,
         d.by,
         this.adapters.clock.now() + ttl,
       ]);
-      await this.journal.event(tx, runId, "action_authorized", { authorization: id, digest: d.actionDigest, by: d.by });
+      await this.journal.event(tx, runId, "action_authorized", { authorization: id, digest: d.digest, by: d.by });
       return { state: "succeeded", result: { approved: true, by: d.by, authorization_id: id } };
     });
     return fresh ? this.drive(runId) : this.journal.run(runId);
