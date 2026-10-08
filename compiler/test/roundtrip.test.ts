@@ -1,9 +1,9 @@
 // The text form is a projection of the IR (Doc 4 §3.3): every example parses,
-// resolves, prints, and parses back to the same program hash.
+// passes the static checks, prints, and parses back to the same program hash.
 
 import { describe, expect, it } from "vitest";
 import { check } from "../src/check.js";
-import { formatDiagnostic } from "../src/diag.js";
+import { formatDiagnostic, type Diagnostic } from "../src/diag.js";
 import { canonicalize } from "../src/json/jcs.js";
 import type { Json } from "../src/json/strict-json.js";
 import { printProgram } from "../src/print/printer.js";
@@ -11,18 +11,28 @@ import { readRepo, syntaxFixtures } from "./helpers.js";
 
 const files = ["examples/fixbug/fixbug.mdt", ...syntaxFixtures()];
 
+/** Warnings each example is expected to carry; everything else must be clean. */
+const EXPECTED_WARNINGS: Record<string, string[]> = {
+  // Both `static` criteria of FixAccepted become run-time checks (§10.2).
+  "examples/fixbug/fixbug.mdt": ["MDT-W0601", "MDT-W0601"],
+};
+
 describe.each(files)("%s", (file) => {
   const r = check(readRepo(file), "mdt");
+  const expected = EXPECTED_WARNINGS[file] ?? [];
+  const unexpected = (ds: Diagnostic[], name: string): string[] =>
+    ds.filter((d) => d.severity === "error" || !expected.includes(d.code)).map((d) => formatDiagnostic(d, name));
 
-  it("checks without diagnostics", () => {
-    expect(r.diagnostics.map((d) => formatDiagnostic(d, file))).toEqual([]);
+  it("checks without errors or unexpected warnings", () => {
+    expect(unexpected(r.diagnostics, file)).toEqual([]);
+    expect(r.diagnostics.map((d) => d.code)).toEqual(expected);
     expect(r.ok).toBe(true);
   });
 
   it("prints back to text with the same hash", () => {
     const printed = printProgram(r.program!);
     const again = check(printed, "mdt");
-    expect(again.diagnostics.map((d) => formatDiagnostic(d, "printed"))).toEqual([]);
+    expect(unexpected(again.diagnostics, "printed")).toEqual([]);
     expect(again.hashes!.program).toBe(r.hashes!.program);
     expect(printProgram(again.program!)).toBe(printed);
   });

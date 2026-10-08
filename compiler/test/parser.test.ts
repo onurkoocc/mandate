@@ -45,7 +45,7 @@ describe("lexical forms", () => {
 
 describe("expressions", () => {
   it("binds verifier operands tighter than `and`", () => {
-    const r = check(
+    const r = load(
       `module m @ 0.1
 use std.{human}
 use company.domain.{D}
@@ -75,7 +75,7 @@ contract C(d: D) {
   });
 
   it("does not read a following block as a record literal", () => {
-    const r = check(
+    const r = load(
       `module m @ 0.1
 use std.{fs}
 capability R = fs.read("/a")
@@ -158,5 +158,19 @@ fn f(x: Int, x: Int) -> Int { x }`,
   it("rejects an unknown budget field", () => {
     const r = check("module m @ 0.1\nagent A {\n  budget { coins: 3 }\n}\n", "mdt");
     expect(codes(r.diagnostics)).toEqual(["MDT-E0101"]);
+  });
+});
+
+describe("data classes", () => {
+  it("reads `classified` after a type into the IR and prints it back", () => {
+    const src = "module m @ 0.1\ntype R = { a: Text } classified restricted\n";
+    const r = load(src, "mdt");
+    expect(r.diagnostics).toEqual([]);
+    expect(r.program!.defs["R"]).toEqual({ kind: "type", type: { record: { a: { ref: "Text" } } }, class: "restricted" });
+    expect(printProgram(r.program!)).toContain("type R = { a: Text } classified restricted");
+  });
+
+  it("rejects an unknown class", () => {
+    expect(codes(load("module m @ 0.1\ntype R = Text classified secret\n", "mdt").diagnostics)).toEqual(["MDT-E0101"]);
   });
 });

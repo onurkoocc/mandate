@@ -1,9 +1,8 @@
-// Gate 1 conformance cases covered by 0.1 step 1 (Doc 4 §25):
-// S01, S02, S03, S10, S11, S12. The remaining S/V cases need the static
-// checks of step 2.
+// Conformance cases about representation (Doc 4 §25): S01, S02, S03, S10,
+// S11, S12. The static cases (S04–S08, V01–V08) are in static.test.ts.
 
 import { describe, expect, it } from "vitest";
-import { check } from "../src/check.js";
+import { check, load } from "../src/check.js";
 import { hashProgram } from "../src/hash.js";
 import type { Program } from "../src/ir/types.js";
 import type { Json } from "../src/json/strict-json.js";
@@ -161,7 +160,9 @@ agent A {
 }
 type T = { y: Text, x: Int }
 capability R = fs.read("/a")`;
-    expect(check(a, "mdt").hashes!.program).toBe(check(b, "mdt").hashes!.program);
+    // Hashing does not depend on the static checks (this agent has no step budget).
+    const hash = (t: string): string => hashProgram(load(t, "mdt").program as unknown as Json).program;
+    expect(hash(a)).toBe(hash(b));
   });
 });
 

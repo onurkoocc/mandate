@@ -9,12 +9,13 @@ anything runs. This repository holds the 0.1 reference implementation.
 
 0.1 is being built in four steps:
 
-1. **Compiler core (this step):** canonical IR with a closed JSON Schema,
+1. **Compiler core (done):** canonical IR with a closed JSON Schema,
    strict JSON reading, JCS + SHA-256 hashing, the `.mdt` text projection
    (parser and printer), name resolution, JSON diagnostics with repair
    patches, IR patches with `stale_base`, and the `mandate` CLI.
-2. **Static checks (Gate 1):** epistemic types, effects, capabilities and
-   disjoint writes, budgets, delegation and contracts.
+2. **Static checks, Gate 1 (this step):** epistemic types and data
+   classes, effects, capabilities and disjoint writes, budgets, delegation,
+   contracts and supervision. See [`spec/checks.md`](spec/checks.md).
 3. **Runtime (Gate 2):** TypeScript + Temporal + PostgreSQL; event journal,
    prepare → authorize → commit, budget reservations, supervision.
 4. **End to end:** the FixBug workflow running against simulated adapters,
@@ -23,7 +24,7 @@ anything runs. This repository holds the 0.1 reference implementation.
 ## Layout
 
 ```text
-spec/        IR schema, IR rules, diagnostic codes
+spec/        IR schema, IR rules, static checks, diagnostic codes
 compiler/    reference compiler (TypeScript)
 examples/    example programs; fixbug/ is the design document's §20 workflow
 ```
@@ -36,13 +37,13 @@ npm run build
 node compiler/dist/cli.js check examples/fixbug/fixbug.mdt
 node compiler/dist/cli.js check examples/fixbug/fixbug.ir.json --json
 node compiler/dist/cli.js fmt examples/fixbug/fixbug.ir.json
-node compiler/dist/cli.js explain E0120
+node compiler/dist/cli.js explain E0320
 npm test
 ```
 
 | Command | Does |
 |---|---|
-| `check <file> [--json]` | Validate and resolve a `.mdt` or `.json` program; print its hash or diagnostics |
+| `check <file> [--json]` | Validate, resolve and statically check a `.mdt` or `.json` program; print its diagnostics and hash |
 | `ir <file> [--canonical]` | Print the canonical IR (pretty, or exact JCS bytes) |
 | `fmt <file>` | Print the `.mdt` projection of a program |
 | `hash <file>` | Print the program hash and one hash per definition |
@@ -50,10 +51,39 @@ npm test
 | `explain <code>` | Explain a diagnostic code |
 
 Exit status is 1 when an error diagnostic is reported and 2 on usage errors.
+Warnings do not change the exit status. FixBug checks with two W0601
+warnings: two of its `static` acceptance criteria become run-time checks.
 
 ## Conformance
 
-Tests live in `compiler/test`. The conformance cases from the design
-document's §25 that this step covers are S01 (duplicate keys), S02 (unknown
-fields and versions), S03 (missing references), S10 (key order and hashing),
-S11 (no silent Unicode or number normalization) and S12 (stale patch base).
+Tests live in `compiler/test`. These conformance cases from the design
+document's §25 are covered:
+
+| Case | Rule | Code |
+|---|---|---|
+| S01 | Duplicate JSON keys are rejected before schema validation | E0102 |
+| S02 | Unknown fields and language versions are rejected | E0103, E0104 |
+| S03 | References to missing nodes are rejected | E0120 |
+| S04 | Call cycles are rejected | E0502 |
+| S05 | A switch must handle every variant | E0230 |
+| S06 | Unbounded iteration is rejected | E0502 |
+| S07 | No external write inside a function or skill | E0408 |
+| S08 | Programs cannot produce Evidence, Authorization, Receipt or Verified | E0213 |
+| S10 | Key order does not change the hash | — |
+| S11 | No silent Unicode or number normalization | E0106, E0107 |
+| S12 | A patch against a stale base is rejected | E0130 |
+| V01 | `Inferred<T>` cannot reach a critical effect | E0210 |
+| V02 | `Untrusted<T>` cannot reach the instruction part of a prompt | E0215 |
+| V03 | `par` branches cannot write overlapping scopes | E0320 |
+| V04 | Restricted data cannot reach a model that may not receive it | E0220 |
+| V05 | No dynamic `spawn` in 0.1 | E0711 |
+| V06 | `UnknownOutcome` is reconciled, never restarted | E0712 |
+| V07 | A switch on a decision handles `Uncertain` | E0230 |
+| V08 | A decision cannot reach a critical effect directly | E0210 |
+
+S09 (unlocked modules) needs the lock file and arrives with the runtime.
+`compiler/test/static.test.ts` also checks the §20 FixBug table: 18.5 USD of
+child budgets inside 20 USD, delegated capabilities inside the workflow's,
+disjoint writes for the two parallel agents, step limits, review never
+counted alone, and a verified, idempotent PR. It also applies one mutation
+per rule to FixBug and checks that the rule fires.

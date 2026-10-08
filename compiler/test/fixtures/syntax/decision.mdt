@@ -24,7 +24,7 @@ fn classify(req: Untrusted<CustomerRequest>) -> Inferred<Decision<RequestKind>> 
   infer Choice<RequestKind> from quote(req) using triage
 }
 
-workflow HandleRequest(req: Untrusted<CustomerRequest>) -> Outcome
+workflow HandleRequest(req: Untrusted<CustomerRequest>) -> Inferred<Outcome>
   caps    ModelDecision
 {
   let d = classify(req)

@@ -1306,6 +1306,14 @@
             },
             "type": {
               "$ref": "#/$defs/TypeExpr"
+            },
+            "class": {
+              "enum": [
+                "public",
+                "internal",
+                "confidential",
+                "restricted"
+              ]
             }
           },
           "additionalProperties": false,
