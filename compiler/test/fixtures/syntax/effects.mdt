@@ -1,0 +1,24 @@
+// Doc 4 §6.3 user-defined effect and §12.1 host-language externs.
+module company.devflow @ 0.1
+
+use std.{git, human}
+use company.domain.{PullRequestDraft, PullRequest, TestReport, GitRef, BuildId}
+
+contract FixAccepted(pr: PullRequestDraft) {
+  accept owner_approved "The code owner approved"
+    by human.approve(role: "code_owner")
+}
+
+effect git.open_pr(pr: Verified<PullRequestDraft, FixAccepted>) -> PullRequest
+  requires caps git.pr(repo)
+  critical
+  idempotency required
+  retry_class reconcilable
+  compensation git.close_pr
+
+extern py "tools/log_parser.py"::parse_junit(xml: Text) -> TestReport
+  ! {}
+
+extern ts "tools/ci.ts"::trigger_build(ref: GitRef) -> BuildId
+  ! {Net("ci.internal.example")}
+  idempotent_by ref.sha

@@ -1,0 +1,1142 @@
+{
+  "defs": {
+    "Build": {
+      "kind": "capability",
+      "value": {
+        "args": [
+          {
+            "name": "commands",
+            "value": {
+              "items": [
+                {
+                  "op": "text",
+                  "value": "mvn"
+                }
+              ],
+              "op": "list"
+            }
+          },
+          {
+            "name": "args_prefix",
+            "value": {
+              "items": [
+                {
+                  "items": [
+                    {
+                      "op": "text",
+                      "value": "-q"
+                    },
+                    {
+                      "op": "text",
+                      "value": "test"
+                    }
+                  ],
+                  "op": "list"
+                },
+                {
+                  "items": [
+                    {
+                      "op": "text",
+                      "value": "-q"
+                    },
+                    {
+                      "op": "text",
+                      "value": "verify"
+                    }
+                  ],
+                  "op": "list"
+                }
+              ],
+              "op": "list"
+            }
+          }
+        ],
+        "callee": {
+          "name": "exec",
+          "op": "var"
+        },
+        "op": "call"
+      }
+    },
+    "Explorer": {
+      "budget": {
+        "spend": {
+          "currency": "USD",
+          "micros": 3000000
+        },
+        "steps": 40,
+        "time": {
+          "ms": 900000
+        },
+        "tokens": 400000
+      },
+      "caps": [
+        {
+          "name": "ModelStd",
+          "op": "var"
+        },
+        {
+          "name": "RepoRead",
+          "op": "var"
+        }
+      ],
+      "kind": "agent",
+      "role": "Finds where the bug is, with evidence. Does not change code.",
+      "skills": {
+        "locate": {
+          "effects": [
+            {
+              "effect": "Fs.Read"
+            },
+            {
+              "effect": "Model"
+            }
+          ],
+          "params": [
+            {
+              "name": "issue",
+              "type": {
+                "ref": "Issue"
+              }
+            }
+          ],
+          "returns": {
+            "args": [
+              {
+                "args": [
+                  {
+                    "ref": "Finding"
+                  }
+                ],
+                "ref": "List"
+              }
+            ],
+            "ref": "Inferred"
+          }
+        }
+      }
+    },
+    "Finding": {
+      "kind": "type",
+      "type": {
+        "record": {
+          "claim": {
+            "ref": "Text"
+          },
+          "evidence": {
+            "ref": "EvidenceRef"
+          },
+          "file": {
+            "ref": "Path"
+          },
+          "line": {
+            "refine": {
+              "ref": "Int"
+            },
+            "where": {
+              "bop": ">=",
+              "left": {
+                "name": "line",
+                "op": "var"
+              },
+              "op": "binary",
+              "right": {
+                "op": "int",
+                "value": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "FixAccepted": {
+      "accept": {
+        "no_blocking_review": {
+          "by": {
+            "all": [
+              {
+                "static": {
+                  "of": {
+                    "name": "blocking",
+                    "of": {
+                      "name": "review",
+                      "of": {
+                        "name": "pr",
+                        "op": "var"
+                      },
+                      "op": "field"
+                    },
+                    "op": "field"
+                  },
+                  "op": "unary",
+                  "uop": "not"
+                }
+              },
+              {
+                "call": {
+                  "args": [
+                    {
+                      "name": "model",
+                      "value": {
+                        "name": "standard",
+                        "op": "var"
+                      }
+                    },
+                    {
+                      "value": {
+                        "name": "isolated",
+                        "op": "var"
+                      }
+                    }
+                  ],
+                  "callee": {
+                    "name": "review",
+                    "op": "var"
+                  },
+                  "op": "call"
+                }
+              }
+            ]
+          },
+          "description": "Independent review found no blocking issue"
+        },
+        "owner_approved": {
+          "by": {
+            "call": {
+              "args": [
+                {
+                  "name": "role",
+                  "value": {
+                    "op": "text",
+                    "value": "code_owner"
+                  }
+                }
+              ],
+              "callee": {
+                "name": "approve",
+                "of": {
+                  "name": "human",
+                  "op": "var"
+                },
+                "op": "field"
+              },
+              "op": "call"
+            }
+          },
+          "description": "The code owner approved"
+        },
+        "regression_test": {
+          "by": {
+            "call": {
+              "args": [
+                {
+                  "value": {
+                    "name": "patch",
+                    "of": {
+                      "name": "pr",
+                      "op": "var"
+                    },
+                    "op": "field"
+                  }
+                },
+                {
+                  "value": {
+                    "name": "tests",
+                    "of": {
+                      "name": "pr",
+                      "op": "var"
+                    },
+                    "op": "field"
+                  }
+                }
+              ],
+              "callee": {
+                "name": "red_then_green",
+                "of": {
+                  "name": "test",
+                  "op": "var"
+                },
+                "op": "field"
+              },
+              "op": "call"
+            }
+          },
+          "description": "A regression test fails before the fix and passes after it"
+        },
+        "scope_respected": {
+          "by": {
+            "static": {
+              "bop": "subseteq",
+              "left": {
+                "name": "files",
+                "of": {
+                  "name": "patch",
+                  "of": {
+                    "name": "pr",
+                    "op": "var"
+                  },
+                  "op": "field"
+                },
+                "op": "field"
+              },
+              "op": "binary",
+              "right": {
+                "name": "scope",
+                "of": {
+                  "name": "issue",
+                  "op": "var"
+                },
+                "op": "field"
+              }
+            }
+          },
+          "description": "The change stays inside the task scope"
+        },
+        "suite_green": {
+          "by": {
+            "call": {
+              "args": [
+                {
+                  "value": {
+                    "items": [
+                      {
+                        "op": "text",
+                        "value": "unit"
+                      },
+                      {
+                        "op": "text",
+                        "value": "integration"
+                      }
+                    ],
+                    "op": "list"
+                  }
+                }
+              ],
+              "callee": {
+                "name": "suite",
+                "of": {
+                  "name": "test",
+                  "op": "var"
+                },
+                "op": "field"
+              },
+              "op": "call"
+            }
+          },
+          "description": "The existing test suite passes"
+        }
+      },
+      "kind": "contract",
+      "params": [
+        {
+          "name": "issue",
+          "type": {
+            "ref": "Issue"
+          }
+        },
+        {
+          "name": "pr",
+          "type": {
+            "ref": "PullRequestDraft"
+          }
+        }
+      ],
+      "require": [
+        {
+          "name": "reproducible",
+          "of": {
+            "name": "issue",
+            "op": "var"
+          },
+          "op": "field"
+        }
+      ]
+    },
+    "FixBug": {
+      "body": [
+        {
+          "name": "findings",
+          "op": "let",
+          "value": {
+            "agent": "Explorer",
+            "args": [
+              {
+                "value": {
+                  "name": "issue",
+                  "op": "var"
+                }
+              }
+            ],
+            "op": "delegate",
+            "skill": "locate"
+          }
+        },
+        {
+          "name": "plan",
+          "op": "let",
+          "value": {
+            "agent": "Planner",
+            "args": [
+              {
+                "value": {
+                  "name": "issue",
+                  "op": "var"
+                }
+              },
+              {
+                "value": {
+                  "name": "findings",
+                  "op": "var"
+                }
+              }
+            ],
+            "op": "delegate",
+            "skill": "plan"
+          }
+        },
+        {
+          "branches": {
+            "patch": {
+              "agent": "Implementer",
+              "args": [
+                {
+                  "value": {
+                    "name": "plan",
+                    "op": "var"
+                  }
+                }
+              ],
+              "op": "delegate",
+              "skill": "apply"
+            },
+            "tests": {
+              "agent": "TestWriter",
+              "args": [
+                {
+                  "value": {
+                    "name": "issue",
+                    "op": "var"
+                  }
+                }
+              ],
+              "op": "delegate",
+              "skill": "regression"
+            }
+          },
+          "op": "par"
+        },
+        {
+          "name": "review",
+          "op": "let",
+          "value": {
+            "agent": "Reviewer",
+            "args": [
+              {
+                "value": {
+                  "name": "patch",
+                  "op": "var"
+                }
+              },
+              {
+                "value": {
+                  "name": "tests",
+                  "op": "var"
+                }
+              }
+            ],
+            "isolated": true,
+            "op": "delegate",
+            "skill": "counterexamples"
+          }
+        },
+        {
+          "name": "draft",
+          "op": "let",
+          "value": {
+            "fields": {
+              "issue": {
+                "name": "issue",
+                "op": "var"
+              },
+              "patch": {
+                "name": "patch",
+                "op": "var"
+              },
+              "review": {
+                "name": "review",
+                "op": "var"
+              },
+              "tests": {
+                "name": "tests",
+                "op": "var"
+              }
+            },
+            "op": "record",
+            "type": "PullRequestDraft"
+          }
+        },
+        {
+          "name": "checked",
+          "op": "let",
+          "value": {
+            "args": [
+              {
+                "value": {
+                  "name": "issue",
+                  "op": "var"
+                }
+              },
+              {
+                "value": {
+                  "name": "draft",
+                  "op": "var"
+                }
+              }
+            ],
+            "contract": "FixAccepted",
+            "on_unmet": {
+              "bind": "c",
+              "then": {
+                "op": "escalate",
+                "to": {
+                  "args": [
+                    {
+                      "value": {
+                        "op": "template",
+                        "parts": [
+                          {
+                            "text": "Open acceptance criteria: "
+                          },
+                          {
+                            "expr": {
+                              "name": "c",
+                              "op": "var"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "callee": {
+                    "name": "human",
+                    "op": "var"
+                  },
+                  "op": "call"
+                }
+              }
+            },
+            "op": "verify",
+            "value": {
+              "name": "draft",
+              "op": "var"
+            }
+          }
+        },
+        {
+          "op": "expr",
+          "value": {
+            "args": [
+              {
+                "value": {
+                  "name": "checked",
+                  "op": "var"
+                }
+              }
+            ],
+            "compensate": "git.close_pr",
+            "idempotent_by": {
+              "name": "id",
+              "of": {
+                "name": "issue",
+                "op": "var"
+              },
+              "op": "field"
+            },
+            "name": "git.open_pr",
+            "op": "effect"
+          }
+        }
+      ],
+      "budget": {
+        "spend": {
+          "currency": "USD",
+          "micros": 20000000
+        },
+        "time": {
+          "ms": 10800000
+        }
+      },
+      "caps": [
+        {
+          "name": "Build",
+          "op": "var"
+        },
+        {
+          "name": "ModelStd",
+          "op": "var"
+        },
+        {
+          "name": "PR",
+          "op": "var"
+        },
+        {
+          "name": "RepoRead",
+          "op": "var"
+        },
+        {
+          "name": "SrcWrite",
+          "op": "var"
+        },
+        {
+          "name": "TestWrite",
+          "op": "var"
+        }
+      ],
+      "kind": "workflow",
+      "on": [
+        {
+          "event": "budget_exceeded",
+          "then": {
+            "op": "pause",
+            "then": {
+              "args": [
+                {
+                  "value": {
+                    "op": "text",
+                    "value": "Budget exceeded. Continue or cancel?"
+                  }
+                }
+              ],
+              "callee": {
+                "name": "ask",
+                "of": {
+                  "name": "human",
+                  "op": "var"
+                },
+                "op": "field"
+              },
+              "op": "call"
+            }
+          }
+        }
+      ],
+      "params": [
+        {
+          "name": "issue",
+          "type": {
+            "ref": "Issue"
+          }
+        }
+      ],
+      "returns": {
+        "ref": "PullRequest"
+      }
+    },
+    "FixPlan": {
+      "kind": "type",
+      "type": {
+        "record": {
+          "risks": {
+            "args": [
+              {
+                "ref": "Text"
+              }
+            ],
+            "ref": "List"
+          },
+          "steps": {
+            "refine": {
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ],
+              "ref": "List"
+            },
+            "where": {
+              "bop": "in",
+              "left": {
+                "args": [
+                  {
+                    "value": {
+                      "name": "steps",
+                      "op": "var"
+                    }
+                  }
+                ],
+                "callee": {
+                  "name": "len",
+                  "op": "var"
+                },
+                "op": "call"
+              },
+              "op": "binary",
+              "right": {
+                "from": {
+                  "op": "int",
+                  "value": 1
+                },
+                "op": "range",
+                "to": {
+                  "op": "int",
+                  "value": 12
+                }
+              }
+            }
+          },
+          "touches": {
+            "args": [
+              {
+                "ref": "Path"
+              }
+            ],
+            "ref": "Set"
+          }
+        }
+      }
+    },
+    "Implementer": {
+      "budget": {
+        "spend": {
+          "currency": "USD",
+          "micros": 8000000
+        },
+        "steps": 80,
+        "time": {
+          "ms": 2700000
+        },
+        "tokens": 800000
+      },
+      "caps": [
+        {
+          "name": "Build",
+          "op": "var"
+        },
+        {
+          "name": "ModelStd",
+          "op": "var"
+        },
+        {
+          "name": "RepoRead",
+          "op": "var"
+        },
+        {
+          "name": "SrcWrite",
+          "op": "var"
+        }
+      ],
+      "kind": "agent",
+      "role": "Applies the plan, only in the files it may change.",
+      "skills": {
+        "apply": {
+          "effects": [
+            {
+              "effect": "Exec"
+            },
+            {
+              "effect": "Fs.Read"
+            },
+            {
+              "effect": "Fs.Write"
+            },
+            {
+              "effect": "Model"
+            }
+          ],
+          "params": [
+            {
+              "name": "plan",
+              "type": {
+                "args": [
+                  {
+                    "ref": "FixPlan"
+                  }
+                ],
+                "ref": "Inferred"
+              }
+            }
+          ],
+          "returns": {
+            "args": [
+              {
+                "ref": "Patch"
+              }
+            ],
+            "ref": "Inferred"
+          }
+        }
+      }
+    },
+    "ModelEco": {
+      "kind": "capability",
+      "value": {
+        "args": [
+          {
+            "name": "tier",
+            "value": {
+              "name": "economy",
+              "op": "var"
+            }
+          }
+        ],
+        "callee": {
+          "name": "infer",
+          "of": {
+            "name": "model",
+            "op": "var"
+          },
+          "op": "field"
+        },
+        "op": "call"
+      }
+    },
+    "ModelStd": {
+      "kind": "capability",
+      "value": {
+        "args": [
+          {
+            "name": "tier",
+            "value": {
+              "name": "standard",
+              "op": "var"
+            }
+          }
+        ],
+        "callee": {
+          "name": "infer",
+          "of": {
+            "name": "model",
+            "op": "var"
+          },
+          "op": "field"
+        },
+        "op": "call"
+      }
+    },
+    "PR": {
+      "kind": "capability",
+      "value": {
+        "args": [
+          {
+            "value": {
+              "op": "text",
+              "value": "company/backend"
+            }
+          }
+        ],
+        "callee": {
+          "name": "pr",
+          "of": {
+            "name": "git",
+            "op": "var"
+          },
+          "op": "field"
+        },
+        "op": "call"
+      }
+    },
+    "Planner": {
+      "budget": {
+        "spend": {
+          "currency": "USD",
+          "micros": 1500000
+        },
+        "steps": 10,
+        "tokens": 150000
+      },
+      "caps": [
+        {
+          "name": "ModelStd",
+          "op": "var"
+        }
+      ],
+      "kind": "agent",
+      "role": "Turns findings into the smallest fix plan, split by behavior.",
+      "skills": {
+        "plan": {
+          "effects": [
+            {
+              "effect": "Model"
+            }
+          ],
+          "params": [
+            {
+              "name": "issue",
+              "type": {
+                "ref": "Issue"
+              }
+            },
+            {
+              "name": "findings",
+              "type": {
+                "args": [
+                  {
+                    "args": [
+                      {
+                        "ref": "Finding"
+                      }
+                    ],
+                    "ref": "List"
+                  }
+                ],
+                "ref": "Inferred"
+              }
+            }
+          ],
+          "returns": {
+            "args": [
+              {
+                "ref": "FixPlan"
+              }
+            ],
+            "ref": "Inferred"
+          }
+        }
+      }
+    },
+    "RepoRead": {
+      "kind": "capability",
+      "value": {
+        "args": [
+          {
+            "value": {
+              "op": "text",
+              "value": "/work/repo"
+            }
+          }
+        ],
+        "callee": {
+          "name": "read",
+          "of": {
+            "name": "fs",
+            "op": "var"
+          },
+          "op": "field"
+        },
+        "op": "call"
+      }
+    },
+    "Review": {
+      "kind": "type",
+      "type": {
+        "record": {
+          "blocking": {
+            "ref": "Bool"
+          },
+          "counterexamples": {
+            "args": [
+              {
+                "ref": "Text"
+              }
+            ],
+            "ref": "List"
+          }
+        }
+      }
+    },
+    "Reviewer": {
+      "budget": {
+        "spend": {
+          "currency": "USD",
+          "micros": 3000000
+        },
+        "steps": 30,
+        "tokens": 300000
+      },
+      "caps": [
+        {
+          "name": "ModelStd",
+          "op": "var"
+        },
+        {
+          "name": "RepoRead",
+          "op": "var"
+        }
+      ],
+      "kind": "agent",
+      "role": "Looks for counterexamples to the diff: concurrency, repeated messages, partial failure, unauthorized users.",
+      "skills": {
+        "counterexamples": {
+          "effects": [
+            {
+              "effect": "Fs.Read"
+            },
+            {
+              "effect": "Model"
+            }
+          ],
+          "params": [
+            {
+              "name": "patch",
+              "type": {
+                "args": [
+                  {
+                    "ref": "Patch"
+                  }
+                ],
+                "ref": "Inferred"
+              }
+            },
+            {
+              "name": "tests",
+              "type": {
+                "args": [
+                  {
+                    "ref": "TestSet"
+                  }
+                ],
+                "ref": "Inferred"
+              }
+            }
+          ],
+          "returns": {
+            "args": [
+              {
+                "ref": "Review"
+              }
+            ],
+            "ref": "Inferred"
+          }
+        }
+      }
+    },
+    "SrcWrite": {
+      "kind": "capability",
+      "value": {
+        "args": [
+          {
+            "value": {
+              "op": "text",
+              "value": "/work/repo/src"
+            }
+          }
+        ],
+        "callee": {
+          "name": "write",
+          "of": {
+            "name": "fs",
+            "op": "var"
+          },
+          "op": "field"
+        },
+        "op": "call"
+      }
+    },
+    "TestWrite": {
+      "kind": "capability",
+      "value": {
+        "args": [
+          {
+            "value": {
+              "op": "text",
+              "value": "/work/repo/test"
+            }
+          }
+        ],
+        "callee": {
+          "name": "write",
+          "of": {
+            "name": "fs",
+            "op": "var"
+          },
+          "op": "field"
+        },
+        "op": "call"
+      }
+    },
+    "TestWriter": {
+      "budget": {
+        "spend": {
+          "currency": "USD",
+          "micros": 3000000
+        },
+        "steps": 40,
+        "time": {
+          "ms": 1200000
+        },
+        "tokens": 300000
+      },
+      "caps": [
+        {
+          "name": "Build",
+          "op": "var"
+        },
+        {
+          "name": "ModelStd",
+          "op": "var"
+        },
+        {
+          "name": "RepoRead",
+          "op": "var"
+        },
+        {
+          "name": "TestWrite",
+          "op": "var"
+        }
+      ],
+      "kind": "agent",
+      "role": "Writes the regression test that catches the bug.",
+      "skills": {
+        "regression": {
+          "effects": [
+            {
+              "effect": "Exec"
+            },
+            {
+              "effect": "Fs.Read"
+            },
+            {
+              "effect": "Fs.Write"
+            },
+            {
+              "effect": "Model"
+            }
+          ],
+          "params": [
+            {
+              "name": "issue",
+              "type": {
+                "ref": "Issue"
+              }
+            }
+          ],
+          "returns": {
+            "args": [
+              {
+                "ref": "TestSet"
+              }
+            ],
+            "ref": "Inferred"
+          }
+        }
+      }
+    }
+  },
+  "language": "mandate/0.1",
+  "module": "company.devflow",
+  "uses": [
+    {
+      "module": "company.domain",
+      "names": [
+        "Issue",
+        "Patch",
+        "PullRequest",
+        "PullRequestDraft",
+        "TestSet"
+      ]
+    },
+    {
+      "module": "std",
+      "names": [
+        "exec",
+        "fs",
+        "git",
+        "human",
+        "model",
+        "net",
+        "test"
+      ]
+    }
+  ],
+  "version": "0.1"
+}

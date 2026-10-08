@@ -1,0 +1,36 @@
+// Doc 4 §8.10: decision models through `infer` and std.decision.
+module company.support @ 0.1
+
+use std.{human, model}
+use std.decision.{DecisionModel, Choice, threshold, Confident, Uncertain}
+use company.domain.{CustomerRequest, Outcome}
+
+capability ModelDecision = model.infer(tier: decision)
+
+let triage = DecisionModel(provider: "typesafe/jev", version: "1.13",
+                           eval: evidence("sha256:51c0"))
+
+type RequestKind = Refund | Complaint | Question | Other
+
+agent Support {
+  caps   ModelDecision
+  budget { steps: 20 }
+  skill handle(req: Untrusted<CustomerRequest>) -> Inferred<Outcome> ! {Model}
+}
+
+fn classify(req: Untrusted<CustomerRequest>) -> Inferred<Decision<RequestKind>> ! {Model}
+  budget { tokens: 8k }
+{
+  infer Choice<RequestKind> from quote(req) using triage
+}
+
+workflow HandleRequest(req: Untrusted<CustomerRequest>) -> Outcome
+  caps    ModelDecision
+{
+  let d = classify(req)
+  switch threshold(d, min_confidence: 0.85) {
+    Confident(Complaint) => delegate Support.handle(req)
+    Confident(_)         => delegate Support.handle(req)
+    Uncertain            => escalate human("Request type is unclear: {d.distribution}")
+  }
+}

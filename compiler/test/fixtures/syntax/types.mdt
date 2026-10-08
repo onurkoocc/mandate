@@ -1,0 +1,27 @@
+// Doc 4 §4.2, §8.7: records, enums, refinements and unions with payloads.
+module company.devflow @ 0.1
+
+use company.domain.{OperationKey}
+
+type Severity = enum { low, medium, high, critical }
+
+type Finding = {
+  file:     Path,
+  line:     Int where line >= 1,
+  claim:    Text,
+  evidence: EvidenceRef,
+}
+
+type FixPlan = {
+  steps:   List<Text> where len(steps) in 1..12,
+  touches: Set<Path>,
+  risks:   List<Text>,
+}
+
+type DelegateError = Timeout | BudgetExceeded | Throttled(retry_after: Duration)
+                   | SkillFailed(kind: FailureKind, detail: Text, partial: Option<ArtifactRef>)
+                   | Rejected(reason: Text) | PolicyDenied(cap: CapRef)
+                   | UnknownOutcome(op: OperationKey)
+
+type FailureKind = InvalidTool | InvalidArguments | SchemaMismatch | Stuck
+                 | StepLimit | GoalNotMet | DependencyFailed

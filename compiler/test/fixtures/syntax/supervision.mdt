@@ -1,0 +1,62 @@
+// Doc 4 §7.4 disjoint writes, §8.7 supervision, §10.4 typed verify, §6.4 tests.
+module company.devflow @ 0.1
+
+use std.{fs, human, git, test}
+use company.domain.{Issue, Patch, TestSet, PullRequestDraft}
+
+capability RepoWrite = fs.write("/work/repo/src", "/work/repo/test")
+
+agent Implementer {
+  caps  RepoWrite
+  budget { steps: 80 }
+  skill apply(issue: Issue) -> Inferred<Patch> ! {Fs.Write, Model}
+}
+
+agent TestWriter {
+  caps  RepoWrite
+  budget { steps: 40 }
+  skill regression(issue: Issue) -> Inferred<TestSet> ! {Fs.Write, Model}
+}
+
+contract Ready(issue: Issue, pr: PullRequestDraft) {
+  require issue.reproducible
+  accept owner_approved "The code owner approved"
+    by human.approve(role: "code_owner")
+  invariant tenant_isolation "Tenant isolation holds"
+    by test.property("tenant_isolation_*")
+}
+
+workflow Split(issue: Issue) -> Bool
+  caps    RepoWrite
+  budget  { spend: 12 USD, time: 1h }
+{
+  par supervise fail_fast {
+    patch = delegate Implementer.apply(issue) with caps RepoWrite.narrow("/work/repo/src") supervise restart(max: 2, backoff: 30s)
+    tests = delegate TestWriter.regression(issue) with caps RepoWrite.narrow("/work/repo/test") supervise restart(max: 1)
+  }
+  on error(PolicyDenied(c)) => escalate human("Permission needed: {c}")
+
+  let draft = PullRequestDraft { issue, patch, tests }
+  let pr: Verified<PullRequestDraft, Ready> = verify draft against Ready(issue, draft)
+    on unmet(criteria) => escalate human("Open acceptance criteria: {criteria}")
+
+  loop max_iter 3 {
+    if not issue.reproducible {
+      return false
+    } else {
+      effect git.comment(issue, "retrying")
+        idempotent_by issue.id
+    }
+  }
+  true
+}
+
+test "Split happy path" {
+  with handlers {
+    Model = replay("fixtures/split-01.jsonl"),
+    Fs    = memfs("fixtures/repo-snapshot"),
+    Human = auto_approve(role: "owner"),
+    Time  = fixed_clock("2026-10-07T21:00:00Z"),
+  }
+  run Split(fixtures.issue_42) expect ok
+}
