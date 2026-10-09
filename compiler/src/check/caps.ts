@@ -131,11 +131,21 @@ export function scopeWithin(ctor: string, inner: string[] | undefined, outer: st
   return inner.every((i) => outer.some((o) => scopeItemWithin(ctor, i, o)));
 }
 
+/** Every argument prefix in `inner` extends one in `outer`. No prefixes means any arguments. */
+export function prefixesWithin(inner: string[][] | undefined, outer: string[][] | undefined): boolean {
+  if (outer === undefined) return true;
+  if (inner === undefined) return false;
+  return inner.every((p) => outer.some((o) => o.length <= p.length && o.every((s, i) => p[i] === s)));
+}
+
 /** Does `cap` authorize everything `need` authorizes? */
 export function capCovers(cap: CapVal, need: CapVal): boolean {
   if (cap.ctor !== need.ctor) return false;
   if (!scopeWithin(cap.ctor, need.scope, cap.scope)) return false;
   if (need.maxClass && cap.maxClass && DATA_CLASSES.indexOf(need.maxClass) > DATA_CLASSES.indexOf(cap.maxClass)) return false;
+  // Tiers are not ordered: a capability without a tier allows any, one with a tier allows only that one.
+  if (cap.tier !== undefined && need.tier !== cap.tier) return false;
+  if (!prefixesWithin(need.argsPrefix, cap.argsPrefix)) return false;
   return true;
 }
 

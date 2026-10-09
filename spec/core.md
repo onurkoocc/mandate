@@ -229,8 +229,11 @@ program: the run stops for a person (`attention_required`).
   dispatched, atomically with the dispatch record. It is refused when
   `limit − settled − active reservations` cannot cover it. A run's limits
   are the minimum of the workflow's budget and the caller's limits.
-- **Exhaustion.** `BudgetExceeded` with no handler pauses the run for a
-  person.
+- **Exhaustion.** `BudgetExceeded` runs the workflow's
+  `on budget_exceeded` handler; with no handler, the run pauses for a
+  person. A person may raise the run's limits, up to the workflow's own
+  budget. This is a governance change. Once the handler's question is
+  answered, the run tries again from the command that did not fit.
 
 ## 6. Contracts and evidence
 
@@ -250,7 +253,9 @@ contract FixAccepted(issue: Issue, pr: PullRequestDraft) {
   checked at run time, with a warning.
 - **Order.** `verify` checks `require`, then the criteria in order of
   their method: static, then tests, then evals and reviews, then people.
-  A person is asked only once every other criterion is met.
+  A person is asked only once every other criterion is met. With
+  `human.approve(role: r, deadline: d)`, an approval not given within `d`
+  is unmet.
 - **Evidence.** Each check records evidence. The verifier produces the
   evidence, never the agent. When every criterion is met, the value
   becomes `Verified<T, C>`, carrying the ids of its evidence.
@@ -362,4 +367,3 @@ Every conforming implementation keeps these:
   running `tests`. All three are checked, not enforced.
 - **Not generated yet:** these targets: host code, MCP, A2A, AX and
   views.
-- **No raise:** a way to raise a run's limits after `budget_exceeded`.

@@ -130,6 +130,29 @@ describe("Temporal schedules runs", () => {
     expect(tool.executions).toHaveLength(0);
   });
 
+  it("a durable timer expires the code owner's approval: the criterion is unmet and no PR is prepared (R15)", async () => {
+    const pr = new SimTool("git.open_pr");
+    const src = FIXBUG.replace('by human.approve(role: "code_owner")', 'by human.approve(role: "code_owner", deadline: 1500ms)');
+    const s = await scheduled(src, { tools: [pr], agents: fixbugAgents(), clock: wallClock });
+    const t0 = Date.now();
+    await s.control.startRun({ pkg: s.pkg, workflow: "FixBug", input: BUG, runId: "t10" });
+    const done = await s.serve(async () => {
+      let run = await s.control.getRun("t10");
+      for (let i = 0; i < 400 && !(isObj(run.waiting) && String(run.waiting["command"]).endsWith("/on_unmet/then")); i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        run = await s.control.getRun("t10");
+      }
+      // Nobody approved; the timer expired the approval and the run escalated.
+      expect(Date.now() - t0).toBeGreaterThanOrEqual(1_500);
+      expect(waitOf(run.waiting).request).toEqual({ escalation: 'Open acceptance criteria: ["owner_approved"]' });
+      await s.control.cancelRun("t10");
+      return s.driver.result("t10");
+    });
+    expect(done.state).toBe("cancelled");
+    expect((await s.control.evidence("t10")).find((e) => e.criterion === "owner_approved")).toMatchObject({ passed: false, detail: { expired: true } });
+    expect(pr.prepares).toHaveLength(0);
+  });
+
   it("cancelling a waiting run ends its workflow", async () => {
     const s = await scheduled(ASK);
     await s.control.startRun({ pkg: s.pkg, workflow: "Ask", input: ISSUE, runId: "t7" });

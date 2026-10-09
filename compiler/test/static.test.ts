@@ -71,6 +71,39 @@ describe("FixBug (§20) passes Gate 1", () => {
     expect(fixbugErrors("patch = delegate Implementer.apply(plan)", "patch = delegate Implementer.apply(plan) with caps PR")).toEqual(["MDT-E0701"]);
   });
 
+  // FixBug with more capabilities in the workflow, so that only the agent side of C2 can fail.
+  const WORKFLOW_CAPS = "caps    RepoRead, SrcWrite, TestWrite, Build, ModelStd, PR";
+  const withMore = (more: string, from: string, to: string): string[] =>
+    errorsOf(
+      fixbug('capability PR        = git.pr("company/backend")', 'capability PR        = git.pr("company/backend")\ncapability MvnAny    = exec(commands: ["mvn"])')
+        .replace(WORKFLOW_CAPS, `${WORKFLOW_CAPS}, ${more}`)
+        .replace(from, to),
+    );
+
+  it("E0701: with caps cannot hand over another model tier than the agent holds (C2)", () => {
+    const plan = "let plan     = delegate Planner.plan(issue, findings)";
+    expect(withMore("ModelEco", plan, `${plan} with caps ModelEco`)).toEqual(["MDT-E0701"]);
+    // Nor a tier the context does not hold: ModelStd does not cover ModelEco.
+    expect(fixbugErrors(plan, `${plan} with caps ModelEco`)).toEqual(["MDT-E0701", "MDT-E0701"]);
+    // An agent whose model capability names no tier may be given any tier.
+    expect(
+      errorsOf(
+        fixbug("caps   ModelStd\n  budget { tokens: 150k", "caps   model.infer()\n  budget { tokens: 150k")
+          .replace(WORKFLOW_CAPS, `${WORKFLOW_CAPS}, ModelEco`)
+          .replace(plan, `${plan} with caps ModelEco`),
+      ),
+    ).toEqual([]);
+  });
+
+  it("E0701: with caps cannot hand over wider command arguments than the agent holds (C2)", () => {
+    const apply = "patch = delegate Implementer.apply(plan)";
+    // Build allows `mvn -q test …` and `mvn -q verify …`; `mvn -q …` and plain `mvn …` are wider.
+    expect(withMore("MvnAny", apply, `${apply} with caps exec(commands: ["mvn"], args_prefix: [["-q"]])`)).toEqual(["MDT-E0701"]);
+    expect(withMore("MvnAny", apply, `${apply} with caps MvnAny`)).toEqual(["MDT-E0701"]);
+    // A longer prefix of an allowed one is narrower, and accepted.
+    expect(withMore("MvnAny", apply, `${apply} with caps exec(commands: ["mvn"], args_prefix: [["-q", "test", "-Dtest=A"]])`)).toEqual([]);
+  });
+
   it("gives the two par branches disjoint write scopes", () => {
     const r = check(fixbug('capability TestWrite = fs.write("/work/repo/test")', 'capability TestWrite = fs.write("/work/repo")'), "mdt");
     const d = r.diagnostics.find((x) => x.code === "MDT-E0320")!;
@@ -81,6 +114,12 @@ describe("FixBug (§20) passes Gate 1", () => {
   it("requires a step limit for every bodiless skill", () => {
     const d = only(fixbug("budget { tokens: 400k, time: 15m, spend: 3 USD, steps: 40 }", "budget { tokens: 400k, time: 15m, spend: 3 USD }"), "MDT-E0503");
     expect(d.at.path).toBe("/defs/Explorer/skills/locate");
+  });
+
+  it("bounds the code owner's approval with a Duration deadline (§8.8, R15)", () => {
+    const by = 'by human.approve(role: "code_owner")';
+    expect(fixbugErrors(by, 'by human.approve(role: "code_owner", deadline: 24h)')).toEqual([]);
+    expect(fixbugErrors(by, 'by human.approve(role: "code_owner", deadline: "tomorrow")')).toEqual(["MDT-E0201"]);
   });
 
   it("never accepts review alone as evidence", () => {

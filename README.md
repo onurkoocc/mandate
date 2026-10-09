@@ -127,8 +127,16 @@ adapters:
 - **A failing check.** It is escalated, and the code owner is never asked.
 - **A declined approval.** It is escalated too, and a person's answer to
   the escalation cannot stand in for the evidence: no PR is prepared.
+- **An approval past its deadline.** With
+  `human.approve(role: "code_owner", deadline: 24h)`, an approval not given
+  in time is unmet. This holds whether the clock or a late answer gets
+  there first. The run escalates and no PR is prepared.
 - **A caller limit below the agents' budgets.** It stops at
-  `budget_exceeded` before the Implementer runs.
+  `budget_exceeded` before the Implementer runs, and the workflow's handler
+  asks a person. A person raises the limit from 10 to 20 USD (a governance
+  change, never past the workflow's own budget) and answers. The run then
+  goes on from the Implementer to the PR. Answered without a raise, it
+  asks again.
 
 `temporal.test.ts` runs the same workflow under Temporal. The approval
 wakes the run, and a worker that crashes after commit still opens one PR.
