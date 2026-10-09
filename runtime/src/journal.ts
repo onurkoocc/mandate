@@ -133,6 +133,29 @@ export class Journal {
     return rows.map((r) => ({ seq: num(r["seq"]), type: String(r["type"]), data: r["data"] as Value }));
   }
 
+  /** The latest time the run's budget ran out (its `budget_exceeded` episode), if it ever did. */
+  async budgetEpisode(runId: string): Promise<number | null> {
+    const [r] = await this.db.query<Row>("select max((data->>'episode')::int) as n from events where run_id = $1 and type = 'budget_exceeded'", [runId]);
+    return r?.["n"] === null || r?.["n"] === undefined ? null : num(r["n"]);
+  }
+
+  /**
+   * Raises the run's limits: a governance change made by a person (§8.6,
+   * §13.2). Each dimension may only go up; returns the limits it replaced.
+   */
+  async raiseLimits(tx: Tx, runId: string, limits: Record<string, number>): Promise<Record<string, number>> {
+    const before: Record<string, number> = {};
+    for (const [dim, limit] of Object.entries(limits)) {
+      const [b] = await tx.query<Row>("select limit_value from budgets where run_id = $1 and dimension = $2", [runId, dim]);
+      if (!b) throw new Violation("not_a_raise", `The run has no ${dim} limit to raise.`);
+      before[dim] = num(b["limit_value"]);
+      if (limit < before[dim]!) throw new Violation("not_a_raise", `The ${dim} limit is ${before[dim]}; ${limit} would lower it.`);
+      await tx.query("update budgets set limit_value = $3 where run_id = $1 and dimension = $2", [runId, dim, limit]);
+    }
+    await tx.query("update runs set revision = revision + 1, updated_at = $2 where run_id = $1", [runId, this.now()]);
+    return before;
+  }
+
   async createRun(
     tx: Tx,
     r: { runId: string; tenant: string; packageHash: string; workflow: string; input: Value; policy: Value; limits: Record<string, number> },

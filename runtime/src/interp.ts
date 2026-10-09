@@ -142,6 +142,20 @@ export class Interpreter {
     return this.def(name) as WorkflowDef;
   }
 
+  /**
+   * Runs the workflow's `on budget_exceeded` handler for one episode: one
+   * time the run's budget ran out (§8.6). Without a handler the default is
+   * to pause for a person. Its waits are keyed by the episode (`@n`), so a
+   * person is asked again each time the budget runs out.
+   */
+  async onBudgetExceeded(name: string, input: Obj, episode: number): Promise<Value> {
+    const wf = this.workflowDef(name);
+    const i = (wf.on ?? []).findIndex((h) => h.event === "budget_exceeded");
+    if (i < 0) return this.wait(`/defs/${name}/on/budget_exceeded@${episode}`, "input", { pause: true });
+    const vars = new Map<string, Value>(wf.params.map((p) => [p.name, input[p.name] ?? null]));
+    return this.expr(wf.on![i]!.then, { scope: { vars }, where: "workflow" }, `/defs/${name}/on/${i}@${episode}/then`);
+  }
+
   // ── statements ────────────────────────────────────────────────────────
 
   private async block(stmts: Stmt[], outer: Ctx, base: string): Promise<Value> {

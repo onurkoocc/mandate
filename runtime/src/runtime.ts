@@ -155,16 +155,57 @@ export class Runtime {
       return this.finish(runId, fence, { state: "attention_required", attention: { violation: e.code, message: e.message } });
     }
     if (e instanceof Fault) {
-      if (e.tag === "BudgetExceeded") {
-        // Default when the workflow has no handler: pause and ask a person (§8.6).
-        const handler = interp.workflowDef((await this.journal.run(runId)).workflow).on?.find((h) => h.event === "budget_exceeded");
-        return this.finish(runId, fence, { state: "waiting", waiting: { kind: "budget_exceeded", detail: e.value(), handler: handler ? true : false } });
-      }
-      const open = await this.openActions(runId);
-      if (open.length) return this.finish(runId, fence, { state: "attention_required", attention: { error: e.value(), open_actions: open } });
-      return this.finish(runId, fence, { state: "failed", error: e.value() });
+      if (e.tag === "BudgetExceeded") return this.budgetExceeded(runId, fence, e, interp);
+      return this.fail(runId, fence, e);
     }
     throw e;
+  }
+
+  private async fail(runId: string, fence: number, e: Fault): Promise<void> {
+    const open = await this.openActions(runId);
+    if (open.length) return this.finish(runId, fence, { state: "attention_required", attention: { error: e.value(), open_actions: open } });
+    return this.finish(runId, fence, { state: "failed", error: e.value() });
+  }
+
+  /**
+   * A reservation did not fit (§8.6). The workflow's `on budget_exceeded`
+   * handler runs; without one, the run pauses for a person. Each time the
+   * budget runs out is an episode with its own waits. Once its question is
+   * answered, the run tries again from the command that did not fit, which
+   * fits if a person raised the limits (`raiseLimits`), and otherwise opens
+   * the next episode.
+   */
+  private async budgetExceeded(runId: string, fence: number, e: Fault, interp: Interpreter): Promise<void> {
+    const run = await this.journal.run(runId);
+    const handler = (interp.workflowDef(run.workflow).on ?? []).some((h) => h.event === "budget_exceeded");
+    const last = await this.journal.budgetEpisode(runId);
+    let episode = last ?? 0;
+    let opened = last !== null;
+    try {
+      for (;;) {
+        if (!opened) await this.write(runId, fence, (tx) => this.journal.event(tx, runId, "budget_exceeded", { episode, detail: e.value() }));
+        try {
+          await interp.onBudgetExceeded(run.workflow, run.input as Obj, episode);
+        } catch (s) {
+          if (!(s instanceof Suspend)) throw s;
+          const w = isObj(s.waiting) ? s.waiting : {};
+          return await this.finish(runId, fence, {
+            state: "waiting",
+            waiting: { kind: "budget_exceeded", detail: e.value(), handler, episode, command: w["command"] ?? null, request: w["request"] ?? null },
+          });
+        }
+        // A handler that asks nobody leaves the run failed.
+        if (!opened) return await this.fail(runId, fence, e);
+        // This episode was answered and the budget ran out again.
+        episode++;
+        opened = false;
+      }
+    } catch (s) {
+      if (s instanceof StaleFence) return;
+      if (s instanceof Fault) return this.fail(runId, fence, s);
+      if (s instanceof Violation) return this.finish(runId, fence, { state: "attention_required", attention: { violation: s.code, message: s.message } });
+      throw s;
+    }
   }
 
   /** Writes the run's state only while this worker still holds the lease. */
@@ -300,6 +341,37 @@ export class Runtime {
       return { state: "succeeded", result: { approved: true, by: d.by, authorization_id: id } };
     });
     return fresh ? this.drive(runId) : this.journal.run(runId);
+  }
+
+  /**
+   * Raises a run's limits after `budget_exceeded` (§8.6). This is a
+   * governance change (§13.2): a person makes it, it is recorded with who
+   * made it, and it can only raise a limit, never lower one. It stops at the
+   * workflow's own budget, which only a new program version can change. Like
+   * a decision, it names the revision it was made on and is deduplicated by
+   * message. The run itself goes on when its `budget_exceeded` question is
+   * answered.
+   */
+  async raiseLimits(runId: string, msg: Message, r: { revision: number; limits: Cost; by: string }): Promise<RunRow> {
+    const seen = await this.journal.run(runId);
+    const wf = (await this.program(seen.package_hash)).defs[seen.workflow];
+    const program = costDims(wf?.kind === "workflow" ? wf.budget : undefined);
+    const wanted = costDims(r.limits);
+    await this.db.tx(async (tx) => {
+      const run = await this.journal.lock(tx, runId);
+      const fresh = await this.journal.inbox(tx, { tenant: run.tenant, sender: msg.sender, messageId: msg.messageId, payloadDigest: digest("request", r as unknown as Value) });
+      if (!fresh) return;
+      if (run.revision !== r.revision) throw new Violation("stale_revision", `The raise was made on revision ${r.revision}; run ${runId} is at revision ${run.revision}.`);
+      if (TERMINAL.has(run.state)) throw new Violation("run_ended", `Run ${runId} has ended (${run.state}).`);
+      for (const [dim, limit] of Object.entries(wanted)) {
+        if (dim in program && limit > program[dim]!) {
+          throw new Violation("above_program_budget", `${run.workflow} declares a ${dim} budget of ${program[dim]}; raising the run to ${limit} needs a new program version (§13.2).`);
+        }
+      }
+      const before = await this.journal.raiseLimits(tx, runId, wanted);
+      await this.journal.event(tx, runId, "limits_raised", { by: r.by, sender: msg.sender, message: msg.messageId, from: before, to: wanted });
+    });
+    return this.journal.run(runId);
   }
 
   /** Expires waits whose deadline has passed: no dispatch happens after a deadline (R15). */

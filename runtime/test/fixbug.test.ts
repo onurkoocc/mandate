@@ -175,7 +175,9 @@ describe("FixBug runs end to end", () => {
     const run = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb4", limits: { spend: { micros: 10 * USD, currency: "USD" } } });
     // 3 USD settled by Explorer and Planner; Implementer needs 8 USD reserved and 7 USD at most are left.
     expect(run.state).toBe("waiting");
-    expect(run.waiting).toMatchObject({ kind: "budget_exceeded", handler: true, detail: { $tag: "BudgetExceeded", $args: [{ dimension: "spend:USD", requested: 8 * USD }] } });
+    expect(run.waiting).toMatchObject({ kind: "budget_exceeded", handler: true, episode: 0, detail: { $tag: "BudgetExceeded", $args: [{ dimension: "spend:USD", requested: 8 * USD }] } });
+    // The workflow's handler asks a person.
+    expect(waitOf(run.waiting)).toEqual({ command: "/defs/FixBug/on/0@0/then/then", request: { question: "Budget exceeded. Continue or cancel?" } });
     expect(w.agents.count("Implementer.apply")).toBe(0);
     expect(w.agents.count("Reviewer.counterexamples")).toBe(0);
     const report = await w.rt.budgetReport("fb4");
@@ -183,5 +185,54 @@ describe("FixBug runs end to end", () => {
     expect(report.dimensions[0]!.settled + report.dimensions[0]!.available).toBe(10 * USD);
     expect((await w.rt.cancelRun("fb4")).state).toBe("cancelled");
     expect(w.pr.prepares).toHaveLength(0);
+  });
+
+  it("stopped at 10 USD, a person raises the limit to 20 USD and the run goes on from where it stopped to the PR", async () => {
+    const w = await fixbug();
+    const stopped = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb7", limits: { spend: { micros: 10 * USD, currency: "USD" } } });
+    const ask = waitOf(stopped.waiting);
+    const ADMIN = { sender: "erin", messageId: "raise-1" };
+    const raise = (revision: number, micros: number, msg = ADMIN) => w.rt.raiseLimits("fb7", msg, { revision, limits: { spend: { micros, currency: "USD" } }, by: "erin" });
+
+    // A raise only goes up, and never past the workflow's own 20 USD.
+    await expect(raise(stopped.revision, 25 * USD, { sender: "erin", messageId: "too-much" })).rejects.toMatchObject({ code: "above_program_budget" });
+    await expect(raise(stopped.revision, 5 * USD, { sender: "erin", messageId: "lower" })).rejects.toMatchObject({ code: "not_a_raise" });
+    await expect(raise(stopped.revision - 1, 20 * USD, { sender: "erin", messageId: "old-view" })).rejects.toMatchObject({ code: "stale_revision" });
+    const raised = await raise(stopped.revision, 20 * USD);
+    expect(raised.state).toBe("waiting");
+    expect(raised.revision).toBe(stopped.revision + 1);
+    // Sent again, the same raise is a duplicate.
+    expect((await raise(stopped.revision, 20 * USD)).revision).toBe(raised.revision);
+    expect((await w.rt.journal.events("fb7")).filter((e) => e.type === "limits_raised")).toEqual([
+      expect.objectContaining({ data: { by: "erin", sender: "erin", message: "raise-1", from: { "spend:USD": 10 * USD }, to: { "spend:USD": 20 * USD } } }),
+    ]);
+
+    // Answering the handler's question resumes the run at the Implementer; Explorer and Planner are not called again.
+    const approval = await w.rt.submitInput("fb7", { sender: "erin", messageId: "continue" }, { commandId: ask.command, revision: raised.revision, value: "continue" });
+    expect(approval.state).toBe("waiting");
+    const wait = waitOf(approval.waiting);
+    expect(wait.request).toMatchObject({ criterion: "owner_approved" });
+    const done = await w.rt.decideAction("fb7", OWNER, { commandId: wait.command, revision: approval.revision, digest: String(wait.request["subject_digest"]), approve: true, by: "carol" });
+    expect(done.state).toBe("succeeded");
+    expect(w.pr.appliedCount()).toBe(1);
+    expect(Object.keys(RESULTS).map((s) => w.agents.count(s))).toEqual([1, 1, 1, 1, 1]);
+
+    // The budget table: the raised limit, 18.5 USD reserved by the agents and 11 USD settled.
+    const report = await w.rt.budgetReport("fb7");
+    expect(report.dimensions).toEqual([{ dimension: "spend:USD", limit: 20 * USD, settled: 11 * USD, reserved: 0, available: 9 * USD }]);
+    const delegates = report.commands.filter((c) => c.kind === "delegate");
+    expect(Object.fromEntries(delegates.map((c) => [c.label, c.reserved["spend:USD"]]))).toEqual(RESERVED);
+    expect(await w.rt.replayRun("fb7")).toEqual({ status: "complete", value: done.result });
+  });
+
+  it("answered without a raise, the run asks again in a new episode", async () => {
+    const w = await fixbug();
+    const stopped = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb8", limits: { spend: { micros: 10 * USD, currency: "USD" } } });
+    const first = waitOf(stopped.waiting);
+    const again = await w.rt.submitInput("fb8", { sender: "erin", messageId: "m1" }, { commandId: first.command, revision: stopped.revision, value: "continue" });
+    expect(again.waiting).toMatchObject({ kind: "budget_exceeded", episode: 1, command: "/defs/FixBug/on/0@1/then/then" });
+    expect(w.agents.count("Implementer.apply")).toBe(0);
+    // A new worker on the waiting run finds the same question, not a third one.
+    expect((await w.rt.resume("fb8")).waiting).toMatchObject({ episode: 1, command: "/defs/FixBug/on/0@1/then/then" });
   });
 });

@@ -84,6 +84,28 @@ A delegate reserves the budget written at the call, else the skill's, else
 the agent's: the same budget the compiler adds up for E0501. `time` is a
 deadline, not a ledger dimension, so it is not reserved.
 
+When a reservation does not fit, the run does not fail. Each time this
+happens is a numbered episode, recorded as a `budget_exceeded` event:
+
+1. The workflow's `on budget_exceeded` handler runs. Without a handler,
+   the run pauses. FixBug's handler, `pause and human.ask(…)`, opens an
+   input wait. Its command id carries the episode: `/defs/FixBug/on/0@0/…`.
+2. The run is `waiting` with
+   `{ kind: "budget_exceeded", detail, handler, episode, command, request }`.
+   The `command` is the wait to answer with `SubmitInput`.
+3. `raiseLimits` raises the run's limits. It is a governance change
+   (§13.2), recorded as `limits_raised` with who made it and the limits
+   before and after. It can only raise a limit that exists (`not_a_raise`),
+   never above the workflow's own budget (`above_program_budget`; that
+   needs a new program version). Like a decision, it names the revision it
+   was made on and is deduplicated by message.
+4. Answering the question resumes the run. The body runs again against the
+   journal, so finished commands are not called again. The command that
+   did not fit is dispatched again. If it still does not fit, the next
+   episode asks again.
+
+A handler that asks nobody leaves the run failed with `BudgetExceeded`.
+
 `budgetReport` returns the run's budget table:
 
 - per dimension: limit, settled, active reservations and what is available;
@@ -217,6 +239,7 @@ an accepted message is still a no-op.
 | `CancelRun` | `cancelRun` |
 | `ReconcileAction` | `reconcileAction` |
 | `ReplayRun` | `replayRun` (adapters that refuse every call) |
+| (governance) | `raiseLimits`: a person raises the run's limits after `budget_exceeded` |
 
 `tick` expires decision waits whose deadline passed. `settleCharge` records
 a late charge, and `purgePayloads` applies retention, after which a replay
@@ -278,7 +301,5 @@ The same mechanisms are tested under Temporal against a local dev server:
   the `drive` activity, not on a Temporal timer.
 - **`map`, and so R11 by input index and R12.** The 0.1 IR has no `map`.
   `par` results are bound by name, and that binding is tested in its place.
-- **Continuing after `budget_exceeded`.** The control API has no operation
-  that raises a run's limits, so the run waits and can be cancelled.
 - **The adapter contract's `ValidateBinding` and `Cancel`.**
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.
