@@ -17,6 +17,7 @@ import {
   capFromCall,
   DECISION_POLICIES,
   hashProgram,
+  modelTiers,
   requirementFor,
   STD_EFFECTS,
   STD_FNS,
@@ -53,6 +54,9 @@ import {
   type Obj,
   type Value,
 } from "./values.js";
+
+/** What a command reserves when it is sent: a fixed bound, or one measured just before sending. */
+type Reserve = Cost | Budget | undefined | (() => Promise<Cost | Budget | undefined>);
 
 export type AuthorizePolicy = { by: "policy" } | { by: "human"; role: string; deadlineMs?: number };
 
@@ -500,12 +504,18 @@ export class Interpreter {
    * otherwise dispatched (with its upper-bound cost reserved), called, and
    * recorded. Fault-injection points sit between the steps.
    */
-  private async command(id: string, kind: string, request: Value, reserve: Cost | Budget | undefined, call: () => Promise<Outcome>, siblings?: Siblings, label?: string): Promise<Value> {
+  private async command(id: string, kind: string, request: Value, reserve: Reserve, call: () => Promise<Outcome>, siblings?: Siblings, label?: string): Promise<Value> {
     const requestDigest = digest("request", { kind, request });
     const { journal, runId, fence, faults } = this.o;
     if (this.o.replay) return replayed(await journal.command(runId, id), id);
     if (siblings?.failed) throw new SiblingStopped();
-    const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, reserve);
+    let bound: Cost | Budget | undefined;
+    if (typeof reserve === "function") {
+      // Measuring the bound may itself call out (a token count), so it is done only for a command that will be sent.
+      const earlier = await journal.command(runId, id);
+      if (!earlier || (earlier.state !== "succeeded" && earlier.state !== "failed")) bound = await reserve();
+    } else bound = reserve;
+    const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, bound);
     if (prior) return replayed(prior, id);
     faults.check("after_dispatch", { id, kind });
     const outcome = await call();
@@ -535,8 +545,25 @@ export class Interpreter {
   private async infer(e: Extract<Expr, { op: "infer" }>, ctx: Ctx, path: string): Promise<Value> {
     const input = await this.expr(e.from, ctx, `${path}/from`);
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
-    const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}) };
-    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), ctx.siblings, "infer");
+    const tier = this.tierFor(e.using, path);
+    const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
+    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), ctx.siblings, "infer");
+  }
+
+  /**
+   * The model tier a model call runs under: the capability named by `using`,
+   * else the only tier among the enclosing definition's model capabilities,
+   * else the only tier the program names. The lock file maps it to a model.
+   */
+  private tierFor(using: Expr | undefined, path: string): string | undefined {
+    const tierOf = (e: Expr): string | undefined => this.cap(e)?.tier;
+    if (using) return tierOf(using);
+    const def = this.def(path.split("/")[2]!);
+    const caps = def?.kind === "workflow" || def?.kind === "agent" ? def.caps : [];
+    const own = [...new Set(caps.map(tierOf).filter((t): t is string => !!t))];
+    if (own.length === 1) return own[0];
+    const all = [...modelTiers(this.o.program)];
+    return all.length === 1 ? all[0] : undefined;
   }
 
   private async delegate(e: Extract<Expr, { op: "delegate" }>, ctx: Ctx, path: string): Promise<Value> {

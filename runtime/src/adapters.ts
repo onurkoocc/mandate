@@ -21,7 +21,10 @@ export interface FaultValue {
  * has not reported a charge yet (a timeout or cancellation): the reservation
  * then stays in place until the charge is settled (R16).
  */
-export type Outcome = { ok: Value; cost?: Cost } | { error: FaultValue; cost?: Cost | "unknown" };
+export type Outcome = ({ ok: Value; cost?: Cost } | { error: FaultValue; cost?: Cost | "unknown" }) & {
+  /** What produced the result, e.g. the model snapshot that answered (§5.2); journaled with the result. */
+  meta?: Value;
+};
 
 /** A capability as handed to a delegate: constructor and scope. */
 export interface CapGrant {
@@ -54,13 +57,48 @@ export interface InferRequest {
   type: TypeExpr;
   input: Value;
   using?: Value;
+  /** The model tier of the capability the call runs under; the lock file maps it to a model. */
+  tier?: string;
   commandId: string;
 }
 
 export interface ModelAdapter {
   infer(req: InferRequest): Promise<Outcome>;
   /** Upper-bound cost reserved before the call (§8.6: never the average). */
-  upperBound(req: InferRequest): Cost;
+  upperBound(req: InferRequest): Cost | Promise<Cost>;
+}
+
+/** A tool an agent may call, as the model sees it (K8). */
+export interface ToolSpec {
+  name: string;
+  description: string;
+  input_schema: Value;
+}
+
+/**
+ * One turn of an agent loop (§8.2, K7): the conversation so far, which only
+ * ever grows, and the tools. The result is the model's message:
+ * `{ content: [ … blocks ], stop_reason }`.
+ */
+export interface TurnRequest {
+  tier: string;
+  system: string;
+  tools: ToolSpec[];
+  messages: Value[];
+  commandId: string;
+}
+
+export interface TurnBound {
+  /** What the turn reserves: its counted input and the output limit, priced with no cache hit. */
+  cost: Cost;
+  inputTokens: number;
+  maxInputTokens: number;
+}
+
+/** The model side of an agent loop. Its calls are made from the runtime process, never from a sandbox (K7). */
+export interface ChatModel {
+  turnBound(req: TurnRequest): Promise<TurnBound>;
+  turn(req: TurnRequest): Promise<Outcome>;
 }
 
 export interface VerifyRequest {

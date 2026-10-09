@@ -284,7 +284,7 @@ export class Journal {
         json(ok ? null : (outcome.error as unknown as Value)),
         json((cost ?? null) as Value),
       ]);
-      await this.event(tx, runId, "command_completed", { command: commandId, ok, cost: (cost ?? null) as Value });
+      await this.event(tx, runId, "command_completed", { command: commandId, ok, cost: (cost ?? null) as Value, ...(outcome.meta !== undefined ? { meta: outcome.meta } : {}) });
     });
   }
 

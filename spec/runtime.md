@@ -113,6 +113,42 @@ A handler that asks nobody leaves the run failed with `BudgetExceeded`.
   for a delegate), what it reserved, which reservations are still open, and
   the cost it reported (`"unknown"` until a late charge is settled).
 
+## Models (§5.2, §8.6)
+
+`AnthropicModel` (`runtime/src/anthropic.ts`) is the model adapter for real
+calls. It runs in the runtime process, so the API key never reaches an
+agent's sandbox. Everything it sends is pinned by the package's lock file
+([`lock.md`](lock.md)):
+
+- **Model and effort.** A call runs under a model tier: the capability
+  named by `using`, or else the only model tier in scope. The tier's model
+  and effort are sent with every request. Effort is always explicit.
+- **Reservation.** Before the call is dispatched, its input is counted with
+  the token-counting endpoint. The reservation is that input plus the
+  output limit, priced as if nothing hits the cache. The count is made only
+  for a call that will really be sent: a call already in the journal is not
+  counted again. A call whose input is over the locked limit is not sent.
+- **Settlement.** The call settles at the usage the API reported:
+  - `tokens`: every token the model processed;
+  - `spend`: each kind of token at its own price;
+  - `steps`: one.
+- **Snapshot.** The model id that answered, the locked id, the effort,
+  the stop reason, the usage and the request id are journaled with the
+  result, in the `command_completed` event's `meta`.
+- **Failures.**
+  - A request the API rejected with a status is not billed. A 429 or
+    5xx is a `Timeout`; any other status is `Rejected`. Either way the
+    command settles at zero.
+  - A broken or timed-out connection may have been billed, so its cost is
+    `"unknown"` and the reservation stays (R16).
+  - A refusal is `Rejected("refusal")`.
+- **No fallback.** No refusal fallback is configured, because a fallback
+  would answer with a model the lock does not name.
+
+`infer T from e` asks for `T` through structured output: the JSON Schema
+of `T` (`runtime/src/schema.ts`), with the input in a `<data>` block that
+the system prompt marks as data only.
+
 ## External effects (§8.5, §8.8, §8.9)
 
 1. **Prepare.** The adapter validates the parameters. The runtime then
@@ -219,6 +255,9 @@ listed in the run's summary (R09).
 
 - recomputes the program and package hashes;
 - requires every imported non-std module to be pinned in the lock;
+- when the lock pins models, requires it to be well formed
+  (`malformed_lock`) and to pin every model tier the program names
+  (`unlocked_model_tier`);
 - runs the compiler's checks on the canonical IR again.
 
 ## Control API (§16.1)
