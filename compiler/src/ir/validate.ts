@@ -56,6 +56,18 @@ export function validateIr(value: Json, spans?: Map<string, Span>): Diagnostic[]
 
   const defs = value["defs"];
   if (defs && typeof defs === "object" && !Array.isArray(defs)) {
+    for (const [name, d] of Object.entries(defs)) {
+      if (!d || typeof d !== "object" || Array.isArray(d) || d["kind"] !== "agent") continue;
+      for (const field of ["loop", "progress"]) {
+        if (field in d && lang === "mandate/0.1") {
+          out.push(diag("E0104", `Agent ${name}: '${field}' is a mandate/0.2 field; this program is mandate/0.1.`, at(`/defs/${ptrToken(name)}/${field}`), { facts: { field, language: lang } }));
+        }
+      }
+      const pr = d["progress"];
+      if (pr && typeof pr === "object" && !Array.isArray(pr) && typeof pr["window"] === "number" && typeof pr["repeats"] === "number" && pr["repeats"] > pr["window"]) {
+        out.push(diag("E0104", `Agent ${name}: progress.repeats (${pr["repeats"]}) cannot be more than progress.window (${pr["window"]}).`, at(`/defs/${ptrToken(name)}/progress`), { facts: { window: pr["window"], repeats: pr["repeats"] } }));
+      }
+    }
     const n = Object.keys(defs).length;
     if (n > LIMITS.definitions) {
       out.push(

@@ -34,6 +34,7 @@ import {
   type OnHandler,
   type Param,
   type Pattern,
+  Progress,
   type Program,
   type Skill,
   type Stmt,
@@ -461,8 +462,14 @@ class Parser {
         else if (this.eatW("model")) def.model = this.ident("a model tier");
         else if (this.eatW("caps")) def.caps.push(...this.exprList());
         else if (this.isW("budget")) def.budget = this.budget();
+        else if (this.eatW("loop")) {
+          const st = this.t;
+          const strategy = this.ident("a loop strategy");
+          if (strategy !== "react" && strategy !== "plan_execute") this.fail(`Unknown loop strategy '${strategy}'; expected react or plan_execute.`, st);
+          def.loop = strategy;
+        } else if (this.eatW("progress")) def.progress = this.progress();
         else if (this.eatW("skill")) this.skill(def.skills, { remote: false });
-        else this.fail(`Expected role, model, caps, budget or skill in agent body but found ${this.describe(t)}.`);
+        else this.fail(`Expected role, model, caps, budget, loop, progress or skill in agent body but found ${this.describe(t)}.`);
       }
       this.expectP("}");
     }
@@ -603,6 +610,26 @@ class Parser {
     }
     this.expectP("}");
     return sortCanon(out);
+  }
+
+  /** `progress { window: 8, repeats: 3, stall: 5 }` (§8.2). */
+  private progress(): Progress {
+    this.expectP("{");
+    const p: Progress = {};
+    while (!this.isP("}")) {
+      const kt = this.t;
+      const key = this.ident("a progress field");
+      this.expectP(":");
+      const vt = this.t;
+      const v = this.primary({});
+      if (key !== "window" && key !== "repeats" && key !== "stall") this.fail(`Unknown progress field '${key}'; expected window, repeats or stall.`, kt);
+      if (v.op !== "int") this.fail(`Progress field '${key}' takes an integer.`, vt);
+      if (key in p) this.dup("progress field", key, kt);
+      p[key as keyof Progress] = (v as { value: number }).value;
+      if (!this.eatP(",")) break;
+    }
+    this.expectP("}");
+    return p;
   }
 
   private budget(): Budget {

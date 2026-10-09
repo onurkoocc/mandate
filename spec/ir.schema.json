@@ -12,7 +12,12 @@
     "defs"
   ],
   "properties": {
-    "language": { "enum": ["mandate/0.1", "mandate/0.2"] },
+    "language": {
+      "enum": [
+        "mandate/0.1",
+        "mandate/0.2"
+      ]
+    },
     "module": {
       "$ref": "#/$defs/QName"
     },
@@ -1526,6 +1531,33 @@
             },
             "budget": {
               "$ref": "#/$defs/Budget"
+            },
+            "loop": {
+              "enum": [
+                "react",
+                "plan_execute"
+              ]
+            },
+            "progress": {
+              "type": "object",
+              "properties": {
+                "window": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 64
+                },
+                "repeats": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 64
+                },
+                "stall": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                }
+              },
+              "additionalProperties": false
             },
             "skills": {
               "type": "object",

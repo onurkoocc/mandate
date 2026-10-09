@@ -199,3 +199,35 @@ describe("language version", () => {
     expect(codes(load(`mandate @ 0.9\n${body}`, "mdt").diagnostics)).toEqual(["MDT-E0103"]);
   });
 });
+
+describe("agent loop strategy and progress (0.2)", () => {
+  const agent = (lang: string, extra: string) => `${lang}module m @ 0.1
+
+use std.{model}
+
+capability M = model.infer(tier: standard)
+
+agent A {
+  caps   M
+  budget { steps: 5 }
+${extra}
+  skill s(x: Text) -> Inferred<Text> ! {Model}
+}
+`;
+
+  it("reads and prints `loop` and `progress`", () => {
+    const r = check(agent("mandate @ 0.2\n\n", "  loop   plan_execute\n  progress { window: 6, repeats: 2, stall: 4 }"), "mdt");
+    expect(r.diagnostics).toEqual([]);
+    const a = r.program!.defs["A"]!;
+    expect(a.kind === "agent" && { loop: a.loop, progress: a.progress }).toEqual({ loop: "plan_execute", progress: { window: 6, repeats: 2, stall: 4 } });
+    const printed = printProgram(r.program!);
+    expect(printed).toContain("  loop   plan_execute\n  progress { window: 6, repeats: 2, stall: 4 }");
+    expect(check(printed, "mdt").hashes!.program).toBe(r.hashes!.program);
+  });
+
+  it("refuses them in a 0.1 program, and more repeats than the window", () => {
+    expect(codes(check(agent("", "  loop   react"), "mdt").diagnostics)).toEqual(["MDT-E0104"]);
+    expect(codes(check(agent("mandate @ 0.2\n", "  progress { window: 3, repeats: 4 }"), "mdt").diagnostics)).toEqual(["MDT-E0104"]);
+    expect(codes(check(agent("mandate @ 0.2\n", "  loop   wander"), "mdt").diagnostics)).toEqual(["MDT-E0101"]);
+  });
+});
