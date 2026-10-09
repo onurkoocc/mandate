@@ -16,7 +16,8 @@ comparison for FixBug (`../fixbug.mdt`), against Agent Spec 26.3.1.
 | `probe.py` | CI: what an Agent Spec runtime that does not know the extension does with it |
 
 ```sh
-pip install -r requirements.txt
+pip install -r requirements.txt               # check.py, probe.py wayflow
+pip install -r requirements-langgraph.txt     # probe.py langgraph, in another environment
 python build.py              # after changing build.py or mandate_agentspec.py
 python check.py
 python probe.py wayflow      # or: python probe.py langgraph
