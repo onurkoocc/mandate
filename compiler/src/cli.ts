@@ -9,8 +9,11 @@
 //   mandate patch <program> <patch.json>   apply an IR patch (see `patch` below)
 //   mandate sandbox <file> [--agent <name>] print each agent's sandbox requirement
 //   mandate explain <code>                 explain a diagnostic code
+//   mandate view <file> [--against <old>] [--format md|html|json] [--lock <lock.json>]
+//                                          the program's human views (§15): architecture,
+//                                          authority and cost; with --against, what changed
 //
-//   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact
+//   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show
 //                                          control a run (the runtime's CLI, @mandate/runtime/cli)
 //   mandate test <file>                    run the program's tests with their effect handlers (§6.4)
 //
@@ -31,6 +34,8 @@ import type { Lock } from "./lock.js";
 import { applyPatch, type PatchOp } from "./patch/patch.js";
 import { printProgram } from "./print/printer.js";
 import { sandboxRequirements } from "./target/sandbox.js";
+import { toHtml, toMarkdown } from "./views/doc.js";
+import { architecture, authority, cost, diffDoc, programDoc, semanticDiff } from "./views/views.js";
 
 function usage(): never {
   process.stderr.write(
@@ -43,7 +48,8 @@ function usage(): never {
       "  patch <program> <patch.json> [--json]   patch.json: { \"base\": \"sha256:…\", \"ops\": [ … ] }",
       "  sandbox <file> [--agent <name>] [--lock <lock.json>]",
       "  explain <code>",
-      "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact   (see `mandate status`)",
+      "  view <file> [--against <old file>] [--format md|html|json] [--lock <lock.json>]",
+      "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show   (see `mandate status`)",
       "  test <file> [--json]",
       "",
     ].join("\n"),
@@ -93,6 +99,8 @@ function main(argv: string[]): void {
   const [cmd, ...plain] = argv;
   const agent = option(plain, "--agent");
   const lockFile = option(plain, "--lock");
+  const against = option(plain, "--against");
+  const format = option(plain, "--format") ?? "md";
   const flags = new Set(plain.filter((a) => a.startsWith("--")));
   const args = plain.filter((a) => !a.startsWith("--"));
   const asJson = flags.has("--json");
@@ -183,6 +191,32 @@ function main(argv: string[]): void {
       process.exit(0);
     }
     // falls through
+    case "view": {
+      const file = args[0] ?? usage();
+      if (!["md", "html", "json"].includes(format)) usage();
+      const loadChecked = (f: string, lock?: Lock) => {
+        const r = check(read(f), kindOf(f), lock ? { lock } : {});
+        if (!r.ok) {
+          report(r.diagnostics, f, false);
+          process.exit(1);
+        }
+        return r.program!;
+      };
+      const lock = readLock(file, lockFile, false);
+      const program = loadChecked(file, lock);
+      if (against !== undefined) {
+        const before = loadChecked(against);
+        const v = semanticDiff(before, program);
+        process.stdout.write(format === "json" ? JSON.stringify(v, null, 2) + "\n" : format === "html" ? toHtml(diffDoc(before, program)) : toMarkdown(diffDoc(before, program)));
+      } else if (format === "json") {
+        const views = { architecture: architecture(program), authority: authority(program), cost: cost(program, lock) };
+        process.stdout.write(JSON.stringify(views, null, 2) + "\n");
+      } else {
+        process.stdout.write(format === "html" ? toHtml(programDoc(program, lock)) : toMarkdown(programDoc(program, lock)));
+      }
+      process.exit(0);
+    }
+    // falls through
     case "explain": {
       const raw = args[0] ?? usage();
       const code = raw.startsWith("MDT-") ? raw : `MDT-${raw}`;
@@ -201,7 +235,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "test"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "test"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {

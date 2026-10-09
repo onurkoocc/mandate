@@ -84,6 +84,11 @@ describe("the control CLI (K19)", () => {
     // Each call loads the same evidence key, created on first use, so a later call can check what an earlier one signed.
     expect(existsSync(join(dir, ".mandate", "evidence.key"))).toBe(true);
     expect((await mandate("status", "c1")).out).toContain("(human.approve; signed)");
+    // The run's views (§15): the same evidence, under the program's hash, as a page that runs nothing.
+    const page = await mandate("show", "c1", "--format", "html");
+    expect(page.code, page.err).toBe(0);
+    expect(page.out).toContain("Approved.owner_approved");
+    expect(page.out).toContain("Content-Security-Policy");
 
     const replay = await mandate("replay", "c1");
     expect(replay.out).toBe("replay: complete\nit is ready\n");

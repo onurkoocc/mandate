@@ -11,5 +11,6 @@ export { buildPackage, refusingAdapters, Runtime, verifyPackage, type Lock, type
 export * from "./sandbox.js";
 export * from "./signals.js";
 export { runTests, type TestOptions, type TestResult } from "./testing.js";
+export { freshness, runDoc, runView, type AsOf, type Freshness, type RunView } from "./views.js";
 export * from "./sim.js";
 export * from "./values.js";

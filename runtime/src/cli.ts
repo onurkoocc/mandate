@@ -10,6 +10,7 @@
 //   mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
 //   mandate replay <run>
 //   mandate artifact <run> <blob:sha256:…>
+//   mandate show <run> [--format md|html|json]           the run's views (§15): status, evidence, cost, actions
 //   mandate test <program> [--json]                       run the program's tests (§6.4); needs no configuration
 //
 // Every command reads `mandate.runtime.json` (or --config). A decision names
@@ -20,7 +21,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { check, kindOf, parseStrictJson, type Lock, type Program } from "@mandate/compiler";
+import { check, kindOf, parseStrictJson, toHtml, toMarkdown, type Lock, type Program } from "@mandate/compiler";
 import type { Cost } from "./adapters.js";
 import { adaptersFor, connect, readConfig, runtimeOptions, type RuntimeConfig } from "./control.js";
 import { openDb, type Db } from "./db.js";
@@ -28,6 +29,7 @@ import type { RunRow } from "./journal.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { runTests } from "./testing.js";
+import { runDoc, runView } from "./views.js";
 import { isObj, show, type Obj, type Value } from "./values.js";
 
 interface Args {
@@ -35,7 +37,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUED = new Set(["--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id"]);
+const VALUED = new Set(["--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format"]);
 
 function parse(argv: string[]): Args {
   const positional: string[] = [];
@@ -64,10 +66,11 @@ const USAGE = `usage:
   mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
   mandate replay <run>
   mandate artifact <run> <blob:sha256:…>
+  mandate show <run> [--format md|html|json]
   mandate test <program> [--json] [--lock FILE]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "test"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "test"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -132,6 +135,13 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       case "raise-limits":
         run = await rt.raiseLimits(runId, msg, { revision: revision(a), limits: limits(str(a, "--limit")), by: str(a, "--by") });
         break;
+      case "show": {
+        const format = typeof a.flags["--format"] === "string" ? a.flags["--format"] : "md";
+        if (!["md", "html", "json"].includes(format)) throw new Usage("--format is md, html or json");
+        const { view, program } = await runView(rt, runId);
+        out(format === "json" ? JSON.stringify(view, null, 2) + "\n" : format === "html" ? toHtml(runDoc(view, program)) : toMarkdown(runDoc(view, program)));
+        return 0;
+      }
       case "artifact": {
         const ref = a.positional[1] ?? fail("artifact needs a reference, blob:sha256:…");
         const got = await rt.artifact(runId, ref);

@@ -42,7 +42,7 @@ enough for an agent's context.
 ## Layout
 
 ```text
-spec/        core spec, IR schema and rules, static checks, diagnostic codes, runtime, sandboxes
+spec/        core spec, IR schema and rules, static checks, diagnostic codes, runtime, sandboxes, views
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
 examples/    example programs; fixbug/ is the design document's §20 workflow,
@@ -73,6 +73,7 @@ npm test
 | `sandbox <file> [--agent <name>]` | Print each local agent's sandbox requirement, or one agent's |
 | `explain <code>` | Explain a diagnostic code |
 | `test <file> [--json]` | Run the program's tests against their effect handlers (§6.4) |
+| `view <file> [--against <old>] [--format md\|html\|json]` | The program's views: architecture, authority, cost; with `--against`, what changed ([`spec/views.md`](spec/views.md)) |
 
 Exit status is 1 when an error diagnostic is reported and 2 on usage errors.
 Warnings do not change the exit status. FixBug checks with two W0601
@@ -106,6 +107,10 @@ document's §25 are covered:
 | V08 | A decision cannot reach a critical effect directly | E0210 |
 
 S09 (load-time verification) is covered by the runtime, below.
+`compiler/test/views.test.ts` checks the views of FixBug (architecture,
+authority, cost) against §15, and the semantic diff between two versions:
+governance apart from behavior, and a new network target shown as a
+governance change (G11).
 `compiler/test/static.test.ts` also checks the §20 FixBug table: 18.5 USD of
 child budgets inside 20 USD, delegated capabilities inside the workflow's,
 disjoint writes for the two parallel agents, step limits, review never
@@ -200,6 +205,10 @@ sent again without counting as an attempt, without holding its
 reservation and without a `BudgetExceeded`; a shared token bucket makes a
 second run wait, and refuses outright when its queue is full.
 
+`views.test.ts` checks a run's views (§15): status, evidence and cost
+under the program's hash; a reviewer's markup shown as plain text (G09);
+and a view the run has moved past, whose decision is refused (G10).
+
 `evidence.test.ts` checks the signed evidence records (§10.3): who
 produced each, what it ran against, its logs as artifacts, a valid
 signature by the control plane's key, a record changed after signing shown
@@ -253,6 +262,9 @@ These cases from §25 are covered:
 | G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed | `verifier` |
 | G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`) |
 | G08 | Another tenant's or run's artifact is refused like a missing one | `artifacts` |
+| G09 | A model's markup is shown as plain text in every view, never as a control | `views` |
+| G10 | A view the run has moved past says so, and a decision taken on it is refused | `views` |
+| G11 | A new network target shows in the semantic diff as a governance change | `views` (compiler) |
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
 | V14 | A throttled call waits and is sent again; no restart is counted and no BudgetExceeded is raised | `supervision`, `anthropic` |
 | V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |

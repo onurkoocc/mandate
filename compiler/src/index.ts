@@ -16,3 +16,5 @@ export { resolveNames } from "./resolve/resolve.js";
 export { calleePath, capFromCall, type CapVal } from "./check/caps.js";
 export { DECISION_POLICIES, STD_EFFECTS, STD_FNS } from "./std/std.js";
 export { requirementFor, sandboxRequirements, SANDBOX_REQUIREMENT_FORMAT, type SandboxRequirement } from "./target/sandbox.js";
+export { htmlEscape, mdEscape, toHtml, toMarkdown, type Block, type Cell, type Doc } from "./views/doc.js";
+export * from "./views/views.js";

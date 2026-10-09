@@ -12,6 +12,7 @@ means. The detailed rules are on the other pages:
 - [`checks.md`](checks.md): the static checks;
 - [`runtime.md`](runtime.md): execution;
 - [`sandbox.md`](sandbox.md): sandboxes;
+- [`views.md`](views.md): the views people review;
 - [`diagnostics.md`](diagnostics.md): diagnostic codes.
 
 *Must* marks a rule that every conforming implementation follows.
@@ -374,7 +375,7 @@ Every conforming implementation keeps these:
 | INV-07 | An unknown outcome is neither success nor failure until reconciled | `unknown_outcome` |
 | INV-08 | A budget covers the whole run | One ledger per run; atomic reservations |
 | INV-09 | Replay makes no model call and no external effect | Replay reads the record only |
-| INV-10 | Views of authority, effects and state come from the program and the record | Not yet: 0.1 generates no views (§9) |
+| INV-10 | Views of authority, effects and state come from the program and the record | Views are computed from the IR and the journal, and name the program hash and the revision they show |
 | INV-11 | An unsupported security requirement is never dropped silently | Sandbox probe; E0902 |
 | INV-12 | No clean end while an external effect is unresolved | `attention_required` |
 | INV-13 | `Inferred` and `Untrusted` values do not reach a critical effect or an instruction unverified | R1, R4, R5; runtime check of `Verified` parameters |
@@ -383,5 +384,4 @@ Every conforming implementation keeps these:
 ## 9. Not yet
 
 - **Not in the IR:** `map`, dynamic `spawn` and `await`.
-- **Not generated yet:** these targets: host code, MCP, A2A, AX and
-  views.
+- **Not generated yet:** these targets: host code, MCP, A2A and AX.

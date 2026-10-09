@@ -653,6 +653,7 @@ mandate cancel <run>
 mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
 mandate replay <run>
 mandate artifact <run> <blob:sha256:…>
+mandate show <run> [--format md|html|json]
 ```
 
 **Configuration.** Each call reads `mandate.runtime.json`, or the file
@@ -692,7 +693,8 @@ mandate artifact <run> <blob:sha256:…>
 - in both cases, the command to answer it at the current revision.
 
 It also shows the budget table, the evidence with whether its signature
-holds, and the actions.
+holds, and the actions. `mandate show` prints the run's views
+([`views.md`](views.md)), as Markdown, a self-contained HTML page, or JSON.
 
 **Decisions and revisions.** A decision names the revision the person saw.
 If the run has moved since, the decision is refused (`stale_revision`) and
