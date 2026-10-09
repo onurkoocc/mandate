@@ -42,10 +42,17 @@ describe("FixBug runs end to end", () => {
     expect(w.pr.prepares).toHaveLength(0);
 
     // A decision about some other subject is refused; the owner's approval is not.
-    await expect(w.rt.decideAction("fb1", { sender: "carol", messageId: "stale" }, { commandId: wait.command, digest: "sha256:other", approve: true, by: "carol" })).rejects.toMatchObject({
+    await expect(w.rt.decideAction("fb1", { sender: "carol", messageId: "stale" }, { commandId: wait.command, revision: waiting.revision, digest: "sha256:other", approve: true, by: "carol" })).rejects.toMatchObject({
       code: "decision_digest_mismatch",
     });
-    const done = await w.rt.decideAction("fb1", OWNER, { commandId: wait.command, digest: String(wait.request["subject_digest"]), approve: true, by: "carol" });
+    // So is an approval given on a view the run has since moved past (§16.1): here a new worker took the run over.
+    const moved = await w.rt.resume("fb1");
+    expect(moved.revision).toBeGreaterThan(waiting.revision);
+    const approve = (msg: typeof OWNER, revision: number) =>
+      w.rt.decideAction("fb1", msg, { commandId: wait.command, revision, digest: String(wait.request["subject_digest"]), approve: true, by: "carol" });
+    await expect(approve({ sender: "carol", messageId: "old-view" }, waiting.revision)).rejects.toMatchObject({ code: "stale_revision" });
+    expect(await w.rt.evidence("fb1")).not.toContainEqual(expect.objectContaining({ criterion: "owner_approved" }));
+    const done = await approve(OWNER, moved.revision);
     expect(done.state).toBe("succeeded");
     // Resuming after the approval took the earlier checks from the journal.
     expect(w.verifier.calls).toHaveLength(3);
@@ -102,14 +109,15 @@ describe("FixBug runs end to end", () => {
 
   it("when the code owner declines, an answer to the escalation cannot stand in for the evidence", async () => {
     const w = await fixbug();
-    const asked = waitOf((await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb3" })).waiting);
-    const declined = await w.rt.decideAction("fb3", OWNER, { commandId: asked.command, digest: String(asked.request["subject_digest"]), approve: false, by: "carol" });
+    const started = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb3" });
+    const asked = waitOf(started.waiting);
+    const declined = await w.rt.decideAction("fb3", OWNER, { commandId: asked.command, revision: started.revision, digest: String(asked.request["subject_digest"]), approve: false, by: "carol" });
     expect(declined.state).toBe("waiting");
     const escalation = waitOf(declined.waiting);
     expect(escalation.request).toEqual({ escalation: 'Open acceptance criteria: ["owner_approved"]' });
 
     // Whatever the person answers, the draft is still not Verified, so no PR is prepared (INV-13).
-    const run = await w.rt.submitInput("fb3", { sender: "dave", messageId: "m1" }, escalation.command, "ship it anyway");
+    const run = await w.rt.submitInput("fb3", { sender: "dave", messageId: "m1" }, { commandId: escalation.command, revision: declined.revision, value: "ship it anyway" });
     expect(run.state).toBe("failed");
     expect(run.error).toEqual({ $tag: "PolicyDenied", $args: [{ effect: "git.open_pr", parameter: 0, reason: "unverified_parameter" }] });
     expect(w.pr.prepares).toHaveLength(0);
