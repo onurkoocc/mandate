@@ -40,6 +40,7 @@ import {
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
+import type { RateLimiter } from "./ratelimit.js";
 import type { Faults } from "./faults.js";
 import { runAgentLoop, type LoopTask } from "./loop.js";
 import type { ActionRow, CommandRow, Journal } from "./journal.js";
@@ -70,7 +71,12 @@ interface CommandOptions {
   within?: string;
   /** Called before a command that is not in the journal yet is sent; it may refuse it with a fault (a deadline). */
   guard?: () => void;
+  /** The rate-limit buckets the command draws from (§8.6). */
+  buckets?: string[];
 }
+
+/** How often one command may be throttled before the Throttled fault reaches the program. */
+const MAX_THROTTLES = 20;
 
 export type AuthorizePolicy = { by: "policy" } | { by: "human"; role: string; deadlineMs?: number };
 
@@ -129,6 +135,8 @@ export interface InterpOptions {
   /** Signs every evidence record (§10.3); `trusted` decides which signatures count. */
   signer: EvidenceSigner;
   trusted: TrustedKeys;
+  /** Shared rate limits (§8.6); none when absent. */
+  limiter?: RateLimiter;
   /** Replay reads the journal only and never calls an adapter (R13). */
   replay: boolean;
   /**
@@ -140,6 +148,10 @@ export interface InterpOptions {
 }
 
 const RESTARTABLE = new Set(["Timeout", "SkillFailed"]);
+
+/** Faults a person may be asked about under escalate(human) (§8.7), and how often. */
+const ESCALATABLE = new Set(["Timeout", "SkillFailed", "PolicyDenied", "Rejected"]);
+const MAX_ESCALATIONS = 5;
 
 /** The runtime itself, as the producer of the evidence it checks without a verifier (static criteria). */
 const RUNTIME_HANDLER = "mandate-runtime@0.2";
@@ -553,28 +565,41 @@ export class Interpreter {
     const requestDigest = digest("request", { kind, request });
     const { journal, runId, fence, faults } = this.o;
     if (this.o.replay) return replayed(await journal.command(runId, id), id);
-    if (siblings?.failed) throw new SiblingStopped();
-    let bound: Cost | Budget | undefined;
-    if (typeof reserve === "function" || guard) {
-      // Measuring the bound may itself call out (a token count), and a guard (a deadline) applies only to what is
-      // still to be sent: both are skipped for a command the journal already has a result for.
+    // The throttle wait this worker already sat through, so it is not waited twice.
+    let waited = -1;
+    for (;;) {
+      if (siblings?.failed) throw new SiblingStopped();
       const earlier = await journal.command(runId, id);
       const settled = earlier && (earlier.state === "succeeded" || earlier.state === "failed");
+      let bound: Cost | Budget | undefined;
       if (!settled) {
+        // A command throttled before waits out its retry_after first (§8.6); the wait is not an attempt.
+        if (earlier?.state === "throttled" && earlier.throttled !== waited) await this.pause(`${id}/throttled@${earlier.throttled}`, retryAfter(earlier.error), "throttled");
+        // A guard (a deadline) applies only to what is still to be sent, and measuring the bound may call out
+        // (a token count): neither happens for a command the journal already has a result for.
         guard?.();
-        if (typeof reserve === "function") bound = await reserve();
+        bound = typeof reserve === "function" ? await reserve() : reserve;
       }
+      const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, bound, within);
+      if (prior) return replayed(prior, id);
+      faults.check("after_dispatch", { id, kind });
+      const limited = opts.buckets?.length && this.o.limiter ? await this.o.limiter.take(opts.buckets) : undefined;
+      const outcome = limited ?? (await call());
+      faults.check("before_record", { id, kind });
+      if ("error" in outcome && outcome.error.tag === "Throttled" && !queueFull(outcome.error)) {
+        // Not now, says a rate limit or the provider: release the reservation, wait, and send the same command again.
+        const n = await journal.throttle(runId, fence, id, outcome.error as unknown as Value);
+        if (n <= MAX_THROTTLES) {
+          await this.pause(`${id}/throttled@${n}`, retryAfter(outcome.error as unknown as Value), "throttled");
+          waited = n;
+          continue;
+        }
+      }
+      await journal.complete(runId, fence, id, outcome, within);
+      faults.check("after_record", { id, kind });
+      if ("ok" in outcome) return outcome.ok;
+      throw new Fault(outcome.error.tag, outcome.error.args ?? []);
     }
-    if (typeof reserve !== "function") bound = reserve;
-    const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, bound, within);
-    if (prior) return replayed(prior, id);
-    faults.check("after_dispatch", { id, kind });
-    const outcome = await call();
-    faults.check("before_record", { id, kind });
-    await journal.complete(runId, fence, id, outcome, within);
-    faults.check("after_record", { id, kind });
-    if ("ok" in outcome) return outcome.ok;
-    throw new Fault(outcome.error.tag, outcome.error.args ?? []);
   }
 
   /** A wait for a person. The journal holds the answer once it arrives. */
@@ -613,7 +638,7 @@ export class Interpreter {
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
     const tier = this.tierFor(e.using, path);
     const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
-    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), { siblings: ctx.siblings, label: "infer" });
+    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), { siblings: ctx.siblings, label: "infer", ...this.limits("infer", tier) });
   }
 
   /**
@@ -632,104 +657,151 @@ export class Interpreter {
     return all.length === 1 ? all[0] : undefined;
   }
 
+  /**
+   * `delegate A.s(args)` under its supervision strategy (§8.7):
+   *
+   *   restart(max, backoff)   Timeout or SkillFailed: the same operation again, as a new attempt, after a
+   *                           backoff with journaled jitter; at most `max` times
+   *   escalate(human)         Timeout, SkillFailed, PolicyDenied or Rejected: a person decides, answering
+   *                           "retry" (a new attempt) or anything else (the fault goes on); at most 5 times
+   *   degrade(to: F)          Timeout or SkillFailed: once, F does the same skill with the same arguments; F does
+   *                           the same job with no more authority (E0715)
+   *
+   * BudgetExceeded, Throttled and UnknownOutcome are never handled here: the run's budget handler, the rate
+   * limiter and reconciliation own them.
+   */
   private async delegate(e: Extract<Expr, { op: "delegate" }>, ctx: Ctx, path: string): Promise<Value> {
-    const agent = this.def(e.agent);
-    if (!agent || agent.kind !== "agent") throw new Violation("unknown_agent", `No agent '${e.agent}'.`);
-    const skill = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill]! : undefined;
-    if (!skill) throw new Violation("unknown_skill", `No skill '${e.agent}.${e.skill}'.`);
     const { pos } = await this.args(e.args, ctx, path);
-    const granted = this.grants(e.agent, e.caps ?? [], path);
-    const caps = granted.map((c) => (c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor }));
-    const budget = e.budget ?? skill.budget ?? agent.budget;
-    const sandbox = agent.remote ? undefined : requirementFor({ agent: e.agent, def: this.defHash(e.agent) }, granted, budget?.time?.ms ?? null);
     const sup = e.supervise;
-    const max = sup?.name === "restart" ? Number(constValue(sup.args?.find((a) => a.name === "max")?.value ?? { op: "int", value: 1 })) : 0;
-    const backoff = sup?.name === "restart" ? Number(constValue(sup.args?.find((a) => a.name === "backoff")?.value ?? { op: "duration", ms: 0 })) : 0;
+    const arg = (name: string): Expr | undefined => sup?.args?.find((a) => a.name === name)?.value;
+    const max = sup?.name === "restart" ? Number(constValue(arg("max") ?? { op: "int", value: 1 })) : 0;
+    const backoff = sup?.name === "restart" ? Number(constValue(arg("backoff") ?? { op: "duration", ms: 0 })) : 0;
+    const to = arg("to");
+    const fallback = sup?.name === "degrade" && to?.op === "var" ? to.name : undefined;
     // `timeout d` (§8.7, §9.1): each attempt must finish within d of its start. The start is journaled, so a resumed
     // worker keeps the deadline; a step not sent by then is refused, and a result that comes later is discarded.
     const timeoutMs = e.timeout ? Number(unwrap(await this.expr(e.timeout, ctx, `${path}/timeout`))) : undefined;
     for (let attempt = 0; ; attempt++) {
       const id = attempt ? `${path}#${attempt}` : path;
-      const request = { agent: e.agent, skill: e.skill, args: pos, caps: caps as unknown as Value, isolated: !!e.isolated };
-      const loop = this.o.adapters.loop;
       try {
-        const deadline = timeoutMs === undefined ? undefined : Number(await this.command(`${id}/started`, "time", {}, undefined, async () => ({ ok: this.o.adapters.clock.now() }))) + timeoutMs;
-        const timedOut = (late?: true): Fault => new Fault("Timeout", [{ delegate: `${e.agent}.${e.skill}`, after_ms: timeoutMs ?? 0, ...(late ? { late_result: true } : {}) }]);
-        const overdue = deadline === undefined ? undefined : (): void => {
-          if (this.o.adapters.clock.now() >= deadline) throw timedOut();
-        };
-        if (loop && sandbox && !skill.body) {
-          // A bodiless skill runs as an agent loop in this process (§8.2, K7). The delegation reserves the
-          // agent's budget less what its finished steps already spent, so a resumed loop is not charged twice.
-          const tiers = [...new Set(granted.filter((c) => c.ctor === "model.infer" && c.tier).map((c) => c.tier!))];
-          const task: LoopTask = {
-            id,
-            agent: e.agent,
-            skill: e.skill,
-            ...(agent.role !== undefined ? { role: agent.role } : {}),
-            params: skill.params,
-            args: pos,
-            returns: unwrapInferred(skill.returns),
-            grants: granted,
-            tier: tiers[0] ?? "",
-            strategy: agent.loop ?? "react",
-            progress: { ...PROGRESS_DEFAULTS, ...agent.progress },
-            ...(budget?.steps !== undefined ? { maxSteps: budget.steps } : {}),
-            sandbox,
-            program: this.o.program,
-          };
-          return await this.command(
-            id,
-            "delegate",
-            request,
-            async () => subtractCost(budget, await this.o.journal.childCost(this.o.runId, id)),
-            async () => {
-              if (tiers.length !== 1) {
-                return { error: { tag: "PolicyDenied", args: [{ reason: "model_tier", detail: `the agent loop needs exactly one model tier in its grant, not ${tiers.length}` }] }, cost: {} };
-              }
-              return runAgentLoop(task, {
-                step: (cid, kind, req, reserve, call, label) => this.command(cid, kind, req, reserve, call, { siblings: ctx.siblings, label, within: id, ...(overdue ? { guard: overdue } : {}) }),
-                chat: loop.chat,
-                sandbox: loop.sandbox,
-                stopped: (x) => x instanceof SiblingStopped,
-              });
-            },
-            { siblings: ctx.siblings, label: `${e.agent}.${e.skill}`, ...(overdue ? { guard: overdue } : {}) },
-          );
-        }
-        return await this.command(
-          id,
-          "delegate",
-          request,
-          budget,
-          async (): Promise<Outcome> => {
-            const out = await this.o.adapters.agents.run({
-              agent: e.agent,
-              skill: e.skill,
-              args: pos,
-              caps,
-              isolated: !!e.isolated,
-              attempt,
-              commandId: id,
-              ...(budget ? { budget } : {}),
-              ...(sandbox ? { sandbox } : {}),
-              ...(deadline !== undefined ? { deadline } : {}),
-            });
-            if (deadline === undefined || this.o.adapters.clock.now() <= deadline) return out;
-            // Past the deadline: what it spent is settled, the result is not used.
-            const t = timedOut(true);
-            return { error: { tag: t.tag, args: t.args }, ...(out.cost !== undefined ? { cost: out.cost } : {}), ...(out.meta !== undefined ? { meta: out.meta } : {}) };
-          },
-          { siblings: ctx.siblings, label: `${e.agent}.${e.skill}`, ...(overdue ? { guard: overdue } : {}) },
-        );
+        return await this.attempt(e.agent, e, pos, ctx, id, attempt, timeoutMs);
       } catch (f) {
-        // restart reruns the same operation with the same input; never on UnknownOutcome (§8.7).
-        if (!(f instanceof Fault) || !RESTARTABLE.has(f.tag) || attempt >= max) throw f;
-        // Exponential backoff with jitter; the jitter is journaled so replay waits the same (§8.7).
-        const jitter = await this.random(`${id}/jitter`);
-        await this.pause(`${id}/backoff`, Math.round(backoff * 2 ** attempt * (0.5 + jitter)), "restart_backoff");
+        if (!(f instanceof Fault)) throw f;
+        if (sup?.name === "restart" && RESTARTABLE.has(f.tag) && attempt < max) {
+          // restart reruns the same operation with the same input; never on UnknownOutcome (§8.7).
+          // Exponential backoff with jitter; the jitter is journaled so replay waits the same.
+          const jitter = await this.random(`${id}/jitter`);
+          await this.pause(`${id}/backoff`, Math.round(backoff * 2 ** attempt * (0.5 + jitter)), "restart_backoff");
+          continue;
+        }
+        if (fallback && RESTARTABLE.has(f.tag)) {
+          // degrade (§8.7): the fallback, once, with the same arguments; its own fault is the delegation's.
+          return await this.attempt(fallback, e, pos, ctx, `${path}~${fallback}`, 0, timeoutMs);
+        }
+        if (sup?.name === "escalate" && ESCALATABLE.has(f.tag) && attempt < MAX_ESCALATIONS) {
+          const role = arg("role");
+          const answer = await this.wait(`${id}/escalate`, "input", {
+            escalation: { delegate: `${e.agent}.${e.skill}`, fault: f.value(), attempt },
+            question: `${e.agent}.${e.skill} failed with ${show(f.value())}. Answer "retry" to run it again, or anything else to let the failure stand.`,
+            options: ["retry", "fail"],
+            ...(role?.op === "text" ? { role: role.value } : {}),
+          });
+          if (String(unwrap(answer)).trim().toLowerCase() === "retry") continue;
+        }
+        throw f;
       }
     }
+  }
+
+  /** One attempt of a delegation, by `agentName` (the called agent, or a degrade fallback), as command `id`. */
+  private async attempt(agentName: string, e: Extract<Expr, { op: "delegate" }>, pos: Value[], ctx: Ctx, id: string, attempt: number, timeoutMs: number | undefined): Promise<Value> {
+    const agent = this.def(agentName);
+    if (!agent || agent.kind !== "agent") throw new Violation("unknown_agent", `No agent '${agentName}'.`);
+    const skill = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill]! : undefined;
+    if (!skill) throw new Violation("unknown_skill", `No skill '${agentName}.${e.skill}'.`);
+    const granted = this.grants(agentName, e.caps ?? [], id);
+    const caps = granted.map((c) => (c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor }));
+    const budget = e.budget ?? skill.budget ?? agent.budget;
+    const sandbox = agent.remote ? undefined : requirementFor({ agent: agentName, def: this.defHash(agentName) }, granted, budget?.time?.ms ?? null);
+    const request = { agent: agentName, skill: e.skill, args: pos, caps: caps as unknown as Value, isolated: !!e.isolated };
+    const loop = this.o.adapters.loop;
+    const deadline = timeoutMs === undefined ? undefined : Number(await this.command(`${id}/started`, "time", {}, undefined, async () => ({ ok: this.o.adapters.clock.now() }))) + timeoutMs;
+    const timedOut = (late?: true): Fault => new Fault("Timeout", [{ delegate: `${agentName}.${e.skill}`, after_ms: timeoutMs ?? 0, ...(late ? { late_result: true } : {}) }]);
+    const overdue = deadline === undefined ? undefined : (): void => {
+      if (this.o.adapters.clock.now() >= deadline) throw timedOut();
+    };
+    const label = `${agentName}.${e.skill}`;
+    if (loop && sandbox && !skill.body) {
+      // A bodiless skill runs as an agent loop in this process (§8.2, K7). The delegation reserves the
+      // agent's budget less what its finished steps already spent, so a resumed loop is not charged twice.
+      const tiers = [...new Set(granted.filter((c) => c.ctor === "model.infer" && c.tier).map((c) => c.tier!))];
+      const task: LoopTask = {
+        id,
+        agent: agentName,
+        skill: e.skill,
+        ...(agent.role !== undefined ? { role: agent.role } : {}),
+        params: skill.params,
+        args: pos,
+        returns: unwrapInferred(skill.returns),
+        grants: granted,
+        tier: tiers[0] ?? "",
+        strategy: agent.loop ?? "react",
+        progress: { ...PROGRESS_DEFAULTS, ...agent.progress },
+        ...(budget?.steps !== undefined ? { maxSteps: budget.steps } : {}),
+        sandbox,
+        program: this.o.program,
+      };
+      return this.command(
+        id,
+        "delegate",
+        request,
+        async () => subtractCost(budget, await this.o.journal.childCost(this.o.runId, id)),
+        async () => {
+          if (tiers.length !== 1) {
+            return { error: { tag: "PolicyDenied", args: [{ reason: "model_tier", detail: `the agent loop needs exactly one model tier in its grant, not ${tiers.length}` }] }, cost: {} };
+          }
+          return runAgentLoop(task, {
+            step: (cid, kind, req, reserve, call, stepLabel) =>
+              this.command(cid, kind, req, reserve, call, { siblings: ctx.siblings, label: stepLabel, within: id, ...(overdue ? { guard: overdue } : {}), ...this.limits(kind, task.tier) }),
+            chat: loop.chat,
+            sandbox: loop.sandbox,
+            stopped: (x) => x instanceof SiblingStopped,
+          });
+        },
+        { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}) },
+      );
+    }
+    return this.command(
+      id,
+      "delegate",
+      request,
+      budget,
+      async (): Promise<Outcome> => {
+        const out = await this.o.adapters.agents.run({
+          agent: agentName,
+          skill: e.skill,
+          args: pos,
+          caps,
+          isolated: !!e.isolated,
+          attempt,
+          commandId: id,
+          ...(budget ? { budget } : {}),
+          ...(sandbox ? { sandbox } : {}),
+          ...(deadline !== undefined ? { deadline } : {}),
+        });
+        if (deadline === undefined || this.o.adapters.clock.now() <= deadline) return out;
+        // Past the deadline: what it spent is settled, the result is not used.
+        const t = timedOut(true);
+        return { error: { tag: t.tag, args: t.args }, ...(out.cost !== undefined ? { cost: out.cost } : {}), ...(out.meta !== undefined ? { meta: out.meta } : {}) };
+      },
+      { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}) },
+    );
+  }
+
+  /** The rate-limit buckets a command of `kind` draws from, as command options. */
+  private limits(kind: string, tier?: string): { buckets?: string[] } {
+    const keys = this.o.limiter?.keys(kind, tier) ?? [];
+    return keys.length ? { buckets: keys } : {};
   }
 
   private hashes?: Record<string, string>;
@@ -861,7 +933,7 @@ export class Interpreter {
             ...(res.cost ? { cost: res.cost } : {}),
           };
         },
-        { label: `${contract}.${name}` },
+        { label: `${contract}.${name}`, ...(method === "review" ? this.limits("review", typeof named["model"] === "string" ? named["model"] : undefined) : {}) },
       );
       passed = isObj(r) && r["passed"] === true;
       detail = isObj(r) ? (r["detail"] ?? null) : null;
@@ -1214,8 +1286,21 @@ function methodRank(v: Verifier): number {
   return m?.startsWith("test.") ? 1 : 2;
 }
 
+/** How long a Throttled fault asks to wait. */
+function retryAfter(fault: Value): number {
+  const a = isObj(fault) && Array.isArray(fault["args"]) && isObj(fault["args"][0] ?? null) ? (fault["args"][0] as Obj) : {};
+  const ms = Number(a["retry_after_ms"]);
+  return Number.isFinite(ms) && ms > 0 ? ms : 1000;
+}
+
+/** A Throttled refusal because too many calls already wait on the bucket: back pressure, not a wait (§8.6). */
+function queueFull(fault: { args?: Value[] }): boolean {
+  const a = fault.args?.[0];
+  return isObj(a ?? null) && (a as Obj)["queue_full"] === true;
+}
+
 function replayed(row: CommandRow | undefined, id: string): Value {
-  if (!row || row.state === "dispatched" || row.state === "waiting") throw new ReplayEnd(id, "no_result");
+  if (!row || row.state === "dispatched" || row.state === "waiting" || row.state === "throttled") throw new ReplayEnd(id, "no_result");
   if (row.payload_purged) throw new ReplayEnd(id, "payload_purged");
   if (row.state === "failed") {
     const err = row.error as { tag?: string; args?: Value[] } | null;

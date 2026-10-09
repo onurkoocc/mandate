@@ -472,6 +472,20 @@ the results, and is offered only `finish`.
     worker holds its lease;
   - `tick` resumes the run once the end has come. A worker that resumes it
     earlier waits again, for the same end.
+- **Escalate.** `supervise escalate(human)` (optionally `role: "…"`) asks a
+  person when the delegate fails with `Timeout`, `SkillFailed`,
+  `PolicyDenied` or `Rejected`. The run waits for input
+  (`<delegate>/escalate`) with the fault, the attempt and the options
+  `retry` and `fail`. The answer `retry` runs a new attempt; any other
+  answer lets the fault stand. A person may be asked at most 5 times.
+- **Degrade.** `supervise degrade(to: F)` hands the job once to the
+  fallback agent `F` on `Timeout` or `SkillFailed`: the same skill with the
+  same arguments, as the command `<delegate>~F`, under `F`'s own grant. `F`
+  does the same job with no more authority (E0715). Its fault, if any, is
+  the delegation's.
+- **Not handled by supervision.** `BudgetExceeded` goes to the run's
+  budget handler, `Throttled` to the rate limiter, and `UnknownOutcome` to
+  reconciliation.
 - **Branch results.** `par` branches start together, and their results are
   bound by branch name, never by completion order.
 - **`fail_fast`.** Under `fail_fast` (the default), the first fault stops
@@ -526,6 +540,39 @@ handlers, on an in-process database of its own:
 
 Swapping handlers is possible only in tests. In a real run, the runtime
 picks every handler (INV-03).
+
+## Rate limits and `Throttled` (§8.6, V14)
+
+A budget says how much in total; a rate limit says how much per unit of
+time, and they are kept apart (`runtime/src/ratelimit.ts`).
+
+- **Shared buckets.** Token buckets live in PostgreSQL (`rate_buckets`), so
+  every run and every worker draws from the same ones:
+  - `model`: every model call, meaning `infer`, an agent loop's turns and a
+    review;
+  - `model:<tier>`: model calls of one tier;
+  - `tool`: an agent loop's tool calls.
+
+  A bucket holds up to `capacity` tokens and refills at `perSecond`. A call
+  takes one token from each bucket that applies, or from none.
+- **Throttled.** A call is `Throttled({ retry_after_ms })` when a bucket is
+  empty, or when the provider says so (the Anthropic adapter maps 429 and
+  529, with `retry-after`). Then:
+  - it is not a `BudgetExceeded`;
+  - it is not an attempt a supervisor counts;
+  - its reservation is released (`command_throttled`), so nothing is held
+    while it waits;
+  - it waits `retry_after_ms`, on a durable timer when the runtime has
+    them, and is sent again under the same command id.
+
+  After 20 throttles the `Throttled` fault reaches the program.
+- **Back pressure.** At most `queue` calls (default 100) may wait on a
+  bucket. Past that, a call fails at once with
+  `Throttled({ …, queue_full: true })`. It is never queued silently.
+- **Configuration.** `rateLimits` in `mandate.runtime.json`, or
+  `RuntimeOptions.rateLimits`.
+
+Priority classes between buckets' waiters are not implemented.
 
 ## Run states
 
@@ -616,6 +663,7 @@ mandate artifact <run> <blob:sha256:…>
   "database": "pglite:.mandate/db",
   "artifacts": ".mandate/artifacts",
   "evidence": { "key": ".mandate/evidence.key" },
+  "rateLimits": { "model": { "capacity": 50, "perSecond": 1 } },
   "model": { "provider": "anthropic" },
   "sandbox": { "host": "mxc", "baseline": ["/usr/local"] },
   "github": { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },

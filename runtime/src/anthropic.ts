@@ -218,10 +218,20 @@ function usageValue(u: Usage): Value {
  * been billed, so its cost is unknown and its reservation stays until the
  * charge is settled (R16).
  */
+/** The provider's `retry-after` (seconds), or 30 seconds. */
+function retryAfterMs(headers: unknown): number {
+  const h = headers as { get?: (k: string) => string | null } | Record<string, string> | undefined;
+  const raw = h && typeof (h as { get?: unknown }).get === "function" ? (h as { get: (k: string) => string | null }).get("retry-after") : (h as Record<string, string> | undefined)?.["retry-after"];
+  const s = Number(raw);
+  return Number.isFinite(s) && s > 0 ? Math.ceil(s * 1000) : 30_000;
+}
+
 function failure(e: unknown): Outcome {
   if (e instanceof Anthropic.APIConnectionError) return { error: { tag: "Timeout", args: [e.message] }, cost: "unknown" };
   if (e instanceof Anthropic.APIError) {
-    const transient = e.status === 429 || (typeof e.status === "number" && e.status >= 500);
+    // Over quota or overloaded: not now (§8.6). The runtime waits retry-after and sends the same call again.
+    if (e.status === 429 || e.status === 529) return { error: { tag: "Throttled", args: [{ retry_after_ms: retryAfterMs(e.headers), status: e.status }] }, cost: {} };
+    const transient = typeof e.status === "number" && e.status >= 500;
     return { error: transient ? { tag: "Timeout", args: [`HTTP ${e.status}`] } : { tag: "Rejected", args: [`HTTP ${e.status}: ${e.message}`] }, cost: {} };
   }
   throw e;

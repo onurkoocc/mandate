@@ -672,15 +672,61 @@ class Checker implements TypeEnv {
     if (s.supervise?.name === "restart_all" && external) {
       this.report("E0710", "restart_all would restart branches that have external effects; children must use their own retry classes (§8.7).", `${path}/supervise`);
     }
-    if (s.supervise) this.supervise(s.supervise, `${path}/supervise`);
+    if (s.supervise) this.supervise(s.supervise, `${path}/supervise`, { kind: "par" });
     return out;
   }
 
-  private supervise(c: { name: string; args?: { name?: string; value: Expr }[] }, path: string): void {
+  /**
+   * Supervision strategies (§8.7). A `par` block takes fail_fast or
+   * restart_all; a delegation takes restart(max, backoff), escalate(human)
+   * or degrade(to: Fallback). A strategy the runtime does not know is an
+   * error, never ignored (E0714). A fallback must do the same job with no
+   * more authority: the same skill signature, capabilities inside the
+   * original agent's, and the ones the call hands over (E0715).
+   */
+  private supervise(
+    c: { name: string; args?: { name?: string; value: Expr }[] },
+    path: string,
+    site: { kind: "par" } | { kind: "delegate"; agent: string; skill: string; given: CapVal[] },
+  ): void {
+    const allowed = site.kind === "par" ? ["fail_fast", "restart_all"] : ["restart", "escalate", "degrade"];
+    if (!allowed.includes(c.name)) {
+      this.report("E0714", `'${c.name}' is not a supervision strategy for ${site.kind === "par" ? "a par block" : "a delegation"}; use ${allowed.join(", ")} (§8.7).`, path, { strategy: c.name, allowed });
+      return;
+    }
+    const args = c.args ?? [];
     if (c.name === "restart") {
-      const max = c.args?.find((a) => a.name === "max")?.value;
+      const max = args.find((a) => a.name === "max")?.value;
       if (max && max.op === "int" && max.value > MAX_RESTARTS) {
         this.report("E0713", `restart(max: ${max.value}) exceeds the limit of ${MAX_RESTARTS} retries (§8.7).`, path);
+      }
+    }
+    if (c.name === "escalate") {
+      const ok = args.length >= 1 && args[0]!.name === undefined && args[0]!.value.op === "var" && args[0]!.value.name === "human" && args.slice(1).every((a) => a.name === "role" && a.value.op === "text");
+      if (!ok) this.report("E0714", "escalate takes a person: escalate(human) or escalate(human, role: \"…\") (§8.7).", path);
+    }
+    if (c.name === "degrade" && site.kind === "delegate") {
+      const to = args.find((a) => a.name === "to")?.value;
+      const name = to?.op === "var" ? to.name : undefined;
+      const fallback = name ? this.def(name) : undefined;
+      const problems: string[] = [];
+      if (!name || !fallback || fallback.kind !== "agent") {
+        this.report("E0715", "degrade names its fallback agent: degrade(to: Agent) (§8.7).", path);
+        return;
+      }
+      const original = this.def(site.agent);
+      const want = original?.kind === "agent" ? original.skills[site.skill] : undefined;
+      const have = Object.hasOwn(fallback.skills, site.skill) ? fallback.skills[site.skill] : undefined;
+      if (!have) problems.push(`${name} has no skill ${site.skill}`);
+      else if (want && canonicalize({ params: want.params.map((p) => p.type), returns: want.returns } as unknown as Json) !== canonicalize({ params: have.params.map((p) => p.type), returns: have.returns } as unknown as Json)) {
+        problems.push(`${name}.${site.skill} has another signature than ${site.agent}.${site.skill}`);
+      }
+      const fallbackCaps = this.capList(fallback.caps, ptr("defs", name, "caps"));
+      const originalCaps = original?.kind === "agent" ? this.capList(original.caps, ptr("defs", site.agent, "caps")) : [];
+      for (const fc of fallbackCaps) if (!originalCaps.some((oc) => capCovers(oc, fc))) problems.push(`${name} holds ${showCap(fc)}, which ${site.agent} does not`);
+      for (const g of site.given) if (!fallbackCaps.some((fc) => capCovers(fc, g))) problems.push(`${name} does not hold ${showCap(g)}, which this call hands over`);
+      if (problems.length) {
+        this.report("E0715", `degrade to ${name} would not do the same job with no more authority: ${problems.join("; ")} (§8.7).`, path, { fallback: name, problems });
       }
     }
   }
@@ -996,8 +1042,8 @@ class Checker implements TypeEnv {
     const agentCaps = this.capList(agent.caps, ptr("defs", e.agent, "caps"));
     const inContext = (c: CapVal): boolean => !frame.avail || frame.avail.some((a) => capCovers(a, c));
     let effective = agentCaps.filter(inContext);
+    const given: CapVal[] = [];
     if (e.caps) {
-      const given: CapVal[] = [];
       e.caps.forEach((c, i) => {
         const cp = `${path}/caps/${i}`;
         const v = this.evalCap(c, cp, frame);
@@ -1049,7 +1095,7 @@ class Checker implements TypeEnv {
 
     // A delegation's timeout is a Duration (§8.7, §9.1); the runtime enforces it.
     if (e.timeout) this.problem(assignable(this.expr(e.timeout, frame, `${path}/timeout`).ty, named("Duration"), this), `${path}/timeout`);
-    if (e.supervise) this.supervise(e.supervise, `${path}/supervise`);
+    if (e.supervise) this.supervise(e.supervise, `${path}/supervise`, { kind: "delegate", agent: e.agent, skill: e.skill, given });
     const remote = !!agent.remote;
     frame.delegated.push({ caps: effective, path, external: remote });
     this.use(frame, { effect: "Delegate", path });

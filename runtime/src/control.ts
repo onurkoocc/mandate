@@ -8,6 +8,7 @@
 //     "database": "pglite:.mandate/db" | "postgresql://…",
 //     "artifacts": ".mandate/artifacts",                         // default
 //     "evidence": { "key": ".mandate/evidence.key", "trusted": ["keys/old.pem"] },   // default key; created if missing
+//     "rateLimits": { "model": { "capacity": 50, "perSecond": 1, "queue": 100 } },     // shared token buckets (§8.6)
 
 //     "model":    { "provider": "anthropic" },                  // CLAUDE_API_KEY, CLAUDE_WORKSPACE_ID
 //     "sandbox":  { "host": "mxc", "baseline": ["/usr/local"] },
@@ -22,6 +23,7 @@ import type { Adapters, ToolAdapter } from "./adapters.js";
 import { AnthropicModel } from "./anthropic.js";
 import { ArtifactStore, DirBlobs } from "./artifacts.js";
 import { EvidenceSigner } from "./evidence.js";
+import type { BucketConfig } from "./ratelimit.js";
 import type { RuntimeOptions } from "./runtime.js";
 import { openDb, type Db } from "./db.js";
 import { GitHubPullRequests } from "./github.js";
@@ -41,6 +43,8 @@ export interface RuntimeConfig {
    * (PEM files) whose evidence counts, e.g. a key that was rotated out.
    */
   evidence: { key: string; trusted?: string[] };
+  /** Token buckets every run on this database draws from (§8.6): `model`, `model:<tier>`, `tool`. */
+  rateLimits?: Record<string, BucketConfig>;
   model?: { provider: "anthropic" };
   sandbox?: { host: "mxc"; baseline?: string[]; path?: string[] };
   github?: { repo: string; base?: string; workdir: string };
@@ -48,7 +52,7 @@ export interface RuntimeConfig {
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "evidence", "model", "sandbox", "github", "verifier"],
+  "": ["database", "artifacts", "evidence", "rateLimits", "model", "sandbox", "github", "verifier"],
   evidence: ["key", "trusted"],
   model: ["provider"],
   sandbox: ["host", "baseline", "path"],
@@ -77,6 +81,12 @@ export function readConfig(file: string): RuntimeConfig {
   if (ev.key !== undefined && typeof ev.key !== "string") throw new Violation("bad_config", `${file}: "evidence.key" is a file`);
   if (ev.trusted !== undefined && (!Array.isArray(ev.trusted) || !ev.trusted.every((t) => typeof t === "string"))) throw new Violation("bad_config", `${file}: "evidence.trusted" is a list of files`);
   config.evidence = { key: at((ev.key as string | undefined) ?? ".mandate/evidence.key"), ...(ev.trusted ? { trusted: (ev.trusted as string[]).map(at) } : {}) };
+  for (const [k, b] of Object.entries((c["rateLimits"] ?? {}) as Record<string, Record<string, unknown>>)) {
+    const keys = Object.keys(b ?? {});
+    if (!/^(model|model:[a-z0-9_]+|tool)$/.test(k) || keys.some((x) => !["capacity", "perSecond", "queue"].includes(x)) || typeof b["capacity"] !== "number" || typeof b["perSecond"] !== "number") {
+      throw new Violation("bad_config", `${file}: rateLimits.${k} must be a bucket model, model:<tier> or tool with capacity, perSecond and an optional queue`);
+    }
+  }
   if (config.github) config.github.workdir = at(config.github.workdir);
   if (config.verifier) config.verifier.workdir = at(config.verifier.workdir);
   return config;
@@ -92,6 +102,7 @@ export function runtimeOptions(config: RuntimeConfig, db: Db): RuntimeOptions {
     artifacts: new ArtifactStore(db, new DirBlobs(config.artifacts)),
     signer: EvidenceSigner.loadOrCreate(config.evidence.key),
     ...(config.evidence.trusted ? { trustedKeys: config.evidence.trusted.map((f) => readFileSync(f, "utf8")) } : {}),
+    ...(config.rateLimits ? { rateLimits: config.rateLimits } : {}),
   };
 }
 

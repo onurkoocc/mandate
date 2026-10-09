@@ -8,6 +8,7 @@ import { canonicalize, capFromCall, check, domainHash, hashProgram, isLanguageVe
 import type { Adapters, Cost } from "./adapters.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
+import { RateLimiter, type BucketConfig } from "./ratelimit.js";
 import type { Db, Row } from "./db.js";
 import { Faults } from "./faults.js";
 import { Interpreter, ReplayEnd, type Policy } from "./interp.js";
@@ -107,6 +108,8 @@ export interface RuntimeOptions {
    * runtime needs this; without it, the worker sleeps through the wait.
    */
   durableTimers?: boolean;
+  /** Rate limits shared by every run on this database (§8.6), by bucket: `model`, `model:<tier>`, `tool`. */
+  rateLimits?: Record<string, BucketConfig>;
 }
 
 export class Runtime {
@@ -116,6 +119,7 @@ export class Runtime {
   readonly signer: EvidenceSigner;
   readonly trusted: TrustedKeys;
   readonly durableTimers: boolean;
+  readonly limiter: RateLimiter | undefined;
   private readonly packages = new Map<string, Package>();
 
   constructor(
@@ -131,6 +135,7 @@ export class Runtime {
     this.signer = options.signer ?? EvidenceSigner.generate();
     this.trusted = new TrustedKeys([this.signer.publicKey, ...(options.trustedKeys ?? [])]);
     this.durableTimers = options.durableTimers ?? false;
+    this.limiter = options.rateLimits && Object.keys(options.rateLimits).length ? new RateLimiter(db, options.rateLimits, () => adapters.clock.now()) : undefined;
   }
 
   // ── StartRun / resume ─────────────────────────────────────────────────
@@ -327,6 +332,7 @@ export class Runtime {
       trusted: this.trusted,
       replay,
       durableTimers: this.durableTimers,
+      ...(this.limiter ? { limiter: this.limiter } : {}),
     });
   }
 

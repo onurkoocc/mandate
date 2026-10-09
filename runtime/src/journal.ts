@@ -61,7 +61,7 @@ export interface BudgetReport {
   commands: Array<{ command: string; kind: string; label: string | null; state: string; reserved: Record<string, number>; open: string[]; cost: Cost | "unknown" | null }>;
 }
 
-export type CommandState = "dispatched" | "waiting" | "succeeded" | "failed";
+export type CommandState = "dispatched" | "waiting" | "throttled" | "succeeded" | "failed";
 
 export interface CommandRow {
   command_id: string;
@@ -72,6 +72,8 @@ export interface CommandRow {
   result: Value;
   error: Value;
   payload_purged: boolean;
+  /** How often the command was throttled (§8.6); while it waits to be sent again, its error is the Throttled fault. */
+  throttled: number;
 }
 
 export type ActionState = "prepared" | "dispatched" | "confirmed" | "rejected" | "unknown_outcome" | "cancelled";
@@ -295,7 +297,8 @@ export class Journal {
     await this.db.tx(async (tx) => {
       await this.lock(tx, runId, fence);
       const [row] = await tx.query<Row>("select state from commands where run_id = $1 and command_id = $2", [runId, commandId]);
-      if (!row || row["state"] !== "dispatched") throw new Violation("not_dispatched", `Command ${commandId} is not in flight.`);
+      // A command throttled too often is completed with its last Throttled fault.
+      if (!row || (row["state"] !== "dispatched" && row["state"] !== "throttled")) throw new Violation("not_dispatched", `Command ${commandId} is not in flight.`);
       const cost = outcome.cost;
       if (cost === "unknown") {
         await this.event(tx, runId, "charge_pending", { command: commandId });
@@ -352,6 +355,26 @@ export class Journal {
       await this.settle(tx, runId, commandId, costDims(cost));
       await tx.query("update commands set cost = $3 where run_id = $1 and command_id = $2", [runId, commandId, json(cost as unknown as Value)]);
       await this.event(tx, runId, "charge_settled", { command: commandId, cost: cost as unknown as Value });
+    });
+  }
+
+  /**
+   * A command was throttled (§8.6): a rate limit or the provider's quota said
+   * not now. Its reservation is released, so nothing is held while it waits,
+   * and it waits to be sent again under the same id. Returns how often it has
+   * been throttled. Only the lease holder may write (R06).
+   */
+  async throttle(runId: string, fence: number, commandId: string, fault: Value): Promise<number> {
+    return this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      await tx.query("update reservations set state = 'released' where run_id = $1 and command_id = $2 and state = 'active'", [runId, commandId]);
+      const [row] = await tx.query<Row>(
+        "update commands set state = 'throttled', error = $3, throttled = throttled + 1 where run_id = $1 and command_id = $2 and state = 'dispatched' returning throttled",
+        [runId, commandId, json(fault)],
+      );
+      if (!row) throw new Violation("not_dispatched", `Command ${commandId} is not in flight.`);
+      await this.event(tx, runId, "command_throttled", { command: commandId, fault, times: num(row["throttled"]) });
+      return num(row["throttled"]);
     });
   }
 
@@ -604,6 +627,7 @@ function toCommand(r: Row): CommandRow {
     result: (r["result"] ?? null) as Value,
     error: (r["error"] ?? null) as Value,
     payload_purged: Boolean(r["payload_purged"]),
+    throttled: num(r["throttled"]),
   };
 }
 

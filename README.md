@@ -193,6 +193,13 @@ FixBug's own tests (§6.4) against recorded answers, an in-memory working
 copy, a fake git and an automatic code owner, and fails a test whose
 handler is unknown.
 
+`supervision.test.ts` checks `escalate(human)` (a person answers `retry`
+or lets the failure stand) and `degrade(to: F)` (the job handed once to a
+narrower fallback), and `Throttled` (V14): a throttled call waits and is
+sent again without counting as an attempt, without holding its
+reservation and without a `BudgetExceeded`; a shared token bucket makes a
+second run wait, and refuses outright when its queue is full.
+
 `evidence.test.ts` checks the signed evidence records (§10.3): who
 produced each, what it ran against, its logs as artifacts, a valid
 signature by the control plane's key, a record changed after signing shown
@@ -247,6 +254,7 @@ These cases from §25 are covered:
 | G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`) |
 | G08 | Another tenant's or run's artifact is refused like a missing one | `artifacts` |
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
+| V14 | A throttled call waits and is sent again; no restart is counted and no BudgetExceeded is raised | `supervision`, `anthropic` |
 | V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |
 
 R11 and R12 are about `map`, which the 0.1 IR does not have yet; `budget`

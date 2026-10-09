@@ -151,3 +151,14 @@ warning.
 `restart_all` cannot restart branches with external effects (E0710).
 `restart(max: n)` allows at most 5 retries (E0713). `spawn` is not
 available in 0.1 (E0711).
+
+A `par` block may be supervised by `fail_fast` or `restart_all`; a
+delegation by `restart(max, backoff)`, `escalate(human)` (optionally with
+`role: "…"`) or `degrade(to: F)`. Any other strategy is refused (E0714).
+A fallback `F` must do the same job with no more authority (E0715):
+
+- `F` has the same skill, with the same parameter and result types;
+- every capability of `F` lies inside one of the original agent's;
+- `F` holds what the call hands over with `with caps`.
+
+A delegation's `timeout` must be a `Duration`.

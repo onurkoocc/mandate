@@ -2,6 +2,7 @@
 export * from "./adapters.js";
 export * from "./artifacts.js";
 export * from "./evidence.js";
+export { RateLimiter, type BucketConfig } from "./ratelimit.js";
 export { openDb, SCHEMA, type Db, type Tx } from "./db.js";
 export { Faults, type FaultPoint } from "./faults.js";
 export { Interpreter, ReplayEnd, type AuthorizePolicy, type Policy } from "./interp.js";

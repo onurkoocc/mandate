@@ -125,6 +125,24 @@ describe("infer through the Anthropic adapter", () => {
     expect((await w2.rt.budgetReport("a4")).dimensions.find((d) => d.dimension === "spend:USD")).toMatchObject({ settled: 0, reserved: 240_600 });
   });
 
+  it("waits out the provider's quota and sends the same call again: Throttled, not a Timeout (§8.6, V14)", async () => {
+    const Sdk = (await import("@anthropic-ai/sdk")).default;
+    let calls = 0;
+    const client = new FakeClient(() => {
+      if (++calls === 1) throw new Sdk.RateLimitError(429, { type: "error", error: { type: "rate_limit_error", message: "slow down" } }, "slow down", new Headers({ "retry-after": "7" }));
+      return message('{"capital":"Ankara"}');
+    });
+    const w = await world(ASK_CAPITAL, { lock: LOCK, realModel: new AnthropicModel({ lock: LOCK, program, client }) });
+    const t0 = w.clock.now();
+    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Ask", input: { country: "Turkey" }, runId: "a5" });
+    expect(run.state).toBe("succeeded");
+    expect(client.created).toHaveLength(2);
+    expect(w.clock.now() - t0).toBe(7_000);
+    const throttled = (await w.rt.journal.events("a5")).filter((e) => e.type === "command_throttled");
+    expect(throttled).toHaveLength(1);
+    expect(throttled[0]!.data).toMatchObject({ fault: { tag: "Throttled", args: [{ retry_after_ms: 7_000, status: 429 }] } });
+  });
+
   it("refuses to run without models in the lock", () => {
     expect(() => new AnthropicModel({ lock: { modules: {} }, program, client: new FakeClient(() => message("{}")) })).toThrow(expect.objectContaining({ code: "unlocked_model_tier" }));
   });

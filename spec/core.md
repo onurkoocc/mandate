@@ -220,6 +220,7 @@ Expected failures are values that a program can match:
 
 - `Timeout`
 - `BudgetExceeded`
+- `Throttled(retry_after)`
 - `SkillFailed(…)`
 - `Rejected(…)`
 - `PolicyDenied(…)`
@@ -231,6 +232,8 @@ program: the run stops for a person (`attention_required`).
 | Strategy | Where | Allowed on |
 |---|---|---|
 | `restart(max: n ≤ 5, backoff: d)` | `delegate` | `Timeout` and `SkillFailed`; the same input again, exponential backoff with recorded jitter |
+| `escalate(human)` | `delegate` | `Timeout`, `SkillFailed`, `PolicyDenied`, `Rejected`; a person answers `retry` or lets the fault stand |
+| `degrade(to: F)` | `delegate` | `Timeout` and `SkillFailed`; once, agent F with the same skill, signature and no more authority |
 | `fail_fast` (default) | `par` | The first fault stops the other branches before their next dispatch; the block still waits for work already in flight |
 | `restart_all` | `par` | Only when no branch has external effects |
 | `reconcile` | `on error(UnknownOutcome)` | The only way to handle an unknown outcome |
@@ -242,6 +245,10 @@ program: the run stops for a person (`attention_required`).
   tokens; `par` takes the longest time; `if` and `switch` take the larger
   branch; `loop` multiplies by `max_iter`. Upper bounds are used, never
   averages.
+- **Rate limits.** Shared token buckets limit model and tool calls per
+  unit of time. An empty bucket, or a provider's quota, makes a call
+  `Throttled`: it waits and is sent again, without counting as an attempt
+  or holding its reservation.
 - **Run time.** Every command reserves its upper-bound cost when it is
   dispatched, atomically with the dispatch record. It is refused when
   `limit − settled − active reservations` cannot cover it. A run's limits
@@ -376,8 +383,5 @@ Every conforming implementation keeps these:
 ## 9. Not yet
 
 - **Not in the IR:** `map`, dynamic `spawn` and `await`.
-- **Agent loops:** these strategies are not implemented yet:
-  - `degrade` and `escalate` as supervision strategies;
-  - `Throttled` and shared rate limits.
 - **Not generated yet:** these targets: host code, MCP, A2A, AX and
   views.

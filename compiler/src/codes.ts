@@ -200,6 +200,14 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Too many restarts",
     explain: "restart(max: n) asks for more than 5 retries.",
   },
+  "MDT-E0714": {
+    title: "Unknown supervision strategy",
+    explain: "A supervise clause names a strategy the runtime does not run, or one that does not fit where it is: a par block takes fail_fast or restart_all; a delegation takes restart(max, backoff), escalate(human) or degrade(to: Agent). An unknown strategy is refused, never ignored (§8.7).",
+  },
+  "MDT-E0715": {
+    title: "Fallback is not equivalent",
+    explain: "degrade(to: F) must name an agent that does the same job with no more authority: F has the same skill with the same parameter and result types, holds no capability the original agent lacks, and holds what the call hands over with `with caps` (§8.7).",
+  },
   "MDT-E0902": {
     title: "Sandbox requirement cannot be enforced",
     explain: "The sandbox adapter probed the host and it cannot enforce part of an agent's sandbox requirement: a backend, a path, host or command allow-list, a timeout, or a scope that is not statically known. The run refuses to start the agent (unsupported_sandbox_profile) instead of running it with less isolation (INV-11, G05).",

@@ -72,6 +72,8 @@ Warnings (`W…`) never make a check fail.
 | MDT-E0711 | Dynamic spawn | V05 | Appendix B |
 | MDT-E0712 | UnknownOutcome restarted | V06 | Appendix B |
 | MDT-E0713 | Too many restarts | — | assigned |
+| MDT-E0714 | Unknown supervision strategy | — | assigned |
+| MDT-E0715 | Fallback is not equivalent | — | assigned |
 
 The runtime checks E0406 (commit without a matching authorization) and
 E0407 (an authorization consumed twice) at commit, and S09 (an unlocked
