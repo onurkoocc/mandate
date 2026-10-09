@@ -167,7 +167,9 @@ describe.runIf(REAL)("two agents on two components in real sandboxes (B3)", () =
       const run = await rt.startRun({ pkg: buildPackage(program, lockFor(modules), modules), workflow: "Change", input: { task: "add get_shipment" }, runId: "b3real" });
       expect(run.state, JSON.stringify(run.error ?? run.attention)).toBe("succeeded");
 
-      expect(readFileSync(join(mcpRoot, "src/tools.ts"), "utf8")).toBe("export const tools = ['get_shipment'];\n");
+      // What each tool call answered, for a failure's message.
+      const results = JSON.stringify(chat.calls.flatMap((c) => c.messages).flatMap((m) => ((m as { content?: unknown }).content as Array<Record<string, unknown>> | undefined) ?? []).filter((b) => b["type"] === "tool_result").map((b) => [b["tool_use_id"], b["content"]]));
+      expect(readFileSync(join(mcpRoot, "src/tools.ts"), "utf8"), results).toBe("export const tools = ['get_shipment'];\n");
       expect(readFileSync(join(coreRoot, "src/Api.java"), "utf8")).toBe("class Api { int v; }\n");
       const m3 = chat.calls.flatMap((c) => c.messages).flatMap((m) => ((m as { content?: unknown }).content as Array<Record<string, unknown>> | undefined) ?? []).find((b) => b["tool_use_id"] === "m3");
       expect(String(m3?.["content"])).toMatch(/outside what you may write/);
