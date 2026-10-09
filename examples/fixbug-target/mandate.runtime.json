@@ -1,0 +1,13 @@
+{
+  "database": "pglite:.mandate/db",
+  "model": { "provider": "anthropic" },
+  "sandbox": { "host": "mxc", "baseline": ["/usr/local"] },
+  "github": { "repo": "onurkoocc/mandate-fixbug-target", "base": "main", "workdir": "/work/repo" },
+  "verifier": {
+    "workdir": "/work/repo",
+    "base": "seed",
+    "suites": { "unit": "test/**/*.test.ts", "integration": "acceptance/**/*.test.ts" },
+    "command": ["node", "--test"],
+    "timeoutMs": 120000
+  }
+}

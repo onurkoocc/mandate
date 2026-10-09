@@ -433,6 +433,68 @@ points:
 - after commit;
 - after the adapter returned.
 
+## Control CLI
+
+A person runs a program, and answers it, from a terminal (BACKLOG K19). The
+commands are in the runtime (`@mandate/runtime/cli`) and are reached
+through the compiler's `mandate` command:
+
+```sh
+mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD]
+mandate status <run> [--json]
+mandate approve <run> --revision N --by NAME
+mandate decline <run> --revision N --by NAME
+mandate answer <run> --revision N --by NAME <text>
+mandate cancel <run>
+mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
+mandate replay <run>
+```
+
+**Configuration.** Each call reads `mandate.runtime.json`, or the file
+`--config` names. It holds the database and the adapters:
+
+```json
+{
+  "database": "pglite:.mandate/db",
+  "model": { "provider": "anthropic" },
+  "sandbox": { "host": "mxc", "baseline": ["/usr/local"] },
+  "github": { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },
+  "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"] }
+}
+```
+
+- **Database.** `pglite:<dir>` keeps the database in a directory, so a run
+  outlives each call; `postgresql://…` uses a server.
+- **Secrets.** They come only from the environment: `CLAUDE_API_KEY` (and
+  `CLAUDE_WORKSPACE_ID` for a key that is not scoped to a workspace), and
+  `MANDATE_GITHUB_TOKEN`.
+- **Missing adapters.** An adapter the configuration leaves out is refused
+  when a run reaches it, and never simulated.
+- **Strict reading.** Unknown fields in the file are an error.
+
+**`status`.** It shows what the run waits for:
+
+- for an approval: the contract, criterion, role, subject and digest;
+- for an answer: the question;
+- in both cases, the command to answer it at the current revision.
+
+It also shows the budget table, the evidence and the actions.
+
+**Decisions and revisions.** A decision names the revision the person saw.
+If the run has moved since, the decision is refused (`stale_revision`) and
+nothing is recorded. What a person approves is bound to the digest that
+`status` showed.
+
+`examples/fixbug-target/` holds FixBug bound to the Gate 3 test repository,
+with its lock, configuration and input. `runtime/test/gate3.test.ts`
+rehearses the acceptance run with a scripted model, on Linux with
+Bubblewrap:
+
+- every agent and every test runs in a real sandbox;
+- red-then-green fails at the base commit and passes after the fix;
+- the code owner approves;
+- one pull request is opened.
+
 ## Temporal scheduling (§16.1)
 
 Temporal's history holds only scheduling. There is no distributed

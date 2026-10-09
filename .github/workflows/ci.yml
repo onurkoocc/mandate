@@ -78,8 +78,10 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           bwrap --version
       - run: npm ci
-      - name: Sandbox enforcement on Bubblewrap (G05, G07)
+      - name: Make /work writable for the Gate 3 rehearsal
+        run: sudo mkdir -p /work && sudo chown "$(id -u):$(id -g)" /work
+      - name: Sandbox enforcement on Bubblewrap (G05, G07) and the Gate 3 rehearsal
         working-directory: runtime
         env:
           MANDATE_MXC: "1"
-        run: npx vitest run test/mxc.test.ts
+        run: npx vitest run test/mxc.test.ts test/gate3.test.ts
