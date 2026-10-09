@@ -40,6 +40,9 @@ export const CAP_CTORS: Record<string, CapCtor> = {
   exec: { effect: "Exec", write: false, scope: "commands" },
   "git.pr": { effect: "git.*", write: true, scope: "positional" },
   "money.spend": { effect: "Spend", write: false, scope: "none" },
+  // Effects on an environment (design doc 9 §5.3, §9 L4), scoped by environment name.
+  "env.deploy": { effect: "deploy", write: true, scope: "positional" },
+  "env.migrate": { effect: "migrate", write: true, scope: "positional" },
 };
 
 /** Default highest data class a model capability may receive when it does not say (§5.5). */
@@ -64,6 +67,9 @@ export const STD_EFFECTS: Record<string, StdEffect> = {
   "git.comment": { params: [UNKNOWN, t("Text")], returns: UNKNOWN, critical: true, cap: "git.pr" },
   "git.merge": { params: [t("Verified", UNKNOWN)], returns: UNKNOWN, critical: true, irreversible: true, cap: "git.pr" },
   "money.spend": { params: [t("Money")], returns: t("Receipt", UNKNOWN), critical: true, cap: "money.spend" },
+  // A release of a component's verified change into an environment, and a schema migration there (doc 9 §9, L4).
+  deploy: { params: [t("Verified", UNKNOWN), UNKNOWN], returns: t("Receipt", UNKNOWN), critical: true, irreversible: true, cap: "env.deploy" },
+  migrate: { params: [t("Verified", UNKNOWN), UNKNOWN], returns: t("Receipt", UNKNOWN), critical: true, irreversible: true, cap: "env.migrate" },
 };
 
 export interface StdFn {

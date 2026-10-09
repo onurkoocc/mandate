@@ -7,7 +7,7 @@
 
 import { diag, hasErrors, type Diagnostic } from "../diag.js";
 import { hashProgram } from "../hash.js";
-import type { Budget, Def, Program } from "../ir/types.js";
+import { SYSTEM_KINDS, type Budget, type Def, type Program } from "../ir/types.js";
 import { validateIr } from "../ir/validate.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
@@ -20,7 +20,7 @@ export interface PatchOp {
 }
 
 export interface GovernanceChange {
-  kind: "capability_added" | "budget_increased" | "criterion_removed" | "irreversible_added";
+  kind: "capability_added" | "budget_increased" | "criterion_removed" | "irreversible_added" | "system_model_changed";
   path: string;
   detail: string;
 }
@@ -150,6 +150,17 @@ function governance(before: Program, after: Program): GovernanceChange[] {
     if (d.kind === "effect" && d.irreversible && !(prev && prev.kind === "effect" && prev.irreversible)) {
       out.push({ kind: "irreversible_added", path: base, detail: `effect '${name}' is irreversible` });
     }
+  }
+  // Components, interfaces and environments are the institution's model of its system: adding, changing or
+  // removing one is a governance change (design doc 9 §1, §5.3), whatever the program does with it.
+  for (const name of [...new Set([...Object.keys(before.defs), ...Object.keys(after.defs)])].sort()) {
+    const prev = Object.hasOwn(before.defs, name) ? before.defs[name] : undefined;
+    const now = Object.hasOwn(after.defs, name) ? after.defs[name] : undefined;
+    const sys = (d: Def | undefined): boolean => !!d && (SYSTEM_KINDS as readonly string[]).includes(d.kind);
+    if (!sys(prev) && !sys(now)) continue;
+    if (json(prev ?? null) === json(now ?? null)) continue;
+    const what = (now ?? prev)!.kind;
+    out.push({ kind: "system_model_changed", path: `/defs/${name}`, detail: `${what} '${name}' ${!prev ? "added" : !now ? "removed" : "changed"}` });
   }
   for (const [name, prev] of Object.entries(before.defs)) {
     if (prev.kind !== "contract") continue;

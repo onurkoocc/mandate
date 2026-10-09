@@ -1,6 +1,7 @@
 // Public API of the Mandate 0.1 reference compiler.
-export { check, load, kindOf, type CheckOptions, type CheckResult, type LoadResult, type SourceKind } from "./check.js";
-export { LOCK_FORMAT, lockChecks, lockSchema, modelTiers, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
+export { check, load, loadModules, kindOf, type CheckOptions, type CheckResult, type LoadResult, type ModuleSource, type SourceKind } from "./check.js";
+export { link, linkedProgram, references, type Linked, type Modules } from "./modules.js";
+export { LOCK_FORMAT, lockChecks, moduleLockChecks, lockSchema, modelTiers, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
 export { CODES } from "./codes.js";
 export { diag, formatDiagnostic, hasErrors, type Diagnostic, type Repair, type Span } from "./diag.js";
 export { domainHash, hashProgram, type HashDomain, type ProgramHashes } from "./hash.js";
@@ -13,7 +14,7 @@ export { parseMdt, RESERVED } from "./parse/parser.js";
 export { applyPatch, type GovernanceChange, type PatchOp, type PatchResult } from "./patch/patch.js";
 export { printProgram } from "./print/printer.js";
 export { resolveNames } from "./resolve/resolve.js";
-export { calleePath, capFromCall, type CapVal } from "./check/caps.js";
+export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, within, type CapResult, type CapVal } from "./check/caps.js";
 export { DECISION_POLICIES, STD_EFFECTS, STD_FNS } from "./std/std.js";
 export { denialDiagnostics, requirementFor, sandboxRequirements, SANDBOX_DENIALS_FORMAT, SANDBOX_REQUIREMENT_FORMAT, type DenialReport, type SandboxRequirement } from "./target/sandbox.js";
 export { htmlEscape, mdEscape, toHtml, toMarkdown, type Block, type Cell, type Doc } from "./views/doc.js";

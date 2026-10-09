@@ -23,7 +23,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { check, kindOf, parseStrictJson, toHtml, toMarkdown, type Lock, type Program } from "@mandate/compiler";
+import { check, kindOf, linkedProgram, loadModules, parseStrictJson, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
 import type { Cost } from "./adapters.js";
 import { adaptersFor, connect, readConfig, runtimeOptions, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { EvidenceSigner } from "./evidence.js";
@@ -38,6 +38,8 @@ import { isObj, show, type Obj, type Value } from "./values.js";
 interface Args {
   positional: string[];
   flags: Record<string, string | true>;
+  /** `--module FILE`, repeatable: modules the program imports, such as a system model. */
+  modules: string[];
 }
 
 const VALUED = new Set(["--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format"]);
@@ -45,22 +47,27 @@ const VALUED = new Set(["--priority", "--config", "--workflow", "--input", "--ru
 function parse(argv: string[]): Args {
   const positional: string[] = [];
   const flags: Record<string, string | true> = {};
+  const modules: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
-    if (!a.startsWith("--")) positional.push(a);
+    if (a === "--module") {
+      const v = argv[++i];
+      if (v === undefined) throw new Usage("--module needs a file");
+      modules.push(v);
+    } else if (!a.startsWith("--")) positional.push(a);
     else if (VALUED.has(a)) {
       const v = argv[++i];
       if (v === undefined) throw new Usage(`${a} needs a value`);
       flags[a] = v;
     } else flags[a] = true;
   }
-  return { positional, flags };
+  return { positional, flags, modules };
 }
 
 class Usage extends Error {}
 
 const USAGE = `usage:
-  mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M] [--lock FILE] [--priority high|normal]
+  mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M] [--lock FILE] [--module FILE]… [--priority high|normal]
   mandate status <run> [--json]
   mandate approve <run> --revision N --by NAME
   mandate decline <run> --revision N --by NAME
@@ -101,10 +108,10 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     if (cmd === "run") {
       const file = a.positional[0] ?? fail("run needs a program file");
       const workflow = str(a, "--workflow");
-      const { program, lock } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined);
-      const rt = new Runtime(db, adaptersFor(config, program, lock, env), undefined, undefined, runtimeOptions(config, db));
+      const { program, lock, modules } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined, a.modules);
+      const rt = new Runtime(db, adaptersFor(config, linkedProgram(program, modules), lock, env), undefined, undefined, runtimeOptions(config, db));
       const run = await rt.startRun({
-        pkg: buildPackage(program, lock),
+        pkg: buildPackage(program, lock, modules),
         workflow,
         input: input(str(a, "--input")),
         ...(typeof a.flags["--run-id"] === "string" ? { runId: a.flags["--run-id"] } : {}),
@@ -246,7 +253,7 @@ function input(text: string): Obj {
 }
 
 /** The program, checked, and its lock: --lock, or mandate.lock.json next to it. */
-function load(file: string, lockFile: string | undefined): { program: Program; lock: Lock } {
+function load(file: string, lockFile: string | undefined, moduleFiles: string[] = []): { program: Program; lock: Lock; modules: Modules } {
   const lockPath = lockFile ?? join(dirname(file), "mandate.lock.json");
   let lock: Lock | undefined;
   if (existsSync(lockPath)) {
@@ -254,16 +261,18 @@ function load(file: string, lockFile: string | undefined): { program: Program; l
     if (!parsed.ok) throw new Violation("malformed_lock", `${lockPath}: ${parsed.diagnostics.map((d) => d.message).join("; ")}`);
     lock = parsed.value.value as unknown as Lock;
   }
-  const r = check(readFileSync(file, "utf8"), kindOf(file), lock ? { lock } : {});
+  const { modules, problems } = loadModules(moduleFiles.map((f) => ({ file: f, text: readFileSync(f, "utf8"), kind: kindOf(f) })));
+  if (problems.length) throw new Violation("load_verification_failed", problems.flatMap((p) => p.diagnostics.filter((d) => d.severity === "error").map((d) => `${p.file}: ${d.code} ${d.message}`)).join("\n"));
+  const r = check(readFileSync(file, "utf8"), kindOf(file), { modules, ...(lock ? { lock } : {}) });
   if (!r.ok) throw new Violation("load_verification_failed", r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`).join("\n"));
   const { lock: _format, ...pinned } = lock ?? { modules: {} };
-  return { program: r.program!, lock: pinned };
+  return { program: r.program!, lock: pinned, modules };
 }
 
 async function runtimeFor(db: Db, config: RuntimeConfig, runId: string, env: NodeJS.ProcessEnv): Promise<Runtime> {
-  const [row] = await db.query<{ program: Program; lock: Lock }>("select p.program, p.lock from runs r join packages p on p.package_hash = r.package_hash where r.run_id = $1", [runId]);
+  const [row] = await db.query<{ program: Program; lock: Lock; modules: Modules | null }>("select p.program, p.lock, p.modules from runs r join packages p on p.package_hash = r.package_hash where r.run_id = $1", [runId]);
   if (!row) throw new Violation("unknown_run", `No run ${runId}.`);
-  return new Runtime(db, adaptersFor(config, row.program, row.lock, env), undefined, undefined, runtimeOptions(config, db));
+  return new Runtime(db, adaptersFor(config, linkedProgram(row.program, row.modules ?? {}), row.lock, env), undefined, undefined, runtimeOptions(config, db));
 }
 
 function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {

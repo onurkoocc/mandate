@@ -14,6 +14,7 @@ means. The detailed rules are on the other pages:
 - [`sandbox.md`](sandbox.md): sandboxes;
 - [`views.md`](views.md): the views people review;
 - [`mcp.md`](mcp.md): the compiler as an MCP server for agents;
+- [`system.md`](system.md): existing systems: the system model, change sets, boundary evidence, reads and run modes;
 - [`diagnostics.md`](diagnostics.md): diagnostic codes.
 
 *Must* marks a rule that every conforming implementation follows.
@@ -30,9 +31,9 @@ A program is one module: a canonical JSON IR document, closed by
 
 - The IR is the source of truth. The `.mdt` text form is a projection:
   text lowers into IR and IR prints back as text, and both keep the hash.
-- `language` is `mandate/0.1` or `mandate/0.2`; 0.2 adds an agent's
-  `loop` and `progress` (§5). In text, a 0.2 file starts with
-  `mandate @ 0.2`.
+- `language` is `mandate/0.1`, `0.2` or `0.3`; 0.2 adds an agent's
+  `loop` and `progress` (§5), 0.3 the system model and change sets (§10).
+  In text, a file names its version first: `mandate @ 0.3`.
 - A reader must reject, not repair, any of these: another `language`, an
   unknown field, a duplicate key, a non-integer or out-of-range number, a
   lone surrogate, or input over the limits (1 MiB of source, nesting 64,
@@ -60,6 +61,9 @@ Definition kinds:
 | `agent` | A role, capabilities, a budget and skills; or a remote A2A binding |
 | `workflow` | An entry point: parameters, capabilities, budget, body, event handlers |
 | `contract` | Acceptance criteria over its parameters |
+| `component` | 0.3: a deployable unit of a system: repository, root, owner, build and test commands, interfaces it provides and consumes |
+| `interface` | 0.3: a contract between components (`openapi`, `mcp_tools`, `oauth`, `event`, `db_schema`) and its spec file |
+| `environment` | 0.3: an environment: its data class, declared reads, and the weakest authorization each effect accepts there |
 
 ## 2. Types
 
@@ -161,6 +165,10 @@ passed explicitly, and can only shrink.
 | `exec(commands: […], args_prefix: […])` | `Exec` | Commands and their argument prefixes |
 | `git.pr(repo)` | `git.*` | Repositories |
 | `money.spend(…)` | `Spend` | — |
+| `component.read(c…)`, `component.write(c, p…)` | `Fs.Read`, `Fs.Write` | The components' roots, or paths inside them |
+| `component.exec(c, build \| test)` | `Exec` | The commands the component declares |
+| `component.repo(c…)` | `git.*` | The components' repositories |
+| `env.deploy(e…)`, `env.migrate(e…)` | `deploy`, `migrate` | Environments |
 
 `Human`, `Time`, `Random` and `Delegate` need no capability. The rules:
 
@@ -386,3 +394,16 @@ Every conforming implementation keeps these:
 
 - **Not in the IR:** `map`, dynamic `spawn` and `await`.
 - **Not generated yet:** these targets: host code, MCP, A2A and AX.
+
+## 10. Existing systems (0.3)
+
+Mandate describes a working system instead of rewriting it
+([`system.md`](system.md)).
+
+- **System model.** `component`, `interface` and `environment` definitions
+  live in an ordinary module, e.g. `kervan.system`. Programs import what they
+  work on with `use`, and the lock pins the module by hash. Every interface
+  has exactly one provider. Changing the model is a governance change.
+- **Capabilities over components.** `component.read(c)` and its siblings
+  open into the paths, commands and repositories the model declares, so every
+  check (C1–C5) and every sandbox treats them like capabilities written out.

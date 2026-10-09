@@ -107,3 +107,12 @@ HTML. They are never markup, a link or a control. A model can write
 
 The HTML page is self-contained. Its content security policy allows no
 scripts, frames, forms or remote resources.
+
+## The system
+
+A module that defines or imports a system model (0.3) also gets a system
+view: the consumption graph, components with owners and commands,
+interfaces with provider and consumers, environments with reads and
+authorization tiers, and the hash of each module the model comes from
+(design doc 9 §8.1; [`system.md`](system.md#the-system-view)). Every
+change to the model is shown under governance in the semantic diff.

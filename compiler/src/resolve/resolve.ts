@@ -9,8 +9,9 @@
 // bare identifier passed as an argument to such a call (`tier: standard`,
 // `methods: [GET, POST]`) is read as a symbol rather than a variable.
 
-import { diag, ptr, type Diagnostic, type Repair, type Span } from "../diag.js";
+import { diag, ptr, ptrToken, type Diagnostic, type Repair, type Span } from "../diag.js";
 import { nearestSpan } from "../ir/validate.js";
+import { STD_EFFECTS } from "../std/std.js";
 import type { Arg, Def, Expr, Param, Pattern, Program, Stmt, TypeExpr, Verifier } from "../ir/types.js";
 
 export const BUILTIN_TYPES = new Set([
@@ -40,13 +41,20 @@ type Ctx = {
   test: boolean;
 };
 
-export function resolveNames(program: Program, spans?: Map<string, Span>): Diagnostic[] {
-  return new Resolver(program, spans).run();
+/**
+ * `linked` is the table of definitions the program sees with its imported
+ * modules loaded (modules.ts); without it, imports are opaque names.
+ */
+export function resolveNames(program: Program, spans?: Map<string, Span>, linked?: Record<string, Def>): Diagnostic[] {
+  return new Resolver(program, spans, linked).run();
 }
 
 class Resolver {
   private readonly out: Diagnostic[] = [];
+  /** The program's own definitions: what it names directly. */
   private readonly defs: Record<string, Def>;
+  /** Its own and every linked imported definition: what the names mean. */
+  private readonly all: Record<string, Def>;
   /** Names brought in by `use`: module aliases and imported members. */
   private readonly imported = new Set<string>();
   private readonly importedModules = new Set<string>();
@@ -54,8 +62,10 @@ class Resolver {
   constructor(
     private readonly program: Program,
     private readonly spans?: Map<string, Span>,
+    linked?: Record<string, Def>,
   ) {
     this.defs = program.defs;
+    this.all = linked ?? program.defs;
     for (const u of program.uses ?? []) {
       if (u.names) {
         for (const n of u.names) {
@@ -101,13 +111,18 @@ class Resolver {
     );
   }
 
-  /** Own-property lookup, so names like `constructor` never resolve by accident. */
+  /**
+   * Own-property lookup, so names like `constructor` never resolve by
+   * accident. A name is the program's own or one it imports; an imported
+   * name means the linked definition when its module is loaded.
+   */
   private def_(name: string): Def | undefined {
-    return Object.hasOwn(this.defs, name) ? this.defs[name] : undefined;
+    if (Object.hasOwn(this.defs, name)) return this.defs[name];
+    return this.imported.has(name) && Object.hasOwn(this.all, name) ? this.all[name] : undefined;
   }
 
   private defsOfKind(kind: Def["kind"]): string[] {
-    return Object.keys(this.defs).filter((n) => this.defs[n]!.kind === kind);
+    return [...new Set([...Object.keys(this.defs), ...[...this.imported].filter((n) => Object.hasOwn(this.all, n))])].filter((n) => this.def_(n)?.kind === kind);
   }
 
   // ── definitions ────────────────────────────────────────────────────────
@@ -177,7 +192,41 @@ class Resolver {
         }
         return;
       }
+      case "component":
+        for (const field of ["provides", "consumes"] as const) {
+          (d[field] ?? []).forEach((n, i) => {
+            if (this.def_(n)?.kind !== "interface") this.report(`${base}/${field}/${i}`, `Unknown interface '${n}'.`, n, "interface", this.defsOfKind("interface"), (x) => x);
+          });
+        }
+        return;
+      case "interface":
+        return;
+      case "environment":
+        for (const [rn, r] of Object.entries(d.reads ?? {})) {
+          const rb = `${base}/reads/${ptrToken(rn)}`;
+          if (this.def_(r.from)?.kind !== "component") this.report(`${rb}/from`, `Unknown component '${r.from}'.`, r.from, "component", this.defsOfKind("component"), (x) => x);
+          const ctx = this.withParams(r.params, `${rb}/params`, top);
+          this.type(r.returns, `${rb}/returns`, new Set(), top);
+          // A log filter names the row's fields and the read's parameters, nothing else.
+          if ("logs" in r.query) this.expr(r.query.logs, `${rb}/query/logs`, { ...ctx, scope: { names: new Set(this.recordFields(r.returns)), parent: { names: ctx.scope.names } } });
+        }
+        for (const effect of Object.keys(d.authorize ?? {})) {
+          const path = `${base}/authorize/${ptrToken(effect)}`;
+          if (!STD_EFFECTS[effect] && this.def_(effect)?.kind !== "effect") this.report(path, `Unknown effect '${effect}'.`, effect, "effect", [...Object.keys(STD_EFFECTS), ...this.defsOfKind("effect")], (x) => x);
+        }
+        return;
     }
+  }
+
+  /** Field names of a record type, through named types and refinements; none for anything else. */
+  private recordFields(t: TypeExpr, seen = new Set<string>()): string[] {
+    if ("record" in t) return Object.keys(t.record);
+    if ("refine" in t) return this.recordFields(t.refine, seen);
+    if ("ref" in t && !seen.has(t.ref)) {
+      const d = this.def_(t.ref) ?? (Object.hasOwn(this.all, t.ref) ? this.all[t.ref] : undefined);
+      if (d?.kind === "type") return this.recordFields(d.type, new Set([...seen, t.ref]));
+    }
+    return [];
   }
 
   private withParams(params: Param[], base: string, ctx: Ctx): Ctx {

@@ -14,7 +14,7 @@
 
 import {
   calleePath,
-  capFromCall,
+  capsOf,
   DECISION_POLICIES,
   hashProgram,
   modelTiers,
@@ -661,7 +661,7 @@ export class Interpreter {
    * else the only tier the program names. The lock file maps it to a model.
    */
   private tierFor(using: Expr | undefined, path: string): string | undefined {
-    const tierOf = (e: Expr): string | undefined => this.cap(e)?.tier;
+    const tierOf = (e: Expr): string | undefined => this.caps(e).find((c) => c.tier)?.tier;
     if (using) return tierOf(using);
     const def = this.def(path.split("/")[2]!);
     const caps = def?.kind === "workflow" || def?.kind === "agent" ? def.caps : [];
@@ -839,11 +839,11 @@ export class Interpreter {
     const agent = this.def(agentName) as Extract<Def, { kind: "agent" }>;
     const wfName = path.split("/")[2]!;
     const wf = this.def(wfName);
-    const avail = wf?.kind === "workflow" ? wf.caps.map((c) => this.cap(c)).filter((c): c is CapVal => !!c) : undefined;
+    const avail = wf?.kind === "workflow" ? wf.caps.flatMap((c) => this.caps(c)) : undefined;
     const inside = (c: CapVal): boolean => !avail || avail.some((a) => a.ctor === c.ctor && scopeInside(c, a));
-    let out = agent.caps.map((c) => this.cap(c)).filter((c): c is CapVal => !!c).filter(inside);
+    let out = agent.caps.flatMap((c) => this.caps(c)).filter(inside);
     if (withCaps.length) {
-      const given = withCaps.map((c) => this.cap(c)).filter((c): c is CapVal => !!c);
+      const given = withCaps.flatMap((c) => this.caps(c));
       const kinds = new Set(given.map((g) => g.ctor));
       out = [...out.filter((c) => !kinds.has(c.ctor)), ...given];
     }
@@ -851,21 +851,9 @@ export class Interpreter {
     return out.sort((a, b) => (key(a) < key(b) ? -1 : 1));
   }
 
-  private cap(e: Expr): CapVal | undefined {
-    if (e.op === "var") {
-      const d = this.def(e.name);
-      return d?.kind === "capability" ? this.cap(d.value) : undefined;
-    }
-    if (e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow") {
-      const base = this.cap(e.callee.of);
-      if (!base) return undefined;
-      const scope = e.args.flatMap((a) => (a.value.op === "text" ? [a.value.value] : []));
-      if (scope.length === e.args.length) return { ...base, scope };
-      // A narrowing that is not literal leaves the scope unknown, never the base's wider one.
-      const { scope: _dropped, ...unknown } = base;
-      return unknown;
-    }
-    return capFromCall(e);
+  /** What a capability expression stands for, over the program's definitions and its linked system model. */
+  private caps(e: Expr): CapVal[] {
+    return capsOf(this.defs, e);
   }
 
   // ── contracts (§10) ───────────────────────────────────────────────────

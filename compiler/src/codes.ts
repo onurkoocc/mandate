@@ -60,6 +60,10 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Model tier not locked",
     explain: "A capability names a model tier that the lock file does not map to a model, an effort and a tariff. The runtime refuses to load such a package (BACKLOG K10, K11).",
   },
+  "MDT-E0142": {
+    title: "Imported module not locked",
+    explain: "A program imports a module that the lock file does not pin, or a loaded module whose program hash differs from the one the lock pins. A run's imported modules, such as its system model, are fixed by hash (S09, INV-02); a changed module is a new lock and a new package.",
+  },
   "MDT-E0201": {
     title: "Type mismatch",
     explain: "A value's type does not match what the position expects: a wrong argument count, a different nominal type, or a plain T where Verified<T> is required.",
@@ -212,6 +216,26 @@ export const CODES: Record<string, { title: string; explain: string }> = {
   "MDT-E0715": {
     title: "Fallback is not equivalent",
     explain: "degrade(to: F) must name an agent that does the same job with no more authority: F has the same skill with the same parameter and result types, holds no capability the original agent lacks, and holds what the call hands over with `with caps` (§8.7).",
+  },
+  "MDT-E1001": {
+    title: "Interface without exactly one provider",
+    explain: "Every interface of a system model is provided by exactly one component (`provides`). The provider answers for changes to it, and its spec file is read at the provider's base commit (design doc 9 §2.1).",
+  },
+  "MDT-E1002": {
+    title: "Capability over a component cannot be opened",
+    explain: "component.read, component.write, component.exec and component.repo take components of the system model. component.write takes paths inside the component; component.exec runs only the build or test commands the component declares. A capability that stands for several values (one per command) cannot be narrowed as one (design doc 9 §2.2).",
+  },
+  "MDT-E1003": {
+    title: "Component working copies overlap",
+    explain: "Two components have the same root, or one root lies inside the other. Each component's working copy is its own, so sandboxes, write scopes and changes are told apart by root (C5 across components).",
+  },
+  "MDT-E1004": {
+    title: "Read does not match its declaration",
+    explain: "A declared read runs one SELECT statement (or a log filter) whose values come only from its parameters: every `:name` placeholder is a parameter and every parameter is used, and parameters are scalars. Model output can be a parameter value, never query text (design doc 9 §5.1, K43).",
+  },
+  "MDT-E1005": {
+    title: "Read above its environment's class",
+    explain: "A read returns rows of a higher data class than the environment it belongs to declares. An environment's class is the most sensitive data it holds; a program cannot lower a class (§5.5).",
   },
   "MDT-E0902": {
     title: "Sandbox requirement cannot be enforced",

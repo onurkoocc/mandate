@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // mandate — command-line front end for the 0.1 reference compiler.
 //
-//   mandate check <file> [--json] [--lock <lock.json>] [--denials <report.json>]
+//   mandate check <file> [--json] [--lock <lock.json>] [--denials <report.json>] [--module <file>]…
 //                                          validate, resolve names, print hashes
 //   mandate ir <file> [--canonical]        print canonical IR (pretty, or the exact JCS bytes)
 //   mandate fmt <file>                     print the .mdt projection of the IR
@@ -19,39 +19,42 @@
 //                                          control a run (the runtime's CLI, @mandate/runtime/cli)
 //   mandate test <file>                    run the program's tests with their effect handlers (§6.4)
 //
-// <file> is .mdt text or .json canonical IR. `check` and `sandbox` read the
+// <file> is .mdt text or .json canonical IR. `--module <file>` (repeatable)
+// loads a module the program imports, such as a system model (design doc 9
+// §2.1); `check`, `sandbox` and `view` link it in. `check` and `sandbox` read the
 // lock file named by --lock, or else mandate.lock.json next to <file> if there
 // is one. Exit status is 1 when any error diagnostic is reported, 2 on usage
 // errors.
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { check, kindOf, load } from "./check.js";
+import { check, kindOf, load, loadModules } from "./check.js";
 import { CODES } from "./codes.js";
 import { formatDiagnostic, hasErrors, type Diagnostic } from "./diag.js";
 import { canonicalize } from "./json/jcs.js";
 import type { Json } from "./json/strict-json.js";
 import { parseStrictJson } from "./json/strict-json.js";
 import type { Lock } from "./lock.js";
+import { linkedProgram, type Modules } from "./modules.js";
 import { applyPatch, type PatchOp } from "./patch/patch.js";
 import { printProgram } from "./print/printer.js";
 import { serveStdio } from "./mcp/server.js";
 import { denialDiagnostics, sandboxRequirements, type DenialReport } from "./target/sandbox.js";
 import { toHtml, toMarkdown } from "./views/doc.js";
-import { architecture, authority, cost, diffDoc, programDoc, semanticDiff } from "./views/views.js";
+import { architecture, authority, cost, diffDoc, hasSystem, programDoc, semanticDiff, system } from "./views/views.js";
 
 function usage(): never {
   process.stderr.write(
     [
       "usage: mandate <command> [options]",
-      "  check <file> [--json] [--lock <lock.json>] [--denials <report.json>]",
+      "  check <file> [--json] [--lock <lock.json>] [--denials <report.json>] [--module <file>]…",
       "  ir <file> [--canonical]",
       "  fmt <file>",
       "  hash <file>",
       "  patch <program> <patch.json> [--json]   patch.json: { \"base\": \"sha256:…\", \"ops\": [ … ] }",
-      "  sandbox <file> [--agent <name>] [--lock <lock.json>]",
+      "  sandbox <file> [--agent <name>] [--lock <lock.json>] [--module <file>]…",
       "  explain <code>",
-      "  view <file> [--against <old file>] [--format md|html|json] [--lock <lock.json>]",
+      "  view <file> [--against <old file>] [--format md|html|json] [--lock <lock.json>] [--module <file>]…",
       "  mcp   (an MCP server on stdio)",
       "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key   (see `mandate status`)",
       "  test <file> [--json]",
@@ -99,8 +102,24 @@ function option(args: string[], name: string): string | undefined {
   return value;
 }
 
+/** Removes every `--name value` from args and returns the values. */
+function options(args: string[], name: string): string[] {
+  const out: string[] = [];
+  for (let v = option(args, name); v !== undefined; v = option(args, name)) out.push(v);
+  return out;
+}
+
+/** The modules named by --module, each checked against the others; any problem stops the command. */
+function readModules(files: string[], asJson: boolean): Modules {
+  const { modules, problems } = loadModules(files.map((file) => ({ file, text: read(file), kind: kindOf(file) })));
+  for (const p of problems) report(p.diagnostics, p.file, asJson);
+  if (problems.length) process.exit(1);
+  return modules;
+}
+
 function main(argv: string[]): void {
   const [cmd, ...plain] = argv;
+  const moduleFiles = options(plain, "--module");
   const agent = option(plain, "--agent");
   const lockFile = option(plain, "--lock");
   const against = option(plain, "--against");
@@ -109,12 +128,13 @@ function main(argv: string[]): void {
   const flags = new Set(plain.filter((a) => a.startsWith("--")));
   const args = plain.filter((a) => !a.startsWith("--"));
   const asJson = flags.has("--json");
+  const modules = readModules(moduleFiles, asJson);
 
   switch (cmd) {
     case "check": {
       const file = args[0] ?? usage();
       const lock = readLock(file, lockFile, asJson);
-      const r = check(read(file), kindOf(file), lock ? { lock } : {});
+      const r = check(read(file), kindOf(file), { modules, ...(lock ? { lock } : {}) });
       // W0311: what sandboxes denied in learning mode, as feedback on the policies (§11.3).
       if (denials !== undefined && r.program && r.ok) {
         const parsed = parseStrictJson(read(denials));
@@ -191,12 +211,12 @@ function main(argv: string[]): void {
     case "sandbox": {
       const file = args[0] ?? usage();
       const lock = readLock(file, lockFile, asJson);
-      const r = check(read(file), kindOf(file), lock ? { lock } : {});
+      const r = check(read(file), kindOf(file), { modules, ...(lock ? { lock } : {}) });
       if (!r.ok) {
         report(r.diagnostics, file, asJson);
         process.exit(1);
       }
-      const all = sandboxRequirements(r.program!);
+      const all = sandboxRequirements(r.program!, modules);
       if (agent !== undefined && !Object.hasOwn(all, agent)) {
         process.stderr.write(`mandate: no local agent ${agent} in ${file}\n`);
         process.exit(2);
@@ -210,7 +230,7 @@ function main(argv: string[]): void {
       const file = args[0] ?? usage();
       if (!["md", "html", "json"].includes(format)) usage();
       const loadChecked = (f: string, lock?: Lock) => {
-        const r = check(read(f), kindOf(f), lock ? { lock } : {});
+        const r = check(read(f), kindOf(f), { modules, ...(lock ? { lock } : {}) });
         if (!r.ok) {
           report(r.diagnostics, f, false);
           process.exit(1);

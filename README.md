@@ -47,6 +47,14 @@ anything runs. This repository holds the 0.1 reference implementation.
    continue-as-new under Temporal; and the Windows sandbox backend with
    learning mode (W0311).
 
+8. **0.3, existing systems (in progress; BACKLOG §3.1, design doc 9):**
+   language version 0.3. The system model (`component`, `interface`,
+   `environment`) lives in the IR and is imported as a module pinned by the
+   lock, and capabilities can be written over components. The reference
+   system is Kervan, seven repositories in TypeScript, Java and Python
+   ([`examples/kervan/`](examples/kervan/SPEC.md)). See
+   [`spec/system.md`](spec/system.md).
+
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
 
@@ -59,7 +67,8 @@ compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
 examples/    example programs; fixbug/ is the design document's §20 workflow,
              fixbug/agentspec/ the same workflow in Open Agent Spec (Gate 0),
-             fixbug-target/ the workflow bound to the Gate 3 test repository
+             fixbug-target/ the workflow bound to the Gate 3 test repository,
+             kervan/ the brownfield reference system: its seven repositories and its system model
 ```
 
 ## Using the compiler
@@ -77,7 +86,7 @@ npm test
 
 | Command | Does |
 |---|---|
-| `check <file> [--json]` | Validate, resolve and statically check a `.mdt` or `.json` program; print its diagnostics and hash |
+| `check <file> [--json] [--module <file>]…` | Validate, resolve and statically check a `.mdt` or `.json` program, with the modules it imports (a system model); print its diagnostics and hash |
 | `ir <file> [--canonical]` | Print the canonical IR (pretty, or exact JCS bytes) |
 | `fmt <file>` | Print the `.mdt` projection of a program |
 | `hash <file>` | Print the program hash and one hash per definition |
@@ -128,6 +137,11 @@ client, and `mandate mcp` on stdio.
 authority, cost) against §15, and the semantic diff between two versions:
 governance apart from behavior, and a new network target shown as a
 governance change (G11).
+`compiler/test/system.test.ts` checks the system model (design doc 9 §2):
+Kervan's model and its view, one mutation per rule (E1001–E1005), programs
+that import it and write capabilities over its components, C5 across
+components, the lock's pin (E0142), and changes to the model reported as
+governance changes.
 `compiler/test/static.test.ts` also checks the §20 FixBug table: 18.5 USD of
 child budgets inside 20 USD, delegated capabilities inside the workflow's,
 disjoint writes for the two parallel agents, step limits, review never

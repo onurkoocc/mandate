@@ -167,3 +167,13 @@ Supervision counts against the static budget (E0501), since every attempt
 reserves again: `restart(max: n)` counts the delegate's budget `n + 1`
 times, and `degrade(to: F)` adds `F`'s budget. `escalate` counts once: a
 retry is a person's decision, and the run's ledger still bounds it.
+
+## System model (design doc 9 §2, §5)
+
+A 0.3 module may describe a system: components, interfaces, environments.
+The checker requires one provider per interface (E1001), separate working
+copies (E1003), declared reads that match their parameters and stay one
+SELECT (E1004) and below their environment's class (E1005). Capabilities over
+components (`component.read`, `.write`, `.exec`, `.repo`) open into the
+model's paths, commands and repositories before C1–C5 run; one that cannot
+be opened is E1002. See [`system.md`](system.md).

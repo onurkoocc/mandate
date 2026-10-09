@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { canonicalize, capFromCall, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, modelTiers, SANDBOX_DENIALS_FORMAT, validateLock, type CapVal, type DenialReport, type Expr, type Json, type Lock, type Program } from "@mandate/compiler";
+import { canonicalize, capsOf, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, linkedProgram, modelTiers, SANDBOX_DENIALS_FORMAT, validateLock, type DenialReport, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
 import type { Adapters, Cost } from "./adapters.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
@@ -19,17 +19,23 @@ import { digest, isObj, type Obj, type Value } from "./values.js";
 
 export type { Lock };
 
-/** A content-addressed package: the program, its hash and its lock. */
+/**
+ * A content-addressed package: the program, its hash, its lock, and the
+ * imported modules it was checked with (a system model, design doc 9 §2.1).
+ * The lock pins every module by its program hash, so the package hash covers
+ * them too.
+ */
 export interface Package {
   hash: string;
   programHash: string;
   program: Program;
   lock: Lock;
+  modules?: Modules;
 }
 
-export function buildPackage(program: Program, lock: Lock = { modules: {} }): Package {
+export function buildPackage(program: Program, lock: Lock = { modules: {} }, modules: Modules = {}): Package {
   const programHash = hashProgram(program as unknown as Json).program;
-  return { hash: domainHash("package", { program: programHash, lock } as unknown as Json), programHash, program, lock };
+  return { hash: domainHash("package", { program: programHash, lock } as unknown as Json), programHash, program, lock, ...(Object.keys(modules).length ? { modules } : {}) };
 }
 
 /**
@@ -46,6 +52,15 @@ export function verifyPackage(pkg: Package): void {
   }
   const unlocked = (pkg.program.uses ?? []).map((u) => u.module).filter((m) => m !== "std" && !m.startsWith("std.") && !Object.hasOwn(pkg.lock.modules, m));
   if (unlocked.length) throw new Violation("unlocked_module", `Imported modules are not locked: ${[...new Set(unlocked)].join(", ")}.`);
+  // A module the package carries is the one the lock pins, byte for byte (S09, INV-02), and passes the checks itself.
+  const modules = pkg.modules ?? {};
+  for (const [name, m] of Object.entries(modules).sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const hash = hashProgram(m as unknown as Json).program;
+    if (m.module !== name || pkg.lock.modules[name] !== hash) throw new Violation("module_hash_mismatch", `Module ${name} hashes to ${hash}; the lock pins ${pkg.lock.modules[name] ?? "nothing"}.`);
+    const others = Object.fromEntries(Object.entries(modules).filter(([n]) => n !== name));
+    const mr = check(canonicalize(m as unknown as Json), "json", { modules: others });
+    if (!mr.ok) throw new Violation("load_verification_failed", `Module ${name} does not pass the compiler's checks: ${mr.diagnostics.filter((d) => d.severity === "error").map((d) => d.code).join(", ")}.`);
+  }
   // A lock that pins models (spec/lock.md) must be well formed and pin every tier the program names.
   // A lock without models is for simulated models only; the Anthropic adapter refuses to run without one.
   if (pkg.lock.models || pkg.lock.tariffs) {
@@ -54,7 +69,7 @@ export function verifyPackage(pkg: Package): void {
     const missing = [...modelTiers(pkg.program)].filter((t) => !Object.hasOwn(pkg.lock.models ?? {}, t)).sort();
     if (missing.length) throw new Violation("unlocked_model_tier", `Model tiers are not locked: ${missing.join(", ")} (MDT-E0141).`);
   }
-  const r = check(canonicalize(pkg.program as unknown as Json), "json");
+  const r = check(canonicalize(pkg.program as unknown as Json), "json", { modules });
   if (!r.ok) {
     throw new Violation("load_verification_failed", `The program does not pass the compiler's checks: ${r.diagnostics.filter((d) => d.severity === "error").map((d) => d.code).join(", ")}.`);
   }
@@ -155,16 +170,17 @@ export class Runtime {
     verifyPackage(o.pkg);
     const wf = o.pkg.program.defs[o.workflow];
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
-    await this.validateBindings(o.pkg.program, o.workflow);
+    await this.validateBindings(linkedProgram(o.pkg.program, o.pkg.modules), o.workflow);
     const lowered = this.remoteGuarantees(o.pkg.program);
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(wf.budget), costDims(o.limits));
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
     await this.db.tx(async (tx) => {
-      await tx.query("insert into packages (package_hash, program, lock) values ($1, $2, $3) on conflict (package_hash) do nothing", [
+      await tx.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict (package_hash) do nothing", [
         o.pkg.hash,
         JSON.stringify(o.pkg.program),
         JSON.stringify(o.pkg.lock),
+        JSON.stringify(o.pkg.modules ?? {}),
       ]);
       await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits });
       for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
@@ -192,7 +208,7 @@ export class Runtime {
       }
     };
     visit(wf);
-    const repos = wf.caps.map((c) => capOf(program, c)).filter((c) => c?.ctor === "git.pr").flatMap((c) => c!.scope ?? []);
+    const repos = wf.caps.flatMap((c) => capsOf(program.defs, c)).filter((c) => c.ctor === "git.pr").flatMap((c) => c.scope ?? []);
     for (const name of [...effects].sort()) {
       const tool = this.adapters.tools[name];
       if (!tool?.validateBinding) continue;
@@ -368,12 +384,19 @@ export class Runtime {
     });
   }
 
-  private async program(packageHash: string): Promise<Program> {
+  /** The program and modules of a package, as packaged. */
+  private async packaged(packageHash: string): Promise<{ program: Program; modules: Modules }> {
     const cached = this.packages.get(packageHash);
-    if (cached) return cached.program;
-    const [row] = await this.db.query<Row>("select program, lock from packages where package_hash = $1", [packageHash]);
+    if (cached) return { program: cached.program, modules: cached.modules ?? {} };
+    const [row] = await this.db.query<Row>("select program, modules from packages where package_hash = $1", [packageHash]);
     if (!row) throw new Violation("unknown_package", `No package ${packageHash}.`);
-    return row["program"] as Program;
+    return { program: row["program"] as Program, modules: (row["modules"] ?? {}) as Modules };
+  }
+
+  /** The package's program with its imported modules linked in: what the interpreter runs. Never hashed. */
+  private async program(packageHash: string): Promise<Program> {
+    const p = await this.packaged(packageHash);
+    return linkedProgram(p.program, p.modules);
   }
 
   // ── GetRun ────────────────────────────────────────────────────────────
@@ -413,7 +436,7 @@ export class Runtime {
    */
   async sandboxDenials(runId: string): Promise<DenialReport> {
     const run = await this.journal.run(runId);
-    const program = await this.program(run.package_hash);
+    const { program } = await this.packaged(run.package_hash);
     const labels = new Map((await this.db.query<Row>("select command_id, label from commands where run_id = $1", [runId])).map((r) => [String(r["command_id"]), String(r["label"] ?? "")]));
     const denials: DenialReport["denials"] = [];
     for (const e of await this.journal.events(runId)) {
@@ -693,13 +716,4 @@ export function refusingAdapters(real: Adapters): Adapters {
     clock: real.clock,
     random: refuse("random"),
   };
-}
-
-/** A capability expression's value: a named capability is looked up. */
-function capOf(program: Program, e: Expr): CapVal | undefined {
-  if (e.op === "var") {
-    const d = program.defs[e.name];
-    return d?.kind === "capability" ? capOf(program, d.value) : undefined;
-  }
-  return capFromCall(e);
 }
