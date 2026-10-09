@@ -98,7 +98,7 @@ describe.runIf(REAL)("Gate 3 rehearsal: FixBug on the seeded project in Bubblewr
     const waiting = await rt.startRun({ pkg: buildPackage(check(src, "mdt").program!, lock), workflow: "FixBug", input: issue as never, runId: "g3" });
     const evidence = await rt.evidence("g3");
     expect(waiting.state, JSON.stringify({ attention: waiting.attention, error: waiting.error, evidence })).toBe("waiting");
-    expect(Object.fromEntries(evidence.map((e) => [e.criterion, e.passed]))).toMatchObject({ regression_test: true, scope_respected: true, suite_green: true, no_blocking_review: true });
+    expect(Object.fromEntries(evidence.map((e) => [e.criterion, e.passed])), JSON.stringify(evidence.filter((e) => !e.passed))).toMatchObject({ regression_test: true, scope_respected: true, suite_green: true, no_blocking_review: true });
 
     // The agents' work stayed in their grants: the fix in src/, the test in test/, the acceptance tests untouched.
     expect(readFileSync(join(WORK, "src/pagination.ts"), "utf8")).toBe(FIXED);
