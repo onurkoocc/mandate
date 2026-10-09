@@ -101,3 +101,8 @@ assigned here.
 | MDT-E1003 | Component working copies overlap | — | assigned; C5 across components |
 | MDT-E1004 | Read does not match its declaration | — | assigned; one SELECT, placeholders = parameters, scalar parameters (K43) |
 | MDT-E1005 | Read above its environment's class | — | assigned |
+| MDT-E1101 | Change set order breaks the interface graph | — | assigned; an additive change's provider lands first and is a member; no cycles |
+| MDT-E1102 | Change set order does not list its members | — | assigned |
+| MDT-E1103 | Breaking change in one change set | — | assigned; expand → migrate → contract |
+| MDT-E1104 | Change set member is not a critical effect | — | assigned |
+| MDT-E1105 | Change set without a verified plan | — | assigned |

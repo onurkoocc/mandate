@@ -25,6 +25,7 @@ import {
   type Arg,
   type Budget,
   type CapVal,
+  type ChangesetExpr,
   type ContractDef,
   type Def,
   type EffectDef,
@@ -404,6 +405,8 @@ export class Interpreter {
         return this.verify(e, ctx, path);
       case "effect":
         return this.effect(e, ctx, path);
+      case "changeset":
+        return this.changeset(e, ctx, path);
       case "escalate": {
         const message = e.to.op === "call" && calleePath(e.to.callee) === "human" && e.to.args[0] ? await this.expr(e.to.args[0].value, ctx, `${path}/to/args/0/value`) : await this.expr(e.to, ctx, `${path}/to`);
         return this.wait(path, "input", { escalation: message });
@@ -1039,26 +1042,57 @@ export class Interpreter {
   private async effect(e: Extract<Expr, { op: "effect" }>, ctx: Ctx, path: string): Promise<Value> {
     const info = this.effectInfo(e.name);
     const { pos } = await this.args(e.args, ctx, path);
+    const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
+    const p = await this.prepareAction(e.name, info, pos, plain(pos), key, ctx, path);
+    if (!p.action) return p.receipt;
+    let action = p.action;
+    const { journal, runId, fence } = this.o;
+    let justCommitted = false;
+    if (action.state === "prepared") {
+      const authId = await this.authorization(e.name, info, action, path);
+      action = await journal.commit(runId, fence, action.operation_key, authId);
+      justCommitted = true;
+      this.o.faults.check("after_commit", { id: path, kind: "effect" });
+    }
+    if (action.state === "dispatched") return this.dispatchAction(p.tool, action, justCommitted);
+    return this.settledAction(action);
+  }
+
+  /**
+   * Prepare (§8.8) for one external action at `path`: the adapter checks the
+   * parameters and reads the files the action will apply; they are frozen
+   * into the artifact store and the action digest, and the action is
+   * recorded. In replay, the confirmed action's receipt (or ReplayEnd).
+   * `extra` joins the digest: a change set member's set.
+   */
+  private async prepareAction(
+    name: string,
+    info: { params: TypeExpr[]; retryClass?: string },
+    pos: Value[],
+    params: Value,
+    key: Value,
+    ctx: Ctx,
+    path: string,
+    extra: Obj = {},
+  ): Promise<{ tool: ToolAdapter; action: ActionRow; receipt?: undefined } | { tool: ToolAdapter; action?: undefined; receipt: Value }> {
     // INV-13: a parameter declared Verified<T, C> must carry evidence for C at run time too.
     for (const [i, t] of info.params.entries()) {
       if (!("ref" in t) || t.ref !== "Verified") continue;
       const v = pos[i];
       const want = t.args?.[1] && "ref" in t.args[1] ? t.args[1].ref : undefined;
       if (!isObj(v) || !("$verified" in v) || (want && v["$contract"] !== want)) {
-        throw new Fault("PolicyDenied", [{ effect: e.name, parameter: i, reason: "unverified_parameter" }]);
+        throw new Fault("PolicyDenied", [{ effect: name, parameter: i, reason: "unverified_parameter" }]);
       }
-      if (!this.o.replay) await this.checkVerified(e.name, v);
+      if (!this.o.replay) await this.checkVerified(name, v);
     }
-    const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
-    const tool = this.o.adapters.tools[e.name];
-    if (!tool) throw new Violation("no_adapter", `No adapter for effect ${e.name}.`);
+    const tool = this.o.adapters.tools[name];
+    if (!tool) throw new Violation("no_adapter", `No adapter for effect ${name}.`);
     const contract = tool.describe();
-    const params = plain(pos);
     // Prepare (§8.8): the adapter checks the parameters and reads the files the action will apply. They are frozen
     // into the artifact store, and the journaled command keeps their digests, so a resumed worker or a replay finds
     // the same action; execute later sends exactly these bytes.
     if (ctx.siblings?.failed && !this.o.replay && !(await this.o.journal.command(this.o.runId, `${path}/prepare`))) throw new SiblingStopped();
-    const prepared = await this.command(`${path}/prepare`, "prepare", { effect: e.name, params }, undefined, async () => {
+    const prepared = await this.command(`${path}/prepare`, "prepare", { effect: name, params }, undefined, async () => {
       const pre = await tool.prepare(params);
       if ("rejected" in pre) return { error: { tag: "Rejected", args: [pre.rejected] }, cost: {} };
       const frozen: Obj = {};
@@ -1072,48 +1106,171 @@ export class Interpreter {
     const files = Object.fromEntries(Object.entries(frozen).map(([p, a]) => [p, isObj(a) ? String(a["digest"]) : ""]));
     const evidence = evidenceOf(pos);
     // Evidence is bound to what it checked: an action that would apply other bytes is refused (G01, INV-05).
-    if (Object.keys(files).length && !this.o.replay) await this.checkEvidenceFresh(e.name, files, evidence);
+    if (Object.keys(files).length && !this.o.replay) await this.checkEvidenceFresh(name, files, evidence);
     const actionDigest = digest("action", {
       package: this.o.packageHash,
       run: this.o.runId,
       node: path,
-      effect: e.name,
+      effect: name,
       adapter: contract.id,
       adapter_contract: contract.digest,
       params,
       evidence,
       idempotency_key: key,
       ...(Object.keys(files).length ? { artifacts: files } : {}),
+      ...extra,
     });
     const operationKey = digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: path, action: actionDigest });
     const { journal, runId, fence } = this.o;
 
-    let action = await journal.action(operationKey);
+    const action = await journal.action(operationKey);
     if (this.o.replay) {
-      if (action?.state === "confirmed") return action.receipt;
+      if (action?.state === "confirmed") return { tool, receipt: action.receipt };
       throw new ReplayEnd(path, "no_result");
     }
     if (ctx.siblings?.failed && (!action || action.state === "prepared")) throw new SiblingStopped();
-    if (!action) {
-      action = await journal.prepare(runId, fence, {
+    if (action) return { tool, action };
+    return {
+      tool,
+      action: await journal.prepare(runId, fence, {
         operationKey,
         commandId: path,
-        effect: e.name,
+        effect: name,
         actionDigest,
         params,
         retryClass: info.retryClass ?? contract.retryClass,
         ...(Object.keys(frozen).length ? { artifacts: frozen } : {}),
+      }),
+    };
+  }
+
+  // ── change sets (0.3; design doc 9 §3) ────────────────────────────────
+
+  /**
+   * `changeset`: prepare → authorize → commit over one action per component.
+   *
+   *   prepare    each member in order, its files frozen and its digest bound
+   *              to the component and the run's base commit; the set digest S
+   *              covers the plan, the members' digests in order, the declared
+   *              interface changes and the approver
+   *   authorize  each component's owner approves its member (bound to the
+   *              member's digest), then the set approver approves S
+   *   commit     members in order; each needs its own authorization and S's,
+   *              which the first commit consumes for this set only
+   *
+   * A member that is refused or whose outcome is unknown stops the set: the
+   * members after it are not sent, and with any member already applied the
+   * run stops for a person as `changeset_partial`, with the applied members
+   * and the compensations they offer (§8.5: offered, never run). After
+   * reconciliation the run goes on from where it stopped.
+   */
+  private async changeset(e: ChangesetExpr, ctx: Ctx, path: string): Promise<Value> {
+    const plan = await this.expr(e.plan, ctx, `${path}/plan`);
+    // INV-13 at run time: the plan was verified, and its evidence holds.
+    if (!isObj(plan) || !("$verified" in plan)) throw new Fault("PolicyDenied", [{ changeset: path, reason: "unverified_plan" }]);
+    if (!this.o.replay) await this.checkVerified("changeset", plan);
+    const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
+    const members: Array<{ component: string; effect: string; approver: string; tool: ToolAdapter; action?: ActionRow; receipt?: Value }> = [];
+    for (const m of e.order) {
+      const mem = e.members[m]!;
+      const comp = this.def(m);
+      if (comp?.kind !== "component") throw new Violation("unknown_component", `No component '${m}'.`);
+      const mp = `${path}/members/${m}`;
+      const { pos } = await this.args(mem.args, ctx, mp);
+      // The member names its component and the commit the run started from: an approval is for this change to this base.
+      const target: Obj = { component: m, repo: comp.repo, root: comp.root, base: this.o.workspace?.[m]?.base ?? null };
+      const p = await this.prepareAction(mem.effect, this.effectInfo(mem.effect), pos, [target, ...(plain(pos) as Value[])], key, ctx, mp, { changeset: path });
+      members.push({ component: m, effect: mem.effect, approver: mem.approver ?? comp.owner, tool: p.tool, ...(p.action ? { action: p.action } : { receipt: p.receipt }) });
+    }
+    if (this.o.replay) return { members: Object.fromEntries(members.map((m) => [m.component, m.receipt ?? null])) };
+    const setDigest = digest("action", {
+      changeset: path,
+      package: this.o.packageHash,
+      run: this.o.runId,
+      plan: digest("request", plain(plan)),
+      plan_evidence: evidenceOf(plan),
+      members: members.map((m) => ({ component: m.component, effect: m.effect, action: m.action!.action_digest })),
+      changes: (e.changes ?? {}) as Value,
+      approver: e.approver,
+      idempotency_key: key,
+    });
+    const setKey = digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: path, set: setDigest });
+    const { journal, runId, fence } = this.o;
+    await journal.prepareChangeset(runId, fence, {
+      setKey,
+      commandId: path,
+      setDigest,
+      members: members.map((m) => ({ component: m.component, effect: m.effect, operation: m.action!.operation_key, action_digest: m.action!.action_digest, approver: m.approver })),
+    });
+
+    // Authorize: the owners, member by member, then the set approver.
+    const memberAuth = new Map<string, string>();
+    for (const m of members) {
+      if (m.action!.state !== "prepared") continue;
+      memberAuth.set(m.component, await this.authorization(m.effect, { irreversible: true }, m.action!, `${path}/members/${m.component}`, { role: m.approver, changeset: setDigest, component: m.component }));
+    }
+    let setAuth: string | undefined;
+    if (members.some((m) => m.action!.state === "prepared")) {
+      const decision = await this.wait(`${path}/authorize`, "decision", {
+        changeset: path,
+        action_digest: setDigest,
+        role: e.approver,
+        order: e.order,
+        changes: (e.changes ?? {}) as Value,
+        members: members.map((m) => ({ component: m.component, effect: m.effect, action_digest: m.action!.action_digest, approver: m.approver, files: Object.keys(isObj(m.action!.artifacts ?? null) ? (m.action!.artifacts as Obj) : {}) })),
+        deadline: null,
       });
+      if (!isObj(decision) || decision["approved"] !== true) throw new Fault("Rejected", [{ changeset: path, denied_by: isObj(decision) ? (decision["by"] ?? null) : null }]);
+      setAuth = String(decision["authorization_id"]);
     }
-    let justCommitted = false;
-    if (action.state === "prepared") {
-      const authId = await this.authorization(e.name, info, action, path);
-      action = await journal.commit(runId, fence, operationKey, authId);
-      justCommitted = true;
-      this.o.faults.check("after_commit", { id: path, kind: "effect" });
+
+    // Commit, in order. What is already settled is not sent again.
+    const receipts: Obj = {};
+    for (let i = 0; i < members.length; i++) {
+      const m = members[i]!;
+      let action = m.action!;
+      try {
+        let fresh = false;
+        if (action.state === "prepared") {
+          action = await journal.commit(runId, fence, action.operation_key, memberAuth.get(m.component)!, { key: setKey, digest: setDigest, authorizationId: setAuth! });
+          fresh = true;
+          this.o.faults.check("after_commit", { id: `${path}/members/${m.component}`, kind: "changeset" });
+        }
+        receipts[m.component] = action.state === "dispatched" ? await this.dispatchAction(m.tool, action, fresh) : this.settledAction(action);
+      } catch (f) {
+        if (!(f instanceof Fault) && !(f instanceof Attention)) throw f;
+        const applied = members.slice(0, i).map((x) => x.component);
+        const now = (await journal.action(action.operation_key)) ?? action;
+        const detail: Obj = {
+          set: setDigest,
+          applied: applied.map((c) => ({ component: c, receipt: receipts[c] ?? null })),
+          stopped_at: { component: m.component, effect: m.effect, operation: now.operation_key, state: now.state, detail: now.detail ?? null },
+          not_sent: members.slice(i + 1).map((x) => x.component),
+          // §8.5: compensation is offered to a person, each its own prepare → authorize → commit; never run here.
+          compensation: applied.flatMap((c) => {
+            const offer = this.compensationOf(members.find((x) => x.component === c)!.effect);
+            return offer ? [{ component: c, effect: offer, undoes: members.find((x) => x.component === c)!.action!.operation_key }] : [];
+          }),
+        };
+        const unresolved = now.state === "unknown_outcome" || now.state === "dispatched";
+        if (!applied.length && !unresolved) {
+          // Nothing landed: the set simply failed.
+          await journal.changesetState(runId, fence, setKey, "failed", detail);
+          throw f;
+        }
+        await journal.changesetState(runId, fence, setKey, "partial", detail);
+        throw new Attention({ changeset_partial: detail });
+      }
     }
-    if (action.state === "dispatched") return this.dispatchAction(tool, action, justCommitted);
-    return this.settledAction(action);
+    await journal.changesetState(runId, fence, setKey, "committed", { set: setDigest });
+    return { set_digest: setDigest, members: receipts };
+  }
+
+  /** The compensation an effect offers (§8.5), if it declares one. */
+  private compensationOf(effect: string): string | undefined {
+    const d = this.def(effect);
+    if (d?.kind === "effect") return d.compensation;
+    return STD_EFFECTS[effect]?.compensation;
   }
 
   private settledAction(action: ActionRow): Value {
@@ -1243,9 +1400,13 @@ export class Interpreter {
     return { authorizationId: String(row["authorization_id"]), decidedBy: String(row["decided_by"]) };
   }
 
-  /** authorize p by policy | human(role) (§8.8). A model or a program cannot produce this. */
-  private async authorization(effect: string, info: { irreversible: boolean }, action: ActionRow, path: string): Promise<string> {
-    const pol = this.o.policy.authorize?.[effect] ?? (info.irreversible ? { by: "human" as const, role: "owner" } : { by: "policy" as const });
+  /**
+   * authorize p by policy | human(role) (§8.8). A model or a program cannot
+   * produce this. A change set member (`member`) is approved by its
+   * component's owner unless the run's policy authorizes the effect itself.
+   */
+  private async authorization(effect: string, info: { irreversible: boolean }, action: ActionRow, path: string, member?: { role: string; changeset: string; component: string }): Promise<string> {
+    const pol = this.o.policy.authorize?.[effect] ?? (member ? { by: "human" as const, role: member.role } : info.irreversible ? { by: "human" as const, role: "owner" } : { by: "policy" as const });
     if (pol.by === "policy") {
       const id = digest("operation", { authorize: action.action_digest, by: "policy" });
       const ttl = this.o.policy.authorizationTtlMs ?? 15 * 60_000;
@@ -1257,6 +1418,7 @@ export class Interpreter {
       action_digest: action.action_digest,
       params: action.params,
       role: pol.role,
+      ...(member ? { changeset: member.changeset, component: member.component } : {}),
       deadline: pol.deadlineMs === undefined ? null : this.o.adapters.clock.now() + pol.deadlineMs,
     });
     if (!isObj(decision) || decision["approved"] !== true) throw new Fault("Rejected", [{ denied_by: isObj(decision) ? (decision["by"] ?? null) : null }]);

@@ -130,6 +130,8 @@ function children(e: Expr): Expr[] {
       return [e.value, ...e.args.map((a) => a.value)];
     case "effect":
       return e.args.map((a) => a.value);
+    case "changeset":
+      return [e.plan, ...Object.values(e.members).flatMap((m) => m.args.map((a) => a.value))];
     case "escalate":
       return [e.to];
     case "pause":
@@ -192,7 +194,7 @@ function supervision(e: Extract<Expr, { op: "delegate" }>): string | undefined {
 
 export interface ArchNode {
   id: string;
-  kind: "delegate" | "verify" | "effect" | "human" | "infer" | "read";
+  kind: "delegate" | "verify" | "effect" | "changeset" | "human" | "infer" | "read";
   label: string;
   detail: string[];
 }
@@ -285,6 +287,19 @@ class Graph {
         const detail = [info.irreversible ? "irreversible" : info.critical ? "critical" : "", e.idempotent_by ? "idempotent" : "", e.compensate ? `compensation offered: ${e.compensate}` : ""].filter(Boolean);
         return [this.add("effect", e.name, detail, prev)];
       }
+      case "changeset": {
+        // Who approves what, and in which order the members land (doc 9 §3).
+        const owner = (m: string): string => {
+          const c = this.program.defs[m];
+          return e.members[m]!.approver ?? (c?.kind === "component" ? c.owner : "owner");
+        };
+        const detail = [
+          ...e.order.map((m, i) => `${i + 1}. ${m}: ${e.members[m]?.effect ?? "?"} (approved by ${owner(m)})`),
+          ...Object.entries(e.changes ?? {}).map(([i, k]) => `${i}: ${k}`),
+          `the set approved by ${e.approver}`,
+        ];
+        return [this.add("changeset", `change set ${e.order.join(" → ")}`, detail, prev)];
+      }
       case "infer":
         return [this.add("infer", `infer ${"ref" in e.type ? e.type.ref : "value"}`, [], prev)];
       case "escalate":
@@ -327,6 +342,7 @@ function mermaid(wf: string, budget: string, nodes: ArchNode[], edges: ArchEdge[
       case "verify":
         return `${n.id}{{${text}}}`;
       case "effect":
+      case "changeset":
         return `${n.id}[(${text})]`;
       case "human":
         return `${n.id}[/${text}/]`;
@@ -380,6 +396,10 @@ function workflowEffects(program: Program, body: Stmt[]): string[] {
       if (n.op === "effect" && typeof n.name === "string") {
         const info = effectInfo(program, n.name);
         out.add(`${n.name} (${info.irreversible ? "irreversible; a person authorizes" : info.critical ? "critical; policy authorizes" : "not critical"})`);
+      }
+      if (n.op === "changeset") {
+        const cs = v as Extract<Expr, { op: "changeset" }>;
+        for (const [m, mem] of Object.entries(cs.members)) out.add(`${mem.effect} on ${m} (change set: its owner and ${cs.approver} authorize)`);
       }
       Object.values(v).forEach(visit);
     }

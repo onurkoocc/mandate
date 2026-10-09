@@ -494,6 +494,19 @@ class Resolver {
         if (e.idempotent_by) this.expr(e.idempotent_by, `${path}/idempotent_by`, ctx);
         if (e.compensate) this.effectName(e.compensate, `${path}/compensate`);
         return;
+      case "changeset":
+        this.expr(e.plan, `${path}/plan`, ctx);
+        for (const [m, mem] of Object.entries(e.members)) {
+          const mp = `${path}/members/${ptrToken(m)}`;
+          if (this.def_(m)?.kind !== "component") this.report(mp, `Unknown component '${m}'.`, m, "component", this.defsOfKind("component"));
+          if (!STD_EFFECTS[mem.effect]) this.effectName(mem.effect, `${mp}/effect`);
+          this.args(mem.args, `${mp}/args`, ctx);
+        }
+        for (const i of Object.keys(e.changes ?? {})) {
+          if (this.def_(i)?.kind !== "interface") this.report(`${path}/changes/${ptrToken(i)}`, `Unknown interface '${i}'.`, i, "interface", this.defsOfKind("interface"));
+        }
+        if (e.idempotent_by) this.expr(e.idempotent_by, `${path}/idempotent_by`, ctx);
+        return;
       case "escalate":
         this.expr(e.to, `${path}/to`, ctx);
         return;

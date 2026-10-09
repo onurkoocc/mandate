@@ -407,3 +407,13 @@ Mandate describes a working system instead of rewriting it
 - **Capabilities over components.** `component.read(c)` and its siblings
   open into the paths, commands and repositories the model declares, so every
   check (C1–C5) and every sandbox treats them like capabilities written out.
+- **Workspace.** A run starts from one base commit per component, recorded
+  in its manifest (hash R).
+- **Change sets.** `changeset(plan) { member c = git.merge(x) … order …
+  change I additive approve role "r" }` lands one change per component as a
+  unit. The plan is verified. The order respects the interface graph: an
+  additive change lands at its provider first, and a breaking change is
+  never one set (E1101–E1105). Each owner approves its member, then the set
+  approver approves the set digest S. Members commit in order; a failure or
+  an unknown outcome after a member has landed stops the set as
+  `changeset_partial`, and compensation is offered, never run.

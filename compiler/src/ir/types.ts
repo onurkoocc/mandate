@@ -354,11 +354,39 @@ export type Expr =
   | { op: "await"; of: Expr }
   | { op: "verify"; value: Expr; contract: string; args: Arg[]; on_unmet?: { bind: string; then: Expr } }
   | { op: "effect"; name: string; args: Arg[]; idempotent_by?: Expr; compensate?: string }
+  | ChangesetExpr
   | { op: "escalate"; to: Expr }
   | { op: "pause"; then?: Expr }
   | { op: "switch"; on: Expr; cases: Array<{ pattern: Pattern; then: Expr }> }
   | { op: "try"; of: Expr }
   | { op: "block"; body: Stmt[] };
+
+/** How a change set changes an interface (design doc 9 §3.3). */
+export type ChangeKind = "additive" | "breaking" | "none";
+
+/** One member of a change set: the critical effect that lands one component's change. */
+export interface ChangesetMember {
+  effect: string;
+  args: Arg[];
+  /** Who approves this member; the component's owner when absent. */
+  approver?: string;
+}
+
+/**
+ * `changeset` (0.3; design doc 9 §3, K42): prepare → authorize → commit over
+ * a set of external actions, one per component. Members are keyed by
+ * component; `order` is the commit order; `changes` declares how each
+ * interface changes; `approver` is the role that approves the whole set.
+ */
+export interface ChangesetExpr {
+  op: "changeset";
+  plan: Expr;
+  members: Record<string, ChangesetMember>;
+  order: string[];
+  changes?: Record<string, ChangeKind>;
+  approver: string;
+  idempotent_by?: Expr;
+}
 
 export type BinaryOp = "and" | "or" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "subseteq" | "+" | "-" | "*" | "/";
 

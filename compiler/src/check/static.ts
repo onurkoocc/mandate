@@ -13,6 +13,8 @@
 //   delegation                  E0701–E0713   C2, dynamic spawn, supervision
 //   system model                E1001–E1005   providers, component capabilities,
 //                                              working copies, declared reads (doc 9 §2, §5)
+//   change sets                 E1101–E1105   order against the interface graph, members,
+//                                              breaking changes, a verified plan (doc 9 §3)
 //
 // Std calls the checker does not describe have unknown type and no effects,
 // so missing knowledge never produces an error.
@@ -21,6 +23,7 @@ import { diag, ptr, type Diagnostic, type Span } from "../diag.js";
 import type {
   AgentDef,
   Budget,
+  ChangesetExpr,
   ComponentDef,
   ContractDef,
   Def,
@@ -418,7 +421,8 @@ class Checker implements TypeEnv {
 
   private capsFor(u: Usage, caps: CapVal[]): CapVal[] {
     const need = this.requiredCap(u.effect);
-    return caps.filter((c) => (need ? c.ctor === need : capAuthorizes(c, u.effect, u.scope)));
+    // A usage with a scope (a change set member's repository) needs a capability whose scope covers it.
+    return caps.filter((c) => (need ? c.ctor === need && (u.scope === undefined || scopeWithin(c.ctor, u.scope, c.scope)) : capAuthorizes(c, u.effect, u.scope)));
   }
 
   private checkUsagesDeclared(usages: Usage[], declared: EffectRef[], who: string): void {
@@ -931,6 +935,8 @@ class Checker implements TypeEnv {
         return this.verify(e, frame, path);
       case "effect":
         return this.effectCall(e, frame, path);
+      case "changeset":
+        return this.changeset(e, frame, path);
       case "escalate":
         this.expr(e.to, frame, `${path}/to`);
         return lit(UNKNOWN);
@@ -1258,6 +1264,80 @@ class Checker implements TypeEnv {
     return { ty: ret, cls };
   }
 
+  /**
+   * A change set (design doc 9 §3): a verified plan; members that are
+   * critical effects on their component's repository, held by the workflow;
+   * a commit order with every member once, and consistent with the
+   * interface graph for the changes it declares: the provider of an additive
+   * change lands before its consumers, and a breaking change is never one
+   * set (expand → migrate → contract instead).
+   */
+  private changeset(e: ChangesetExpr, frame: Frame, path: string): Val {
+    const plan = this.expr(e.plan, frame, `${path}/plan`);
+    if (epistemic(plan.ty).level !== "verified") {
+      this.report("E1105", `A change set lands an approved plan: its plan must be verified against a contract, not ${show(plan.ty)} (doc 9 §3.4).`, `${path}/plan`);
+    }
+    if (frame.where !== "workflow") {
+      this.report("E0408", `A change set commits external effects; it runs only in a workflow body, not in a ${frame.where} (§8.8).`, path);
+    }
+    if (e.idempotent_by) this.expr(e.idempotent_by, frame, `${path}/idempotent_by`);
+    else this.report("E0403", "A change set needs 'idempotent_by' (§8.4).", path, { repair_hint: "add `idempotent_by <business key>`" });
+    const components = Object.entries(this.defs).filter((x): x is [string, ComponentDef] => x[1].kind === "component");
+    for (const [m, mem] of Object.entries(e.members)) {
+      const mp = `${path}/members/${m}`;
+      const comp = this.def(m);
+      const args = mem.args.map((a, i) => this.expr(a.value, frame, `${mp}/args/${i}/value`));
+      if (comp?.kind !== "component") continue; // E0120 from name resolution
+      const decl = this.def(mem.effect);
+      const params = decl?.kind === "effect" ? decl.params.map((p) => this.ty(p.type)) : STD_EFFECTS[mem.effect]?.params.map((p) => this.ty(p));
+      if (params) {
+        if (args.length !== params.length) this.report("E0201", `Effect ${mem.effect} takes ${params.length} argument(s) but got ${args.length}.`, mp);
+        params.forEach((t, i) => {
+          const a = args[i];
+          if (a) this.problem(assignable(a.ty, t, this), `${mp}/args/${i}/value`);
+        });
+      }
+      if (!this.isCriticalEffect(mem.effect)) {
+        this.report("E1104", `Member ${m} runs ${mem.effect}, which is not a critical effect; a change set's members are the external actions that land each component's change.`, `${mp}/effect`);
+        continue;
+      }
+      // The member acts on its component's repository: the workflow must hold that authority.
+      this.use(frame, { effect: mem.effect, scope: [comp.repo], path: mp });
+    }
+    const members = Object.keys(e.members);
+    const dupes = e.order.filter((m, i) => e.order.indexOf(m) !== i);
+    const missing = members.filter((m) => !e.order.includes(m));
+    const strangers = e.order.filter((m) => !members.includes(m));
+    if (dupes.length || missing.length || strangers.length) {
+      this.report("E1102", `The order must list every member once: ${[...(missing.length ? [`missing ${missing.join(", ")}`] : []), ...(strangers.length ? [`not members: ${strangers.join(", ")}`] : []), ...(dupes.length ? [`twice: ${[...new Set(dupes)].join(", ")}`] : [])].join("; ")}.`, `${path}/order`, { missing, not_members: strangers, twice: [...new Set(dupes)] });
+      return { ty: named("Receipt", UNKNOWN), cls: plan.cls };
+    }
+    const pos = new Map(e.order.map((m, i) => [m, i]));
+    const edges: Array<[string, string, string]> = [];
+    for (const [iface, kind] of Object.entries(e.changes ?? {})) {
+      const cp = `${path}/changes/${iface}`;
+      if (kind === "breaking") {
+        this.report("E1103", `${iface} changes in a breaking way; that is never one change set. Plan it as expand → migrate → contract: add the new form, move every consumer, then remove the old one (doc 9 §3.3).`, cp, { interface: iface });
+        continue;
+      }
+      if (kind === "none") continue;
+      const provider = components.find(([, c]) => c.provides?.includes(iface))?.[0];
+      if (!provider) continue; // E1001 in the system model
+      if (!pos.has(provider)) {
+        this.report("E1101", `${iface} changes, but its provider ${provider} is not a member of this change set.`, cp, { interface: iface, provider });
+        continue;
+      }
+      for (const [consumer, c] of components) if (c.consumes?.includes(iface) && pos.has(consumer)) edges.push([provider, consumer, iface]);
+    }
+    // An additive change lands at its provider before any consumer that uses it.
+    for (const [p, c, iface] of edges) {
+      if (pos.get(p)! > pos.get(c)!) this.report("E1101", `${c} consumes ${iface}, which ${p} provides and this change set extends; ${p} must land before ${c} (order ${e.order.join(", ")}).`, `${path}/order`, { provider: p, consumer: c, interface: iface });
+    }
+    const cycle = findCycle(members, edges);
+    if (cycle) this.report("E1101", `No order satisfies the interface graph: ${cycle.join(" → ")}. Split the change into steps (doc 9 §3.3).`, `${path}/order`, { cycle });
+    return { ty: named("Receipt", UNKNOWN), cls: plan.cls };
+  }
+
   private approvedByHuman(ty: Ty): boolean {
     const ep = epistemic(ty);
     if (ep.level !== "verified" || !ep.contract) return false;
@@ -1531,6 +1611,32 @@ function overlapText(a: CapVal, b: CapVal): string {
   return sa === sb ? sa : `${sa} / ${sb}`;
 }
 
+/** A cycle among `nodes` along `edges` (from → to), if there is one. */
+function findCycle(nodes: string[], edges: Array<[string, string, string]>): string[] | undefined {
+  const next = new Map<string, string[]>(nodes.map((n) => [n, []]));
+  for (const [a, b] of edges) if (a !== b) next.get(a)?.push(b);
+  const state = new Map<string, "open" | "done">();
+  const stack: string[] = [];
+  const visit = (n: string): string[] | undefined => {
+    if (state.get(n) === "done") return undefined;
+    if (state.get(n) === "open") return [...stack.slice(stack.indexOf(n)), n];
+    state.set(n, "open");
+    stack.push(n);
+    for (const m of next.get(n) ?? []) {
+      const c = visit(m);
+      if (c) return c;
+    }
+    stack.pop();
+    state.set(n, "done");
+    return undefined;
+  };
+  for (const n of [...nodes].sort()) {
+    const c = visit(n);
+    if (c) return c;
+  }
+  return undefined;
+}
+
 function patternVars(p: Pattern): string[] {
   if (p.p === "bind") return [p.name];
   if (p.p === "tag") return (p.args ?? []).flatMap(patternVars);
@@ -1623,6 +1729,8 @@ function children(e: Expr): Expr[] {
       return [e.value, ...e.args.map((a) => a.value), ...(e.on_unmet ? [e.on_unmet.then] : [])];
     case "effect":
       return [...e.args.map((a) => a.value), ...(e.idempotent_by ? [e.idempotent_by] : [])];
+    case "changeset":
+      return [e.plan, ...Object.values(e.members).flatMap((m) => m.args.map((a) => a.value)), ...(e.idempotent_by ? [e.idempotent_by] : [])];
     case "escalate":
       return [e.to];
     case "pause":

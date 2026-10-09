@@ -58,6 +58,8 @@ export interface StdEffect {
   irreversible?: true;
   /** Capability constructor that authorizes it. */
   cap: string;
+  /** The effect that undoes it, offered to a person after a partial failure (§8.5); never run automatically. */
+  compensation?: string;
 }
 
 /** Std effects called with `effect name(…)`. Critical ones expand to prepare → authorize → commit. */
@@ -65,7 +67,8 @@ export const STD_EFFECTS: Record<string, StdEffect> = {
   "git.open_pr": { params: [t("Verified", UNKNOWN)], returns: UNKNOWN, critical: true, cap: "git.pr" },
   "git.close_pr": { params: [UNKNOWN], returns: UNKNOWN, critical: true, cap: "git.pr" },
   "git.comment": { params: [UNKNOWN, t("Text")], returns: UNKNOWN, critical: true, cap: "git.pr" },
-  "git.merge": { params: [t("Verified", UNKNOWN)], returns: UNKNOWN, critical: true, irreversible: true, cap: "git.pr" },
+  "git.merge": { params: [t("Verified", UNKNOWN)], returns: UNKNOWN, critical: true, irreversible: true, cap: "git.pr", compensation: "git.revert" },
+  "git.revert": { params: [UNKNOWN], returns: UNKNOWN, critical: true, cap: "git.pr" },
   "money.spend": { params: [t("Money")], returns: t("Receipt", UNKNOWN), critical: true, cap: "money.spend" },
   // A release of a component's verified change into an environment, and a schema migration there (doc 9 §9, L4).
   deploy: { params: [t("Verified", UNKNOWN), UNKNOWN], returns: t("Receipt", UNKNOWN), critical: true, irreversible: true, cap: "env.deploy" },

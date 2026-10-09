@@ -7,6 +7,7 @@
 //   mandate decline <run> --revision N --by NAME
 //   mandate answer <run> --revision N --by NAME <text>
 //   mandate cancel <run>
+//   mandate reconcile <run> <operation>                   ask the system of record what an unknown outcome was
 //   mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
 //   mandate replay <run>
 //   mandate artifact <run> <blob:sha256:…>
@@ -73,6 +74,7 @@ const USAGE = `usage:
   mandate decline <run> --revision N --by NAME
   mandate answer <run> --revision N --by NAME <text>
   mandate cancel <run>
+  mandate reconcile <run> <operation>
   mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
   mandate replay <run>
   mandate artifact <run> <blob:sha256:…>
@@ -82,7 +84,7 @@ const USAGE = `usage:
   mandate test <program> [--json] [--lock FILE]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -151,6 +153,12 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       case "cancel":
         run = await rt.cancelRun(runId);
         break;
+      case "reconcile": {
+        // Asks the adapter what happened to an action whose outcome is unknown (§8.9), e.g. a change set's stopped member.
+        const op = a.positional[1] ?? fail("reconcile needs the action's operation key (status shows it)");
+        run = await rt.reconcileAction(runId, op);
+        break;
+      }
       case "raise-limits":
         run = await rt.raiseLimits(runId, msg, { revision: revision(a), limits: limits(str(a, "--limit")), by: str(a, "--by") });
         break;

@@ -718,6 +718,7 @@ mandate approve <run> --revision N --by NAME
 mandate decline <run> --revision N --by NAME
 mandate answer <run> --revision N --by NAME <text>
 mandate cancel <run>
+mandate reconcile <run> <operation>
 mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
 mandate replay <run>
 mandate artifact <run> <blob:sha256:…>
@@ -865,3 +866,30 @@ commit per component.
   sees only its components' roots: an agent working on `mcp` cannot read
   or write `core` (`runtime/test/workspace.test.ts`, also on a real
   Bubblewrap and AppContainer host).
+
+## Change sets (design doc 9 §3, B4)
+
+`changeset` extends prepare → authorize → commit to one action per
+component; [`system.md`](system.md#change-sets-b4) has the semantics.
+
+- **Storage.** The `changesets` table holds the set digest S, the members
+  in commit order (component, effect, operation, action digest, approver),
+  and the state: `prepared`, `committing` (the first member's commit
+  consumed S's authorization), `committed`, `partial` (some members landed)
+  or `failed` (none did). Events `changeset_prepared`,
+  `changeset_committed`, `changeset_partial` and `changeset_failed`.
+- **Commit.** `Journal.commit` takes the set's authorization as well. In the
+  same transaction it checks that the authorization exists, is for S, and
+  was not consumed by another set (E0406, E0407), and that it has not
+  expired.
+- **Waits.** A member's approval is a `decision` wait at
+  `<changeset>/members/<component>/authorize`, with the member's
+  `action_digest`, `changeset` (S) and `component`. The set's approval is
+  one at `<changeset>/authorize` with `action_digest` = S. `mandate approve`
+  answers both.
+- **Partial set.** The run's `attention` is
+  `{ changeset_partial: { set, applied, stopped_at, not_sent, compensation } }`.
+  `mandate reconcile` (ReconcileAction) on the stopped member's operation
+  resumes the run.
+- **`git.merge`** (`GitHubMerges`): configured with `"github": { "repos": […] }`
+  and MANDATE_GITHUB_TOKEN. Its retry class is `reconcilable`.

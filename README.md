@@ -52,7 +52,10 @@ anything runs. This repository holds the 0.1 reference implementation.
    `environment`) lives in the IR and is imported as a module pinned by the
    lock, and capabilities can be written over components. A run starts
    from one base commit per component, recorded in its manifest (R), and
-   each agent's sandbox sees only its components. The reference
+   each agent's sandbox sees only its components. Change sets land one
+   change per component as a unit: owners approve their members and an
+   approver the set digest, members commit in order, and a partial set
+   stops for a person (`git.merge` on GitHub). The reference
    system is Kervan, seven repositories in TypeScript, Java and Python
    ([`examples/kervan/`](examples/kervan/SPEC.md)). See
    [`spec/system.md`](spec/system.md).
@@ -144,6 +147,10 @@ Kervan's model and its view, one mutation per rule (E1001–E1005), programs
 that import it and write capabilities over its components, C5 across
 components, the lock's pin (E0142), and changes to the model reported as
 governance changes.
+`compiler/test/changeset.test.ts` checks change sets (design doc 9 §3):
+the order against the interface graph (E1101), the order and its members
+(E1102), breaking changes (E1103), critical members (E1104), a verified
+plan (E1105), and each member's repository held by the workflow (E0301).
 `compiler/test/static.test.ts` also checks the §20 FixBug table: 18.5 USD of
 child budgets inside 20 USD, delegated capabilities inside the workflow's,
 disjoint writes for the two parallel agents, step limits, review never

@@ -25,6 +25,9 @@ import {
   type BinaryOp,
   type Budget,
   type CallSpec,
+  type ChangeKind,
+  type ChangesetExpr,
+  type ChangesetMember,
   type Command,
   type ComponentDef,
   type ContractDef,
@@ -1235,6 +1238,7 @@ class Parser {
       }
     }
     // Contextual expression keywords: only when what follows can start an operand.
+    if (t.text === "changeset" && this.isP("(", this.la(1))) return this.at(this.changesetExpr(), t);
     if (t.text === "escalate" && startsOperand(this.la(1))) {
       this.bump();
       return this.at({ op: "escalate", to: this.binary(PREC_AND + 1, ctx) }, t);
@@ -1267,6 +1271,61 @@ class Parser {
       else if (this.eatW("supervise")) e.supervise = this.callSpec();
       else return e;
     }
+  }
+
+  /**
+   * `changeset(plan) { member c = effect(args) [approved_by role "r"] …
+   * order c, … change Interface kind … approve role "r" } [idempotent_by e]`
+   * (0.3; design doc 9 §3).
+   */
+  private changesetExpr(): Expr {
+    this.bump();
+    this.expectP("(");
+    const plan = this.expr();
+    this.expectP(")");
+    const e: ChangesetExpr = { op: "changeset", plan, members: Object.create(null) as Record<string, ChangesetMember>, order: [], approver: "" };
+    let ordered = false;
+    this.expectP("{");
+    while (!this.isP("}")) {
+      const t = this.t;
+      const word = this.ident("member, order, change or approve");
+      if (word === "member") {
+        const mt = this.t;
+        const name = this.ident("a component name");
+        this.expectP("=");
+        const effect = this.qname();
+        const m: ChangesetMember = { effect, args: this.args() };
+        if (this.eatW("approved_by")) {
+          this.expectW("role");
+          m.approver = this.string("a role");
+        }
+        if (name in e.members) this.dup("change set member", name, mt);
+        e.members[name] = this.at(m, mt);
+      } else if (word === "order") {
+        if (ordered) this.dup("change set field", "order", t);
+        ordered = true;
+        do e.order.push(this.ident("a member name"));
+        while (this.eatP(","));
+      } else if (word === "change") {
+        const it = this.t;
+        const iface = this.ident("an interface name");
+        const kt = this.t;
+        const kind = this.ident("additive, breaking or none");
+        if (kind !== "additive" && kind !== "breaking" && kind !== "none") this.fail(`Unknown change kind '${kind}'; expected additive, breaking or none.`, kt);
+        e.changes ??= Object.create(null) as Record<string, ChangeKind>;
+        if (iface in e.changes) this.dup("interface change", iface, it);
+        e.changes[iface] = kind;
+      } else if (word === "approve") {
+        if (e.approver) this.dup("change set field", "approve", t);
+        this.expectW("role");
+        e.approver = this.string("a role");
+      } else this.fail(`Expected member, order, change or approve in a change set but found '${word}'.`, t);
+    }
+    this.expectP("}");
+    if (!e.approver) this.fail("A change set names the role that approves it: approve role \"…\".");
+    if (!ordered) this.fail("A change set lists its commit order: order c, ….");
+    if (this.eatW("idempotent_by")) e.idempotent_by = this.expr();
+    return e;
   }
 
   private verifyExpr(): Expr {

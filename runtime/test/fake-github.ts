@@ -13,7 +13,12 @@ interface Pull {
   body: string;
   head: { ref: string };
   base: { ref: string };
+  merged?: boolean;
+  merge_commit_sha?: string | null;
 }
+
+/** A fault for the next merge: the merge applies but its answer is lost, or nothing happens and the call fails. */
+export type MergeFault = "lose_response" | "network" | 409;
 
 export class FakeGitHub {
   readonly refs = new Map<string, string>();
@@ -23,6 +28,8 @@ export class FakeGitHub {
   readonly calls: string[] = [];
   /** Faults for the next pull-request creations, in order. */
   readonly pullFaults: PullFault[] = [];
+  /** Faults for the next merges, in order. */
+  readonly mergeFaults: MergeFault[] = [];
 
   constructor(readonly repo: string) {
     const tree = this.put("tree", new Map([["src/a.ts", "export const a = 1;\n"]]));
@@ -99,15 +106,43 @@ export class FakeGitHub {
       if (fault === "lose_response") throw new TypeError("fetch failed: the connection closed after the request was sent");
       return json(201, pr);
     }
+    if ((m = path.match(/^\/pulls\/(\d+)$/)) && method === "GET") {
+      const pr = this.pulls.find((p) => p.number === Number(m![1]));
+      return pr ? json(200, this.shown(pr)) : json(404, { message: "Not Found" });
+    }
+    if ((m = path.match(/^\/pulls\/(\d+)\/merge$/)) && method === "PUT") {
+      const pr = this.pulls.find((p) => p.number === Number(m![1]));
+      if (!pr) return json(404, { message: "Not Found" });
+      const fault = this.mergeFaults.shift();
+      if (fault === "network") throw new TypeError("fetch failed");
+      if (pr.merged) return json(405, { message: "Pull Request is not mergeable" });
+      const head = this.refs.get(`heads/${pr.head.ref}`);
+      if (fault === 409 || body["sha"] !== head) return json(409, { message: "Head branch was modified. Review and try the merge again." });
+      const commit = this.commits.get(head!)!;
+      const sha = this.hash(`merge ${pr.number} ${head}`);
+      this.commits.set(sha, { tree: commit.tree, parents: [this.refs.get(`heads/${pr.base.ref}`)!, head!], message: `Merge pull request #${pr.number}` });
+      this.refs.set(`heads/${pr.base.ref}`, sha);
+      pr.merged = true;
+      pr.state = "closed";
+      pr.merge_commit_sha = sha;
+      if (fault === "lose_response") throw new TypeError("fetch failed: the connection closed after the request was sent");
+      return json(200, { sha, merged: true, message: "Pull Request successfully merged" });
+    }
     if (path === "/pulls" && method === "GET") {
       const head = u.searchParams.get("head");
       const all = head ? this.pulls.filter((p) => `${this.repo.split("/")[0]}:${p.head.ref}` === head) : this.pulls;
       const page = Number(u.searchParams.get("page") ?? "1");
       const per = Number(u.searchParams.get("per_page") ?? "30");
-      return json(200, all.slice((page - 1) * per, page * per));
+      // Like GitHub, the list does not say whether a pull request was merged.
+      return json(200, all.slice((page - 1) * per, page * per).map((p) => ({ ...this.shown(p), merged: undefined })));
     }
     return json(404, { message: `no fake for ${method} ${path}` });
   };
+
+  /** A pull request as GitHub shows it: with its head commit. */
+  private shown(p: Pull): Pull & { head: { ref: string; sha: string | undefined } } {
+    return { ...p, merged: !!p.merged, head: { ref: p.head.ref, sha: this.refs.get(`heads/${p.head.ref}`) } };
+  }
 
   private put(kind: string, files: Map<string, string>): { sha: string; files: Map<string, string> } {
     return { sha: this.hash(`${kind} ${JSON.stringify([...files.entries()].sort())}`), files };
@@ -116,4 +151,15 @@ export class FakeGitHub {
   private hash(s: string): string {
     return createHash("sha1").update(s).digest("hex");
   }
+}
+
+/** Several fake repositories behind one fetch, routed by `/repos/<owner>/<name>`. */
+export function fakeGitHubs(repos: string[]): { repos: Record<string, FakeGitHub>; fetch: typeof fetch } {
+  const all = Object.fromEntries(repos.map((r) => [r, new FakeGitHub(r)]));
+  const fetchAll = (async (url: string | URL | Request, init?: RequestInit) => {
+    const m = new URL(String(url)).pathname.match(/^\/repos\/([^/]+\/[^/]+)/);
+    const fake = m ? all[m[1]!] : undefined;
+    return fake ? fake.fetch(url, init) : new Response(JSON.stringify({ message: "Not Found" }), { status: 404 });
+  }) as typeof fetch;
+  return { repos: all, fetch: fetchAll };
 }

@@ -67,6 +67,10 @@ function closure(m: Program, name: string): string[] {
     if (out.has(n) || !Object.hasOwn(m.defs, n)) return;
     out.add(n);
     for (const r of references(m.defs[n]!)) visit(r);
+    // An interface comes with its provider: who answers for a change to it (doc 9 §2.1, §3.3).
+    if (m.defs[n]!.kind === "interface") {
+      for (const [c, d] of Object.entries(m.defs)) if (d.kind === "component" && d.provides?.includes(n)) visit(c);
+    }
   };
   visit(name);
   return [...out].sort();

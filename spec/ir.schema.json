@@ -1015,6 +1015,79 @@
             "op",
             "body"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "changeset"
+            },
+            "plan": {
+              "$ref": "#/$defs/Expr"
+            },
+            "members": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": {
+                "$ref": "#/$defs/Name"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "effect": {
+                    "$ref": "#/$defs/QName"
+                  },
+                  "args": {
+                    "$ref": "#/$defs/Args"
+                  },
+                  "approver": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "effect",
+                  "args"
+                ]
+              }
+            },
+            "order": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Name"
+              },
+              "minItems": 1
+            },
+            "changes": {
+              "type": "object",
+              "propertyNames": {
+                "$ref": "#/$defs/Name"
+              },
+              "additionalProperties": {
+                "enum": [
+                  "additive",
+                  "breaking",
+                  "none"
+                ]
+              }
+            },
+            "approver": {
+              "type": "string",
+              "minLength": 1
+            },
+            "idempotent_by": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "plan",
+            "members",
+            "order",
+            "approver"
+          ]
         }
       ]
     },

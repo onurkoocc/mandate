@@ -97,6 +97,16 @@ export interface ActionRow {
   artifacts: Value;
 }
 
+export interface ChangesetRow {
+  set_key: string;
+  command_id: string;
+  set_digest: string;
+  /** In commit order: component, effect, operation, action digest, approver. */
+  members: Value;
+  state: string;
+  detail: Value;
+}
+
 export interface AuthorizationRow {
   authorization_id: string;
   action_digest: string;
@@ -500,7 +510,7 @@ export class Journal {
    * run must not be cancelled (R08). Consuming it and writing the outbox
    * record happen in one transaction.
    */
-  async commit(runId: string, fence: number, operationKey: string, authorizationId: string): Promise<ActionRow> {
+  async commit(runId: string, fence: number, operationKey: string, authorizationId: string, set?: { key: string; digest: string; authorizationId: string }): Promise<ActionRow> {
     return this.db.tx(async (tx) => {
       const run = await this.lock(tx, runId, fence);
       const [arow] = await tx.query<Row>("select * from actions where operation_key = $1 and run_id = $2", [operationKey, runId]);
@@ -520,6 +530,20 @@ export class Journal {
         throw new Fault("Rejected", ["authorization_expired"]);
       }
       if (run.cancel_requested) throw new Cancelled();
+      // A change set member also needs the set's authorization, bound to the set digest S (design doc 9 §3.2).
+      // The first member's commit consumes it for this set; it never authorizes another set (G13).
+      if (set) {
+        const [s] = await tx.query<Row>("select * from authorizations where authorization_id = $1", [set.authorizationId]);
+        if (!s) throw new Violation("MDT-E0406", `Commit of a change set member without the set's authorization.`);
+        const sa = toAuth(s);
+        if (sa.action_digest !== set.digest) throw new Violation("MDT-E0406", `The set authorization was given for another change set (digest ${sa.action_digest}, set ${set.digest}).`);
+        if (sa.consumed_by !== null && sa.consumed_by !== set.key) throw new Violation("MDT-E0407", `Authorization ${set.authorizationId} was already consumed by ${sa.consumed_by}.`);
+        if (sa.consumed_by === null) {
+          if (sa.expires_at !== null && this.now() >= sa.expires_at) throw new Fault("Rejected", ["authorization_expired"]);
+          await tx.query("update authorizations set consumed_by = $2 where authorization_id = $1", [set.authorizationId, set.key]);
+          await tx.query("update changesets set state = 'committing' where set_key = $1", [set.key]);
+        }
+      }
       await tx.query("update authorizations set consumed_by = $2 where authorization_id = $1", [authorizationId, operationKey]);
       await tx.query("update actions set state = 'dispatched' where operation_key = $1", [operationKey]);
       await tx.query(
@@ -550,6 +574,40 @@ export class Journal {
       await tx.query("update outbox set state = $2, attempts = attempts + 1 where operation_key = $1", [operationKey, state === "prepared" ? "pending" : "done"]);
       await this.event(tx, runId, `action_${state}`, { operation: operationKey, ...(data.detail !== undefined ? { detail: data.detail } : {}) });
     });
+  }
+
+  // ── change sets (design doc 9 §3) ─────────────────────────────────────
+
+  /** Records a prepared change set once: its digest S and its members in commit order. */
+  async prepareChangeset(runId: string, fence: number, c: { setKey: string; commandId: string; setDigest: string; members: Value }): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [row] = await tx.query<Row>("select set_key from changesets where set_key = $1", [c.setKey]);
+      if (row) return;
+      await tx.query("insert into changesets (set_key, run_id, command_id, set_digest, members, state) values ($1, $2, $3, $4, $5, 'prepared')", [c.setKey, runId, c.commandId, c.setDigest, json(c.members)]);
+      await this.event(tx, runId, "changeset_prepared", { set: c.setDigest, command: c.commandId, members: c.members });
+    });
+  }
+
+  /** A change set's state: `committing`, `committed`, `partial` (some members applied) or `failed` (none). */
+  async changesetState(runId: string, fence: number, setKey: string, state: "committed" | "partial" | "failed", detail: Value): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      await tx.query("update changesets set state = $2, detail = $3 where set_key = $1", [setKey, state, json(detail)]);
+      await this.event(tx, runId, `changeset_${state}`, detail);
+    });
+  }
+
+  async changesets(runId: string): Promise<ChangesetRow[]> {
+    const rows = await this.db.query<Row>("select * from changesets where run_id = $1 order by command_id", [runId]);
+    return rows.map((r) => ({
+      set_key: String(r["set_key"]),
+      command_id: String(r["command_id"]),
+      set_digest: String(r["set_digest"]),
+      members: (r["members"] ?? []) as Value,
+      state: String(r["state"]),
+      detail: (r["detail"] ?? null) as Value,
+    }));
   }
 
   async evidence(runId: string, ids?: string[]): Promise<EvidenceRow[]> {

@@ -14,6 +14,7 @@
 //     "sandbox":  { "host": "mxc", "baseline": ["/usr/local"], "mode": "enforcement" | "learning" },
 //                 on Windows: { "host": "mxc", "toolchain": ["C:\\Program Files\\nodejs"], "isolation": "process" }
 //     "github":   { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },   // MANDATE_GITHUB_TOKEN
+//                 with "repos": ["owner/a", "owner/b"], also git.merge for change sets into those repositories (B4)
 //     "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"],
 //                   "process": { "key": ".mandate/verifier.key", "trusted": ["keys/verifier.pub"] } }   // optional: a verifier process of its own
 //     "workspace": { "components": { "mcp": { "url": "https://github.com/onurkoocc/kervan-mcp.git", "ref": "main" } } }
@@ -33,6 +34,7 @@ import type { BucketConfig } from "./ratelimit.js";
 import type { RuntimeOptions } from "./runtime.js";
 import { openDb, type Db } from "./db.js";
 import { GitHubPullRequests } from "./github.js";
+import { GitHubMerges } from "./github-merge.js";
 import { MxcHost } from "./mxc.js";
 import { WindowsMxcHost } from "./mxc-windows.js";
 import { MxcAdapter } from "./sandbox.js";
@@ -56,7 +58,7 @@ export interface RuntimeConfig {
   rateLimits?: Record<string, BucketConfig>;
   model?: { provider: "anthropic" };
   sandbox?: { host: "mxc"; baseline?: string[]; path?: string[]; toolchain?: string[]; isolation?: "process" | "session"; mode?: "enforcement" | "learning" };
-  github?: { repo: string; base?: string; workdir: string };
+  github?: { repo?: string; base?: string; workdir?: string; repos?: string[] };
   verifier?: VerifierConfig & {
     /**
      * Run the verifier as a process of its own, with its own ed25519 key
@@ -78,7 +80,7 @@ const KEYS: Record<string, string[]> = {
   evidence: ["key", "trusted"],
   model: ["provider"],
   sandbox: ["host", "baseline", "path", "toolchain", "isolation", "mode"],
-  github: ["repo", "base", "workdir"],
+  github: ["repo", "base", "workdir", "repos"],
   verifier: ["workdir", "base", "suites", "command", "timeoutMs", "process"],
   "verifier.process": ["key", "trusted"],
 };
@@ -110,7 +112,10 @@ export function readConfig(file: string): RuntimeConfig {
       throw new Violation("bad_config", `${file}: rateLimits.${k} must be a bucket model, model:<tier> or tool with capacity, perSecond and an optional queue`);
     }
   }
-  if (config.github) config.github.workdir = at(config.github.workdir);
+  if (config.github?.workdir) config.github.workdir = at(config.github.workdir);
+  if (config.github && (!!config.github.repo !== !!config.github.workdir || (config.github.repos !== undefined && (!Array.isArray(config.github.repos) || !config.github.repos.every((r) => typeof r === "string"))))) {
+    throw new Violation("bad_config", `${file}: "github" takes "repo" with "workdir" (git.open_pr), and "repos", a list of owner/name (git.merge)`);
+  }
   if (config.workspace) {
     const comps = (config.workspace as { components?: unknown }).components;
     if (!comps || typeof comps !== "object" || Array.isArray(comps)) throw new Violation("bad_config", `${file}: "workspace.components" maps component names to { "url", "ref" }`);
@@ -211,7 +216,9 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
   if (config.github) {
     const token = env["MANDATE_GITHUB_TOKEN"];
     if (!token) throw new Violation("no_credentials", "github is configured, but MANDATE_GITHUB_TOKEN is not set.");
-    tools["git.open_pr"] = new GitHubPullRequests({ token, repo: config.github.repo, workdir: config.github.workdir, ...(config.github.base ? { base: config.github.base } : {}) });
+    const base = config.github.base ? { base: config.github.base } : {};
+    if (config.github.repo && config.github.workdir) tools["git.open_pr"] = new GitHubPullRequests({ token, repo: config.github.repo, workdir: config.github.workdir, ...base });
+    if (config.github.repos?.length) tools["git.merge"] = new GitHubMerges({ token, repos: config.github.repos, ...base });
   }
   const sandbox = sandboxFor(config);
   return {

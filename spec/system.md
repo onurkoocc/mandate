@@ -126,3 +126,64 @@ time. Each delegation's sandbox sees only the components its grant names, so
 two agents writing two components in parallel cannot touch each other's
 work (C5 across components, enforced by the sandbox too). See
 [`runtime.md`](runtime.md#workspace-and-run-manifest-design-doc-9-12-b3).
+
+## Change sets (B4)
+
+A change across several components is one change set: prepare → authorize
+→ commit over one external action per component (doc 9 §3, K42).
+
+```mandate
+let landed = changeset(plan) {
+  member auth = git.merge(auth_change)
+  member core = git.merge(core_change)
+  member mcp  = git.merge(mcp_change)
+  order  auth, core, mcp
+  change TokenIssuance additive
+  change CoreApi additive
+  approve role "architect"
+} idempotent_by task.id
+```
+
+Checks:
+
+- The plan is a verified value (E1105).
+- Every member is a component and a critical effect (E1104). The workflow
+  holds each member's repository, e.g. `component.repo(auth, core, mcp)`
+  (E0301).
+- `order` lists every member once (E1102).
+- For each declared `additive` change, the interface's provider is a member
+  and lands before every member that consumes it (E1101). No order may be
+  needed that the graph cannot give (a cycle, E1101). A `breaking` change is
+  never one set: expand → migrate → contract (E1103). `none` sets no order.
+- Only in a workflow body (E0408), with `idempotent_by` (E0403).
+
+At run time:
+
+1. **Prepare.** Each member, in order, is prepared like any external
+   action. Its parameters name its component (repository, root, and the
+   base commit the run started from), and its files are frozen. The set
+   digest S covers the plan and its evidence, the members' action digests in
+   order, the declared changes, the approver and the business key.
+2. **Authorize.** Each component's owner (or the member's `approved_by`)
+   approves its member, bound to the member's digest. Then the set approver
+   approves S (owners first: doc 9 §14 question 2). The approver sees the
+   order, the declared changes, and each member with its approver, digest and
+   files. Another member is another S; an approval of one set never applies
+   to another.
+3. **Commit.** Members commit in order. Each needs its own authorization
+   and S's; the first commit consumes S's authorization for this set only
+   (G13).
+4. **Partial.** A member that is refused, or whose outcome is unknown,
+   stops the set: the members after it are not sent. If nothing landed,
+   the set failed (`Rejected`). Otherwise the run stops for a person with
+   `changeset_partial`: the applied members with their receipts, where it
+   stopped, what was not sent, and the compensations the applied members
+   offer (`git.merge` offers `git.revert`). Compensation is offered, never
+   run (§8.5). After reconciliation the run goes on from where it stopped:
+   an applied member is not sent again; one proven not applied is sent again
+   under the same operation key.
+
+`git.merge` on GitHub lands a member as a commit on top of the run's base
+commit. It opens a pull request from `mandate/<component>-<op>` and merges
+it, pinned to that head commit (a moved head is refused, 409). It is
+reconcilable from the pull request's state.
