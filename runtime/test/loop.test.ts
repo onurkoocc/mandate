@@ -99,6 +99,8 @@ describe("an agent loop (§8.2, K7, K8)", () => {
 
     // The tools came from the grant, and the sandbox from the same grant, with no network (K7).
     expect(w.chat.calls[0]!.tools.map((t) => t.name)).toEqual(["read_file", "list_dir", "grep", "write_file", "run", "finish"]);
+    // A named result type refers into $defs at the root of the finish tool's schema, where the reference resolves.
+    expect(w.chat.calls[0]!.tools.at(-1)!.input_schema).toMatchObject({ properties: { result: { $ref: "#/$defs/Patch" } }, $defs: { Patch: { type: "object" } } });
     expect(w.host.created[0]!.policy).toMatchObject({
       filesystem: { readOnly: ["/work/repo"], readWrite: ["/work/repo/src"] },
       network: { allowOutbound: false, allowedHosts: [] },

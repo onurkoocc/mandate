@@ -84,7 +84,10 @@ export function toolsFor(grants: CapVal[], result: JsonSchema): AgentTools {
     });
   }
   const names = new Set(specs.map((s) => s.name));
-  specs.push({ name: FINISH, description: "Hand back your result. Call it once, when you are done; nothing after it runs.", input_schema: obj({ result }, ["result"]) as Value });
+  // A named result type is a `$ref` into `$defs`, which must sit at the root of the tool's schema to resolve.
+  const { $defs, ...resultRoot } = result;
+  const finish = { ...obj({ result: resultRoot }, ["result"]), ...($defs ? { $defs } : {}) };
+  specs.push({ name: FINISH, description: "Hand back your result as a JSON value of the schema, not as a string. Call it once, when you are done; nothing after it runs.", input_schema: finish as Value });
   return { scope, specs, names, cwd: scope.read[0] };
 }
 
