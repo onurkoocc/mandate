@@ -145,6 +145,7 @@ export class Runtime {
     const wf = o.pkg.program.defs[o.workflow];
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
     await this.validateBindings(o.pkg.program, o.workflow);
+    const lowered = this.remoteGuarantees(o.pkg.program);
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(wf.budget), costDims(o.limits));
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}) };
@@ -155,6 +156,7 @@ export class Runtime {
         JSON.stringify(o.pkg.lock),
       ]);
       await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits });
+      for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
     });
     this.packages.set(o.pkg.hash, o.pkg);
     return this.drive(runId, true);
@@ -186,6 +188,24 @@ export class Runtime {
       const r = await tool.validateBinding({ repos: name.startsWith("git.") ? repos : [] });
       if ("unsupported" in r) throw new Violation("unsupported_binding", `The adapter for ${name} cannot serve this program: ${r.unsupported}.`);
     }
+  }
+
+  /**
+   * Remote agents whose servers do not deduplicate messages (§9.6, G12). A
+   * program that requires it (`require idempotent_messages`) does not start
+   * against such an adapter; otherwise the guarantee is lowered, recorded
+   * at start, and each task is sent at most once.
+   */
+  private remoteGuarantees(program: Program): string[] {
+    const lowered: string[] = [];
+    for (const [name, d] of Object.entries(program.defs).sort(([a], [b]) => (a < b ? -1 : 1))) {
+      if (d.kind !== "agent" || !d.remote) continue;
+      if (this.adapters.agents.remoteProfile?.(name)?.idempotentMessages) continue;
+      const required = (d.remote.require ?? []).some((e) => (e.op === "var" ? e.name : e.op === "call" && e.callee.op === "var" ? e.callee.name : "") === "idempotent_messages");
+      if (required) throw new Violation("unsupported_binding", `${name} requires idempotent message delivery, and its adapter's server does not deduplicate messages (G12).`);
+      lowered.push(name);
+    }
+    return lowered;
   }
 
   private async drive(runId: string, start = false): Promise<RunRow> {

@@ -54,6 +54,13 @@ export interface DelegateRequest {
 
 export interface AgentAdapter {
   run(req: DelegateRequest): Promise<Outcome>;
+  /**
+   * What delivery a remote agent's server guarantees (§9.6, G12). A2A does
+   * not require a server to deduplicate messages by id; unless the adapter
+   * says its server does, a task sent twice may run twice. Absent: no such
+   * guarantee.
+   */
+  remoteProfile?(agent: string): { idempotentMessages: boolean };
 }
 
 export interface InferRequest {

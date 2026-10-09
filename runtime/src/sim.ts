@@ -61,7 +61,13 @@ type Script<Req> = (req: Req, call: number) => Outcome | Promise<Outcome>;
 
 export class SimAgents implements AgentAdapter {
   readonly calls: DelegateRequest[] = [];
+  /** Remote agents whose simulated servers deduplicate messages by id. */
+  readonly idempotentRemotes = new Set<string>();
   constructor(private readonly scripts: Record<string, Script<DelegateRequest>> = {}) {}
+
+  remoteProfile(agent: string): { idempotentMessages: boolean } {
+    return { idempotentMessages: this.idempotentRemotes.has(agent) };
+  }
 
   on(agentSkill: string, script: Script<DelegateRequest>): this {
     this.scripts[agentSkill] = script;

@@ -73,6 +73,12 @@ interface CommandOptions {
   guard?: () => void;
   /** The rate-limit buckets the command draws from (§8.6). */
   buckets?: string[];
+  /**
+   * The command must not be sent twice: found in flight after a crash, it is
+   * not sent again, and the run stops for a person (a remote agent whose
+   * server does not deduplicate messages, G12).
+   */
+  atMostOnce?: boolean;
 }
 
 /** How often one command may be throttled before the Throttled fault reaches the program. */
@@ -573,6 +579,9 @@ export class Interpreter {
       const settled = earlier && (earlier.state === "succeeded" || earlier.state === "failed");
       let bound: Cost | Budget | undefined;
       if (!settled) {
+        if (opts.atMostOnce && earlier?.state === "dispatched") {
+          throw new Attention({ command: id, reason: "delivery_unknown", detail: "this task was sent to a remote agent whose server does not deduplicate messages; sending it again could run it twice" });
+        }
         // A command throttled before waits out its retry_after first (§8.6); the wait is not an attempt.
         if (earlier?.state === "throttled" && earlier.throttled !== waited) await this.pause(`${id}/throttled@${earlier.throttled}`, retryAfter(earlier.error), "throttled");
         // A guard (a deadline) applies only to what is still to be sent, and measuring the bound may call out
@@ -771,6 +780,8 @@ export class Interpreter {
         { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}) },
       );
     }
+    // A remote agent whose server does not deduplicate messages gets each task at most once (§9.6, G12).
+    const atMostOnce = !!agent.remote && !this.o.adapters.agents.remoteProfile?.(agentName)?.idempotentMessages;
     return this.command(
       id,
       "delegate",
@@ -794,7 +805,7 @@ export class Interpreter {
         const t = timedOut(true);
         return { error: { tag: t.tag, args: t.args }, ...(out.cost !== undefined ? { cost: out.cost } : {}), ...(out.meta !== undefined ? { meta: out.meta } : {}) };
       },
-      { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}) },
+      { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}), ...(atMostOnce ? { atMostOnce } : {}) },
     );
   }
 

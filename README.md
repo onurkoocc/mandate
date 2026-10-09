@@ -211,6 +211,10 @@ sent again without counting as an attempt, without holding its
 reservation and without a `BudgetExceeded`; a shared token bucket makes a
 second run wait, and refuses outright when its queue is full.
 
+`gate4.test.ts` lists Gate 4's thirteen cases (§25, G01–G13) and where each
+is tested, and holds those without a home of their own: G02, G03, G04, G12
+and G13.
+
 `views.test.ts` checks a run's views (§15): status, evidence and cost
 under the program's hash; a reviewer's markup shown as plain text (G09);
 and a view the run has moved past, whose decision is refused (G10).
@@ -263,7 +267,9 @@ These cases from §25 are covered:
 | S09 | Unlocked modules, changed packages and failing checks are refused at load | `messages` |
 | E0406, E0407 | Commit needs a matching, unconsumed, unexpired authorization | `effects` |
 | G01 | A file changed after its test cannot be committed on the old evidence | `artifacts` |
-| G03 | A Verified value whose evidence does not verify against a trusted key is refused | `evidence` |
+| G02 | A decision or authorization applies only to the digest of what was shown | `gate4`, `effects`, `fixbug` |
+| G03 | An agent that says "approved" creates no authorization; a Verified value whose evidence does not verify is refused | `gate4`, `evidence` |
+| G04 | A sub-agent gets no more than it is handed: its sandbox and tools are narrowed to the grant | `gate4` (and E0701 statically) |
 | G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop`, `mxc` |
 | G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed | `verifier` |
 | G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`) |
@@ -271,6 +277,8 @@ These cases from §25 are covered:
 | G09 | A model's markup is shown as plain text in every view, never as a control | `views` |
 | G10 | A view the run has moved past says so, and a decision taken on it is refused | `views` |
 | G11 | A new network target shows in the semantic diff as a governance change | `views` (compiler) |
+| G12 | A remote agent without idempotent delivery: refused if required, else sent at most once | `gate4` |
+| G13 | One authorization is consumed by one commit; a second is refused | `gate4`, `effects` |
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
 | V14 | A throttled call waits and is sent again; no restart is counted and no BudgetExceeded is raised | `supervision`, `anthropic` |
 | V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |

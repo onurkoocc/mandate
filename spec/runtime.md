@@ -493,6 +493,22 @@ the results, and is offered only `finish`.
   when every branch has settled, so an external action already in flight is
   followed to its result (R10).
 
+## Remote agents and delivery (§9.6, G12)
+
+A2A does not require a server to deduplicate messages by id, so a task sent
+twice may run twice. A delegation to a remote agent is sent at most once
+unless its adapter says the partner's server deduplicates messages
+(`AgentAdapter.remoteProfile`):
+
+- **Required.** A remote binding with `require idempotent_messages` does
+  not start against an adapter without that guarantee
+  (`unsupported_binding`).
+- **Lowered.** Otherwise the run records `guarantee_lowered` when it
+  starts. A task found in flight after a crash is not sent again: the run
+  needs attention (`delivery_unknown`), and a person decides.
+- **Deduplicated.** For a server that deduplicates, a task in flight after
+  a crash is sent again under the same command, as for any other command.
+
 ## Timeouts and postconditions (§4.6, §8.7, §9.1)
 
 - **`delegate … timeout d`.** Each attempt must finish within `d` of its
