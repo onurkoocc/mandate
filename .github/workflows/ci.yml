@@ -41,3 +41,20 @@ jobs:
           node compiler/dist/cli.js check examples/fixbug/fixbug.mdt
           node compiler/dist/cli.js check examples/fixbug/fixbug.ir.json
           node compiler/dist/cli.js sandbox examples/fixbug/fixbug.ir.json > /dev/null
+
+  agentspec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: examples/fixbug/agentspec/requirements.txt
+      - run: pip install -r examples/fixbug/agentspec/requirements.txt
+      - name: Validate FixBug in Agent Spec
+        run: python examples/fixbug/agentspec/check.py
+      - name: Probe the extensions on WayFlow and LangGraph
+        run: |
+          python examples/fixbug/agentspec/probe.py wayflow
+          python examples/fixbug/agentspec/probe.py langgraph

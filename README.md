@@ -34,7 +34,8 @@ enough for an agent's context.
 spec/        core spec, IR schema and rules, static checks, diagnostic codes, runtime, sandboxes
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
-examples/    example programs; fixbug/ is the design document's §20 workflow
+examples/    example programs; fixbug/ is the design document's §20 workflow,
+             fixbug/agentspec/ the same workflow in Open Agent Spec (Gate 0)
 ```
 
 ## Using the compiler
