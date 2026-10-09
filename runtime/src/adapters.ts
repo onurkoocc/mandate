@@ -3,6 +3,7 @@
 // before the program sees it, so replay never calls them again (INV-09).
 
 import type { Budget, RetryClass, SandboxRequirement, TypeExpr } from "@mandate/compiler";
+import type { MxcAdapter } from "./sandbox.js";
 import type { Value } from "./values.js";
 
 export interface Cost {
@@ -150,8 +151,20 @@ export interface Clock {
   sleep(ms: number): Promise<void>;
 }
 
+/**
+ * Agent loops (§8.2, K7). When present, a bodiless skill of a local agent runs
+ * as a loop in the runtime process: the model through `chat`, each tool call
+ * in a sandbox from `sandbox`. Without it, `agents` answers a delegation in one
+ * call (the simulation of Gate 2).
+ */
+export interface LoopAdapters {
+  chat: ChatModel;
+  sandbox: MxcAdapter;
+}
+
 export interface Adapters {
   agents: AgentAdapter;
+  loop?: LoopAdapters;
   model: ModelAdapter;
   verifier: VerifierAdapter;
   reads: ReadAdapter;

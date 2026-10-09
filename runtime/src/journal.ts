@@ -208,12 +208,19 @@ export class Journal {
    * in the same transaction. Returns the earlier row when the command already
    * has a result (replay). Refuses when the run was cancelled (R08) or the
    * reservation does not fit (R07).
+   *
+   * `within` names the command whose reservation pays for this one: a step of
+   * an agent loop is charged to its delegation (§8.2). For each dimension the
+   * parent reserved, the step must fit in what is left of that reservation,
+   * or it is refused with `SkillFailed(StepLimit)`; a dimension the parent did
+   * not reserve is reserved from the run as usual.
    */
   async dispatch(
     runId: string,
     fence: number,
     cmd: { id: string; kind: string; digest: string; label?: string },
     reserve: Cost | Budget | undefined,
+    within?: string,
   ): Promise<CommandRow | undefined> {
     return this.db.tx(async (tx) => {
       const run = await this.lock(tx, runId, fence);
@@ -228,7 +235,18 @@ export class Journal {
         // A worker died between dispatch and result; release what it reserved before reserving again.
         await tx.query("update reservations set state = 'released' where run_id = $1 and command_id = $2 and state = 'active'", [runId, cmd.id]);
       }
-      await this.reserve(tx, runId, cmd.id, costDims(reserve));
+      let dims = costDims(reserve);
+      if (within) {
+        const parent = await this.activeReservations(tx, runId, within);
+        for (const [dim, amount] of Object.entries(dims)) {
+          if (!(dim in parent)) continue;
+          if (amount > parent[dim]!) {
+            throw new Fault("SkillFailed", [{ kind: "StepLimit", detail: `the step needs ${amount} ${dim} and ${parent[dim]} is left of the agent's budget` }]);
+          }
+        }
+        dims = Object.fromEntries(Object.entries(dims).filter(([dim]) => !(dim in parent)));
+      }
+      await this.reserve(tx, runId, cmd.id, dims);
       await tx.query(
         `insert into commands (run_id, command_id, kind, state, fence, request_digest, label) values ($1, $2, $3, 'dispatched', $4, $5, $6)
          on conflict (run_id, command_id) do update set state = 'dispatched', fence = $4`,
@@ -264,7 +282,7 @@ export class Journal {
    * closed; an unknown cost keeps the reservation until the charge arrives (R16).
    * Only the lease holder may write (R06).
    */
-  async complete(runId: string, fence: number, commandId: string, outcome: Outcome): Promise<void> {
+  async complete(runId: string, fence: number, commandId: string, outcome: Outcome, within?: string): Promise<void> {
     await this.db.tx(async (tx) => {
       await this.lock(tx, runId, fence);
       const [row] = await tx.query<Row>("select state from commands where run_id = $1 and command_id = $2", [runId, commandId]);
@@ -274,6 +292,12 @@ export class Journal {
         await this.event(tx, runId, "charge_pending", { command: commandId });
       } else {
         await this.settle(tx, runId, commandId, costDims(cost));
+        // What a step spent comes out of its delegation's reservation, which then holds only what is left.
+        if (within) {
+          for (const [dim, amount] of Object.entries(costDims(cost))) {
+            await tx.query("update reservations set amount = greatest(amount - $4, 0) where run_id = $1 and command_id = $2 and dimension = $3 and state = 'active'", [runId, within, dim, amount]);
+          }
+        }
       }
       const ok = "ok" in outcome;
       await tx.query("update commands set state = $3, result = $4, error = $5, cost = $6 where run_id = $1 and command_id = $2", [
@@ -286,6 +310,23 @@ export class Journal {
       ]);
       await this.event(tx, runId, "command_completed", { command: commandId, ok, cost: (cost ?? null) as Value, ...(outcome.meta !== undefined ? { meta: outcome.meta } : {}) });
     });
+  }
+
+  private async activeReservations(tx: Tx, runId: string, commandId: string): Promise<Record<string, number>> {
+    const rows = await tx.query<Row>("select dimension, amount from reservations where run_id = $1 and command_id = $2 and state = 'active'", [runId, commandId]);
+    return Object.fromEntries(rows.map((r) => [String(r["dimension"]), num(r["amount"])]));
+  }
+
+  /** What the finished steps below `commandId` (`commandId/…`) have cost, by dimension. */
+  async childCost(runId: string, commandId: string): Promise<Record<string, number>> {
+    const rows = await this.db.query<Row>("select cost from commands where run_id = $1 and command_id like $2 and state in ('succeeded', 'failed')", [runId, `${commandId.replaceAll("%", "\\%").replaceAll("_", "\\_")}/%`]);
+    const out: Record<string, number> = {};
+    for (const r of rows) {
+      const c = r["cost"];
+      if (!c || c === "unknown" || typeof c !== "object") continue;
+      for (const [dim, v] of Object.entries(costDims(c as Cost))) out[dim] = (out[dim] ?? 0) + v;
+    }
+    return out;
   }
 
   private async settle(tx: Tx, runId: string, commandId: string, dims: Record<string, number>): Promise<void> {

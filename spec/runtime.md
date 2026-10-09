@@ -221,6 +221,97 @@ Unmet criteria go to `on unmet(c)`, or else fail the verify with
 never a `Verified` one, so an effect that requires the contract still
 refuses it (INV-13).
 
+## Agent loops (§8.2)
+
+With `Adapters.loop` set (`{ chat, sandbox }`), a skill without a body of a
+local agent runs as an agent loop in the runtime process
+(`runtime/src/loop.ts`). Without it, `Adapters.agents` answers a delegation
+in a single call (the Gate 2 simulation).
+
+The loop runs in the control plane (BACKLOG K7):
+
+- The model is called from the runtime, so the API key never enters the
+  sandbox.
+- Each tool call runs as a process in the agent's sandbox
+  (`SandboxHost.execute`).
+- The sandbox is built from the delegation's grant
+  ([`sandbox.md`](sandbox.md)). Its network is closed: model calls need
+  none from inside (`modelsInControlPlane`).
+
+**Tools.** They come from the grant (K8, `runtime/src/tools.ts`):
+
+| Capability | Tools | Process in the sandbox |
+|---|---|---|
+| `fs.read(P…)` | `read_file`, `list_dir`, `grep` | `cat`, `ls -1Ap`, `grep -rnI` |
+| `fs.write(P…)` | `write_file`, only below P | `sh -c 'mkdir -p … && cat > "$1"'`, the content on stdin |
+| `exec(…)` | `run`, only the listed commands and argument prefixes | the command itself, in the first readable path |
+| — | `finish`, which hands back the result | — |
+
+The runtime checks every path and command against the grant before it
+starts a process. This only gives the model a clear refusal; the sandbox
+enforces the same limits again. Tool output is cut at 20,000 characters.
+
+**Journal.** Every step is a command below the delegation's own:
+
+```text
+<delegate>/step/<n>               a model turn
+<delegate>/step/<n>/tool/<k>      a tool call of that turn
+<delegate>/plan/<i>               a step of a checked plan
+```
+
+The conversation is rebuilt from the journal, so recovery sends nothing
+already recorded again, and replay calls neither the model nor the
+sandbox.
+
+**Budget.** The delegation reserves the agent's budget, less what its
+finished steps already spent. A turn is charged to that reservation:
+
+- It must fit in what is left (else `SkillFailed(StepLimit)`).
+- Its cost is settled at once.
+- The reservation shrinks by the same amount.
+
+A dimension the agent's budget leaves out is reserved from the run as
+usual. A turn reserves its counted input plus the output limit (see
+[Models](#models-52-86)) and one step. A call whose input is over the
+locked limit is not sent (`ContextExhausted`).
+
+**Ending.** The model calls `finish` with a value. The value is checked
+against the skill's result type (`runtime/src/schema.ts`):
+
+- A result that does not fit goes back to the model to repair.
+- So do a tool the agent does not have, and arguments outside the schema
+  or the grant.
+- The model may repair at most twice (`MAX_REPAIRS`). A third time ends
+  the loop.
+
+The loop stops with `SkillFailed(kind, detail, partial)` (§8.7):
+
+| `kind` | When |
+|---|---|
+| `Stuck` | The same tool and arguments `repeats` times in the last `window` calls; the call is not run (V11). Or `stall` turns in a row that observed nothing new |
+| `StepLimit` | The agent's steps, tokens or spend cannot cover another turn |
+| `SchemaMismatch`, `InvalidTool`, `InvalidArguments` | Still wrong after the repairs |
+| `ContextExhausted` | The conversation is over the locked input limit |
+| `Refused` | The model declined |
+| `DependencyFailed` | A parallel branch failed (fail_fast) |
+
+`partial` lists the files the loop wrote. A turn observed something new
+when one of its tool calls returned something the loop had not seen from
+that tool with those arguments. The thresholds come from the agent's
+`progress`, defaulting to 8, 3 and 5 ([`ir.md`](ir.md#what-02-adds)).
+
+**plan_execute.** The model is first offered only `submit_plan`, the list
+of tool calls it needs. The runtime checks the whole plan before running
+any of it:
+
+- every tool is one the agent has;
+- every argument fits the tool's schema and the grant;
+- the plan is no longer than the agent's `steps` limit.
+
+A rejected plan never runs (V16). The model may repair it; a third rejected
+plan ends the loop. A checked plan then runs step by step. The model sees
+the results, and is offered only `finish`.
+
 ## Supervision and `par` (§7.4, §8.7)
 
 - **Restart.** `supervise restart(max, backoff)` restarts a delegate on

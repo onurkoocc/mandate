@@ -8,6 +8,7 @@ import type {
   Adapters,
   AgentAdapter,
   AuthorizationContext,
+  ChatModel,
   Clock,
   Cost,
   DelegateRequest,
@@ -18,11 +19,14 @@ import type {
   ReadAdapter,
   ToolAdapter,
   ToolContract,
+  TurnBound,
+  TurnRequest,
   VerifierAdapter,
   VerifyRequest,
 } from "./adapters.js";
-import type { Enforceable, MxcPolicy, SandboxHost } from "./sandbox.js";
-import { digest, type Value } from "./values.js";
+import type { Enforceable, ExecRequest, ExecResult, MxcPolicy, SandboxHost } from "./sandbox.js";
+import { inside, WRITE_SCRIPT } from "./tools.js";
+import { digest, isObj, type Value } from "./values.js";
 
 export class SimClock implements Clock {
   constructor(public t = 1_800_000_000_000) {}
@@ -98,6 +102,47 @@ export class SimModel implements ModelAdapter {
       ...(t.microsPerToken ? { spend: { micros: t.maxTokens * t.microsPerToken, currency: t.currency ?? "USD" } } : {}),
     };
   }
+}
+
+/** One scripted model turn: content blocks, or a whole outcome. */
+export type SimTurn = Value[] | Outcome;
+
+/**
+ * A scripted chat model for agent loops. `script(req, n)` answers the n-th
+ * turn (from 1). A turn's bound is its input, estimated at four characters a
+ * token, plus `maxOutputTokens`, at `microsPerToken`; each turn reports
+ * `tokensPerTurn` tokens and their price.
+ */
+export class SimChat implements ChatModel {
+  readonly calls: TurnRequest[] = [];
+  readonly bounds: TurnRequest[] = [];
+
+  constructor(
+    private script: (req: TurnRequest, n: number) => SimTurn | Promise<SimTurn>,
+    readonly o: { maxOutputTokens?: number; maxInputTokens?: number; microsPerToken?: number; tokensPerTurn?: number } = {},
+  ) {}
+
+  async turnBound(req: TurnRequest): Promise<TurnBound> {
+    this.bounds.push(req);
+    const inputTokens = Math.ceil(JSON.stringify([req.system, req.tools, req.messages]).length / 4);
+    const tokens = inputTokens + (this.o.maxOutputTokens ?? 1000);
+    const per = this.o.microsPerToken ?? 1;
+    return { cost: { tokens, steps: 1, spend: { micros: tokens * per, currency: "USD" } }, inputTokens, maxInputTokens: this.o.maxInputTokens ?? 100_000 };
+  }
+
+  async turn(req: TurnRequest): Promise<Outcome> {
+    this.calls.push(req);
+    const r = await this.script(req, this.calls.length);
+    if (!Array.isArray(r)) return r;
+    const tokens = this.o.tokensPerTurn ?? 100;
+    const stop = r.some((b) => isObj(b) && b["type"] === "tool_use") ? "tool_use" : "end_turn";
+    return { ok: { content: r, stop_reason: stop }, cost: { tokens, steps: 1, spend: { micros: tokens * (this.o.microsPerToken ?? 1), currency: "USD" } } };
+  }
+}
+
+/** A tool_use block, as a model turn would contain it. */
+export function toolUse(id: string, name: string, input: Value): Value {
+  return { type: "tool_use", id, name, input };
 }
 
 export class SimVerifier implements VerifierAdapter {
@@ -199,13 +244,83 @@ export const FULL_SANDBOX: Enforceable = {
   ui: true,
 };
 
-/** A sandbox host that enforces what `can` says and records what it was asked to create. */
+/** A program a simulated sandbox can run, e.g. `mvn`: it sees the request and the sandbox's file system. */
+export type SimProgram = (req: ExecRequest, fs: SimFs) => ExecResult | Promise<ExecResult>;
+
+/** The file system one simulated sandbox sees: reads and writes go through its policy's path lists. */
+export interface SimFs {
+  read(path: string): string | undefined;
+  write(path: string, content: string): boolean;
+}
+
+/**
+ * A sandbox host that enforces what `can` says and records what it was asked
+ * to create. `execute` runs against an in-memory file system and enforces
+ * each sandbox's path lists the way MXC does: what the policy does not allow
+ * fails inside the process (exit code 1, "Permission denied"). It understands
+ * the processes the runtime's tools start (`cat`, `ls`, `grep`, the
+ * `write_file` script); any other program must be scripted in `programs`.
+ */
 export class SimSandboxHost implements SandboxHost {
   readonly created: Array<{ handle: string; policy: MxcPolicy }> = [];
   readonly destroyed: string[] = [];
+  readonly executions: Array<{ handle: string; req: ExecRequest; result: ExecResult }> = [];
+  /** The host's files, by absolute path. */
+  readonly files = new Map<string, string>();
+  readonly programs: Record<string, SimProgram> = {};
   probes = 0;
 
   constructor(readonly can: Enforceable = FULL_SANDBOX) {}
+
+  async execute(handle: string, req: ExecRequest): Promise<ExecResult> {
+    const sbx = this.created.find((c) => c.handle === handle);
+    const result = !sbx || this.destroyed.includes(handle) ? fail(126, `no sandbox ${handle}`) : await this.run(sbx.policy, req);
+    this.executions.push({ handle, req, result });
+    return result;
+  }
+
+  private async run(policy: MxcPolicy, req: ExecRequest): Promise<ExecResult> {
+    const readable = (p: string) => inside(p, [...policy.filesystem.readOnly, ...policy.filesystem.readWrite]);
+    const writable = (p: string) => inside(p, policy.filesystem.readWrite);
+    const fs: SimFs = {
+      read: (p) => (readable(p) ? this.files.get(p) : undefined),
+      write: (p, c) => {
+        if (!writable(p)) return false;
+        this.files.set(p, c);
+        return true;
+      },
+    };
+    const [cmd, ...args] = req.argv;
+    const path = args[args.length - 1] ?? "";
+    switch (cmd) {
+      case "cat":
+        if (!readable(path)) return fail(1, `cat: ${path}: Permission denied`);
+        return this.files.has(path) ? ok(this.files.get(path)!) : fail(1, `cat: ${path}: No such file or directory`);
+      case "ls": {
+        if (!readable(path)) return fail(2, `ls: cannot open directory '${path}': Permission denied`);
+        const below = [...this.files.keys()].filter((f) => f.startsWith(`${path}/`)).map((f) => f.slice(path.length + 1));
+        if (!below.length) return fail(2, `ls: cannot access '${path}': No such file or directory`);
+        return ok([...new Set(below.map((f) => (f.includes("/") ? `${f.split("/")[0]}/` : f)))].sort().join("\n") + "\n");
+      }
+      case "grep": {
+        if (!readable(path)) return fail(2, `grep: ${path}: Permission denied`);
+        const re = new RegExp(args[args.length - 2] ?? "");
+        const hits = [...this.files.entries()]
+          .filter(([f]) => f === path || f.startsWith(`${path}/`))
+          .sort(([a], [b]) => (a < b ? -1 : 1))
+          .flatMap(([f, text]) => text.split("\n").flatMap((line, i) => (re.test(line) ? [`${f}:${i + 1}:${line}`] : [])));
+        return hits.length ? ok(hits.join("\n") + "\n") : { stdout: "", stderr: "", exitCode: 1, timedOut: false };
+      }
+      case "sh":
+        if (args[1] === WRITE_SCRIPT) {
+          const target = args[3] ?? "";
+          return fs.write(target, req.stdin ?? "") ? ok("") : fail(1, `sh: 1: cannot create ${target}: Permission denied`);
+        }
+        return fail(126, "sh: only the write_file script is simulated");
+    }
+    const program = cmd ? this.programs[cmd] : undefined;
+    return program ? program(req, fs) : fail(127, `${cmd}: command not found`);
+  }
 
   async probe(): Promise<Enforceable> {
     this.probes++;
@@ -260,4 +375,12 @@ export function simulate(o: { tools?: SimTool[]; agents?: SimAgents; model?: Sim
     return seed / 2 ** 31;
   };
   return { adapters: { agents, model, verifier, reads, tools, clock: o.clock ?? clock, random }, clock, agents, model, verifier, reads, tools };
+}
+
+function ok(stdout: string): ExecResult {
+  return { stdout, stderr: "", exitCode: 0, timedOut: false };
+}
+
+function fail(exitCode: number, stderr: string): ExecResult {
+  return { stdout: "", stderr: stderr + "\n", exitCode, timedOut: false };
 }
