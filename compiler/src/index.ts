@@ -18,3 +18,4 @@ export { DECISION_POLICIES, STD_EFFECTS, STD_FNS } from "./std/std.js";
 export { requirementFor, sandboxRequirements, SANDBOX_REQUIREMENT_FORMAT, type SandboxRequirement } from "./target/sandbox.js";
 export { htmlEscape, mdEscape, toHtml, toMarkdown, type Block, type Cell, type Doc } from "./views/doc.js";
 export * from "./views/views.js";
+export { callTool, LEGACY_VERSIONS, McpServer, MODERN_VERSIONS, serveStdio, TOOLS } from "./mcp/server.js";

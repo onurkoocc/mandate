@@ -9,6 +9,8 @@
 //   mandate patch <program> <patch.json>   apply an IR patch (see `patch` below)
 //   mandate sandbox <file> [--agent <name>] print each agent's sandbox requirement
 //   mandate explain <code>                 explain a diagnostic code
+//   mandate mcp                            serve check, explain, apply_patch and views to agents
+//                                          over MCP on stdio (§14)
 //   mandate view <file> [--against <old>] [--format md|html|json] [--lock <lock.json>]
 //                                          the program's human views (§15): architecture,
 //                                          authority and cost; with --against, what changed
@@ -33,6 +35,7 @@ import { parseStrictJson } from "./json/strict-json.js";
 import type { Lock } from "./lock.js";
 import { applyPatch, type PatchOp } from "./patch/patch.js";
 import { printProgram } from "./print/printer.js";
+import { serveStdio } from "./mcp/server.js";
 import { sandboxRequirements } from "./target/sandbox.js";
 import { toHtml, toMarkdown } from "./views/doc.js";
 import { architecture, authority, cost, diffDoc, programDoc, semanticDiff } from "./views/views.js";
@@ -49,6 +52,7 @@ function usage(): never {
       "  sandbox <file> [--agent <name>] [--lock <lock.json>]",
       "  explain <code>",
       "  view <file> [--against <old file>] [--format md|html|json] [--lock <lock.json>]",
+      "  mcp   (an MCP server on stdio)",
       "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show   (see `mandate status`)",
       "  test <file> [--json]",
       "",
@@ -217,6 +221,9 @@ function main(argv: string[]): void {
       process.exit(0);
     }
     // falls through
+    case "mcp":
+      void serveStdio().then(() => process.exit(0));
+      return;
     case "explain": {
       const raw = args[0] ?? usage();
       const code = raw.startsWith("MDT-") ? raw : `MDT-${raw}`;

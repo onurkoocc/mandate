@@ -42,7 +42,8 @@ enough for an agent's context.
 ## Layout
 
 ```text
-spec/        core spec, IR schema and rules, static checks, diagnostic codes, runtime, sandboxes, views
+spec/        core spec, IR schema and rules, static checks, diagnostic codes, runtime, sandboxes,
+             views, the compiler's MCP server
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
 examples/    example programs; fixbug/ is the design document's §20 workflow,
@@ -73,6 +74,7 @@ npm test
 | `sandbox <file> [--agent <name>]` | Print each local agent's sandbox requirement, or one agent's |
 | `explain <code>` | Explain a diagnostic code |
 | `test <file> [--json]` | Run the program's tests against their effect handlers (§6.4) |
+| `mcp` | Serve `check`, `explain`, `apply_patch`, authority and views to agents over MCP on stdio ([`spec/mcp.md`](spec/mcp.md)) |
 | `view <file> [--against <old>] [--format md\|html\|json]` | The program's views: architecture, authority, cost; with `--against`, what changed ([`spec/views.md`](spec/views.md)) |
 
 Exit status is 1 when an error diagnostic is reported and 2 on usage errors.
@@ -107,6 +109,10 @@ document's §25 are covered:
 | V08 | A decision cannot reach a critical effect directly | E0210 |
 
 S09 (load-time verification) is covered by the runtime, below.
+`compiler/test/mcp.test.ts` checks the compiler's MCP server (§14): its
+tools, a patch whose budget raise is flagged for approval, a stale base,
+MCP 2026-07-28 discovery and version errors, a legacy `initialize`
+client, and `mandate mcp` on stdio.
 `compiler/test/views.test.ts` checks the views of FixBug (architecture,
 authority, cost) against §15, and the semantic diff between two versions:
 governance apart from behavior, and a new network target shown as a

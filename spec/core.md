@@ -13,6 +13,7 @@ means. The detailed rules are on the other pages:
 - [`runtime.md`](runtime.md): execution;
 - [`sandbox.md`](sandbox.md): sandboxes;
 - [`views.md`](views.md): the views people review;
+- [`mcp.md`](mcp.md): the compiler as an MCP server for agents;
 - [`diagnostics.md`](diagnostics.md): diagnostic codes.
 
 *Must* marks a rule that every conforming implementation follows.
