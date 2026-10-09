@@ -39,6 +39,7 @@ import {
 } from "@mandate/compiler";
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
+import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
 import type { Faults } from "./faults.js";
 import { runAgentLoop, type LoopTask } from "./loop.js";
 import type { ActionRow, CommandRow, Journal } from "./journal.js";
@@ -115,11 +116,17 @@ export interface InterpOptions {
   faults: Faults;
   /** Where an action's files and a check's outputs are kept (§16.1). */
   artifacts: ArtifactStore;
+  /** Signs every evidence record (§10.3); `trusted` decides which signatures count. */
+  signer: EvidenceSigner;
+  trusted: TrustedKeys;
   /** Replay reads the journal only and never calls an adapter (R13). */
   replay: boolean;
 }
 
 const RESTARTABLE = new Set(["Timeout", "SkillFailed"]);
+
+/** The runtime itself, as the producer of the evidence it checks without a verifier (static criteria). */
+const RUNTIME_HANDLER = "mandate-runtime@0.2";
 
 export class Interpreter {
   private readonly defs: Record<string, Def>;
@@ -742,6 +749,8 @@ export class Interpreter {
     let method: string;
     let detail: Value = null;
     let files: Obj | undefined;
+    let producer: Value = { kind: "runtime", handler: RUNTIME_HANDLER };
+    let outputs: Value[] = [];
     if ("static" in v) {
       // A static criterion the compiler could not prove is checked here (W0601).
       method = "static";
@@ -751,6 +760,7 @@ export class Interpreter {
       const r = await this.approval((v as { call: Extract<Expr, { op: "call" }> }).call, contract, name, ctx, `${path}/call`);
       passed = r["approved"] === true;
       detail = { by: r["by"] ?? null, role: r["role"] ?? null, ...(r["expired"] === true ? { expired: true } : {}) };
+      producer = { kind: "person", by: r["by"] ?? null, role: r["role"] ?? null, via: "DecideAction" };
     } else {
       const call = v.call;
       method = call.op === "call" ? (calleePath(call.callee) ?? "call") : "call";
@@ -767,7 +777,22 @@ export class Interpreter {
         verifier.upperBound ? () => verifier.upperBound!(req) : undefined,
         async () => {
           const res = await verifier.check(req);
-          return { ok: { passed: res.passed, detail: res.detail ?? null, ...(res.subject ? { subject: { files: res.subject.files } } : {}) }, ...(res.cost ? { cost: res.cost } : {}) };
+          // The check's outputs (test logs, a review) are artifacts of the run; the journal keeps their references.
+          const logs: Value[] = [];
+          for (const l of res.logs ?? []) {
+            const a = await this.o.artifacts.put(this.scope(), l.content, l.mediaType ?? "text/plain; charset=utf-8");
+            logs.push({ kind: l.kind, ...(l.phase !== undefined ? { phase: l.phase } : {}), ...(l.result !== undefined ? { result: l.result } : {}), ref: a.ref });
+          }
+          return {
+            ok: {
+              passed: res.passed,
+              detail: res.detail ?? null,
+              ...(res.subject ? { subject: { files: res.subject.files } } : {}),
+              artifacts: logs,
+              producer: res.producer ?? { kind: "verifier", handler: "unspecified" },
+            },
+            ...(res.cost ? { cost: res.cost } : {}),
+          };
         },
         undefined,
         `${contract}.${name}`,
@@ -776,22 +801,37 @@ export class Interpreter {
       detail = isObj(r) ? (r["detail"] ?? null) : null;
       const checked = isObj(r) && isObj(r["subject"] ?? null) ? (r["subject"] as Obj) : undefined;
       if (checked && isObj(checked["files"] ?? null)) files = checked["files"] as Obj;
+      if (isObj(r) && Array.isArray(r["artifacts"])) outputs = r["artifacts"];
+      if (isObj(r) && r["producer"] !== undefined) producer = r["producer"]!;
     }
     // What the check was about: the contract's arguments, and for a check of the working copy, its files (§10.3).
     const subject: Obj = { contract_args: this.subjectDigest(contract, ctx), ...(files ? { files } : {}) };
     if (files && !this.o.replay) subject["tree"] = (await this.o.artifacts.putTree(this.scope(), { format: "mandate/tree/0.1", files: files as Record<string, string> })).ref;
     const id = digest("request", { run: this.o.runId, criterion: path, method, passed });
-    if (!this.o.replay) await this.o.journal.recordEvidence(this.o.runId, { id, contract, criterion: name, method, passed, detail, subject });
+    if (!this.o.replay) {
+      // The control plane signs what was checked, against what, by whom and when (§10.3).
+      const record: EvidenceRecord = {
+        format: EVIDENCE_FORMAT,
+        evidence_id: id,
+        run: this.o.runId,
+        package: this.o.packageHash,
+        contract,
+        contract_hash: this.defHash(contract),
+        criterion: name,
+        method,
+        passed,
+        subject,
+        producer,
+        artifacts: outputs,
+        detail,
+        at: this.o.adapters.clock.now(),
+      };
+      await this.o.journal.recordEvidence(this.o.runId, { record, ...this.o.signer.sign(record) });
+    }
     if (passed) evidence.push(id);
     return passed;
   }
 
-  /**
-   * `human.approve(role: r)` as an acceptance criterion: a wait for a person.
-   * The request names a digest of the contract's arguments, so a decision
-   * applies only to the subject the person was shown (G02). An approval here
-   * is evidence for the criterion; it authorizes no action.
-   */
   /** A digest of a contract's arguments: what its evidence is about. */
   private subjectDigest(contract: string, ctx: Ctx): string {
     const c = this.def(contract) as ContractDef;
@@ -802,6 +842,12 @@ export class Interpreter {
     return { tenant: this.o.policy.tenant, runId: this.o.runId };
   }
 
+  /**
+   * `human.approve(role: r)` as an acceptance criterion: a wait for a person.
+   * The request names a digest of the contract's arguments, so a decision
+   * applies only to the subject the person was shown (G02). An approval here
+   * is evidence for the criterion; it authorizes no action.
+   */
   private async approval(call: Extract<Expr, { op: "call" }>, contract: string, criterion: string, ctx: Ctx, id: string): Promise<Obj> {
     const { named } = await this.args(call.args, ctx, id);
     const c = this.def(contract) as ContractDef;
@@ -843,14 +889,15 @@ export class Interpreter {
     const info = this.effectInfo(e.name);
     const { pos } = await this.args(e.args, ctx, path);
     // INV-13: a parameter declared Verified<T, C> must carry evidence for C at run time too.
-    info.params.forEach((t, i) => {
-      if (!("ref" in t) || t.ref !== "Verified") return;
+    for (const [i, t] of info.params.entries()) {
+      if (!("ref" in t) || t.ref !== "Verified") continue;
       const v = pos[i];
       const want = t.args?.[1] && "ref" in t.args[1] ? t.args[1].ref : undefined;
       if (!isObj(v) || !("$verified" in v) || (want && v["$contract"] !== want)) {
         throw new Fault("PolicyDenied", [{ effect: e.name, parameter: i, reason: "unverified_parameter" }]);
       }
-    });
+      if (!this.o.replay) await this.checkVerified(e.name, v);
+    }
     const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
     const tool = this.o.adapters.tools[e.name];
     if (!tool) throw new Violation("no_adapter", `No adapter for effect ${e.name}.`);
@@ -972,6 +1019,36 @@ export class Interpreter {
     }
     await journal.finishAction(runId, fence, op, "unknown_outcome", { detail: res.unknown });
     return this.settledAction({ ...action, state: "unknown_outcome" });
+  }
+
+  /**
+   * A Verified value is a protected type: its evidence is resolved from the
+   * control plane's store, never taken from the value (§5.2, G03). Each id
+   * must name evidence of this run that passed, for the value's contract,
+   * signed by a trusted key; together they must cover every criterion of
+   * the contract. A model or an agent can produce JSON that looks like a
+   * Verified value; it never has such evidence.
+   */
+  private async checkVerified(effect: string, v: Obj): Promise<void> {
+    const contract = String(v["$contract"] ?? "");
+    const ids = Array.isArray(v["$evidence"]) ? v["$evidence"].map(String) : [];
+    const rows = ids.length ? await this.o.journal.evidence(this.o.runId, ids) : [];
+    const problems: string[] = [];
+    const found = new Set(rows.map((r) => r.evidence_id));
+    for (const id of ids) if (!found.has(id)) problems.push(`${id} is not evidence of this run`);
+    for (const r of rows) {
+      const record = r.record as unknown as EvidenceRecord | null;
+      if (!r.passed) problems.push(`${r.evidence_id} did not pass`);
+      if (r.contract !== contract) problems.push(`${r.evidence_id} is evidence for ${r.contract}`);
+      if (!record || !r.key_id || !r.signature || !this.o.trusted.verify(record, { key_id: r.key_id, signature: r.signature })) problems.push(`${r.evidence_id} is not signed by a trusted key`);
+      else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion) problems.push(`${r.evidence_id} does not match its signed record`);
+    }
+    const c = this.def(contract);
+    const criteria = c?.kind === "contract" ? [...Object.keys(c.accept), ...Object.keys(c.invariant ?? {})] : [];
+    if (c?.kind !== "contract") problems.push(`${contract} is not a contract of this program`);
+    const covered = new Set(rows.filter((r) => r.passed).map((r) => r.criterion));
+    for (const k of criteria) if (!covered.has(k)) problems.push(`no evidence for ${contract}.${k}`);
+    if (problems.length) throw new Violation("forged_evidence", `${effect} received a Verified value whose evidence does not hold: ${[...new Set(problems)].sort().join("; ")}.`);
   }
 
   /** The files frozen at prepare, read back from the artifact store (which checks their digests). */

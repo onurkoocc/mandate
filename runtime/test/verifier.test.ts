@@ -58,20 +58,62 @@ writeFileSync(join(repo, "test", "partial.test.mjs"), 'import { test } from "nod
 const config = { workdir: repo, base: "seed", suites: { unit: "test/**/*.test.mjs", integration: "acceptance/**/*.test.mjs" } };
 
 describe("the Gate 3 verifier (K20)", () => {
-  it("runs the named suites in a read-only sandbox of their own", async () => {
+  it("runs the named suites, as the base commit has them, each in a read-only sandbox of its own", async () => {
     const host = new DirectHost();
     const v = new SandboxVerifier(config, new MxcAdapter({ host, schemaVersion: "0.9.0", modelEndpoints: {} }));
     const r = await v.check({ method: "test.suite", args: [["unit", "integration"]], named: {}, contract: "FixAccepted", criterion: "suite_green" });
     expect(r.passed, JSON.stringify(r.detail)).toBe(true);
+    // A pinned suite runs its files at the base commit: the regression test an agent added is not part of it.
     expect(host.runs.map((x) => x.argv)).toEqual([
-      ["node", "--test", "test/**/*.test.mjs"],
-      ["node", "--test", "acceptance/**/*.test.mjs"],
+      ["node", "--test", "test/pages.test.mjs"],
+      ["node", "--test", "acceptance/pages.test.mjs"],
     ]);
-    // Each run has its own sandbox, which may read the working copy and write nothing.
+    // Each run has its own sandbox over a copy, which it may read and not write.
     expect(host.policies).toHaveLength(2);
+    expect(host.runs[0]!.cwd).not.toBe(repo);
     expect(host.policies[0]!.filesystem.readOnly).toHaveLength(1);
     expect(host.policies[0]).toMatchObject({ filesystem: { readWrite: [] }, network: { allowOutbound: false }, process: { allowedCommands: [{ command: "node", argsPrefix: [["--test"]] }] } });
+    // What it ran against, who ran it, and its logs.
+    expect(r.subject!.files["src/pages.mjs"]).toMatch(/^sha256:/);
+    expect(r.producer).toMatchObject({ kind: "runtime", handler: "mandate-sandbox-verifier@0.2", sandbox: "mxc:process" });
+    expect(r.logs!.map((l) => [l.kind, l.phase, l.result])).toEqual([
+      ["test_log", "unit", "pass"],
+      ["test_log", "integration", "pass"],
+    ]);
     expect((await v.check({ method: "test.suite", args: [["e2e"]], named: {}, contract: "C", criterion: "c" })).passed).toBe(false);
+  });
+
+  it("keeps a pinned acceptance suite out of the agents' reach (G06)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mandate-g06-"));
+    try {
+      const g = (...args: string[]) => execFileSync("git", ["-C", dir, "-c", "user.email=t@t", "-c", "user.name=t", ...args], { encoding: "utf8" });
+      mkdirSync(join(dir, "src"));
+      mkdirSync(join(dir, "acceptance"));
+      writeFileSync(join(dir, "src", "pages.mjs"), "export const pageCount = (t, p) => Math.floor(t / p);\n");
+      writeFileSync(join(dir, "acceptance", "pages.test.mjs"), 'import { test } from "node:test"; import assert from "node:assert/strict"; import { pageCount } from "../src/pages.mjs";\ntest("partial", () => assert.equal(pageCount(11, 5), 3));\n');
+      g("init", "-q", "-b", "main");
+      g("add", "-A");
+      g("commit", "-q", "-m", "seed");
+      g("tag", "seed");
+      // An agent that cannot fix the bug weakens the maintainers' test instead, and adds one that always passes.
+      writeFileSync(join(dir, "acceptance", "pages.test.mjs"), 'import { test } from "node:test";\ntest("partial", () => {});\n');
+      writeFileSync(join(dir, "acceptance", "extra.test.mjs"), 'import { test } from "node:test";\ntest("fine", () => {});\n');
+      const check = (pinned: boolean) =>
+        new SandboxVerifier({ workdir: dir, base: "seed", suites: { integration: { files: "acceptance/**/*.test.mjs", pinned } } }, new MxcAdapter({ host: new DirectHost(), schemaVersion: "0.9.0", modelEndpoints: {} })).check({
+          method: "test.suite",
+          args: [["integration"]],
+          named: {},
+          contract: "FixAccepted",
+          criterion: "suite_green",
+        });
+      const pinned = await check(true);
+      expect(pinned.passed).toBe(false);
+      expect(pinned.detail).toMatchObject({ runs: [{ suite: "integration", changed_in_working_copy: ["acceptance/pages.test.mjs"], pinned: { "acceptance/pages.test.mjs": expect.stringMatching(/^sha256:/) } }] });
+      // Unpinned, the weakened tests would have been the only authority.
+      expect((await check(false)).passed).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("meets red-then-green only when the new tests fail at the base and pass with the patch", async () => {

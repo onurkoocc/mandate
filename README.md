@@ -182,6 +182,14 @@ applies the files frozen at prepare, and a file changed after its test is
 never committed on the old evidence (G01). Another run's or tenant's
 artifact is refused like a missing one (G08).
 
+`evidence.test.ts` checks the signed evidence records (§10.3): who
+produced each, what it ran against, its logs as artifacts, a valid
+signature by the control plane's key, a record changed after signing shown
+as invalid, and a Verified value whose evidence no longer verifies refused
+before anything is prepared. `verifier.test.ts` checks the runtime's
+verifier, including a pinned acceptance suite an agent tried to weaken
+(G06).
+
 `github.test.ts` checks the `git.open_pr` adapter for GitHub against an
 in-memory GitHub:
 
@@ -222,7 +230,9 @@ These cases from §25 are covered:
 | S09 | Unlocked modules, changed packages and failing checks are refused at load | `messages` |
 | E0406, E0407 | Commit needs a matching, unconsumed, unexpired authorization | `effects` |
 | G01 | A file changed after its test cannot be committed on the old evidence | `artifacts` |
+| G03 | A Verified value whose evidence does not verify against a trusted key is refused | `evidence` |
 | G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop`, `mxc` |
+| G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed | `verifier` |
 | G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`) |
 | G08 | Another tenant's or run's artifact is refused like a missing one | `artifacts` |
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |

@@ -21,7 +21,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { check, kindOf, parseStrictJson, type Lock, type Program } from "@mandate/compiler";
 import type { Cost } from "./adapters.js";
-import { adaptersFor, artifactStore, connect, readConfig, type RuntimeConfig } from "./control.js";
+import { adaptersFor, connect, readConfig, runtimeOptions, type RuntimeConfig } from "./control.js";
 import type { Db } from "./db.js";
 import type { RunRow } from "./journal.js";
 import { buildPackage, Runtime } from "./runtime.js";
@@ -84,7 +84,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       const file = a.positional[0] ?? fail("run needs a program file");
       const workflow = str(a, "--workflow");
       const { program, lock } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined);
-      const rt = new Runtime(db, adaptersFor(config, program, lock, env), undefined, undefined, { artifacts: artifactStore(config, db) });
+      const rt = new Runtime(db, adaptersFor(config, program, lock, env), undefined, undefined, runtimeOptions(config, db));
       const run = await rt.startRun({
         pkg: buildPackage(program, lock),
         workflow,
@@ -216,7 +216,7 @@ function load(file: string, lockFile: string | undefined): { program: Program; l
 async function runtimeFor(db: Db, config: RuntimeConfig, runId: string, env: NodeJS.ProcessEnv): Promise<Runtime> {
   const [row] = await db.query<{ program: Program; lock: Lock }>("select p.program, p.lock from runs r join packages p on p.package_hash = r.package_hash where r.run_id = $1", [runId]);
   if (!row) throw new Violation("unknown_run", `No run ${runId}.`);
-  return new Runtime(db, adaptersFor(config, row.program, row.lock, env), undefined, undefined, { artifacts: artifactStore(config, db) });
+  return new Runtime(db, adaptersFor(config, row.program, row.lock, env), undefined, undefined, runtimeOptions(config, db));
 }
 
 function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {
@@ -230,8 +230,9 @@ function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {
 async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeConfig): Promise<string> {
   const budget = await rt.budgetReport(run.run_id);
   const evidence = await rt.evidence(run.run_id);
+  const signed = new Map((await rt.verifyEvidence(run.run_id)).map((e) => [e.evidence_id, e.valid]));
   const actions = await rt.journal.actions(run.run_id);
-  if (json) return JSON.stringify({ run, budget, evidence, actions }, null, 2) + "\n";
+  if (json) return JSON.stringify({ run, budget, evidence: evidence.map((e) => ({ ...e, signature_valid: signed.get(e.evidence_id) ?? false })), actions }, null, 2) + "\n";
   const lines = [`run ${run.run_id}  ${run.workflow}  ${run.state}  revision ${run.revision}`];
   if (run.state === "waiting" && isObj(run.waiting)) {
     const w = run.waiting;
@@ -260,7 +261,7 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
     const f = (n: number) => (money ? `${(n / 1_000_000).toFixed(4)} ${d.dimension.slice(6)}` : String(n));
     lines.push(`budget ${d.dimension}: limit ${f(d.limit)}, settled ${f(d.settled)}, reserved ${f(d.reserved)}, available ${f(d.available)}`);
   }
-  for (const e of evidence) lines.push(`evidence ${e.contract}.${e.criterion}: ${e.passed ? "met" : "not met"} (${e.method})`);
+  for (const e of evidence) lines.push(`evidence ${e.contract}.${e.criterion}: ${e.passed ? "met" : "not met"} (${e.method}; ${signed.get(e.evidence_id) ? "signed" : "SIGNATURE INVALID"})`);
   for (const x of actions) lines.push(`action ${x.effect}: ${x.state}${x.receipt ? ` ${show(x.receipt)}` : ""}`);
   return lines.join("\n") + "\n";
 }

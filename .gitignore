@@ -7,3 +7,5 @@ CLAUDE.md
 __pycache__/
 *.pyc
 .venv/
+# A runtime's local state: its database, artifacts and evidence key.
+.mandate/

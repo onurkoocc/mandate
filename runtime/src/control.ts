@@ -7,6 +7,7 @@
 //   {
 //     "database": "pglite:.mandate/db" | "postgresql://…",
 //     "artifacts": ".mandate/artifacts",                         // default
+//     "evidence": { "key": ".mandate/evidence.key", "trusted": ["keys/old.pem"] },   // default key; created if missing
 
 //     "model":    { "provider": "anthropic" },                  // CLAUDE_API_KEY, CLAUDE_WORKSPACE_ID
 //     "sandbox":  { "host": "mxc", "baseline": ["/usr/local"] },
@@ -20,6 +21,8 @@ import { parseStrictJson, type Lock, type Program } from "@mandate/compiler";
 import type { Adapters, ToolAdapter } from "./adapters.js";
 import { AnthropicModel } from "./anthropic.js";
 import { ArtifactStore, DirBlobs } from "./artifacts.js";
+import { EvidenceSigner } from "./evidence.js";
+import type { RuntimeOptions } from "./runtime.js";
 import { openDb, type Db } from "./db.js";
 import { GitHubPullRequests } from "./github.js";
 import { MxcHost } from "./mxc.js";
@@ -32,6 +35,12 @@ export interface RuntimeConfig {
   database: string;
   /** The artifact store's directory (§16.1). Default `.mandate/artifacts` next to the configuration. */
   artifacts: string;
+  /**
+   * The control plane's ed25519 evidence key (§10.3), created on first use;
+   * default `.mandate/evidence.key`. `trusted` names other public keys
+   * (PEM files) whose evidence counts, e.g. a key that was rotated out.
+   */
+  evidence: { key: string; trusted?: string[] };
   model?: { provider: "anthropic" };
   sandbox?: { host: "mxc"; baseline?: string[]; path?: string[] };
   github?: { repo: string; base?: string; workdir: string };
@@ -39,7 +48,8 @@ export interface RuntimeConfig {
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "model", "sandbox", "github", "verifier"],
+  "": ["database", "artifacts", "evidence", "model", "sandbox", "github", "verifier"],
+  evidence: ["key", "trusted"],
   model: ["provider"],
   sandbox: ["host", "baseline", "path"],
   github: ["repo", "base", "workdir"],
@@ -63,6 +73,10 @@ export function readConfig(file: string): RuntimeConfig {
   if (config.database.startsWith("pglite:")) config.database = `pglite:${at(config.database.slice("pglite:".length))}`;
   if (c["artifacts"] !== undefined && typeof c["artifacts"] !== "string") throw new Violation("bad_config", `${file}: "artifacts" is a directory`);
   config.artifacts = at(config.artifacts ?? ".mandate/artifacts");
+  const ev = (c["evidence"] ?? {}) as { key?: unknown; trusted?: unknown };
+  if (ev.key !== undefined && typeof ev.key !== "string") throw new Violation("bad_config", `${file}: "evidence.key" is a file`);
+  if (ev.trusted !== undefined && (!Array.isArray(ev.trusted) || !ev.trusted.every((t) => typeof t === "string"))) throw new Violation("bad_config", `${file}: "evidence.trusted" is a list of files`);
+  config.evidence = { key: at((ev.key as string | undefined) ?? ".mandate/evidence.key"), ...(ev.trusted ? { trusted: (ev.trusted as string[]).map(at) } : {}) };
   if (config.github) config.github.workdir = at(config.github.workdir);
   if (config.verifier) config.verifier.workdir = at(config.verifier.workdir);
   return config;
@@ -72,9 +86,13 @@ export function connect(config: RuntimeConfig): Promise<Db> {
   return openDb(config.database);
 }
 
-/** The artifact store over the configured directory, indexed in the run database. */
-export function artifactStore(config: RuntimeConfig, db: Db): ArtifactStore {
-  return new ArtifactStore(db, new DirBlobs(config.artifacts));
+/** The runtime's own stores: artifacts over the configured directory, and the evidence key. */
+export function runtimeOptions(config: RuntimeConfig, db: Db): RuntimeOptions {
+  return {
+    artifacts: new ArtifactStore(db, new DirBlobs(config.artifacts)),
+    signer: EvidenceSigner.loadOrCreate(config.evidence.key),
+    ...(config.evidence.trusted ? { trustedKeys: config.evidence.trusted.map((f) => readFileSync(f, "utf8")) } : {}),
+  };
 }
 
 /** A stand-in for an adapter the configuration leaves out: calling it stops the run for a person. */

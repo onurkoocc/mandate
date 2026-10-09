@@ -1,9 +1,14 @@
-// The verifier for Gate 3 (Doc 4 §10; BACKLOG P1-10, K20). The runtime checks
-// a contract's test criteria itself, in a sandbox of its own: a new,
-// read-only MXC sandbox over the working copy, apart from every agent's, so
-// an agent cannot mark its own work. Evidence is not signed yet (P2-11).
+// The runtime's verifier (Doc 4 §10; BACKLOG P1-10, K20, P2-11). The runtime
+// checks a contract's test criteria itself, in the control plane: the agents
+// never run the checks that judge their work. Every test runs in a sandbox
+// of its own, a new read-only MXC sandbox over a copy of the working copy,
+// apart from every agent's.
 //
-//   test.suite([names])            each named suite passes in the working copy
+//   test.suite([names])            each named suite passes. A suite is pinned
+//                                  by default: its files are taken from the
+//                                  base commit, before any agent ran, so an
+//                                  agent that edits or adds tests cannot change
+//                                  what the suite checks (G06)
 //   test.red_then_green(patch, tests)
 //                                  the regression tests fail with the patched
 //                                  files as they were at the base commit, and
@@ -12,33 +17,45 @@
 //                                  context: met when it finds nothing
 //                                  blocking. Never enough alone (E0603)
 //
-// The verifier runs in the runtime process; git is called there, on the
-// working copy, and every test runs in a sandbox.
+// Each check reports what it ran against (the working copy's files by
+// digest), who produced it, and its outputs (test logs, the review), which
+// the runtime keeps as artifacts and signs into the evidence record (§10.3).
+// git is called in the runtime process, on the working copy.
 
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { mkdirSync } from "node:fs";
 import { requirementFor, type CapVal, type TypeExpr } from "@mandate/compiler";
-import type { CheckResult, CheckSubject, Cost, InferRequest, ModelAdapter, VerifierAdapter, VerifyRequest } from "./adapters.js";
+import type { CheckLog, CheckResult, CheckSubject, Cost, InferRequest, ModelAdapter, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { sha256Of } from "./artifacts.js";
-import type { MxcAdapter } from "./sandbox.js";
+import { MxcAdapter } from "./sandbox.js";
 import { isObj, type Value } from "./values.js";
+
+/** A test suite: the test files' glob relative to the working copy, and whether it is pinned to the base commit (default). */
+export type SuiteConfig = string | { files: string; pinned?: boolean };
 
 export interface VerifierConfig {
   /** The working copy the agents changed. */
   workdir: string;
-  /** The commit the run started from, e.g. the tag `seed` (K17). */
+  /** The commit the run started from, e.g. the tag `seed` (K17). Pinned suites are read from it. */
   base: string;
-  /** Test suite name → the test files' glob, relative to the working copy. */
-  suites: Record<string, string>;
+  /** Test suite name → its files. */
+  suites: Record<string, SuiteConfig>;
   /** How tests run: the command and its fixed leading arguments. Default `node --test`. */
   command?: string[];
   timeoutMs?: number;
 }
 
+export const VERIFIER_HANDLER = "mandate-sandbox-verifier@0.2";
+
 const REVIEW_TYPE: TypeExpr = { record: { blocking: { ref: "Bool" }, findings: { ref: "List", args: [{ ref: "Text" }] } } };
+
+interface TestRun {
+  exitCode: number;
+  timedOut: boolean;
+  output: string;
+}
 
 export class SandboxVerifier implements VerifierAdapter {
   constructor(
@@ -56,7 +73,11 @@ export class SandboxVerifier implements VerifierAdapter {
     // What this check is about: the working copy, file by file, as it is now. The evidence is bound to it (G01).
     const subject = this.snapshot();
     const r = await this.run(req);
-    return { ...r, subject };
+    return { producer: this.producer(), ...r, subject };
+  }
+
+  private producer(): Value {
+    return { kind: "runtime", handler: VERIFIER_HANDLER, sandbox: `mxc:${this.sandbox.o.isolation ?? "process"}`, adapter: MxcAdapter.ID };
   }
 
   private async run(req: VerifyRequest): Promise<Omit<CheckResult, "subject">> {
@@ -86,45 +107,101 @@ export class SandboxVerifier implements VerifierAdapter {
     return { files };
   }
 
-  private async suite(names: Value | undefined): Promise<{ passed: boolean; detail: Value }> {
+  // ── test.suite ────────────────────────────────────────────────────────
+
+  private async suite(names: Value | undefined): Promise<Omit<CheckResult, "subject">> {
     const list = Array.isArray(names) ? names.map(String) : [];
-    const unknown = list.filter((n) => !this.o.suites[n]);
+    const unknown = list.filter((n) => !Object.hasOwn(this.o.suites, n));
     if (!list.length || unknown.length) return { passed: false, detail: { unknown_suites: unknown, known: Object.keys(this.o.suites) } };
     const runs: Value[] = [];
+    const logs: CheckLog[] = [];
     let passed = true;
     for (const n of list) {
-      const r = await this.runTests(this.o.workdir, [this.o.suites[n]!], `suite ${n}`);
-      runs.push({ suite: n, exit_code: r.exitCode, timed_out: r.timedOut, output: tail(r.output) });
-      passed &&= r.exitCode === 0 && !r.timedOut;
+      const cfg = this.o.suites[n]!;
+      const glob = typeof cfg === "string" ? cfg : cfg.files;
+      const pinned = typeof cfg === "string" || cfg.pinned !== false;
+      const r = pinned ? await this.pinnedSuite(n, glob) : { ...(await this.runTests(this.o.workdir, [glob], `suite ${n}`)), pinned: undefined, modified: undefined };
+      const ok = r.exitCode === 0 && !r.timedOut;
+      runs.push({
+        suite: n,
+        exit_code: r.exitCode,
+        timed_out: r.timedOut,
+        output: tail(r.output),
+        ...(r.pinned ? { pinned: r.pinned } : {}),
+        // Files of a pinned suite that the agents changed: shown, never run (G06).
+        ...(r.modified?.length ? { changed_in_working_copy: r.modified } : {}),
+      });
+      logs.push({ kind: "test_log", phase: n, result: ok ? "pass" : "fail", content: r.output });
+      passed &&= ok;
     }
-    return { passed, detail: { runs } };
+    return { passed, detail: { runs }, logs };
   }
 
-  private async redThenGreen(patch: Value, tests: Value): Promise<{ passed: boolean; detail: Value }> {
+  /**
+   * A pinned suite runs its files as they were at the base commit, over a
+   * copy of the working copy: an agent that weakened, deleted or added a
+   * test file changes nothing about what runs.
+   */
+  private async pinnedSuite(name: string, glob: string): Promise<TestRun & { pinned?: Record<string, string>; modified?: string[] }> {
+    const listed = this.git(["ls-tree", "-r", "--name-only", this.o.base]);
+    if (listed === undefined) return { exitCode: 125, timedOut: false, output: `suite ${name} is pinned to ${this.o.base}, which this working copy does not have` };
+    const re = globRegExp(glob);
+    const files = listed.split("\n").filter((f) => f && re.test(f)).sort();
+    if (!files.length) return { exitCode: 125, timedOut: false, output: `suite ${name} has no files matching ${glob} at ${this.o.base}` };
+    const copy = this.copy("mandate-suite-");
+    try {
+      const pinned: Record<string, string> = {};
+      const modified: string[] = [];
+      for (const f of files) {
+        const content = this.gitBytes(["show", `${this.o.base}:${f}`])!;
+        pinned[f] = sha256Of(content);
+        const here = join(this.o.workdir, f);
+        if (!existsSync(here) || sha256Of(readFileSync(here)) !== pinned[f]) modified.push(f);
+        mkdirSync(dirname(join(copy.dir, f)), { recursive: true });
+        writeFileSync(join(copy.dir, f), content);
+      }
+      const r = await this.runTests(copy.dir, files, `suite ${name}`, copy.extraRead);
+      return { ...r, pinned, modified };
+    } finally {
+      copy.remove();
+    }
+  }
+
+  // ── test.red_then_green ───────────────────────────────────────────────
+
+  private async redThenGreen(patch: Value, tests: Value): Promise<Omit<CheckResult, "subject">> {
     const patched = filesOf(patch);
     const testFiles = filesOf(tests);
     if (!testFiles.length) return { passed: false, detail: { reason: "the tests name no files" } };
     if (!patched.length) return { passed: false, detail: { reason: "the patch names no files" } };
     // Red: the patched files as they were at the base commit, the new tests as written.
-    const red = mkdtempSync(join(tmpdir(), "mandate-red-"));
+    const red = this.copy("mandate-red-");
     try {
-      cpSync(this.o.workdir, red, { recursive: true, filter: (src) => !/[\\/](\.git|node_modules)$/.test(src) });
       for (const f of patched) {
-        const before = this.git(["show", `${this.o.base}:${f}`]);
-        if (before === undefined) rmSync(join(red, f), { force: true });
+        const before = this.gitBytes(["show", `${this.o.base}:${f}`]);
+        if (before === undefined) rmSync(join(red.dir, f), { force: true });
         else {
-          mkdirSync(dirname(join(red, f)), { recursive: true });
-          writeFileSync(join(red, f), before);
+          mkdirSync(dirname(join(red.dir, f)), { recursive: true });
+          writeFileSync(join(red.dir, f), before);
         }
       }
-      const r = await this.runTests(red, testFiles, "red");
+      const r = await this.runTests(red.dir, testFiles, "red", red.extraRead);
       const g = await this.runTests(this.o.workdir, testFiles, "green");
       const passed = r.exitCode !== 0 && !r.timedOut && g.exitCode === 0 && !g.timedOut;
-      return { passed, detail: { red: { exit_code: r.exitCode, output: tail(r.output) }, green: { exit_code: g.exitCode, output: tail(g.output) }, tests: testFiles, patched } };
+      return {
+        passed,
+        detail: { red: { exit_code: r.exitCode, output: tail(r.output) }, green: { exit_code: g.exitCode, output: tail(g.output) }, tests: testFiles, patched },
+        logs: [
+          { kind: "test_log", phase: "before", result: r.exitCode === 0 ? "pass" : "fail", content: r.output },
+          { kind: "test_log", phase: "after", result: g.exitCode === 0 ? "pass" : "fail", content: g.output },
+        ],
+      };
     } finally {
-      rmSync(red, { recursive: true, force: true });
+      red.remove();
     }
   }
+
+  // ── review ────────────────────────────────────────────────────────────
 
   private reviewRequest(req: VerifyRequest): InferRequest {
     const tier = typeof req.named["model"] === "string" ? req.named["model"] : undefined;
@@ -137,20 +214,43 @@ export class SandboxVerifier implements VerifierAdapter {
     return { type: REVIEW_TYPE, input, ...(tier ? { tier } : {}), commandId: `${req.contract}.${req.criterion}/review` };
   }
 
-  private async review(req: VerifyRequest): Promise<{ passed: boolean; detail: Value; cost?: Cost }> {
+  private async review(req: VerifyRequest): Promise<Omit<CheckResult, "subject">> {
     if (!this.model) return { passed: false, detail: { reason: "no model is configured for review" } };
-    const out = await this.model.infer(this.reviewRequest(req));
+    const ask = this.reviewRequest(req);
+    const out = await this.model.infer(ask);
     const cost = out.cost === "unknown" ? undefined : out.cost;
-    if (!("ok" in out)) return { passed: false, detail: { error: out.error as unknown as Value }, ...(cost ? { cost } : {}) };
+    // A judge is known by its model snapshot and its prompt (§10.2).
+    const producer = { kind: "runtime", handler: VERIFIER_HANDLER, judge: { model: out.meta ?? null, prompt: sha256Of(String(ask.input)) } };
+    const logs: CheckLog[] = [{ kind: "diff", content: String(ask.input) }];
+    if (!("ok" in out)) return { passed: false, detail: { error: out.error as unknown as Value }, producer, logs, ...(cost ? { cost } : {}) };
     const v = isObj(out.ok) ? out.ok : {};
-    return { passed: v["blocking"] === false, detail: { blocking: v["blocking"] ?? null, findings: v["findings"] ?? [], model: out.meta ?? null }, ...(cost ? { cost } : {}) };
+    logs.push({ kind: "review", result: v["blocking"] === false ? "pass" : "fail", content: JSON.stringify(out.ok, null, 2), mediaType: "application/json" });
+    return { passed: v["blocking"] === false, detail: { blocking: v["blocking"] ?? null, findings: v["findings"] ?? [], model: out.meta ?? null }, producer, logs, ...(cost ? { cost } : {}) };
+  }
+
+  // ── sandboxes and copies ──────────────────────────────────────────────
+
+  /**
+   * A copy of the working copy without .git, to change and test. node_modules
+   * is linked, not copied, and the sandbox may read it where it is.
+   */
+  private copy(prefix: string): { dir: string; extraRead: string[]; remove(): void } {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    cpSync(this.o.workdir, dir, { recursive: true, filter: (src) => !/[\\/](\.git|node_modules)$/.test(src) });
+    const modules = join(this.o.workdir, "node_modules");
+    const extraRead: string[] = [];
+    if (existsSync(modules)) {
+      symlinkSync(modules, join(dir, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+      extraRead.push(modules);
+    }
+    return { dir, extraRead, remove: () => rmSync(dir, { recursive: true, force: true }) };
   }
 
   /** Runs tests in a new read-only sandbox over `dir`: it may read `dir` and run the test command, nothing else. */
-  private async runTests(dir: string, patterns: string[], label: string): Promise<{ exitCode: number; timedOut: boolean; output: string }> {
+  private async runTests(dir: string, patterns: string[], label: string, extraRead: string[] = []): Promise<TestRun> {
     const [command, ...prefix] = this.o.command ?? ["node", "--test"];
     const caps: CapVal[] = [
-      { ctor: "fs.read", effect: "Fs.Read", write: false, scope: [dir] } as CapVal,
+      { ctor: "fs.read", effect: "Fs.Read", write: false, scope: [dir, ...extraRead] } as CapVal,
       { ctor: "exec", effect: "Exec", write: false, scope: [command!], argsPrefix: [prefix] } as CapVal,
     ];
     const req = requirementFor({ agent: "verifier", def: label }, caps, this.o.timeoutMs ?? 300_000);
@@ -168,13 +268,34 @@ export class SandboxVerifier implements VerifierAdapter {
 
   /** git in the working copy; undefined when the object does not exist. */
   private git(args: string[]): string | undefined {
+    const b = this.gitBytes(args);
+    return b === undefined ? undefined : b.toString("utf8");
+  }
+
+  private gitBytes(args: string[]): Buffer | undefined {
     if (!existsSync(join(this.o.workdir, ".git"))) return undefined;
     try {
-      return execFileSync("git", ["-C", this.o.workdir, ...args], { encoding: "utf8", maxBuffer: 16 << 20, stdio: ["ignore", "pipe", "ignore"] });
+      return execFileSync("git", ["-C", this.o.workdir, ...args], { maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "ignore"] });
     } catch {
       return undefined;
     }
   }
+}
+
+/** A glob over `/`-separated paths: `**` any number of segments, `*` within a segment, `?` one character. */
+export function globRegExp(glob: string): RegExp {
+  let re = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i]!;
+    if (c === "*" && glob[i + 1] === "*") {
+      const slash = glob[i + 2] === "/";
+      re += slash ? "(?:[^/]+/)*" : ".*";
+      i += slash ? 2 : 1;
+    } else if (c === "*") re += "[^/]*";
+    else if (c === "?") re += "[^/]";
+    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${re}$`);
 }
 
 function filesOf(v: Value): string[] {

@@ -177,7 +177,14 @@ export class SimVerifier implements VerifierAdapter {
   async check(req: VerifyRequest): Promise<CheckResult> {
     this.calls.push(req);
     const r = this.results[req.criterion] ?? this.results[req.method] ?? true;
-    return { passed: r, detail: { method: req.method }, ...(this.workspace && req.method.startsWith("test.") ? { subject: this.workspace.snapshot() } : {}) };
+    const test = req.method.startsWith("test.");
+    return {
+      passed: r,
+      detail: { method: req.method },
+      producer: { kind: "verifier", handler: "sim-verifier" },
+      ...(test ? { logs: [{ kind: "test_log", result: r ? "pass" : "fail", content: `sim: ${req.contract}.${req.criterion} ${r ? "passed" : "failed"}\n` }] } : {}),
+      ...(this.workspace && test ? { subject: this.workspace.snapshot() } : {}),
+    };
   }
 }
 

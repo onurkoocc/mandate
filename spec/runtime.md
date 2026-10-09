@@ -301,6 +301,61 @@ verifier call:
   late `DecideAction` does. The run then goes to `on unmet` like any other
   unmet criterion.
 
+### Evidence records (§10.3)
+
+Every check writes one evidence record, and the runtime signs it with the
+control plane's ed25519 key (`runtime/src/evidence.ts`). The agent never
+produces evidence. A record names:
+
+- **What was checked:** the run, the package, the contract and the hash of
+  its definition, the criterion, the method, and whether it passed.
+- **Against what (`subject`):** a digest of the contract's arguments; for a
+  check of the working copy, its files by digest and the tree as an
+  artifact.
+- **By whom (`producer`):** the runtime for a static criterion; the person,
+  their role and the channel for `human.approve`; for a verifier call, the
+  verifier's handler, the sandbox its tests ran in, and for a review the
+  judge's model snapshot and prompt digest.
+- **With which outputs (`artifacts`):** test logs by phase and result, the
+  diff and the review, each a reference into the artifact store.
+- **When (`at`).**
+
+The signature covers `mandate/evidence/0.1\n` followed by the record's JCS
+bytes. It is stored with the key's id, the SHA-256 of its public key. A
+runtime trusts its own key and the public keys it is given.
+
+`verifyEvidence(run)` checks every record against its signature. The
+runtime also checks before an effect uses a `Verified` value (G03). The
+value's evidence ids are looked up in the run's store, never taken on the
+value's word. Each must:
+
+- be evidence of this run, for the value's contract;
+- have passed;
+- be signed by a trusted key, exactly as recorded.
+
+Together they must cover every criterion of the contract. Otherwise the
+run stops with the violation `forged_evidence`, before anything is
+prepared.
+
+### The runtime's verifier
+
+`SandboxVerifier` (`runtime/src/verifier.ts`) checks test criteria in the
+runtime process, where the agents cannot reach. Every test runs in a new,
+read-only sandbox of its own, over a copy of the working copy:
+
+- **`test.suite([names])`.** Each named suite must pass. A suite is pinned
+  by default: its files are taken from the base commit, before any agent
+  ran, and run over a copy of the working copy. An agent that weakens,
+  deletes or adds a test file changes nothing about what runs. The record
+  lists the pinned files by digest, and the ones the agents changed (G06).
+  `{ "files": "…", "pinned": false }` runs the working copy's files instead.
+- **`test.red_then_green(patch, tests)`.** The new tests must fail with
+  the patched files as they were at the base commit, and pass as the
+  agents left them.
+- **`review(model: tier, isolated)`.** A model reviews the diff in a fresh
+  context. It is reserved and settled like any model call, and never
+  enough on its own (E0603).
+
 Unmet criteria go to `on unmet(c)`, or else fail the verify with
 `Rejected`. An answer to an `escalate` there is the escalation's value,
 never a `Verified` one, so an effect that requires the contract still
@@ -502,6 +557,7 @@ mandate artifact <run> <blob:sha256:…>
 {
   "database": "pglite:.mandate/db",
   "artifacts": ".mandate/artifacts",
+  "evidence": { "key": ".mandate/evidence.key" },
   "model": { "provider": "anthropic" },
   "sandbox": { "host": "mxc", "baseline": ["/usr/local"] },
   "github": { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },
@@ -513,6 +569,9 @@ mandate artifact <run> <blob:sha256:…>
   outlives each call; `postgresql://…` uses a server.
 - **Artifacts.** The artifact store's directory, `.mandate/artifacts` next
   to the configuration by default.
+- **Evidence key.** The control plane's ed25519 key, `.mandate/evidence.key`
+  by default, created on first use and readable by its owner only.
+  `"trusted": ["old.pem"]` names other public keys whose evidence counts.
 - **Secrets.** They come only from the environment: `CLAUDE_API_KEY` (and
   `CLAUDE_WORKSPACE_ID` for a key that is not scoped to a workspace), and
   `MANDATE_GITHUB_TOKEN`.
@@ -526,7 +585,8 @@ mandate artifact <run> <blob:sha256:…>
 - for an answer: the question;
 - in both cases, the command to answer it at the current revision.
 
-It also shows the budget table, the evidence and the actions.
+It also shows the budget table, the evidence with whether its signature
+holds, and the actions.
 
 **Decisions and revisions.** A decision names the revision the person saw.
 If the run has moved since, the decision is refused (`stale_revision`) and

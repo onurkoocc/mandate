@@ -13,6 +13,7 @@
 
 import type { Budget } from "@mandate/compiler";
 import type { Cost, Outcome } from "./adapters.js";
+import type { EvidenceRecord } from "./evidence.js";
 import { num, type Db, type Row, type Tx } from "./db.js";
 import { Cancelled, Fault, StaleFence, Violation } from "./signals.js";
 import type { Value } from "./values.js";
@@ -48,6 +49,10 @@ export interface EvidenceRow {
   detail: Value;
   /** What the check ran against: the contract's arguments, and for a test the working copy's files (§10.3). */
   subject: Value;
+  /** The signed evidence record (§10.3), and its signature by the control plane's key. */
+  record: Value;
+  key_id: string | null;
+  signature: string | null;
 }
 
 export interface BudgetReport {
@@ -526,10 +531,13 @@ export class Journal {
     return rows.map(toEvidence);
   }
 
-  async recordEvidence(runId: string, e: { id: string; contract: string; criterion: string; method: string; passed: boolean; detail?: Value; subject?: Value }): Promise<void> {
+  /** Records a signed evidence record once; a record for the same check is never replaced. */
+  async recordEvidence(runId: string, e: { record: EvidenceRecord; key_id: string; signature: string }): Promise<void> {
+    const r = e.record;
     await this.db.query(
-      "insert into evidence (evidence_id, run_id, contract, criterion, method, passed, detail, subject) values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (evidence_id) do nothing",
-      [e.id, runId, e.contract, e.criterion, e.method, e.passed, json(e.detail ?? null), json(e.subject ?? null)],
+      `insert into evidence (evidence_id, run_id, contract, criterion, method, passed, detail, subject, record, key_id, signature)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (evidence_id) do nothing`,
+      [r.evidence_id, runId, r.contract, r.criterion, r.method, r.passed, json(r.detail), json(r.subject), json(r as unknown as Value), e.key_id, e.signature],
     );
   }
 
@@ -608,6 +616,9 @@ function toEvidence(r: Row): EvidenceRow {
     passed: Boolean(r["passed"]),
     detail: (r["detail"] ?? null) as Value,
     subject: (r["subject"] ?? null) as Value,
+    record: (r["record"] ?? null) as Value,
+    key_id: (r["key_id"] ?? null) as string | null,
+    signature: (r["signature"] ?? null) as string | null,
   };
 }
 

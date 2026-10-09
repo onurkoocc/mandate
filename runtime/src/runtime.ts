@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { canonicalize, capFromCall, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, modelTiers, validateLock, type CapVal, type Expr, type Json, type Lock, type Program } from "@mandate/compiler";
 import type { Adapters, Cost } from "./adapters.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
+import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
 import type { Db, Row } from "./db.js";
 import { Faults } from "./faults.js";
 import { Interpreter, ReplayEnd, type Policy } from "./interp.js";
@@ -96,12 +97,18 @@ export interface Driver {
 export interface RuntimeOptions {
   /** Artifact bytes (§16.1). Default: in memory, indexed in PostgreSQL. */
   artifacts?: ArtifactStore;
+  /** The control plane's evidence key (§10.3). Default: a new key for this process. */
+  signer?: EvidenceSigner;
+  /** Other public keys whose evidence this runtime accepts, e.g. an earlier key. Its own always counts. */
+  trustedKeys?: string[];
 }
 
 export class Runtime {
   readonly journal: Journal;
   readonly faults: Faults;
   readonly artifacts: ArtifactStore;
+  readonly signer: EvidenceSigner;
+  readonly trusted: TrustedKeys;
   private readonly packages = new Map<string, Package>();
 
   constructor(
@@ -114,6 +121,8 @@ export class Runtime {
     this.journal = new Journal(db, () => adapters.clock.now());
     this.faults = faults ?? new Faults();
     this.artifacts = options.artifacts ?? new ArtifactStore(db, new MemoryBlobs(), () => adapters.clock.now());
+    this.signer = options.signer ?? EvidenceSigner.generate();
+    this.trusted = new TrustedKeys([this.signer.publicKey, ...(options.trustedKeys ?? [])]);
   }
 
   // ── StartRun / resume ─────────────────────────────────────────────────
@@ -306,6 +315,8 @@ export class Runtime {
       policy: run.policy as unknown as Policy,
       faults: this.faults,
       artifacts: this.artifacts,
+      signer: this.signer,
+      trusted: this.trusted,
       replay,
     });
   }
@@ -332,6 +343,19 @@ export class Runtime {
   /** Contract criteria results recorded for the run: the evidence behind its Verified values (§10). */
   evidence(runId: string): Promise<EvidenceRow[]> {
     return this.journal.evidence(runId);
+  }
+
+  /**
+   * Checks every evidence record of a run against its signature: whether a
+   * trusted key signed exactly this record (§10.3). Views show the result.
+   */
+  async verifyEvidence(runId: string): Promise<Array<{ evidence_id: string; criterion: string; valid: boolean; key_id: string | null }>> {
+    return (await this.journal.evidence(runId)).map((e) => ({
+      evidence_id: e.evidence_id,
+      criterion: e.criterion,
+      key_id: e.key_id,
+      valid: !!e.record && !!e.key_id && !!e.signature && this.trusted.verify(e.record as unknown as EvidenceRecord, { key_id: e.key_id, signature: e.signature }) && (e.record as unknown as EvidenceRecord).evidence_id === e.evidence_id && (e.record as unknown as EvidenceRecord).passed === e.passed,
+    }));
   }
 
   /** An artifact of a run, scoped by the run's tenant: another run's or tenant's digest is refused like a missing one (G08). */

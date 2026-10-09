@@ -140,6 +140,9 @@ create table if not exists artifacts (
 );
 alter table actions add column if not exists artifacts jsonb;
 alter table evidence add column if not exists subject jsonb;
+alter table evidence add column if not exists record jsonb;
+alter table evidence add column if not exists key_id text;
+alter table evidence add column if not exists signature text;
 `;
 
 /** Opens PostgreSQL at `url`, or an in-process PGlite database when `url` is absent. */

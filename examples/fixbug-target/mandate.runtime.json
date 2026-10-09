@@ -1,5 +1,7 @@
 {
   "database": "pglite:.mandate/db",
+  "artifacts": ".mandate/artifacts",
+  "evidence": { "key": ".mandate/evidence.key" },
   "model": { "provider": "anthropic" },
   "sandbox": { "host": "mxc", "baseline": ["/usr/local"] },
   "github": { "repo": "onurkoocc/mandate-fixbug-target", "base": "main", "workdir": "/work/repo" },

@@ -2,7 +2,7 @@
 // replayed from separate CLI calls over a PGlite database in a directory, and
 // every decision names the revision the person saw.
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -80,7 +80,10 @@ describe("the control CLI (K19)", () => {
     expect(approved.code, approved.err).toBe(0);
     expect(approved.out).toContain("succeeded");
     expect(approved.out).toContain("result: it is ready");
-    expect(approved.out).toContain("evidence Approved.owner_approved: met (human.approve)");
+    expect(approved.out).toContain("evidence Approved.owner_approved: met (human.approve; signed)");
+    // Each call loads the same evidence key, created on first use, so a later call can check what an earlier one signed.
+    expect(existsSync(join(dir, ".mandate", "evidence.key"))).toBe(true);
+    expect((await mandate("status", "c1")).out).toContain("(human.approve; signed)");
 
     const replay = await mandate("replay", "c1");
     expect(replay.out).toBe("replay: complete\nit is ready\n");

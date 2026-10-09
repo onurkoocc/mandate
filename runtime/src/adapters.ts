@@ -119,11 +119,26 @@ export interface CheckSubject {
   files: Record<string, string>;
 }
 
+/** An output of a check, kept as an artifact of the run and listed in its evidence (§10.3). */
+export interface CheckLog {
+  /** e.g. `test_log`, `review`, `diff`. */
+  kind: string;
+  /** e.g. `before` / `after` for red-then-green, a suite's name for a suite. */
+  phase?: string;
+  /** e.g. `pass` / `fail`. */
+  result?: string;
+  content: string;
+  mediaType?: string;
+}
+
 export interface CheckResult {
   passed: boolean;
   detail?: Value;
   cost?: Cost;
   subject?: CheckSubject;
+  /** Who checked and where, e.g. `{ kind: "runtime", handler: "…@0.2", sandbox: "mxc:process" }`. */
+  producer?: Value;
+  logs?: CheckLog[];
 }
 
 export interface VerifierAdapter {
