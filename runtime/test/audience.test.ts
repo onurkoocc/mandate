@@ -63,7 +63,7 @@ function e2eDocker(root: string, during?: () => void): Docker {
       if (args[0] === "network") return { exitCode: 0, stdout: "", stderr: "" };
       if (args[0] === "run") return { exitCode: 0, stdout: "PROBED\n", stderr: "" };
       if (args.includes("config")) return { exitCode: 0, stdout: JSON.stringify({ services: { mcp: {}, e2e: {} }, networks: { default: { internal: true } } }), stderr: "" };
-      if (args.includes("up")) {
+      if (args.includes("run") && args.includes("--rm")) {
         during?.();
         const aud = readFileSync(join(root, "src/config.ts"), "utf8").match(/\?\? "([^"]+)"/)?.[1];
         return aud === "http://mcp:3001/mcp" ? { exitCode: 0, stdout: "e2e | status-lookup passed\n", stderr: "" } : { exitCode: 1, stdout: "e2e | status-lookup FAILED: get_shipment answered 401 invalid_token\n", stderr: "" };

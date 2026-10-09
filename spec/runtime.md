@@ -917,9 +917,21 @@ Configuration (`mandate.runtime.json`):
 - `integration` writes an override that builds each of the run's components
   from its working copy and makes the default network internal. It reads
   the resolved configuration back (`docker compose config`) and refuses
-  published ports and networks that are not internal. It runs
-  `up --build --abort-on-container-exit --exit-code-from <service>` and
-  then `down -v`.
+  published ports and networks that are not internal. Each overridden
+  service gets an image name of the project's, so candidate images never
+  replace others. It runs `build`, then `run --rm <service>` (which starts
+  what the service depends on), and then `down -v --rmi local`.
+- `suite_each` runs a component's tests as its change left them and lists
+  the test files that differ from the base commit (`tests_changed`). Files
+  `pinned` names run as they were at the base commit.
+- A component's toolchain (a JDK, an interpreter) may live in a container:
+  `ContainerHost` is a sandbox host for the same contract. It runs each
+  command in its configured image with `--network none`, all capabilities
+  dropped, a read-only root file system and a tmpfs `/tmp`. Only the
+  policy's paths are mounted, read-only unless writable, and the
+  allow-list is enforced before start. A linked dependency directory is
+  mounted in its place, read-only, with tmpfs cache directories. It is
+  probed and planned like MXC (isolation `container`).
 - `ci` reads GitHub Actions (MANDATE_GITHUB_TOKEN). Attestation
   verification is a pluggable hook (`GitHubCi.attest`); without one, every
   result is unattested.

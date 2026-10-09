@@ -3,8 +3,11 @@
 // evidence is that the components work together; each repository's own
 // tests are needed but not enough. The runtime checks, never the agents:
 //
-//   test.suite_each(components)        each component's own tests, with its test
-//                                      files pinned to the run's base commit (K22)
+//   test.suite_each(components)        each component's own tests, as the change left
+//                                      them (a behavior change updates its tests), with
+//                                      the test files that differ from the base commit
+//                                      named; files a configuration pins run as they
+//                                      were at the base commit (K22)
 //   test.contract(changes)             each interface's spec, at the base commit and
 //                                      now, diffed by protocol; a change declared
 //                                      additive that is breaking, or a change not
@@ -34,14 +37,6 @@ import { isObj, type Value } from "./values.js";
 import { globRegExp } from "./verifier.js";
 
 export const BOUNDARY_HANDLER = "mandate-boundary-verifier@0.3";
-
-/** Test files pinned to the base commit when the configuration names none, by language. */
-const PINNED_BY_LANG: Record<string, string[]> = {
-  ts: ["test/**", "tests/**", "**/*.test.ts", "**/*.spec.ts"],
-  js: ["test/**", "tests/**", "**/*.test.js"],
-  java: ["src/test/**"],
-  py: ["tests/**", "test/**", "**/test_*.py"],
-};
 
 /** Directories linked, not copied, into a test copy, and readable where they are: dependencies. */
 const LINKED = ["node_modules", ".venv", "target"];
@@ -88,8 +83,21 @@ export interface Docker {
   run(args: string[], o?: { cwd?: string; env?: Record<string, string>; timeoutMs?: number }): Promise<{ exitCode: number; stdout: string; stderr: string }>;
 }
 
+/** Where a component's tests usually live, by language: the files `test.suite_each` reports as changed from the base. */
+const TESTS_BY_LANG: Record<string, string[]> = {
+  ts: ["test/**", "tests/**", "**/*.test.ts", "**/*.spec.ts"],
+  js: ["test/**", "tests/**", "**/*.test.js"],
+  java: ["src/test/**"],
+  py: ["tests/**", "test/**", "**/test_*.py"],
+};
+
 export interface BoundaryConfig {
-  /** Test files pinned to the base commit, per component, as globs relative to its root. Default by language. */
+  /**
+   * Test files run as they were at the base commit, per component, as globs
+   * relative to its root: tests that state what must not change (an
+   * interface's acceptance tests). None by default: a component's own tests
+   * are part of its change, and the boundary checks are what it cannot touch.
+   */
   pinned?: Record<string, string[]>;
   /** Read-only paths a component's tests may also read (a toolchain, a dependency cache), per component. */
   extraRead?: Record<string, string[]>;
@@ -155,7 +163,7 @@ export class BoundaryVerifier implements VerifierAdapter {
         continue;
       }
       const r = await this.componentTests(name, sys, c.base);
-      runs.push({ component: name, passed: r.passed, exit_codes: r.exitCodes, pinned: r.pinned, ...(r.modified.length ? { changed_in_working_copy: r.modified } : {}), output: tail(r.output) });
+      runs.push({ component: name, passed: r.passed, exit_codes: r.exitCodes, ...(Object.keys(r.pinned).length ? { pinned: r.pinned } : {}), ...(r.modified.length ? { changed_in_working_copy: r.modified } : {}), ...(r.testsChanged.length ? { tests_changed: r.testsChanged } : {}), output: tail(r.output) });
       logs.push({ kind: "test_log", phase: name, result: r.passed ? "pass" : "fail", content: r.output });
       passed &&= r.passed;
     }
@@ -164,19 +172,25 @@ export class BoundaryVerifier implements VerifierAdapter {
 
   /**
    * A component's declared test commands, in a read-only sandbox over a copy
-   * of its working copy whose test files are the base commit's: an agent that
-   * weakened, deleted or added a test changes nothing about what runs (G06).
+   * of its working copy. Files the configuration pins are the base commit's:
+   * an agent that weakened, deleted or added one changes nothing about what
+   * runs (G06). The test files the change touched are named in the evidence.
    */
-  private async componentTests(name: string, sys: SystemFacts, base: string | null, from?: string): Promise<{ passed: boolean; exitCodes: number[]; pinned: Record<string, string>; modified: string[]; output: string }> {
+  private async componentTests(name: string, sys: SystemFacts, base: string | null, from?: string): Promise<{ passed: boolean; exitCodes: number[]; pinned: Record<string, string>; modified: string[]; testsChanged: string[]; output: string }> {
     const c = sys.components[name]!;
     const copy = copyOf(from ?? c.root, "mandate-each-");
     try {
       const pinned: Record<string, string> = {};
       const modified: string[] = [];
+      const testsChanged: string[] = [];
       if (base) {
-        const globs = (this.o.pinned?.[name] ?? PINNED_BY_LANG[c.lang] ?? []).map(globRegExp);
-        const listed = git(c.root, ["ls-tree", "-r", "--name-only", base]);
-        if (listed === undefined) return { passed: false, exitCodes: [125], pinned, modified, output: `${name}'s tests are pinned to ${base}, which its working copy does not have` };
+        const testGlobs = (TESTS_BY_LANG[c.lang] ?? []).map(globRegExp);
+        const changed = git(c.root, ["diff", "--name-only", base, "--"])?.toString("utf8").split("\n").filter(Boolean) ?? [];
+        const added = git(c.root, ["ls-files", "--others", "--exclude-standard"])?.toString("utf8").split("\n").filter(Boolean) ?? [];
+        testsChanged.push(...[...new Set([...changed, ...added])].filter((f) => testGlobs.some((g) => g.test(f))).sort());
+        const globs = (this.o.pinned?.[name] ?? []).map(globRegExp);
+        const listed = globs.length ? git(c.root, ["ls-tree", "-r", "--name-only", base]) : Buffer.from("");
+        if (listed === undefined) return { passed: false, exitCodes: [125], pinned, modified, testsChanged, output: `${name}'s tests are pinned to ${base}, which its working copy does not have` };
         for (const f of listed.toString("utf8").split("\n").filter((f) => f && globs.some((g) => g.test(f)))) {
           const content = git(c.root, ["show", `${base}:${f}`])!;
           pinned[f] = sha256Of(content);
@@ -194,7 +208,7 @@ export class BoundaryVerifier implements VerifierAdapter {
           { ctor: "exec", effect: "Exec", write: false, scope: [cmd.command], argsPrefix: [cmd.args] } as CapVal,
         ];
         const planned = await this.sandbox.plan(requirementFor({ agent: "verifier", def: `test ${name}` }, caps, this.o.timeoutMs ?? 600_000));
-        if ("unsupported" in planned) return { passed: false, exitCodes: [126], pinned, modified, output: `the verifier's sandbox was refused: ${planned.unsupported.join("; ")}` };
+        if ("unsupported" in planned) return { passed: false, exitCodes: [126], pinned, modified, testsChanged, output: `the verifier's sandbox was refused: ${planned.unsupported.join("; ")}` };
         const host = this.sandbox.o.host;
         const handle = await host.create(planned.policy);
         try {
@@ -206,7 +220,7 @@ export class BoundaryVerifier implements VerifierAdapter {
           await host.destroy(handle);
         }
       }
-      return { passed: exitCodes.length === c.test.length && exitCodes.every((x) => x === 0), exitCodes, pinned, modified, output };
+      return { passed: exitCodes.length === c.test.length && exitCodes.every((x) => x === 0), exitCodes, pinned, modified, testsChanged, output };
     } finally {
       copy.remove();
     }
@@ -270,26 +284,30 @@ export class BoundaryVerifier implements VerifierAdapter {
     const compose = (args: string[], timeoutMs?: number) =>
       this.docker.run(["compose", "-p", project, ...files.flatMap((f) => ["-f", f]), ...args], { cwd: cfg.dir, env: { ...(cfg.env ?? {}), ...(typeof env === "string" ? { MANDATE_ENV: env } : {}) }, ...(timeoutMs ? { timeoutMs } : {}) });
     try {
-      // Each component's service is built from its working copy as the run left it.
+      // Each component's service is built from its working copy as the run left it, under an image name of this project's.
       const services: Record<string, Value> = {};
       for (const [name, c] of Object.entries(sys.components)) {
         if (!c.base) continue;
-        services[cfg.services?.[name] ?? name] = { build: { context: c.root.replace(/\\/g, "/") } };
+        const svc = cfg.services?.[name] ?? name;
+        services[svc] = { image: `${project}-${svc}`, build: { context: c.root.replace(/\\/g, "/") } };
       }
       writeFileSync(join(work, "mandate.yml"), JSON.stringify({ services, networks: { default: { internal: true } } }, null, 2));
       const config = await compose(["config", "--format", "json"]);
       if (config.exitCode !== 0) return { passed: false, detail: { reason: "compose could not read the environment", output: tail(config.stderr) } };
       const leak = leaks(config.stdout);
       if (leak) return { passed: false, detail: { refused: "integration_isolation", reason: leak } };
-      const up = await compose(["up", "--build", "--abort-on-container-exit", "--exit-code-from", cfg.service], cfg.timeoutMs ?? 1_200_000);
-      const output = `${up.stdout}${up.stderr ? `\n${up.stderr}` : ""}`;
+      const build = await compose(["build", "--quiet"], cfg.timeoutMs ?? 1_200_000);
+      if (build.exitCode !== 0) return { passed: false, detail: { project, reason: "the environment did not build", output: tail(build.stderr) }, logs: [{ kind: "test_log", phase: "build", result: "fail", content: `${build.stdout}\n${build.stderr}` }] };
+      // `run` starts what the end-to-end service depends on (healthy services, finished seeds) and returns its exit code.
+      const run = await compose(["run", "--rm", cfg.service], cfg.timeoutMs ?? 1_200_000);
+      const output = `${run.stdout}${run.stderr ? `\n${run.stderr}` : ""}`;
       return {
-        passed: up.exitCode === 0,
-        detail: { project, service: cfg.service, exit_code: up.exitCode, components: list, built_from: Object.keys(services).sort(), output: tail(output) },
-        logs: [{ kind: "test_log", phase: "integration", result: up.exitCode === 0 ? "pass" : "fail", content: output }],
+        passed: run.exitCode === 0,
+        detail: { project, service: cfg.service, exit_code: run.exitCode, components: list, built_from: Object.keys(services).sort(), output: tail(output) },
+        logs: [{ kind: "test_log", phase: "integration", result: run.exitCode === 0 ? "pass" : "fail", content: output }],
       };
     } finally {
-      await compose(["down", "-v", "--remove-orphans"]).catch(() => undefined);
+      await compose(["down", "-v", "--remove-orphans", "--rmi", "local"]).catch(() => undefined);
       rmSync(work, { recursive: true, force: true });
     }
   }

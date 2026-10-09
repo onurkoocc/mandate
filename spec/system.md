@@ -196,7 +196,7 @@ control plane, never in an agent's sandbox:
 
 | Method | Checks | Met when |
 |---|---|---|
-| `test.suite_each(components)` | Each component's declared `test` commands, in a read-only sandbox over a copy of its working copy whose test files are the base commit's (K22; default globs by language) | Every component's tests pass |
+| `test.suite_each(components)` | Each component's declared `test` commands, in a read-only sandbox over a copy of its working copy, as the change left them; the evidence names the test files the change touched. Files a configuration pins run as they were at the base commit (K22) | Every component's tests pass |
 | `test.contract(changes)` | Every interface whose provider the run works on: its spec at the base commit against the working copy, diffed by protocol (`openapi`, `mcp_tools`, `oauth`, `event`; `db_schema` by a migration heuristic) | No measured change exceeds the declared one. Undeclared counts as `none`; `breaking_change_undeclared` and `change_undeclared` are unmet |
 | `test.integration(env: e, components)` | The system built from the candidate working copies with docker compose, its end-to-end service run on networks that are all `internal` | The end-to-end service exits 0 |
 | `test.ci({ component: commit })` | The component's existing CI on that commit | The result is attested and the attestation verified; or, in `rerun` mode (the default), the verifier's own run of the component's tests at that commit passes |
@@ -220,11 +220,21 @@ control plane, never in an agent's sandbox:
   re-run. The default when no attestation exists is `rerun` (doc 9 §14
   question 4).
 
+A component's own tests are part of its change: a requested behavior
+change updates them, so `test.suite_each` runs them as changed and names
+them. What an agent cannot touch are the boundary checks: interface specs
+are diffed against the base commit, and the end-to-end scenarios live in
+another repository (kervan-system). Tests that state what must not change
+can be pinned per component (`pinned`).
+
 Kervan's design task of class 3 shows why the boundary matters. A change
 moves only kervan-mcp's side of the token-audience agreement. Its own tests
 pass, no interface spec changes, and only `test.integration` fails
-(`runtime/test/audience.test.ts`; against the real system,
-`examples/kervan/b5.sh`).
+This is shown in `runtime/test/audience.test.ts` and against the real system
+in `runtime/test/kervan-live.test.ts` (`MANDATE_KERVAN=1`, Docker). There,
+kervan-mcp's own tests pass in a container sandbox with no network, every
+spec diff is empty, and the real end-to-end check fails; restored, it
+passes.
 
 ## Reads and run modes (B6)
 

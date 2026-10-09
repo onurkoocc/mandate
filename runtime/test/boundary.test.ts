@@ -69,7 +69,7 @@ beforeAll(() => {
 describe("test.suite_each", () => {
   it("runs each component's own tests with its test files as they were at the base commit (G06)", async () => {
     const h = host();
-    const v = new BoundaryVerifier({}, sandbox(h));
+    const v = new BoundaryVerifier({ pinned: { mcp: ["test/**"] } }, sandbox(h));
     // An agent changes the value and rewrites the test to expect the new one: the pinned test still expects 1.
     write(mcp.root, "src/value.ts", "2\n");
     write(mcp.root, "test/value.test.ts", "2\n");
@@ -85,6 +85,17 @@ describe("test.suite_each", () => {
     write(mcp.root, "src/value.ts", "1\n");
     const ok = await v.check(req("test.suite_each", [["mcp"]]));
     expect(ok.passed).toBe(true);
+    write(mcp.root, "test/value.test.ts", "1\n");
+  });
+
+  it("by default runs the component's tests as the change left them, and names the test files it changed", async () => {
+    const v = new BoundaryVerifier({}, sandbox(host()));
+    write(mcp.root, "src/value.ts", "2\n");
+    write(mcp.root, "test/value.test.ts", "2\n");
+    const r = await v.check(req("test.suite_each", [["mcp"]]));
+    expect(r.passed).toBe(true);
+    expect((r.detail as { runs: Array<Record<string, unknown>> }).runs[0]).toMatchObject({ component: "mcp", passed: true, tests_changed: ["test/value.test.ts"] });
+    write(mcp.root, "src/value.ts", "1\n");
     write(mcp.root, "test/value.test.ts", "1\n");
   });
 
@@ -124,7 +135,7 @@ function fakeDocker(o: { probe?: string; config?: object; up?: number }): Docker
       const overridePath = args[args.lastIndexOf("-f") + 1]!;
       if (existsSync(overridePath)) d.override = JSON.parse(readFileSync(overridePath, "utf8")) as Record<string, unknown>;
       if (args.includes("config")) return { exitCode: 0, stdout: JSON.stringify(o.config ?? { services: { mcp: {}, e2e: {} }, networks: { default: { internal: true } } }), stderr: "" };
-      if (args.includes("up")) return { exitCode: o.up ?? 0, stdout: "e2e | 4 scenarios passed\n", stderr: "" };
+      if (args.includes("run") && args.includes("--rm")) return { exitCode: o.up ?? 0, stdout: "e2e | 4 scenarios passed\n", stderr: "" };
       return { exitCode: 0, stdout: "", stderr: "" };
     },
   };
@@ -139,9 +150,9 @@ describe("test.integration", () => {
     const v = new BoundaryVerifier({ integration: INTEGRATION }, sandbox(host()), docker);
     const r = await v.check(req("test.integration", ["staging", ["mcp"]]));
     expect(r.passed).toBe(true);
-    expect(docker.override).toEqual({ services: { auth: { build: { context: auth.root.replace(/\\/g, "/") } }, mcp: { build: { context: mcp.root.replace(/\\/g, "/") } } }, networks: { default: { internal: true } } });
-    const up = docker.calls.find((c) => c.includes("up"))!;
-    expect(up.slice(-4)).toEqual(["--build", "--abort-on-container-exit", "--exit-code-from", "e2e"]);
+    const project = docker.calls.find((c) => c.includes("build"))![2]!;
+    expect(docker.override).toEqual({ services: { auth: { image: `${project}-auth`, build: { context: auth.root.replace(/\\/g, "/") } }, mcp: { image: `${project}-mcp`, build: { context: mcp.root.replace(/\\/g, "/") } } }, networks: { default: { internal: true } } });
+    expect(docker.calls.find((c) => c[0] === "compose" && c.includes("--rm"))!.slice(-3)).toEqual(["run", "--rm", "e2e"]);
     expect(docker.calls.at(-1)).toContain("down");
   });
 
@@ -154,7 +165,7 @@ describe("test.integration", () => {
     const docker = fakeDocker({ probe: "REACHED\nPROBED\n" });
     const r = await new BoundaryVerifier({ integration: INTEGRATION }, sandbox(host()), docker).check(req("test.integration", ["staging", ["mcp"]]));
     expect(r).toMatchObject({ passed: false, detail: { refused: "integration_isolation", reason: "an internal network on this host can still reach the outside" } });
-    expect(docker.calls.some((c) => c.includes("up"))).toBe(false);
+    expect(docker.calls.some((c) => c.includes("build"))).toBe(false);
   });
 
   it("is refused when the environment publishes a port or keeps a network that is not internal", async () => {
@@ -162,7 +173,7 @@ describe("test.integration", () => {
       const docker = fakeDocker({ config });
       const r = await new BoundaryVerifier({ integration: INTEGRATION }, sandbox(host()), docker).check(req("test.integration", ["staging", ["mcp"]]));
       expect(r).toMatchObject({ passed: false, detail: { refused: "integration_isolation" } });
-      expect(docker.calls.some((c) => c.includes("up"))).toBe(false);
+      expect(docker.calls.some((c) => c.includes("build"))).toBe(false);
     }
   });
 });
