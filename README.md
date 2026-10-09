@@ -164,6 +164,12 @@ counted input, the settlement from the reported usage, and the journaled
 snapshot. `live.test.ts` makes one real call, and only runs with
 `MANDATE_LIVE=1` (see below).
 
+`mxc.test.ts` checks the real sandbox host, MXC with Bubblewrap. Against a
+fake SDK it checks what the host asks MXC for and what it refuses. On Linux
+with `MANDATE_MXC=1` (the CI job `sandbox`), it checks the blocking itself:
+writes outside the grant, reads outside it, network, the environment, and
+an agent loop working through the sandbox.
+
 `sandbox.test.ts` runs FixBug's five agents in five MXC sandboxes, one per
 agent. Implementer may write only `/work/repo/src`, and TestWriter only
 `/work/repo/test`. A host that cannot enforce a requirement never starts the
@@ -189,7 +195,8 @@ These cases from §25 are covered:
 | R16 | An unknown charge keeps its reservation until it is settled | `budget` |
 | S09 | Unlocked modules, changed packages and failing checks are refused at load | `messages` |
 | E0406, E0407 | Commit needs a matching, unconsumed, unexpired authorization | `effects` |
-| G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop` |
+| G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop`, `mxc` |
+| G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`) |
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
 | V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |
 
