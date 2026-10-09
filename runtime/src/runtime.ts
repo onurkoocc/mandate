@@ -250,9 +250,12 @@ export class Runtime {
 
   // ── SubmitInput / DecideAction ────────────────────────────────────────
 
-  /** Answers a wait opened by human.ask, escalate or pause; then resumes the run. */
-  async submitInput(runId: string, msg: Message, commandId: string, value: Value): Promise<RunRow> {
-    const fresh = await this.resolveWait(runId, msg, commandId, "input", { commandId, value }, async () => ({ state: "succeeded", result: value }));
+  /**
+   * Answers a wait opened by human.ask, escalate or pause; then resumes the
+   * run. `revision` is the run revision the answer was given on (GetRun).
+   */
+  async submitInput(runId: string, msg: Message, i: { commandId: string; revision: number; value: Value }): Promise<RunRow> {
+    const fresh = await this.resolveWait(runId, msg, i.commandId, i.revision, "input", i as unknown as Value, async () => ({ state: "succeeded", result: i.value }));
     return fresh ? this.drive(runId) : this.journal.run(runId);
   }
 
@@ -264,10 +267,13 @@ export class Runtime {
    *   authorization bound to that digest;
    * - a contract criterion `human.approve` (`request.subject_digest`): an
    *   approval is evidence for the criterion and authorizes nothing.
+   *
+   * `revision` is the run revision the person decided on (GetRun). A
+   * decision made on an older view is refused with `stale_revision`.
    */
-  async decideAction(runId: string, msg: Message, d: { commandId: string; digest: string; approve: boolean; by: string }): Promise<RunRow> {
+  async decideAction(runId: string, msg: Message, d: { commandId: string; revision: number; digest: string; approve: boolean; by: string }): Promise<RunRow> {
     type Resolution = { state: "succeeded"; result: Value } | { state: "failed"; error: Value };
-    const fresh = await this.resolveWait(runId, msg, d.commandId, "decision", d as unknown as Value, async (tx, request, run): Promise<Resolution> => {
+    const fresh = await this.resolveWait(runId, msg, d.commandId, d.revision, "decision", d as unknown as Value, async (tx, request, run): Promise<Resolution> => {
       const criterion = isObj(request) && typeof request["subject_digest"] === "string";
       const bound = isObj(request) ? (criterion ? request["subject_digest"] : request["action_digest"]) : undefined;
       if (bound !== d.digest) {
@@ -320,6 +326,7 @@ export class Runtime {
     runId: string,
     msg: Message,
     commandId: string,
+    revision: number,
     kind: "input" | "decision",
     payload: Value,
     resolve: (tx: Parameters<Parameters<Db["tx"]>[0]>[0], request: Value, run: RunRow) => Promise<{ state: "succeeded"; result: Value } | { state: "failed"; error: Value }>,
@@ -328,6 +335,10 @@ export class Runtime {
       const run = await this.journal.lock(tx, runId);
       const fresh = await this.journal.inbox(tx, { tenant: run.tenant, sender: msg.sender, messageId: msg.messageId, payloadDigest: digest("request", payload) });
       if (!fresh) return false;
+      // The answer was given on what the caller last saw; if the run moved on since, it must look again (§16.1).
+      if (run.revision !== revision) {
+        throw new Violation("stale_revision", `The ${kind} was given on revision ${revision}; run ${runId} is at revision ${run.revision}.`);
+      }
       const [row] = await tx.query<Row>("select kind, state, result from commands where run_id = $1 and command_id = $2", [runId, commandId]);
       if (!row || row["kind"] !== kind || row["state"] !== "waiting") throw new Violation("no_wait", `Run ${runId} is not waiting for ${kind} at ${commandId}.`);
       // Everything inside goes through `tx`: an in-process database has one connection.

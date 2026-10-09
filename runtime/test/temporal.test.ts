@@ -95,7 +95,7 @@ describe("Temporal schedules runs", () => {
       await stateOf(s, "t4", "waiting");
       const run = await s.control.getRun("t4");
       const cmd = isObj(run.waiting) ? String(run.waiting["command"]) : "";
-      await s.control.submitInput("t4", { sender: "alice", messageId: "m1" }, cmd, "yes");
+      await s.control.submitInput("t4", { sender: "alice", messageId: "m1" }, { commandId: cmd, revision: run.revision, value: "yes" });
       return s.driver.result("t4");
     });
     expect(done.state).toBe("succeeded");
@@ -108,9 +108,10 @@ describe("Temporal schedules runs", () => {
     await s.control.startRun({ pkg: s.pkg, workflow: "Notify", input: ISSUE, runId: "t5", authorize: { "git.comment": { by: "human", role: "owner" } } });
     const done = await s.serve(async () => {
       await stateOf(s, "t5", "waiting");
-      const w = (await s.control.getRun("t5")).waiting;
+      const run = await s.control.getRun("t5");
+      const w = run.waiting;
       const req = isObj(w) && isObj(w["request"]) ? w["request"] : {};
-      await s.control.decideAction("t5", { sender: "alice", messageId: "m1" }, { commandId: String(isObj(w) ? w["command"] : ""), digest: String(req["action_digest"]), approve: true, by: "alice" });
+      await s.control.decideAction("t5", { sender: "alice", messageId: "m1" }, { commandId: String(isObj(w) ? w["command"] : ""), revision: run.revision, digest: String(req["action_digest"]), approve: true, by: "alice" });
       return s.driver.result("t5");
     });
     expect(done.state).toBe("succeeded");
@@ -162,10 +163,11 @@ describe("Temporal schedules runs", () => {
     await s.control.startRun({ pkg: s.pkg, workflow: "FixBug", input: BUG, runId: "t9" });
     const done = await s.serve(async () => {
       await stateOf(s, "t9", "waiting");
-      const wait = waitOf((await s.control.getRun("t9")).waiting);
+      const run = await s.control.getRun("t9");
+      const wait = waitOf(run.waiting);
       expect(wait.request).toMatchObject({ contract: "FixAccepted", criterion: "owner_approved", role: "code_owner" });
       expect(pr.prepares).toHaveLength(0);
-      await s.control.decideAction("t9", { sender: "carol", messageId: "m1" }, { commandId: wait.command, digest: String(wait.request["subject_digest"]), approve: true, by: "carol" });
+      await s.control.decideAction("t9", { sender: "carol", messageId: "m1" }, { commandId: wait.command, revision: run.revision, digest: String(wait.request["subject_digest"]), approve: true, by: "carol" });
       return s.driver.result("t9");
     });
     expect(done.state).toBe("succeeded");

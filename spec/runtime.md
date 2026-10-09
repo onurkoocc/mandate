@@ -201,6 +201,13 @@ listed in the run's summary (R09).
 | `GetRun` | `getRun`, with `budgetReport` and `evidence` |
 | `SubmitInput` | `submitInput` |
 | `DecideAction` | `decideAction`: an action's approval, or a contract's `human.approve` |
+
+`SubmitInput` and `DecideAction` carry the run revision the person saw, as
+`GetRun` returned it. Every state change and every cancel request raises
+the revision. An answer given on an older revision is refused with
+`stale_revision` and records nothing: the wait stays open and the person
+has to look again. The check comes after deduplication, so a resent copy of
+an accepted message is still a no-op.
 | `CancelRun` | `cancelRun` |
 | `ReconcileAction` | `reconcileAction` |
 | `ReplayRun` | `replayRun` (adapters that refuse every call) |
@@ -267,6 +274,5 @@ The same mechanisms are tested under Temporal against a local dev server:
   `par` results are bound by name, and that binding is tested in its place.
 - **Continuing after `budget_exceeded`.** The control API has no operation
   that raises a run's limits, so the run waits and can be cancelled.
-- **Expected-revision checks on `SubmitInput` and `DecideAction`.**
 - **The adapter contract's `ValidateBinding` and `Cancel`.**
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.

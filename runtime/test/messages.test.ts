@@ -16,15 +16,29 @@ describe("R03: inbound messages are deduplicated by key and checked by payload",
     expect(run.state).toBe("waiting");
     const cmd = isObj(run.waiting) ? String(run.waiting["command"]) : "";
     const msg = { sender: "alice", messageId: "m1" };
-    const done = await w.rt.submitInput("r3", msg, cmd, "yes");
+    const done = await w.rt.submitInput("r3", msg, { commandId: cmd, revision: run.revision, value: "yes" });
     expect(done.state).toBe("succeeded");
     expect(done.result).toBe("yes");
     const events = (await w.rt.journal.events("r3")).length;
-    expect((await w.rt.submitInput("r3", msg, cmd, "yes")).revision).toBe(done.revision);
+    expect((await w.rt.submitInput("r3", msg, { commandId: cmd, revision: run.revision, value: "yes" })).revision).toBe(done.revision);
     expect((await w.rt.journal.events("r3")).length).toBe(events);
-    await expect(w.rt.submitInput("r3", msg, cmd, "no")).rejects.toMatchObject({ code: "inbox_payload_mismatch" });
-    await expect(w.rt.submitInput("r3", { sender: "alice", messageId: "m2" }, cmd, "no")).rejects.toMatchObject({ code: "no_wait" });
+    await expect(w.rt.submitInput("r3", msg, { commandId: cmd, revision: run.revision, value: "no" })).rejects.toMatchObject({ code: "inbox_payload_mismatch" });
+    await expect(w.rt.submitInput("r3", { sender: "alice", messageId: "m2" }, { commandId: cmd, revision: done.revision, value: "no" })).rejects.toMatchObject({ code: "no_wait" });
     expect((await w.rt.getRun("r3")).result).toBe("yes");
+  });
+});
+
+describe("SubmitInput names the revision the answer was given on (§16.1)", () => {
+  it("an answer to an older view of the run is refused and changes nothing", async () => {
+    const w = await world(ASK);
+    const seen = await start(w, "Ask", "rev");
+    const cmd = isObj(seen.waiting) ? String(seen.waiting["command"]) : "";
+    const now = await w.rt.resume("rev");
+    expect(now.revision).toBeGreaterThan(seen.revision);
+    await expect(w.rt.submitInput("rev", { sender: "alice", messageId: "m1" }, { commandId: cmd, revision: seen.revision, value: "yes" })).rejects.toMatchObject({ code: "stale_revision" });
+    expect(await w.rt.getRun("rev")).toMatchObject({ state: "waiting", revision: now.revision });
+    const done = await w.rt.submitInput("rev", { sender: "alice", messageId: "m2" }, { commandId: cmd, revision: now.revision, value: "yes" });
+    expect(done).toMatchObject({ state: "succeeded", result: "yes" });
   });
 });
 
