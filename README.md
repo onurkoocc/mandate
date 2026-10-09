@@ -7,7 +7,7 @@ anything runs. This repository holds the 0.1 reference implementation.
 
 ## Status
 
-0.1 was built in four steps, and 0.2 (Gate 3) is under way:
+0.1 was built in four steps, then Gate 0 and Gate 3 took it to 0.2:
 
 1. **Compiler core (done):** canonical IR with a closed JSON Schema,
    strict JSON reading, JCS + SHA-256 hashing, the `.mdt` text projection
@@ -26,10 +26,15 @@ anything runs. This repository holds the 0.1 reference implementation.
    spec, [`spec/core.md`](spec/core.md).
 5. **Gate 0 (done):** FixBug in Open Agent Spec, with extensions and a
    runtime probe; see [`examples/fixbug/agentspec/`](examples/fixbug/agentspec/).
-6. **0.2, real models and agent loops (in progress):** language version
-   0.2; the lock file ([`spec/lock.md`](spec/lock.md)) and W0504; the
-   Anthropic model adapter; agent loops with tools from capabilities,
-   progress checks and `plan_execute`.
+6. **0.2, Gate 3 (done):** language version 0.2; the lock file
+   ([`spec/lock.md`](spec/lock.md)) and W0504; the Anthropic model adapter;
+   agent loops with tools from capabilities, progress checks and
+   `plan_execute`; MXC sandboxes with Bubblewrap; the GitHub `git.open_pr`
+   adapter; the control CLI; and the acceptance run. FixBug's five agents
+   on Claude Opus 5.5, each in its own sandbox, fixed a seeded bug in a
+   test repository. The contract's tests ran in sandboxes of the runtime's
+   own, a person approved from the CLI, and one pull request was opened,
+   for 0.23 USD. See [`examples/fixbug-target/`](examples/fixbug-target/).
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
@@ -41,7 +46,8 @@ spec/        core spec, IR schema and rules, static checks, diagnostic codes, ru
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
 examples/    example programs; fixbug/ is the design document's §20 workflow,
-             fixbug/agentspec/ the same workflow in Open Agent Spec (Gate 0)
+             fixbug/agentspec/ the same workflow in Open Agent Spec (Gate 0),
+             fixbug-target/ the workflow bound to the Gate 3 test repository
 ```
 
 ## Using the compiler
