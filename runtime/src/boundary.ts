@@ -19,6 +19,10 @@
 //   test.ci(commits)                   the components' existing CI on those commits:
 //                                      counts only when attested, or when the
 //                                      verifier re-runs the tests itself (§4.3)
+//   test.planned(plan)                 the change stays inside the approved plan (§3.4):
+//                                      every component it touches, every path and every
+//                                      interface it changes is one the plan names;
+//                                      anything else is an `unplanned_change`
 //
 // Every check reports what it ran against: the files of every component's
 // working copy, keyed `<component>/<path>`, so evidence binds to the bytes a
@@ -33,7 +37,7 @@ import type { CheckLog, CheckResult, CheckSubject, SystemFacts, VerifierAdapter,
 import { sha256Of } from "./artifacts.js";
 import { MxcAdapter } from "./sandbox.js";
 import { covers, diffMigrations, diffSpec, type ChangeKind } from "./specdiff.js";
-import { isObj, type Value } from "./values.js";
+import { isObj, plain, type Value } from "./values.js";
 import { globRegExp } from "./verifier.js";
 
 export const BOUNDARY_HANDLER = "mandate-boundary-verifier@0.3";
@@ -123,7 +127,7 @@ export class BoundaryVerifier implements VerifierAdapter {
 
   async check(req: VerifyRequest): Promise<CheckResult> {
     const sys = req.system;
-    const boundary = ["test.suite_each", "test.contract", "test.integration", "test.ci"].includes(req.method);
+    const boundary = ["test.suite_each", "test.contract", "test.integration", "test.ci", "test.planned"].includes(req.method);
     if (!boundary) return this.inner ? this.inner.check(req) : { passed: false, detail: { unsupported: `the verifier has no method ${req.method}` } };
     if (!sys) return { passed: false, detail: { reason: `${req.method} needs the run's system model and workspace (design doc 9 §4)` }, producer: this.producer() };
     const subject = snapshot(sys);
@@ -143,6 +147,8 @@ export class BoundaryVerifier implements VerifierAdapter {
         return this.contract(req.args[0] ?? null, sys);
       case "test.integration":
         return this.integration(names(req.args[req.args.length - 1]), sys, req.named["env"] ?? req.args[0] ?? null);
+      case "test.planned":
+        return Promise.resolve(this.planned(req.args[0] ?? null, sys));
       default:
         return this.ci(req.args[0] ?? null, sys);
     }
@@ -224,6 +230,59 @@ export class BoundaryVerifier implements VerifierAdapter {
     } finally {
       copy.remove();
     }
+  }
+
+  // ── test.planned ──────────────────────────────────────────────────────
+
+  /**
+   * The plan names what may change: `components` (a list), `changes`
+   * (interface → kind) and, when it narrows them, `paths` (component →
+   * globs relative to its root). A component touched outside the list, a
+   * file outside its globs or an interface whose spec changed without being
+   * named is an `unplanned_change`; the criterion is unmet (doc 9 §3.4).
+   * Components the plan names and the change left alone are reported, not
+   * refused.
+   */
+  private planned(planArg: Value, sys: SystemFacts): Omit<CheckResult, "subject"> {
+    // The plan arrives verified: its evidence travels with it, and only its fields matter here.
+    const bare = plain(planArg);
+    const plan = isObj(bare) ? bare : {};
+    const listed = Array.isArray(plan["components"]) ? plan["components"].filter((c): c is string => typeof c === "string") : undefined;
+    const changes = isObj(plan["changes"] ?? null) ? (plan["changes"] as Record<string, Value>) : {};
+    const paths = isObj(plan["paths"] ?? null) ? (plan["paths"] as Record<string, Value>) : {};
+    if (!listed) return { passed: false, detail: { reason: "test.planned needs the plan's components (a list of component names)" } };
+    const components: Value[] = [];
+    const unplanned: Value[] = [];
+    for (const [name, c] of Object.entries(sys.components).sort(([a], [b]) => (a < b ? -1 : 1))) {
+      if (!c.base) continue; // not part of this run's workspace
+      const changed = git(c.root, ["diff", "--name-only", c.base, "--"])?.toString("utf8").split("\n").filter(Boolean) ?? [];
+      const added = git(c.root, ["ls-files", "--others", "--exclude-standard"])?.toString("utf8").split("\n").filter(Boolean) ?? [];
+      const touched = [...new Set([...changed, ...added])].sort();
+      const inPlan = listed.includes(name);
+      components.push({ component: name, planned: inPlan, files: touched });
+      if (touched.length && !inPlan) unplanned.push({ problem: "unplanned_change", component: name, files: touched, detail: `${name} changed, and the plan does not name it` });
+      const globs = Array.isArray(paths[name]) ? (paths[name] as Value[]).filter((g): g is string => typeof g === "string").map(globRegExp) : undefined;
+      const outside = inPlan && globs ? touched.filter((f) => !globs.some((g) => g.test(f))) : [];
+      if (outside.length) unplanned.push({ problem: "unplanned_change", component: name, files: outside, detail: `${name} changed files outside the plan's paths` });
+    }
+    const interfaces: Value[] = [];
+    for (const [iface, i] of Object.entries(sys.interfaces).sort(([a], [b]) => (a < b ? -1 : 1))) {
+      const p = i.provider ? sys.components[i.provider] : undefined;
+      if (!p?.base) continue;
+      let kind: ChangeKind;
+      try {
+        kind = measure(i.protocol, i.spec, p.root, p.base).kind;
+      } catch (e) {
+        interfaces.push({ interface: iface, provider: i.provider, error: (e as Error).message });
+        unplanned.push({ problem: "unreadable_spec", interface: iface, detail: (e as Error).message });
+        continue;
+      }
+      if (kind === "none") continue;
+      const named = iface in changes;
+      interfaces.push({ interface: iface, provider: i.provider, measured: kind, planned: named ? String(changes[iface]) : null });
+      if (!named) unplanned.push({ problem: "unplanned_change", interface: iface, provider: i.provider, measured: kind, detail: `${iface} changed (${kind}), and the plan does not name it` });
+    }
+    return { passed: unplanned.length === 0, detail: { components, interfaces, ...(unplanned.length ? { unplanned } : {}) } };
   }
 
   // ── test.contract ─────────────────────────────────────────────────────

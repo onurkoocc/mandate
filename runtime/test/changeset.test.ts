@@ -13,6 +13,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { GitHubMerges } from "../src/github-merge.js";
 import type { RunRow } from "../src/journal.js";
 import { buildPackage, Runtime } from "../src/runtime.js";
+import { runView } from "../src/views.js";
 import { SimTool } from "../src/sim.js";
 import { isObj, type Obj } from "../src/values.js";
 import type { WorkspaceAdapter } from "../src/workspace.js";
@@ -181,5 +182,50 @@ describe("git.merge on GitHub (B4)", () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the change set view (B8)", () => {
+  it("shows the plan, each component's change, the evidence matrix, the order and why, and that it was live", async () => {
+    const w = await land();
+    const { run } = await approveAll(w, await w.rt.startRun({ pkg: w.pkg, workflow: "Land", input: { task: "add scope" }, runId: "csv1" }));
+    expect(run.state).toBe("succeeded");
+    const [cs] = (await runView(w.rt, "csv1")).view.changesets;
+    expect(cs!.state).toBe("committed");
+    expect(cs!.plan.value).toEqual({ summary: "add scope" });
+    expect(cs!.components.map((c) => [c.component, c.approver, c.action])).toEqual([
+      ["auth", "identity_owner", "confirmed"],
+      ["core", "core_owner", "confirmed"],
+      ["mcp", "support_platform_owner", "confirmed"],
+    ]);
+    expect(cs!.components[0]!.interfaces).toEqual([{ interface: "TokenIssuance", declared: "additive", measured: null }]);
+    // Each member carries its own evidence: one row, a cell per component.
+    expect(cs!.matrix).toHaveLength(1);
+    expect(Object.fromEntries(Object.entries(cs!.matrix[0]!.cells).map(([c, x]) => [c, x.result]))).toEqual({ auth: "passed", core: "passed", mcp: "passed" });
+    expect(cs!.order).toEqual([
+      { component: "auth", because: ["first: it consumes nothing another member provides"] },
+      { component: "core", because: ["nothing it consumes comes from an earlier member; the program chose its place"] },
+      { component: "mcp", because: ["after auth: mcp consumes TokenIssuance, which auth provides and this set changes it (additive)", "after core: mcp consumes CoreApi, which core provides and this set changes it (additive)"] },
+    ]);
+    expect(cs!.reality).toBe("Live run: auth confirmed, core confirmed, mcp confirmed.");
+    expect(cs!.authority).toEqual([]);
+  });
+
+  it("shows what was not real: prepared and never committed in a read_only run, simulated in a design run", async () => {
+    const w = await land();
+    const ro = await w.rt.startRun({ pkg: w.pkg, workflow: "Land", input: { task: "add scope" }, runId: "csv2", mode: "read_only" });
+    expect(ro.state).toBe("succeeded");
+    const [r] = (await runView(w.rt, "csv2")).view.changesets;
+    expect(r!.state).toBe("would_apply");
+    expect(r!.components.map((c) => c.action)).toEqual(["would_apply", "would_apply", "would_apply"]);
+    expect(r!.reality).toContain("nothing was authorized or committed");
+    const d = await w.rt.startRun({ pkg: w.pkg, workflow: "Land", input: { task: "add scope" }, runId: "csv3", mode: "design" });
+    expect(d.state).toBe("succeeded");
+    const [s] = (await runView(w.rt, "csv3")).view.changesets;
+    expect(s!.state).toBe("simulated");
+    expect(s!.components.map((c) => c.action)).toEqual(["simulated", "simulated", "simulated"]);
+    expect(s!.reality).toContain("every member simulated");
+    expect(w.merge.executions).toHaveLength(0);
+    expect(await w.rt.replayRun("csv3")).toMatchObject({ status: "complete" });
   });
 });

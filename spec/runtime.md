@@ -875,8 +875,12 @@ commit per component.
 component; [`system.md`](system.md#change-sets-b4) has the semantics.
 
 - **Storage.** The `changesets` table holds the set digest S, the members
-  in commit order (component, effect, operation, action digest, approver),
-  and the state: `prepared`, `committing` (the first member's commit
+  in commit order (component, effect, operation, action digest, approver,
+  and the evidence ids the member's change carries), a summary (the plan,
+  its digest and evidence, the order, the declared changes, the approver)
+  for the change set view, and the state. A read_only run records its set
+  as `would_apply`, and a design run as `simulated`. Otherwise the state
+  is `prepared`, `committing` (the first member's commit
   consumed S's authorization), `committed`, `partial` (some members landed)
   or `failed` (none did). Events `changeset_prepared`,
   `changeset_committed`, `changeset_partial` and `changeset_failed`.
@@ -899,7 +903,7 @@ component; [`system.md`](system.md#change-sets-b4) has the semantics.
 ## Boundary verifier (design doc 9 §4, B5)
 
 `BoundaryVerifier` answers `test.suite_each`, `test.contract`,
-`test.integration` and `test.ci`, and passes every other method to the
+`test.integration`, `test.ci` and `test.planned` (B8), and passes every other method to the
 verifier it wraps. Verify requests carry the system
 (`VerifyRequest.system`): every component with its repository, root, base
 commit, language, commands and interfaces, and every interface with its

@@ -161,6 +161,7 @@ create table if not exists changesets (
   state text not null,
   detail jsonb
 );
+alter table changesets add column if not exists summary jsonb;
 create table if not exists workspace_claims (
   root text primary key,
   run_id text not null,

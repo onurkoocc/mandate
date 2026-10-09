@@ -65,6 +65,9 @@ anything runs. This repository holds the 0.1 reference implementation.
    program drafts a system model from the repositories and has it
    checked (specs, calls in the code, commands) and accepted;
    `mandate drift` finds where a model and its repositories disagree.
+   A change set's view shows the approved plan, each component's change,
+   the evidence matrix, the order and why, and what was real; a change
+   outside the plan is an `unplanned_change`.
    The reference system is Kervan, seven repositories in TypeScript,
    Java and Python ([`examples/kervan/`](examples/kervan/SPEC.md)). See
    [`spec/system.md`](spec/system.md).
@@ -312,9 +315,11 @@ The brownfield tests run on Kervan (design doc 9 §12):
   sandboxes.
 - `changeset.test.ts` (B4): owners, then the set digest; an ordered commit;
   an unknown middle member stops the set as `changeset_partial`, and
-  reconciliation continues it.
+  reconciliation continues it. The change set view (B8): plan, changes,
+  evidence matrix, order and why, in live, read_only and design runs.
 - `specdiff.test.ts`, `boundary.test.ts` and `audience.test.ts` (B5):
-  task class 3, caught only end to end.
+  task class 3, caught only end to end. An interface change the plan
+  does not name is an `unplanned_change` (B8).
 - `broker.test.ts` (B6): the incident review, read_only and masked, with
   a replay that never asks the broker; and `shadow-diff`.
 - `onboard.test.ts` (B7): Kervan's model drafted from its repositories,

@@ -101,10 +101,13 @@ export interface ChangesetRow {
   set_key: string;
   command_id: string;
   set_digest: string;
-  /** In commit order: component, effect, operation, action digest, approver. */
+  /** In commit order: component, effect, operation, action digest, approver, and the evidence the member's change carries. */
   members: Value;
+  /** `prepared`, `committed`, `partial`, `failed`; `would_apply` in a read_only run, `simulated` in a design run. */
   state: string;
   detail: Value;
+  /** What the set lands and why (doc 9 §3.4, §8.2): the plan, its digest and evidence, the order, the declared interface changes, the approver. */
+  summary: Value;
 }
 
 export interface AuthorizationRow {
@@ -579,13 +582,14 @@ export class Journal {
   // ── change sets (design doc 9 §3) ─────────────────────────────────────
 
   /** Records a prepared change set once: its digest S and its members in commit order. */
-  async prepareChangeset(runId: string, fence: number, c: { setKey: string; commandId: string; setDigest: string; members: Value }): Promise<void> {
+  async prepareChangeset(runId: string, fence: number, c: { setKey: string; commandId: string; setDigest: string; members: Value; summary: Value; state?: "prepared" | "would_apply" | "simulated" }): Promise<void> {
     await this.db.tx(async (tx) => {
       await this.lock(tx, runId, fence);
       const [row] = await tx.query<Row>("select set_key from changesets where set_key = $1", [c.setKey]);
       if (row) return;
-      await tx.query("insert into changesets (set_key, run_id, command_id, set_digest, members, state) values ($1, $2, $3, $4, $5, 'prepared')", [c.setKey, runId, c.commandId, c.setDigest, json(c.members)]);
-      await this.event(tx, runId, "changeset_prepared", { set: c.setDigest, command: c.commandId, members: c.members });
+      const state = c.state ?? "prepared";
+      await tx.query("insert into changesets (set_key, run_id, command_id, set_digest, members, state, summary) values ($1, $2, $3, $4, $5, $6, $7)", [c.setKey, runId, c.commandId, c.setDigest, json(c.members), state, json(c.summary)]);
+      await this.event(tx, runId, `changeset_${state}`, { set: c.setDigest, command: c.commandId, members: c.members });
     });
   }
 
@@ -607,6 +611,7 @@ export class Journal {
       members: (r["members"] ?? []) as Value,
       state: String(r["state"]),
       detail: (r["detail"] ?? null) as Value,
+      summary: (r["summary"] ?? null) as Value,
     }));
   }
 

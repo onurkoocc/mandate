@@ -1247,12 +1247,39 @@ export class Interpreter {
     if (!this.o.replay) await this.checkVerified("changeset", plan);
     const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
     const mode = this.o.mode ?? "live";
+    // What the set lands and why, for its view (doc 9 §3.4, §8.2): recorded with the set in every mode.
+    const summary: Obj = { plan: plain(plan), plan_digest: digest("request", plain(plan)), plan_evidence: evidenceOf(plan), order: e.order, changes: (e.changes ?? {}) as Value, approver: e.approver };
+    const setOf = (members: Value[]): { setDigest: string; setKey: string } => {
+      const setDigest = digest("action", {
+        changeset: path,
+        package: this.o.packageHash,
+        run: this.o.runId,
+        plan: summary["plan_digest"]!,
+        plan_evidence: summary["plan_evidence"]!,
+        members,
+        changes: summary["changes"]!,
+        approver: e.approver,
+        idempotency_key: key,
+      });
+      return { setDigest, setKey: digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: path, set: setDigest }) };
+    };
     if (mode === "design") {
       const sim: Obj = {};
-      for (const m of e.order) sim[m] = await this.simulated(e.members[m]!.effect, plain((await this.args(e.members[m]!.args, ctx, `${path}/members/${m}`)).pos), `${path}/members/${m}`);
+      const recorded: Obj[] = [];
+      for (const m of e.order) {
+        const mem = e.members[m]!;
+        const comp = this.def(m);
+        const { pos } = await this.args(mem.args, ctx, `${path}/members/${m}`);
+        sim[m] = await this.simulated(mem.effect, plain(pos), `${path}/members/${m}`);
+        recorded.push({ component: m, effect: mem.effect, approver: mem.approver ?? (comp?.kind === "component" ? comp.owner : ""), evidence: evidenceOf(pos) });
+      }
+      if (!this.o.replay) {
+        const { setDigest, setKey } = setOf(recorded.map((r) => ({ component: r["component"]!, effect: r["effect"]! })));
+        await this.o.journal.prepareChangeset(this.o.runId, this.o.fence, { setKey, commandId: path, setDigest, members: recorded, summary, state: "simulated" });
+      }
       return { simulated: true, members: sim };
     }
-    const members: Array<{ component: string; effect: string; approver: string; tool: ToolAdapter; action?: ActionRow; receipt?: Value }> = [];
+    const members: Array<{ component: string; effect: string; approver: string; evidence: string[]; tool: ToolAdapter; action?: ActionRow; receipt?: Value }> = [];
     for (const m of e.order) {
       const mem = e.members[m]!;
       const comp = this.def(m);
@@ -1262,34 +1289,20 @@ export class Interpreter {
       // The member names its component and the commit the run started from: an approval is for this change to this base.
       const target: Obj = { component: m, repo: comp.repo, root: comp.root, base: this.o.workspace?.[m]?.base ?? null };
       const p = await this.prepareAction(mem.effect, this.effectInfo(mem.effect), pos, [target, ...(plain(pos) as Value[])], key, ctx, mp, { changeset: path }, m);
-      members.push({ component: m, effect: mem.effect, approver: mem.approver ?? comp.owner, tool: p.tool, ...(p.action ? { action: p.action } : { receipt: p.receipt }) });
+      members.push({ component: m, effect: mem.effect, approver: mem.approver ?? comp.owner, evidence: evidenceOf(pos), tool: p.tool, ...(p.action ? { action: p.action } : { receipt: p.receipt }) });
     }
+    const recorded = (): Value => members.map((m) => ({ component: m.component, effect: m.effect, operation: m.action!.operation_key, action_digest: m.action!.action_digest, approver: m.approver, evidence: m.evidence }));
+    const { setDigest, setKey } = this.o.replay ? { setDigest: "", setKey: "" } : setOf(members.map((m) => ({ component: m.component, effect: m.effect, action: m.action!.action_digest })));
     if (mode === "read_only") {
       // What the set would land: each member prepared and frozen, nothing approved or committed.
       const would: Obj = {};
       for (const m of members) would[m.component] = this.o.replay ? { would_apply: true, effect: m.effect } : await this.wouldApply(m.action!);
+      if (!this.o.replay) await this.o.journal.prepareChangeset(this.o.runId, this.o.fence, { setKey, commandId: path, setDigest, members: recorded(), summary, state: "would_apply" });
       return { would_apply: true, members: would };
     }
     if (this.o.replay) return { members: Object.fromEntries(members.map((m) => [m.component, m.receipt ?? null])) };
-    const setDigest = digest("action", {
-      changeset: path,
-      package: this.o.packageHash,
-      run: this.o.runId,
-      plan: digest("request", plain(plan)),
-      plan_evidence: evidenceOf(plan),
-      members: members.map((m) => ({ component: m.component, effect: m.effect, action: m.action!.action_digest })),
-      changes: (e.changes ?? {}) as Value,
-      approver: e.approver,
-      idempotency_key: key,
-    });
-    const setKey = digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: path, set: setDigest });
     const { journal, runId, fence } = this.o;
-    await journal.prepareChangeset(runId, fence, {
-      setKey,
-      commandId: path,
-      setDigest,
-      members: members.map((m) => ({ component: m.component, effect: m.effect, operation: m.action!.operation_key, action_digest: m.action!.action_digest, approver: m.approver })),
-    });
+    await journal.prepareChangeset(runId, fence, { setKey, commandId: path, setDigest, members: recorded(), summary });
 
     // Authorize: the owners, member by member, then the set approver.
     const memberAuth = new Map<string, string>();

@@ -15,6 +15,7 @@ import { main } from "../src/cli.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GitHubMerges } from "../src/github-merge.js";
 import { draft, drift, OnboardVerifier, scan, type RepoFacts } from "../src/onboard.js";
+import { runView } from "../src/views.js";
 import { buildPackage, Runtime } from "../src/runtime.js";
 import { MxcAdapter } from "../src/sandbox.js";
 import { SimAgents, SimSandboxHost } from "../src/sim.js";
@@ -95,10 +96,11 @@ describe("the onboarding program on Kervan (B7)", () => {
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
   /** A run whose Cartographer writes `model` into kervan-system's working copy. */
-  async function onboard(model: string, id: string) {
+  async function onboard(model: string, id: string, o: { pinned?: string } = {}) {
     let repos = REPOS;
     for (const [c, seed] of Object.entries(SEEDS)) repos = repos.replace(`"/work/${seed}"`, JSON.stringify(roots[c]!.root.replace(/\\/g, "/")));
-    const modules: Modules = { "kervan.repos": check(repos, "mdt").program! };
+    // A run may also carry the model accepted before (drift): what lands is then shown against it.
+    const modules: Modules = { "kervan.repos": check(repos, "mdt").program!, ...(o.pinned ? { "kervan.system": check(o.pinned, "mdt").program! } : {}) };
     const system = roots["system"]!;
     git(system.root, "checkout", "-q", "--", ".");
     const agents = new SimAgents().on("Cartographer.draft", () => {
@@ -128,6 +130,25 @@ describe("the onboarding program on Kervan (B7)", () => {
     return { rt, run, gh, ran, evidence };
   }
 
+  /** The model drafted from the working copies, as onboarding writes it. */
+  function scannedModel(): string {
+    const facts = Object.fromEntries(Object.entries(roots).filter(([c]) => c !== "system").map(([c, r]) => [c, scan(c, r.root, { auth: "auth", mcp: "mcp", core: "core", search: "search", voice: "voice" })]));
+    const repos = Object.fromEntries(Object.entries(SEEDS).map(([c, s]) => [c, `onurkoocc/${s}`]));
+    return printProgram(draft(Object.values(facts), { module: "kervan.system", repos, roots: Object.fromEntries(Object.entries(SEEDS).map(([c, s]) => [c, `/work/${s}`])) }));
+  }
+
+  async function approveAll(t: Awaited<ReturnType<typeof onboard>>) {
+    let run = t.run;
+    const roles: string[] = [];
+    for (let i = 0; run.state === "waiting"; i++) {
+      const w = run.waiting as Obj;
+      const r = w["request"] as Obj;
+      roles.push(String(r["role"]));
+      run = await t.rt.decideAction(run.run_id, { sender: String(r["role"]), messageId: `d${i}` }, { commandId: String(w["command"]), revision: run.revision, digest: String(r["subject_digest"] ?? r["action_digest"]), approve: true, by: String(r["role"]) });
+    }
+    return { run, roles };
+  }
+
   it("refuses the model that leaves out auth → voice: the code shows the call", async () => {
     const t = await onboard(KERVAN_SOURCE, "ON-1");
     expect(t.run.state).toBe("waiting");
@@ -140,18 +161,9 @@ describe("the onboarding program on Kervan (B7)", () => {
   });
 
   it("accepts the model drafted from the repositories, and lands it in kervan-system", async () => {
-    const facts = Object.fromEntries(Object.entries(roots).filter(([c]) => c !== "system").map(([c, r]) => [c, scan(c, r.root, { auth: "auth", mcp: "mcp", core: "core", search: "search", voice: "voice" })]));
-    const repos = Object.fromEntries(Object.entries(SEEDS).map(([c, s]) => [c, `onurkoocc/${s}`]));
-    const text = printProgram(draft(Object.values(facts), { module: "kervan.system", repos, roots: Object.fromEntries(Object.entries(SEEDS).map(([c, s]) => [c, `/work/${s}`])) }));
+    const text = scannedModel();
     const t = await onboard(text, "ON-2");
-    let run = t.run;
-    const roles: string[] = [];
-    for (let i = 0; run.state === "waiting"; i++) {
-      const w = run.waiting as Obj;
-      const r = w["request"] as Obj;
-      roles.push(String(r["role"]));
-      run = await t.rt.decideAction(run.run_id, { sender: String(r["role"]), messageId: `d${i}` }, { commandId: String(w["command"]), revision: run.revision, digest: String(r["subject_digest"] ?? r["action_digest"]), approve: true, by: String(r["role"]) });
-    }
+    const { run, roles } = await approveAll(t);
     expect(run.state, JSON.stringify(run.attention ?? run.error)).toBe("succeeded");
     // The architect accepts the model, then kervan-system's owner and the set approver land it.
     expect(roles[0]).toBe("architect");
@@ -163,6 +175,20 @@ describe("the onboarding program on Kervan (B7)", () => {
     const repo = t.gh.repos["onurkoocc/kervan-system"]!;
     expect(repo.pulls[0]!.merged).toBe(true);
     expect(repo.filesOf("main")!.get(MODEL_PATH)).toBe(text);
+    // The change set view says what it changes in authority: a system model the run had none of (B8).
+    const { view } = await runView(t.rt, run.run_id);
+    expect(view.changesets[0]!.authority).toEqual([{ component: "system", file: MODEL_PATH, changes: ["a new Mandate module kervan.system: this run's package has no earlier version of it"] }]);
+  });
+
+  it("shows a new model against the accepted one as governance changes (B8)", async () => {
+    const t = await onboard(scannedModel(), "ON-5", { pinned: KERVAN_SOURCE });
+    const { run } = await approveAll(t);
+    expect(run.state, JSON.stringify(run.attention ?? run.error)).toBe("succeeded");
+    const { view } = await runView(t.rt, run.run_id);
+    const [a] = view.changesets[0]!.authority;
+    expect(a!.file).toBe(MODEL_PATH);
+    // auth's newly modelled dependencies, among the rest of what the draft names differently.
+    expect(a!.changes.some((c) => c.includes("component auth.consumes:") && c.includes("VoiceApi"))).toBe(true);
   });
 
   it("refuses a draft whose spec is not in its provider's repository", async () => {

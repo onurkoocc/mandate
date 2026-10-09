@@ -200,6 +200,7 @@ control plane, never in an agent's sandbox:
 | `test.contract(changes)` | Every interface whose provider the run works on: its spec at the base commit against the working copy, diffed by protocol (`openapi`, `mcp_tools`, `oauth`, `event`; `db_schema` by a migration heuristic) | No measured change exceeds the declared one. Undeclared counts as `none`; `breaking_change_undeclared` and `change_undeclared` are unmet |
 | `test.integration(env: e, components)` | The system built from the candidate working copies with docker compose, its end-to-end service run on networks that are all `internal` | The end-to-end service exits 0 |
 | `test.ci({ component: commit })` | The component's existing CI on that commit | The result is attested and the attestation verified; or, in `rerun` mode (the default), the verifier's own run of the component's tests at that commit passes |
+| `test.planned(plan)` | What the change touched against the approved plan's `components`, `changes` and, if given, `paths` (component → globs) | No component outside the plan changed, no file outside its paths, and no interface whose spec changed is missing from the plan's changes. Anything else is an `unplanned_change` (B8) |
 
 - **Who is on which side.** The diff takes the consumer's side. What a
   consumer receives (responses, tool outputs, metadata) may gain but not
@@ -235,6 +236,27 @@ in `runtime/test/kervan-live.test.ts` (`MANDATE_KERVAN=1`, Docker). There,
 kervan-mcp's own tests pass in a container sandbox with no network, every
 spec diff is empty, and the real end-to-end check fails; restored, it
 passes.
+
+## The change set view (B8)
+
+A person accepts a change set from one view (doc 9 §8.2). It is made from
+the IR and the journal, under the program's hash and each module's hash,
+at a revision; a decision on an older revision is refused (INV-10, G10):
+
+| Part | Shows |
+|---|---|
+| Plan | The approved plan, its digest, and who approved it (from its evidence) |
+| Per component | Files; each interface it provides, the kind declared (set or plan) and the kind measured (`test.contract`); `UNPLANNED` with why |
+| Evidence matrix | Criteria by component: passed, failed or unknown, with the evidence id. A check that reports per component (`suite_each`, `contract`, `planned`) fills each cell from that component's own part |
+| Order | Each member with the interfaces it waits for: "after auth: mcp consumes TokenIssuance, which auth provides and this set changes it (additive)" |
+| Reality | The mode; in a live run, each member's action state |
+| Authority | A member that lands a Mandate module, such as the system model, diffed against the version the run's package pins; governance changes listed. A new module, or the lock, is named |
+
+**Plan ↔ change.** The set digest S covers the plan's digest and evidence.
+`test.planned(plan)` checks the change against the plan: a component, a
+path or an interface outside it is an `unplanned_change`, and the criterion
+is unmet. Read_only and design runs record their sets too, as
+`would_apply` and `simulated`, so the view says what would have landed.
 
 ## Reads and run modes (B6)
 

@@ -14,6 +14,8 @@ import { afterAll, describe, expect, it } from "vitest";
 import { BoundaryVerifier, type Docker } from "../src/boundary.js";
 import { GitHubMerges } from "../src/github-merge.js";
 import { buildPackage, Runtime } from "../src/runtime.js";
+import { runDoc, runView } from "../src/views.js";
+import { toMarkdown } from "@mandate/compiler";
 import { MxcAdapter } from "../src/sandbox.js";
 import { SimAgents, SimSandboxHost } from "../src/sim.js";
 import { isObj, type Obj } from "../src/values.js";
@@ -73,7 +75,7 @@ function e2eDocker(root: string, during?: () => void): Docker {
   };
 }
 
-async function audienceRun(change: { config: string; test: string }, o: { during?: (root: string) => void } = {}) {
+async function audienceRun(change: { config: string; test: string; files?: Record<string, string> }, o: { during?: (root: string) => void } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "mandate-aud-"));
   const mcp = mcpRepo(dir);
   const modules = kervanModules(KERVAN_SOURCE.replace('"/work/kervan-mcp"', JSON.stringify(mcp.root.replace(/\\/g, "/"))));
@@ -83,7 +85,8 @@ async function audienceRun(change: { config: string; test: string }, o: { during
       // The agent moves mcp's side of the audience agreement, and its test with it.
       writeFileSync(join(mcp.root, "src/config.ts"), change.config);
       writeFileSync(join(mcp.root, "test/config.test.ts"), change.test);
-      return { ok: { files: ["src/config.ts", "test/config.test.ts"], summary: "audience" }, cost: { steps: 4 } };
+      for (const [f, c] of Object.entries(change.files ?? {})) writeFileSync(join(mcp.root, f), c);
+      return { ok: { files: ["src/config.ts", "test/config.test.ts", ...Object.keys(change.files ?? {})], summary: "audience" }, cost: { steps: 4 } };
     });
   const w = await world(AUDIENCE, { modules, lock: lockFor(modules), agents });
   const sandbox = new MxcAdapter({ host: npmHost(), schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true });
@@ -112,7 +115,7 @@ describe("Kervan task class 3: an audience change on one side (B5)", () => {
       expect(t.run.state).toBe("waiting");
       expect(isObj(t.run.waiting) && JSON.stringify(t.run.waiting["request"])).toContain("integrated");
       const evidence = Object.fromEntries((await t.rt.evidence(t.run.run_id)).filter((e) => e.contract === "BoundaryAccepted").map((e) => [e.criterion, e.passed]));
-      expect(evidence).toEqual({ suites: true, contracts: true, integrated: false });
+      expect(evidence).toEqual({ suites: true, contracts: true, integrated: false, planned: true });
       expect(t.gh.repos["onurkoocc/kervan-mcp"]!.pulls).toHaveLength(0);
     } finally {
       t.cleanup();
@@ -132,6 +135,40 @@ describe("Kervan task class 3: an audience change on one side (B5)", () => {
       const repo = t.gh.repos["onurkoocc/kervan-mcp"]!;
       expect(repo.pulls[0]!.merged).toBe(true);
       expect(repo.filesOf("main")!.get("src/config.ts")).toContain("leeway");
+
+      // The change set view (doc 9 §8.2): the approved plan, the change, the evidence matrix, the order, what was real.
+      const { view, program } = await runView(t.rt, run.run_id);
+      const [cs] = view.changesets;
+      expect(cs!.plan.approved_by).toEqual([{ criterion: "PlanAccepted.architect", by: "architect", role: "architect" }]);
+      expect(cs!.components).toEqual([{ component: "mcp", effect: "git.merge", approver: "support_platform_owner", action: "confirmed", files: ["src/config.ts", "test/config.test.ts"], interfaces: [{ interface: "CustomerTools", declared: null, measured: "none" }], unplanned: [] }]);
+      expect(cs!.matrix.map((r) => [r.criterion, r.method, r.cells["mcp"]!.result])).toEqual([
+        ["contracts", "test.contract", "passed"],
+        ["integrated", "test.integration", "passed"],
+        ["planned", "test.planned", "passed"],
+        ["suites", "test.suite_each", "passed"],
+      ]);
+      expect(cs!.order).toEqual([{ component: "mcp", because: ["first: it consumes nothing another member provides"] }]);
+      expect(cs!.reality).toBe("Live run: mcp confirmed.");
+      expect(cs!.authority).toEqual([]);
+      expect(view.modules.map((m) => m.module)).toEqual(["kervan.system"]);
+      const md = toMarkdown(runDoc(view, program));
+      expect(md).toContain("## Change set at");
+      expect(md).toContain("Module kervan.system");
+    } finally {
+      t.cleanup();
+    }
+  });
+
+  it("flags an interface change the plan does not name as an unplanned_change, and lands nothing", async () => {
+    const tools = JSON.stringify({ tools: [{ name: "get_shipment", inputSchema: { type: "object", properties: { tracking_no: { type: "string" } }, required: ["tracking_no"] } }, { name: "cancel_shipment", inputSchema: { type: "object", properties: { tracking_no: { type: "string" } }, required: ["tracking_no"] } }] });
+    const t = await audienceRun({ config: 'export const audience = process.env.MCP_RESOURCE ?? "http://mcp:3001/mcp";\n', test: 'expect audience "http://mcp:3001/mcp"\n', files: { "docs/mcp-tools.json": tools } });
+    try {
+      const evidence = await t.rt.evidence(t.run.run_id);
+      const planned = evidence.find((e) => e.criterion === "planned")!;
+      expect(planned.passed).toBe(false);
+      expect(JSON.stringify(planned.detail)).toContain("unplanned_change");
+      expect(JSON.stringify(planned.detail)).toContain("CustomerTools changed (additive), and the plan does not name it");
+      expect(t.gh.repos["onurkoocc/kervan-mcp"]!.pulls).toHaveLength(0);
     } finally {
       t.cleanup();
     }
