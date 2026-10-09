@@ -25,6 +25,7 @@ import {
   STD_EFFECTS,
   STD_FNS,
   type Arg,
+  type Tier,
   type Budget,
   type CapVal,
   type ChangesetExpr,
@@ -1123,7 +1124,7 @@ export class Interpreter {
     const { journal, runId, fence } = this.o;
     let justCommitted = false;
     if (action.state === "prepared") {
-      const authId = await this.authorization(e.name, info, action, path);
+      const authId = await this.authorization(e.name, info, action, path, undefined, this.environmentTier(e.name, e.args));
       action = await journal.commit(runId, fence, action.operation_key, authId);
       justCommitted = true;
       this.o.faults.check("after_commit", { id: path, kind: "effect" });
@@ -1308,7 +1309,7 @@ export class Interpreter {
     const memberAuth = new Map<string, string>();
     for (const m of members) {
       if (m.action!.state !== "prepared") continue;
-      memberAuth.set(m.component, await this.authorization(m.effect, { irreversible: true }, m.action!, `${path}/members/${m.component}`, { role: m.approver, changeset: setDigest, component: m.component }));
+      memberAuth.set(m.component, await this.authorization(m.effect, { irreversible: true }, m.action!, `${path}/members/${m.component}`, { role: m.approver, changeset: setDigest, component: m.component }, this.environmentTier(m.effect, e.members[m.component]!.args)));
     }
     let setAuth: string | undefined;
     if (members.some((m) => m.action!.state === "prepared")) {
@@ -1539,8 +1540,21 @@ export class Interpreter {
    * produce this. A change set member (`member`) is approved by its
    * component's owner unless the run's policy authorizes the effect itself.
    */
-  private async authorization(effect: string, info: { irreversible: boolean }, action: ActionRow, path: string, member?: { role: string; changeset: string; component: string }): Promise<string> {
-    const pol = this.o.policy.authorize?.[effect] ?? (member ? { by: "human" as const, role: member.role } : info.irreversible ? { by: "human" as const, role: "owner" } : { by: "policy" as const });
+  /** The environment an effect's arguments name, and the tier it sets for that effect (doc 9 §5.3). */
+  private environmentTier(effect: string, args: Arg[]): { environment: string; tier: Tier } | undefined {
+    for (const a of args) {
+      if (a.value.op !== "var") continue;
+      const d = this.def(a.value.name);
+      const tier = d?.kind === "environment" ? d.authorize?.[effect] : undefined;
+      if (tier) return { environment: a.value.name, tier };
+    }
+    return undefined;
+  }
+
+  private async authorization(effect: string, info: { irreversible: boolean }, action: ActionRow, path: string, member?: { role: string; changeset: string; component: string }, env?: { environment: string; tier: Tier }): Promise<string> {
+    const base = this.o.policy.authorize?.[effect] ?? (member ? { by: "human" as const, role: member.role } : info.irreversible ? { by: "human" as const, role: "owner" } : { by: "policy" as const });
+    // The environment's tier is the least that applies: a person's tier names who decides, and a policy tier never lowers the runtime's.
+    const pol = env?.tier.by === "human" ? { ...base, by: "human" as const, role: env.tier.role } : base;
     if (pol.by === "policy") {
       const id = digest("operation", { authorize: action.action_digest, by: "policy" });
       const ttl = this.o.policy.authorizationTtlMs ?? 15 * 60_000;
@@ -1553,6 +1567,7 @@ export class Interpreter {
       params: action.params,
       role: pol.role,
       ...(member ? { changeset: member.changeset, component: member.component } : {}),
+      ...(env ? { environment: env.environment, tier: env.tier as unknown as Value } : {}),
       deadline: pol.deadlineMs === undefined ? null : this.o.adapters.clock.now() + pol.deadlineMs,
     });
     if (!isObj(decision) || decision["approved"] !== true) throw new Fault("Rejected", [{ denied_by: isObj(decision) ? (decision["by"] ?? null) : null }]);

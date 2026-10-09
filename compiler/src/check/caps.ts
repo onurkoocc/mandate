@@ -132,6 +132,7 @@ export function capsFromCall(e: Expr, defs: Record<string, Def> = {}): CapResult
   const ctor = calleePath(e.callee);
   if (ctor && COMPONENT_CTORS.has(ctor)) return componentCaps(ctor, e.args, defs);
   if (ctor === "data.read") return readCaps(e.args, defs);
+  if (ctor === "env.deploy" || ctor === "env.migrate") return envCaps(ctor, e.args, defs);
   const c = capFromCall(e);
   return c ? { caps: [c] } : undefined;
 }
@@ -191,6 +192,19 @@ function componentCaps(ctor: string, args: Arg[], defs: Record<string, Def>): Ca
  * environment through the read broker (design doc 9 §5.1); without read
  * names, every read the environment declares. Scope items are `env.read`.
  */
+/** `env.deploy(staging, prod)`: deploy (or migrate) in those environments of the system model, and nowhere else. */
+function envCaps(ctor: string, args: Arg[], defs: Record<string, Def>): CapResult {
+  const envs: string[] = [];
+  for (const a of args) {
+    const n = a.value.op === "var" ? a.value.name : undefined;
+    if (!n || !Object.hasOwn(defs, n) || defs[n]!.kind !== "environment") return { caps: [], problem: `${ctor} takes environments; ${n ? `'${n}' is not one` : "an argument is not an environment name"}` };
+    envs.push(n);
+  }
+  if (!envs.length) return { caps: [], problem: `${ctor} needs an environment` };
+  const spec = CAP_CTORS[ctor]!;
+  return { caps: [{ ctor, effect: spec.effect, write: spec.write, scope: [...new Set(envs)].sort(), via: `${ctor}(${envs.join(", ")})` }] };
+}
+
 function readCaps(args: Arg[], defs: Record<string, Def>): CapResult {
   const env = args[0]?.value.op === "var" ? args[0].value.name : undefined;
   const d = env && Object.hasOwn(defs, env) ? defs[env] : undefined;

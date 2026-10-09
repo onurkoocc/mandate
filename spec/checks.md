@@ -173,7 +173,10 @@ retry is a person's decision, and the run's ledger still bounds it.
 A 0.3 module may describe a system: components, interfaces, environments.
 The checker requires one provider per interface (E1001), separate working
 copies (E1003), declared reads that match their parameters and stay one
-SELECT (E1004) and below their environment's class (E1005). Capabilities over
-components (`component.read`, `.write`, `.exec`, `.repo`) open into the
-model's paths, commands and repositories before C1–C5 run; one that cannot
-be opened is E1002. See [`system.md`](system.md).
+SELECT (E1004) and below their environment's class (E1005), and tiers that
+name critical effects (E1006). Capabilities over components
+(`component.read`, `.write`, `.exec`, `.repo`) open into the model's paths,
+commands and repositories before C1–C5 run. `env.deploy` and `env.migrate`
+open into the environments they name, and a `deploy` or `migrate` is
+covered only by a capability over its environment. One that cannot be
+opened is E1002. See [`system.md`](system.md).

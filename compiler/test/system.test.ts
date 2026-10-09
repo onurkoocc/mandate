@@ -128,6 +128,35 @@ describe("Kervan's system model (B2)", () => {
     expect(codesOf(src)).toEqual(["MDT-E1005"]);
   });
 
+  it("E1006: an environment's tier names a critical effect; on anything else it would bind nothing", () => {
+    const src = mutate("  authorize deploy by policy", "  authorize page by policy\n  authorize deploy by policy") + "\neffect page(text: Text) -> Bool\n";
+    expect(codesOf(src)).toEqual(["MDT-E1006"]);
+  });
+
+  it("deploy is a std effect: it needs env.deploy over the environment it deploys to (E0301)", () => {
+    const ship = (envs: string) => `mandate @ 0.3
+module kervan.tasks.ship @ 0.1
+use std.{env, human}
+use kervan.system.{staging, prod_sim, mcp}
+capability Deploys = env.deploy(${envs})
+type Release = { version: Text }
+contract Approved(r: Release) {
+  accept approved "A person approved the release" by human.approve(role: "release_manager")
+}
+workflow Ship(version: Text) -> Text
+  caps Deploys
+{
+  let r = verify Release { version: version } against Approved(Release { version: version })
+  let p = effect deploy(r, prod_sim) idempotent_by version
+  "shipped"
+}
+`;
+    expect(codesOf(ship("staging, prod_sim"), { modules: modules() })).toEqual([]);
+    // env.deploy(staging) does not deploy to prod_sim; it is also never used.
+    expect(codesOf(ship("staging"), { modules: modules() })).toEqual(["MDT-E0301", "MDT-W0310"]);
+    expect(codesOf(ship("staging, mcp"), { modules: modules() })).toContain("MDT-E1002");
+  });
+
   it("E0120: an environment authorizes only known effects", () => {
     expect(codesOf(mutate('authorize deploy by human(role: "release_manager")', 'authorize deploi by human(role: "release_manager")'))).toEqual(["MDT-E0120"]);
   });

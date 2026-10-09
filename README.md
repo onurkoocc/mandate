@@ -325,6 +325,9 @@ The brownfield tests run on Kervan (design doc 9 §12):
 - `onboard.test.ts` (B7): Kervan's model drafted from its repositories,
   checked and landed; the committed model's deliberate drift found by
   `mandate drift` and by `test.consumes`.
+- `environment.test.ts` (B9): an environment's tier is never lowered;
+  prod_sim's deploy waits for the release manager although the run's
+  policy says policy.
 - `kervan-live.test.ts` repeats B5 and B6 against the real Kervan in
   Docker when `MANDATE_KERVAN=1`.
 

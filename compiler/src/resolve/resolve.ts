@@ -397,6 +397,8 @@ class Resolver {
     }
     const dot = name.lastIndexOf(".");
     if (dot > 0 && this.isModulePath(name.slice(0, dot))) return;
+    // A std effect without a module (deploy, migrate) is a name of the language; its capability is still required.
+    if (dot < 0 && STD_EFFECTS[name]) return;
     this.report(path, `Unknown effect '${name}'.`, name, "effect", this.defsOfKind("effect"), (n) => n);
   }
 

@@ -222,8 +222,8 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     explain: "Every interface of a system model is provided by exactly one component (`provides`). The provider answers for changes to it, and its spec file is read at the provider's base commit (design doc 9 §2.1).",
   },
   "MDT-E1002": {
-    title: "Capability over a component cannot be opened",
-    explain: "component.read, component.write, component.exec and component.repo take components of the system model. component.write takes paths inside the component; component.exec runs only the build or test commands the component declares. A capability that stands for several values (one per command) cannot be narrowed as one (design doc 9 §2.2).",
+    title: "Capability over a component or an environment cannot be opened",
+    explain: "component.read, component.write, component.exec and component.repo take components of the system model. component.write takes paths inside the component; component.exec runs only the build or test commands the component declares. A capability that stands for several values (one per command) cannot be narrowed as one. env.deploy and env.migrate take environments of the system model, and data.read an environment and its declared reads (design doc 9 §2.2, §5).",
   },
   "MDT-E1003": {
     title: "Component working copies overlap",
@@ -236,6 +236,10 @@ export const CODES: Record<string, { title: string; explain: string }> = {
   "MDT-E1005": {
     title: "Read above its environment's class",
     explain: "A read returns rows of a higher data class than the environment it belongs to declares. An environment's class is the most sensitive data it holds; a program cannot lower a class (§5.5).",
+  },
+  "MDT-E1006": {
+    title: "Environment tier does not bind",
+    explain: "An environment sets the least authorization tier for effects in it: `authorize deploy by human(role: \"release_manager\")` (design doc 9 §5.3). The tier is the organization's, not the program's, so it lives in the system model and a change to it is a governance change. It must name a critical effect, since nothing else is ever authorized. At run time the stronger of the tier and the runtime's policy applies; a program cannot lower it.",
   },
   "MDT-E1101": {
     title: "Change set order breaks the interface graph",

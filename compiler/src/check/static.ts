@@ -570,8 +570,16 @@ class Checker implements TypeEnv {
     for (const [name, d] of own) {
       if (d.kind !== "environment") continue;
       for (const [rn, r] of Object.entries(d.reads ?? {})) this.checkRead(name, d, rn, r, ptr("defs", name, "reads", rn));
+      // A tier binds when an effect in this environment is authorized; on anything never authorized it would bind nothing (INV-11).
+      for (const effect of Object.keys(d.authorize ?? {})) {
+        // An unknown name is E0120's.
+        const known = this.def(effect)?.kind === "effect" || STD_EFFECTS[effect] || BUILTIN_EFFECTS.has(effect);
+        if (!known || this.isCriticalEffect(effect)) continue;
+        this.report("E1006", `${name} sets an authorization tier for ${effect}, which is not a critical effect: nothing ever authorizes it.`, ptr("defs", name, "authorize", effect), { environment: name, effect });
+      }
     }
   }
+
 
   /**
    * A declared read (doc 9 §5.1, K43): one read-only query whose values come
@@ -1312,7 +1320,10 @@ class Checker implements TypeEnv {
       this.report("E0405", `Irreversible effect ${e.name} runs without a prior human.approve or a value verified by a contract that requires one (§6.3).`, path);
     }
     if (e.idempotent_by) this.expr(e.idempotent_by, frame, `${path}/idempotent_by`);
-    this.use(frame, { effect: e.name, path });
+    // An effect on an environment (deploy, migrate) is scoped by the environment it names: env.deploy(staging) does
+    // not deploy to prod. One not named in the program is covered by no capability.
+    const byEnv = std?.cap?.startsWith("env.") ? e.args.flatMap((a) => (a.value.op === "var" && this.def(a.value.name)?.kind === "environment" ? [a.value.name] : [])) : undefined;
+    this.use(frame, { effect: e.name, path, ...(byEnv ? { scope: byEnv.length ? byEnv : ["an environment the program does not name"] } : {}) });
     const ret = decl ? this.ty(decl.returns) : std ? this.ty(std.returns) : UNKNOWN;
     return { ty: ret, cls };
   }

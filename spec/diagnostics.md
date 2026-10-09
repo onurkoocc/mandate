@@ -97,10 +97,11 @@ assigned here.
 | Code | Title | Conformance case | Notes |
 |---|---|---|---|
 | MDT-E1001 | Interface without exactly one provider | — | assigned |
-| MDT-E1002 | Capability over a component cannot be opened | — | assigned; not a component, a path outside it, an undeclared command kind, or narrowing a capability that stands for several commands |
+| MDT-E1002 | Capability over a component or an environment cannot be opened | — | assigned; not a component, a path outside it, an undeclared command kind, narrowing a capability that stands for several commands, or env.deploy / env.migrate over something not an environment |
 | MDT-E1003 | Component working copies overlap | — | assigned; C5 across components |
 | MDT-E1004 | Read does not match its declaration | — | assigned; one SELECT, placeholders = parameters, scalar parameters (K43) |
 | MDT-E1005 | Read above its environment's class | — | assigned |
+| MDT-E1006 | Environment tier does not bind | — | assigned; an environment's `authorize` names an effect that is not critical. At run time the stronger of the tier and the runtime's policy applies |
 | MDT-E1101 | Change set order breaks the interface graph | — | assigned; an additive change's provider lands first and is a member; no cycles |
 | MDT-E1102 | Change set order does not list its members | — | assigned |
 | MDT-E1103 | Breaking change in one change set | — | assigned; expand → migrate → contract |

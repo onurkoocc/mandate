@@ -303,6 +303,41 @@ by what each action would do: effect, parameters, frozen files and business
 key. It reports `same`, `differs`, `only_a` or `only_b`, with how many
 actions each run committed (V19; a read_only run commits none).
 
+## Environment tiers (B9)
+
+An environment sets the least authorization for each effect in it
+(doc 9 §5.3, Doc 4 §8.8 tiers):
+
+```mandate
+environment prod_sim {
+  class confidential
+  authorize deploy by human(role: "release_manager")
+  authorize migrate by human(role: "db_owner")
+}
+```
+
+- **The organization's, not the program's.** The tier lives in the system
+  model, so changing it is a governance change. A tier must name a
+  critical effect, since nothing else is ever authorized (E1006).
+- **Never lowered.** At authorize time, an effect whose argument names an
+  environment is authorized by the stronger of the runtime's policy and
+  the environment's tier. A `human(role)` tier makes that role decide,
+  even where the runtime's policy says `policy`, and its decision request
+  names the environment and the tier. A `policy` tier never lowers a
+  stronger runtime policy. Change set members get the same rule.
+- **Scoped by environment.** `deploy` and `migrate` are std effects behind
+  `env.deploy(e…)` and `env.migrate(e…)`. The capability opens into the
+  environments it names, and an effect in another environment is not
+  covered (E0301). `env.deploy(staging)` does not deploy to prod.
+
+Kervan's prod_sim needs the release manager for a deploy, and staging
+accepts policy. A run whose policy would let policy authorize every deploy
+deploys to staging at once, and waits for the release manager on
+prod_sim (`runtime/test/environment.test.ts`). Deploy and migrate
+adapters, promotion between environments, and migrations as expand →
+migrate → contract are L4. They are designed in Doc 4 and built after
+Gate 5.
+
 ## Onboarding and drift (B7)
 
 Taking an existing system into Mandate means describing it, not rewriting
