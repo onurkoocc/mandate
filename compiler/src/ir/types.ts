@@ -16,10 +16,22 @@
 //     micro-units plus an ISO 4217 code; durations are milliseconds;
 //   - optional fields are omitted rather than written as null or false.
 
-export const LANGUAGE_VERSION = "mandate/0.1";
+/** The newest language version; what new programs are written in. */
+export const LANGUAGE_VERSION = "mandate/0.2";
+/**
+ * Every language version this compiler reads. 0.2 adds the agent loop
+ * strategy and its progress thresholds (`loop`, `progress`); a 0.1 program
+ * reads and hashes exactly as before.
+ */
+export const LANGUAGE_VERSIONS = ["mandate/0.1", "mandate/0.2"] as const;
+export type LanguageVersion = (typeof LANGUAGE_VERSIONS)[number];
+
+export function isLanguageVersion(v: unknown): v is LanguageVersion {
+  return (LANGUAGE_VERSIONS as readonly unknown[]).includes(v);
+}
 
 export interface Program {
-  language: typeof LANGUAGE_VERSION;
+  language: LanguageVersion;
   module: string;
   version: string;
   uses?: Use[];
@@ -125,8 +137,28 @@ export interface AgentDef {
   remote?: RemoteBinding;
   caps: Expr[];
   budget?: Budget;
+  /** 0.2: how a skill without a body runs (§8.2); `react` when absent. */
+  loop?: LoopStrategy;
+  /** 0.2: when an agent loop counts as stuck (§8.2); defaults in PROGRESS_DEFAULTS. */
+  progress?: Progress;
   skills: Record<string, Skill>;
 }
+
+export type LoopStrategy = "react" | "plan_execute";
+
+/**
+ * Progress thresholds of an agent loop (§8.2, BACKLOG K9). The loop stops with
+ * `SkillFailed(Stuck)` when the same tool call with the same arguments comes
+ * `repeats` times within the last `window` steps, or after `stall` steps in
+ * a row that observed nothing new.
+ */
+export interface Progress {
+  window?: number;
+  repeats?: number;
+  stall?: number;
+}
+
+export const PROGRESS_DEFAULTS: Required<Progress> = { window: 8, repeats: 3, stall: 5 };
 
 export interface OnHandler {
   event: string;

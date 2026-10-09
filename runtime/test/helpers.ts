@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { check } from "@mandate/compiler";
 import { expect } from "vitest";
 import { ISSUE } from "./programs.js";
-import type { Clock } from "../src/adapters.js";
+import type { Clock, ModelAdapter } from "../src/adapters.js";
 import { openDb, type Db } from "../src/db.js";
 import { Faults } from "../src/faults.js";
-import { buildPackage, Runtime, type Package, type StartOptions } from "../src/runtime.js";
+import { buildPackage, Runtime, type Lock, type Package, type StartOptions } from "../src/runtime.js";
 import { simulate, type Sim, type SimAgents, type SimModel, type SimReads, type SimTool, type SimVerifier } from "../src/sim.js";
 
 /** Imported domain modules are pinned in every test package (S09). */
@@ -26,7 +26,10 @@ let shared: Promise<Db> | undefined;
  * PGlite by default, or a fresh schema on the PostgreSQL server named by
  * MANDATE_TEST_DATABASE_URL.
  */
-export async function world(src: string, o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; clock?: Clock } = {}): Promise<World> {
+export async function world(
+  src: string,
+  o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; clock?: Clock; lock?: Lock; realModel?: ModelAdapter } = {},
+): Promise<World> {
   const r = check(src, "mdt");
   expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
   const url = process.env["MANDATE_TEST_DATABASE_URL"];
@@ -34,8 +37,9 @@ export async function world(src: string, o: { tools?: SimTool[]; agents?: SimAge
   const db = await shared;
   await db.query(`truncate ${TABLES.join(", ")} cascade`);
   const sim = simulate(o);
+  if (o.realModel) sim.adapters.model = o.realModel;
   const faults = new Faults();
-  return { ...sim, rt: new Runtime(db, sim.adapters, faults), db, pkg: buildPackage(r.program!, LOCK), faults };
+  return { ...sim, rt: new Runtime(db, sim.adapters, faults), db, pkg: buildPackage(r.program!, o.lock ?? LOCK), faults };
 }
 
 const TABLES = ["outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];

@@ -197,7 +197,7 @@ describe("Temporal schedules runs", () => {
     expect(pr.appliedCount()).toBe(1);
     expect(Object.keys(RESULTS).map((k) => s.agents.count(k))).toEqual([1, 1, 1, 1, 1]);
     expect((await s.control.evidence("t9")).every((e) => e.passed)).toBe(true);
-    expect((await s.control.budgetReport("t9")).dimensions).toEqual([{ dimension: "spend:USD", limit: 20 * USD, settled: 11 * USD, reserved: 0, available: 9 * USD }]);
+    expect((await s.control.budgetReport("t9")).dimensions).toEqual([{ dimension: "spend:USD", limit: 50 * USD, settled: 11 * USD, reserved: 0, available: 39 * USD }]);
     // Started, woken by the approval, and resumed by Temporal's retry after the crash.
     const leases = (await s.control.journal.events("t9")).filter((e) => e.type === "lease_acquired");
     expect(leases).toHaveLength(3);

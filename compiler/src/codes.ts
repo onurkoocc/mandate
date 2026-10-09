@@ -52,6 +52,14 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Patch cannot be applied",
     explain: "An IR patch operation is unsupported or its path does not exist in the program.",
   },
+  "MDT-E0140": {
+    title: "Malformed lock file",
+    explain: "mandate.lock.json does not match spec/lock.schema.json, or a model it locks has no tariff. A lock is read strictly, like the IR: unknown fields and fractional prices are errors (spec/lock.md).",
+  },
+  "MDT-E0141": {
+    title: "Model tier not locked",
+    explain: "A capability names a model tier that the lock file does not map to a model, an effort and a tariff. The runtime refuses to load such a package (BACKLOG K10, K11).",
+  },
   "MDT-E0201": {
     title: "Type mismatch",
     explain: "A value's type does not match what the position expects: a wrong argument count, a different nominal type, or a plain T where Verified<T> is required.",
@@ -159,6 +167,10 @@ export const CODES: Record<string, { title: string; explain: string }> = {
   "MDT-E0504": {
     title: "Budget currency mismatch",
     explain: "A child budget is in a different currency from its parent. Currencies are never converted implicitly (§5.3).",
+  },
+  "MDT-W0504": {
+    title: "Budget below the computed upper bound",
+    explain: "An agent loop's declared tokens or spend is less than its steps times the per-call upper bound from the lock file: the locked input and output limits, priced as if nothing hits the cache (§8.6, K12). The skill may run out of budget before it can finish. The facts carry the bound.",
   },
   "MDT-W0601": {
     title: "Static criterion checked at run time",

@@ -1,4 +1,4 @@
-# Mandate 0.1 core
+# Mandate core, 0.1 and 0.2
 
 Mandate is a coordination and contract language for agents. Agents write
 programs. People review them through generated views. The compiler checks
@@ -22,12 +22,15 @@ A program is one module: a canonical JSON IR document, closed by
 [`ir.schema.json`](ir.schema.json).
 
 ```json
-{ "language": "mandate/0.1", "module": "company.devflow", "version": "0.1",
+{ "language": "mandate/0.2", "module": "company.devflow", "version": "0.1",
   "uses": [ … ], "defs": { "<Name>": { "kind": "…", … } }, "tests": { … } }
 ```
 
 - The IR is the source of truth. The `.mdt` text form is a projection:
   text lowers into IR and IR prints back as text, and both keep the hash.
+- `language` is `mandate/0.1` or `mandate/0.2`; 0.2 adds an agent's
+  `loop` and `progress` (§5). In text, a 0.2 file starts with
+  `mandate @ 0.2`.
 - A reader must reject, not repair, any of these: another `language`, an
   unknown field, a duplicate key, a non-integer or out-of-range number, a
   lone surrogate, or input over the limits (1 MiB of source, nesting 64,
@@ -37,9 +40,9 @@ A program is one module: a canonical JSON IR document, closed by
   `caps` and effect lists are sorted arrays. Parameters, statements and
   arguments keep their order.
 - The program hash is
-  `SHA256("mandate/program/0.1\n" ‖ JCS(program))`, written
-  `sha256:<hex>`. Each definition is hashed the same way under the domain
-  `def`. A patch names the hash it was written against; if the program
+  `SHA256("mandate/program/<v>\n" ‖ JCS(program))`, written
+  `sha256:<hex>`, where `<v>` is the language version. Each definition is
+  hashed the same way under the domain `def`. A patch names the hash it was written against; if the program
   has changed since, it is refused (`stale_base`).
 
 Definition kinds:
@@ -176,6 +179,15 @@ produces is the upper bound of real use.
 - **Skills.** A skill without a body runs as an agent loop. Its result is
   `Inferred<T>`, and it needs a `steps` limit in its own or its agent's
   budget.
+- **Agent loops (0.2).** The loop runs in the runtime, outside the sandbox:
+  - The agent's tools come from its grant and run inside its sandbox.
+  - Every model turn and tool call is a recorded command, charged to the
+    delegation's budget.
+  - It ends when the model hands back a value that fits the result type.
+  - It stops with `SkillFailed(kind)` when it repeats a call
+    (`progress { window, repeats }`) or observes nothing new for `stall`
+    turns, or runs out of steps.
+  - `loop plan_execute` checks the whole plan before any tool runs.
 - **Workflows.** A `workflow` body is deterministic orchestration. Every
   nondeterministic step in it is a recorded command (§7). Functions and
   workflows cannot call each other in a cycle.
@@ -356,13 +368,12 @@ Every conforming implementation keeps these:
 | INV-13 | `Inferred` and `Untrusted` values do not reach a critical effect or an instruction unverified | R1, R4, R5; runtime check of `Verified` parameters |
 | INV-14 | Parallel branches do not share a writable resource | C5 |
 
-## 9. Not in 0.1
+## 9. Not yet
 
 - **Not in the IR:** `map`, dynamic `spawn` and `await`.
 - **Agent loops:** these strategies are not implemented yet:
   - `degrade` and `escalate` as supervision strategies;
-  - `Throttled` and shared rate limits;
-  - progress checks inside agent loops.
+  - `Throttled` and shared rate limits.
 - **Not enforced yet:** a delegate's `timeout`, a workflow's `ensures`, and
   running `tests`. All three are checked, not enforced.
 - **Not generated yet:** these targets: host code, MCP, A2A, AX and

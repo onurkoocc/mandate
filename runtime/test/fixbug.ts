@@ -23,13 +23,17 @@ export const RESULTS: Record<string, Outcome> = {
   "Reviewer.counterexamples": { ok: { counterexamples: [], blocking: false }, cost: { spend: usd(1) } },
 };
 
-/** Each agent's budget in §20, which the runtime reserves when it delegates: 18.5 of the workflow's 20 USD. */
+/**
+ * Each agent's budget, which the runtime reserves when it delegates: 49.28 of
+ * the workflow's 50 USD. Each is its steps × the per-call bound of the lock
+ * file, 0.88 USD (W0504, BACKLOG K13).
+ */
 export const RESERVED: Record<string, number> = {
-  "Explorer.locate": 3 * USD,
-  "Planner.plan": 1.5 * USD,
-  "Implementer.apply": 8 * USD,
-  "TestWriter.regression": 3 * USD,
-  "Reviewer.counterexamples": 3 * USD,
+  "Explorer.locate": 10_560_000,
+  "Planner.plan": 3_520_000,
+  "Implementer.apply": 17_600_000,
+  "TestWriter.regression": 10_560_000,
+  "Reviewer.counterexamples": 7_040_000,
 };
 
 /** Agents that answer with RESULTS; `hold` delays the named ones until the returned promise is resolved. */

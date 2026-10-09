@@ -3,6 +3,7 @@
 // before the program sees it, so replay never calls them again (INV-09).
 
 import type { Budget, RetryClass, SandboxRequirement, TypeExpr } from "@mandate/compiler";
+import type { MxcAdapter } from "./sandbox.js";
 import type { Value } from "./values.js";
 
 export interface Cost {
@@ -21,7 +22,10 @@ export interface FaultValue {
  * has not reported a charge yet (a timeout or cancellation): the reservation
  * then stays in place until the charge is settled (R16).
  */
-export type Outcome = { ok: Value; cost?: Cost } | { error: FaultValue; cost?: Cost | "unknown" };
+export type Outcome = ({ ok: Value; cost?: Cost } | { error: FaultValue; cost?: Cost | "unknown" }) & {
+  /** What produced the result, e.g. the model snapshot that answered (§5.2); journaled with the result. */
+  meta?: Value;
+};
 
 /** A capability as handed to a delegate: constructor and scope. */
 export interface CapGrant {
@@ -54,13 +58,48 @@ export interface InferRequest {
   type: TypeExpr;
   input: Value;
   using?: Value;
+  /** The model tier of the capability the call runs under; the lock file maps it to a model. */
+  tier?: string;
   commandId: string;
 }
 
 export interface ModelAdapter {
   infer(req: InferRequest): Promise<Outcome>;
   /** Upper-bound cost reserved before the call (§8.6: never the average). */
-  upperBound(req: InferRequest): Cost;
+  upperBound(req: InferRequest): Cost | Promise<Cost>;
+}
+
+/** A tool an agent may call, as the model sees it (K8). */
+export interface ToolSpec {
+  name: string;
+  description: string;
+  input_schema: Value;
+}
+
+/**
+ * One turn of an agent loop (§8.2, K7): the conversation so far, which only
+ * ever grows, and the tools. The result is the model's message:
+ * `{ content: [ … blocks ], stop_reason }`.
+ */
+export interface TurnRequest {
+  tier: string;
+  system: string;
+  tools: ToolSpec[];
+  messages: Value[];
+  commandId: string;
+}
+
+export interface TurnBound {
+  /** What the turn reserves: its counted input and the output limit, priced with no cache hit. */
+  cost: Cost;
+  inputTokens: number;
+  maxInputTokens: number;
+}
+
+/** The model side of an agent loop. Its calls are made from the runtime process, never from a sandbox (K7). */
+export interface ChatModel {
+  turnBound(req: TurnRequest): Promise<TurnBound>;
+  turn(req: TurnRequest): Promise<Outcome>;
 }
 
 export interface VerifyRequest {
@@ -72,7 +111,9 @@ export interface VerifyRequest {
 }
 
 export interface VerifierAdapter {
-  check(req: VerifyRequest): Promise<{ passed: boolean; detail?: Value }>;
+  /** A check that costs something (a model review) is reserved first, like any model call (§8.6). */
+  upperBound?(req: VerifyRequest): Promise<Cost | undefined>;
+  check(req: VerifyRequest): Promise<{ passed: boolean; detail?: Value; cost?: Cost }>;
 }
 
 /** Read-only std calls (fs.read_text, net.https.get, …). */
@@ -99,12 +140,21 @@ export interface AuthorizationContext {
   decidedBy: string;
 }
 
+/** What a program binds an effect to: for `git.*`, the repositories of its `git.pr(…)` capabilities. */
+export interface Binding {
+  repos: string[];
+}
+
 /** Tool adapter contract (§16.1). Silence, a timeout or an HTTP 500 is `unknown`, never `notApplied`. */
 export interface ToolAdapter {
   describe(): ToolContract;
+  /** Whether this adapter can serve the program's binding; asked before a run starts. */
+  validateBinding?(binding: Binding): Promise<{ supported: true } | { unsupported: string }>;
   prepare(params: Value): Promise<{ prepared: true } | { rejected: string }>;
   execute(action: PreparedAction, auth: AuthorizationContext, operationKey: string): Promise<{ confirmed: Value } | { rejected: string } | { unknown: string }>;
   reconcile(operationKey: string): Promise<{ applied: Value } | { notApplied: string } | { unknown: string }>;
+  /** Stops an operation if it has not taken effect: Cancelled with proof, or TooLate with its receipt. */
+  cancel?(operationKey: string): Promise<{ cancelled: string } | { tooLate: Value } | { unknown: string }>;
 }
 
 export interface Clock {
@@ -112,8 +162,20 @@ export interface Clock {
   sleep(ms: number): Promise<void>;
 }
 
+/**
+ * Agent loops (§8.2, K7). When present, a bodiless skill of a local agent runs
+ * as a loop in the runtime process: the model through `chat`, each tool call
+ * in a sandbox from `sandbox`. Without it, `agents` answers a delegation in one
+ * call (the simulation of Gate 2).
+ */
+export interface LoopAdapters {
+  chat: ChatModel;
+  sandbox: MxcAdapter;
+}
+
 export interface Adapters {
   agents: AgentAdapter;
+  loop?: LoopAdapters;
   model: ModelAdapter;
   verifier: VerifierAdapter;
   reads: ReadAdapter;

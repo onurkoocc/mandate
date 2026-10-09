@@ -1,0 +1,9 @@
+{
+  "issue": {
+    "id": "1",
+    "title": "The last page is missing when the items do not fill it",
+    "body": "When the number of items is not a multiple of the page size, the last, partial page is lost. pageCount(11, 5) returns 2, but there are 3 pages; page([1, 2, 3, 4, 5], 3, 2) returns [], but the third page is [5]. Expected: pageCount counts a partial last page, and page returns its items. Exact pages stay as they are. The acceptance tests in acceptance/ describe the expected behavior; a fix must make them pass without changing them.",
+    "reproducible": true,
+    "scope": ["src/pagination.ts"]
+  }
+}

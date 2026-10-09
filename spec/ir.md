@@ -1,6 +1,6 @@
-# Canonical IR, 0.1
+# Canonical IR, 0.1 and 0.2
 
-The canonical IR is the source of truth for a Mandate 0.1 program (design doc
+The canonical IR is the source of truth for a Mandate program (design doc
 4 §3.3). It is JSON, described by the closed schema in
 [`ir.schema.json`](ir.schema.json) (JSON Schema draft 2020-12). The `.mdt`
 text form is a projection: the compiler lowers text into IR and prints IR
@@ -10,8 +10,10 @@ back as text, and both directions keep the program hash.
 
 A conforming reader rejects, rather than repairs:
 
-- a `language` other than `"mandate/0.1"` (E0103). Other versions are
-  migrated explicitly, never loaded on a best-effort basis;
+- a `language` other than `"mandate/0.1"` or `"mandate/0.2"` (E0103).
+  Other versions are migrated explicitly, never loaded on a best-effort
+  basis;
+- a 0.2 field in a 0.1 program (E0104);
 - any field the schema does not define (E0104);
 - duplicate object keys, before schema validation (E0102);
 - numbers that are not integers within ±(2^53−1), and `-0` (E0106).
@@ -42,12 +44,16 @@ Optional fields are omitted, never written as `null` or `false`.
 ## Hashing
 
 Hashes are SHA-256 over the RFC 8785 (JCS) serialization, with a domain
-prefix that includes the language version (§3.4):
+prefix that includes the program's language version `<v>`, `0.1` or `0.2`
+(§3.4):
 
 ```text
-P = SHA256("mandate/program/0.1\n" || JCS(program))
-D = SHA256("mandate/def/0.1\n"     || JCS(definition))
+P = SHA256("mandate/program/<v>\n" || JCS(program))
+D = SHA256("mandate/def/<v>\n"     || JCS(definition))
 ```
+
+A 0.1 program keeps its hash under a 0.2 compiler, and the same definition
+hashes differently in 0.1 and 0.2.
 
 They are written as `sha256:` followed by 64 lowercase hex digits. A hash
 identifies content; it does not say who produced it.
@@ -71,3 +77,20 @@ authoring surface in 0.1. This implementation ships the text form anyway,
 because writing test programs as JSON IR is slow and error-prone; the IR stays
 authoritative, and `examples/fixbug/fixbug.ir.json` is the committed source
 for the FixBug example, with `fixbug.mdt` as its projection.
+
+A file whose first line is `mandate @ 0.2` is a 0.2 program; a file without
+that line is 0.1. `mandate fmt` writes the line for 0.2 programs only.
+
+## What 0.2 adds
+
+0.2 adds two optional fields to a local agent (design doc 4 §8.2; BACKLOG
+K9):
+
+| Field | Text | Meaning |
+|---|---|---|
+| `loop` | `loop react` or `loop plan_execute` | How the agent's skills without a body run. `react` when absent |
+| `progress` | `progress { window: 8, repeats: 3, stall: 5 }` | When the loop counts as stuck. Each field is optional; these are the defaults |
+
+Both are part of the definition hash, so changing a threshold is a change
+to the program. `repeats` may not exceed `window` (E0104). The runtime's
+use of them is described in [`runtime.md`](runtime.md#agent-loops-82).

@@ -19,7 +19,8 @@ import { canonicalize } from "../json/jcs.js";
 import { DATA_CLASSES, type DataClass } from "../std/std.js";
 import type { Json } from "../json/strict-json.js";
 import {
-  LANGUAGE_VERSION,
+  isLanguageVersion,
+  LANGUAGE_VERSIONS,
   type Arg,
   type BinaryOp,
   type Budget,
@@ -33,6 +34,7 @@ import {
   type OnHandler,
   type Param,
   type Pattern,
+  Progress,
   type Program,
   type Skill,
   type Stmt,
@@ -178,6 +180,22 @@ class Parser {
 
   program(): Program {
     const start = this.t;
+    // `mandate @ 0.2` names the language version; a file without it is 0.1.
+    let language: Program["language"] = "mandate/0.1";
+    if (this.isW("mandate") && this.isP("@", this.la(1))) {
+      const langTok = this.bump();
+      this.bump();
+      if (this.t.kind !== "version") this.fail(`Expected a language version after 'mandate @' but found ${this.describe()}.`);
+      const v = `mandate/${this.bump().text}`;
+      if (isLanguageVersion(v)) language = v;
+      else {
+        this.diagnostics.push(
+          diag("E0103", `Unsupported language version '${v}'; this compiler reads ${LANGUAGE_VERSIONS.map((x) => `'${x}'`).join(" or ")}.`, { span: tokenSpan(langTok) }, {
+            facts: { expected: [...LANGUAGE_VERSIONS], found: v },
+          }),
+        );
+      }
+    }
     this.expectW("module");
     const module = this.qname();
     this.expectP("@");
@@ -224,7 +242,7 @@ class Parser {
       (wf.on ??= []).push(handler);
     }
 
-    const program: Program = { language: LANGUAGE_VERSION, module, version, defs };
+    const program: Program = { language, module, version, defs };
     if (uses.length) program.uses = sortCanon(uses);
     if (Object.keys(tests).length) program.tests = tests;
     return this.at(program, start);
@@ -444,8 +462,14 @@ class Parser {
         else if (this.eatW("model")) def.model = this.ident("a model tier");
         else if (this.eatW("caps")) def.caps.push(...this.exprList());
         else if (this.isW("budget")) def.budget = this.budget();
+        else if (this.eatW("loop")) {
+          const st = this.t;
+          const strategy = this.ident("a loop strategy");
+          if (strategy !== "react" && strategy !== "plan_execute") this.fail(`Unknown loop strategy '${strategy}'; expected react or plan_execute.`, st);
+          def.loop = strategy;
+        } else if (this.eatW("progress")) def.progress = this.progress();
         else if (this.eatW("skill")) this.skill(def.skills, { remote: false });
-        else this.fail(`Expected role, model, caps, budget or skill in agent body but found ${this.describe(t)}.`);
+        else this.fail(`Expected role, model, caps, budget, loop, progress or skill in agent body but found ${this.describe(t)}.`);
       }
       this.expectP("}");
     }
@@ -586,6 +610,26 @@ class Parser {
     }
     this.expectP("}");
     return sortCanon(out);
+  }
+
+  /** `progress { window: 8, repeats: 3, stall: 5 }` (§8.2). */
+  private progress(): Progress {
+    this.expectP("{");
+    const p: Progress = {};
+    while (!this.isP("}")) {
+      const kt = this.t;
+      const key = this.ident("a progress field");
+      this.expectP(":");
+      const vt = this.t;
+      const v = this.primary({});
+      if (key !== "window" && key !== "repeats" && key !== "stall") this.fail(`Unknown progress field '${key}'; expected window, repeats or stall.`, kt);
+      if (v.op !== "int") this.fail(`Progress field '${key}' takes an integer.`, vt);
+      if (key in p) this.dup("progress field", key, kt);
+      p[key as keyof Progress] = (v as { value: number }).value;
+      if (!this.eatP(",")) break;
+    }
+    this.expectP("}");
+    return p;
   }
 
   private budget(): Budget {

@@ -49,18 +49,18 @@ describe("FixBug (§20) passes Gate 1", () => {
     expect(r.diagnostics.map((d) => d.code)).toEqual(["MDT-W0601", "MDT-W0601"]);
   });
 
-  it("stays inside its 20 USD budget with 18.5 USD declared by its agents", () => {
-    const d = only(fixbug("budget  { spend: 20 USD, time: 3h }", "budget  { spend: 18 USD, time: 3h }"), "MDT-E0501");
+  it("stays inside its 50 USD budget with 49.28 USD declared by its agents", () => {
+    const d = only(fixbug("budget  { spend: 50 USD, time: 3h }", "budget  { spend: 49 USD, time: 3h }"), "MDT-E0501");
     expect(d.at.path).toBe("/defs/FixBug/budget");
-    expect(d.facts).toMatchObject({ spend: { limit: "18 USD", declared_by_children: "18.5 USD" } });
+    expect(d.facts).toMatchObject({ spend: { limit: "49 USD", declared_by_children: "49.28 USD" } });
     const from = (d.facts!["breakdown"] as Array<{ from: string }>).map((p) => p.from);
     expect(from).toEqual(["Explorer.locate", "Planner.plan", "Implementer.apply", "TestWriter.regression", "Reviewer.counterexamples"]);
-    expect(errorsOf(fixbug("budget  { spend: 20 USD, time: 3h }", "budget  { spend: 18.5 USD, time: 3h }"))).toEqual([]);
+    expect(errorsOf(fixbug("budget  { spend: 50 USD, time: 3h }", "budget  { spend: 49.28 USD, time: 3h }"))).toEqual([]);
   });
 
   it("counts time in par as the longest branch: 15m + max(45m, 20m) fits in 1h", () => {
-    expect(errorsOf(fixbug("budget  { spend: 20 USD, time: 3h }", "budget  { spend: 20 USD, time: 1h }"))).toEqual([]);
-    const d = only(fixbug("budget  { spend: 20 USD, time: 3h }", "budget  { spend: 20 USD, time: 59m }"), "MDT-E0501");
+    expect(errorsOf(fixbug("budget  { spend: 50 USD, time: 3h }", "budget  { spend: 50 USD, time: 1h }"))).toEqual([]);
+    const d = only(fixbug("budget  { spend: 50 USD, time: 3h }", "budget  { spend: 50 USD, time: 59m }"), "MDT-E0501");
     expect(d.facts).toMatchObject({ time_ms: { limit: 59 * 60_000, declared_by_children: 60 * 60_000 } });
   });
 
@@ -88,7 +88,7 @@ describe("FixBug (§20) passes Gate 1", () => {
     // An agent whose model capability names no tier may be given any tier.
     expect(
       errorsOf(
-        fixbug("caps   ModelStd\n  budget { tokens: 150k", "caps   model.infer()\n  budget { tokens: 150k")
+        fixbug("caps   ModelStd\n  budget { tokens: 560k", "caps   model.infer()\n  budget { tokens: 560k")
           .replace(WORKFLOW_CAPS, `${WORKFLOW_CAPS}, ModelEco`)
           .replace(plan, `${plan} with caps ModelEco`),
       ),
@@ -112,7 +112,7 @@ describe("FixBug (§20) passes Gate 1", () => {
   });
 
   it("requires a step limit for every bodiless skill", () => {
-    const d = only(fixbug("budget { tokens: 400k, time: 15m, spend: 3 USD, steps: 40 }", "budget { tokens: 400k, time: 15m, spend: 3 USD }"), "MDT-E0503");
+    const d = only(fixbug("budget { tokens: 1680k, time: 15m, spend: 10.56 USD, steps: 12 }", "budget { tokens: 1680k, time: 15m, spend: 10.56 USD }"), "MDT-E0503");
     expect(d.at.path).toBe("/defs/Explorer/skills/locate");
   });
 

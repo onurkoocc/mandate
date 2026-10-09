@@ -60,7 +60,8 @@ export function requirementFor(subject: SandboxRequirement["subject"], caps: Cap
           for (const command of c.scope) {
             const prev = exec.get(command);
             // Two grants of the same command: the union of what they allow.
-            const prefixes = prev && (!prev.args_prefix || !c.argsPrefix) ? undefined : [...(prev?.args_prefix ?? []), ...(c.argsPrefix ?? [])];
+            // A grant without prefixes allows any arguments, so it absorbs any other grant of the command.
+            const prefixes = prev ? (prev.args_prefix && c.argsPrefix ? [...prev.args_prefix, ...c.argsPrefix] : undefined) : c.argsPrefix;
             exec.set(command, prefixes ? { command, args_prefix: uniqueLists(prefixes) } : { command });
           }
         }

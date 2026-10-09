@@ -1,8 +1,9 @@
 // Inbound messages and package verification (Doc 4 §3.5, §8.9; R03, S09).
 
+import { readFileSync } from "node:fs";
 import { check } from "@mandate/compiler";
 import { afterAll, describe, expect, it } from "vitest";
-import { buildPackage, verifyPackage } from "../src/runtime.js";
+import { buildPackage, verifyPackage, type Lock } from "../src/runtime.js";
 import { isObj } from "../src/values.js";
 import { closeAll, LOCK, start, world } from "./helpers.js";
 import { ASK, FIX } from "./programs.js";
@@ -51,6 +52,17 @@ describe("S09: the runtime verifies what it loads", () => {
 
   it("refuses an imported module that is not locked", () => {
     expect(() => verifyPackage(buildPackage(program(), { modules: {} }))).toThrow(expect.objectContaining({ code: "unlocked_module" }));
+  });
+
+  it("refuses a lock that pins models but not every tier the program names, or is malformed", () => {
+    const fixbugLock = JSON.parse(readFileSync(new URL("../../examples/fixbug/mandate.lock.json", import.meta.url), "utf8")) as Lock;
+    const { lock: _format, ...pinned } = fixbugLock;
+    expect(() => verifyPackage(buildPackage(program(), { ...pinned, modules: LOCK.modules }))).not.toThrow();
+    const { standard: _dropped, ...economyOnly } = pinned.models!;
+    expect(() => verifyPackage(buildPackage(program(), { ...pinned, modules: LOCK.modules, models: economyOnly }))).toThrow(expect.objectContaining({ code: "unlocked_model_tier" }));
+    const unknownField = structuredClone(pinned);
+    Object.assign(unknownField.models!["standard"]!, { temperature: 1 });
+    expect(() => verifyPackage(buildPackage(program(), { ...unknownField, modules: LOCK.modules }))).toThrow(expect.objectContaining({ code: "malformed_lock" }));
   });
 
   it("refuses a program changed after it was packaged", () => {

@@ -17,6 +17,8 @@ import {
   capFromCall,
   DECISION_POLICIES,
   hashProgram,
+  modelTiers,
+  PROGRESS_DEFAULTS,
   requirementFor,
   STD_EFFECTS,
   STD_FNS,
@@ -37,6 +39,7 @@ import {
 } from "@mandate/compiler";
 import type { Adapters, Cost, Outcome, ToolAdapter } from "./adapters.js";
 import type { Faults } from "./faults.js";
+import { runAgentLoop, type LoopTask } from "./loop.js";
 import type { ActionRow, CommandRow, Journal } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
 import {
@@ -53,6 +56,9 @@ import {
   type Obj,
   type Value,
 } from "./values.js";
+
+/** What a command reserves when it is sent: a fixed bound, or one measured just before sending. */
+type Reserve = Cost | Budget | undefined | (() => Promise<Cost | Budget | undefined>);
 
 export type AuthorizePolicy = { by: "policy" } | { by: "human"; role: string; deadlineMs?: number };
 
@@ -86,6 +92,8 @@ interface Scope {
 /** Cancellation shared by the branches of one `par` block (fail_fast, §8.7). */
 interface Siblings {
   failed: boolean;
+  /** The fault that stopped the siblings: what the block fails with. */
+  first?: Fault;
 }
 
 interface Ctx {
@@ -241,7 +249,10 @@ export class Interpreter {
             const p = round ? `${path}/branches/${bn}#all${round}` : `${path}/branches/${bn}`;
             return await this.expr(s.branches[bn]!, { ...ctx, siblings }, p);
           } catch (e) {
-            if (e instanceof Fault) siblings.failed = true;
+            if (e instanceof Fault) {
+              siblings.first ??= e;
+              siblings.failed = true;
+            }
             throw e;
           }
         }),
@@ -255,7 +266,7 @@ export class Interpreter {
       // Anything other than a recoverable fault (attention, suspension, cancellation, a crash) wins.
       const hard = failures.find((f) => !(f instanceof Fault) && !(f instanceof SiblingStopped));
       if (hard) throw hard;
-      lastError = failures.find((f) => f instanceof Fault) ?? failures[0];
+      lastError = siblings.first ?? failures.find((f) => f instanceof Fault) ?? failures[0];
     }
     throw lastError;
   }
@@ -500,17 +511,27 @@ export class Interpreter {
    * otherwise dispatched (with its upper-bound cost reserved), called, and
    * recorded. Fault-injection points sit between the steps.
    */
-  private async command(id: string, kind: string, request: Value, reserve: Cost | Budget | undefined, call: () => Promise<Outcome>, siblings?: Siblings, label?: string): Promise<Value> {
+  /**
+   * `within` names the command whose reservation pays for this one: the steps
+   * of an agent loop are charged to their delegation (Journal.dispatch).
+   */
+  private async command(id: string, kind: string, request: Value, reserve: Reserve, call: () => Promise<Outcome>, siblings?: Siblings, label?: string, within?: string): Promise<Value> {
     const requestDigest = digest("request", { kind, request });
     const { journal, runId, fence, faults } = this.o;
     if (this.o.replay) return replayed(await journal.command(runId, id), id);
     if (siblings?.failed) throw new SiblingStopped();
-    const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, reserve);
+    let bound: Cost | Budget | undefined;
+    if (typeof reserve === "function") {
+      // Measuring the bound may itself call out (a token count), so it is done only for a command that will be sent.
+      const earlier = await journal.command(runId, id);
+      if (!earlier || (earlier.state !== "succeeded" && earlier.state !== "failed")) bound = await reserve();
+    } else bound = reserve;
+    const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, bound, within);
     if (prior) return replayed(prior, id);
     faults.check("after_dispatch", { id, kind });
     const outcome = await call();
     faults.check("before_record", { id, kind });
-    await journal.complete(runId, fence, id, outcome);
+    await journal.complete(runId, fence, id, outcome, within);
     faults.check("after_record", { id, kind });
     if ("ok" in outcome) return outcome.ok;
     throw new Fault(outcome.error.tag, outcome.error.args ?? []);
@@ -535,8 +556,25 @@ export class Interpreter {
   private async infer(e: Extract<Expr, { op: "infer" }>, ctx: Ctx, path: string): Promise<Value> {
     const input = await this.expr(e.from, ctx, `${path}/from`);
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
-    const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}) };
-    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), ctx.siblings, "infer");
+    const tier = this.tierFor(e.using, path);
+    const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
+    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), ctx.siblings, "infer");
+  }
+
+  /**
+   * The model tier a model call runs under: the capability named by `using`,
+   * else the only tier among the enclosing definition's model capabilities,
+   * else the only tier the program names. The lock file maps it to a model.
+   */
+  private tierFor(using: Expr | undefined, path: string): string | undefined {
+    const tierOf = (e: Expr): string | undefined => this.cap(e)?.tier;
+    if (using) return tierOf(using);
+    const def = this.def(path.split("/")[2]!);
+    const caps = def?.kind === "workflow" || def?.kind === "agent" ? def.caps : [];
+    const own = [...new Set(caps.map(tierOf).filter((t): t is string => !!t))];
+    if (own.length === 1) return own[0];
+    const all = [...modelTiers(this.o.program)];
+    return all.length === 1 ? all[0] : undefined;
   }
 
   private async delegate(e: Extract<Expr, { op: "delegate" }>, ctx: Ctx, path: string): Promise<Value> {
@@ -554,11 +592,53 @@ export class Interpreter {
     const backoff = sup?.name === "restart" ? Number(constValue(sup.args?.find((a) => a.name === "backoff")?.value ?? { op: "duration", ms: 0 })) : 0;
     for (let attempt = 0; ; attempt++) {
       const id = attempt ? `${path}#${attempt}` : path;
+      const request = { agent: e.agent, skill: e.skill, args: pos, caps: caps as unknown as Value, isolated: !!e.isolated };
+      const loop = this.o.adapters.loop;
       try {
+        if (loop && sandbox && !skill.body) {
+          // A bodiless skill runs as an agent loop in this process (§8.2, K7). The delegation reserves the
+          // agent's budget less what its finished steps already spent, so a resumed loop is not charged twice.
+          const tiers = [...new Set(granted.filter((c) => c.ctor === "model.infer" && c.tier).map((c) => c.tier!))];
+          const task: LoopTask = {
+            id,
+            agent: e.agent,
+            skill: e.skill,
+            ...(agent.role !== undefined ? { role: agent.role } : {}),
+            params: skill.params,
+            args: pos,
+            returns: unwrapInferred(skill.returns),
+            grants: granted,
+            tier: tiers[0] ?? "",
+            strategy: agent.loop ?? "react",
+            progress: { ...PROGRESS_DEFAULTS, ...agent.progress },
+            ...(budget?.steps !== undefined ? { maxSteps: budget.steps } : {}),
+            sandbox,
+            program: this.o.program,
+          };
+          return await this.command(
+            id,
+            "delegate",
+            request,
+            async () => subtractCost(budget, await this.o.journal.childCost(this.o.runId, id)),
+            async () => {
+              if (tiers.length !== 1) {
+                return { error: { tag: "PolicyDenied", args: [{ reason: "model_tier", detail: `the agent loop needs exactly one model tier in its grant, not ${tiers.length}` }] }, cost: {} };
+              }
+              return runAgentLoop(task, {
+                step: (cid, kind, req, reserve, call, label) => this.command(cid, kind, req, reserve, call, ctx.siblings, label, id),
+                chat: loop.chat,
+                sandbox: loop.sandbox,
+                stopped: (x) => x instanceof SiblingStopped,
+              });
+            },
+            ctx.siblings,
+            `${e.agent}.${e.skill}`,
+          );
+        }
         return await this.command(
           id,
           "delegate",
-          { agent: e.agent, skill: e.skill, args: pos, caps: caps as unknown as Value, isolated: !!e.isolated },
+          request,
           budget,
           () =>
             this.o.adapters.agents.run({ agent: e.agent, skill: e.skill, args: pos, caps, isolated: !!e.isolated, attempt, commandId: id, ...(budget ? { budget } : {}), ...(sandbox ? { sandbox } : {}) }),
@@ -674,14 +754,16 @@ export class Interpreter {
       // settings, not variables: an unbound bare name is passed as its text.
       const symbolic = call.op === "call" ? call.args.map((a) => (a.value.op === "var" && this.isModulePath(a.value, ctx) ? { ...a, value: { op: "text" as const, value: a.value.name } } : a)) : [];
       const { pos, named } = call.op === "call" ? await this.args(symbolic, ctx, `${path}/call`) : { pos: [], named: {} };
+      const req = { method, args: pos, named, contract, criterion: name };
+      const verifier = this.o.adapters.verifier;
       const r = await this.command(
         `${path}/call`,
         "verify",
-        { method, args: pos, named, contract, criterion: name },
-        undefined,
+        req,
+        verifier.upperBound ? () => verifier.upperBound!(req) : undefined,
         async () => {
-          const res = await this.o.adapters.verifier.check({ method, args: pos, named, contract, criterion: name });
-          return { ok: { passed: res.passed, detail: res.detail ?? null } };
+          const res = await verifier.check(req);
+          return { ok: { passed: res.passed, detail: res.detail ?? null }, ...(res.cost ? { cost: res.cost } : {}) };
         },
         undefined,
         `${contract}.${name}`,
@@ -878,6 +960,22 @@ export class Interpreter {
     if (!isObj(decision) || decision["approved"] !== true) throw new Fault("Rejected", [{ denied_by: isObj(decision) ? (decision["by"] ?? null) : null }]);
     return String(decision["authorization_id"]);
   }
+}
+
+/** A delegation's budget less what its finished steps spent; dimensions never go below zero. */
+function subtractCost(budget: Budget | undefined, spent: Record<string, number>): Cost | undefined {
+  if (!budget) return undefined;
+  const left = (dim: string, v: number): number => Math.max(v - (spent[dim] ?? 0), 0);
+  return {
+    ...(budget.tokens !== undefined ? { tokens: left("tokens", budget.tokens) } : {}),
+    ...(budget.steps !== undefined ? { steps: left("steps", budget.steps) } : {}),
+    ...(budget.spend ? { spend: { micros: left(`spend:${budget.spend.currency}`, budget.spend.micros), currency: budget.spend.currency } } : {}),
+  };
+}
+
+/** The result type a loop asks the model for: a skill returns `Inferred<T>`, and the model is asked for a `T`. */
+function unwrapInferred(t: TypeExpr): TypeExpr {
+  return "ref" in t && t.ref === "Inferred" && t.args?.[0] ? t.args[0] : t;
 }
 
 /** A sibling failed under fail_fast; this branch stops before its next dispatch. */
