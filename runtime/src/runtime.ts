@@ -4,8 +4,12 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { canonicalize, capFromCall, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, modelTiers, validateLock, type CapVal, type Expr, type Json, type Lock, type Program } from "@mandate/compiler";
+import { canonicalize, capFromCall, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, modelTiers, SANDBOX_DENIALS_FORMAT, validateLock, type CapVal, type DenialReport, type Expr, type Json, type Lock, type Program } from "@mandate/compiler";
 import type { Adapters, Cost } from "./adapters.js";
+import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
+import { attestationProblem } from "./attestation.js";
+import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
+import { RateLimiter, type BucketConfig } from "./ratelimit.js";
 import type { Db, Row } from "./db.js";
 import { Faults } from "./faults.js";
 import { Interpreter, ReplayEnd, type Policy } from "./interp.js";
@@ -66,6 +70,8 @@ export interface StartOptions {
   limits?: Cost;
   authorize?: Policy["authorize"];
   authorizationTtlMs?: number;
+  /** Priority class in shared rate limits (§8.6). */
+  priority?: Policy["priority"];
 }
 
 export interface Message {
@@ -91,9 +97,39 @@ export interface Driver {
   wake(runId: string): Promise<void>;
 }
 
+/** What a runtime keeps besides PostgreSQL. */
+export interface RuntimeOptions {
+  /** Artifact bytes (§16.1). Default: in memory, indexed in PostgreSQL. */
+  artifacts?: ArtifactStore;
+  /** The control plane's evidence key (§10.3). Default: a new key for this process. */
+  signer?: EvidenceSigner;
+  /** Other public keys whose evidence this runtime accepts, e.g. an earlier key. Its own always counts. */
+  trustedKeys?: string[];
+  /**
+   * Public keys of verifiers that run as processes of their own (P2-11).
+   * A check that carries a verifier attestation counts only when one of
+   * these signed it.
+   */
+  trustedVerifiers?: TrustedKeys;
+  /**
+   * A run's timers (a restart's backoff) are kept by its scheduler: the run
+   * waits, and `tick` resumes it when the time comes. A Temporal worker's
+   * runtime needs this; without it, the worker sleeps through the wait.
+   */
+  durableTimers?: boolean;
+  /** Rate limits shared by every run on this database (§8.6), by bucket: `model`, `model:<tier>`, `tool`. */
+  rateLimits?: Record<string, BucketConfig>;
+}
+
 export class Runtime {
   readonly journal: Journal;
   readonly faults: Faults;
+  readonly artifacts: ArtifactStore;
+  readonly signer: EvidenceSigner;
+  readonly trusted: TrustedKeys;
+  readonly verifiers: TrustedKeys;
+  readonly durableTimers: boolean;
+  readonly limiter: RateLimiter | undefined;
   private readonly packages = new Map<string, Package>();
 
   constructor(
@@ -101,9 +137,16 @@ export class Runtime {
     readonly adapters: Adapters,
     faults?: Faults,
     readonly driver?: Driver,
+    options: RuntimeOptions = {},
   ) {
     this.journal = new Journal(db, () => adapters.clock.now());
     this.faults = faults ?? new Faults();
+    this.artifacts = options.artifacts ?? new ArtifactStore(db, new MemoryBlobs(), () => adapters.clock.now());
+    this.signer = options.signer ?? EvidenceSigner.generate();
+    this.trusted = new TrustedKeys([this.signer.publicKey, ...(options.trustedKeys ?? [])]);
+    this.verifiers = options.trustedVerifiers ?? new TrustedKeys();
+    this.durableTimers = options.durableTimers ?? false;
+    this.limiter = options.rateLimits && Object.keys(options.rateLimits).length ? new RateLimiter(db, options.rateLimits, () => adapters.clock.now()) : undefined;
   }
 
   // ── StartRun / resume ─────────────────────────────────────────────────
@@ -113,9 +156,10 @@ export class Runtime {
     const wf = o.pkg.program.defs[o.workflow];
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
     await this.validateBindings(o.pkg.program, o.workflow);
+    const lowered = this.remoteGuarantees(o.pkg.program);
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(wf.budget), costDims(o.limits));
-    const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}) };
+    const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
     await this.db.tx(async (tx) => {
       await tx.query("insert into packages (package_hash, program, lock) values ($1, $2, $3) on conflict (package_hash) do nothing", [
         o.pkg.hash,
@@ -123,6 +167,7 @@ export class Runtime {
         JSON.stringify(o.pkg.lock),
       ]);
       await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits });
+      for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
     });
     this.packages.set(o.pkg.hash, o.pkg);
     return this.drive(runId, true);
@@ -154,6 +199,24 @@ export class Runtime {
       const r = await tool.validateBinding({ repos: name.startsWith("git.") ? repos : [] });
       if ("unsupported" in r) throw new Violation("unsupported_binding", `The adapter for ${name} cannot serve this program: ${r.unsupported}.`);
     }
+  }
+
+  /**
+   * Remote agents whose servers do not deduplicate messages (§9.6, G12). A
+   * program that requires it (`require idempotent_messages`) does not start
+   * against such an adapter; otherwise the guarantee is lowered, recorded
+   * at start, and each task is sent at most once.
+   */
+  private remoteGuarantees(program: Program): string[] {
+    const lowered: string[] = [];
+    for (const [name, d] of Object.entries(program.defs).sort(([a], [b]) => (a < b ? -1 : 1))) {
+      if (d.kind !== "agent" || !d.remote) continue;
+      if (this.adapters.agents.remoteProfile?.(name)?.idempotentMessages) continue;
+      const required = (d.remote.require ?? []).some((e) => (e.op === "var" ? e.name : e.op === "call" && e.callee.op === "var" ? e.callee.name : "") === "idempotent_messages");
+      if (required) throw new Violation("unsupported_binding", `${name} requires idempotent message delivery, and its adapter's server does not deduplicate messages (G12).`);
+      lowered.push(name);
+    }
+    return lowered;
   }
 
   private async drive(runId: string, start = false): Promise<RunRow> {
@@ -295,7 +358,13 @@ export class Runtime {
       fence,
       policy: run.policy as unknown as Policy,
       faults: this.faults,
+      artifacts: this.artifacts,
+      signer: this.signer,
+      trusted: this.trusted,
+      verifiers: this.verifiers,
       replay,
+      durableTimers: this.durableTimers,
+      ...(this.limiter ? { limiter: this.limiter } : {}),
     });
   }
 
@@ -321,6 +390,52 @@ export class Runtime {
   /** Contract criteria results recorded for the run: the evidence behind its Verified values (§10). */
   evidence(runId: string): Promise<EvidenceRow[]> {
     return this.journal.evidence(runId);
+  }
+
+  /**
+   * Checks every evidence record of a run against its signature: whether a
+   * trusted key signed exactly this record (§10.3), and, for a check made by
+   * a verifier of its own, whether a trusted verifier key attested the same
+   * result (P2-11). Views show the result.
+   */
+  async verifyEvidence(runId: string): Promise<Array<{ evidence_id: string; criterion: string; valid: boolean; key_id: string | null }>> {
+    return (await this.journal.evidence(runId)).map((e) => ({
+      evidence_id: e.evidence_id,
+      criterion: e.criterion,
+      key_id: e.key_id,
+      valid: !!e.record && !!e.key_id && !!e.signature && this.trusted.verify(e.record as unknown as EvidenceRecord, { key_id: e.key_id, signature: e.signature }) && (e.record as unknown as EvidenceRecord).evidence_id === e.evidence_id && (e.record as unknown as EvidenceRecord).passed === e.passed && !attestationProblem(e.record as unknown as EvidenceRecord, this.verifiers),
+    }));
+  }
+
+  /**
+   * What the run's sandboxes denied in learning mode (§16.1 Collect), by
+   * agent, as the report `mandate check --denials` turns into W0311.
+   */
+  async sandboxDenials(runId: string): Promise<DenialReport> {
+    const run = await this.journal.run(runId);
+    const program = await this.program(run.package_hash);
+    const labels = new Map((await this.db.query<Row>("select command_id, label from commands where run_id = $1", [runId])).map((r) => [String(r["command_id"]), String(r["label"] ?? "")]));
+    const denials: DenialReport["denials"] = [];
+    for (const e of await this.journal.events(runId)) {
+      if (e.type !== "command_completed" || !isObj(e.data)) continue;
+      const meta = isObj(e.data["meta"] ?? null) ? (e.data["meta"] as Obj) : undefined;
+      const found = meta && Array.isArray(meta["sandbox_denials"]) ? meta["sandbox_denials"] : [];
+      const agent = (labels.get(String(e.data["command"])) ?? "").split(".")[0] ?? "";
+      for (const d of found) if (isObj(d)) denials.push({ agent, resource: String(d["resource"]), access: String(d["access"]) });
+    }
+    return { format: SANDBOX_DENIALS_FORMAT, program: hashProgram(program as unknown as Json).program, denials };
+  }
+
+  /** An artifact of a run, scoped by the run's tenant: another run's or tenant's digest is refused like a missing one (G08). */
+  async artifact(runId: string, ref: string, tenant?: string): Promise<{ bytes: Uint8Array; media_type: string; digest: string }> {
+    const run = await this.journal.run(runId);
+    if (tenant !== undefined && tenant !== run.tenant) throw new Violation("artifact_not_found", "No such artifact in this run.");
+    return this.artifacts.get({ tenant: run.tenant, runId }, ref);
+  }
+
+  async artifactList(runId: string): Promise<ArtifactRef[]> {
+    const run = await this.journal.run(runId);
+    return this.artifacts.list({ tenant: run.tenant, runId });
   }
 
   // ── SubmitInput / DecideAction ────────────────────────────────────────
@@ -408,14 +523,19 @@ export class Runtime {
     return this.journal.run(runId);
   }
 
-  /** Expires waits whose deadline has passed: no dispatch happens after a deadline (R15). */
+  /**
+   * Acts on a wait whose deadline has passed: a decision expires, so nothing
+   * is dispatched after its deadline (R15); a timer is due, so the run goes on.
+   */
   async tick(runId: string): Promise<RunRow> {
     const run = await this.journal.run(runId);
     const w = run.waiting;
-    if (run.state !== "waiting" || !isObj(w) || w["kind"] !== "decision") return run;
+    if (run.state !== "waiting" || !isObj(w)) return run;
     const req = w["request"];
     const deadline = isObj(req) ? req["deadline"] : null;
     if (typeof deadline !== "number" || this.adapters.clock.now() < deadline) return run;
+    if (w["kind"] === "timer") return this.drive(runId);
+    if (w["kind"] !== "decision") return run;
     await this.db.tx(async (tx) => {
       await this.journal.lock(tx, runId);
       await tx.query("update commands set state = 'failed', error = $3 where run_id = $1 and command_id = $2 and state = 'waiting'", [

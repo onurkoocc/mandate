@@ -2,7 +2,7 @@
 // replayed from separate CLI calls over a PGlite database in a directory, and
 // every decision names the revision the person saw.
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -80,10 +80,25 @@ describe("the control CLI (K19)", () => {
     expect(approved.code, approved.err).toBe(0);
     expect(approved.out).toContain("succeeded");
     expect(approved.out).toContain("result: it is ready");
-    expect(approved.out).toContain("evidence Approved.owner_approved: met (human.approve)");
+    expect(approved.out).toContain("evidence Approved.owner_approved: met (human.approve; signed)");
+    // Each call loads the same evidence key, created on first use, so a later call can check what an earlier one signed.
+    expect(existsSync(join(dir, ".mandate", "evidence.key"))).toBe(true);
+    expect((await mandate("status", "c1")).out).toContain("(human.approve; signed)");
+    // The run's views (§15): the same evidence, under the program's hash, as a page that runs nothing.
+    const page = await mandate("show", "c1", "--format", "html");
+    expect(page.code, page.err).toBe(0);
+    expect(page.out).toContain("Approved.owner_approved");
+    expect(page.out).toContain("Content-Security-Policy");
 
     const replay = await mandate("replay", "c1");
     expect(replay.out).toBe("replay: complete\nit is ready\n");
+
+    // A rotated key: the old public half stays trusted, so what it signed still counts.
+    const rotated = await mandate("rotate-key");
+    expect(rotated.code, rotated.err).toBe(0);
+    expect(rotated.out).toMatch(/evidence key rotated: sha256:[0-9a-f]{64} → sha256:[0-9a-f]{64}/);
+    expect(existsSync(join(dir, ".mandate", "trusted-keys"))).toBe(true);
+    expect((await mandate("status", "c1")).out).toContain("(human.approve; signed)");
   });
 
   it("cancels a waiting run and refuses a raise above the workflow's own budget", async () => {

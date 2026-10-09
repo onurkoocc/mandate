@@ -129,6 +129,26 @@ create table if not exists outbox (
   state text not null,
   attempts integer not null default 0
 );
+create table if not exists artifacts (
+  tenant text not null,
+  run_id text not null,
+  digest text not null,
+  size bigint not null,
+  media_type text not null,
+  created_at bigint not null,
+  primary key (tenant, run_id, digest)
+);
+create table if not exists rate_buckets (
+  key text primary key,
+  tokens double precision not null,
+  updated_at bigint not null
+);
+alter table commands add column if not exists throttled integer not null default 0;
+alter table actions add column if not exists artifacts jsonb;
+alter table evidence add column if not exists subject jsonb;
+alter table evidence add column if not exists record jsonb;
+alter table evidence add column if not exists key_id text;
+alter table evidence add column if not exists signature text;
 `;
 
 /** Opens PostgreSQL at `url`, or an in-process PGlite database when `url` is absent. */

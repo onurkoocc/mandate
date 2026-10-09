@@ -4,7 +4,8 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { deferred, SimAgents } from "../src/sim.js";
 import { closeAll, commandIds, start, until, world } from "./helpers.js";
-import { BOTH, FIX, RETRY } from "./programs.js";
+import { BOTH, FIX, ISSUE, RETRY } from "./programs.js";
+import { Runtime } from "../src/runtime.js";
 
 afterAll(closeAll);
 
@@ -103,6 +104,27 @@ describe("Supervision: restart with backoff and journaled jitter (§8.7)", () =>
     const t1 = w.clock.now();
     expect(await w.rt.replayRun("s1")).toEqual({ status: "complete", value: "fixed" });
     expect(w.clock.now()).toBe(t1);
+  });
+
+  it("with durable timers, waits out the backoff as a run state, and the scheduler's tick resumes it (P2-16)", async () => {
+    const agents = new SimAgents().on("Worker.fix", (_req, n) => (n === 1 ? { error: { tag: "Timeout" }, cost: { steps: 1 } } : { ok: "fixed", cost: { steps: 1 } }));
+    const w = await world(RETRY, { agents });
+    const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { durableTimers: true, signer: w.rt.signer });
+    const waiting = await rt.startRun({ pkg: w.pkg, workflow: "Retry", runId: "s4", input: ISSUE });
+    // No worker sleeps through the backoff: the run waits, with the backoff's end as its deadline.
+    expect(waiting.state).toBe("waiting");
+    const wait = waiting.waiting as { kind: string; request: { reason: string; until: number; deadline: number } };
+    expect(wait).toMatchObject({ kind: "timer", command: "/defs/Retry/body/0/value/backoff", request: { reason: "restart_backoff" } });
+    expect(wait.request.until - w.clock.now()).toBeGreaterThanOrEqual(15_000);
+    expect(agents.count()).toBe(1);
+    // Too early: nothing happens. A worker that resumes it meanwhile waits again, for the same time.
+    expect((await rt.tick("s4")).state).toBe("waiting");
+    expect(((await rt.resume("s4")).waiting as { request: { until: number } }).request.until).toBe(wait.request.until);
+    w.clock.advance(wait.request.until - w.clock.now());
+    const done = await rt.tick("s4");
+    expect(done.state).toBe("succeeded");
+    expect(agents.calls.map((c) => c.attempt)).toEqual([0, 1]);
+    expect(await rt.replayRun("s4")).toEqual({ status: "complete", value: "fixed" });
   });
 
   it("gives up after max restarts", async () => {

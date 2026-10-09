@@ -9,7 +9,7 @@
 // This file is bundled into Temporal's deterministic workflow sandbox, so it
 // imports nothing but the workflow SDK and types.
 
-import { condition, defineSignal, proxyActivities, setHandler, sleep } from "@temporalio/workflow";
+import { condition, continueAsNew, defineSignal, proxyActivities, setHandler, sleep, workflowInfo } from "@temporalio/workflow";
 import type { Activities } from "./activities.js";
 
 /** Where a run stands after an activity drove it. */
@@ -18,6 +18,15 @@ export interface Progress {
   state: string;
   /** Milliseconds until the deadline of the wait the run is in, if it has one. */
   wakeInMs: number | null;
+}
+
+/** How a run's workflow keeps its history bounded. */
+export interface RunOptions {
+  /**
+   * After this many waits the workflow continues as a new execution with an
+   * empty history (default 200), or sooner when Temporal suggests it.
+   */
+  waitsPerHistory?: number;
 }
 
 /** Sent after a control call (input, decision, cancel, reconcile) changed the journal. */
@@ -35,14 +44,17 @@ const { drive, expire } = proxyActivities<Activities>({
   retry: { initialInterval: "1 second", backoffCoefficient: 2, maximumInterval: "1 minute" },
 });
 
-export async function mandateRun(runId: string): Promise<Progress> {
+export async function mandateRun(runId: string, options: RunOptions = {}): Promise<Progress> {
   let woken = false;
   setHandler(wakeSignal, () => {
     woken = true;
   });
   let p = await drive(runId);
-  for (;;) {
+  for (let waits = 0; ; waits++) {
+    // A run that waits many times would grow an unbounded history. Nothing the run decided lives here (PostgreSQL
+    // has it), so a new execution that drives the run first loses nothing; a wake that arrives meanwhile reaches it.
     if (TERMINAL.has(p.state)) return p;
+    if (waits >= (options.waitsPerHistory ?? 200) || workflowInfo().continueAsNewSuggested) return continueAsNew<typeof mandateRun>(runId, options);
     if (!PARKED.has(p.state)) {
       // Another worker held a newer lease when this one returned; look again shortly.
       await sleep("1 second");

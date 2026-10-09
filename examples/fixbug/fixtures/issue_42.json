@@ -1,0 +1,1 @@
+{"id": "BUG-42", "title": "The last page of a listing is missing", "reproducible": true, "scope": ["src/Pager.java", "test/PagerTest.java"]}

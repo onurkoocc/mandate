@@ -12,6 +12,8 @@ means. The detailed rules are on the other pages:
 - [`checks.md`](checks.md): the static checks;
 - [`runtime.md`](runtime.md): execution;
 - [`sandbox.md`](sandbox.md): sandboxes;
+- [`views.md`](views.md): the views people review;
+- [`mcp.md`](mcp.md): the compiler as an MCP server for agents;
 - [`diagnostics.md`](diagnostics.md): diagnostic codes.
 
 *Must* marks a rule that every conforming implementation follows.
@@ -190,7 +192,12 @@ produces is the upper bound of real use.
   - `loop plan_execute` checks the whole plan before any tool runs.
 - **Workflows.** A `workflow` body is deterministic orchestration. Every
   nondeterministic step in it is a recorded command (§7). Functions and
-  workflows cannot call each other in a cycle.
+  workflows cannot call each other in a cycle. `ensures e` states a
+  postcondition over `result`; a run whose result breaks it fails.
+- **Tests.** `test "…" { with handlers { … } run W(args) expect ok }` runs a
+  workflow against deterministic handlers: recorded model answers, an
+  in-memory file system, a fixed clock, an automatic approver. Only tests
+  may swap handlers; in a real run the runtime picks them.
 
 ### 5.1 Statements and expressions
 
@@ -201,7 +208,7 @@ produces is the upper bound of real use.
 | `loop max_iter n { … } until c` | Bounded iteration; a loop needs `max_iter` or `until` |
 | `par { a = e₁ ; b = e₂ }` | Runs branches together. Results are bound by branch name, never by finishing order |
 | `switch e { P => e, … }` | Must cover every variant |
-| `delegate A.s(args) [with caps K] [budget b] [isolated] [supervise …]` | Runs agent A's skill s with the granted authority and budget; `isolated` passes nothing implicitly |
+| `delegate A.s(args) [with caps K] [budget b] [isolated] [timeout d] [supervise …]` | Runs agent A's skill s with the granted authority and budget; `isolated` passes nothing implicitly; past `d`, the attempt fails with `Timeout` |
 | `infer T from e [using m]` | Asks a model for a `T`; the result is `Inferred<T>` |
 | `verify x against C(args) [on unmet(c) => e]` | Checks contract C (§6) |
 | `effect E(args) idempotent_by k [compensate F]` | An external effect (§7.2) |
@@ -215,6 +222,7 @@ Expected failures are values that a program can match:
 
 - `Timeout`
 - `BudgetExceeded`
+- `Throttled(retry_after)`
 - `SkillFailed(…)`
 - `Rejected(…)`
 - `PolicyDenied(…)`
@@ -226,6 +234,8 @@ program: the run stops for a person (`attention_required`).
 | Strategy | Where | Allowed on |
 |---|---|---|
 | `restart(max: n ≤ 5, backoff: d)` | `delegate` | `Timeout` and `SkillFailed`; the same input again, exponential backoff with recorded jitter |
+| `escalate(human)` | `delegate` | `Timeout`, `SkillFailed`, `PolicyDenied`, `Rejected`; a person answers `retry` or lets the fault stand |
+| `degrade(to: F)` | `delegate` | `Timeout` and `SkillFailed`; once, agent F with the same skill, signature and no more authority |
 | `fail_fast` (default) | `par` | The first fault stops the other branches before their next dispatch; the block still waits for work already in flight |
 | `restart_all` | `par` | Only when no branch has external effects |
 | `reconcile` | `on error(UnknownOutcome)` | The only way to handle an unknown outcome |
@@ -237,6 +247,10 @@ program: the run stops for a person (`attention_required`).
   tokens; `par` takes the longest time; `if` and `switch` take the larger
   branch; `loop` multiplies by `max_iter`. Upper bounds are used, never
   averages.
+- **Rate limits.** Shared token buckets limit model and tool calls per
+  unit of time. An empty bucket, or a provider's quota, makes a call
+  `Throttled`: it waits and is sent again, without counting as an attempt
+  or holding its reservation.
 - **Run time.** Every command reserves its upper-bound cost when it is
   dispatched, atomically with the dispatch record. It is refused when
   `limit − settled − active reservations` cannot cover it. A run's limits
@@ -362,7 +376,7 @@ Every conforming implementation keeps these:
 | INV-07 | An unknown outcome is neither success nor failure until reconciled | `unknown_outcome` |
 | INV-08 | A budget covers the whole run | One ledger per run; atomic reservations |
 | INV-09 | Replay makes no model call and no external effect | Replay reads the record only |
-| INV-10 | Views of authority, effects and state come from the program and the record | Not yet: 0.1 generates no views (§9) |
+| INV-10 | Views of authority, effects and state come from the program and the record | Views are computed from the IR and the journal, and name the program hash and the revision they show |
 | INV-11 | An unsupported security requirement is never dropped silently | Sandbox probe; E0902 |
 | INV-12 | No clean end while an external effect is unresolved | `attention_required` |
 | INV-13 | `Inferred` and `Untrusted` values do not reach a critical effect or an instruction unverified | R1, R4, R5; runtime check of `Verified` parameters |
@@ -371,10 +385,4 @@ Every conforming implementation keeps these:
 ## 9. Not yet
 
 - **Not in the IR:** `map`, dynamic `spawn` and `await`.
-- **Agent loops:** these strategies are not implemented yet:
-  - `degrade` and `escalate` as supervision strategies;
-  - `Throttled` and shared rate limits.
-- **Not enforced yet:** a delegate's `timeout`, a workflow's `ensures`, and
-  running `tests`. All three are checked, not enforced.
-- **Not generated yet:** these targets: host code, MCP, A2A, AX and
-  views.
+- **Not generated yet:** these targets: host code, MCP, A2A and AX.

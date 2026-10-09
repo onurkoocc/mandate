@@ -122,6 +122,12 @@ describe("FixBug (§20) passes Gate 1", () => {
     expect(fixbugErrors(by, 'by human.approve(role: "code_owner", deadline: "tomorrow")')).toEqual(["MDT-E0201"]);
   });
 
+  it("bounds a delegation with a Duration timeout (§8.7, §9.1)", () => {
+    const call = "let findings = delegate Explorer.locate(issue)";
+    expect(fixbugErrors(call, `${call} timeout 10m`)).toEqual([]);
+    expect(fixbugErrors(call, `${call} timeout 600`)).toEqual(["MDT-E0201"]);
+  });
+
   it("never accepts review alone as evidence", () => {
     const src = fixbug("by static not pr.review.blocking\n       and review(model: standard, isolated)", "by review(model: standard, isolated)");
     expect(only(src, "MDT-E0603").at.path).toBe("/defs/FixAccepted/accept/no_blocking_review/by");
@@ -659,6 +665,86 @@ workflow W(i: Issue) -> Bool
   true
 }`);
     expect(errorsOf(src)).toEqual(["MDT-E0713"]);
+  });
+
+  it("E0714: a supervision strategy must be one the runtime runs, where it fits", () => {
+    const w = (sup: string) => program(`${agents}
+workflow W(i: Issue) -> Bool
+  caps M
+{
+  let t = delegate A.s(i) supervise ${sup}
+  true
+}`);
+    expect(errorsOf(w("escalate(human)"))).toEqual([]);
+    expect(errorsOf(w('escalate(human, role: "lead")'))).toEqual([]);
+    expect(errorsOf(w("retry_forever"))).toEqual(["MDT-E0714"]);
+    expect(errorsOf(w("restart_all"))).toEqual(["MDT-E0714"]);
+    expect(errorsOf(w("escalate(robot)"))).toEqual(["MDT-E0714"]);
+    const par = program(`${agents}
+workflow W(i: Issue) -> Bool
+  caps M
+{
+  par supervise degrade(to: A) {
+    t = delegate A.s(i)
+  }
+  true
+}`);
+    expect(errorsOf(par)).toEqual(["MDT-E0714"]);
+  });
+
+  it("E0715: a fallback does the same job with no more authority", () => {
+    const base = `capability M = model.infer(tier: standard)
+capability E = model.infer(tier: economy)
+capability R = fs.read("/work/repo")
+capability RS = fs.read("/work/repo/src")
+agent A {
+  caps M, E, R
+  budget { spend: 2 USD, tokens: 10k, steps: 5 }
+  skill s(i: Issue) -> Inferred<Text> ! {Model, Fs.Read}
+}
+agent Cheap {
+  caps E, RS
+  budget { spend: 1 USD, tokens: 10k, steps: 5 }
+  skill s(i: Issue) -> Inferred<Text> ! {Model, Fs.Read}
+}
+agent Wide {
+  caps E, R, PRW
+  budget { spend: 1 USD, tokens: 10k, steps: 5 }
+  skill s(i: Issue) -> Inferred<Text> ! {Model, Fs.Read}
+}
+agent Other {
+  caps E
+  budget { spend: 1 USD, tokens: 10k, steps: 5 }
+  skill s(i: Issue) -> Inferred<Bool> ! {Model}
+}
+capability PRW = fs.write("/work/repo")
+`;
+    const w = (call: string) => program(`${base}
+workflow W(i: Issue) -> Bool
+  caps M, E, R
+{
+  let t = ${call}
+  true
+}`);
+    expect(errorsOf(w("delegate A.s(i) supervise degrade(to: Cheap)"))).toEqual([]);
+    expect(errorsOf(w("delegate A.s(i) supervise degrade(to: Wide)"))).toEqual(["MDT-E0715"]);
+    expect(errorsOf(w("delegate A.s(i) supervise degrade(to: Other)"))).toEqual(["MDT-E0715"]);
+    expect(errorsOf(w("delegate A.s(i) supervise degrade(to: Nobody)"))).toContain("MDT-E0715");
+    // The fallback must hold what the call hands over.
+    expect(errorsOf(w("delegate A.s(i) with caps R supervise degrade(to: Cheap)"))).toEqual(["MDT-E0715"]);
+  });
+
+  it("counts every attempt a supervisor may make against the workflow's budget (E0501)", () => {
+    const w = (budget: string, sup: string) => program(`${agents}
+workflow W(i: Issue) -> Bool
+  caps M
+  budget { spend: ${budget} }
+{
+  let t = delegate A.s(i) supervise ${sup}
+  true
+}`);
+    expect(errorsOf(w("4 USD", "restart(max: 1)"))).toEqual([]);
+    expect(errorsOf(w("3 USD", "restart(max: 1)"))).toEqual(["MDT-E0501"]);
   });
 
   it("E0105: a workflow expands to at most 1000 static nodes", () => {

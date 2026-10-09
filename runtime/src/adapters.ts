@@ -42,6 +42,8 @@ export interface DelegateRequest {
   isolated: boolean;
   /** 0 for the first try; restarts reuse the operation and raise the attempt (§8.7). */
   attempt: number;
+  /** With `delegate … timeout d`: when the attempt must have finished (epoch ms). A later result is discarded. */
+  deadline?: number;
   commandId: string;
   /**
    * What the agent's sandbox must enforce, built from this delegation's grant
@@ -52,6 +54,13 @@ export interface DelegateRequest {
 
 export interface AgentAdapter {
   run(req: DelegateRequest): Promise<Outcome>;
+  /**
+   * What delivery a remote agent's server guarantees (§9.6, G12). A2A does
+   * not require a server to deduplicate messages by id; unless the adapter
+   * says its server does, a task sent twice may run twice. Absent: no such
+   * guarantee.
+   */
+  remoteProfile?(agent: string): { idempotentMessages: boolean };
 }
 
 export interface InferRequest {
@@ -110,10 +119,41 @@ export interface VerifyRequest {
   criterion: string;
 }
 
+/**
+ * What a check ran against (§10.3 `subject`): the files of the working copy
+ * by path and content digest. Evidence is bound to it: an action that would
+ * apply a file with other bytes than the ones tested is refused (G01).
+ */
+export interface CheckSubject {
+  files: Record<string, string>;
+}
+
+/** An output of a check, kept as an artifact of the run and listed in its evidence (§10.3). */
+export interface CheckLog {
+  /** e.g. `test_log`, `review`, `diff`. */
+  kind: string;
+  /** e.g. `before` / `after` for red-then-green, a suite's name for a suite. */
+  phase?: string;
+  /** e.g. `pass` / `fail`. */
+  result?: string;
+  content: string;
+  mediaType?: string;
+}
+
+export interface CheckResult {
+  passed: boolean;
+  detail?: Value;
+  cost?: Cost;
+  subject?: CheckSubject;
+  /** Who checked and where, e.g. `{ kind: "runtime", handler: "…@0.2", sandbox: "mxc:process" }`. */
+  producer?: Value;
+  logs?: CheckLog[];
+}
+
 export interface VerifierAdapter {
   /** A check that costs something (a model review) is reserved first, like any model call (§8.6). */
   upperBound?(req: VerifyRequest): Promise<Cost | undefined>;
-  check(req: VerifyRequest): Promise<{ passed: boolean; detail?: Value; cost?: Cost }>;
+  check(req: VerifyRequest): Promise<CheckResult>;
 }
 
 /** Read-only std calls (fs.read_text, net.https.get, …). */
@@ -128,11 +168,28 @@ export interface ToolContract {
   retryClass: RetryClass;
 }
 
+/** A file an action will apply, as its adapter's `prepare` read it. */
+export interface PreparedFile {
+  path: string;
+  content: string;
+  mediaType?: string;
+}
+
+/** A frozen file of a prepared action: stored at prepare, sent from the store at execute (§8.8). */
+export interface ActionArtifact {
+  path: string;
+  ref: string;
+  digest: string;
+  content: Uint8Array;
+}
+
 export interface PreparedAction {
   effect: string;
   params: Value;
   actionDigest: string;
   operationKey: string;
+  /** The files the action applies, exactly as they were frozen at prepare. */
+  artifacts?: ActionArtifact[];
 }
 
 export interface AuthorizationContext {
@@ -150,7 +207,12 @@ export interface ToolAdapter {
   describe(): ToolContract;
   /** Whether this adapter can serve the program's binding; asked before a run starts. */
   validateBinding?(binding: Binding): Promise<{ supported: true } | { unsupported: string }>;
-  prepare(params: Value): Promise<{ prepared: true } | { rejected: string }>;
+  /**
+   * Checks the parameters and reads what the action will apply. Files it
+   * returns are frozen into the artifact store and the action digest (§8.8),
+   * so `execute` sends those bytes, whatever happens to the working copy.
+   */
+  prepare(params: Value): Promise<{ prepared: true; artifacts?: PreparedFile[] } | { rejected: string }>;
   execute(action: PreparedAction, auth: AuthorizationContext, operationKey: string): Promise<{ confirmed: Value } | { rejected: string } | { unknown: string }>;
   reconcile(operationKey: string): Promise<{ applied: Value } | { notApplied: string } | { unknown: string }>;
   /** Stops an operation if it has not taken effect: Cancelled with proof, or TooLate with its receipt. */
@@ -171,6 +233,8 @@ export interface Clock {
 export interface LoopAdapters {
   chat: ChatModel;
   sandbox: MxcAdapter;
+  /** How often a running tool call checks whether its run was cancelled, to stop the sandbox (§16.1 Stop). Default 1000 ms. */
+  stopPollMs?: number;
 }
 
 export interface Adapters {

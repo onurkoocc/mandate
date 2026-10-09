@@ -8,10 +8,10 @@ import { WorkflowExecutionAlreadyStartedError, WorkflowNotFoundError, type Clien
 import { Worker, type NativeConnection, type WorkerOptions } from "@temporalio/worker";
 import type { Driver, Runtime } from "../runtime.js";
 import { createActivities } from "./activities.js";
-import { WORKFLOW, wakeSignal, type Progress } from "./workflows.js";
+import { WORKFLOW, wakeSignal, type Progress, type RunOptions } from "./workflows.js";
 
 export { createActivities, progress, type Activities } from "./activities.js";
-export { WORKFLOW, type Progress } from "./workflows.js";
+export { WORKFLOW, type Progress, type RunOptions } from "./workflows.js";
 
 /** One Temporal workflow per run, identified by the run id. */
 export function workflowId(runId: string): string {
@@ -23,11 +23,13 @@ export class TemporalDriver implements Driver {
   constructor(
     readonly client: Client,
     readonly taskQueue: string,
+    /** How the run's workflow keeps its history short (continue-as-new). */
+    readonly options: RunOptions = {},
   ) {}
 
   async start(runId: string): Promise<void> {
     try {
-      await this.client.workflow.start(WORKFLOW, { args: [runId], taskQueue: this.taskQueue, workflowId: workflowId(runId) });
+      await this.client.workflow.start(WORKFLOW, { args: [runId, this.options], taskQueue: this.taskQueue, workflowId: workflowId(runId) });
     } catch (e) {
       // StartRun retried by its caller: the run already has its workflow.
       if (!(e instanceof WorkflowExecutionAlreadyStartedError)) throw e;
@@ -57,7 +59,8 @@ export function workflowsPath(): string {
 
 /**
  * A worker for Mandate runs. `runtime` must drive inline (no driver): it is
- * the one the activities call.
+ * the one the activities call. It must keep timers durable, so a run that
+ * waits out a backoff waits on a Temporal timer, not in an activity.
  */
 export function createWorker(o: {
   connection: NativeConnection;
@@ -67,6 +70,7 @@ export function createWorker(o: {
   workflowBundle?: WorkerOptions["workflowBundle"];
 }): Promise<Worker> {
   if (o.runtime.driver) throw new Error("The worker's Runtime must drive runs inline; give it no driver.");
+  if (!o.runtime.durableTimers) throw new Error("The worker's Runtime must keep timers durable: new Runtime(db, adapters, faults, undefined, { durableTimers: true }).");
   return Worker.create({
     connection: o.connection,
     taskQueue: o.taskQueue,

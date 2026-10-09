@@ -1114,6 +1114,228 @@
   },
   "language": "mandate/0.2",
   "module": "company.devflow",
+  "tests": {
+    "FixBug happy path": {
+      "body": [
+        {
+          "expect": "ok",
+          "op": "run",
+          "target": {
+            "args": [
+              {
+                "value": {
+                  "name": "issue_42",
+                  "of": {
+                    "name": "fixtures",
+                    "op": "var"
+                  },
+                  "op": "field"
+                }
+              }
+            ],
+            "callee": {
+              "name": "FixBug",
+              "op": "var"
+            },
+            "op": "call"
+          }
+        }
+      ],
+      "handlers": {
+        "Fs": {
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "fixtures/repo-snapshot"
+              }
+            }
+          ],
+          "callee": {
+            "name": "memfs",
+            "op": "var"
+          },
+          "op": "call"
+        },
+        "Human": {
+          "args": [
+            {
+              "name": "role",
+              "value": {
+                "op": "text",
+                "value": "code_owner"
+              }
+            }
+          ],
+          "callee": {
+            "name": "auto_approve",
+            "op": "var"
+          },
+          "op": "call"
+        },
+        "Model": {
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "fixtures/fixbug-01.jsonl"
+              }
+            }
+          ],
+          "callee": {
+            "name": "replay",
+            "op": "var"
+          },
+          "op": "call"
+        },
+        "Time": {
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "2026-10-07T21:00:00Z"
+              }
+            }
+          ],
+          "callee": {
+            "name": "fixed_clock",
+            "op": "var"
+          },
+          "op": "call"
+        },
+        "Verify": {
+          "args": [],
+          "callee": {
+            "name": "pass_all",
+            "op": "var"
+          },
+          "op": "call"
+        },
+        "git": {
+          "args": [],
+          "callee": {
+            "name": "fake_git",
+            "op": "var"
+          },
+          "op": "call"
+        }
+      }
+    },
+    "FixBug with a failing suite asks a person": {
+      "body": [
+        {
+          "expect": "waiting",
+          "op": "run",
+          "target": {
+            "args": [
+              {
+                "value": {
+                  "name": "issue_42",
+                  "of": {
+                    "name": "fixtures",
+                    "op": "var"
+                  },
+                  "op": "field"
+                }
+              }
+            ],
+            "callee": {
+              "name": "FixBug",
+              "op": "var"
+            },
+            "op": "call"
+          }
+        }
+      ],
+      "handlers": {
+        "Fs": {
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "fixtures/repo-snapshot"
+              }
+            }
+          ],
+          "callee": {
+            "name": "memfs",
+            "op": "var"
+          },
+          "op": "call"
+        },
+        "Human": {
+          "args": [
+            {
+              "name": "role",
+              "value": {
+                "op": "text",
+                "value": "code_owner"
+              }
+            }
+          ],
+          "callee": {
+            "name": "auto_approve",
+            "op": "var"
+          },
+          "op": "call"
+        },
+        "Model": {
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "fixtures/fixbug-01.jsonl"
+              }
+            }
+          ],
+          "callee": {
+            "name": "replay",
+            "op": "var"
+          },
+          "op": "call"
+        },
+        "Time": {
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "2026-10-07T21:00:00Z"
+              }
+            }
+          ],
+          "callee": {
+            "name": "fixed_clock",
+            "op": "var"
+          },
+          "op": "call"
+        },
+        "Verify": {
+          "args": [
+            {
+              "name": "suite_green",
+              "value": {
+                "op": "bool",
+                "value": false
+              }
+            }
+          ],
+          "callee": {
+            "name": "results",
+            "op": "var"
+          },
+          "op": "call"
+        },
+        "git": {
+          "args": [],
+          "callee": {
+            "name": "fake_git",
+            "op": "var"
+          },
+          "op": "call"
+        }
+      }
+    }
+  },
   "uses": [
     {
       "module": "company.domain",

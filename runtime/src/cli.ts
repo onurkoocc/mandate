@@ -9,6 +9,11 @@
 //   mandate cancel <run>
 //   mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
 //   mandate replay <run>
+//   mandate artifact <run> <blob:sha256:…>
+//   mandate show <run> [--format md|html|json]           the run's views (§15): status, evidence, cost, actions
+//   mandate rotate-key                                    a new evidence key; the old one's public half stays trusted
+//   mandate denials <run>                                 what learning-mode sandboxes denied, for `mandate check --denials` (W0311)
+//   mandate test <program> [--json]                       run the program's tests (§6.4); needs no configuration
 //
 // Every command reads `mandate.runtime.json` (or --config). A decision names
 // the revision the person saw in `status`: if the run has moved since, it is
@@ -18,13 +23,16 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { check, kindOf, parseStrictJson, type Lock, type Program } from "@mandate/compiler";
+import { check, kindOf, parseStrictJson, toHtml, toMarkdown, type Lock, type Program } from "@mandate/compiler";
 import type { Cost } from "./adapters.js";
-import { adaptersFor, connect, readConfig, type RuntimeConfig } from "./control.js";
-import type { Db } from "./db.js";
+import { adaptersFor, connect, readConfig, runtimeOptions, trustedKeysDir, type RuntimeConfig } from "./control.js";
+import { EvidenceSigner } from "./evidence.js";
+import { openDb, type Db } from "./db.js";
 import type { RunRow } from "./journal.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
+import { runTests } from "./testing.js";
+import { runDoc, runView } from "./views.js";
 import { isObj, show, type Obj, type Value } from "./values.js";
 
 interface Args {
@@ -32,7 +40,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUED = new Set(["--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id"]);
+const VALUED = new Set(["--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format"]);
 
 function parse(argv: string[]): Args {
   const positional: string[] = [];
@@ -52,7 +60,7 @@ function parse(argv: string[]): Args {
 class Usage extends Error {}
 
 const USAGE = `usage:
-  mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M] [--lock FILE]
+  mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M] [--lock FILE] [--priority high|normal]
   mandate status <run> [--json]
   mandate approve <run> --revision N --by NAME
   mandate decline <run> --revision N --by NAME
@@ -60,9 +68,14 @@ const USAGE = `usage:
   mandate cancel <run>
   mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
   mandate replay <run>
+  mandate artifact <run> <blob:sha256:…>
+  mandate show <run> [--format md|html|json]
+  mandate denials <run>
+  mandate rotate-key
+  mandate test <program> [--json] [--lock FILE]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -72,23 +85,31 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     const a = parse(rest);
     const configFile = typeof a.flags["--config"] === "string" ? a.flags["--config"] : "mandate.runtime.json";
     if (!cmd || !CONTROL_COMMANDS.has(cmd)) throw new Usage(`unknown command ${cmd ?? ""}`);
+    if (cmd === "test") return await test(a, out);
     if (!existsSync(configFile)) throw new Usage(`no runtime configuration at ${configFile} (see spec/runtime.md, "Control CLI")`);
     const config = readConfig(configFile);
     db = await connect(config);
     const json = a.flags["--json"] === true;
     const runId = a.positional[0];
 
+    if (cmd === "rotate-key") {
+      const r = EvidenceSigner.rotate(config.evidence.key, trustedKeysDir(config));
+      out(`evidence key rotated: ${r.old} → ${r.current}; the old public key stays trusted in ${trustedKeysDir(config)}\n`);
+      return 0;
+    }
+
     if (cmd === "run") {
       const file = a.positional[0] ?? fail("run needs a program file");
       const workflow = str(a, "--workflow");
       const { program, lock } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined);
-      const rt = new Runtime(db, adaptersFor(config, program, lock, env));
+      const rt = new Runtime(db, adaptersFor(config, program, lock, env), undefined, undefined, runtimeOptions(config, db));
       const run = await rt.startRun({
         pkg: buildPackage(program, lock),
         workflow,
         input: input(str(a, "--input")),
         ...(typeof a.flags["--run-id"] === "string" ? { runId: a.flags["--run-id"] } : {}),
         ...(typeof a.flags["--limit"] === "string" ? { limits: limits(a.flags["--limit"]) } : {}),
+        ...(a.flags["--priority"] === "high" || a.flags["--priority"] === "normal" ? { priority: a.flags["--priority"] } : {}),
       });
       out(await report(rt, run, json, config));
       return 0;
@@ -126,6 +147,22 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       case "raise-limits":
         run = await rt.raiseLimits(runId, msg, { revision: revision(a), limits: limits(str(a, "--limit")), by: str(a, "--by") });
         break;
+      case "show": {
+        const format = typeof a.flags["--format"] === "string" ? a.flags["--format"] : "md";
+        if (!["md", "html", "json"].includes(format)) throw new Usage("--format is md, html or json");
+        const { view, program } = await runView(rt, runId);
+        out(format === "json" ? JSON.stringify(view, null, 2) + "\n" : format === "html" ? toHtml(runDoc(view, program)) : toMarkdown(runDoc(view, program)));
+        return 0;
+      }
+      case "denials":
+        out(JSON.stringify(await rt.sandboxDenials(runId), null, 2) + "\n");
+        return 0;
+      case "artifact": {
+        const ref = a.positional[1] ?? fail("artifact needs a reference, blob:sha256:…");
+        const got = await rt.artifact(runId, ref);
+        out(new TextDecoder().decode(got.bytes));
+        return 0;
+      }
       case "replay": {
         const r = await rt.replayRun(runId);
         out(json ? JSON.stringify(r, null, 2) + "\n" : `replay: ${r.status}${"value" in r ? `\n${show(r.value)}` : ""}${"stoppedAt" in r ? ` at ${r.stoppedAt}` : ""}${"missing" in r ? ` (missing ${r.missing})` : ""}\n`);
@@ -148,6 +185,24 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     throw e;
   } finally {
     await db?.close();
+  }
+}
+
+/** Runs a program's tests against their handlers, on an in-process database of their own; exit 1 if any fails. */
+async function test(a: Args, out: (s: string) => void): Promise<number> {
+  const file = a.positional[0] ?? fail("test needs a program file");
+  const { program, lock } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined);
+  const db = await openDb();
+  try {
+    const results = await runTests(program, { db, dir: dirname(file), lock });
+    if (a.flags["--json"] === true) out(JSON.stringify(results, null, 2) + "\n");
+    else {
+      for (const r of results) out(`${r.ok ? "ok  " : "FAIL"} ${r.test}: ${r.workflow} expected ${r.expected}, ${r.ok ? "got it" : `got ${r.state}${r.detail !== undefined ? ` (${show(r.detail).slice(0, 300)})` : ""}`}\n`);
+      if (!results.length) out("no tests\n");
+    }
+    return results.every((r) => r.ok) ? 0 : 1;
+  } finally {
+    await db.close();
   }
 }
 
@@ -208,7 +263,7 @@ function load(file: string, lockFile: string | undefined): { program: Program; l
 async function runtimeFor(db: Db, config: RuntimeConfig, runId: string, env: NodeJS.ProcessEnv): Promise<Runtime> {
   const [row] = await db.query<{ program: Program; lock: Lock }>("select p.program, p.lock from runs r join packages p on p.package_hash = r.package_hash where r.run_id = $1", [runId]);
   if (!row) throw new Violation("unknown_run", `No run ${runId}.`);
-  return new Runtime(db, adaptersFor(config, row.program, row.lock, env));
+  return new Runtime(db, adaptersFor(config, row.program, row.lock, env), undefined, undefined, runtimeOptions(config, db));
 }
 
 function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {
@@ -222,8 +277,9 @@ function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {
 async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeConfig): Promise<string> {
   const budget = await rt.budgetReport(run.run_id);
   const evidence = await rt.evidence(run.run_id);
+  const signed = new Map((await rt.verifyEvidence(run.run_id)).map((e) => [e.evidence_id, e.valid]));
   const actions = await rt.journal.actions(run.run_id);
-  if (json) return JSON.stringify({ run, budget, evidence, actions }, null, 2) + "\n";
+  if (json) return JSON.stringify({ run, budget, evidence: evidence.map((e) => ({ ...e, signature_valid: signed.get(e.evidence_id) ?? false })), actions }, null, 2) + "\n";
   const lines = [`run ${run.run_id}  ${run.workflow}  ${run.state}  revision ${run.revision}`];
   if (run.state === "waiting" && isObj(run.waiting)) {
     const w = run.waiting;
@@ -234,6 +290,8 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
       lines.push(...subjectLines(req["subject"] ?? null));
       if (config.verifier) lines.push(`  the change in ${config.verifier.workdir}: git -C ${config.verifier.workdir} diff ${config.verifier.base}`);
       lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} --by <you>`, `  decline: mandate decline ${run.run_id} --revision ${run.revision} --by <you>`);
+    } else if (w["kind"] === "timer") {
+      lines.push(`waiting for: a timer until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "")}); the scheduler resumes the run then`);
     } else if (w["kind"] === "decision") {
       lines.push(`waiting for: approval of action ${req["effect"] ?? ""} (digest ${req["action_digest"]})`);
       lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} --by <you>`);
@@ -252,7 +310,7 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
     const f = (n: number) => (money ? `${(n / 1_000_000).toFixed(4)} ${d.dimension.slice(6)}` : String(n));
     lines.push(`budget ${d.dimension}: limit ${f(d.limit)}, settled ${f(d.settled)}, reserved ${f(d.reserved)}, available ${f(d.available)}`);
   }
-  for (const e of evidence) lines.push(`evidence ${e.contract}.${e.criterion}: ${e.passed ? "met" : "not met"} (${e.method})`);
+  for (const e of evidence) lines.push(`evidence ${e.contract}.${e.criterion}: ${e.passed ? "met" : "not met"} (${e.method}; ${signed.get(e.evidence_id) ? "signed" : "SIGNATURE INVALID"})`);
   for (const x of actions) lines.push(`action ${x.effect}: ${x.state}${x.receipt ? ` ${show(x.receipt)}` : ""}`);
   return lines.join("\n") + "\n";
 }

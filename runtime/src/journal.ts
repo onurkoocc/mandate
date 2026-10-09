@@ -13,6 +13,7 @@
 
 import type { Budget } from "@mandate/compiler";
 import type { Cost, Outcome } from "./adapters.js";
+import type { EvidenceRecord } from "./evidence.js";
 import { num, type Db, type Row, type Tx } from "./db.js";
 import { Cancelled, Fault, StaleFence, Violation } from "./signals.js";
 import type { Value } from "./values.js";
@@ -46,6 +47,12 @@ export interface EvidenceRow {
   method: string;
   passed: boolean;
   detail: Value;
+  /** What the check ran against: the contract's arguments, and for a test the working copy's files (§10.3). */
+  subject: Value;
+  /** The signed evidence record (§10.3), and its signature by the control plane's key. */
+  record: Value;
+  key_id: string | null;
+  signature: string | null;
 }
 
 export interface BudgetReport {
@@ -54,7 +61,7 @@ export interface BudgetReport {
   commands: Array<{ command: string; kind: string; label: string | null; state: string; reserved: Record<string, number>; open: string[]; cost: Cost | "unknown" | null }>;
 }
 
-export type CommandState = "dispatched" | "waiting" | "succeeded" | "failed";
+export type CommandState = "dispatched" | "waiting" | "throttled" | "succeeded" | "failed";
 
 export interface CommandRow {
   command_id: string;
@@ -65,6 +72,8 @@ export interface CommandRow {
   result: Value;
   error: Value;
   payload_purged: boolean;
+  /** How often the command was throttled (§8.6); while it waits to be sent again, its error is the Throttled fault. */
+  throttled: number;
 }
 
 export type ActionState = "prepared" | "dispatched" | "confirmed" | "rejected" | "unknown_outcome" | "cancelled";
@@ -80,6 +89,8 @@ export interface ActionRow {
   state: ActionState;
   receipt: Value;
   detail: Value;
+  /** Files the action applies, frozen at prepare: path → { ref, digest }. */
+  artifacts: Value;
 }
 
 export interface AuthorizationRow {
@@ -286,7 +297,8 @@ export class Journal {
     await this.db.tx(async (tx) => {
       await this.lock(tx, runId, fence);
       const [row] = await tx.query<Row>("select state from commands where run_id = $1 and command_id = $2", [runId, commandId]);
-      if (!row || row["state"] !== "dispatched") throw new Violation("not_dispatched", `Command ${commandId} is not in flight.`);
+      // A command throttled too often is completed with its last Throttled fault.
+      if (!row || (row["state"] !== "dispatched" && row["state"] !== "throttled")) throw new Violation("not_dispatched", `Command ${commandId} is not in flight.`);
       const cost = outcome.cost;
       if (cost === "unknown") {
         await this.event(tx, runId, "charge_pending", { command: commandId });
@@ -343,6 +355,26 @@ export class Journal {
       await this.settle(tx, runId, commandId, costDims(cost));
       await tx.query("update commands set cost = $3 where run_id = $1 and command_id = $2", [runId, commandId, json(cost as unknown as Value)]);
       await this.event(tx, runId, "charge_settled", { command: commandId, cost: cost as unknown as Value });
+    });
+  }
+
+  /**
+   * A command was throttled (§8.6): a rate limit or the provider's quota said
+   * not now. Its reservation is released, so nothing is held while it waits,
+   * and it waits to be sent again under the same id. Returns how often it has
+   * been throttled. Only the lease holder may write (R06).
+   */
+  async throttle(runId: string, fence: number, commandId: string, fault: Value): Promise<number> {
+    return this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      await tx.query("update reservations set state = 'released' where run_id = $1 and command_id = $2 and state = 'active'", [runId, commandId]);
+      const [row] = await tx.query<Row>(
+        "update commands set state = 'throttled', error = $3, throttled = throttled + 1 where run_id = $1 and command_id = $2 and state = 'dispatched' returning throttled",
+        [runId, commandId, json(fault)],
+      );
+      if (!row) throw new Violation("not_dispatched", `Command ${commandId} is not in flight.`);
+      await this.event(tx, runId, "command_throttled", { command: commandId, fault, times: num(row["throttled"]) });
+      return num(row["throttled"]);
     });
   }
 
@@ -421,15 +453,15 @@ export class Journal {
   async prepare(
     runId: string,
     fence: number,
-    a: { operationKey: string; commandId: string; effect: string; actionDigest: string; params: Value; retryClass: string },
+    a: { operationKey: string; commandId: string; effect: string; actionDigest: string; params: Value; retryClass: string; artifacts?: Value },
   ): Promise<ActionRow> {
     return this.db.tx(async (tx) => {
       await this.lock(tx, runId, fence);
       const [row] = await tx.query<Row>("select * from actions where operation_key = $1", [a.operationKey]);
       if (row) return row as unknown as ActionRow;
       await tx.query(
-        "insert into actions (operation_key, run_id, command_id, effect, action_digest, params, retry_class, state) values ($1, $2, $3, $4, $5, $6, $7, 'prepared')",
-        [a.operationKey, runId, a.commandId, a.effect, a.actionDigest, json(a.params), a.retryClass],
+        "insert into actions (operation_key, run_id, command_id, effect, action_digest, params, retry_class, state, artifacts) values ($1, $2, $3, $4, $5, $6, $7, 'prepared', $8)",
+        [a.operationKey, runId, a.commandId, a.effect, a.actionDigest, json(a.params), a.retryClass, json(a.artifacts ?? null)],
       );
       await this.event(tx, runId, "action_prepared", { operation: a.operationKey, effect: a.effect, digest: a.actionDigest });
       const [created] = await tx.query<Row>("select * from actions where operation_key = $1", [a.operationKey]);
@@ -514,22 +546,21 @@ export class Journal {
     });
   }
 
-  async evidence(runId: string): Promise<EvidenceRow[]> {
-    const rows = await this.db.query<Row>("select evidence_id, contract, criterion, method, passed, detail from evidence where run_id = $1 order by criterion, method, evidence_id", [runId]);
-    return rows.map((r) => ({
-      evidence_id: String(r["evidence_id"]),
-      contract: String(r["contract"]),
-      criterion: String(r["criterion"]),
-      method: String(r["method"]),
-      passed: Boolean(r["passed"]),
-      detail: (r["detail"] ?? null) as Value,
-    }));
+  async evidence(runId: string, ids?: string[]): Promise<EvidenceRow[]> {
+    const rows = await this.db.query<Row>(
+      `select * from evidence where run_id = $1${ids ? " and evidence_id = any($2)" : ""} order by criterion, method, evidence_id`,
+      ids ? [runId, ids] : [runId],
+    );
+    return rows.map(toEvidence);
   }
 
-  async recordEvidence(runId: string, e: { id: string; contract: string; criterion: string; method: string; passed: boolean; detail?: Value }): Promise<void> {
+  /** Records a signed evidence record once; a record for the same check is never replaced. */
+  async recordEvidence(runId: string, e: { record: EvidenceRecord; key_id: string; signature: string }): Promise<void> {
+    const r = e.record;
     await this.db.query(
-      "insert into evidence (evidence_id, run_id, contract, criterion, method, passed, detail) values ($1, $2, $3, $4, $5, $6, $7) on conflict (evidence_id) do nothing",
-      [e.id, runId, e.contract, e.criterion, e.method, e.passed, json(e.detail ?? null)],
+      `insert into evidence (evidence_id, run_id, contract, criterion, method, passed, detail, subject, record, key_id, signature)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (evidence_id) do nothing`,
+      [r.evidence_id, runId, r.contract, r.criterion, r.method, r.passed, json(r.detail), json(r.subject), json(r as unknown as Value), e.key_id, e.signature],
     );
   }
 
@@ -596,6 +627,22 @@ function toCommand(r: Row): CommandRow {
     result: (r["result"] ?? null) as Value,
     error: (r["error"] ?? null) as Value,
     payload_purged: Boolean(r["payload_purged"]),
+    throttled: num(r["throttled"]),
+  };
+}
+
+function toEvidence(r: Row): EvidenceRow {
+  return {
+    evidence_id: String(r["evidence_id"]),
+    contract: String(r["contract"]),
+    criterion: String(r["criterion"]),
+    method: String(r["method"]),
+    passed: Boolean(r["passed"]),
+    detail: (r["detail"] ?? null) as Value,
+    subject: (r["subject"] ?? null) as Value,
+    record: (r["record"] ?? null) as Value,
+    key_id: (r["key_id"] ?? null) as string | null,
+    signature: (r["signature"] ?? null) as string | null,
   };
 }
 

@@ -36,6 +36,9 @@ function requirement(o: { read?: string[]; write?: string[]; exec?: Array<{ comm
 class FakeSdk implements MxcSdk {
   readonly spawned: MxcContainerRequest[] = [];
   readonly stdin: string[] = [];
+  /** A process that runs until it is killed, like a hung test run. */
+  hang = false;
+  killed = 0;
   constructor(private readonly support: ReturnType<MxcSdk["getPlatformSupport"]> = { isSupported: true, availableMethods: ["bubblewrap", "lxc"] }) {}
   getPlatformSupport() {
     return this.support;
@@ -46,13 +49,23 @@ class FakeSdk implements MxcSdk {
     const out = new PassThrough();
     const err = new PassThrough();
     let text = "";
+    let exit: (code: number) => void = () => {};
+    const exited = new Promise<number>((r) => (exit = r));
     input.on("data", (c) => (text += String(c)));
     input.on("end", () => {
       this.stdin.push(text);
+      if (this.hang) return;
       out.end("ok\n");
       err.end();
+      exit(0);
     });
-    return { standardInput: input, standardOutput: out, standardError: err, wait: async () => ({ exitCode: 0, timedOut: false }), dispose: () => {} };
+    const kill = () => {
+      this.killed++;
+      out.end();
+      err.end();
+      exit(137);
+    };
+    return { standardInput: input, standardOutput: out, standardError: err, wait: async () => ({ exitCode: await exited, timedOut: false }), kill, dispose: () => {} };
   }
 }
 
@@ -95,6 +108,20 @@ describe("MxcHost against a fake SDK", () => {
     expect(await refused(["sh", "-c", "curl evil"])).toContain("sh is not an allowed command");
     expect(sdk.spawned).toHaveLength(0);
     expect((await host.execute(handle, { argv: ["npm", "test", "--", "-x"] })).exitCode).toBe(0);
+  });
+
+  it("stops a sandbox: kills what runs in it and starts nothing more (§16.1 Stop)", async () => {
+    const sdk = new FakeSdk();
+    sdk.hang = true;
+    const host = new MxcHost({ sdk });
+    const { handle } = await sandbox(host, requirement({ read: ["/work/repo"], exec: [{ command: "npm", args_prefix: [["test"]] }] }));
+    const running = host.execute(handle, { argv: ["npm", "test"] });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(await host.stop(handle)).toBe("stopped");
+    expect(await running).toMatchObject({ exitCode: 137, stopped: true });
+    expect(sdk.killed).toBe(1);
+    expect((await host.execute(handle, { argv: ["npm", "test"] })).stderr).toContain("was stopped");
+    expect(sdk.spawned).toHaveLength(1);
   });
 
   it("enforces nothing where Bubblewrap cannot run, so every agent is refused by name (G05, K16)", async () => {
@@ -170,6 +197,18 @@ describe.runIf(REAL)("MxcHost with Bubblewrap on this host (G05, G07)", () => {
       expect(r.exitCode, `${url}: ${r.stderr}`).not.toBe(0);
     }
     expect(hostReaches, "the test host has no network, so blocking proves less").toBe(true);
+  });
+
+  it("stops a process that would run for a minute, at once (§16.1 Stop)", async () => {
+    const { handle } = await sandbox(host, requirement({ read: [repo], exec: [{ command: "sleep" }] }));
+    const t0 = Date.now();
+    const running = host.execute(handle, { argv: ["sleep", "60"] });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await host.stop(handle)).toBe("stopped");
+    const r = await running;
+    expect(r.stopped).toBe(true);
+    expect(r.exitCode).not.toBe(0);
+    expect(Date.now() - t0).toBeLessThan(15_000);
   });
 
   it("starts the process with none of the runtime's environment, so no key reaches it (K7)", async () => {

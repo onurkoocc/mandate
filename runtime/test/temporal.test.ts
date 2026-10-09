@@ -12,7 +12,7 @@ import { bundleWorkflowCode, DefaultLogger, Runtime as TemporalRuntime, type Wor
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Runtime } from "../src/runtime.js";
 import { SimAgents, SimTool, wallClock } from "../src/sim.js";
-import { createWorker, TemporalDriver, workflowsPath } from "../src/temporal/index.js";
+import { createWorker, TemporalDriver, workflowId, workflowsPath, type RunOptions } from "../src/temporal/index.js";
 import { isObj } from "../src/values.js";
 import { closeAll, world, type World } from "./helpers.js";
 import { BUG, FIXBUG, fixbugAgents, RESULTS, USD, waitOf } from "./fixbug.js";
@@ -40,12 +40,14 @@ interface Scheduled extends World {
   serve<T>(body: () => Promise<T>): Promise<T>;
 }
 
-async function scheduled(src: string, o: Parameters<typeof world>[1] = {}): Promise<Scheduled> {
+async function scheduled(src: string, o: Parameters<typeof world>[1] & { runOptions?: RunOptions } = {}): Promise<Scheduled> {
   const w = await world(src, o);
   const taskQueue = `mandate-${randomUUID()}`;
-  const worker = await createWorker({ connection: env.nativeConnection, taskQueue, runtime: w.rt, workflowBundle: bundle });
-  const driver = new TemporalDriver(env.client, taskQueue);
-  return { ...w, driver, control: new Runtime(w.db, w.adapters, w.faults, driver), serve: (body) => worker.runUntil(body()) };
+  // The worker's runtime keeps timers durable; control calls share its key, so either can check the evidence.
+  const runtime = new Runtime(w.db, w.adapters, w.faults, undefined, { durableTimers: true, signer: w.rt.signer, artifacts: w.rt.artifacts });
+  const worker = await createWorker({ connection: env.nativeConnection, taskQueue, runtime, workflowBundle: bundle });
+  const driver = new TemporalDriver(env.client, taskQueue, o.runOptions);
+  return { ...w, rt: runtime, driver, control: new Runtime(w.db, w.adapters, w.faults, driver, { signer: w.rt.signer, artifacts: w.rt.artifacts }), serve: (body) => worker.runUntil(body()) };
 }
 
 async function stateOf(s: Scheduled, runId: string, state: string): Promise<void> {
@@ -151,6 +153,43 @@ describe("Temporal schedules runs", () => {
     expect(done.state).toBe("cancelled");
     expect((await s.control.evidence("t10")).find((e) => e.criterion === "owner_approved")).toMatchObject({ passed: false, detail: { expired: true } });
     expect(pr.prepares).toHaveLength(0);
+  });
+
+  it("waits out a restart's backoff on a durable timer, not in an activity (§8.7, P2-16)", async () => {
+    const agents = new SimAgents().on("Worker.fix", (_req, n) => (n === 1 ? { error: { tag: "Timeout" }, cost: { steps: 1 } } : { ok: "fixed", cost: { steps: 1 } }));
+    const s = await scheduled(FIX.replace("delegate Worker.fix(issue)", "delegate Worker.fix(issue) supervise restart(max: 1, backoff: 1s)"), { agents, clock: wallClock });
+    const t0 = Date.now();
+    await s.control.startRun({ pkg: s.pkg, workflow: "Fix", input: ISSUE, runId: "t11" });
+    const done = await s.serve(() => s.driver.result("t11"));
+    expect(done.state).toBe("succeeded");
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(500);
+    expect(agents.calls.map((c) => c.attempt)).toEqual([0, 1]);
+    // The run waited on a timer: the worker gave the lease up, and the timer's expiry resumed it with a new one.
+    const events = await s.control.journal.events("t11");
+    expect(events.some((e) => e.type === "run_waiting" && isObj(e.data) && isObj(e.data["waiting"]) && e.data["waiting"]["kind"] === "timer")).toBe(true);
+    expect(events.filter((e) => e.type === "lease_acquired")).toHaveLength(2);
+  });
+
+  it("continues as new after many waits, losing nothing (§16.1, P2-16)", async () => {
+    const s = await scheduled(ASK, { runOptions: { waitsPerHistory: 2 } });
+    await s.control.startRun({ pkg: s.pkg, workflow: "Ask", input: ISSUE, runId: "t12" });
+    const handle = env.client.workflow.getHandle(workflowId("t12"));
+    const first = (await handle.describe()).runId;
+    const done = await s.serve(async () => {
+      await stateOf(s, "t12", "waiting");
+      // Wakes that change nothing still cost history: three of them start a new execution.
+      for (let i = 0; i < 3; i++) {
+        await s.driver.wake("t12");
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      for (let i = 0; i < 100 && (await handle.describe()).runId === first; i++) await new Promise((r) => setTimeout(r, 50));
+      const run = await s.control.getRun("t12");
+      await s.control.submitInput("t12", { sender: "alice", messageId: "m1" }, { commandId: waitOf(run.waiting).command, revision: run.revision, value: "yes" });
+      return s.driver.result("t12");
+    });
+    expect(done.state).toBe("succeeded");
+    expect((await handle.describe()).runId).not.toBe(first);
+    expect((await s.control.getRun("t12")).result).toBe("yes");
   });
 
   it("cancelling a waiting run ends its workflow", async () => {

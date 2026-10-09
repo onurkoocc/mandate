@@ -39,6 +39,7 @@ Two database drivers share one interface (`runtime/src/db.ts`):
 | `evidence` | Contract criteria results that back a `Verified` value |
 | `inbox` | Inbound message keys with their payload digests |
 | `outbox` | Committed actions waiting for, or past, delivery |
+| `artifacts` | Which run (and tenant) recorded which artifact digest; the bytes live in the artifact store |
 
 Every write that must be atomic runs in one transaction that first locks the
 run's row (`select … for update`). This covers reserve plus dispatch,
@@ -64,6 +65,30 @@ with the violation `nondeterministic_replay`.
 A command is at least once. A crash between the call and its record sends
 the call again. External effects are protected separately, as described
 below.
+
+## Artifacts (§16.1)
+
+Large data stays out of events and commands. The artifact store keeps it
+by content: an artifact is named by the SHA-256 of its bytes,
+`blob:sha256:<hex>` (`runtime/src/artifacts.ts`). It holds:
+
+- the files an action will apply, frozen when the action is prepared;
+- what a check ran against: the working copy's tree, a manifest of
+  `path → sha256` (`mandate/tree/0.1`).
+
+The bytes are kept once, in a content-addressed directory
+(`<dir>/sha256/<2 hex>/<hex>`), or in memory for in-process runs. Access is
+not shared. The `artifacts` table records which tenant and run stored which
+digest, and a run reads only its own artifacts:
+
+- A digest recorded by another tenant or another run is refused exactly
+  like one nobody stored (`artifact_not_found`), so a refusal does not say
+  whether the artifact exists (G08).
+- Reading hashes the bytes again; bytes that no longer match their digest
+  are refused (`artifact_corrupt`).
+
+`Runtime.artifact(run, ref)` reads one, and `mandate artifact <run> <ref>`
+prints it.
 
 ## Budget (§8.6)
 
@@ -151,11 +176,16 @@ the system prompt marks as data only.
 
 ## External effects (§8.5, §8.8, §8.9)
 
-1. **Prepare.** The adapter validates the parameters. The runtime then
-   freezes them into an action digest. The digest covers the package, run,
-   node, effect, adapter id, adapter contract digest, parameters, evidence
-   and idempotency key. The operation key is derived from the tenant, run,
-   node and action digest.
+1. **Prepare.** The adapter validates the parameters and reads the files
+   the action will apply. The runtime stores the files in the artifact
+   store, and prepare is a journaled command (`<node>/prepare`) whose result
+   keeps their digests, so a resumed worker finds the same action. The
+   runtime then freezes everything into an action digest. The digest covers
+   the package, run, node, effect, adapter id, adapter contract digest,
+   parameters, evidence, idempotency key and the files' digests. The
+   operation key is derived from the tenant, run, node and action digest.
+   Execute later gets the files from the store: it sends the bytes that
+   were frozen, whatever happened to the working copy since.
 2. **Authorize.** By default, policy authorizes the action, and a person
    authorizes an irreversible one; `StartRun` can override this per effect.
    A person's approval applies only to the digest they saw, and only before
@@ -171,6 +201,14 @@ the system prompt marks as data only.
 
 At run time, a parameter declared `Verified<T, C>` must carry evidence for
 `C` (INV-13). Without it the effect fails with `PolicyDenied`.
+
+Evidence is bound to what it checked (G01, INV-05). A test records the
+working copy's files with their digests. Before an action is created, every
+file it will apply must appear, with the same digest, in each such piece of
+evidence the action's parameters carry. A file changed since the check, or
+one the check never saw, makes the evidence stale: the run stops with the
+violation `stale_evidence` (`attention_required`), and nothing is
+prepared or sent.
 
 A worker may find an action already dispatched, because the previous worker
 died after commit. The adapter's retry class then decides what happens:
@@ -198,6 +236,9 @@ adapter:
     applied.
   - Too late: it was applied, and its receipt is recorded.
   - Unknown: nothing changes.
+- **`Stop`.** A cancelled run's agent processes are stopped in their
+  sandboxes, not left to their timeouts (`sandbox_stopped`; see
+  `spec/sandbox.md`).
 
 ### `git.open_pr` on GitHub
 
@@ -234,8 +275,10 @@ it. `Cancel` is too late once a pull request exists.
 `verify x against C(…)` checks C's `require` clauses, then its criteria
 in order of their method: static checks, tests, evals and reviews, then
 people; by name within each group. A criterion that combines methods runs
-with its last one. Each check records one evidence row: contract, criterion, method, passed,
-and detail. A criterion that names several checks (`static … and
+with its last one. Each check records one evidence row: contract,
+criterion, method, passed, detail, and its subject. The subject is a
+digest of the contract's arguments; a check of the working copy adds its
+files by digest, and the tree as an artifact. A criterion that names several checks (`static … and
 review(…)`) records one row per check, so a review is never the only
 evidence for it. Only when every criterion passed does the value become
 `Verified<T, C>`, carrying the ids of its evidence. The ids also enter the
@@ -260,6 +303,103 @@ verifier call:
   whether `tick` (under Temporal, a durable timer) gets there first or a
   late `DecideAction` does. The run then goes to `on unmet` like any other
   unmet criterion.
+
+### Evidence records (§10.3)
+
+Every check writes one evidence record, and the runtime signs it with the
+control plane's ed25519 key (`runtime/src/evidence.ts`). The agent never
+produces evidence. A record names:
+
+- **What was checked:** the run, the package, the contract and the hash of
+  its definition, the criterion, the method, and whether it passed.
+- **Against what (`subject`):** a digest of the contract's arguments; for a
+  check of the working copy, its files by digest and the tree as an
+  artifact.
+- **By whom (`producer`):** the runtime for a static criterion; the person,
+  their role and the channel for `human.approve`; for a verifier call, the
+  verifier's handler, the sandbox its tests ran in, and for a review the
+  judge's model snapshot and prompt digest.
+- **With which outputs (`artifacts`):** test logs by phase and result, the
+  diff and the review, each a reference into the artifact store.
+- **When (`at`).**
+
+The signature covers `mandate/evidence/0.1\n` followed by the record's JCS
+bytes. It is stored with the key's id, the SHA-256 of its public key. A
+runtime trusts its own key and the public keys it is given.
+
+`verifyEvidence(run)` checks every record against its signature. The
+runtime also checks before an effect uses a `Verified` value (G03). The
+value's evidence ids are looked up in the run's store, never taken on the
+value's word. Each must:
+
+- be evidence of this run, for the value's contract;
+- have passed;
+- be signed by a trusted key, exactly as recorded;
+- if it claims a verifier attestation, carry one that holds (below).
+
+Together they must cover every criterion of the contract. Otherwise the
+run stops with the violation `forged_evidence`, before anything is
+prepared.
+
+### The runtime's verifier
+
+`SandboxVerifier` (`runtime/src/verifier.ts`) checks test criteria in the
+runtime process, where the agents cannot reach. Every test runs in a new,
+read-only sandbox of its own, over a copy of the working copy:
+
+- **`test.suite([names])`.** Each named suite must pass. A suite is pinned
+  by default: its files are taken from the base commit, before any agent
+  ran, and run over a copy of the working copy. An agent that weakens,
+  deletes or adds a test file changes nothing about what runs. The record
+  lists the pinned files by digest, and the ones the agents changed (G06).
+  `{ "files": "…", "pinned": false }` runs the working copy's files instead.
+- **`test.red_then_green(patch, tests)`.** The new tests must fail with
+  the patched files as they were at the base commit, and pass as the
+  agents left them.
+- **`review(model: tier, isolated)`.** A model reviews the diff in a fresh
+  context. It is reserved and settled like any model call, and never
+  enough on its own (E0603).
+
+### A verifier of its own
+
+With `verifier.process` in `mandate.runtime.json`, the checks run in a
+separate process (`runtime/src/verifier-main.ts`), which the runtime
+starts and talks to over stdio, one JSON-RPC 2.0 message per line
+(`open`, `key`, `upperBound`, `check`; `runtime/src/verifier-service.ts`).
+It runs the same `SandboxVerifier`, and signs each result with its own
+ed25519 key, which the runtime process never reads. What it signs, its
+*check attestation*, is:
+
+```json
+{
+  "format": "mandate/check-attestation/0.1",
+  "request": "sha256:…",
+  "passed": true, "detail": { … },
+  "subject": { "src/a.ts": "sha256:…" },
+  "producer": { "kind": "runtime", "handler": "mandate-sandbox-verifier@0.2", "sandbox": "mxc:process" },
+  "logs": [ { "kind": "test_log", "phase": "after", "result": "pass", "digest": "sha256:…" } ],
+  "cost": null
+}
+```
+
+The signature covers `mandate/check-attestation/0.1
+` followed by the
+statement's JCS bytes. `ProcessVerifier`, on the runtime's side, computes
+the same statement from the request and the result it received, and
+accepts the result only when the signature verifies against a pinned
+verifier key. Otherwise the criterion is not met, with the detail
+`unattested_check`: a result the verifier did not sign never passes.
+
+An accepted result's `producer` carries `process: "separate"` and the
+attestation (statement, key id, signature) into the evidence record.
+`verifyEvidence` and the `Verified` check (G03) then also require the
+attestation to verify under a trusted verifier key, and to say what the
+record says: passed, detail, the files checked, and each output's digest.
+So the runtime's key alone cannot make a check pass.
+
+The verifier creates its key on first use (`.mandate/verifier.key` by
+default) and writes its public half to `<key>.pub`, which the runtime
+trusts unless `verifier.process.trusted` names other public keys.
 
 Unmet criteria go to `on unmet(c)`, or else fail the verify with
 `Rejected`. An answer to an `escalate` there is the escalation's value,
@@ -367,12 +507,137 @@ the results, and is offered only `finish`.
   `Timeout` or `SkillFailed`, and never on other faults. Backoff is
   exponential with jitter. The jitter is a journaled command, so replay
   neither draws it again nor waits.
+- **Timers.** Who waits out a backoff depends on the runtime. Inline, the
+  worker sleeps. With durable timers (`{ durableTimers: true }`, which a
+  Temporal worker's runtime must use):
+  - the start of the wait is a journaled `time` command, so its end is
+    fixed;
+  - until the end, the run is `waiting` with
+    `{ kind: "timer", request: { reason, until, deadline } }`, and no
+    worker holds its lease;
+  - `tick` resumes the run once the end has come. A worker that resumes it
+    earlier waits again, for the same end.
+- **Escalate.** `supervise escalate(human)` (optionally `role: "…"`) asks a
+  person when the delegate fails with `Timeout`, `SkillFailed`,
+  `PolicyDenied` or `Rejected`. The run waits for input
+  (`<delegate>/escalate`) with the fault, the attempt and the options
+  `retry` and `fail`. The answer `retry` runs a new attempt; any other
+  answer lets the fault stand. A person may be asked at most 5 times.
+- **Degrade.** `supervise degrade(to: F)` hands the job once to the
+  fallback agent `F` on `Timeout` or `SkillFailed`: the same skill with the
+  same arguments, as the command `<delegate>~F`, under `F`'s own grant. `F`
+  does the same job with no more authority (E0715). Its fault, if any, is
+  the delegation's.
+- **Not handled by supervision.** `BudgetExceeded` goes to the run's
+  budget handler, `Throttled` to the rate limiter, and `UnknownOutcome` to
+  reconciliation.
 - **Branch results.** `par` branches start together, and their results are
   bound by branch name, never by completion order.
 - **`fail_fast`.** Under `fail_fast` (the default), the first fault stops
   the other branches before their next dispatch. The block still ends only
   when every branch has settled, so an external action already in flight is
   followed to its result (R10).
+
+## Remote agents and delivery (§9.6, G12)
+
+A2A does not require a server to deduplicate messages by id, so a task sent
+twice may run twice. A delegation to a remote agent is sent at most once
+unless its adapter says the partner's server deduplicates messages
+(`AgentAdapter.remoteProfile`):
+
+- **Required.** A remote binding with `require idempotent_messages` does
+  not start against an adapter without that guarantee
+  (`unsupported_binding`).
+- **Lowered.** Otherwise the run records `guarantee_lowered` when it
+  starts. A task found in flight after a crash is not sent again: the run
+  needs attention (`delivery_unknown`), and a person decides.
+- **Deduplicated.** For a server that deduplicates, a task in flight after
+  a crash is sent again under the same command, as for any other command.
+
+## Timeouts and postconditions (§4.6, §8.7, §9.1)
+
+- **`delegate … timeout d`.** Each attempt must finish within `d` of its
+  start. The start is a journaled `time` command (`<delegate>/started`), so a
+  resumed worker keeps the same deadline, and a restart gets a deadline of
+  its own.
+  - An agent loop is stopped before its next step once the deadline has
+    passed. A step not sent by then is never sent.
+  - An adapter that answers in one call gets the deadline in its request. A
+    result that arrives after it is discarded; what the call spent is
+    settled.
+  - Either way the attempt fails with `Timeout({ delegate, after_ms })`. A
+    loop's fault keeps the files it wrote (`partial`). `Timeout` can be
+    restarted.
+- **`ensures e`.** After the body returns, `e` is evaluated with `result`
+  bound to the result. A run whose result breaks it fails with
+  `Rejected({ reason: "ensures" })`, or needs attention if one of its
+  actions is still unresolved.
+
+## Tests (§6.4)
+
+A program's `test` blocks run with `mandate test <program>`
+(`runtime/src/testing.ts`). Each runs workflows against deterministic
+handlers, on an in-process database of its own:
+
+| Handler | Stands for |
+|---|---|
+| `Time = fixed_clock("<ISO time>")` | The clock; it starts there and moves only when the run waits |
+| `Model = replay("<file.jsonl>")` | Recorded answers, one JSON object per line: `{ "for": "Agent.skill" \| "infer", "ok": … }` or `"error"`, with an optional `"cost"`; each key's answers are used in order |
+| `Fs = memfs("<dir>")` | The working copy: `fs.read_text` and `fs.list` read it, and checks and git effects see its files |
+| `Verify = pass_all()`, `results(criterion: Bool, …)` | Contract checks |
+| `git = fake_git()` | Every `git.*` effect, applied in memory |
+| `Human = auto_approve(role: r)`, `auto_decline(role: r)`, `answer("<text>")` | A person who decides every wait for role `r` (any role without it), or answers every question |
+
+- **Arguments.** `run W(args) expect e` runs `W`. `fixtures.<name>` is the
+  JSON file `fixtures/<name>.json` next to the program.
+- **Expectations.** `expect ok` means the run succeeded. `failed`,
+  `waiting`, `attention_required` and `cancelled` name the state it must
+  end in.
+- **Files.** Handler files and fixtures must be inside the program's
+  directory.
+- **Unknown handlers.** A handler the runner does not know fails the test
+  by name. An effect with no handler stops the run, as an unconfigured
+  adapter does (`no_handler`).
+
+Swapping handlers is possible only in tests. In a real run, the runtime
+picks every handler (INV-03).
+
+## Rate limits and `Throttled` (§8.6, V14)
+
+A budget says how much in total; a rate limit says how much per unit of
+time, and they are kept apart (`runtime/src/ratelimit.ts`).
+
+- **Shared buckets.** Token buckets live in PostgreSQL (`rate_buckets`), so
+  every run and every worker draws from the same ones:
+  - `model`: every model call, meaning `infer`, an agent loop's turns and a
+    review;
+  - `model:<tier>`: model calls of one tier;
+  - `tool`: an agent loop's tool calls.
+
+  A bucket holds up to `capacity` tokens and refills at `perSecond`. A call
+  takes one token from each bucket that applies, or from none.
+- **Throttled.** A call is `Throttled({ retry_after_ms })` when a bucket is
+  empty, or when the provider says so (the Anthropic adapter maps 429 and
+  529, with `retry-after`). Then:
+  - it is not a `BudgetExceeded`;
+  - it is not an attempt a supervisor counts;
+  - its reservation is released (`command_throttled`), so nothing is held
+    while it waits;
+  - it waits `retry_after_ms`, on a durable timer when the runtime has
+    them, and is sent again under the same command id.
+
+  After 20 throttles the `Throttled` fault reaches the program.
+- **Back pressure.** At most `queue` calls (default 100) may wait on a
+  bucket. Past that, a call fails at once with
+  `Throttled({ …, queue_full: true })`. It is never queued silently.
+- **Configuration.** `rateLimits` in `mandate.runtime.json`, or
+  `RuntimeOptions.rateLimits`.
+
+- **Priority classes.** A run is `high` (work a person waits for) or
+  `normal` (batch; the default), set at `StartRun` or with
+  `mandate run --priority high`. A bucket may keep `reserve` tokens that
+  only `high` calls may take, so batch runs cannot drain it while a person
+  waits.
 
 ## Run states
 
@@ -452,6 +717,8 @@ mandate answer <run> --revision N --by NAME <text>
 mandate cancel <run>
 mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
 mandate replay <run>
+mandate artifact <run> <blob:sha256:…>
+mandate show <run> [--format md|html|json]
 ```
 
 **Configuration.** Each call reads `mandate.runtime.json`, or the file
@@ -460,15 +727,31 @@ mandate replay <run>
 ```json
 {
   "database": "pglite:.mandate/db",
+  "artifacts": ".mandate/artifacts",
+  "evidence": { "key": ".mandate/evidence.key" },
+  "rateLimits": { "model": { "capacity": 50, "perSecond": 1 } },
   "model": { "provider": "anthropic" },
   "sandbox": { "host": "mxc", "baseline": ["/usr/local"] },
   "github": { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },
-  "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"] }
+  "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"], "process": { "key": ".mandate/verifier.key" } }
 }
 ```
 
 - **Database.** `pglite:<dir>` keeps the database in a directory, so a run
   outlives each call; `postgresql://…` uses a server.
+- **Artifacts.** The artifact store's directory, `.mandate/artifacts` next
+  to the configuration by default.
+- **Evidence key.** The control plane's ed25519 key, `.mandate/evidence.key`
+  by default, created on first use and readable by its owner only.
+  `"trusted": ["old.pem"]` names other public keys whose evidence counts.
+  `mandate rotate-key` replaces the key: the new one signs from then on,
+  and the old one's public half is kept in `trusted-keys/<key id>.pem`
+  next to the key, where every later call loads it, so evidence it signed
+  still verifies. Its private half is gone. To stop trusting an old key,
+  remove its file: what it signed then shows `SIGNATURE INVALID`.
+- **Verifier process.** `verifier.process` runs the checks in a process of
+  their own with their own key (`key`, default `.mandate/verifier.key`;
+  `trusted`, default the key's `.pub` file). See "A verifier of its own".
 - **Secrets.** They come only from the environment: `CLAUDE_API_KEY` (and
   `CLAUDE_WORKSPACE_ID` for a key that is not scoped to a workspace), and
   `MANDATE_GITHUB_TOKEN`.
@@ -482,7 +765,9 @@ mandate replay <run>
 - for an answer: the question;
 - in both cases, the command to answer it at the current revision.
 
-It also shows the budget table, the evidence and the actions.
+It also shows the budget table, the evidence with whether its signature
+holds, and the actions. `mandate show` prints the run's views
+([`views.md`](views.md)), as Markdown, a self-contained HTML page, or JSON.
 
 **Decisions and revisions.** A decision names the revision the person saw.
 If the run has moved since, the decision is refused (`stale_revision`) and
@@ -510,8 +795,15 @@ id `mandate-run/<run id>`, and the workflow loops:
 3. If the run is waiting or needs attention, the workflow sleeps until a
    `wake` signal arrives, or until the deadline of the wait the run is in.
 4. On a signal it drives the run again. When the deadline passes, the
-   `expire` activity runs `Runtime.tick`, which expires the wait and drives
-   the run on (R15).
+   `expire` activity runs `Runtime.tick`. That expires a decision's wait
+   (R15), or resumes a run whose timer is due (a restart's backoff); either
+   way the run goes on. A backoff is a Temporal timer, never a sleep inside
+   an activity.
+5. **Continue-as-new.** After 200 waits, or sooner when Temporal suggests
+   it, the workflow continues as a new execution with an empty history
+   (`TemporalDriver(client, queue, { waitsPerHistory })`). Nothing is lost:
+   the run's state is in PostgreSQL, and the new execution drives the run
+   first. A wake sent meanwhile reaches the new execution.
 
 Activities heartbeat. When a worker dies, Temporal retries the activity on
 another worker, which takes a new lease and resumes from the journal. The
@@ -531,15 +823,13 @@ The same mechanisms are tested under Temporal against a local dev server:
 - a crash after a recorded result (R01) and after commit (R02);
 - input and approval;
 - a deadline timer (R15);
+- a restart's backoff on a durable timer;
+- continue-as-new after several waits;
 - cancel;
 - reconciliation (R04).
 
 ## Not in this runtime yet
 
-- **Continue-as-new.** A run that waits very many times grows its workflow
-  history; the workflow does not yet start a fresh history.
-- **Restart backoff as a durable timer.** The backoff wait happens inside
-  the `drive` activity, not on a Temporal timer.
 - **`map`, and so R11 by input index and R12.** The 0.1 IR has no `map`.
   `par` results are bound by name, and that binding is tested in its place.
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.

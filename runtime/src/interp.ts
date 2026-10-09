@@ -37,7 +37,11 @@ import {
   type Verifier,
   type WorkflowDef,
 } from "@mandate/compiler";
-import type { Adapters, Cost, Outcome, ToolAdapter } from "./adapters.js";
+import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ToolAdapter } from "./adapters.js";
+import type { ArtifactStore } from "./artifacts.js";
+import { attestationProblem } from "./attestation.js";
+import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
+import type { RateLimiter } from "./ratelimit.js";
 import type { Faults } from "./faults.js";
 import { runAgentLoop, type LoopTask } from "./loop.js";
 import type { ActionRow, CommandRow, Journal } from "./journal.js";
@@ -60,6 +64,27 @@ import {
 /** What a command reserves when it is sent: a fixed bound, or one measured just before sending. */
 type Reserve = Cost | Budget | undefined | (() => Promise<Cost | Budget | undefined>);
 
+interface CommandOptions {
+  /** The par block's shared state: a failed sibling stops this command before it is sent (fail_fast). */
+  siblings?: Siblings | undefined;
+  label?: string;
+  /** The command whose reservation pays for this one: the steps of an agent loop are charged to their delegation. */
+  within?: string;
+  /** Called before a command that is not in the journal yet is sent; it may refuse it with a fault (a deadline). */
+  guard?: () => void;
+  /** The rate-limit buckets the command draws from (§8.6). */
+  buckets?: string[];
+  /**
+   * The command must not be sent twice: found in flight after a crash, it is
+   * not sent again, and the run stops for a person (a remote agent whose
+   * server does not deduplicate messages, G12).
+   */
+  atMostOnce?: boolean;
+}
+
+/** How often one command may be throttled before the Throttled fault reaches the program. */
+const MAX_THROTTLES = 20;
+
 export type AuthorizePolicy = { by: "policy" } | { by: "human"; role: string; deadlineMs?: number };
 
 export interface Policy {
@@ -68,6 +93,8 @@ export interface Policy {
   authorize?: Record<string, AuthorizePolicy>;
   /** How long a policy authorization stays valid. */
   authorizationTtlMs?: number;
+  /** The run's priority class in shared rate limits (§8.6): `high` for work a person waits for. Default `normal`. */
+  priority?: "high" | "normal";
 }
 
 /** Replay reached a command whose result is not in the journal. */
@@ -112,11 +139,33 @@ export interface InterpOptions {
   fence: number;
   policy: Policy;
   faults: Faults;
+  /** Where an action's files and a check's outputs are kept (§16.1). */
+  artifacts: ArtifactStore;
+  /** Signs every evidence record (§10.3); `trusted` decides which signatures count. */
+  signer: EvidenceSigner;
+  trusted: TrustedKeys;
+  /** Verifier keys whose check attestations count (P2-11). */
+  verifiers?: TrustedKeys;
+  /** Shared rate limits (§8.6); none when absent. */
+  limiter?: RateLimiter;
   /** Replay reads the journal only and never calls an adapter (R13). */
   replay: boolean;
+  /**
+   * Who keeps a wait's timer (a restart's backoff, §8.7). Inline, this worker
+   * sleeps. Durable, the run waits and its scheduler (Temporal) wakes it with
+   * `tick` when the time comes, so no worker holds a lease while it waits.
+   */
+  durableTimers?: boolean;
 }
 
 const RESTARTABLE = new Set(["Timeout", "SkillFailed"]);
+
+/** Faults a person may be asked about under escalate(human) (§8.7), and how often. */
+const ESCALATABLE = new Set(["Timeout", "SkillFailed", "PolicyDenied", "Rejected"]);
+const MAX_ESCALATIONS = 5;
+
+/** The runtime itself, as the producer of the evidence it checks without a verifier (static criteria). */
+const RUNTIME_HANDLER = "mandate-runtime@0.2";
 
 export class Interpreter {
   private readonly defs: Record<string, Def>;
@@ -138,12 +187,19 @@ export class Interpreter {
       vars.set(p.name, input[p.name]!);
     }
     const ctx: Ctx = { scope: { vars }, where: "workflow" };
+    let result: Value;
     try {
-      return await this.block(wf.body, ctx, `/defs/${name}/body`);
+      result = await this.block(wf.body, ctx, `/defs/${name}/body`);
     } catch (e) {
-      if (e instanceof Return) return e.value;
-      throw e;
+      if (!(e instanceof Return)) throw e;
+      result = e.value;
     }
+    // `ensures e` (§4.6): the workflow's postcondition over its result. A run whose result breaks it does not succeed.
+    if (wf.ensures) {
+      const held = truthy(unwrap(await this.expr(wf.ensures, { scope: { vars: new Map([["result", result]]), parent: ctx.scope }, where: "workflow" }, `/defs/${name}/ensures`)));
+      if (!held) throw new Fault("Rejected", [{ reason: "ensures", workflow: name }]);
+    }
+    return result;
   }
 
   workflowDef(name: string): WorkflowDef {
@@ -515,26 +571,49 @@ export class Interpreter {
    * `within` names the command whose reservation pays for this one: the steps
    * of an agent loop are charged to their delegation (Journal.dispatch).
    */
-  private async command(id: string, kind: string, request: Value, reserve: Reserve, call: () => Promise<Outcome>, siblings?: Siblings, label?: string, within?: string): Promise<Value> {
+  private async command(id: string, kind: string, request: Value, reserve: Reserve, call: () => Promise<Outcome>, opts: CommandOptions = {}): Promise<Value> {
+    const { siblings, label, within, guard } = opts;
     const requestDigest = digest("request", { kind, request });
     const { journal, runId, fence, faults } = this.o;
     if (this.o.replay) return replayed(await journal.command(runId, id), id);
-    if (siblings?.failed) throw new SiblingStopped();
-    let bound: Cost | Budget | undefined;
-    if (typeof reserve === "function") {
-      // Measuring the bound may itself call out (a token count), so it is done only for a command that will be sent.
+    // The throttle wait this worker already sat through, so it is not waited twice.
+    let waited = -1;
+    for (;;) {
+      if (siblings?.failed) throw new SiblingStopped();
       const earlier = await journal.command(runId, id);
-      if (!earlier || (earlier.state !== "succeeded" && earlier.state !== "failed")) bound = await reserve();
-    } else bound = reserve;
-    const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, bound, within);
-    if (prior) return replayed(prior, id);
-    faults.check("after_dispatch", { id, kind });
-    const outcome = await call();
-    faults.check("before_record", { id, kind });
-    await journal.complete(runId, fence, id, outcome, within);
-    faults.check("after_record", { id, kind });
-    if ("ok" in outcome) return outcome.ok;
-    throw new Fault(outcome.error.tag, outcome.error.args ?? []);
+      const settled = earlier && (earlier.state === "succeeded" || earlier.state === "failed");
+      let bound: Cost | Budget | undefined;
+      if (!settled) {
+        if (opts.atMostOnce && earlier?.state === "dispatched") {
+          throw new Attention({ command: id, reason: "delivery_unknown", detail: "this task was sent to a remote agent whose server does not deduplicate messages; sending it again could run it twice" });
+        }
+        // A command throttled before waits out its retry_after first (§8.6); the wait is not an attempt.
+        if (earlier?.state === "throttled" && earlier.throttled !== waited) await this.pause(`${id}/throttled@${earlier.throttled}`, retryAfter(earlier.error), "throttled");
+        // A guard (a deadline) applies only to what is still to be sent, and measuring the bound may call out
+        // (a token count): neither happens for a command the journal already has a result for.
+        guard?.();
+        bound = typeof reserve === "function" ? await reserve() : reserve;
+      }
+      const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, bound, within);
+      if (prior) return replayed(prior, id);
+      faults.check("after_dispatch", { id, kind });
+      const limited = opts.buckets?.length && this.o.limiter ? await this.o.limiter.take(opts.buckets, this.o.policy.priority ?? "normal") : undefined;
+      const outcome = limited ?? (await call());
+      faults.check("before_record", { id, kind });
+      if ("error" in outcome && outcome.error.tag === "Throttled" && !queueFull(outcome.error)) {
+        // Not now, says a rate limit or the provider: release the reservation, wait, and send the same command again.
+        const n = await journal.throttle(runId, fence, id, outcome.error as unknown as Value);
+        if (n <= MAX_THROTTLES) {
+          await this.pause(`${id}/throttled@${n}`, retryAfter(outcome.error as unknown as Value), "throttled");
+          waited = n;
+          continue;
+        }
+      }
+      await journal.complete(runId, fence, id, outcome, within);
+      faults.check("after_record", { id, kind });
+      if ("ok" in outcome) return outcome.ok;
+      throw new Fault(outcome.error.tag, outcome.error.args ?? []);
+    }
   }
 
   /** A wait for a person. The journal holds the answer once it arrives. */
@@ -549,6 +628,21 @@ export class Interpreter {
     return replayed(row, id);
   }
 
+  /**
+   * Waits `ms` before going on (§8.7 backoff, §8.6 Throttled). Inline, the
+   * worker sleeps. With durable timers the start is journaled, so the end is
+   * fixed; until it comes the run waits (`kind: "timer"`, with the end as its
+   * deadline), and its scheduler resumes it then. Replay never waits.
+   */
+  private async pause(id: string, ms: number, reason: string): Promise<void> {
+    if (this.o.replay || ms <= 0) return;
+    if (!this.o.durableTimers) return this.o.adapters.clock.sleep(ms);
+    const started = Number(await this.command(id, "time", {}, undefined, async () => ({ ok: this.o.adapters.clock.now() })));
+    const until = started + ms;
+    if (this.o.adapters.clock.now() >= until) return;
+    throw new Suspend({ kind: "timer", command: id, request: { reason, until, deadline: until } });
+  }
+
   private async random(id: string): Promise<number> {
     return Number(await this.command(id, "random", {}, undefined, async () => ({ ok: this.o.adapters.random() })));
   }
@@ -558,7 +652,7 @@ export class Interpreter {
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
     const tier = this.tierFor(e.using, path);
     const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
-    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), ctx.siblings, "infer");
+    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), { siblings: ctx.siblings, label: "infer", ...this.limits("infer", tier) });
   }
 
   /**
@@ -577,82 +671,160 @@ export class Interpreter {
     return all.length === 1 ? all[0] : undefined;
   }
 
+  /**
+   * `delegate A.s(args)` under its supervision strategy (§8.7):
+   *
+   *   restart(max, backoff)   Timeout or SkillFailed: the same operation again, as a new attempt, after a
+   *                           backoff with journaled jitter; at most `max` times
+   *   escalate(human)         Timeout, SkillFailed, PolicyDenied or Rejected: a person decides, answering
+   *                           "retry" (a new attempt) or anything else (the fault goes on); at most 5 times
+   *   degrade(to: F)          Timeout or SkillFailed: once, F does the same skill with the same arguments; F does
+   *                           the same job with no more authority (E0715)
+   *
+   * BudgetExceeded, Throttled and UnknownOutcome are never handled here: the run's budget handler, the rate
+   * limiter and reconciliation own them.
+   */
   private async delegate(e: Extract<Expr, { op: "delegate" }>, ctx: Ctx, path: string): Promise<Value> {
-    const agent = this.def(e.agent);
-    if (!agent || agent.kind !== "agent") throw new Violation("unknown_agent", `No agent '${e.agent}'.`);
-    const skill = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill]! : undefined;
-    if (!skill) throw new Violation("unknown_skill", `No skill '${e.agent}.${e.skill}'.`);
     const { pos } = await this.args(e.args, ctx, path);
-    const granted = this.grants(e.agent, e.caps ?? [], path);
-    const caps = granted.map((c) => (c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor }));
-    const budget = e.budget ?? skill.budget ?? agent.budget;
-    const sandbox = agent.remote ? undefined : requirementFor({ agent: e.agent, def: this.defHash(e.agent) }, granted, budget?.time?.ms ?? null);
     const sup = e.supervise;
-    const max = sup?.name === "restart" ? Number(constValue(sup.args?.find((a) => a.name === "max")?.value ?? { op: "int", value: 1 })) : 0;
-    const backoff = sup?.name === "restart" ? Number(constValue(sup.args?.find((a) => a.name === "backoff")?.value ?? { op: "duration", ms: 0 })) : 0;
+    const arg = (name: string): Expr | undefined => sup?.args?.find((a) => a.name === name)?.value;
+    const max = sup?.name === "restart" ? Number(constValue(arg("max") ?? { op: "int", value: 1 })) : 0;
+    const backoff = sup?.name === "restart" ? Number(constValue(arg("backoff") ?? { op: "duration", ms: 0 })) : 0;
+    const to = arg("to");
+    const fallback = sup?.name === "degrade" && to?.op === "var" ? to.name : undefined;
+    // `timeout d` (§8.7, §9.1): each attempt must finish within d of its start. The start is journaled, so a resumed
+    // worker keeps the deadline; a step not sent by then is refused, and a result that comes later is discarded.
+    const timeoutMs = e.timeout ? Number(unwrap(await this.expr(e.timeout, ctx, `${path}/timeout`))) : undefined;
     for (let attempt = 0; ; attempt++) {
       const id = attempt ? `${path}#${attempt}` : path;
-      const request = { agent: e.agent, skill: e.skill, args: pos, caps: caps as unknown as Value, isolated: !!e.isolated };
-      const loop = this.o.adapters.loop;
       try {
-        if (loop && sandbox && !skill.body) {
-          // A bodiless skill runs as an agent loop in this process (§8.2, K7). The delegation reserves the
-          // agent's budget less what its finished steps already spent, so a resumed loop is not charged twice.
-          const tiers = [...new Set(granted.filter((c) => c.ctor === "model.infer" && c.tier).map((c) => c.tier!))];
-          const task: LoopTask = {
-            id,
-            agent: e.agent,
-            skill: e.skill,
-            ...(agent.role !== undefined ? { role: agent.role } : {}),
-            params: skill.params,
-            args: pos,
-            returns: unwrapInferred(skill.returns),
-            grants: granted,
-            tier: tiers[0] ?? "",
-            strategy: agent.loop ?? "react",
-            progress: { ...PROGRESS_DEFAULTS, ...agent.progress },
-            ...(budget?.steps !== undefined ? { maxSteps: budget.steps } : {}),
-            sandbox,
-            program: this.o.program,
-          };
-          return await this.command(
-            id,
-            "delegate",
-            request,
-            async () => subtractCost(budget, await this.o.journal.childCost(this.o.runId, id)),
-            async () => {
-              if (tiers.length !== 1) {
-                return { error: { tag: "PolicyDenied", args: [{ reason: "model_tier", detail: `the agent loop needs exactly one model tier in its grant, not ${tiers.length}` }] }, cost: {} };
-              }
-              return runAgentLoop(task, {
-                step: (cid, kind, req, reserve, call, label) => this.command(cid, kind, req, reserve, call, ctx.siblings, label, id),
-                chat: loop.chat,
-                sandbox: loop.sandbox,
-                stopped: (x) => x instanceof SiblingStopped,
-              });
-            },
-            ctx.siblings,
-            `${e.agent}.${e.skill}`,
-          );
-        }
-        return await this.command(
-          id,
-          "delegate",
-          request,
-          budget,
-          () =>
-            this.o.adapters.agents.run({ agent: e.agent, skill: e.skill, args: pos, caps, isolated: !!e.isolated, attempt, commandId: id, ...(budget ? { budget } : {}), ...(sandbox ? { sandbox } : {}) }),
-          ctx.siblings,
-          `${e.agent}.${e.skill}`,
-        );
+        return await this.attempt(e.agent, e, pos, ctx, id, attempt, timeoutMs);
       } catch (f) {
-        // restart reruns the same operation with the same input; never on UnknownOutcome (§8.7).
-        if (!(f instanceof Fault) || !RESTARTABLE.has(f.tag) || attempt >= max) throw f;
-        // Exponential backoff with jitter; the jitter is journaled so replay waits the same (§8.7).
-        const jitter = await this.random(`${id}/jitter`);
-        if (!this.o.replay) await this.o.adapters.clock.sleep(Math.round(backoff * 2 ** attempt * (0.5 + jitter)));
+        if (!(f instanceof Fault)) throw f;
+        if (sup?.name === "restart" && RESTARTABLE.has(f.tag) && attempt < max) {
+          // restart reruns the same operation with the same input; never on UnknownOutcome (§8.7).
+          // Exponential backoff with jitter; the jitter is journaled so replay waits the same.
+          const jitter = await this.random(`${id}/jitter`);
+          await this.pause(`${id}/backoff`, Math.round(backoff * 2 ** attempt * (0.5 + jitter)), "restart_backoff");
+          continue;
+        }
+        if (fallback && RESTARTABLE.has(f.tag)) {
+          // degrade (§8.7): the fallback, once, with the same arguments; its own fault is the delegation's.
+          return await this.attempt(fallback, e, pos, ctx, `${path}~${fallback}`, 0, timeoutMs);
+        }
+        if (sup?.name === "escalate" && ESCALATABLE.has(f.tag) && attempt < MAX_ESCALATIONS) {
+          const role = arg("role");
+          const answer = await this.wait(`${id}/escalate`, "input", {
+            escalation: { delegate: `${e.agent}.${e.skill}`, fault: f.value(), attempt },
+            question: `${e.agent}.${e.skill} failed with ${show(f.value())}. Answer "retry" to run it again, or anything else to let the failure stand.`,
+            options: ["retry", "fail"],
+            ...(role?.op === "text" ? { role: role.value } : {}),
+          });
+          if (String(unwrap(answer)).trim().toLowerCase() === "retry") continue;
+        }
+        throw f;
       }
     }
+  }
+
+  /** One attempt of a delegation, by `agentName` (the called agent, or a degrade fallback), as command `id`. */
+  private async attempt(agentName: string, e: Extract<Expr, { op: "delegate" }>, pos: Value[], ctx: Ctx, id: string, attempt: number, timeoutMs: number | undefined): Promise<Value> {
+    const agent = this.def(agentName);
+    if (!agent || agent.kind !== "agent") throw new Violation("unknown_agent", `No agent '${agentName}'.`);
+    const skill = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill]! : undefined;
+    if (!skill) throw new Violation("unknown_skill", `No skill '${agentName}.${e.skill}'.`);
+    const granted = this.grants(agentName, e.caps ?? [], id);
+    const caps = granted.map((c) => (c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor }));
+    const budget = e.budget ?? skill.budget ?? agent.budget;
+    const sandbox = agent.remote ? undefined : requirementFor({ agent: agentName, def: this.defHash(agentName) }, granted, budget?.time?.ms ?? null);
+    const request = { agent: agentName, skill: e.skill, args: pos, caps: caps as unknown as Value, isolated: !!e.isolated };
+    const loop = this.o.adapters.loop;
+    const deadline = timeoutMs === undefined ? undefined : Number(await this.command(`${id}/started`, "time", {}, undefined, async () => ({ ok: this.o.adapters.clock.now() }))) + timeoutMs;
+    const timedOut = (late?: true): Fault => new Fault("Timeout", [{ delegate: `${agentName}.${e.skill}`, after_ms: timeoutMs ?? 0, ...(late ? { late_result: true } : {}) }]);
+    const overdue = deadline === undefined ? undefined : (): void => {
+      if (this.o.adapters.clock.now() >= deadline) throw timedOut();
+    };
+    const label = `${agentName}.${e.skill}`;
+    if (loop && sandbox && !skill.body) {
+      // A bodiless skill runs as an agent loop in this process (§8.2, K7). The delegation reserves the
+      // agent's budget less what its finished steps already spent, so a resumed loop is not charged twice.
+      const tiers = [...new Set(granted.filter((c) => c.ctor === "model.infer" && c.tier).map((c) => c.tier!))];
+      const task: LoopTask = {
+        id,
+        agent: agentName,
+        skill: e.skill,
+        ...(agent.role !== undefined ? { role: agent.role } : {}),
+        params: skill.params,
+        args: pos,
+        returns: unwrapInferred(skill.returns),
+        grants: granted,
+        tier: tiers[0] ?? "",
+        strategy: agent.loop ?? "react",
+        progress: { ...PROGRESS_DEFAULTS, ...agent.progress },
+        ...(budget?.steps !== undefined ? { maxSteps: budget.steps } : {}),
+        sandbox,
+        program: this.o.program,
+      };
+      return this.command(
+        id,
+        "delegate",
+        request,
+        async () => subtractCost(budget, await this.o.journal.childCost(this.o.runId, id)),
+        async () => {
+          if (tiers.length !== 1) {
+            return { error: { tag: "PolicyDenied", args: [{ reason: "model_tier", detail: `the agent loop needs exactly one model tier in its grant, not ${tiers.length}` }] }, cost: {} };
+          }
+          return runAgentLoop(task, {
+            step: (cid, kind, req, reserve, call, stepLabel) =>
+              this.command(cid, kind, req, reserve, call, { siblings: ctx.siblings, label: stepLabel, within: id, ...(overdue ? { guard: overdue } : {}), ...this.limits(kind, task.tier) }),
+            chat: loop.chat,
+            sandbox: loop.sandbox,
+            stopped: (x) => x instanceof SiblingStopped,
+            cancelled: async () => (await this.o.journal.run(this.o.runId)).cancel_requested,
+            ...(loop.stopPollMs !== undefined ? { pollMs: loop.stopPollMs } : {}),
+            sandboxStopped: (handle, result) =>
+              this.o.journal.db.tx(async (tx) => {
+                await this.o.journal.lock(tx, this.o.runId);
+                await this.o.journal.event(tx, this.o.runId, "sandbox_stopped", { delegate: id, agent: agentName, handle, result });
+              }),
+          });
+        },
+        { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}) },
+      );
+    }
+    // A remote agent whose server does not deduplicate messages gets each task at most once (§9.6, G12).
+    const atMostOnce = !!agent.remote && !this.o.adapters.agents.remoteProfile?.(agentName)?.idempotentMessages;
+    return this.command(
+      id,
+      "delegate",
+      request,
+      budget,
+      async (): Promise<Outcome> => {
+        const out = await this.o.adapters.agents.run({
+          agent: agentName,
+          skill: e.skill,
+          args: pos,
+          caps,
+          isolated: !!e.isolated,
+          attempt,
+          commandId: id,
+          ...(budget ? { budget } : {}),
+          ...(sandbox ? { sandbox } : {}),
+          ...(deadline !== undefined ? { deadline } : {}),
+        });
+        if (deadline === undefined || this.o.adapters.clock.now() <= deadline) return out;
+        // Past the deadline: what it spent is settled, the result is not used.
+        const t = timedOut(true);
+        return { error: { tag: t.tag, args: t.args }, ...(out.cost !== undefined ? { cost: out.cost } : {}), ...(out.meta !== undefined ? { meta: out.meta } : {}) };
+      },
+      { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}), ...(atMostOnce ? { atMostOnce } : {}) },
+    );
+  }
+
+  /** The rate-limit buckets a command of `kind` draws from, as command options. */
+  private limits(kind: string, tier?: string): { buckets?: string[] } {
+    const keys = this.o.limiter?.keys(kind, tier) ?? [];
+    return keys.length ? { buckets: keys } : {};
   }
 
   private hashes?: Record<string, string>;
@@ -738,6 +910,9 @@ export class Interpreter {
     let passed: boolean;
     let method: string;
     let detail: Value = null;
+    let files: Obj | undefined;
+    let producer: Value = { kind: "runtime", handler: RUNTIME_HANDLER };
+    let outputs: Value[] = [];
     if ("static" in v) {
       // A static criterion the compiler could not prove is checked here (W0601).
       method = "static";
@@ -747,6 +922,7 @@ export class Interpreter {
       const r = await this.approval((v as { call: Extract<Expr, { op: "call" }> }).call, contract, name, ctx, `${path}/call`);
       passed = r["approved"] === true;
       detail = { by: r["by"] ?? null, role: r["role"] ?? null, ...(r["expired"] === true ? { expired: true } : {}) };
+      producer = { kind: "person", by: r["by"] ?? null, role: r["role"] ?? null, via: "DecideAction" };
     } else {
       const call = v.call;
       method = call.op === "call" ? (calleePath(call.callee) ?? "call") : "call";
@@ -763,18 +939,68 @@ export class Interpreter {
         verifier.upperBound ? () => verifier.upperBound!(req) : undefined,
         async () => {
           const res = await verifier.check(req);
-          return { ok: { passed: res.passed, detail: res.detail ?? null }, ...(res.cost ? { cost: res.cost } : {}) };
+          // The check's outputs (test logs, a review) are artifacts of the run; the journal keeps their references.
+          const logs: Value[] = [];
+          for (const l of res.logs ?? []) {
+            const a = await this.o.artifacts.put(this.scope(), l.content, l.mediaType ?? "text/plain; charset=utf-8");
+            logs.push({ kind: l.kind, ...(l.phase !== undefined ? { phase: l.phase } : {}), ...(l.result !== undefined ? { result: l.result } : {}), ref: a.ref });
+          }
+          return {
+            ok: {
+              passed: res.passed,
+              detail: res.detail ?? null,
+              ...(res.subject ? { subject: { files: res.subject.files } } : {}),
+              artifacts: logs,
+              producer: res.producer ?? { kind: "verifier", handler: "unspecified" },
+            },
+            ...(res.cost ? { cost: res.cost } : {}),
+          };
         },
-        undefined,
-        `${contract}.${name}`,
+        { label: `${contract}.${name}`, ...(method === "review" ? this.limits("review", typeof named["model"] === "string" ? named["model"] : undefined) : {}) },
       );
       passed = isObj(r) && r["passed"] === true;
       detail = isObj(r) ? (r["detail"] ?? null) : null;
+      const checked = isObj(r) && isObj(r["subject"] ?? null) ? (r["subject"] as Obj) : undefined;
+      if (checked && isObj(checked["files"] ?? null)) files = checked["files"] as Obj;
+      if (isObj(r) && Array.isArray(r["artifacts"])) outputs = r["artifacts"];
+      if (isObj(r) && r["producer"] !== undefined) producer = r["producer"]!;
     }
+    // What the check was about: the contract's arguments, and for a check of the working copy, its files (§10.3).
+    const subject: Obj = { contract_args: this.subjectDigest(contract, ctx), ...(files ? { files } : {}) };
+    if (files && !this.o.replay) subject["tree"] = (await this.o.artifacts.putTree(this.scope(), { format: "mandate/tree/0.1", files: files as Record<string, string> })).ref;
     const id = digest("request", { run: this.o.runId, criterion: path, method, passed });
-    if (!this.o.replay) await this.o.journal.recordEvidence(this.o.runId, { id, contract, criterion: name, method, passed, detail });
+    if (!this.o.replay) {
+      // The control plane signs what was checked, against what, by whom and when (§10.3).
+      const record: EvidenceRecord = {
+        format: EVIDENCE_FORMAT,
+        evidence_id: id,
+        run: this.o.runId,
+        package: this.o.packageHash,
+        contract,
+        contract_hash: this.defHash(contract),
+        criterion: name,
+        method,
+        passed,
+        subject,
+        producer,
+        artifacts: outputs,
+        detail,
+        at: this.o.adapters.clock.now(),
+      };
+      await this.o.journal.recordEvidence(this.o.runId, { record, ...this.o.signer.sign(record) });
+    }
     if (passed) evidence.push(id);
     return passed;
+  }
+
+  /** A digest of a contract's arguments: what its evidence is about. */
+  private subjectDigest(contract: string, ctx: Ctx): string {
+    const c = this.def(contract) as ContractDef;
+    return digest("request", { contract, subject: plain(c.params.map((p) => this.variable(p.name, ctx))) });
+  }
+
+  private scope(): { tenant: string; runId: string } {
+    return { tenant: this.o.policy.tenant, runId: this.o.runId };
   }
 
   /**
@@ -824,19 +1050,39 @@ export class Interpreter {
     const info = this.effectInfo(e.name);
     const { pos } = await this.args(e.args, ctx, path);
     // INV-13: a parameter declared Verified<T, C> must carry evidence for C at run time too.
-    info.params.forEach((t, i) => {
-      if (!("ref" in t) || t.ref !== "Verified") return;
+    for (const [i, t] of info.params.entries()) {
+      if (!("ref" in t) || t.ref !== "Verified") continue;
       const v = pos[i];
       const want = t.args?.[1] && "ref" in t.args[1] ? t.args[1].ref : undefined;
       if (!isObj(v) || !("$verified" in v) || (want && v["$contract"] !== want)) {
         throw new Fault("PolicyDenied", [{ effect: e.name, parameter: i, reason: "unverified_parameter" }]);
       }
-    });
+      if (!this.o.replay) await this.checkVerified(e.name, v);
+    }
     const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
     const tool = this.o.adapters.tools[e.name];
     if (!tool) throw new Violation("no_adapter", `No adapter for effect ${e.name}.`);
     const contract = tool.describe();
     const params = plain(pos);
+    // Prepare (§8.8): the adapter checks the parameters and reads the files the action will apply. They are frozen
+    // into the artifact store, and the journaled command keeps their digests, so a resumed worker or a replay finds
+    // the same action; execute later sends exactly these bytes.
+    if (ctx.siblings?.failed && !this.o.replay && !(await this.o.journal.command(this.o.runId, `${path}/prepare`))) throw new SiblingStopped();
+    const prepared = await this.command(`${path}/prepare`, "prepare", { effect: e.name, params }, undefined, async () => {
+      const pre = await tool.prepare(params);
+      if ("rejected" in pre) return { error: { tag: "Rejected", args: [pre.rejected] }, cost: {} };
+      const frozen: Obj = {};
+      for (const f of [...(pre.artifacts ?? [])].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
+        const a = await this.o.artifacts.put(this.scope(), f.content, f.mediaType ?? "text/plain; charset=utf-8");
+        frozen[f.path] = { ref: a.ref, digest: a.digest };
+      }
+      return { ok: { artifacts: frozen }, cost: {} };
+    });
+    const frozen = isObj(prepared) && isObj(prepared["artifacts"] ?? null) ? (prepared["artifacts"] as Obj) : {};
+    const files = Object.fromEntries(Object.entries(frozen).map(([p, a]) => [p, isObj(a) ? String(a["digest"]) : ""]));
+    const evidence = evidenceOf(pos);
+    // Evidence is bound to what it checked: an action that would apply other bytes is refused (G01, INV-05).
+    if (Object.keys(files).length && !this.o.replay) await this.checkEvidenceFresh(e.name, files, evidence);
     const actionDigest = digest("action", {
       package: this.o.packageHash,
       run: this.o.runId,
@@ -845,8 +1091,9 @@ export class Interpreter {
       adapter: contract.id,
       adapter_contract: contract.digest,
       params,
-      evidence: evidenceOf(pos),
+      evidence,
       idempotency_key: key,
+      ...(Object.keys(files).length ? { artifacts: files } : {}),
     });
     const operationKey = digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: path, action: actionDigest });
     const { journal, runId, fence } = this.o;
@@ -858,8 +1105,6 @@ export class Interpreter {
     }
     if (ctx.siblings?.failed && (!action || action.state === "prepared")) throw new SiblingStopped();
     if (!action) {
-      const pre = await tool.prepare(params);
-      if ("rejected" in pre) throw new Fault("Rejected", [pre.rejected]);
       action = await journal.prepare(runId, fence, {
         operationKey,
         commandId: path,
@@ -867,6 +1112,7 @@ export class Interpreter {
         actionDigest,
         params,
         retryClass: info.retryClass ?? contract.retryClass,
+        ...(Object.keys(frozen).length ? { artifacts: frozen } : {}),
       });
     }
     let justCommitted = false;
@@ -921,7 +1167,8 @@ export class Interpreter {
       }
     }
     const auth = await this.authRow(action);
-    const res = await tool.execute({ effect: action.effect, params: action.params, actionDigest: action.action_digest, operationKey: op }, auth, op);
+    const artifacts = await this.actionArtifacts(action);
+    const res = await tool.execute({ effect: action.effect, params: action.params, actionDigest: action.action_digest, operationKey: op, ...(artifacts.length ? { artifacts } : {}) }, auth, op);
     faults.check("after_execute", { id: action.command_id, kind: "effect" });
     if ("confirmed" in res) {
       await journal.finishAction(runId, fence, op, "confirmed", { receipt: res.confirmed });
@@ -933,6 +1180,71 @@ export class Interpreter {
     }
     await journal.finishAction(runId, fence, op, "unknown_outcome", { detail: res.unknown });
     return this.settledAction({ ...action, state: "unknown_outcome" });
+  }
+
+  /**
+   * A Verified value is a protected type: its evidence is resolved from the
+   * control plane's store, never taken from the value (§5.2, G03). Each id
+   * must name evidence of this run that passed, for the value's contract,
+   * signed by a trusted key; together they must cover every criterion of
+   * the contract. A model or an agent can produce JSON that looks like a
+   * Verified value; it never has such evidence.
+   */
+  private async checkVerified(effect: string, v: Obj): Promise<void> {
+    const contract = String(v["$contract"] ?? "");
+    const ids = Array.isArray(v["$evidence"]) ? v["$evidence"].map(String) : [];
+    const rows = ids.length ? await this.o.journal.evidence(this.o.runId, ids) : [];
+    const problems: string[] = [];
+    const found = new Set(rows.map((r) => r.evidence_id));
+    for (const id of ids) if (!found.has(id)) problems.push(`${id} is not evidence of this run`);
+    for (const r of rows) {
+      const record = r.record as unknown as EvidenceRecord | null;
+      if (!r.passed) problems.push(`${r.evidence_id} did not pass`);
+      if (r.contract !== contract) problems.push(`${r.evidence_id} is evidence for ${r.contract}`);
+      if (!record || !r.key_id || !r.signature || !this.o.trusted.verify(record, { key_id: r.key_id, signature: r.signature })) problems.push(`${r.evidence_id} is not signed by a trusted key`);
+      else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion) problems.push(`${r.evidence_id} does not match its signed record`);
+      else {
+        const why = attestationProblem(record, this.o.verifiers);
+        if (why) problems.push(`${r.evidence_id}: ${why}`);
+      }
+    }
+    const c = this.def(contract);
+    const criteria = c?.kind === "contract" ? [...Object.keys(c.accept), ...Object.keys(c.invariant ?? {})] : [];
+    if (c?.kind !== "contract") problems.push(`${contract} is not a contract of this program`);
+    const covered = new Set(rows.filter((r) => r.passed).map((r) => r.criterion));
+    for (const k of criteria) if (!covered.has(k)) problems.push(`no evidence for ${contract}.${k}`);
+    if (problems.length) throw new Violation("forged_evidence", `${effect} received a Verified value whose evidence does not hold: ${[...new Set(problems)].sort().join("; ")}.`);
+  }
+
+  /** The files frozen at prepare, read back from the artifact store (which checks their digests). */
+  private async actionArtifacts(action: ActionRow): Promise<ActionArtifact[]> {
+    const frozen = isObj(action.artifacts ?? null) ? (action.artifacts as Obj) : {};
+    const out: ActionArtifact[] = [];
+    for (const [path, a] of Object.entries(frozen)) {
+      if (!isObj(a)) continue;
+      const got = await this.o.artifacts.get(this.scope(), String(a["ref"]));
+      out.push({ path, ref: String(a["ref"]), digest: got.digest, content: got.bytes });
+    }
+    return out;
+  }
+
+  /**
+   * G01: every file the action applies must have the bytes the run's checks
+   * saw. Each piece of evidence that names the working copy's files (a test)
+   * must list the file with the same digest; a file changed or added since
+   * the check makes the evidence stale, and the action is refused.
+   */
+  private async checkEvidenceFresh(effect: string, files: Record<string, string>, ids: string[]): Promise<void> {
+    const rows = ids.length ? await this.o.journal.evidence(this.o.runId, ids) : [];
+    const stale: string[] = [];
+    for (const r of rows) {
+      const checked = isObj(r.subject) && isObj(r.subject["files"] ?? null) ? (r.subject["files"] as Obj) : undefined;
+      if (!checked) continue;
+      for (const [p, d] of Object.entries(files)) {
+        if (checked[p] !== d) stale.push(`${p} (${r.criterion}: ${checked[p] === undefined ? "not in what was checked" : "changed since the check"})`);
+      }
+    }
+    if (stale.length) throw new Violation("stale_evidence", `${effect} would apply files other than the ones its evidence checked (G01): ${[...new Set(stale)].sort().join(", ")}.`);
   }
 
   private async authRow(action: ActionRow): Promise<{ authorizationId: string; decidedBy: string }> {
@@ -1001,8 +1313,21 @@ function methodRank(v: Verifier): number {
   return m?.startsWith("test.") ? 1 : 2;
 }
 
+/** How long a Throttled fault asks to wait. */
+function retryAfter(fault: Value): number {
+  const a = isObj(fault) && Array.isArray(fault["args"]) && isObj(fault["args"][0] ?? null) ? (fault["args"][0] as Obj) : {};
+  const ms = Number(a["retry_after_ms"]);
+  return Number.isFinite(ms) && ms > 0 ? ms : 1000;
+}
+
+/** A Throttled refusal because too many calls already wait on the bucket: back pressure, not a wait (§8.6). */
+function queueFull(fault: { args?: Value[] }): boolean {
+  const a = fault.args?.[0];
+  return isObj(a ?? null) && (a as Obj)["queue_full"] === true;
+}
+
 function replayed(row: CommandRow | undefined, id: string): Value {
-  if (!row || row.state === "dispatched" || row.state === "waiting") throw new ReplayEnd(id, "no_result");
+  if (!row || row.state === "dispatched" || row.state === "waiting" || row.state === "throttled") throw new ReplayEnd(id, "no_result");
   if (row.payload_purged) throw new ReplayEnd(id, "payload_purged");
   if (row.state === "failed") {
     const err = row.error as { tag?: string; args?: Value[] } | null;

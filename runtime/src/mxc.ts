@@ -46,6 +46,7 @@ export interface MxcSpawned {
   readonly standardOutput: NodeJS.ReadableStream | null;
   readonly standardError: NodeJS.ReadableStream | null;
   wait(): Promise<{ exitCode: number; timedOut: boolean }>;
+  kill(): void;
   dispose(): void;
 }
 
@@ -73,6 +74,9 @@ const HELPERS = new Set(["cat", "ls", "grep"]);
 export class MxcHost implements SandboxHost {
   private sdk: MxcSdk | undefined;
   private readonly policies = new Map<string, MxcPolicy>();
+  /** The processes running in each sandbox, so Stop can kill them. */
+  private readonly running = new Map<string, Set<MxcSpawned>>();
+  private readonly stopped = new Set<string>();
   /** Why the last probe found nothing enforceable, for the operator. */
   unavailable: string | undefined;
 
@@ -116,7 +120,8 @@ export class MxcHost implements SandboxHost {
   async execute(handle: string, req: ExecRequest): Promise<ExecResult> {
     const policy = this.policies.get(handle);
     if (!policy) return refused(`no sandbox ${handle}`);
-    const why = this.disallowed(policy, req.argv);
+    if (this.stopped.has(handle)) return refused(`sandbox ${handle} was stopped`);
+    const why = disallowed(policy, req.argv);
     if (why) return refused(why);
     const sdk = await this.load();
     if (!sdk) return refused(this.unavailable ?? "MXC is not available");
@@ -137,35 +142,56 @@ export class MxcHost implements SandboxHost {
     } catch (e) {
       return refused(`MXC refused to start the process: ${(e as Error).message}`);
     }
+    const running = this.running.get(handle) ?? new Set<MxcSpawned>();
+    this.running.set(handle, running.add(proc));
     try {
       const out = collect(proc.standardOutput, this.o.maxOutput ?? 1 << 20);
       const err = collect(proc.standardError, this.o.maxOutput ?? 1 << 20);
       proc.standardInput?.end(req.stdin ?? "");
       const [status, stdout, stderr] = await Promise.all([proc.wait(), out, err]);
-      return { stdout, stderr, exitCode: status.exitCode, timedOut: status.timedOut };
+      return { stdout, stderr, exitCode: status.exitCode, timedOut: status.timedOut, ...(this.stopped.has(handle) ? { stopped: true } : {}) };
     } finally {
+      running.delete(proc);
       proc.dispose();
     }
   }
 
+  /** Kills every process running in the sandbox (Bubblewrap's whole process tree goes with it) and starts no more. */
+  async stop(handle: string): Promise<"stopped"> {
+    this.stopped.add(handle);
+    for (const proc of this.running.get(handle) ?? []) proc.kill();
+    return "stopped";
+  }
+
   async destroy(handle: string): Promise<"destroyed"> {
+    await this.stop(handle);
+    this.stopped.delete(handle);
+    this.running.delete(handle);
     this.policies.delete(handle);
     return "destroyed";
   }
 
-  /** Why the host will not start `argv` under `policy`, or undefined when it may. */
-  private disallowed(policy: MxcPolicy, argv: string[]): string | undefined {
-    const [cmd, ...args] = argv;
-    if (!cmd) return "empty command";
-    const { readOnly, readWrite } = policy.filesystem;
-    const target = args[args.length - 1] ?? "";
-    if (HELPERS.has(cmd)) return inside(target, [...readOnly, ...readWrite]) ? undefined : `${target} is outside this sandbox's paths`;
-    if (cmd === "sh" && args.length === 4 && args[0] === "-c" && args[1] === WRITE_SCRIPT) return inside(target, readWrite) ? undefined : `${target} is outside this sandbox's write paths`;
-    const allowed = policy.process.allowedCommands.filter((c) => c.command === cmd);
-    if (!allowed.length) return `${cmd} is not an allowed command in this sandbox`;
-    if (!allowed.some((c) => !c.argsPrefix || c.argsPrefix.some((p) => p.every((x, i) => args[i] === x)))) return `${argv.join(" ")} does not start with an allowed argument prefix`;
-    return undefined;
-  }
+}
+
+/**
+ * Why a host will not start `argv` under `policy`, or undefined when it may.
+ * A sandbox backend that cannot limit which programs run (Bubblewrap, an
+ * AppContainer) enforces the command allow-list here, before any process
+ * starts: a process is one of the runtime's own tool helpers (cat, ls, grep,
+ * the write_file script) on a path inside the policy's paths, or an allowed
+ * command whose arguments start with an allowed prefix.
+ */
+export function disallowed(policy: MxcPolicy, argv: string[]): string | undefined {
+  const [cmd, ...args] = argv;
+  if (!cmd) return "empty command";
+  const { readOnly, readWrite } = policy.filesystem;
+  const target = args[args.length - 1] ?? "";
+  if (HELPERS.has(cmd)) return inside(target, [...readOnly, ...readWrite]) ? undefined : `${target} is outside this sandbox's paths`;
+  if (cmd === "sh" && args.length === 4 && args[0] === "-c" && args[1] === WRITE_SCRIPT) return inside(target, readWrite) ? undefined : `${target} is outside this sandbox's write paths`;
+  const allowed = policy.process.allowedCommands.filter((c) => c.command === cmd);
+  if (!allowed.length) return `${cmd} is not an allowed command in this sandbox`;
+  if (!allowed.some((c) => !c.argsPrefix || c.argsPrefix.some((p) => p.every((x, i) => args[i] === x)))) return `${argv.join(" ")} does not start with an allowed argument prefix`;
+  return undefined;
 }
 
 /** POSIX single-quoting: Bubblewrap runs the command line through `sh -c`. */

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // mandate — command-line front end for the 0.1 reference compiler.
 //
-//   mandate check <file> [--json] [--lock <lock.json>]
+//   mandate check <file> [--json] [--lock <lock.json>] [--denials <report.json>]
 //                                          validate, resolve names, print hashes
 //   mandate ir <file> [--canonical]        print canonical IR (pretty, or the exact JCS bytes)
 //   mandate fmt <file>                     print the .mdt projection of the IR
@@ -9,9 +9,15 @@
 //   mandate patch <program> <patch.json>   apply an IR patch (see `patch` below)
 //   mandate sandbox <file> [--agent <name>] print each agent's sandbox requirement
 //   mandate explain <code>                 explain a diagnostic code
+//   mandate mcp                            serve check, explain, apply_patch and views to agents
+//                                          over MCP on stdio (§14)
+//   mandate view <file> [--against <old>] [--format md|html|json] [--lock <lock.json>]
+//                                          the program's human views (§15): architecture,
+//                                          authority and cost; with --against, what changed
 //
-//   mandate run | status | approve | decline | answer | cancel | raise-limits | replay
+//   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key
 //                                          control a run (the runtime's CLI, @mandate/runtime/cli)
+//   mandate test <file>                    run the program's tests with their effect handlers (§6.4)
 //
 // <file> is .mdt text or .json canonical IR. `check` and `sandbox` read the
 // lock file named by --lock, or else mandate.lock.json next to <file> if there
@@ -29,20 +35,26 @@ import { parseStrictJson } from "./json/strict-json.js";
 import type { Lock } from "./lock.js";
 import { applyPatch, type PatchOp } from "./patch/patch.js";
 import { printProgram } from "./print/printer.js";
-import { sandboxRequirements } from "./target/sandbox.js";
+import { serveStdio } from "./mcp/server.js";
+import { denialDiagnostics, sandboxRequirements, type DenialReport } from "./target/sandbox.js";
+import { toHtml, toMarkdown } from "./views/doc.js";
+import { architecture, authority, cost, diffDoc, programDoc, semanticDiff } from "./views/views.js";
 
 function usage(): never {
   process.stderr.write(
     [
       "usage: mandate <command> [options]",
-      "  check <file> [--json] [--lock <lock.json>]",
+      "  check <file> [--json] [--lock <lock.json>] [--denials <report.json>]",
       "  ir <file> [--canonical]",
       "  fmt <file>",
       "  hash <file>",
       "  patch <program> <patch.json> [--json]   patch.json: { \"base\": \"sha256:…\", \"ops\": [ … ] }",
       "  sandbox <file> [--agent <name>] [--lock <lock.json>]",
       "  explain <code>",
-      "  run | status | approve | decline | answer | cancel | raise-limits | replay   (see `mandate status`)",
+      "  view <file> [--against <old file>] [--format md|html|json] [--lock <lock.json>]",
+      "  mcp   (an MCP server on stdio)",
+      "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key   (see `mandate status`)",
+      "  test <file> [--json]",
       "",
     ].join("\n"),
   );
@@ -91,6 +103,9 @@ function main(argv: string[]): void {
   const [cmd, ...plain] = argv;
   const agent = option(plain, "--agent");
   const lockFile = option(plain, "--lock");
+  const against = option(plain, "--against");
+  const denials = option(plain, "--denials");
+  const format = option(plain, "--format") ?? "md";
   const flags = new Set(plain.filter((a) => a.startsWith("--")));
   const args = plain.filter((a) => !a.startsWith("--"));
   const asJson = flags.has("--json");
@@ -100,6 +115,16 @@ function main(argv: string[]): void {
       const file = args[0] ?? usage();
       const lock = readLock(file, lockFile, asJson);
       const r = check(read(file), kindOf(file), lock ? { lock } : {});
+      // W0311: what sandboxes denied in learning mode, as feedback on the policies (§11.3).
+      if (denials !== undefined && r.program && r.ok) {
+        const parsed = parseStrictJson(read(denials));
+        if (!parsed.ok) {
+          report(parsed.diagnostics, denials, asJson);
+          process.exit(1);
+        }
+        r.diagnostics.push(...denialDiagnostics(r.program, parsed.value.value as unknown as DenialReport));
+        r.ok = !hasErrors(r.diagnostics);
+      }
       report(r.diagnostics, file, asJson, r.hashes ? { hashes: r.hashes } : {});
       if (!asJson && r.ok) process.stdout.write(`ok ${r.hashes!.program}\n`);
       process.exit(r.ok ? 0 : 1);
@@ -181,6 +206,35 @@ function main(argv: string[]): void {
       process.exit(0);
     }
     // falls through
+    case "view": {
+      const file = args[0] ?? usage();
+      if (!["md", "html", "json"].includes(format)) usage();
+      const loadChecked = (f: string, lock?: Lock) => {
+        const r = check(read(f), kindOf(f), lock ? { lock } : {});
+        if (!r.ok) {
+          report(r.diagnostics, f, false);
+          process.exit(1);
+        }
+        return r.program!;
+      };
+      const lock = readLock(file, lockFile, false);
+      const program = loadChecked(file, lock);
+      if (against !== undefined) {
+        const before = loadChecked(against);
+        const v = semanticDiff(before, program);
+        process.stdout.write(format === "json" ? JSON.stringify(v, null, 2) + "\n" : format === "html" ? toHtml(diffDoc(before, program)) : toMarkdown(diffDoc(before, program)));
+      } else if (format === "json") {
+        const views = { architecture: architecture(program), authority: authority(program), cost: cost(program, lock) };
+        process.stdout.write(JSON.stringify(views, null, 2) + "\n");
+      } else {
+        process.stdout.write(format === "html" ? toHtml(programDoc(program, lock)) : toMarkdown(programDoc(program, lock)));
+      }
+      process.exit(0);
+    }
+    // falls through
+    case "mcp":
+      void serveStdio().then(() => process.exit(0));
+      return;
     case "explain": {
       const raw = args[0] ?? usage();
       const code = raw.startsWith("MDT-") ? raw : `MDT-${raw}`;
@@ -199,7 +253,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {

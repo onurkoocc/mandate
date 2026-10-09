@@ -43,6 +43,8 @@ export interface ExecResult {
   stderr: string;
   exitCode: number;
   timedOut: boolean;
+  /** The sandbox was stopped while the process ran (§16.1 Stop). */
+  stopped?: boolean;
 }
 
 /** The platform side of the adapter contract: MXC's SDK, or a simulation in tests. */
@@ -51,7 +53,30 @@ export interface SandboxHost {
   create(policy: MxcPolicy): Promise<string>;
   /** Runs one process under the sandbox's policy. What the policy denies fails inside the process. */
   execute(handle: string, req: ExecRequest): Promise<ExecResult>;
+  /**
+   * What the sandbox recorded (§16.1 `Collect`): in learning mode, the
+   * accesses its policy denied, for the compiler's W0311. Optional; a host
+   * without learning mode records nothing.
+   */
+  collect?(handle: string): Promise<{ denials: SandboxDenial[] }>;
+  /**
+   * Stops every process running in the sandbox, and starts no more (§16.1
+   * `Stop`): when its run is cancelled, a long test run does not go on to
+   * its own timeout. `stopped`: nothing runs in it any more. `uncertain`:
+   * the host cannot kill what runs; it still ends at its timeout. Optional;
+   * a host without Stop leaves running processes to their timeout.
+   */
+  stop?(handle: string): Promise<"stopped" | "uncertain">;
   destroy(handle: string): Promise<"destroyed" | "retained_for_investigation">;
+}
+
+/** One access a sandbox's policy denied, recorded in learning mode. */
+export interface SandboxDenial {
+  resource: string;
+  /** e.g. `read`, `write`, `execute`. */
+  access: string;
+  /** e.g. `file`, `other`. */
+  kind: string;
 }
 
 /** A sandbox policy in the representative MXC shape of §11.3. */

@@ -3,8 +3,9 @@
 // one repository, held here and never handed to a sandbox (§8.9).
 //
 // An effect `git.open_pr(checked)` opens one pull request with the files the
-// checked draft names (`patch.files` and `tests.files`), read from the working
-// copy the agents worked in:
+// checked draft names (`patch.files` and `tests.files`). `prepare` reads them
+// from the working copy the agents worked in, and the runtime freezes them in
+// its artifact store; `execute` sends those frozen bytes (§8.8, G01):
 //
 //   one commit on top of the base branch  →  branch mandate/<issue>-<op>
 //                                         →  pull request into the base
@@ -25,7 +26,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join, posix, relative, sep } from "node:path";
-import type { AuthorizationContext, PreparedAction, ToolAdapter, ToolContract } from "./adapters.js";
+import type { AuthorizationContext, PreparedAction, PreparedFile, ToolAdapter, ToolContract } from "./adapters.js";
 import { digest, isObj, type Value } from "./values.js";
 
 export interface GitHubOptions {
@@ -91,19 +92,21 @@ export class GitHubPullRequests implements ToolAdapter {
     }
   }
 
-  async prepare(params: Value): Promise<{ prepared: true } | { rejected: string }> {
+  /** Reads the draft's files from the working copy; the runtime freezes them, and execute sends those bytes (§8.8). */
+  async prepare(params: Value): Promise<{ prepared: true; artifacts: PreparedFile[] } | { rejected: string }> {
     const d = draftOf(params);
     if (typeof d === "string") return { rejected: d };
+    const artifacts: PreparedFile[] = [];
     for (const f of d.files) {
       const rel = this.inside(f);
       if (!rel) return { rejected: `${f} is outside the working copy` };
       try {
-        await readFile(join(this.o.workdir, rel));
+        artifacts.push({ path: rel, content: await readFile(join(this.o.workdir, rel), "utf8") });
       } catch {
         return { rejected: `${rel} does not exist in the working copy` };
       }
     }
-    return { prepared: true };
+    return { prepared: true, artifacts };
   }
 
   async execute(action: PreparedAction, auth: AuthorizationContext, operationKey: string): Promise<{ confirmed: Value } | { rejected: string } | { unknown: string }> {
@@ -115,11 +118,14 @@ export class GitHubPullRequests implements ToolAdapter {
       if (existing) return { confirmed: existing };
       const baseSha = await this.refSha(`heads/${this.base}`);
       const baseTree = ((await this.call("GET", `/repos/${this.o.repo}/git/commits/${baseSha}`)) as { tree: { sha: string } }).tree.sha;
+      // The files as they were frozen at prepare, never the working copy as it is now (G01).
+      const frozen = new Map((action.artifacts ?? []).map((a) => [a.path, a]));
       const tree: Array<{ path: string; mode: string; type: string; content: string }> = [];
       for (const f of d.files) {
         const rel = this.inside(f);
-        if (!rel) return { rejected: `${f} is outside the working copy` };
-        tree.push({ path: rel, mode: "100644", type: "blob", content: await readFile(join(this.o.workdir, rel), "utf8") });
+        const a = rel === undefined ? undefined : frozen.get(rel);
+        if (!rel || !a) return { rejected: `${f} was not frozen when the action was prepared` };
+        tree.push({ path: rel, mode: "100644", type: "blob", content: new TextDecoder().decode(a.content) });
       }
       const treeSha = ((await this.call("POST", `/repos/${this.o.repo}/git/trees`, { base_tree: baseTree, tree })) as { sha: string }).sha;
       const message = `Fix ${d.issue.title ?? `issue ${d.issue.id}`}\n\nMandate-Operation: ${operationKey}\nMandate-Action: ${action.actionDigest}\nMandate-Authorization: ${auth.authorizationId} (${auth.decidedBy})`;

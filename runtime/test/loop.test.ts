@@ -89,6 +89,32 @@ function skillFailed(error: Value): Record<string, Value> {
 
 afterAll(closeAll);
 
+describe("cancelling a run while its agent's process runs (§16.1 Stop)", () => {
+  it("stops the sandbox at once rather than wait for the process's timeout, and the run ends cancelled", async () => {
+    const w = await loopWorld(happy);
+    // The test run hangs, as a test suite stuck on a lock would.
+    let started = (): void => {};
+    const begun = new Promise<void>((r) => (started = r));
+    w.host.programs["mvn"] = (_req, _fs, handle) => {
+      started();
+      return w.host.untilStopped(handle);
+    };
+    w.adapters.loop!.stopPollMs = 5;
+    const running = w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: { task: "fix a.ts" }, runId: "stop1" });
+    await begun;
+    await w.rt.cancelRun("stop1");
+    const run = await running;
+    expect(run.state).toBe("cancelled");
+    expect(w.host.stopped).toEqual(["sbx-1"]);
+    expect(w.host.open()).toEqual([]);
+    expect(w.host.executions.at(-1)!.result).toMatchObject({ exitCode: 137, stopped: true });
+    const events = await w.rt.journal.events("stop1");
+    expect(events.find((e) => e.type === "sandbox_stopped")?.data).toEqual({ delegate: "/defs/Fix/body/0/value", agent: "Fixer", handle: "sbx-1", result: "stopped" });
+    // No model turn after the stop: the next step was refused because the run is cancelled (R08).
+    expect(w.chat.calls).toHaveLength(2);
+  });
+});
+
 describe("an agent loop (§8.2, K7, K8)", () => {
   it("reads, writes and runs in its sandbox, finishes with a typed result, and journals every step", async () => {
     const w = await loopWorld(happy);

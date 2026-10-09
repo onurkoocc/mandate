@@ -91,6 +91,26 @@ blocks like `enforcement` and also reports what it blocked.
 `SandboxedAgents` wraps an agent adapter. For each delegation it plans a
 policy, creates the sandbox, runs the agent in it and destroys it.
 
+### Stop (§16.1)
+
+When a run is cancelled while one of its agents' processes runs, the
+sandbox is stopped; the process does not run on to its own timeout. While
+a tool call runs, the agent loop asks the run's row whether it was
+cancelled, every `stopPollMs` (1 s by default; PostgreSQL is
+authoritative, so a cancel from another process counts). Then it calls the
+host's `stop(handle)`:
+
+| Host | What `stop` does | Answer |
+|---|---|---|
+| Linux, Bubblewrap | kills every process running in the sandbox; starts no more | `stopped` |
+| Windows, AppContainer | starts no more; the SDK's `run` cannot be killed, so a running process ends at its timeout | `uncertain` while one runs, else `stopped` |
+
+The run's journal records `sandbox_stopped` with the delegation, the agent,
+the handle and the answer. The tool call's result says `stopped: true`. The
+loop's next step is refused because the run is cancelled (R08), and the
+sandbox is destroyed as always. A host without `stop` leaves the process to
+its timeout, which every agent's policy sets.
+
 When the host cannot enforce the requirement, the agent is never started.
 The delegate fails with this fault, and nothing is spent:
 
@@ -151,14 +171,62 @@ user namespaces allowed. The tests check that:
 - the runtime's environment is absent;
 - an agent loop does its work through the sandbox.
 
+## The MXC host on Windows
+
+`WindowsMxcHost` (`runtime/src/mxc-windows.ts`) uses the same SDK with the
+AppContainer process container (BACKLOG P2-27). Each process runs in a
+container of its own:
+
+| Guarantee | How |
+|---|---|
+| Filesystem | The policy's read-only and read-write paths, the toolchain (node.exe's directory) and the runtime's tool helper read-only, and a fresh scratch directory for the process's temporary files; nothing else |
+| Network | Egress and ingress denied, host loopback too |
+| UI | An isolated desktop of its own: no clipboard, no input injection, no access to the user's desktop |
+| Commands | Checked by the host before a process starts, as on Linux |
+| Environment | Only what Windows needs to start a process (`SystemRoot`, `windir`, `SystemDrive`, `ComSpec`, `PATHEXT`), `PATH` over the toolchain, the scratch directory as `TEMP`, `TMP` and `LOCALAPPDATA`, and `NODE_OPTIONS`. Nothing of the runtime's own environment, so no key reaches it |
+| Time | The policy's timeout, per process |
+
+- **Tools.** An AppContainer has no `cat`, `ls`, `grep` or `sh`, so the
+  runtime's file tools run as `node sandbox-helper.mjs <op>`
+  (`runtime/src/sandbox-helper.ts`), with the results the Linux tools
+  give. The helper is plain JavaScript that the host writes to a directory
+  of its own, so Node needs nothing outside the granted paths to run it. A write's content is staged in a read-only file that the helper
+  copies into place, under the sandbox's write policy.
+- **Node.** Two adjustments are set through `NODE_OPTIONS`. Module paths are
+  not resolved through `realpath`, which would read every parent directory
+  of the program, and the policy grants none. And `node --test` runs test
+  files in-process, because a container cannot start a child process.
+- **Builds.** The probe checks the Windows build. Process isolation needs
+  26100.9278 or later, and session isolation 26100.9550 (design doc 4,
+  §7.3). On an older build the host enforces nothing, and every agent is
+  refused by name (G05).
+- **Session isolation** is refused by name for agents
+  (`blocking outbound network`), because MXC requires a session's egress
+  to be allowed. It is never run with the network open (INV-11).
+- **Learning mode** (`mode: "learning"`) is supported where MXC can
+  capture denials. Accesses the policy denies stay denied, and are
+  recorded. The host hands them over at the end of the sandbox (`Collect`).
+  The loop journals them with the delegation's result.
+  `mandate denials <run>` exports the run's report, and
+  `mandate check <program> --denials <report>` turns it into W0311 warnings
+  (policy and real use disagree). The toolchain's own start-up accesses
+  are left out.
+
+On Windows, `mandate.runtime.json`'s `sandbox` takes `toolchain`,
+`isolation` and `mode`. Paths in a program keep their drive letter
+(`C:/work/repo`).
+
+The `sandbox-windows` CI job, and a run with `MANDATE_MXC=1` on Windows,
+repeat the Linux enforcement tests against a real AppContainer
+(`runtime/test/mxc-windows.test.ts`). They also check that:
+
+- the user's clipboard stays out;
+- learning mode keeps a denied read denied, and records it.
+
 ## Not yet
 
-- **`Collect` and `Stop` of the adapter contract.** A process's output is
-  collected when it ends. A running process is stopped only by its
-  timeout.
-- **Learning-mode feedback (W0311).** Bubblewrap has no learning mode, so
-  blocked operations cannot be reported back. This needs the Windows
-  backend (BACKLOG P2-27).
+- **Learning mode on Linux.** Bubblewrap has none; a requirement for it is
+  refused there.
 - **An outbound host allow-list.** MXC offers one through a proxy. It is
   not wired up, so a requirement with `net.https` hosts is refused.
 - **An AX adapter.**

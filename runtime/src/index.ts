@@ -1,11 +1,20 @@
 // Public API of the Mandate 0.1 reference runtime.
 export * from "./adapters.js";
+export * from "./artifacts.js";
+export * from "./evidence.js";
+export { ATTESTATION_FORMAT, attestationProblem, statementOf, type Attestation, type CheckStatement } from "./attestation.js";
+export { ProcessVerifier, serveVerifier, type ProcessVerifierOptions, type VerifierPackage } from "./verifier-service.js";
+export { RateLimiter, type BucketConfig, type Priority } from "./ratelimit.js";
 export { openDb, SCHEMA, type Db, type Tx } from "./db.js";
 export { Faults, type FaultPoint } from "./faults.js";
 export { Interpreter, ReplayEnd, type AuthorizePolicy, type Policy } from "./interp.js";
 export { Journal, TERMINAL, type ActionRow, type BudgetReport, type CommandRow, type EvidenceRow, type RunRow, type RunState } from "./journal.js";
-export { buildPackage, refusingAdapters, Runtime, verifyPackage, type Lock, type Message, type Package, type ReplayResult, type StartOptions } from "./runtime.js";
+export { buildPackage, refusingAdapters, Runtime, verifyPackage, type Lock, type Message, type Package, type ReplayResult, type RuntimeOptions, type StartOptions } from "./runtime.js";
 export * from "./sandbox.js";
+export { MxcHost, disallowed } from "./mxc.js";
+export { denialsIn, MIN_BUILD, WindowsMxcHost, windowsBuild, winQuote, type WindowsMxcHostOptions } from "./mxc-windows.js";
 export * from "./signals.js";
+export { runTests, type TestOptions, type TestResult } from "./testing.js";
+export { freshness, runDoc, runView, type AsOf, type Freshness, type RunView } from "./views.js";
 export * from "./sim.js";
 export * from "./values.js";

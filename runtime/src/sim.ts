@@ -9,6 +9,8 @@ import type {
   AgentAdapter,
   AuthorizationContext,
   ChatModel,
+  CheckResult,
+  CheckSubject,
   Clock,
   Cost,
   DelegateRequest,
@@ -16,6 +18,7 @@ import type {
   ModelAdapter,
   Outcome,
   PreparedAction,
+  PreparedFile,
   ReadAdapter,
   ToolAdapter,
   ToolContract,
@@ -25,6 +28,7 @@ import type {
   VerifyRequest,
 } from "./adapters.js";
 import type { Enforceable, ExecRequest, ExecResult, MxcPolicy, SandboxHost } from "./sandbox.js";
+import { sha256Of } from "./artifacts.js";
 import { inside, WRITE_SCRIPT } from "./tools.js";
 import { digest, isObj, type Value } from "./values.js";
 
@@ -57,7 +61,13 @@ type Script<Req> = (req: Req, call: number) => Outcome | Promise<Outcome>;
 
 export class SimAgents implements AgentAdapter {
   readonly calls: DelegateRequest[] = [];
+  /** Remote agents whose simulated servers deduplicate messages by id. */
+  readonly idempotentRemotes = new Set<string>();
   constructor(private readonly scripts: Record<string, Script<DelegateRequest>> = {}) {}
+
+  remoteProfile(agent: string): { idempotentMessages: boolean } {
+    return { idempotentMessages: this.idempotentRemotes.has(agent) };
+  }
 
   on(agentSkill: string, script: Script<DelegateRequest>): this {
     this.scripts[agentSkill] = script;
@@ -145,15 +155,42 @@ export function toolUse(id: string, name: string, input: Value): Value {
   return { type: "tool_use", id, name, input };
 }
 
+/** A working copy for simulated checks and actions: file contents by path. */
+export class SimWorkspace {
+  readonly files = new Map<string, string>();
+  constructor(files: Record<string, string> = {}) {
+    for (const [p, c] of Object.entries(files)) this.files.set(p, c);
+  }
+  write(path: string, content: string): void {
+    this.files.set(path, content);
+  }
+  snapshot(): CheckSubject {
+    return { files: Object.fromEntries([...this.files.keys()].sort().map((p) => [p, sha256Of(this.files.get(p)!)])) };
+  }
+}
+
 export class SimVerifier implements VerifierAdapter {
   readonly calls: VerifyRequest[] = [];
-  /** Results by criterion name or method; anything unlisted passes. */
-  constructor(readonly results: Record<string, boolean> = {}) {}
+  /**
+   * Results by criterion name or method; anything unlisted passes. With a
+   * workspace, a test check (`test.*`) reports the files it ran against.
+   */
+  constructor(
+    readonly results: Record<string, boolean> = {},
+    readonly workspace?: SimWorkspace,
+  ) {}
 
-  async check(req: VerifyRequest): Promise<{ passed: boolean; detail?: Value }> {
+  async check(req: VerifyRequest): Promise<CheckResult> {
     this.calls.push(req);
     const r = this.results[req.criterion] ?? this.results[req.method] ?? true;
-    return { passed: r, detail: { method: req.method } };
+    const test = req.method.startsWith("test.");
+    return {
+      passed: r,
+      detail: { method: req.method },
+      producer: { kind: "verifier", handler: "sim-verifier" },
+      ...(test ? { logs: [{ kind: "test_log", result: r ? "pass" : "fail", content: `sim: ${req.contract}.${req.criterion} ${r ? "passed" : "failed"}\n` }] } : {}),
+      ...(this.workspace && test ? { subject: this.workspace.snapshot() } : {}),
+    };
   }
 }
 
@@ -184,9 +221,14 @@ export class SimTool implements ToolAdapter {
   readonly applied = new Map<string, Value>();
   private readonly plan: ToolBehavior[] = [];
 
+  /** Applied files by operation key, as `execute` received them from the artifact store. */
+  readonly sent = new Map<string, Record<string, string>>();
+
   constructor(
     readonly name: string,
     readonly retryClass: RetryClass = "idempotent",
+    /** With a workspace, `prepare` reads the files the draft names (`patch.files`, `tests.files`), as git.open_pr does. */
+    readonly workspace?: SimWorkspace,
   ) {}
 
   /** Behaviors for the next execute calls, in order; afterwards it confirms. */
@@ -199,13 +241,21 @@ export class SimTool implements ToolAdapter {
     return { id: `sim/${this.name}`, digest: digest("request", { adapter: this.name, retry: this.retryClass }), retryClass: this.retryClass };
   }
 
-  async prepare(params: Value): Promise<{ prepared: true }> {
+  async prepare(params: Value): Promise<{ prepared: true; artifacts?: PreparedFile[] } | { rejected: string }> {
     this.prepares.push(params);
-    return { prepared: true };
+    if (!this.workspace) return { prepared: true };
+    const artifacts: PreparedFile[] = [];
+    for (const f of draftFiles(params)) {
+      const content = this.workspace.files.get(f);
+      if (content === undefined) return { rejected: `${f} does not exist in the working copy` };
+      artifacts.push({ path: f, content });
+    }
+    return { prepared: true, artifacts };
   }
 
   async execute(action: PreparedAction, auth: AuthorizationContext, operationKey: string): Promise<{ confirmed: Value } | { rejected: string } | { unknown: string }> {
     this.executions.push({ operationKey, params: action.params, authorization: auth.authorizationId });
+    if (action.artifacts) this.sent.set(operationKey, Object.fromEntries(action.artifacts.map((a) => [a.path, new TextDecoder().decode(a.content)])));
     // An idempotent system ties one key to one result (§8.9).
     if (this.retryClass === "idempotent" && this.applied.has(operationKey)) return { confirmed: this.applied.get(operationKey)! };
     const b = this.plan.shift() ?? "confirm";
@@ -245,7 +295,7 @@ export const FULL_SANDBOX: Enforceable = {
 };
 
 /** A program a simulated sandbox can run, e.g. `mvn`: it sees the request and the sandbox's file system. */
-export type SimProgram = (req: ExecRequest, fs: SimFs) => ExecResult | Promise<ExecResult>;
+export type SimProgram = (req: ExecRequest, fs: SimFs, handle: string) => ExecResult | Promise<ExecResult>;
 
 /** The file system one simulated sandbox sees: reads and writes go through its policy's path lists. */
 export interface SimFs {
@@ -265,6 +315,10 @@ export class SimSandboxHost implements SandboxHost {
   readonly created: Array<{ handle: string; policy: MxcPolicy }> = [];
   readonly destroyed: string[] = [];
   readonly executions: Array<{ handle: string; req: ExecRequest; result: ExecResult }> = [];
+  readonly stopped: string[] = [];
+  /** What `stop` answers; a host that cannot kill a running process says `uncertain`. */
+  stopResult: "stopped" | "uncertain" = "stopped";
+  private readonly waiting = new Map<string, Array<() => void>>();
   /** The host's files, by absolute path. */
   readonly files = new Map<string, string>();
   readonly programs: Record<string, SimProgram> = {};
@@ -274,12 +328,30 @@ export class SimSandboxHost implements SandboxHost {
 
   async execute(handle: string, req: ExecRequest): Promise<ExecResult> {
     const sbx = this.created.find((c) => c.handle === handle);
-    const result = !sbx || this.destroyed.includes(handle) ? fail(126, `no sandbox ${handle}`) : await this.run(sbx.policy, req);
+    const gone = !sbx || this.destroyed.includes(handle) || this.stopped.includes(handle);
+    const result = gone ? fail(126, `no sandbox ${handle}`) : await this.run(sbx.policy, req, handle);
     this.executions.push({ handle, req, result });
     return result;
   }
 
-  private async run(policy: MxcPolicy, req: ExecRequest): Promise<ExecResult> {
+  /** Kills what runs in the sandbox: a program waiting in `untilStopped` ends with exit code 137. */
+  async stop(handle: string): Promise<"stopped" | "uncertain"> {
+    this.stopped.push(handle);
+    if (this.stopResult === "stopped") for (const wake of this.waiting.get(handle) ?? []) wake();
+    this.waiting.delete(handle);
+    return this.stopResult;
+  }
+
+  /** For a scripted program that runs until its sandbox is stopped, like a hung test run. */
+  untilStopped(handle: string): Promise<ExecResult> {
+    return new Promise((resolve) => {
+      const list = this.waiting.get(handle) ?? [];
+      list.push(() => resolve({ stdout: "", stderr: "Killed\n", exitCode: 137, timedOut: false, stopped: true }));
+      this.waiting.set(handle, list);
+    });
+  }
+
+  private async run(policy: MxcPolicy, req: ExecRequest, handle: string): Promise<ExecResult> {
     const readable = (p: string) => inside(p, [...policy.filesystem.readOnly, ...policy.filesystem.readWrite]);
     const writable = (p: string) => inside(p, policy.filesystem.readWrite);
     const fs: SimFs = {
@@ -319,7 +391,7 @@ export class SimSandboxHost implements SandboxHost {
         return fail(126, "sh: only the write_file script is simulated");
     }
     const program = cmd ? this.programs[cmd] : undefined;
-    return program ? program(req, fs) : fail(127, `${cmd}: command not found`);
+    return program ? program(req, fs, handle) : fail(127, `${cmd}: command not found`);
   }
 
   async probe(): Promise<Enforceable> {
@@ -375,6 +447,18 @@ export function simulate(o: { tools?: SimTool[]; agents?: SimAgents; model?: Sim
     return seed / 2 ** 31;
   };
   return { adapters: { agents, model, verifier, reads, tools, clock: o.clock ?? clock, random }, clock, agents, model, verifier, reads, tools };
+}
+
+/** The files a pull request draft names: `patch.files` and `tests.files`. */
+function draftFiles(params: Value): string[] {
+  const d = Array.isArray(params) ? params[0] : params;
+  if (!isObj(d ?? null)) return [];
+  const files = (k: string): string[] => {
+    const part = (d as Record<string, Value>)[k];
+    const list = isObj(part ?? null) ? (part as Record<string, Value>)["files"] : undefined;
+    return Array.isArray(list) ? list.filter((f): f is string => typeof f === "string") : [];
+  };
+  return [...new Set([...files("patch"), ...files("tests")])].sort();
 }
 
 function ok(stdout: string): ExecResult {
