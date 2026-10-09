@@ -38,6 +38,7 @@ export interface MxcContainerRequest {
   containment: { type: "bubblewrap" };
   timeoutMs?: number;
   workingDirectory?: string;
+  environment?: Record<string, string>;
 }
 
 export interface MxcSpawned {
@@ -53,11 +54,16 @@ export interface MxcHostOptions {
   sdk?: MxcSdk;
   /** Extra read-only paths every sandbox sees, e.g. a toolchain under /usr/local or /opt. Shown in the policy. */
   baseline?: string[];
+  /** Directories put before MXC's default PATH, e.g. a toolchain's bin under `baseline`. */
+  path?: string[];
   /** Longest output kept per stream; the rest is cut. Default 1 MiB. */
   maxOutput?: number;
 }
 
 const MXC_SDK = "@microsoft/mxc-sdk/v1";
+
+/** MXC's default PATH for a Bubblewrap process (schema 0.9). */
+const DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 
 const NOTHING: Enforceable = { backends: [], modes: [], filesystem: false, network: "none", exec: "none", timeout: false, ui: false };
 
@@ -122,6 +128,8 @@ export class MxcHost implements SandboxHost {
       containment: { type: "bubblewrap" },
       ...(timeoutMs !== undefined ? { timeoutMs } : {}),
       ...(req.cwd ? { workingDirectory: req.cwd } : {}),
+      // Only PATH: nothing of the runtime's own environment reaches the process.
+      ...(this.o.path?.length ? { environment: { PATH: [...this.o.path, DEFAULT_PATH].join(":") } } : {}),
     };
     let proc: MxcSpawned;
     try {

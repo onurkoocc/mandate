@@ -28,7 +28,7 @@ import { SandboxVerifier, type VerifierConfig } from "./verifier.js";
 export interface RuntimeConfig {
   database: string;
   model?: { provider: "anthropic" };
-  sandbox?: { host: "mxc"; baseline?: string[] };
+  sandbox?: { host: "mxc"; baseline?: string[]; path?: string[] };
   github?: { repo: string; base?: string; workdir: string };
   verifier?: VerifierConfig;
 }
@@ -36,7 +36,7 @@ export interface RuntimeConfig {
 const KEYS: Record<string, string[]> = {
   "": ["database", "model", "sandbox", "github", "verifier"],
   model: ["provider"],
-  sandbox: ["host", "baseline"],
+  sandbox: ["host", "baseline", "path"],
   github: ["repo", "base", "workdir"],
   verifier: ["workdir", "base", "suites", "command", "timeoutMs"],
 };
@@ -88,7 +88,7 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
     if (!token) throw new Violation("no_credentials", "github is configured, but MANDATE_GITHUB_TOKEN is not set.");
     tools["git.open_pr"] = new GitHubPullRequests({ token, repo: config.github.repo, workdir: config.github.workdir, ...(config.github.base ? { base: config.github.base } : {}) });
   }
-  const sandbox = config.sandbox ? new MxcAdapter({ host: new MxcHost({ ...(config.sandbox.baseline ? { baseline: config.sandbox.baseline } : {}) }), schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true }) : undefined;
+  const sandbox = config.sandbox ? new MxcAdapter({ host: new MxcHost({ ...(config.sandbox.baseline ? { baseline: config.sandbox.baseline } : {}), ...(config.sandbox.path ? { path: config.sandbox.path } : {}) }), schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true }) : undefined;
   return {
     agents: { run: async () => missing("agent adapter: agents run as agent loops, which need model and sandbox") },
     ...(model && sandbox ? { loop: { chat: model, sandbox } } : {}),

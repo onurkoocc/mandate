@@ -83,7 +83,7 @@ describe.runIf(REAL)("Gate 3 rehearsal: FixBug on the seeded project in Bubblewr
     const w = await world(src, { lock });
 
     const node = dirname(dirname(process.execPath));
-    const host = new MxcHost({ baseline: [node] });
+    const host = new MxcHost({ baseline: [node], path: [dirname(process.execPath)] });
     const sandbox = new MxcAdapter({ host, schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true });
     const chat = new SimChat(script);
     const review: ModelAdapter = { upperBound: () => ({}), infer: async () => ({ ok: { blocking: false, findings: [] }, cost: {} }) };
