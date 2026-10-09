@@ -57,6 +57,8 @@ export interface MxcHostOptions {
   maxOutput?: number;
 }
 
+const MXC_SDK = "@microsoft/mxc-sdk/v1";
+
 const NOTHING: Enforceable = { backends: [], modes: [], filesystem: false, network: "none", exec: "none", timeout: false, ui: false };
 
 /** Helpers the runtime's own tools start; the filesystem policy confines them. */
@@ -75,7 +77,9 @@ export class MxcHost implements SandboxHost {
   private async load(): Promise<MxcSdk | undefined> {
     if (this.sdk) return this.sdk;
     try {
-      this.sdk = (await import("@microsoft/mxc-sdk/v1")) as unknown as MxcSdk;
+      // An optional dependency (Node 24 and later): resolved at run time, typed by MxcSdk above.
+      const specifier: string = MXC_SDK;
+      this.sdk = (await import(specifier)) as MxcSdk;
     } catch (e) {
       this.unavailable = `@microsoft/mxc-sdk could not be loaded: ${(e as Error).message}`;
     }
