@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { check } from "../src/check.js";
-import { sandboxRequirements, type SandboxRequirement } from "../src/target/sandbox.js";
+import { requirementFor, sandboxRequirements, type SandboxRequirement } from "../src/target/sandbox.js";
 import { readRepo } from "./helpers.js";
 
 const FIXBUG = readRepo("examples/fixbug/fixbug.mdt");
@@ -116,5 +116,15 @@ capability Repo = fs.read(ROOT)`,
 
   it("remote agents run elsewhere and get no requirement", () => {
     expect(requirements(readRepo("compiler/test/fixtures/syntax/remote.mdt"))).toEqual({});
+  });
+});
+
+describe("exec without argument prefixes", () => {
+  it("allows any arguments, also when another grant of the command has prefixes", () => {
+    const cap = (argsPrefix?: string[][]) => ({ ctor: "exec", effect: "Exec", write: false, scope: ["npm"], ...(argsPrefix ? { argsPrefix } : {}) });
+    const req = (caps: unknown[]) => requirementFor({ agent: "A", def: "sha256:x" }, caps as never, null).exec;
+    expect(req([cap()])).toEqual([{ command: "npm" }]);
+    expect(req([cap([["test"]]), cap()])).toEqual([{ command: "npm" }]);
+    expect(req([cap([["test"]]), cap([["run", "build"]])])).toEqual([{ command: "npm", args_prefix: [["run", "build"], ["test"]] }]);
   });
 });
