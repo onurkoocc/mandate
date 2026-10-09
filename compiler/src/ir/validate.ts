@@ -9,7 +9,7 @@ import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.
 import { diag, ptrToken, type Diagnostic, type Span } from "../diag.js";
 import type { Json } from "../json/strict-json.js";
 import { LIMITS } from "../limits.js";
-import { LANGUAGE_VERSION } from "./types.js";
+import { isLanguageVersion, LANGUAGE_VERSIONS } from "./types.js";
 
 let validator: ValidateFunction | undefined;
 
@@ -36,15 +36,16 @@ export function validateIr(value: Json, spans?: Map<string, Span>): Diagnostic[]
     return [diag("E0104", "A Mandate program must be a JSON object.", at(""))];
   }
   const lang = value["language"];
-  if (lang !== LANGUAGE_VERSION) {
+  if (!isLanguageVersion(lang)) {
+    const known = LANGUAGE_VERSIONS.map((v) => `"${v}"`).join(" or ");
     return [
       diag(
         "E0103",
         lang === undefined
-          ? `Missing "language" field; expected "${LANGUAGE_VERSION}".`
-          : `Unsupported language version ${JSON.stringify(lang)}; this compiler reads "${LANGUAGE_VERSION}". Use an explicit migration instead of loading it as-is.`,
+          ? `Missing "language" field; expected ${known}.`
+          : `Unsupported language version ${JSON.stringify(lang)}; this compiler reads ${known}. Use an explicit migration instead of loading it as-is.`,
         at("/language"),
-        { facts: { expected: LANGUAGE_VERSION, found: lang ?? null } },
+        { facts: { expected: [...LANGUAGE_VERSIONS], found: lang ?? null } },
       ),
     ];
   }

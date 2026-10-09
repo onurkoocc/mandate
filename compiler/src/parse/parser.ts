@@ -19,7 +19,8 @@ import { canonicalize } from "../json/jcs.js";
 import { DATA_CLASSES, type DataClass } from "../std/std.js";
 import type { Json } from "../json/strict-json.js";
 import {
-  LANGUAGE_VERSION,
+  isLanguageVersion,
+  LANGUAGE_VERSIONS,
   type Arg,
   type BinaryOp,
   type Budget,
@@ -178,6 +179,22 @@ class Parser {
 
   program(): Program {
     const start = this.t;
+    // `mandate @ 0.2` names the language version; a file without it is 0.1.
+    let language: Program["language"] = "mandate/0.1";
+    if (this.isW("mandate") && this.isP("@", this.la(1))) {
+      const langTok = this.bump();
+      this.bump();
+      if (this.t.kind !== "version") this.fail(`Expected a language version after 'mandate @' but found ${this.describe()}.`);
+      const v = `mandate/${this.bump().text}`;
+      if (isLanguageVersion(v)) language = v;
+      else {
+        this.diagnostics.push(
+          diag("E0103", `Unsupported language version '${v}'; this compiler reads ${LANGUAGE_VERSIONS.map((x) => `'${x}'`).join(" or ")}.`, { span: tokenSpan(langTok) }, {
+            facts: { expected: [...LANGUAGE_VERSIONS], found: v },
+          }),
+        );
+      }
+    }
     this.expectW("module");
     const module = this.qname();
     this.expectP("@");
@@ -224,7 +241,7 @@ class Parser {
       (wf.on ??= []).push(handler);
     }
 
-    const program: Program = { language: LANGUAGE_VERSION, module, version, defs };
+    const program: Program = { language, module, version, defs };
     if (uses.length) program.uses = sortCanon(uses);
     if (Object.keys(tests).length) program.tests = tests;
     return this.at(program, start);

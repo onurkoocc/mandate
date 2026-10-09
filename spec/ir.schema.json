@@ -12,9 +12,7 @@
     "defs"
   ],
   "properties": {
-    "language": {
-      "const": "mandate/0.1"
-    },
+    "language": { "enum": ["mandate/0.1", "mandate/0.2"] },
     "module": {
       "$ref": "#/$defs/QName"
     },

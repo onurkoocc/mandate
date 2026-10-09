@@ -27,6 +27,7 @@ const KIND_ORDER: Def["kind"][] = ["capability", "type", "const", "effect", "ext
 
 export function printProgram(p: Program): string {
   const out: string[] = [];
+  if (p.language !== "mandate/0.1") out.push(p.language.replace("/", " @ "), "");
   out.push(`module ${p.module} @ ${p.version}`);
   if (p.uses?.length) {
     out.push("");

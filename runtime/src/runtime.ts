@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { canonicalize, check, domainHash, hashProgram, LANGUAGE_VERSION, type Json, type Program } from "@mandate/compiler";
+import { canonicalize, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, type Json, type Program } from "@mandate/compiler";
 import type { Adapters, Cost } from "./adapters.js";
 import type { Db, Row } from "./db.js";
 import { Faults } from "./faults.js";
@@ -37,7 +37,7 @@ export function buildPackage(program: Program, lock: Lock = { modules: {} }): Pa
  * module to be locked, and re-runs the compiler's checks.
  */
 export function verifyPackage(pkg: Package): void {
-  if (pkg.program.language !== LANGUAGE_VERSION) throw new Violation("unsupported_language", `Package language ${String(pkg.program.language)} is not ${LANGUAGE_VERSION}.`);
+  if (!isLanguageVersion(pkg.program.language)) throw new Violation("unsupported_language", `Package language ${String(pkg.program.language)} is not one of ${LANGUAGE_VERSIONS.join(", ")}.`);
   const programHash = hashProgram(pkg.program as unknown as Json).program;
   if (programHash !== pkg.programHash) throw new Violation("package_hash_mismatch", `The program hashes to ${programHash}, not the packaged ${pkg.programHash}.`);
   if (domainHash("package", { program: programHash, lock: pkg.lock } as unknown as Json) !== pkg.hash) {

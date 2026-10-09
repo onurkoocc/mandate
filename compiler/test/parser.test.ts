@@ -174,3 +174,28 @@ describe("data classes", () => {
     expect(codes(load("module m @ 0.1\ntype R = Text classified secret\n", "mdt").diagnostics)).toEqual(["MDT-E0101"]);
   });
 });
+
+describe("language version", () => {
+  const body = "module m @ 0.1\nlet x = 1\n";
+
+  it("reads a file without a header as 0.1 and `mandate @ 0.2` as 0.2", () => {
+    expect(load(body, "mdt").program!.language).toBe("mandate/0.1");
+    const r = load(`mandate @ 0.2\n\n${body}`, "mdt");
+    expect(r.diagnostics).toEqual([]);
+    expect(r.program!.language).toBe("mandate/0.2");
+    expect(printProgram(r.program!)).toMatch(/^mandate @ 0\.2\n\nmodule m @ 0\.1\n/);
+    expect(printProgram(load(body, "mdt").program!)).toMatch(/^module m @ 0\.1\n/);
+  });
+
+  it("hashes the same program differently in 0.1 and 0.2", () => {
+    const a = check(body, "mdt");
+    const b = check(`mandate @ 0.2\n${body}`, "mdt");
+    expect(a.ok && b.ok).toBe(true);
+    expect(a.hashes!.program).not.toBe(b.hashes!.program);
+    expect(a.hashes!.defs["x"]).not.toBe(b.hashes!.defs["x"]);
+  });
+
+  it("rejects a language version it does not read", () => {
+    expect(codes(load(`mandate @ 0.9\n${body}`, "mdt").diagnostics)).toEqual(["MDT-E0103"]);
+  });
+});
