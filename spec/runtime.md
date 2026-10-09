@@ -893,3 +893,34 @@ component; [`system.md`](system.md#change-sets-b4) has the semantics.
   resumes the run.
 - **`git.merge`** (`GitHubMerges`): configured with `"github": { "repos": […] }`
   and MANDATE_GITHUB_TOKEN. Its retry class is `reconcilable`.
+
+## Boundary verifier (design doc 9 §4, B5)
+
+`BoundaryVerifier` answers `test.suite_each`, `test.contract`,
+`test.integration` and `test.ci`, and passes every other method to the
+verifier it wraps. Verify requests carry the system
+(`VerifyRequest.system`): every component with its repository, root, base
+commit, language, commands and interfaces, and every interface with its
+protocol, spec and provider.
+
+Configuration (`mandate.runtime.json`):
+
+```json
+"boundary": {
+  "integration": { "dir": "../kervan-system/compose", "files": ["base.yml", "staging.yml", "integration.yml"], "service": "e2e" },
+  "ci": { "mode": "rerun", "workflow": "ci" },
+  "pinned": { "mcp": ["test/**"] },
+  "extraRead": { "core": ["/root/.m2"] }
+}
+```
+
+- `integration` writes an override that builds each of the run's components
+  from its working copy and makes the default network internal. It reads
+  the resolved configuration back (`docker compose config`) and refuses
+  published ports and networks that are not internal. It runs
+  `up --build --abort-on-container-exit --exit-code-from <service>` and
+  then `down -v`.
+- `ci` reads GitHub Actions (MANDATE_GITHUB_TOKEN). Attestation
+  verification is a pluggable hook (`GitHubCi.attest`); without one, every
+  result is unattested.
+- Evidence records name the producer `mandate-boundary-verifier@0.3`.

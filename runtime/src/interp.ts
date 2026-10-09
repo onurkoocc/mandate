@@ -38,7 +38,7 @@ import {
   type Verifier,
   type WorkflowDef,
 } from "@mandate/compiler";
-import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, RunComponents, ToolAdapter } from "./adapters.js";
+import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, RunComponents, SystemFacts, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
@@ -439,6 +439,8 @@ export class Interpreter {
     if (d?.kind === "const") return this.constant(name, d.value);
     if (d?.kind === "capability") return { $capability: name };
     if (d?.kind === "type") return tag(name);
+    // A component, interface or environment stands for its name, e.g. `test.integration(env: staging, …)`.
+    if (d?.kind === "component" || d?.kind === "interface" || d?.kind === "environment") return name;
     // A bare variant name such as `Uncertain` or `Refund`.
     if (/^[A-Z]/.test(name)) return tag(name);
     throw new Violation("unbound", `Unbound name '${name}'.`);
@@ -923,12 +925,13 @@ export class Interpreter {
       // settings, not variables: an unbound bare name is passed as its text.
       const symbolic = call.op === "call" ? call.args.map((a) => (a.value.op === "var" && this.isModulePath(a.value, ctx) ? { ...a, value: { op: "text" as const, value: a.value.name } } : a)) : [];
       const { pos, named } = call.op === "call" ? await this.args(symbolic, ctx, `${path}/call`) : { pos: [], named: {} };
-      const req = { method, args: pos, named, contract, criterion: name, ...(this.o.workspace && Object.keys(this.o.workspace).length ? { workspace: this.o.workspace } : {}) };
+      const system = this.systemFacts();
+      const req = { method, args: pos, named, contract, criterion: name, ...(system ? { system } : {}) };
       const verifier = this.o.adapters.verifier;
       const r = await this.command(
         `${path}/call`,
         "verify",
-        req,
+        req as unknown as Value,
         verifier.upperBound ? () => verifier.upperBound!(req) : undefined,
         async () => {
           const res = await verifier.check(req);
@@ -1074,6 +1077,8 @@ export class Interpreter {
     ctx: Ctx,
     path: string,
     extra: Obj = {},
+    /** A change set member's component: its files are checked against evidence keyed `<component>/<path>`. */
+    component?: string,
   ): Promise<{ tool: ToolAdapter; action: ActionRow; receipt?: undefined } | { tool: ToolAdapter; action?: undefined; receipt: Value }> {
     // INV-13: a parameter declared Verified<T, C> must carry evidence for C at run time too.
     for (const [i, t] of info.params.entries()) {
@@ -1106,7 +1111,7 @@ export class Interpreter {
     const files = Object.fromEntries(Object.entries(frozen).map(([p, a]) => [p, isObj(a) ? String(a["digest"]) : ""]));
     const evidence = evidenceOf(pos);
     // Evidence is bound to what it checked: an action that would apply other bytes is refused (G01, INV-05).
-    if (Object.keys(files).length && !this.o.replay) await this.checkEvidenceFresh(name, files, evidence);
+    if (Object.keys(files).length && !this.o.replay) await this.checkEvidenceFresh(name, files, evidence, component);
     const actionDigest = digest("action", {
       package: this.o.packageHash,
       run: this.o.runId,
@@ -1179,7 +1184,7 @@ export class Interpreter {
       const { pos } = await this.args(mem.args, ctx, mp);
       // The member names its component and the commit the run started from: an approval is for this change to this base.
       const target: Obj = { component: m, repo: comp.repo, root: comp.root, base: this.o.workspace?.[m]?.base ?? null };
-      const p = await this.prepareAction(mem.effect, this.effectInfo(mem.effect), pos, [target, ...(plain(pos) as Value[])], key, ctx, mp, { changeset: path });
+      const p = await this.prepareAction(mem.effect, this.effectInfo(mem.effect), pos, [target, ...(plain(pos) as Value[])], key, ctx, mp, { changeset: path }, m);
       members.push({ component: m, effect: mem.effect, approver: mem.approver ?? comp.owner, tool: p.tool, ...(p.action ? { action: p.action } : { receipt: p.receipt }) });
     }
     if (this.o.replay) return { members: Object.fromEntries(members.map((m) => [m.component, m.receipt ?? null])) };
@@ -1264,6 +1269,26 @@ export class Interpreter {
     }
     await journal.changesetState(runId, fence, setKey, "committed", { set: setDigest });
     return { set_digest: setDigest, members: receipts };
+  }
+
+  private facts?: SystemFacts | null;
+
+  /** The system model the program sees, with each component at the run's base commit; none without one. */
+  private systemFacts(): SystemFacts | undefined {
+    if (this.facts === undefined) {
+      const components: SystemFacts["components"] = {};
+      const interfaces: SystemFacts["interfaces"] = {};
+      for (const [name, d] of Object.entries(this.defs).sort(([a], [b]) => (a < b ? -1 : 1))) {
+        if (d.kind === "component") {
+          components[name] = { repo: d.repo, root: d.root, base: this.o.workspace?.[name]?.base ?? null, lang: d.lang, build: d.build ?? [], test: d.test ?? [], provides: d.provides ?? [], consumes: d.consumes ?? [] };
+        }
+      }
+      for (const [name, d] of Object.entries(this.defs).sort(([a], [b]) => (a < b ? -1 : 1))) {
+        if (d.kind === "interface") interfaces[name] = { protocol: d.protocol, spec: d.spec, provider: Object.entries(components).find(([, c]) => c.provides.includes(name))?.[0] ?? null };
+      }
+      this.facts = Object.keys(components).length ? { components, interfaces } : null;
+    }
+    return this.facts ?? undefined;
   }
 
   /** The compensation an effect offers (§8.5), if it declares one. */
@@ -1381,13 +1406,15 @@ export class Interpreter {
    * must list the file with the same digest; a file changed or added since
    * the check makes the evidence stale, and the action is refused.
    */
-  private async checkEvidenceFresh(effect: string, files: Record<string, string>, ids: string[]): Promise<void> {
+  private async checkEvidenceFresh(effect: string, files: Record<string, string>, ids: string[], component?: string): Promise<void> {
     const rows = ids.length ? await this.o.journal.evidence(this.o.runId, ids) : [];
     const stale: string[] = [];
     for (const r of rows) {
       const checked = isObj(r.subject) && isObj(r.subject["files"] ?? null) ? (r.subject["files"] as Obj) : undefined;
       if (!checked) continue;
-      for (const [p, d] of Object.entries(files)) {
+      for (const [file, d] of Object.entries(files)) {
+        // Evidence about several components names each file under its component (boundary checks, B5).
+        const p = component ? `${component}/${file}` : file;
         if (checked[p] !== d) stale.push(`${p} (${r.criterion}: ${checked[p] === undefined ? "not in what was checked" : "changed since the check"})`);
       }
     }

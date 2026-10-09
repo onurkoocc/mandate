@@ -187,3 +187,41 @@ At run time:
 commit. It opens a pull request from `mandate/<component>-<op>` and merges
 it, pinned to that head commit (a moved head is refused, 409). It is
 reconcilable from the pull request's state.
+
+## Boundary evidence (B5)
+
+In a change across components, the most valuable evidence is that the
+components work together (doc 9 §4). Four verifier methods check it, in the
+control plane, never in an agent's sandbox:
+
+| Method | Checks | Met when |
+|---|---|---|
+| `test.suite_each(components)` | Each component's declared `test` commands, in a read-only sandbox over a copy of its working copy whose test files are the base commit's (K22; default globs by language) | Every component's tests pass |
+| `test.contract(changes)` | Every interface whose provider the run works on: its spec at the base commit against the working copy, diffed by protocol (`openapi`, `mcp_tools`, `oauth`, `event`; `db_schema` by a migration heuristic) | No measured change exceeds the declared one. Undeclared counts as `none`; `breaking_change_undeclared` and `change_undeclared` are unmet |
+| `test.integration(env: e, components)` | The system built from the candidate working copies with docker compose, its end-to-end service run on networks that are all `internal` | The end-to-end service exits 0 |
+| `test.ci({ component: commit })` | The component's existing CI on that commit | The result is attested and the attestation verified; or, in `rerun` mode (the default), the verifier's own run of the component's tests at that commit passes |
+
+- **Who is on which side.** The diff takes the consumer's side. What a
+  consumer receives (responses, tool outputs, metadata) may gain but not
+  lose. What it sends (requests, tool inputs) may loosen but not tighten.
+- **Isolation (K43).** Before the first integration check, the host is
+  probed: a container on a fresh internal network tries to reach a public
+  address and to resolve a name. If either works, or compose's resolved
+  configuration publishes a port or has a network that is not internal,
+  the check is refused by name (`integration_isolation`) and nothing runs
+  (INV-11). Candidate code is built with dependencies fetched from lock
+  files only, and runs with no network (examples/kervan/SPEC.md §11).
+- **What the evidence is about.** Each check's subject is every component's
+  working copy, keyed `<component>/<path>`. A change set member's frozen
+  files are checked against it, so a file changed after a check is not
+  landed (`stale_evidence`, G01).
+- **CI's word.** A CI result is untrusted by default (K21, §4.3). An
+  unattested result is shown, and counts only through the verifier's
+  re-run. The default when no attestation exists is `rerun` (doc 9 §14
+  question 4).
+
+Kervan's design task of class 3 shows why the boundary matters. A change
+moves only kervan-mcp's side of the token-audience agreement. Its own tests
+pass, no interface spec changes, and only `test.integration` fails
+(`runtime/test/audience.test.ts`; against the real system,
+`examples/kervan/b5.sh`).

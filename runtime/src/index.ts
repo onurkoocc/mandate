@@ -10,6 +10,8 @@ export { Faults, type FaultPoint } from "./faults.js";
 export { Interpreter, ReplayEnd, type AuthorizePolicy, type Policy } from "./interp.js";
 export { Journal, TERMINAL, type ActionRow, type BudgetReport, type ChangesetRow, type CommandRow, type EvidenceRow, type RunRow, type RunState } from "./journal.js";
 export { GitHubMerges, type GitHubMergeOptions } from "./github-merge.js";
+export { BOUNDARY_HANDLER, BoundaryVerifier, GitHubCi, leaks, measure, realDocker, snapshot, type BoundaryConfig, type CiConfig, type CiRun, type CiSource, type Docker, type IntegrationConfig } from "./boundary.js";
+export { covers, diffEvent, diffMcpTools, diffMigrations, diffOauth, diffOpenApi, diffSpec, type ChangeKind, type SpecChange } from "./specdiff.js";
 export { GitWorkspace, type ComponentSource, type WorkspaceAdapter, type WorkspaceComponent } from "./workspace.js";
 export { buildPackage, componentsOf, refusingAdapters, Runtime, RUN_MANIFEST_FORMAT, verifyPackage, type Lock, type Message, type Package, type ReplayResult, type RuntimeOptions, type StartOptions } from "./runtime.js";
 export * from "./sandbox.js";

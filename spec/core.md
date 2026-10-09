@@ -417,3 +417,8 @@ Mandate describes a working system instead of rewriting it
   approver approves the set digest S. Members commit in order; a failure or
   an unknown outcome after a member has landed stops the set as
   `changeset_partial`, and compensation is offered, never run.
+- **Boundary evidence.** `test.suite_each`, `test.contract`,
+  `test.integration` and `test.ci` check a change where components meet:
+  each component's tests pinned to the base, interface specs against the
+  declared change, the system end to end on a network with no way out, and
+  CI that counts only attested or re-run.

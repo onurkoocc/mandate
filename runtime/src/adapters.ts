@@ -2,7 +2,7 @@
 // nondeterministic step goes through one of these, and its result is journaled
 // before the program sees it, so replay never calls them again (INV-09).
 
-import type { Budget, RetryClass, SandboxRequirement, TypeExpr } from "@mandate/compiler";
+import type { Budget, Command, RetryClass, SandboxRequirement, TypeExpr } from "@mandate/compiler";
 import type { MxcAdapter } from "./sandbox.js";
 import type { WorkspaceAdapter } from "./workspace.js";
 import type { Value } from "./values.js";
@@ -118,8 +118,17 @@ export interface VerifyRequest {
   named: Record<string, Value>;
   contract: string;
   criterion: string;
-  /** The components the run works on, with the commit it started from (design doc 9 §12, B3). */
-  workspace?: RunComponents;
+  /**
+   * The system the run works on (design doc 9 §2, §4): its components, with
+   * the commit the run started from, and its interfaces. Boundary checks
+   * (test.suite_each, test.contract, test.integration, test.ci) read it.
+   */
+  system?: SystemFacts;
+}
+
+export interface SystemFacts {
+  components: Record<string, { repo: string; root: string; base: string | null; lang: string; build: Command[]; test: Command[]; provides: string[]; consumes: string[] }>;
+  interfaces: Record<string, { protocol: string; spec: string; provider: string | null }>;
 }
 
 /** A run's components by name: repository, working copy root, and the base commit the run started from. */

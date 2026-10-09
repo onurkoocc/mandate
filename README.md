@@ -55,7 +55,10 @@ anything runs. This repository holds the 0.1 reference implementation.
    each agent's sandbox sees only its components. Change sets land one
    change per component as a unit: owners approve their members and an
    approver the set digest, members commit in order, and a partial set
-   stops for a person (`git.merge` on GitHub). The reference
+   stops for a person (`git.merge` on GitHub). Boundary evidence checks
+   each component's tests, interface specs against the declared change,
+   the system end to end on an internal network, and attested or re-run
+   CI. The reference
    system is Kervan, seven repositories in TypeScript, Java and Python
    ([`examples/kervan/`](examples/kervan/SPEC.md)). See
    [`spec/system.md`](spec/system.md).

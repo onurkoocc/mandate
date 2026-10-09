@@ -18,6 +18,9 @@
 //     "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"],
 //                   "process": { "key": ".mandate/verifier.key", "trusted": ["keys/verifier.pub"] } }   // optional: a verifier process of its own
 //     "workspace": { "components": { "mcp": { "url": "https://github.com/onurkoocc/kervan-mcp.git", "ref": "main" } } }
+//     "boundary": { "integration": { "dir": "../kervan-system/compose", "files": ["base.yml", "staging.yml", "integration.yml"], "service": "e2e" },
+//                   "ci": { "mode": "rerun", "workflow": "ci" }, "pinned": { "mcp": ["test/**"] }, "extraRead": { "core": ["/root/.m2"] } }
+//                 // boundary evidence (B5): test.suite_each, test.contract, test.integration, test.ci
 //                 // where each component of a system model comes from (B3); checked out at its root
 //   }
 
@@ -35,6 +38,7 @@ import type { RuntimeOptions } from "./runtime.js";
 import { openDb, type Db } from "./db.js";
 import { GitHubPullRequests } from "./github.js";
 import { GitHubMerges } from "./github-merge.js";
+import { BoundaryVerifier, GitHubCi, realDocker, type IntegrationConfig } from "./boundary.js";
 import { MxcHost } from "./mxc.js";
 import { WindowsMxcHost } from "./mxc-windows.js";
 import { MxcAdapter } from "./sandbox.js";
@@ -68,6 +72,8 @@ export interface RuntimeConfig {
      */
     process?: { key: string; trusted?: string[] };
   };
+  /** Boundary evidence across components (design doc 9 §4, B5). */
+  boundary?: { integration?: IntegrationConfig; ci?: { mode?: "attested" | "rerun"; workflow?: string }; pinned?: Record<string, string[]>; extraRead?: Record<string, string[]>; timeoutMs?: number };
   /** Where each component of a system model is cloned from, and the ref a run starts from (design doc 9 §12, B3). */
   workspace?: { components: Record<string, ComponentSource> };
   /** The configuration file itself, so a verifier process can read it too. */
@@ -75,7 +81,10 @@ export interface RuntimeConfig {
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "evidence", "rateLimits", "model", "sandbox", "github", "verifier", "workspace"],
+  "": ["database", "artifacts", "evidence", "rateLimits", "model", "sandbox", "github", "verifier", "workspace", "boundary"],
+  boundary: ["integration", "ci", "pinned", "extraRead", "timeoutMs"],
+  "boundary.integration": ["dir", "files", "service", "services", "env", "timeoutMs", "probeImage"],
+  "boundary.ci": ["mode", "workflow"],
   workspace: ["components"],
   evidence: ["key", "trusted"],
   model: ["provider"],
@@ -116,6 +125,7 @@ export function readConfig(file: string): RuntimeConfig {
   if (config.github && (!!config.github.repo !== !!config.github.workdir || (config.github.repos !== undefined && (!Array.isArray(config.github.repos) || !config.github.repos.every((r) => typeof r === "string"))))) {
     throw new Violation("bad_config", `${file}: "github" takes "repo" with "workdir" (git.open_pr), and "repos", a list of owner/name (git.merge)`);
   }
+  if (config.boundary?.integration) config.boundary.integration.dir = at(config.boundary.integration.dir);
   if (config.workspace) {
     const comps = (config.workspace as { components?: unknown }).components;
     if (!comps || typeof comps !== "object" || Array.isArray(comps)) throw new Violation("bad_config", `${file}: "workspace.components" maps component names to { "url", "ref" }`);
@@ -201,6 +211,14 @@ function sandboxFor(config: RuntimeConfig): MxcAdapter | undefined {
   return new MxcAdapter({ host, schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true, ...(s.isolation ? { isolation: s.isolation } : {}), ...(s.mode ? { mode: s.mode } : {}) });
 }
 
+function boundaryVerifier(config: RuntimeConfig, sandbox: MxcAdapter, env: NodeJS.ProcessEnv, inner: VerifierAdapter | undefined): BoundaryVerifier {
+  const b = config.boundary!;
+  const token = env["MANDATE_GITHUB_TOKEN"];
+  const ci = b.ci && token ? { ci: { ...(b.ci.mode ? { mode: b.ci.mode } : {}), source: new GitHubCi({ token, ...(b.ci.workflow ? { workflow: b.ci.workflow } : {}) }) } } : {};
+  if (b.ci && !token) throw new Violation("no_credentials", "boundary.ci reads GitHub Actions, but MANDATE_GITHUB_TOKEN is not set.");
+  return new BoundaryVerifier({ ...(b.integration ? { integration: b.integration } : {}), ...(b.pinned ? { pinned: b.pinned } : {}), ...(b.extraRead ? { extraRead: b.extraRead } : {}), ...(b.timeoutMs ? { timeoutMs: b.timeoutMs } : {}), ...ci }, sandbox, realDocker, inner);
+}
+
 /** A stand-in for an adapter the configuration leaves out: calling it stops the run for a person. */
 function missing(what: string): never {
   throw new Violation("no_adapter", `The runtime configuration has no ${what}.`);
@@ -221,16 +239,19 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
     if (config.github.repos?.length) tools["git.merge"] = new GitHubMerges({ token, repos: config.github.repos, ...base });
   }
   const sandbox = sandboxFor(config);
+  const own = config.verifier?.process
+    ? new ProcessVerifier({ command: [process.execPath, VERIFIER_MAIN, "--config", config.file!], trusted: verifierKeys(config), package: { program, lock }, env })
+    : config.verifier && sandbox
+      ? new SandboxVerifier(config.verifier, sandbox, model)
+      : undefined;
+  // Boundary checks need the run's working copies, so they run in this process; other checks go to the verifier above.
+  const boundary = config.boundary && sandbox ? boundaryVerifier(config, sandbox, env, own) : undefined;
   return {
     agents: { run: async () => missing("agent adapter: agents run as agent loops, which need model and sandbox") },
     ...(model && sandbox ? { loop: { chat: model, sandbox } } : {}),
     model: model ?? { infer: async () => missing("model"), upperBound: () => missing("model") },
     // A verifier process of its own signs each check with its own key; otherwise the checks run here.
-    verifier: config.verifier?.process
-      ? new ProcessVerifier({ command: [process.execPath, VERIFIER_MAIN, "--config", config.file!], trusted: verifierKeys(config), package: { program, lock }, env })
-      : config.verifier && sandbox
-        ? new SandboxVerifier(config.verifier, sandbox, model)
-        : { check: async () => missing("verifier") },
+    verifier: boundary ?? own ?? { check: async () => missing("verifier") },
     reads: { call: async () => missing("reader") },
     tools,
     ...(config.workspace ? { workspace: new GitWorkspace(config.workspace.components) } : {}),
