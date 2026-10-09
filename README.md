@@ -7,7 +7,7 @@ anything runs. This repository holds the 0.1 reference implementation.
 
 ## Status
 
-0.1 was built in four steps, then Gate 0 and Gate 3 took it to 0.2:
+0.1 was built in four steps, then Gates 0, 3 and 4 took it to 0.2:
 
 1. **Compiler core (done):** canonical IR with a closed JSON Schema,
    strict JSON reading, JCS + SHA-256 hashing, the `.mdt` text projection
@@ -35,6 +35,17 @@ anything runs. This repository holds the 0.1 reference implementation.
    test repository. The contract's tests ran in sandboxes of the runtime's
    own, a person approved from the CLI, and one pull request was opened,
    for 0.23 USD. See [`examples/fixbug-target/`](examples/fixbug-target/).
+7. **Gate 4, the rest of 0.2 (done):** evidence and authority against an
+   adversarial environment, with no real money or production effect. A
+   content-addressed artifact store, with evidence bound to the bytes it
+   checked; signed evidence records; acceptance suites pinned to the base
+   commit; the thirteen G cases of §25. Human views of programs and runs,
+   with a semantic diff ([`spec/views.md`](spec/views.md)); the compiler as
+   an MCP server ([`spec/mcp.md`](spec/mcp.md)). A delegation's `timeout`,
+   a workflow's `ensures` and a program's `tests`; `escalate` and
+   `degrade`; `Throttled` and shared rate limits; durable timers and
+   continue-as-new under Temporal; and the Windows sandbox backend with
+   learning mode (W0311).
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
