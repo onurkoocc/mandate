@@ -35,7 +35,7 @@
 
 import type { CapVal, LoopStrategy, Param, Program, Progress, SandboxRequirement, TypeExpr } from "@mandate/compiler";
 import type { ChatModel, Cost, Outcome, ToolSpec, TurnRequest } from "./adapters.js";
-import type { MxcAdapter } from "./sandbox.js";
+import type { ExecRequest, ExecResult, MxcAdapter } from "./sandbox.js";
 import { schemaErrors, typeSchema, type JsonSchema } from "./schema.js";
 import { Fault } from "./signals.js";
 import { callKey, commandFor, Denied, FINISH, SUBMIT_PLAN, toolResult, toolsFor, type AgentTools } from "./tools.js";
@@ -71,6 +71,12 @@ export interface LoopIO {
   sandbox: MxcAdapter;
   /** Whether an error means a parallel sibling failed and this branch must stop (fail_fast); it is passed on. */
   stopped(e: unknown): boolean;
+  /** Whether the run was cancelled; asked while a tool call runs, so the sandbox can be stopped (§16.1 Stop). */
+  cancelled?(): Promise<boolean>;
+  /** How often to ask `cancelled`. Default 1000 ms. */
+  pollMs?: number;
+  /** Records that the sandbox was stopped, and how surely. */
+  sandboxStopped?(handle: string, result: "stopped" | "uncertain"): Promise<void>;
 }
 
 type Block = { [k: string]: Value };
@@ -337,7 +343,7 @@ class Loop {
       "tool",
       { tool: u.name, input: u.input as Value },
       undefined,
-      async () => ({ ok: (await this.io.sandbox.o.host.execute(this.handle, cmd)) as unknown as Value, cost: {} }),
+      async () => ({ ok: (await this.execute(cmd)) as unknown as Value, cost: {} }),
       `${t.agent}.${t.skill} ${u.name}`,
     );
     this.toolCalls++;
@@ -347,6 +353,40 @@ class Loop {
     const observedNew = !this.observed.has(observation);
     this.observed.add(observation);
     return { block: { type: "tool_result", tool_use_id: u.id, content: r.content, ...(r.isError ? { is_error: true } : {}) }, observedNew };
+  }
+
+  /**
+   * Runs one process in the sandbox. While it runs, the loop asks whether the
+   * run was cancelled; if so it stops the sandbox (§16.1 Stop) rather than
+   * wait for the process's own timeout. The call's result says it was
+   * stopped, and the next step is refused because the run is cancelled (R08).
+   */
+  private async execute(cmd: ExecRequest): Promise<ExecResult> {
+    const host = this.io.sandbox.o.host;
+    const handle = this.handle;
+    const running = host.execute(handle, cmd);
+    const cancelled = this.io.cancelled?.bind(this.io);
+    if (!cancelled || !host.stop) return running;
+    let stopped: "stopped" | "uncertain" | undefined;
+    let checking: Promise<void> | undefined;
+    const timer = setInterval(() => {
+      if (checking || stopped) return;
+      checking = (async () => {
+        if (!(await cancelled())) return;
+        stopped = await host.stop!(handle);
+        await this.io.sandboxStopped?.(handle, stopped);
+      })()
+        // A failed check is not a stop: the process runs on to its timeout, as without Stop.
+        .catch(() => undefined)
+        .finally(() => (checking = undefined));
+    }, this.io.pollMs ?? 1000);
+    try {
+      const r = await running;
+      if (checking) await checking;
+      return stopped ? { ...r, stopped: true } : r;
+    } finally {
+      clearInterval(timer);
+    }
   }
 
   private finish(u: ToolUse): { ok: true; value: Value } | { ok: false; result: Block } {

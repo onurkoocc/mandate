@@ -43,6 +43,8 @@ export interface ExecResult {
   stderr: string;
   exitCode: number;
   timedOut: boolean;
+  /** The sandbox was stopped while the process ran (§16.1 Stop). */
+  stopped?: boolean;
 }
 
 /** The platform side of the adapter contract: MXC's SDK, or a simulation in tests. */
@@ -57,6 +59,14 @@ export interface SandboxHost {
    * without learning mode records nothing.
    */
   collect?(handle: string): Promise<{ denials: SandboxDenial[] }>;
+  /**
+   * Stops every process running in the sandbox, and starts no more (§16.1
+   * `Stop`): when its run is cancelled, a long test run does not go on to
+   * its own timeout. `stopped`: nothing runs in it any more. `uncertain`:
+   * the host cannot kill what runs; it still ends at its timeout. Optional;
+   * a host without Stop leaves running processes to their timeout.
+   */
+  stop?(handle: string): Promise<"stopped" | "uncertain">;
   destroy(handle: string): Promise<"destroyed" | "retained_for_investigation">;
 }
 

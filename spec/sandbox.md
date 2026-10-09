@@ -91,6 +91,26 @@ blocks like `enforcement` and also reports what it blocked.
 `SandboxedAgents` wraps an agent adapter. For each delegation it plans a
 policy, creates the sandbox, runs the agent in it and destroys it.
 
+### Stop (§16.1)
+
+When a run is cancelled while one of its agents' processes runs, the
+sandbox is stopped; the process does not run on to its own timeout. While
+a tool call runs, the agent loop asks the run's row whether it was
+cancelled, every `stopPollMs` (1 s by default; PostgreSQL is
+authoritative, so a cancel from another process counts). Then it calls the
+host's `stop(handle)`:
+
+| Host | What `stop` does | Answer |
+|---|---|---|
+| Linux, Bubblewrap | kills every process running in the sandbox; starts no more | `stopped` |
+| Windows, AppContainer | starts no more; the SDK's `run` cannot be killed, so a running process ends at its timeout | `uncertain` while one runs, else `stopped` |
+
+The run's journal records `sandbox_stopped` with the delegation, the agent,
+the handle and the answer. The tool call's result says `stopped: true`. The
+loop's next step is refused because the run is cancelled (R08), and the
+sandbox is destroyed as always. A host without `stop` leaves the process to
+its timeout, which every agent's policy sets.
+
 When the host cannot enforce the requirement, the agent is never started.
 The delegate fails with this fault, and nothing is spent:
 
@@ -205,8 +225,6 @@ repeat the Linux enforcement tests against a real AppContainer
 
 ## Not yet
 
-- **`Stop` of the adapter contract.** A running process is stopped only by
-  its timeout.
 - **Learning mode on Linux.** Bubblewrap has none; a requirement for it is
   refused there.
 - **An outbound host allow-list.** MXC offers one through a proxy. It is

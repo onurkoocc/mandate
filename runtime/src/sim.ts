@@ -295,7 +295,7 @@ export const FULL_SANDBOX: Enforceable = {
 };
 
 /** A program a simulated sandbox can run, e.g. `mvn`: it sees the request and the sandbox's file system. */
-export type SimProgram = (req: ExecRequest, fs: SimFs) => ExecResult | Promise<ExecResult>;
+export type SimProgram = (req: ExecRequest, fs: SimFs, handle: string) => ExecResult | Promise<ExecResult>;
 
 /** The file system one simulated sandbox sees: reads and writes go through its policy's path lists. */
 export interface SimFs {
@@ -315,6 +315,10 @@ export class SimSandboxHost implements SandboxHost {
   readonly created: Array<{ handle: string; policy: MxcPolicy }> = [];
   readonly destroyed: string[] = [];
   readonly executions: Array<{ handle: string; req: ExecRequest; result: ExecResult }> = [];
+  readonly stopped: string[] = [];
+  /** What `stop` answers; a host that cannot kill a running process says `uncertain`. */
+  stopResult: "stopped" | "uncertain" = "stopped";
+  private readonly waiting = new Map<string, Array<() => void>>();
   /** The host's files, by absolute path. */
   readonly files = new Map<string, string>();
   readonly programs: Record<string, SimProgram> = {};
@@ -324,12 +328,30 @@ export class SimSandboxHost implements SandboxHost {
 
   async execute(handle: string, req: ExecRequest): Promise<ExecResult> {
     const sbx = this.created.find((c) => c.handle === handle);
-    const result = !sbx || this.destroyed.includes(handle) ? fail(126, `no sandbox ${handle}`) : await this.run(sbx.policy, req);
+    const gone = !sbx || this.destroyed.includes(handle) || this.stopped.includes(handle);
+    const result = gone ? fail(126, `no sandbox ${handle}`) : await this.run(sbx.policy, req, handle);
     this.executions.push({ handle, req, result });
     return result;
   }
 
-  private async run(policy: MxcPolicy, req: ExecRequest): Promise<ExecResult> {
+  /** Kills what runs in the sandbox: a program waiting in `untilStopped` ends with exit code 137. */
+  async stop(handle: string): Promise<"stopped" | "uncertain"> {
+    this.stopped.push(handle);
+    if (this.stopResult === "stopped") for (const wake of this.waiting.get(handle) ?? []) wake();
+    this.waiting.delete(handle);
+    return this.stopResult;
+  }
+
+  /** For a scripted program that runs until its sandbox is stopped, like a hung test run. */
+  untilStopped(handle: string): Promise<ExecResult> {
+    return new Promise((resolve) => {
+      const list = this.waiting.get(handle) ?? [];
+      list.push(() => resolve({ stdout: "", stderr: "Killed\n", exitCode: 137, timedOut: false, stopped: true }));
+      this.waiting.set(handle, list);
+    });
+  }
+
+  private async run(policy: MxcPolicy, req: ExecRequest, handle: string): Promise<ExecResult> {
     const readable = (p: string) => inside(p, [...policy.filesystem.readOnly, ...policy.filesystem.readWrite]);
     const writable = (p: string) => inside(p, policy.filesystem.readWrite);
     const fs: SimFs = {
@@ -369,7 +391,7 @@ export class SimSandboxHost implements SandboxHost {
         return fail(126, "sh: only the write_file script is simulated");
     }
     const program = cmd ? this.programs[cmd] : undefined;
-    return program ? program(req, fs) : fail(127, `${cmd}: command not found`);
+    return program ? program(req, fs, handle) : fail(127, `${cmd}: command not found`);
   }
 
   async probe(): Promise<Enforceable> {

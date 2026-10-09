@@ -236,6 +236,9 @@ adapter:
     applied.
   - Too late: it was applied, and its receipt is recorded.
   - Unknown: nothing changes.
+- **`Stop`.** A cancelled run's agent processes are stopped in their
+  sandboxes, not left to their timeouts (`sandbox_stopped`; see
+  `spec/sandbox.md`).
 
 ### `git.open_pr` on GitHub
 

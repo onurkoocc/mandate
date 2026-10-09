@@ -233,6 +233,8 @@ export interface Clock {
 export interface LoopAdapters {
   chat: ChatModel;
   sandbox: MxcAdapter;
+  /** How often a running tool call checks whether its run was cancelled, to stop the sandbox (§16.1 Stop). Default 1000 ms. */
+  stopPollMs?: number;
 }
 
 export interface Adapters {

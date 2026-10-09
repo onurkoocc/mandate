@@ -39,6 +39,8 @@ function requirement(o: { read?: string[]; write?: string[]; exec?: Array<{ comm
 class FakeSdk implements WindowsMxcSdk {
   readonly runs: WindowsContainerRequest[] = [];
   report: string | undefined;
+  /** When set, `run` waits for it: a process still running. */
+  gate: Promise<void> | undefined;
   constructor(private readonly methods = ["processcontainer", "isolation_session"]) {}
   getPlatformSupport() {
     return { isSupported: true, availableMethods: this.methods };
@@ -48,6 +50,7 @@ class FakeSdk implements WindowsMxcSdk {
   }
   async run(request: WindowsContainerRequest) {
     this.runs.push(request);
+    if (this.gate) await this.gate;
     const outputPath = request.containment.config.captureDenials?.outputPath;
     if (outputPath && this.report) writeFileSync(outputPath, this.report);
     return { stdout: "ok\n", stderr: "", exitCode: 0, timedOut: false, ...(outputPath ? { outputMetadata: { captureDenials: { outputPath, totalDenials: 1 } } } : {}) };
@@ -113,6 +116,22 @@ describe("WindowsMxcHost against a fake SDK", () => {
     expect(winQuote('a "b" c\\')).toBe('"a \\"b\\" c\\\\"');
   });
 
+  it("stops a sandbox: starts nothing more, and says it is uncertain while a process it cannot kill runs (§16.1 Stop)", async () => {
+    const sdk = new FakeSdk();
+    let release = () => {};
+    sdk.gate = new Promise((r) => (release = r));
+    const host = new WindowsMxcHost({ sdk, build: NEW, commands: { node: "node.exe" } });
+    const { handle } = await sandbox(host, requirement({ read: ["C:/work/repo"], exec: [{ command: "node", args_prefix: [["--test"]] }] }));
+    const running = host.execute(handle, { argv: ["node", "--test"] });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(await host.stop(handle)).toBe("uncertain");
+    release();
+    expect(await running).toMatchObject({ exitCode: 0, stopped: true });
+    expect((await host.execute(handle, { argv: ["node", "--test"] })).stderr).toContain("was stopped");
+    expect(await host.stop(handle)).toBe("stopped");
+    expect(sdk.runs).toHaveLength(1);
+  });
+
   it("records what the policy denied in learning mode, without the toolchain's own start-up (W0311)", async () => {
     const sdk = new FakeSdk();
     sdk.report = JSON.stringify({
@@ -171,6 +190,18 @@ describe.runIf(REAL)("WindowsMxcHost with an AppContainer on this host (G05, G07
     expect(existsSync(join(outside, "copied"))).toBe(false);
     expect(existsSync(join(repo, "test", "x.ts"))).toBe(false);
     expect((await host.execute(handle, { argv: ["sh", "-c", WRITE_SCRIPT, "sh", fwd(join(repo, "test", "y.ts"))], stdin: "x" })).exitCode).toBe(126);
+  });
+
+  it("stops a sandbox: what runs ends at its timeout, nothing more starts (§16.1 Stop)", async () => {
+    const { handle } = await open();
+    const t0 = Date.now();
+    const running = host.execute(handle, { argv: ["node", "-e", "setTimeout(() => {}, 60000)"], cwd: fwd(repo), timeoutMs: 3_000 });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await host.stop(handle)).toBe("uncertain");
+    const r = await running;
+    expect(r).toMatchObject({ timedOut: true, stopped: true });
+    expect(Date.now() - t0).toBeLessThan(30_000);
+    expect((await node(handle, "console.log('ran')")).stderr).toContain("was stopped");
   });
 
   it("shows nothing outside the granted paths", async () => {

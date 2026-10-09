@@ -132,6 +132,9 @@ interface Open {
   policy: MxcPolicy;
   scratch: string;
   denials: SandboxDenial[];
+  /** Processes `run` has not returned from yet. */
+  running: number;
+  stopped: boolean;
 }
 
 export class WindowsMxcHost implements SandboxHost {
@@ -193,13 +196,14 @@ export class WindowsMxcHost implements SandboxHost {
     if (policy.network.allowOutbound || policy.network.allowedHosts.length) throw new Error("WindowsMxcHost: this host blocks all outbound network; this policy allows some.");
     if (policy.isolation !== "process") throw new Error(`WindowsMxcHost: ${policy.isolation} isolation cannot run an agent: it cannot block the network.`);
     const handle = `wxc-${randomUUID()}`;
-    this.open.set(handle, { policy, scratch: mkdtempSync(join(tmpdir(), "mandate-wxc-")), denials: [] });
+    this.open.set(handle, { policy, scratch: mkdtempSync(join(tmpdir(), "mandate-wxc-")), denials: [], running: 0, stopped: false });
     return handle;
   }
 
   async execute(handle: string, req: ExecRequest): Promise<ExecResult> {
     const sbx = this.open.get(handle);
     if (!sbx) return refused(`no sandbox ${handle}`);
+    if (sbx.stopped) return refused(`sandbox ${handle} was stopped`);
     const why = disallowed(sbx.policy, req.argv);
     if (why) return refused(why);
     const sdk = await this.load();
@@ -246,15 +250,18 @@ export class WindowsMxcHost implements SandboxHost {
         ...(req.cwd ? { workingDirectory: win(req.cwd) } : {}),
       };
       let r;
+      sbx.running++;
       try {
         r = await sdk.run(request);
       } catch (e) {
         return refused(`MXC refused to start the process: ${(e as Error).message}`);
+      } finally {
+        sbx.running--;
       }
       const reported = r.outputMetadata?.captureDenials?.outputPath;
       if (learning && reported && existsSync(reported)) sbx.denials.push(...denialsIn(readFileSync(reported, "utf8"), this.toolchain));
       const max = this.o.maxOutput ?? 1 << 20;
-      return { stdout: cut(r.stdout, max), stderr: cut(r.stderr, max), exitCode: r.exitCode, timedOut: r.timedOut };
+      return { stdout: cut(r.stdout, max), stderr: cut(r.stderr, max), exitCode: r.exitCode, timedOut: r.timedOut, ...(sbx.stopped ? { stopped: true } : {}) };
     } finally {
       if (staged) rmSync(staged, { recursive: true, force: true });
     }
@@ -264,6 +271,18 @@ export class WindowsMxcHost implements SandboxHost {
     const sbx = this.open.get(handle);
     const seen = new Set<string>();
     return { denials: (sbx?.denials ?? []).filter((d) => !seen.has(`${d.access} ${d.resource}`) && !!seen.add(`${d.access} ${d.resource}`)) };
+  }
+
+  /**
+   * Starts no more processes in the sandbox (§16.1 Stop). The SDK's `run`
+   * cannot be killed, so while one runs the answer is `uncertain`: it ends
+   * at its timeout, which every agent's policy sets.
+   */
+  async stop(handle: string): Promise<"stopped" | "uncertain"> {
+    const sbx = this.open.get(handle);
+    if (!sbx) return "stopped";
+    sbx.stopped = true;
+    return sbx.running ? "uncertain" : "stopped";
   }
 
   async destroy(handle: string): Promise<"destroyed"> {

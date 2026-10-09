@@ -777,6 +777,13 @@ export class Interpreter {
             chat: loop.chat,
             sandbox: loop.sandbox,
             stopped: (x) => x instanceof SiblingStopped,
+            cancelled: async () => (await this.o.journal.run(this.o.runId)).cancel_requested,
+            ...(loop.stopPollMs !== undefined ? { pollMs: loop.stopPollMs } : {}),
+            sandboxStopped: (handle, result) =>
+              this.o.journal.db.tx(async (tx) => {
+                await this.o.journal.lock(tx, this.o.runId);
+                await this.o.journal.event(tx, this.o.runId, "sandbox_stopped", { delegate: id, agent: agentName, handle, result });
+              }),
           });
         },
         { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}) },
