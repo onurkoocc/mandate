@@ -699,6 +699,11 @@ mandate show <run> [--format md|html|json]
 - **Evidence key.** The control plane's ed25519 key, `.mandate/evidence.key`
   by default, created on first use and readable by its owner only.
   `"trusted": ["old.pem"]` names other public keys whose evidence counts.
+  `mandate rotate-key` replaces the key: the new one signs from then on,
+  and the old one's public half is kept in `trusted-keys/<key id>.pem`
+  next to the key, where every later call loads it, so evidence it signed
+  still verifies. Its private half is gone. To stop trusting an old key,
+  remove its file: what it signed then shows `SIGNATURE INVALID`.
 - **Secrets.** They come only from the environment: `CLAUDE_API_KEY` (and
   `CLAUDE_WORKSPACE_ID` for a key that is not scoped to a workspace), and
   `MANDATE_GITHUB_TOKEN`.

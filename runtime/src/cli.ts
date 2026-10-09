@@ -11,6 +11,7 @@
 //   mandate replay <run>
 //   mandate artifact <run> <blob:sha256:…>
 //   mandate show <run> [--format md|html|json]           the run's views (§15): status, evidence, cost, actions
+//   mandate rotate-key                                    a new evidence key; the old one's public half stays trusted
 //   mandate denials <run>                                 what learning-mode sandboxes denied, for `mandate check --denials` (W0311)
 //   mandate test <program> [--json]                       run the program's tests (§6.4); needs no configuration
 //
@@ -24,7 +25,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { check, kindOf, parseStrictJson, toHtml, toMarkdown, type Lock, type Program } from "@mandate/compiler";
 import type { Cost } from "./adapters.js";
-import { adaptersFor, connect, readConfig, runtimeOptions, type RuntimeConfig } from "./control.js";
+import { adaptersFor, connect, readConfig, runtimeOptions, trustedKeysDir, type RuntimeConfig } from "./control.js";
+import { EvidenceSigner } from "./evidence.js";
 import { openDb, type Db } from "./db.js";
 import type { RunRow } from "./journal.js";
 import { buildPackage, Runtime } from "./runtime.js";
@@ -69,10 +71,11 @@ const USAGE = `usage:
   mandate artifact <run> <blob:sha256:…>
   mandate show <run> [--format md|html|json]
   mandate denials <run>
+  mandate rotate-key
   mandate test <program> [--json] [--lock FILE]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "denials", "test"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -88,6 +91,12 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     db = await connect(config);
     const json = a.flags["--json"] === true;
     const runId = a.positional[0];
+
+    if (cmd === "rotate-key") {
+      const r = EvidenceSigner.rotate(config.evidence.key, trustedKeysDir(config));
+      out(`evidence key rotated: ${r.old} → ${r.current}; the old public key stays trusted in ${trustedKeysDir(config)}\n`);
+      return 0;
+    }
 
     if (cmd === "run") {
       const file = a.positional[0] ?? fail("run needs a program file");

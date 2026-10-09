@@ -18,7 +18,7 @@
 //   }
 
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseStrictJson, type Lock, type Program } from "@mandate/compiler";
 import type { Adapters, ToolAdapter } from "./adapters.js";
 import { AnthropicModel } from "./anthropic.js";
@@ -98,12 +98,18 @@ export function connect(config: RuntimeConfig): Promise<Db> {
   return openDb(config.database);
 }
 
+/** Where rotated-out evidence keys' public halves are kept: `trusted-keys/` next to the key. */
+export function trustedKeysDir(config: RuntimeConfig): string {
+  return join(dirname(config.evidence.key), "trusted-keys");
+}
+
 /** The runtime's own stores: artifacts over the configured directory, and the evidence key. */
 export function runtimeOptions(config: RuntimeConfig, db: Db): RuntimeOptions {
   return {
     artifacts: new ArtifactStore(db, new DirBlobs(config.artifacts)),
     signer: EvidenceSigner.loadOrCreate(config.evidence.key),
-    ...(config.evidence.trusted ? { trustedKeys: config.evidence.trusted.map((f) => readFileSync(f, "utf8")) } : {}),
+    // Keys rotated out (`mandate rotate-key`) and keys the configuration names: their evidence still counts.
+    trustedKeys: [...EvidenceSigner.trustedIn(trustedKeysDir(config)), ...(config.evidence.trusted ?? []).map((f) => readFileSync(f, "utf8"))],
     ...(config.rateLimits ? { rateLimits: config.rateLimits } : {}),
   };
 }

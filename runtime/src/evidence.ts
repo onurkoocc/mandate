@@ -23,8 +23,8 @@
 // of its public key (SPKI DER).
 
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify, type KeyObject } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { canonical, type Value } from "./values.js";
 
 export const EVIDENCE_FORMAT = "mandate/evidence/0.1";
@@ -92,6 +92,29 @@ export class EvidenceSigner {
       // Windows has no POSIX modes; the file is in the operator's own directory.
     }
     return signer;
+  }
+
+  /**
+   * Replaces the key in `file` with a new one. The old key's public half is
+   * kept in `trustedDir` as `<key id>.pem`, so evidence it signed still
+   * verifies; its private half is gone. Returns both key ids.
+   */
+  static rotate(file: string, trustedDir: string): { old: string; current: string } {
+    const old = EvidenceSigner.loadOrCreate(file);
+    mkdirSync(trustedDir, { recursive: true });
+    writeFileSync(join(trustedDir, `${old.keyId.slice("sha256:".length)}.pem`), old.publicKeyPem());
+    const next = EvidenceSigner.generate();
+    writeFileSync(file, next.privateKey.export({ type: "pkcs8", format: "pem" }) as string, { mode: 0o600 });
+    return { old: old.keyId, current: next.keyId };
+  }
+
+  /** The public keys kept in `trustedDir` by earlier rotations. */
+  static trustedIn(trustedDir: string): string[] {
+    if (!existsSync(trustedDir)) return [];
+    return readdirSync(trustedDir)
+      .filter((f) => f.endsWith(".pem"))
+      .sort()
+      .map((f) => readFileSync(join(trustedDir, f), "utf8"));
   }
 
   publicKeyPem(): string {

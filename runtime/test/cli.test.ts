@@ -92,6 +92,13 @@ describe("the control CLI (K19)", () => {
 
     const replay = await mandate("replay", "c1");
     expect(replay.out).toBe("replay: complete\nit is ready\n");
+
+    // A rotated key: the old public half stays trusted, so what it signed still counts.
+    const rotated = await mandate("rotate-key");
+    expect(rotated.code, rotated.err).toBe(0);
+    expect(rotated.out).toMatch(/evidence key rotated: sha256:[0-9a-f]{64} → sha256:[0-9a-f]{64}/);
+    expect(existsSync(join(dir, ".mandate", "trusted-keys"))).toBe(true);
+    expect((await mandate("status", "c1")).out).toContain("(human.approve; signed)");
   });
 
   it("cancels a waiting run and refuses a raise above the workflow's own budget", async () => {

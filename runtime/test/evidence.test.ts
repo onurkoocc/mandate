@@ -4,6 +4,9 @@
 // against a trusted key is not evidence: a Verified value that leans on one
 // is refused before anything is prepared.
 
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, afterAll } from "vitest";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "../src/evidence.js";
 import { Runtime } from "../src/runtime.js";
@@ -80,6 +83,26 @@ describe("evidence records (§10.3)", () => {
     expect(String(isObj(resumed.attention) ? resumed.attention["message"] : "")).toContain("is not signed by a trusted key");
     expect(w.pr.prepares).toHaveLength(0);
     expect(await w.rt.journal.actions("ev3")).toHaveLength(0);
+  });
+
+  it("rotates the key: new evidence is signed by the new one, and evidence the old one signed still verifies", async () => {
+    const w = await fixbug();
+    await approveOwner(w, "ev4");
+    const dir = mkdtempSync(join(tmpdir(), "mandate-keys-"));
+    const file = join(dir, "evidence.key");
+    writeFileSync(file, (w.rt.signer as unknown as { privateKey: { export(o: object): string } }).privateKey.export({ type: "pkcs8", format: "pem" }));
+    const r = EvidenceSigner.rotate(file, join(dir, "trusted-keys"));
+    expect(r.old).toBe(w.rt.signer.keyId);
+    const next = EvidenceSigner.loadOrCreate(file);
+    expect(next.keyId).toBe(r.current);
+    expect(r.current).not.toBe(r.old);
+    // The old private key is gone; only its public half is kept.
+    expect(readFileSync(join(dir, "trusted-keys", `${r.old.slice("sha256:".length)}.pem`), "utf8")).toContain("PUBLIC KEY");
+    const rotated = new Runtime(w.db, w.adapters, undefined, undefined, { artifacts: w.rt.artifacts, signer: next, trustedKeys: EvidenceSigner.trustedIn(join(dir, "trusted-keys")) });
+    expect((await rotated.verifyEvidence("ev4")).every((e) => e.valid)).toBe(true);
+    // Without the kept public key, the old evidence would not count.
+    const forgetful = new Runtime(w.db, w.adapters, undefined, undefined, { artifacts: w.rt.artifacts, signer: next });
+    expect((await forgetful.verifyEvidence("ev4")).some((e) => e.valid)).toBe(false);
   });
 
   it("keeps the key's id stable across loads and refuses keys that are not ed25519", () => {

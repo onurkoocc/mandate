@@ -15,7 +15,7 @@
 //                                          the program's human views (§15): architecture,
 //                                          authority and cost; with --against, what changed
 //
-//   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials
+//   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key
 //                                          control a run (the runtime's CLI, @mandate/runtime/cli)
 //   mandate test <file>                    run the program's tests with their effect handlers (§6.4)
 //
@@ -53,7 +53,7 @@ function usage(): never {
       "  explain <code>",
       "  view <file> [--against <old file>] [--format md|html|json] [--lock <lock.json>]",
       "  mcp   (an MCP server on stdio)",
-      "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials   (see `mandate status`)",
+      "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key   (see `mandate status`)",
       "  test <file> [--json]",
       "",
     ].join("\n"),
@@ -253,7 +253,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "denials", "test"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {
