@@ -22,7 +22,7 @@
 // name (W0311 feedback needs the Windows backend).
 
 import { randomUUID } from "node:crypto";
-import type { Enforceable, ExecRequest, ExecResult, MxcPolicy, SandboxHost } from "./sandbox.js";
+import { makeWritable, type Enforceable, type ExecRequest, type ExecResult, type MxcPolicy, type SandboxHost } from "./sandbox.js";
 import { inside, WRITE_SCRIPT } from "./tools.js";
 
 /** The part of `@microsoft/mxc-sdk/v1` the host uses; tests pass a fake. */
@@ -112,6 +112,7 @@ export class MxcHost implements SandboxHost {
     // MxcAdapter only plans what the probe said it can enforce; a policy that asks for more is a bug, not a fallback.
     if (policy.network.allowOutbound || policy.network.allowedHosts.length) throw new Error("MxcHost: Bubblewrap here enforces no outbound network at all; this policy allows some.");
     if (policy.mode !== "enforcement") throw new Error(`MxcHost: Bubblewrap has no ${policy.mode} mode.`);
+    makeWritable(policy);
     const handle = `mxc-${randomUUID()}`;
     this.policies.set(handle, policy);
     return handle;

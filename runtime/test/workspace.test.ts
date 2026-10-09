@@ -15,7 +15,7 @@ import type { TurnRequest } from "../src/adapters.js";
 import { MxcHost } from "../src/mxc.js";
 import { WindowsMxcHost } from "../src/mxc-windows.js";
 import { buildPackage, Runtime } from "../src/runtime.js";
-import { MxcAdapter, type SandboxHost } from "../src/sandbox.js";
+import { makeWritable, MxcAdapter, type MxcPolicy, type SandboxHost } from "../src/sandbox.js";
 import { SimChat, toolUse, type SimTurn } from "../src/sim.js";
 import { WRITE_SCRIPT } from "../src/tools.js";
 import { runView } from "../src/views.js";
@@ -126,6 +126,19 @@ describe("GitWorkspace", () => {
 });
 
 const REAL = process.env["MANDATE_MXC"] === "1" && (process.platform === "linux" || process.platform === "win32");
+
+describe("writable paths a sandbox is granted", () => {
+  it("creates one that is missing beside what exists, and makes up nothing deeper", () => {
+    const root = mkdtempSync(join(tmpdir(), "mandate-writable-"));
+    try {
+      mkdirSync(join(root, "src"));
+      makeWritable({ filesystem: { readOnly: [], readWrite: [fwd(join(root, "src")), fwd(join(root, "test")), fwd(join(root, "x", "y"))] } } as unknown as MxcPolicy);
+      expect([existsSync(join(root, "test")), existsSync(join(root, "x"))]).toEqual([true, false]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe.runIf(REAL)("two agents on two components in real sandboxes (B3)", () => {
   it("each writes only its component; the other component's working copy is out of its sandbox", async () => {

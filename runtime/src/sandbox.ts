@@ -9,6 +9,8 @@
 // The MXC policy below follows the representative fields of §11.3. Mapping
 // them to a real MXC schema version is the host's job (`SandboxHost`).
 
+import { existsSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import type { SandboxRequirement } from "@mandate/compiler";
 import type { AgentAdapter, DelegateRequest, Outcome } from "./adapters.js";
 
@@ -162,6 +164,19 @@ export class MxcAdapter {
       },
     };
   }
+}
+
+/**
+ * A writable path the policy grants that does not exist yet (a component's
+ * `test` directory before its first test) is created before the sandbox
+ * starts, when its parent exists: it lies inside the grant, so creating it
+ * adds no authority. A host
+ * cannot bind a path that is not there, and would otherwise refuse every
+ * command. Real hosts call this; simulated ones touch no disk.
+ */
+export function makeWritable(policy: MxcPolicy): void {
+  // Only beside what exists (a component's `test` next to its `src`): a path whose parent is missing is not made up.
+  for (const p of policy.filesystem.readWrite) if (!existsSync(p) && existsSync(dirname(p))) mkdirSync(p);
 }
 
 /** A sandbox the agent runs in. */

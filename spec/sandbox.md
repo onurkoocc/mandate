@@ -68,6 +68,12 @@ writes the representative policy of §11.3:
 | `timeoutSeconds` | `limits.timeout_ms`, else the adapter's default |
 | `isolation`, `mode` | The adapter's configuration: `process` and `enforcement` by default |
 
+A real host binds only paths that exist. Before it starts a sandbox, it
+creates a writable path that is missing when that path's parent exists,
+such as a component's `test` beside its `src`. The path is inside the
+grant, so creating it adds no authority. A path whose parent is missing
+is not created.
+
 Before translating, the adapter probes the host (`Probe`, §16.1). It
 refuses the requirement when any of these holds:
 
