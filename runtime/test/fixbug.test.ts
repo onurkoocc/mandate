@@ -27,7 +27,7 @@ describe("FixBug runs end to end", () => {
     // Implementer and TestWriter run in parallel; both hold their reservation.
     await until(() => w.agents.count("Implementer.apply") + w.agents.count("TestWriter.regression") === 2, "both parallel agents");
     const during = await w.rt.budgetReport("fb1");
-    expect(during.dimensions).toEqual([{ dimension: "spend:USD", limit: 20 * USD, settled: 3 * USD, reserved: 11 * USD, available: 6 * USD }]);
+    expect(during.dimensions).toEqual([{ dimension: "spend:USD", limit: 50 * USD, settled: 3 * USD, reserved: 28_160_000, available: 18_840_000 }]);
     implementer.resolve();
     testWriter.resolve();
 
@@ -79,12 +79,12 @@ describe("FixBug runs end to end", () => {
     ]);
     expect(evidence.find((e) => e.criterion === "owner_approved")?.detail).toEqual({ by: "carol", role: "code_owner" });
 
-    // The budget table: each delegate reserved its agent's budget (18.5 of 20 USD) and settled what it spent (11 USD).
+    // The budget table: each delegate reserved its agent's budget (49.28 of 50 USD) and settled what it spent (11 USD).
     const report = await w.rt.budgetReport("fb1");
-    expect(report.dimensions).toEqual([{ dimension: "spend:USD", limit: 20 * USD, settled: 11 * USD, reserved: 0, available: 9 * USD }]);
+    expect(report.dimensions).toEqual([{ dimension: "spend:USD", limit: 50 * USD, settled: 11 * USD, reserved: 0, available: 39 * USD }]);
     const delegates = report.commands.filter((c) => c.kind === "delegate");
     expect(Object.fromEntries(delegates.map((c) => [c.label, c.reserved["spend:USD"]]))).toEqual(RESERVED);
-    expect(delegates.reduce((n, c) => n + c.reserved["spend:USD"]!, 0)).toBe(18.5 * USD);
+    expect(delegates.reduce((n, c) => n + c.reserved["spend:USD"]!, 0)).toBe(49_280_000);
     expect(Object.fromEntries(delegates.map((c) => [c.label, c.cost]))).toEqual(Object.fromEntries(Object.entries(RESULTS).map(([k, v]) => [k, v.cost])));
     expect(delegates.every((c) => c.open.length === 0)).toBe(true);
 
@@ -172,39 +172,39 @@ describe("FixBug runs end to end", () => {
 
   it("a caller limit below the agents' budgets stops at budget_exceeded before the PR", async () => {
     const w = await fixbug();
-    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb4", limits: { spend: { micros: 10 * USD, currency: "USD" } } });
-    // 3 USD settled by Explorer and Planner; Implementer needs 8 USD reserved and 7 USD at most are left.
+    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb4", limits: { spend: { micros: 12 * USD, currency: "USD" } } });
+    // 3 USD settled by Explorer and Planner; Implementer needs 17.6 USD reserved and 9 USD at most are left.
     expect(run.state).toBe("waiting");
-    expect(run.waiting).toMatchObject({ kind: "budget_exceeded", handler: true, episode: 0, detail: { $tag: "BudgetExceeded", $args: [{ dimension: "spend:USD", requested: 8 * USD }] } });
+    expect(run.waiting).toMatchObject({ kind: "budget_exceeded", handler: true, episode: 0, detail: { $tag: "BudgetExceeded", $args: [{ dimension: "spend:USD", requested: 17_600_000 }] } });
     // The workflow's handler asks a person.
     expect(waitOf(run.waiting)).toEqual({ command: "/defs/FixBug/on/0@0/then/then", request: { question: "Budget exceeded. Continue or cancel?" } });
     expect(w.agents.count("Implementer.apply")).toBe(0);
     expect(w.agents.count("Reviewer.counterexamples")).toBe(0);
     const report = await w.rt.budgetReport("fb4");
-    expect(report.dimensions[0]).toMatchObject({ limit: 10 * USD, reserved: 0 });
-    expect(report.dimensions[0]!.settled + report.dimensions[0]!.available).toBe(10 * USD);
+    expect(report.dimensions[0]).toMatchObject({ limit: 12 * USD, reserved: 0 });
+    expect(report.dimensions[0]!.settled + report.dimensions[0]!.available).toBe(12 * USD);
     expect((await w.rt.cancelRun("fb4")).state).toBe("cancelled");
     expect(w.pr.prepares).toHaveLength(0);
   });
 
-  it("stopped at 10 USD, a person raises the limit to 20 USD and the run goes on from where it stopped to the PR", async () => {
+  it("stopped at 12 USD, a person raises the limit to 50 USD and the run goes on from where it stopped to the PR", async () => {
     const w = await fixbug();
-    const stopped = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb7", limits: { spend: { micros: 10 * USD, currency: "USD" } } });
+    const stopped = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb7", limits: { spend: { micros: 12 * USD, currency: "USD" } } });
     const ask = waitOf(stopped.waiting);
     const ADMIN = { sender: "erin", messageId: "raise-1" };
     const raise = (revision: number, micros: number, msg = ADMIN) => w.rt.raiseLimits("fb7", msg, { revision, limits: { spend: { micros, currency: "USD" } }, by: "erin" });
 
-    // A raise only goes up, and never past the workflow's own 20 USD.
-    await expect(raise(stopped.revision, 25 * USD, { sender: "erin", messageId: "too-much" })).rejects.toMatchObject({ code: "above_program_budget" });
+    // A raise only goes up, and never past the workflow's own 50 USD.
+    await expect(raise(stopped.revision, 55 * USD, { sender: "erin", messageId: "too-much" })).rejects.toMatchObject({ code: "above_program_budget" });
     await expect(raise(stopped.revision, 5 * USD, { sender: "erin", messageId: "lower" })).rejects.toMatchObject({ code: "not_a_raise" });
-    await expect(raise(stopped.revision - 1, 20 * USD, { sender: "erin", messageId: "old-view" })).rejects.toMatchObject({ code: "stale_revision" });
-    const raised = await raise(stopped.revision, 20 * USD);
+    await expect(raise(stopped.revision - 1, 50 * USD, { sender: "erin", messageId: "old-view" })).rejects.toMatchObject({ code: "stale_revision" });
+    const raised = await raise(stopped.revision, 50 * USD);
     expect(raised.state).toBe("waiting");
     expect(raised.revision).toBe(stopped.revision + 1);
     // Sent again, the same raise is a duplicate.
-    expect((await raise(stopped.revision, 20 * USD)).revision).toBe(raised.revision);
+    expect((await raise(stopped.revision, 50 * USD)).revision).toBe(raised.revision);
     expect((await w.rt.journal.events("fb7")).filter((e) => e.type === "limits_raised")).toEqual([
-      expect.objectContaining({ data: { by: "erin", sender: "erin", message: "raise-1", from: { "spend:USD": 10 * USD }, to: { "spend:USD": 20 * USD } } }),
+      expect.objectContaining({ data: { by: "erin", sender: "erin", message: "raise-1", from: { "spend:USD": 12 * USD }, to: { "spend:USD": 50 * USD } } }),
     ]);
 
     // Answering the handler's question resumes the run at the Implementer; Explorer and Planner are not called again.
@@ -217,9 +217,9 @@ describe("FixBug runs end to end", () => {
     expect(w.pr.appliedCount()).toBe(1);
     expect(Object.keys(RESULTS).map((s) => w.agents.count(s))).toEqual([1, 1, 1, 1, 1]);
 
-    // The budget table: the raised limit, 18.5 USD reserved by the agents and 11 USD settled.
+    // The budget table: the raised limit, 49.28 USD reserved by the agents and 11 USD settled.
     const report = await w.rt.budgetReport("fb7");
-    expect(report.dimensions).toEqual([{ dimension: "spend:USD", limit: 20 * USD, settled: 11 * USD, reserved: 0, available: 9 * USD }]);
+    expect(report.dimensions).toEqual([{ dimension: "spend:USD", limit: 50 * USD, settled: 11 * USD, reserved: 0, available: 39 * USD }]);
     const delegates = report.commands.filter((c) => c.kind === "delegate");
     expect(Object.fromEntries(delegates.map((c) => [c.label, c.reserved["spend:USD"]]))).toEqual(RESERVED);
     expect(await w.rt.replayRun("fb7")).toEqual({ status: "complete", value: done.result });
@@ -227,7 +227,7 @@ describe("FixBug runs end to end", () => {
 
   it("answered without a raise, the run asks again in a new episode", async () => {
     const w = await fixbug();
-    const stopped = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb8", limits: { spend: { micros: 10 * USD, currency: "USD" } } });
+    const stopped = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb8", limits: { spend: { micros: 12 * USD, currency: "USD" } } });
     const first = waitOf(stopped.waiting);
     const again = await w.rt.submitInput("fb8", { sender: "erin", messageId: "m1" }, { commandId: first.command, revision: stopped.revision, value: "continue" });
     expect(again.waiting).toMatchObject({ kind: "budget_exceeded", episode: 1, command: "/defs/FixBug/on/0@1/then/then" });

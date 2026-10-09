@@ -1,0 +1,110 @@
+// FixBug (design doc 4, §20) bound to the Gate 3 test repository
+// (BACKLOG K17): a TypeScript project checked out at /work/repo, tested
+// with `node --test`, pull requests into onurkoocc/mandate-fixbug-target.
+// The workflow, the agents and the contract are those of examples/fixbug;
+// the capabilities name this deployment, and the domain types are written
+// out, so each agent's result schema says what to hand back.
+
+mandate @ 0.2
+
+module fixbug.target @ 0.1
+
+use std.{fs, net, model, git, test, human, exec}
+
+// ── Capabilities ──────────────────────────────────────────────────────────
+capability RepoRead  = fs.read("/work/repo")
+capability SrcWrite  = fs.write("/work/repo/src")
+capability TestWrite = fs.write("/work/repo/test")
+capability Build     = exec(commands: ["node"], args_prefix: [["--test"]])
+capability ModelStd  = model.infer(tier: standard)
+capability PR        = git.pr("onurkoocc/mandate-fixbug-target")
+
+// ── Types ─────────────────────────────────────────────────────────────────
+// Paths are relative to the repository root, e.g. "src/pagination.ts".
+type Issue            = { id: Text, title: Text, body: Text, reproducible: Bool, scope: Set<Path> }
+type Finding          = { file: Path, line: Int where line >= 1, claim: Text, evidence: Text }
+type FixPlan          = { steps: List<Text> where len(steps) in 1..12, touches: Set<Path>, risks: List<Text> }
+type Patch            = { files: Set<Path>, summary: Text }
+type TestSet          = { files: Set<Path>, cases: List<Text> }
+type Review           = { counterexamples: List<Text>, blocking: Bool }
+type PullRequestDraft = { issue: Issue, patch: Patch, tests: TestSet, review: Review }
+type PullRequest      = { number: Int, url: Url }
+
+// ── Acceptance contract ───────────────────────────────────────────────────
+contract FixAccepted(issue: Issue, pr: PullRequestDraft) {
+  require issue.reproducible
+  accept regression_test "A regression test fails before the fix and passes after it"
+    by test.red_then_green(pr.patch, pr.tests)
+  accept scope_respected "The change stays inside the task scope"
+    by static pr.patch.files ⊆ issue.scope
+  accept suite_green "The unit tests and the maintainers' acceptance tests pass"
+    by test.suite(["unit", "integration"])
+  accept no_blocking_review "Independent review found no blocking issue"
+    by static not pr.review.blocking
+       and review(model: standard, isolated)
+  accept owner_approved "The code owner approved"
+    by human.approve(role: "code_owner")
+}
+
+// ── Agents ────────────────────────────────────────────────────────────────
+agent Explorer {
+  role   "Finds where the bug is, with evidence. Does not change code. Paths are relative to the repository root."
+  caps   RepoRead, ModelStd
+  budget { tokens: 1680k, time: 15m, spend: 10.56 USD, steps: 12 }
+  skill locate(issue: Issue) -> Inferred<List<Finding>> ! {Fs.Read, Model}
+}
+
+agent Planner {
+  role   "Turns findings into the smallest fix plan, split by behavior."
+  caps   ModelStd
+  budget { tokens: 560k, spend: 3.52 USD, steps: 4 }
+  skill plan(issue: Issue, findings: Inferred<List<Finding>>) -> Inferred<FixPlan> ! {Model}
+}
+
+agent Implementer {
+  role   "Applies the plan, only in src/. Runs the unit tests with node --test. Reports the files it changed, relative to the repository root."
+  caps   RepoRead, SrcWrite, Build, ModelStd
+  budget { tokens: 2800k, time: 45m, spend: 17.6 USD, steps: 20 }
+  skill apply(plan: Inferred<FixPlan>) -> Inferred<Patch> ! {Fs.Read, Fs.Write, Exec, Model}
+}
+
+agent TestWriter {
+  role   "Writes the regression test that catches the bug, in test/, without changing src/. Reports the test files, relative to the repository root."
+  caps   RepoRead, TestWrite, Build, ModelStd
+  budget { tokens: 1680k, time: 20m, spend: 10.56 USD, steps: 12 }
+  skill regression(issue: Issue) -> Inferred<TestSet> ! {Fs.Read, Fs.Write, Exec, Model}
+}
+
+agent Reviewer {
+  role   "Looks for counterexamples to the change: inputs it gets wrong, cases it misses, tests that do not test the bug."
+  caps   RepoRead, ModelStd
+  budget { tokens: 1120k, spend: 7.04 USD, steps: 8 }
+  skill counterexamples(patch: Inferred<Patch>, tests: Inferred<TestSet>)
+        -> Inferred<Review> ! {Fs.Read, Model}
+}
+
+// ── Workflow ──────────────────────────────────────────────────────────────
+workflow FixBug(issue: Issue) -> PullRequest
+  caps    RepoRead, SrcWrite, TestWrite, Build, ModelStd, PR
+  budget  { spend: 50 USD, time: 3h }
+{
+  let findings = delegate Explorer.locate(issue)
+  let plan     = delegate Planner.plan(issue, findings)
+
+  par {
+    patch = delegate Implementer.apply(plan)
+    tests = delegate TestWriter.regression(issue)
+  }
+
+  let review = delegate Reviewer.counterexamples(patch, tests) isolated
+
+  let draft = PullRequestDraft { issue, patch, tests, review }
+  let checked = verify draft against FixAccepted(issue, draft)
+    on unmet(c) => escalate human("Open acceptance criteria: {c}")
+
+  effect git.open_pr(checked)
+    idempotent_by issue.id
+    compensate    git.close_pr
+}
+
+on budget_exceeded in FixBug => pause and human.ask("Budget exceeded. Continue or cancel?")

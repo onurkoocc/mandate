@@ -57,7 +57,7 @@ describe("FixBug", () => {
     const wf = p.defs["FixBug"]!;
     expect(wf.kind).toBe("workflow");
     if (wf.kind !== "workflow") return;
-    expect(wf.budget).toEqual({ spend: { micros: 20_000_000, currency: "USD" }, time: { ms: 3 * 3_600_000 } });
+    expect(wf.budget).toEqual({ spend: { micros: 50_000_000, currency: "USD" }, time: { ms: 3 * 3_600_000 } });
     expect(wf.body.map((s) => s.op)).toEqual(["let", "let", "par", "let", "let", "let", "expr"]);
     const last = wf.body[6]!;
     expect(last).toMatchObject({ op: "expr", value: { op: "effect", name: "git.open_pr", compensate: "git.close_pr" } });
@@ -75,6 +75,6 @@ describe("FixBug", () => {
       },
     ]);
     const planner = p.defs["Planner"]!;
-    expect(planner.kind === "agent" && planner.budget).toEqual({ tokens: 150_000, spend: { micros: 1_500_000, currency: "USD" }, steps: 10 });
+    expect(planner.kind === "agent" && planner.budget).toEqual({ tokens: 560_000, spend: { micros: 3_520_000, currency: "USD" }, steps: 4 });
   });
 });

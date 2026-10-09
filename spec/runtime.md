@@ -113,6 +113,42 @@ A handler that asks nobody leaves the run failed with `BudgetExceeded`.
   for a delegate), what it reserved, which reservations are still open, and
   the cost it reported (`"unknown"` until a late charge is settled).
 
+## Models (§5.2, §8.6)
+
+`AnthropicModel` (`runtime/src/anthropic.ts`) is the model adapter for real
+calls. It runs in the runtime process, so the API key never reaches an
+agent's sandbox. Everything it sends is pinned by the package's lock file
+([`lock.md`](lock.md)):
+
+- **Model and effort.** A call runs under a model tier: the capability
+  named by `using`, or else the only model tier in scope. The tier's model
+  and effort are sent with every request. Effort is always explicit.
+- **Reservation.** Before the call is dispatched, its input is counted with
+  the token-counting endpoint. The reservation is that input plus the
+  output limit, priced as if nothing hits the cache. The count is made only
+  for a call that will really be sent: a call already in the journal is not
+  counted again. A call whose input is over the locked limit is not sent.
+- **Settlement.** The call settles at the usage the API reported:
+  - `tokens`: every token the model processed;
+  - `spend`: each kind of token at its own price;
+  - `steps`: one.
+- **Snapshot.** The model id that answered, the locked id, the effort,
+  the stop reason, the usage and the request id are journaled with the
+  result, in the `command_completed` event's `meta`.
+- **Failures.**
+  - A request the API rejected with a status is not billed. A 429 or
+    5xx is a `Timeout`; any other status is `Rejected`. Either way the
+    command settles at zero.
+  - A broken or timed-out connection may have been billed, so its cost is
+    `"unknown"` and the reservation stays (R16).
+  - A refusal is `Rejected("refusal")`.
+- **No fallback.** No refusal fallback is configured, because a fallback
+  would answer with a model the lock does not name.
+
+`infer T from e` asks for `T` through structured output: the JSON Schema
+of `T` (`runtime/src/schema.ts`), with the input in a `<data>` block that
+the system prompt marks as data only.
+
 ## External effects (§8.5, §8.8, §8.9)
 
 1. **Prepare.** The adapter validates the parameters. The runtime then
@@ -147,6 +183,51 @@ died after commit. The adapter's retry class then decides what happens:
 
 An `unknown_outcome` is never retried blindly. The run needs attention
 until `ReconcileAction` resolves it (R04, R05).
+
+Two more operations of the adapter contract (§16.1) are optional on an
+adapter:
+
+- **`ValidateBinding`.** Before a run starts, the runtime asks each adapter
+  of an effect the workflow can reach whether it serves the program's
+  binding. For `git.*`, the binding is the repositories of the workflow's
+  `git.pr(…)` capabilities. A run an adapter cannot serve does not start
+  (`unsupported_binding`).
+- **`Cancel`.** `CancelAction`, which `CancelRun` also calls for every
+  action with an unknown outcome, asks the adapter to stop it:
+  - Cancelled, with the adapter's proof: the action is resolved as never
+    applied.
+  - Too late: it was applied, and its receipt is recorded.
+  - Unknown: nothing changes.
+
+### `git.open_pr` on GitHub
+
+`GitHubPullRequests` (`runtime/src/github.ts`) opens a pull request in one
+repository, through GitHub's REST API. Its token is a fine-grained one for
+that repository only (BACKLOG K18). It is held in the runtime process and
+never reaches a sandbox.
+
+`git.open_pr(checked)` opens one pull request with the files the checked
+draft names (`patch.files` and `tests.files`), read from the working copy
+the agents changed:
+
+- one commit on top of the base branch;
+- on the branch `mandate/<issue>-<op>`;
+- `<op>` is derived from the operation key, so the same operation always
+  names the same branch.
+
+The pull request body names the operation, the action digest and the
+authorization.
+
+The effect is `reconcilable`:
+
+- `Reconcile` looks for a pull request from a branch of the operation, and
+  reports it applied, or proves it was not.
+- Sending the action again reuses the branch, and finds an existing pull
+  request instead of opening a second one.
+- After a lost response there is one pull request.
+
+`Prepare` refuses a file outside the working copy, or one that is not in
+it. `Cancel` is too late once a pull request exists.
 
 ## Contracts and evidence (§10)
 
@@ -185,6 +266,101 @@ Unmet criteria go to `on unmet(c)`, or else fail the verify with
 never a `Verified` one, so an effect that requires the contract still
 refuses it (INV-13).
 
+## Agent loops (§8.2)
+
+With `Adapters.loop` set (`{ chat, sandbox }`), a skill without a body of a
+local agent runs as an agent loop in the runtime process
+(`runtime/src/loop.ts`). Without it, `Adapters.agents` answers a delegation
+in a single call (the Gate 2 simulation).
+
+The loop runs in the control plane (BACKLOG K7):
+
+- The model is called from the runtime, so the API key never enters the
+  sandbox.
+- Each tool call runs as a process in the agent's sandbox
+  (`SandboxHost.execute`).
+- The sandbox is built from the delegation's grant
+  ([`sandbox.md`](sandbox.md)). Its network is closed: model calls need
+  none from inside (`modelsInControlPlane`).
+
+**Tools.** They come from the grant (K8, `runtime/src/tools.ts`):
+
+| Capability | Tools | Process in the sandbox |
+|---|---|---|
+| `fs.read(P…)` | `read_file`, `list_dir`, `grep` | `cat`, `ls -1Ap`, `grep -rnI` |
+| `fs.write(P…)` | `write_file`, only below P | `sh -c 'mkdir -p … && cat > "$1"'`, the content on stdin |
+| `exec(…)` | `run`, only the listed commands and argument prefixes | the command itself, in the first readable path |
+| — | `finish`, which hands back the result | — |
+
+The runtime checks every path and command against the grant before it
+starts a process. This only gives the model a clear refusal; the sandbox
+enforces the same limits again. Tool output is cut at 20,000 characters.
+
+**Journal.** Every step is a command below the delegation's own:
+
+```text
+<delegate>/step/<n>               a model turn
+<delegate>/step/<n>/tool/<k>      a tool call of that turn
+<delegate>/plan/<i>               a step of a checked plan
+```
+
+The conversation is rebuilt from the journal, so recovery sends nothing
+already recorded again, and replay calls neither the model nor the
+sandbox.
+
+**Budget.** The delegation reserves the agent's budget, less what its
+finished steps already spent. A turn is charged to that reservation:
+
+- It must fit in what is left (else `SkillFailed(StepLimit)`).
+- Its cost is settled at once.
+- The reservation shrinks by the same amount.
+
+A dimension the agent's budget leaves out is reserved from the run as
+usual. A turn reserves its counted input plus the output limit (see
+[Models](#models-52-86)) and one step. A call whose input is over the
+locked limit is not sent (`ContextExhausted`).
+
+**Ending.** The model calls `finish` with a value. The value is checked
+against the skill's result type (`runtime/src/schema.ts`):
+
+- A result that does not fit goes back to the model to repair.
+- So do a tool the agent does not have, and arguments outside the schema
+  or the grant.
+- The model may repair at most twice (`MAX_REPAIRS`). A third time ends
+  the loop.
+
+The loop stops with `SkillFailed(kind, detail, partial)` (§8.7):
+
+| `kind` | When |
+|---|---|
+| `Stuck` | The same tool and arguments `repeats` times in the last `window` calls; the call is not run (V11). Or `stall` turns in a row that observed nothing new |
+| `StepLimit` | The agent's steps, tokens or spend cannot cover another turn |
+| `SchemaMismatch`, `InvalidTool`, `InvalidArguments` | Still wrong after the repairs |
+| `ContextExhausted` | The conversation is over the locked input limit |
+| `Refused` | The model declined |
+
+When a parallel branch fails (fail_fast), a loop stops before its next
+step, and leaves its delegation in flight, as after a crash. If the run goes
+on, for example after a person raised its budget, the loop resumes from
+the journal. The block fails with the fault that stopped the others.
+
+`partial` lists the files the loop wrote. A turn observed something new
+when one of its tool calls returned something the loop had not seen from
+that tool with those arguments. The thresholds come from the agent's
+`progress`, defaulting to 8, 3 and 5 ([`ir.md`](ir.md#what-02-adds)).
+
+**plan_execute.** The model is first offered only `submit_plan`, the list
+of tool calls it needs. The runtime checks the whole plan before running
+any of it:
+
+- every tool is one the agent has;
+- every argument fits the tool's schema and the grant;
+- the plan is no longer than the agent's `steps` limit.
+
+A rejected plan never runs (V16). The model may repair it; a third rejected
+plan ends the loop. A checked plan then runs step by step. The model sees
+the results, and is offered only `finish`.
+
 ## Supervision and `par` (§7.4, §8.7)
 
 - **Restart.** `supervise restart(max, backoff)` restarts a delegate on
@@ -219,6 +395,9 @@ listed in the run's summary (R09).
 
 - recomputes the program and package hashes;
 - requires every imported non-std module to be pinned in the lock;
+- when the lock pins models, requires it to be well formed
+  (`malformed_lock`) and to pin every model tier the program names
+  (`unlocked_model_tier`);
 - runs the compiler's checks on the canonical IR again.
 
 ## Control API (§16.1)
@@ -257,6 +436,68 @@ points:
 - after it is recorded;
 - after commit;
 - after the adapter returned.
+
+## Control CLI
+
+A person runs a program, and answers it, from a terminal (BACKLOG K19). The
+commands are in the runtime (`@mandate/runtime/cli`) and are reached
+through the compiler's `mandate` command:
+
+```sh
+mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD]
+mandate status <run> [--json]
+mandate approve <run> --revision N --by NAME
+mandate decline <run> --revision N --by NAME
+mandate answer <run> --revision N --by NAME <text>
+mandate cancel <run>
+mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
+mandate replay <run>
+```
+
+**Configuration.** Each call reads `mandate.runtime.json`, or the file
+`--config` names. It holds the database and the adapters:
+
+```json
+{
+  "database": "pglite:.mandate/db",
+  "model": { "provider": "anthropic" },
+  "sandbox": { "host": "mxc", "baseline": ["/usr/local"] },
+  "github": { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },
+  "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"] }
+}
+```
+
+- **Database.** `pglite:<dir>` keeps the database in a directory, so a run
+  outlives each call; `postgresql://…` uses a server.
+- **Secrets.** They come only from the environment: `CLAUDE_API_KEY` (and
+  `CLAUDE_WORKSPACE_ID` for a key that is not scoped to a workspace), and
+  `MANDATE_GITHUB_TOKEN`.
+- **Missing adapters.** An adapter the configuration leaves out is refused
+  when a run reaches it, and never simulated.
+- **Strict reading.** Unknown fields in the file are an error.
+
+**`status`.** It shows what the run waits for:
+
+- for an approval: the contract, criterion, role, subject and digest;
+- for an answer: the question;
+- in both cases, the command to answer it at the current revision.
+
+It also shows the budget table, the evidence and the actions.
+
+**Decisions and revisions.** A decision names the revision the person saw.
+If the run has moved since, the decision is refused (`stale_revision`) and
+nothing is recorded. What a person approves is bound to the digest that
+`status` showed.
+
+`examples/fixbug-target/` holds FixBug bound to the Gate 3 test repository,
+with its lock, configuration and input. `runtime/test/gate3.test.ts`
+rehearses the acceptance run with a scripted model, on Linux with
+Bubblewrap:
+
+- every agent and every test runs in a real sandbox;
+- red-then-green fails at the base commit and passes after the fix;
+- the code owner approves;
+- one pull request is opened.
 
 ## Temporal scheduling (§16.1)
 
@@ -301,5 +542,4 @@ The same mechanisms are tested under Temporal against a local dev server:
   the `drive` activity, not on a Temporal timer.
 - **`map`, and so R11 by input index and R12.** The 0.1 IR has no `map`.
   `par` results are bound by name, and that binding is tested in its place.
-- **The adapter contract's `ValidateBinding` and `Cancel`.**
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.

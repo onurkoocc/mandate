@@ -30,9 +30,9 @@ describe("S01 duplicate JSON key", () => {
 
 describe("S02 unknown field or language version", () => {
   it("rejects an unknown language version explicitly", () => {
-    const r = checkJson({ ...minimal(), language: "mandate/0.2" });
+    const r = checkJson({ ...minimal(), language: "mandate/0.3" });
     expect(codes(r.diagnostics)).toEqual(["MDT-E0103"]);
-    expect(r.diagnostics[0]!.facts).toMatchObject({ expected: "mandate/0.1", found: "mandate/0.2" });
+    expect(r.diagnostics[0]!.facts).toMatchObject({ expected: ["mandate/0.1", "mandate/0.2"], found: "mandate/0.3" });
   });
 
   it("rejects a missing language field", () => {

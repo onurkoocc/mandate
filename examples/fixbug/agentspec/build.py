@@ -107,7 +107,7 @@ LLM = OpenAiCompatibleConfig(
     description="tier: standard (BACKLOG K10)",
     url="https://api.anthropic.com/v1/",
     model_id="claude-opus-5-5",
-    default_generation_parameters=LlmGenerationConfig(max_tokens=16000, reasoning_effort="high"),
+    default_generation_parameters=LlmGenerationConfig(max_tokens=12000, reasoning_effort="high"),
 )
 
 
@@ -158,7 +158,7 @@ AGENTS = {
         output=P_FINDINGS,
         tools=READ_TOOLS,
         caps=[REPO_READ, MODEL_STD],
-        budget=mx.MandateBudget(tokens=400_000, time_ms=900_000, spend=usd(3), steps=40),
+        budget=mx.MandateBudget(tokens=1_680_000, time_ms=900_000, spend=usd(10.56), steps=12),
         effects=["Fs.Read", "Model"],
     ),
     "Planner": dict(
@@ -168,7 +168,7 @@ AGENTS = {
         output=P_PLAN,
         tools=[],
         caps=[MODEL_STD],
-        budget=mx.MandateBudget(tokens=150_000, spend=usd(1.5), steps=10),
+        budget=mx.MandateBudget(tokens=560_000, spend=usd(3.52), steps=4),
         effects=["Model"],
     ),
     "Implementer": dict(
@@ -178,7 +178,7 @@ AGENTS = {
         output=P_PATCH,
         tools=READ_TOOLS + [WRITE_FILE, RUN],
         caps=[REPO_READ, SRC_WRITE, BUILD, MODEL_STD],
-        budget=mx.MandateBudget(tokens=800_000, time_ms=2_700_000, spend=usd(8), steps=80),
+        budget=mx.MandateBudget(tokens=2_800_000, time_ms=2_700_000, spend=usd(17.6), steps=20),
         effects=["Exec", "Fs.Read", "Fs.Write", "Model"],
     ),
     "TestWriter": dict(
@@ -188,7 +188,7 @@ AGENTS = {
         output=P_TESTS,
         tools=READ_TOOLS + [WRITE_FILE, RUN],
         caps=[REPO_READ, TEST_WRITE, BUILD, MODEL_STD],
-        budget=mx.MandateBudget(tokens=300_000, time_ms=1_200_000, spend=usd(3), steps=40),
+        budget=mx.MandateBudget(tokens=1_680_000, time_ms=1_200_000, spend=usd(10.56), steps=12),
         effects=["Exec", "Fs.Read", "Fs.Write", "Model"],
     ),
     "Reviewer": dict(
@@ -198,7 +198,7 @@ AGENTS = {
         output=P_REVIEW,
         tools=READ_TOOLS,
         caps=[REPO_READ, MODEL_STD],
-        budget=mx.MandateBudget(tokens=300_000, spend=usd(3), steps=30),
+        budget=mx.MandateBudget(tokens=1_120_000, spend=usd(7.04), steps=8),
         effects=["Fs.Read", "Model"],
     ),
 }
@@ -374,7 +374,7 @@ def fixbug(extended: bool) -> Flow:
             control_flow_connections=edges,
             outputs=[pr_out],
             capabilities=[BUILD, MODEL_STD, PR, REPO_READ, SRC_WRITE, TEST_WRITE],
-            budget=mx.MandateBudget(spend=usd(20), time_ms=10_800_000),
+            budget=mx.MandateBudget(spend=usd(50), time_ms=10_800_000),
             on_budget_exceeded=on_exceeded,
         )
 

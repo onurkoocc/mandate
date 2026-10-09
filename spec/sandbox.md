@@ -1,4 +1,4 @@
-# Sandboxes, 0.1
+# Sandboxes
 
 Agents run inside sandboxes that the runtime builds from their authority.
 This follows design doc 4 §7.3, §11.3 and §16.1. There are two halves:
@@ -101,12 +101,64 @@ PolicyDenied({ reason: "unsupported_sandbox_profile", code: "MDT-E0902", agent, 
 The workflow can handle or escalate it like any other fault; unhandled, it
 fails the run (INV-11, G05).
 
-## Not in 0.1 yet
+## Executing in a sandbox
 
-- **The rest of the sandbox adapter contract.** §16.1 also names
-  `Execute`, `Collect` and `Stop`. Running pinned commands and collecting
-  their artifacts belongs to the agent loop, which simulated agents stand
-  in for.
-- **Learning-mode feedback.** Blocked operations are not fed back to the
-  compiler as W0311 yet.
+An agent loop ([`runtime.md`](runtime.md#agent-loops-82)) runs each tool
+call as one process: `SandboxHost.execute(handle, { argv, stdin, cwd,
+timeoutMs })`. This is §16.1's `Execute` with its output collected. `argv`
+is an argument vector, never a shell line.
+
+With `modelsInControlPlane` set, the model calls are made by the runtime,
+so a model capability asks the sandbox for no network (BACKLOG K7). An
+agent with no `net.https` capability then has none at all.
+
+## The MXC host on Linux
+
+`MxcHost` (`runtime/src/mxc.ts`) is the real host: `@microsoft/mxc-sdk/v1`
+with its Bubblewrap backend (BACKLOG K16). Each process runs in its own
+`bwrap` sandbox:
+
+| Guarantee | How |
+|---|---|
+| Filesystem | MXC's deny-by-default baseline (system binaries and `/etc` read-only), the policy's read-only and read-write paths, and nothing else |
+| Network | Egress and ingress denied: `--unshare-net`, no network at all |
+| Commands | Checked by the host before a process starts. Either a helper the runtime's tools use (`cat`, `ls`, `grep`, the `write_file` script) on a path inside the policy, or an allowed command with an allowed argument prefix. Bubblewrap cannot limit commands inside the sandbox |
+| Environment | None of the runtime's: the process gets MXC's default `PATH` and `TERM`, so no API key or token reaches it |
+| Time | The policy's timeout, per process |
+
+The probe asks the SDK whether Bubblewrap can run: is `bwrap` installed,
+and are user namespaces enabled? Where it cannot, the host enforces
+nothing, so every agent is refused by name (G05). Nothing falls back to a
+weaker isolation.
+
+The host refuses by name what it does not support:
+
+- an outbound host allow-list (`network: deny_all`);
+- `learning` mode, because Bubblewrap has none.
+
+`baseline` adds read-only paths every sandbox sees, such as a toolchain
+under `/opt`. These paths appear in the request MXC gets.
+
+The `sandbox` CI job runs the enforcement tests (`runtime/test/mxc.test.ts`,
+with `MANDATE_MXC=1`) on Ubuntu with Bubblewrap installed and unprivileged
+user namespaces allowed. The tests check that:
+
+- a process reads and writes inside its paths;
+- a write outside the write paths does not reach the host, even from a
+  shell the agent was allowed to start;
+- nothing outside the paths is visible;
+- no host can be reached (G07), while the CI host itself reaches it;
+- the runtime's environment is absent;
+- an agent loop does its work through the sandbox.
+
+## Not yet
+
+- **`Collect` and `Stop` of the adapter contract.** A process's output is
+  collected when it ends. A running process is stopped only by its
+  timeout.
+- **Learning-mode feedback (W0311).** Bubblewrap has no learning mode, so
+  blocked operations cannot be reported back. This needs the Windows
+  backend (BACKLOG P2-27).
+- **An outbound host allow-list.** MXC offers one through a proxy. It is
+  not wired up, so a requirement with `net.https` hosts is refused.
 - **An AX adapter.**

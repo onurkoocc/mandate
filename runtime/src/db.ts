@@ -8,6 +8,7 @@
 // and CI against a real PostgreSQL), and PGlite, PostgreSQL compiled to
 // WebAssembly, for in-process tests and local runs without a server.
 
+import { mkdirSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import pg from "pg";
 
@@ -131,8 +132,13 @@ create table if not exists outbox (
 `;
 
 /** Opens PostgreSQL at `url`, or an in-process PGlite database when `url` is absent. */
+/**
+ * A database: PostgreSQL for a `postgresql://` URL, PGlite in a directory for
+ * `pglite:<dir>` (it outlives the process, so the control CLI can keep a run
+ * between calls), and in-process PGlite without a URL.
+ */
 export async function openDb(url?: string, schema?: string): Promise<Db> {
-  const db = url ? pgDb(url, schema) : pgliteDb();
+  const db = url?.startsWith("pglite:") ? pgliteDb(url.slice("pglite:".length)) : url ? pgDb(url, schema) : pgliteDb();
   if (schema && url) await db.query(`create schema if not exists ${ident(schema)}`);
   for (const stmt of SCHEMA.split(";").map((s) => s.trim()).filter(Boolean)) await db.query(stmt);
   return db;
@@ -143,8 +149,9 @@ function ident(s: string): string {
   return s;
 }
 
-function pgliteDb(): Db {
-  const lite = new PGlite();
+function pgliteDb(dataDir?: string): Db {
+  if (dataDir) mkdirSync(dataDir, { recursive: true });
+  const lite = dataDir ? new PGlite(dataDir) : new PGlite();
   const wrap = (q: Pick<PGlite, "query">): Tx => ({
     async query<T extends Row>(sql: string, params: unknown[] = []): Promise<T[]> {
       return (await q.query<T>(sql, params)).rows;

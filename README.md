@@ -7,7 +7,7 @@ anything runs. This repository holds the 0.1 reference implementation.
 
 ## Status
 
-0.1 is being built in four steps:
+0.1 was built in four steps, then Gate 0 and Gate 3 took it to 0.2:
 
 1. **Compiler core (done):** canonical IR with a closed JSON Schema,
    strict JSON reading, JCS + SHA-256 hashing, the `.mdt` text projection
@@ -24,6 +24,17 @@ anything runs. This repository holds the 0.1 reference implementation.
    adapters, directly and through Temporal; sandbox requirements and an MXC
    adapter, see [`spec/sandbox.md`](spec/sandbox.md); and the compact core
    spec, [`spec/core.md`](spec/core.md).
+5. **Gate 0 (done):** FixBug in Open Agent Spec, with extensions and a
+   runtime probe; see [`examples/fixbug/agentspec/`](examples/fixbug/agentspec/).
+6. **0.2, Gate 3 (done):** language version 0.2; the lock file
+   ([`spec/lock.md`](spec/lock.md)) and W0504; the Anthropic model adapter;
+   agent loops with tools from capabilities, progress checks and
+   `plan_execute`; MXC sandboxes with Bubblewrap; the GitHub `git.open_pr`
+   adapter; the control CLI; and the acceptance run. FixBug's five agents
+   on Claude Opus 5.5, each in its own sandbox, fixed a seeded bug in a
+   test repository. The contract's tests ran in sandboxes of the runtime's
+   own, a person approved from the CLI, and one pull request was opened,
+   for 0.23 USD. See [`examples/fixbug-target/`](examples/fixbug-target/).
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
@@ -35,7 +46,8 @@ spec/        core spec, IR schema and rules, static checks, diagnostic codes, ru
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
 examples/    example programs; fixbug/ is the design document's §20 workflow,
-             fixbug/agentspec/ the same workflow in Open Agent Spec (Gate 0)
+             fixbug/agentspec/ the same workflow in Open Agent Spec (Gate 0),
+             fixbug-target/ the workflow bound to the Gate 3 test repository
 ```
 
 ## Using the compiler
@@ -142,6 +154,40 @@ adapters:
 `temporal.test.ts` runs the same workflow under Temporal. The approval
 wakes the run, and a worker that crashes after commit still opens one PR.
 
+`loop.test.ts` runs bodiless skills as agent loops (0.2) against a scripted
+model and a simulated sandbox. It checks:
+
+- the tools derived from the grant;
+- every turn and tool call journaled and charged to the delegation;
+- the progress checks (V11 and `stall`);
+- schema repair and the steps limit;
+- `plan_execute` (V16);
+- recovery after a crash, and replay with no adapter call.
+
+`anthropic.test.ts` checks the Anthropic model adapter against a fake
+client: the locked model and effort it sends, the reservation from a
+counted input, the settlement from the reported usage, and the journaled
+snapshot. `live.test.ts` makes one real call, and only runs with
+`MANDATE_LIVE=1` (see below).
+
+`mxc.test.ts` checks the real sandbox host, MXC with Bubblewrap. Against a
+fake SDK it checks what the host asks MXC for and what it refuses. On Linux
+with `MANDATE_MXC=1` (the CI job `sandbox`), it checks the blocking itself:
+writes outside the grant, reads outside it, network, the environment, and
+an agent loop working through the sandbox.
+
+`github.test.ts` checks the `git.open_pr` adapter for GitHub against an
+in-memory GitHub:
+
+- FixBug opens one pull request with the verified files;
+- a lost response is reconciled to that one pull request;
+- a request that never arrived is sent again without opening a second one;
+- a cancelled run resolves an action that never took effect;
+- a program bound to another repository does not start.
+
+`live.test.ts` repeats the lost response against the real test repository
+when `MANDATE_GITHUB_TOKEN` is set.
+
 `sandbox.test.ts` runs FixBug's five agents in five MXC sandboxes, one per
 agent. Implementer may write only `/work/repo/src`, and TestWriter only
 `/work/repo/test`. A host that cannot enforce a requirement never starts the
@@ -167,7 +213,24 @@ These cases from §25 are covered:
 | R16 | An unknown charge keeps its reservation until it is settled | `budget` |
 | S09 | Unlocked modules, changed packages and failing checks are refused at load | `messages` |
 | E0406, E0407 | Commit needs a matching, unconsumed, unexpired authorization | `effects` |
-| G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox` |
+| G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop`, `mxc` |
+| G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`) |
+| V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
+| V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |
 
 R11 and R12 are about `map`, which the 0.1 IR does not have yet; `budget`
 tests that `par` results are bound by branch name instead.
+
+## Live runs
+
+Tests that call a real model run only with `MANDATE_LIVE=1`, never in PR
+CI. They read `CLAUDE_API_KEY`, and `CLAUDE_WORKSPACE_ID` (or
+`anthropic-workspace-id`) when the key is not scoped to a workspace, from
+the environment or from `.env` (gitignored):
+
+```sh
+MANDATE_LIVE=1 npx vitest run test/live.test.ts     # from runtime/
+```
+
+Models, efforts, token limits and prices come from the lock file
+([`spec/lock.md`](spec/lock.md)).

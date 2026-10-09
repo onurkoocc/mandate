@@ -1,0 +1,29 @@
+name: live
+
+# Live model and GitHub calls (BACKLOG K15): run only by hand, never on a pull
+# request, because they spend money and touch the test repository. Needs the
+# repository secrets CLAUDE_API_KEY, CLAUDE_WORKSPACE_ID (for a key not scoped
+# to a workspace) and MANDATE_GITHUB_TOKEN (the fine-grained token for
+# onurkoocc/mandate-fixbug-target only, K18).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Live tests (MANDATE_LIVE=1)
+        working-directory: runtime
+        env:
+          MANDATE_LIVE: "1"
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          CLAUDE_WORKSPACE_ID: ${{ secrets.CLAUDE_WORKSPACE_ID }}
+          MANDATE_GITHUB_TOKEN: ${{ secrets.MANDATE_GITHUB_TOKEN }}
+        run: npx vitest run test/live.test.ts

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mandate.dev/spec/lock.schema.json",
+  "title": "Mandate lock file (mandate/lock/0.2)",
+  "description": "Pins imported modules, the model behind each tier and its price. Part of the package hash. See spec/lock.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lock", "modules"],
+  "properties": {
+    "lock": { "const": "mandate/lock/0.2" },
+    "modules": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "models": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["provider", "model", "effort", "max_input_tokens", "max_output_tokens"],
+        "properties": {
+          "provider": { "const": "anthropic" },
+          "model": { "type": "string", "minLength": 1 },
+          "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] },
+          "max_input_tokens": { "type": "integer", "minimum": 1 },
+          "max_output_tokens": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "tariffs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["currency", "as_of", "micros_per_mtok"],
+        "properties": {
+          "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+          "as_of": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+          "micros_per_mtok": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["input", "output", "cache_read", "cache_write"],
+            "properties": {
+              "input": { "type": "integer", "minimum": 0 },
+              "output": { "type": "integer", "minimum": 0 },
+              "cache_read": { "type": "integer", "minimum": 0 },
+              "cache_write": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

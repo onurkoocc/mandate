@@ -27,6 +27,7 @@ const KIND_ORDER: Def["kind"][] = ["capability", "type", "const", "effect", "ext
 
 export function printProgram(p: Program): string {
   const out: string[] = [];
+  if (p.language !== "mandate/0.1") out.push(p.language.replace("/", " @ "), "");
   out.push(`module ${p.module} @ ${p.version}`);
   if (p.uses?.length) {
     out.push("");
@@ -122,6 +123,12 @@ function printDef(name: string, d: Def): string {
       if (d.model !== undefined) lines.push(`  model  ${d.model}`);
       if (d.caps.length) lines.push(`  caps   ${d.caps.map((c) => noStruct(c, "  ")).join(", ")}`);
       if (d.budget) lines.push(`  ${budget(d.budget)}`);
+      if (d.loop) lines.push(`  loop   ${d.loop}`);
+      if (d.progress) {
+        const p = d.progress;
+        const parts = (["window", "repeats", "stall"] as const).filter((k) => p[k] !== undefined).map((k) => `${k}: ${p[k]}`);
+        lines.push(`  progress { ${parts.join(", ")} }`);
+      }
       for (const [n, s] of Object.entries(d.skills)) {
         let sig = `  skill ${skillSig(n, s)}`;
         if (s.budget) sig += `\n    ${budget(s.budget)}`;

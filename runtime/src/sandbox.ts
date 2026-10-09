@@ -30,10 +30,27 @@ export interface Enforceable {
   ui: boolean;
 }
 
+/** One process run inside a sandbox (§16.1 `Execute`): an argument vector, never a shell line. */
+export interface ExecRequest {
+  argv: string[];
+  stdin?: string;
+  cwd?: string;
+  timeoutMs?: number;
+}
+
+export interface ExecResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  timedOut: boolean;
+}
+
 /** The platform side of the adapter contract: MXC's SDK, or a simulation in tests. */
 export interface SandboxHost {
   probe(): Promise<Enforceable>;
   create(policy: MxcPolicy): Promise<string>;
+  /** Runs one process under the sandbox's policy. What the policy denies fails inside the process. */
+  execute(handle: string, req: ExecRequest): Promise<ExecResult>;
   destroy(handle: string): Promise<"destroyed" | "retained_for_investigation">;
 }
 
@@ -55,8 +72,16 @@ export interface MxcOptions {
   host: SandboxHost;
   /** The MXC schema version the host is pinned to. */
   schemaVersion: string;
-  /** Model tier → the hosts its endpoint needs. A tier without an entry cannot be sandboxed. */
+  /**
+   * Model tier → the hosts its endpoint needs. A tier without an entry cannot
+   * be sandboxed. Unused with `modelsInControlPlane`.
+   */
   modelEndpoints: Record<string, string[]>;
+  /**
+   * The agent's model calls are made by the runtime, outside the sandbox
+   * (BACKLOG K7), so a model capability needs no network from the sandbox.
+   */
+  modelsInControlPlane?: boolean;
   /** Default `process`. A host without it is refused; another backend is never chosen silently. */
   isolation?: string;
   /** Default `enforcement`. `learning` also blocks and reports what it blocked (W0311). Never `permissive`. */
@@ -80,7 +105,7 @@ export class MxcAdapter {
     const timeoutMs = req.limits.timeout_ms ?? this.o.defaultTimeoutMs ?? null;
     const unsupported: string[] = [];
     const modelHosts: string[] = [];
-    for (const m of req.models) {
+    for (const m of this.o.modelsInControlPlane ? [] : req.models) {
       const hosts = m.tier === null ? undefined : this.o.modelEndpoints[m.tier];
       if (!hosts) unsupported.push(`no endpoint is configured for model tier ${m.tier ?? "(none)"}`);
       else modelHosts.push(...hosts);

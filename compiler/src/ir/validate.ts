@@ -9,7 +9,7 @@ import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.
 import { diag, ptrToken, type Diagnostic, type Span } from "../diag.js";
 import type { Json } from "../json/strict-json.js";
 import { LIMITS } from "../limits.js";
-import { LANGUAGE_VERSION } from "./types.js";
+import { isLanguageVersion, LANGUAGE_VERSIONS } from "./types.js";
 
 let validator: ValidateFunction | undefined;
 
@@ -36,15 +36,16 @@ export function validateIr(value: Json, spans?: Map<string, Span>): Diagnostic[]
     return [diag("E0104", "A Mandate program must be a JSON object.", at(""))];
   }
   const lang = value["language"];
-  if (lang !== LANGUAGE_VERSION) {
+  if (!isLanguageVersion(lang)) {
+    const known = LANGUAGE_VERSIONS.map((v) => `"${v}"`).join(" or ");
     return [
       diag(
         "E0103",
         lang === undefined
-          ? `Missing "language" field; expected "${LANGUAGE_VERSION}".`
-          : `Unsupported language version ${JSON.stringify(lang)}; this compiler reads "${LANGUAGE_VERSION}". Use an explicit migration instead of loading it as-is.`,
+          ? `Missing "language" field; expected ${known}.`
+          : `Unsupported language version ${JSON.stringify(lang)}; this compiler reads ${known}. Use an explicit migration instead of loading it as-is.`,
         at("/language"),
-        { facts: { expected: LANGUAGE_VERSION, found: lang ?? null } },
+        { facts: { expected: [...LANGUAGE_VERSIONS], found: lang ?? null } },
       ),
     ];
   }
@@ -55,6 +56,18 @@ export function validateIr(value: Json, spans?: Map<string, Span>): Diagnostic[]
 
   const defs = value["defs"];
   if (defs && typeof defs === "object" && !Array.isArray(defs)) {
+    for (const [name, d] of Object.entries(defs)) {
+      if (!d || typeof d !== "object" || Array.isArray(d) || d["kind"] !== "agent") continue;
+      for (const field of ["loop", "progress"]) {
+        if (field in d && lang === "mandate/0.1") {
+          out.push(diag("E0104", `Agent ${name}: '${field}' is a mandate/0.2 field; this program is mandate/0.1.`, at(`/defs/${ptrToken(name)}/${field}`), { facts: { field, language: lang } }));
+        }
+      }
+      const pr = d["progress"];
+      if (pr && typeof pr === "object" && !Array.isArray(pr) && typeof pr["window"] === "number" && typeof pr["repeats"] === "number" && pr["repeats"] > pr["window"]) {
+        out.push(diag("E0104", `Agent ${name}: progress.repeats (${pr["repeats"]}) cannot be more than progress.window (${pr["window"]}).`, at(`/defs/${ptrToken(name)}/progress`), { facts: { window: pr["window"], repeats: pr["repeats"] } }));
+      }
+    }
     const n = Object.keys(defs).length;
     if (n > LIMITS.definitions) {
       out.push(
