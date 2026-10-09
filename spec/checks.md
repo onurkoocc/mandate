@@ -93,6 +93,15 @@ arrive with the runtime.
 - Paths are compared by segment after resolving `.` and `..`, so
   `/work/repo/src2` is not inside `/work/repo/src`.
 - `narrow(…)` must stay inside the capability it narrows (E0305, C3).
+- One capability lies inside another when it has the same constructor, its
+  scope lies inside the other's, and it allows no more than the other does.
+  For `model.infer`, that means no higher `max_class` and, when the outer
+  one names a `tier`, the same tier: tiers are not ordered, so
+  `model.infer(tier: economy)` is not inside `model.infer(tier: standard)`.
+  For `exec`, every `args_prefix` must extend one of the outer
+  capability's prefixes. `[["-q", "test", "-Dtest=A"]]` is inside
+  `[["-q", "test"]]`, and `[["-q"]]` is not. A capability without
+  `args_prefix` allows any arguments.
 - Delegation (C2, §9.1). Without `with caps`, the delegate gets
   `A.caps ∩ avail(ctx)`. With `with caps K`, each capability in K must lie
   inside both the context's and the agent's capabilities (E0701). K
