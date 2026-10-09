@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { canonicalize, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, type Json, type Program } from "@mandate/compiler";
+import { canonicalize, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, modelTiers, validateLock, type Json, type Lock, type Program } from "@mandate/compiler";
 import type { Adapters, Cost } from "./adapters.js";
 import type { Db, Row } from "./db.js";
 import { Faults } from "./faults.js";
@@ -13,10 +13,7 @@ import { costDims, Journal, TERMINAL, type ActionRow, type BudgetReport, type Ev
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { digest, isObj, type Obj, type Value } from "./values.js";
 
-/** Pinned versions of the non-std modules a program imports (S09). */
-export interface Lock {
-  modules: Record<string, string>;
-}
+export type { Lock };
 
 /** A content-addressed package: the program, its hash and its lock. */
 export interface Package {
@@ -45,6 +42,14 @@ export function verifyPackage(pkg: Package): void {
   }
   const unlocked = (pkg.program.uses ?? []).map((u) => u.module).filter((m) => m !== "std" && !m.startsWith("std.") && !Object.hasOwn(pkg.lock.modules, m));
   if (unlocked.length) throw new Violation("unlocked_module", `Imported modules are not locked: ${[...new Set(unlocked)].join(", ")}.`);
+  // A lock that pins models (spec/lock.md) must be well formed and pin every tier the program names.
+  // A lock without models is for simulated models only; the Anthropic adapter refuses to run without one.
+  if (pkg.lock.models || pkg.lock.tariffs) {
+    const bad = validateLock({ lock: "mandate/lock/0.2", ...pkg.lock });
+    if (bad.length) throw new Violation("malformed_lock", `The package's lock is malformed: ${bad.map((d) => d.message).join(" ")}`);
+    const missing = [...modelTiers(pkg.program)].filter((t) => !Object.hasOwn(pkg.lock.models ?? {}, t)).sort();
+    if (missing.length) throw new Violation("unlocked_model_tier", `Model tiers are not locked: ${missing.join(", ")} (MDT-E0141).`);
+  }
   const r = check(canonicalize(pkg.program as unknown as Json), "json");
   if (!r.ok) {
     throw new Violation("load_verification_failed", `The program does not pass the compiler's checks: ${r.diagnostics.filter((d) => d.severity === "error").map((d) => d.code).join(", ")}.`);

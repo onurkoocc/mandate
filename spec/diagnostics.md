@@ -24,6 +24,8 @@ implementation.
 | MDT-E0121 | Duplicate name | — | assigned |
 | MDT-E0130 | Stale base | S12 | assigned |
 | MDT-E0131 | Patch cannot be applied | — | assigned |
+| MDT-E0140 | Malformed lock file | — | assigned; see [`lock.md`](lock.md) |
+| MDT-E0141 | Model tier not locked | — | assigned; also refused at load time |
 
 `mandate explain <code>` prints the explanation for each code.
 
@@ -61,7 +63,8 @@ Warnings (`W…`) never make a check fail.
 | MDT-E0501 | Child budgets exceed the parent | — | Appendix B |
 | MDT-E0502 | Unbounded loop or recursion | S04, S06 | Appendix B |
 | MDT-E0503 | Agent loop without a step limit | — | Appendix B |
-| MDT-E0504 | Budget currency mismatch | — | assigned |
+| MDT-E0504 | Budget currency mismatch | — | assigned; also an agent budget in another currency than its tier's tariff |
+| MDT-W0504 | Budget below the computed upper bound | — | Appendix B; needs the lock file |
 | MDT-W0601 | Static criterion checked at run time | — | Appendix B names E0601 and says it falls back to a warning |
 | MDT-E0603 | Criterion satisfied only by review | — | Appendix B |
 | MDT-E0701 | Delegated authority not a subset | — | Appendix B |

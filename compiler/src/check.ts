@@ -11,6 +11,7 @@ import { parseStrictJson, type Json } from "./json/strict-json.js";
 import { parseMdt } from "./parse/parser.js";
 import { resolveNames } from "./resolve/resolve.js";
 import { staticCheck } from "./check/static.js";
+import { lockChecks, validateLock, type Lock } from "./lock.js";
 
 export type SourceKind = "mdt" | "json";
 
@@ -49,13 +50,22 @@ export function load(text: string, kind: SourceKind): LoadResult {
   return { program, spans, diagnostics };
 }
 
-export function check(text: string, kind: SourceKind): CheckResult {
+export interface CheckOptions {
+  /** The lock file (spec/lock.md). With it, tiers are checked against it and W0504 is computed. */
+  lock?: Lock;
+}
+
+export function check(text: string, kind: SourceKind, opts: CheckOptions = {}): CheckResult {
   const loaded = load(text, kind);
   const diagnostics = [...loaded.diagnostics];
   if (!loaded.program || hasErrors(diagnostics)) return { ...loaded, diagnostics, ok: false };
   diagnostics.push(...resolveNames(loaded.program, loaded.spans));
   // Static checks assume every name resolves.
   if (!hasErrors(diagnostics)) diagnostics.push(...staticCheck(loaded.program, loaded.spans));
+  if (opts.lock && !hasErrors(diagnostics)) {
+    const lockDiags = validateLock(opts.lock);
+    diagnostics.push(...(lockDiags.length ? lockDiags : lockChecks(loaded.program, opts.lock, loaded.spans)));
+  }
   const ok = !hasErrors(diagnostics);
   const result: CheckResult = { ...loaded, diagnostics, ok };
   if (ok) result.hashes = hashProgram(loaded.program as unknown as Json);

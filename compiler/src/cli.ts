@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // mandate — command-line front end for the 0.1 reference compiler.
 //
-//   mandate check <file> [--json]          validate, resolve names, print hashes
+//   mandate check <file> [--json] [--lock <lock.json>]
+//                                          validate, resolve names, print hashes
 //   mandate ir <file> [--canonical]        print canonical IR (pretty, or the exact JCS bytes)
 //   mandate fmt <file>                     print the .mdt projection of the IR
 //   mandate hash <file>                    print program and definition hashes
@@ -9,16 +10,20 @@
 //   mandate sandbox <file> [--agent <name>] print each agent's sandbox requirement
 //   mandate explain <code>                 explain a diagnostic code
 //
-// <file> is .mdt text or .json canonical IR. Exit status is 1 when any error
-// diagnostic is reported, 2 on usage errors.
+// <file> is .mdt text or .json canonical IR. `check` and `sandbox` read the
+// lock file named by --lock, or else mandate.lock.json next to <file> if there
+// is one. Exit status is 1 when any error diagnostic is reported, 2 on usage
+// errors.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { check, kindOf, load } from "./check.js";
 import { CODES } from "./codes.js";
 import { formatDiagnostic, hasErrors, type Diagnostic } from "./diag.js";
 import { canonicalize } from "./json/jcs.js";
 import type { Json } from "./json/strict-json.js";
 import { parseStrictJson } from "./json/strict-json.js";
+import type { Lock } from "./lock.js";
 import { applyPatch, type PatchOp } from "./patch/patch.js";
 import { printProgram } from "./print/printer.js";
 import { sandboxRequirements } from "./target/sandbox.js";
@@ -27,12 +32,12 @@ function usage(): never {
   process.stderr.write(
     [
       "usage: mandate <command> [options]",
-      "  check <file> [--json]",
+      "  check <file> [--json] [--lock <lock.json>]",
       "  ir <file> [--canonical]",
       "  fmt <file>",
       "  hash <file>",
       "  patch <program> <patch.json> [--json]   patch.json: { \"base\": \"sha256:…\", \"ops\": [ … ] }",
-      "  sandbox <file> [--agent <name>]",
+      "  sandbox <file> [--agent <name>] [--lock <lock.json>]",
       "  explain <code>",
       "",
     ].join("\n"),
@@ -57,11 +62,31 @@ function report(diags: Diagnostic[], file: string, asJson: boolean, extra: Recor
   }
 }
 
+/** The lock named by --lock, or mandate.lock.json next to the program; strict JSON either way. */
+function readLock(file: string, named: string | undefined, asJson: boolean): Lock | undefined {
+  const path = named ?? join(dirname(file), "mandate.lock.json");
+  if (!named && !existsSync(path)) return undefined;
+  const parsed = parseStrictJson(read(path));
+  if (!parsed.ok) {
+    report(parsed.diagnostics, path, asJson);
+    process.exit(1);
+  }
+  return parsed.value.value as unknown as Lock;
+}
+
+/** Removes `--name value` from args and returns the value. */
+function option(args: string[], name: string): string | undefined {
+  const at = args.indexOf(name);
+  if (at < 0) return undefined;
+  const value = args[at + 1] ?? usage();
+  args.splice(at, 2);
+  return value;
+}
+
 function main(argv: string[]): void {
-  const [cmd, ...rest] = argv;
-  const agentAt = rest.indexOf("--agent");
-  const agent = agentAt >= 0 ? (rest[agentAt + 1] ?? usage()) : undefined;
-  const plain = agentAt >= 0 ? rest.filter((_, i) => i !== agentAt && i !== agentAt + 1) : rest;
+  const [cmd, ...plain] = argv;
+  const agent = option(plain, "--agent");
+  const lockFile = option(plain, "--lock");
   const flags = new Set(plain.filter((a) => a.startsWith("--")));
   const args = plain.filter((a) => !a.startsWith("--"));
   const asJson = flags.has("--json");
@@ -69,7 +94,8 @@ function main(argv: string[]): void {
   switch (cmd) {
     case "check": {
       const file = args[0] ?? usage();
-      const r = check(read(file), kindOf(file));
+      const lock = readLock(file, lockFile, asJson);
+      const r = check(read(file), kindOf(file), lock ? { lock } : {});
       report(r.diagnostics, file, asJson, r.hashes ? { hashes: r.hashes } : {});
       if (!asJson && r.ok) process.stdout.write(`ok ${r.hashes!.program}\n`);
       process.exit(r.ok ? 0 : 1);
@@ -135,7 +161,8 @@ function main(argv: string[]): void {
     // falls through
     case "sandbox": {
       const file = args[0] ?? usage();
-      const r = check(read(file), kindOf(file));
+      const lock = readLock(file, lockFile, asJson);
+      const r = check(read(file), kindOf(file), lock ? { lock } : {});
       if (!r.ok) {
         report(r.diagnostics, file, asJson);
         process.exit(1);

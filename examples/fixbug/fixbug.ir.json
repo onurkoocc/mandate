@@ -62,13 +62,13 @@
       "budget": {
         "spend": {
           "currency": "USD",
-          "micros": 3000000
+          "micros": 10560000
         },
-        "steps": 40,
+        "steps": 12,
         "time": {
           "ms": 900000
         },
-        "tokens": 400000
+        "tokens": 1680000
       },
       "caps": [
         {
@@ -560,7 +560,7 @@
       "budget": {
         "spend": {
           "currency": "USD",
-          "micros": 20000000
+          "micros": 50000000
         },
         "time": {
           "ms": 10800000
@@ -699,13 +699,13 @@
       "budget": {
         "spend": {
           "currency": "USD",
-          "micros": 8000000
+          "micros": 17600000
         },
-        "steps": 80,
+        "steps": 20,
         "time": {
           "ms": 2700000
         },
-        "tokens": 800000
+        "tokens": 2800000
       },
       "caps": [
         {
@@ -839,10 +839,10 @@
       "budget": {
         "spend": {
           "currency": "USD",
-          "micros": 1500000
+          "micros": 3520000
         },
-        "steps": 10,
-        "tokens": 150000
+        "steps": 4,
+        "tokens": 560000
       },
       "caps": [
         {
@@ -938,10 +938,10 @@
       "budget": {
         "spend": {
           "currency": "USD",
-          "micros": 3000000
+          "micros": 7040000
         },
-        "steps": 30,
-        "tokens": 300000
+        "steps": 8,
+        "tokens": 1120000
       },
       "caps": [
         {
@@ -1048,13 +1048,13 @@
       "budget": {
         "spend": {
           "currency": "USD",
-          "micros": 3000000
+          "micros": 10560000
         },
-        "steps": 40,
+        "steps": 12,
         "time": {
           "ms": 1200000
         },
-        "tokens": 300000
+        "tokens": 1680000
       },
       "caps": [
         {
@@ -1112,7 +1112,7 @@
       }
     }
   },
-  "language": "mandate/0.1",
+  "language": "mandate/0.2",
   "module": "company.devflow",
   "uses": [
     {

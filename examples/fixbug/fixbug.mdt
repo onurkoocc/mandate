@@ -1,5 +1,8 @@
 // Multi-agent bugfix workflow (design doc 4, §20).
 // Discovery → acceptance contract → implementation → evidence → delivery.
+// Budgets: steps × the per-call bound of mandate.lock.json (W0504, BACKLOG K13).
+
+mandate @ 0.2
 
 module company.devflow @ 0.1
 
@@ -40,35 +43,35 @@ contract FixAccepted(issue: Issue, pr: PullRequestDraft) {
 agent Explorer {
   role   "Finds where the bug is, with evidence. Does not change code."
   caps   RepoRead, ModelStd
-  budget { tokens: 400k, time: 15m, spend: 3 USD, steps: 40 }
+  budget { tokens: 1680k, time: 15m, spend: 10.56 USD, steps: 12 }
   skill locate(issue: Issue) -> Inferred<List<Finding>> ! {Fs.Read, Model}
 }
 
 agent Planner {
   role   "Turns findings into the smallest fix plan, split by behavior."
   caps   ModelStd
-  budget { tokens: 150k, spend: 1.5 USD, steps: 10 }
+  budget { tokens: 560k, spend: 3.52 USD, steps: 4 }
   skill plan(issue: Issue, findings: Inferred<List<Finding>>) -> Inferred<FixPlan> ! {Model}
 }
 
 agent Implementer {
   role   "Applies the plan, only in the files it may change."
   caps   RepoRead, SrcWrite, Build, ModelStd
-  budget { tokens: 800k, time: 45m, spend: 8 USD, steps: 80 }
+  budget { tokens: 2800k, time: 45m, spend: 17.6 USD, steps: 20 }
   skill apply(plan: Inferred<FixPlan>) -> Inferred<Patch> ! {Fs.Read, Fs.Write, Exec, Model}
 }
 
 agent TestWriter {
   role   "Writes the regression test that catches the bug."
   caps   RepoRead, TestWrite, Build, ModelStd
-  budget { tokens: 300k, time: 20m, spend: 3 USD, steps: 40 }
+  budget { tokens: 1680k, time: 20m, spend: 10.56 USD, steps: 12 }
   skill regression(issue: Issue) -> Inferred<TestSet> ! {Fs.Read, Fs.Write, Exec, Model}
 }
 
 agent Reviewer {
   role   "Looks for counterexamples to the diff: concurrency, repeated messages, partial failure, unauthorized users."
   caps   RepoRead, ModelStd
-  budget { tokens: 300k, spend: 3 USD, steps: 30 }
+  budget { tokens: 1120k, spend: 7.04 USD, steps: 8 }
   skill counterexamples(patch: Inferred<Patch>, tests: Inferred<TestSet>)
         -> Inferred<Review> ! {Fs.Read, Model}
 }
@@ -76,7 +79,7 @@ agent Reviewer {
 // ── Workflow ──────────────────────────────────────────────────────────────
 workflow FixBug(issue: Issue) -> PullRequest
   caps    RepoRead, SrcWrite, TestWrite, Build, ModelStd, PR
-  budget  { spend: 20 USD, time: 3h }
+  budget  { spend: 50 USD, time: 3h }
 {
   let findings = delegate Explorer.locate(issue)
   let plan     = delegate Planner.plan(issue, findings)
