@@ -269,7 +269,7 @@ function onboard(a: Args, out: (s: string) => void): number {
   out(`// A system model drafted by \`mandate onboard\` from ${facts.length} working copies. Interface names are made up and owners
 // come from CODEOWNERS; consumption is inferred from calls in the code:
 ${facts.flatMap((f) => f.refers.map((r) => `//   ${f.component} → ${r.component}  ${r.evidence.file}:${r.evidence.line}`)).join("\n") || "//   (none found)"}
-// It is not the system's model until it is checked and accepted (see examples/kervan/programs/onboard.mdt).
+// It is not the system's model until an onboarding program has it checked and accepted (spec/system.md).
 
 ${text}`);
   return check(text, "mdt").ok ? 0 : 1;

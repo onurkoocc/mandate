@@ -54,7 +54,7 @@ export interface IntegrationConfig {
   service: string;
   /** Component → the compose service built from its working copy. Default: the component's name. */
   services?: Record<string, string>;
-  /** Variables for compose, e.g. { "KERVAN_ENV": "staging" }. */
+  /** Variables for compose, e.g. { "ACME_ENV": "staging" }. */
   env?: Record<string, string>;
   /** Default 20 minutes. */
   timeoutMs?: number;

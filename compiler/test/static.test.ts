@@ -25,7 +25,7 @@ function only(src: string, code: string): Diagnostic {
   return found[0]!;
 }
 
-const FIXBUG = readRepo("examples/fixbug/fixbug.mdt");
+const FIXBUG = readRepo("fixtures/fixbug/fixbug.mdt");
 
 /** FixBug with one textual change; fails loudly if the text to replace is gone. */
 function fixbug(from: string, to: string): string {

@@ -55,7 +55,7 @@ describe("S09: the runtime verifies what it loads", () => {
   });
 
   it("refuses a lock that pins models but not every tier the program names, or is malformed", () => {
-    const fixbugLock = JSON.parse(readFileSync(new URL("../../examples/fixbug/mandate.lock.json", import.meta.url), "utf8")) as Lock;
+    const fixbugLock = JSON.parse(readFileSync(new URL("../../fixtures/fixbug/mandate.lock.json", import.meta.url), "utf8")) as Lock;
     const { lock: _format, ...pinned } = fixbugLock;
     expect(() => verifyPackage(buildPackage(program(), { ...pinned, modules: LOCK.modules }))).not.toThrow();
     const { standard: _dropped, ...economyOnly } = pinned.models!;

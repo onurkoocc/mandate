@@ -402,7 +402,7 @@ Mandate describes a working system instead of rewriting it
 ([`system.md`](system.md)).
 
 - **System model.** `component`, `interface` and `environment` definitions
-  live in an ordinary module, e.g. `kervan.system`. Programs import what they
+  live in an ordinary module, e.g. `acme.system`. Programs import what they
   work on with `use`, and the lock pins the module by hash. Every interface
   has exactly one provider. Changing the model is a governance change.
 - **Capabilities over components.** `component.read(c)` and its siblings

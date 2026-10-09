@@ -55,12 +55,12 @@ const sandbox = (h: SimSandboxHost) => new MxcAdapter({ host: h, schemaVersion: 
 const req = (method: string, args: Value[], named: Record<string, Value> = {}): VerifyRequest => ({ method, args, named, contract: "BoundaryAccepted", criterion: method, system: sys });
 
 beforeAll(() => {
-  mcp = repo("kervan-mcp", { "src/value.ts": "1\n", "test/value.test.ts": "1\n" });
-  auth = repo("kervan-auth", { "docs/oauth-metadata.json": JSON.stringify(META) });
+  mcp = repo("acme-mcp", { "src/value.ts": "1\n", "test/value.test.ts": "1\n" });
+  auth = repo("acme-auth", { "docs/oauth-metadata.json": JSON.stringify(META) });
   sys = {
     components: {
-      mcp: { repo: "onurkoocc/kervan-mcp", root: mcp.root, base: mcp.base, lang: "ts", build: [], test: [{ command: "npm", args: ["test"] }], provides: ["CustomerTools"], consumes: ["TokenIssuance"] },
-      auth: { repo: "onurkoocc/kervan-auth", root: auth.root, base: auth.base, lang: "ts", build: [], test: [{ command: "npm", args: ["test"] }], provides: ["TokenIssuance"], consumes: [] },
+      mcp: { repo: "acme/mcp", root: mcp.root, base: mcp.base, lang: "ts", build: [], test: [{ command: "npm", args: ["test"] }], provides: ["CustomerTools"], consumes: ["TokenIssuance"] },
+      auth: { repo: "acme/auth", root: auth.root, base: auth.base, lang: "ts", build: [], test: [{ command: "npm", args: ["test"] }], provides: ["TokenIssuance"], consumes: [] },
     },
     interfaces: { TokenIssuance: { protocol: "oauth", spec: "docs/oauth-metadata.json", provider: "auth" } },
   };

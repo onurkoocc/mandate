@@ -1,0 +1,58 @@
+// Acme's repositories, before a system model exists (design doc 9 §7;
+// BACKLOG item 35). Onboarding starts from what is known for certain: which
+// repositories make up the system and where the run checks them out. What
+// each one is, what it provides and consumes and who owns it is what the
+// onboarding program (onboard.mdt) finds out and has checked.
+
+mandate @ 0.3
+
+module acme.repos @ 0.1
+
+component auth {
+  repo  "acme/auth"
+  root  "/work/acme-auth"
+  lang  other
+  owner role "unassigned"
+}
+
+component mcp {
+  repo  "acme/mcp"
+  root  "/work/acme-mcp"
+  lang  other
+  owner role "unassigned"
+}
+
+component core {
+  repo  "acme/core"
+  root  "/work/acme-core"
+  lang  other
+  owner role "unassigned"
+}
+
+component search {
+  repo  "acme/search"
+  root  "/work/acme-search"
+  lang  other
+  owner role "unassigned"
+}
+
+component voice {
+  repo  "acme/voice"
+  root  "/work/acme-voice"
+  lang  other
+  owner role "unassigned"
+}
+
+component evals {
+  repo  "acme/voice-evals"
+  root  "/work/acme-voice-evals"
+  lang  other
+  owner role "unassigned"
+}
+
+component system {
+  repo  "acme/system"
+  root  "/work/acme-system"
+  lang  other
+  owner role "unassigned"
+}

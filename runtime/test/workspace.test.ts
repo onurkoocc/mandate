@@ -21,15 +21,15 @@ import { WRITE_SCRIPT } from "../src/tools.js";
 import { runView } from "../src/views.js";
 import { GitWorkspace } from "../src/workspace.js";
 import { closeAll, world } from "./helpers.js";
-import { KERVAN_SOURCE, kervanModules, lockFor, TWO_COMPONENTS } from "./kervan.js";
+import { ACME_SOURCE, acmeModules, lockFor, TWO_COMPONENTS } from "./acme.js";
 
 afterAll(closeAll);
 
 const fwd = (p: string): string => p.replace(/\\/g, "/");
 
-/** Kervan's model with mcp and core checked out under `dir` instead of /work. */
-function kervanAt(dir: string): string {
-  return KERVAN_SOURCE.replace('"/work/kervan-mcp"', JSON.stringify(fwd(join(dir, "kervan-mcp")))).replace('"/work/kervan-core"', JSON.stringify(fwd(join(dir, "kervan-core"))));
+/** Acme's model with mcp and core checked out under `dir` instead of /work. */
+function acmeAt(dir: string): string {
+  return ACME_SOURCE.replace('"/work/acme-mcp"', JSON.stringify(fwd(join(dir, "acme-mcp")))).replace('"/work/acme-core"', JSON.stringify(fwd(join(dir, "acme-core"))));
 }
 
 /** The two-component program, with a person asked at the end so the run stays live. */
@@ -37,17 +37,17 @@ const WAITS = TWO_COMPONENTS.replace('  "done"\n}', '  let answer = human.ask("D
 
 describe("a run's components and their base commits (B3)", () => {
   it("records each component at its base commit in the manifest, and R changes when a base does", async () => {
-    const modules = kervanModules();
+    const modules = acmeModules();
     const w = await world(TWO_COMPONENTS, { modules, lock: lockFor(modules) });
     const a = await w.rt.startRun({ pkg: w.pkg, workflow: "Change", input: { task: "t" }, runId: "ws1" });
     expect(a.state).toBe("succeeded");
     expect(w.workspace.prepared).toEqual([[
-      { name: "core", repo: "onurkoocc/kervan-core", root: "/work/kervan-core" },
-      { name: "mcp", repo: "onurkoocc/kervan-mcp", root: "/work/kervan-mcp" },
+      { name: "core", repo: "acme/core", root: "/work/acme-core" },
+      { name: "mcp", repo: "acme/mcp", root: "/work/acme-mcp" },
     ]]);
     expect((a.manifest as { components: unknown }).components).toEqual({
-      core: { repo: "onurkoocc/kervan-core", root: "/work/kervan-core", base: "core-commit-1" },
-      mcp: { repo: "onurkoocc/kervan-mcp", root: "/work/kervan-mcp", base: "mcp-commit-1" },
+      core: { repo: "acme/core", root: "/work/acme-core", base: "core-commit-1" },
+      mcp: { repo: "acme/mcp", root: "/work/acme-mcp", base: "mcp-commit-1" },
     });
     expect(a.manifest_hash).toMatch(/^sha256:/);
 
@@ -58,12 +58,12 @@ describe("a run's components and their base commits (B3)", () => {
     expect(b.manifest_hash).not.toBe(a.manifest_hash);
 
     const { view } = await runView(w.rt, "ws2");
-    expect(view.manifest).toEqual({ hash: b.manifest_hash, mode: "live", components: [{ name: "core", repo: "onurkoocc/kervan-core", base: "core-commit-1" }, { name: "mcp", repo: "onurkoocc/kervan-mcp", base: "mcp-commit-2" }] });
+    expect(view.manifest).toEqual({ hash: b.manifest_hash, mode: "live", components: [{ name: "core", repo: "acme/core", base: "core-commit-1" }, { name: "mcp", repo: "acme/mcp", base: "mcp-commit-2" }] });
     expect(await w.rt.replayRun("ws2")).toEqual({ status: "complete", value: "done" });
   });
 
   it("gives a working copy to one live run at a time, and frees it when the run ends", async () => {
-    const modules = kervanModules();
+    const modules = acmeModules();
     const w = await world(WAITS, { modules, lock: lockFor(modules) });
     const first = await w.rt.startRun({ pkg: w.pkg, workflow: "Change", input: { task: "t" }, runId: "busy1" });
     expect(first.state).toBe("waiting");
@@ -75,7 +75,7 @@ describe("a run's components and their base commits (B3)", () => {
   });
 
   it("does not start a program that works on components without a workspace adapter (INV-11)", async () => {
-    const modules = kervanModules();
+    const modules = acmeModules();
     const w = await world(TWO_COMPONENTS, { modules, lock: lockFor(modules) });
     delete w.adapters.workspace;
     await expect(new Runtime(w.db, w.adapters).startRun({ pkg: w.pkg, workflow: "Change", input: { task: "t" } })).rejects.toThrow(/no workspace adapter/);
@@ -101,9 +101,9 @@ describe("GitWorkspace", () => {
     try {
       const mcpSrc = join(tmp, "src", "mcp");
       const first = repo(mcpSrc, { "src/a.ts": "a\n", ".gitignore": "node_modules\n" });
-      const root = join(tmp, "work", "kervan-mcp");
+      const root = join(tmp, "work", "acme-mcp");
       const ws = new GitWorkspace({ mcp: { url: mcpSrc } });
-      expect(await ws.prepare([{ name: "mcp", repo: "onurkoocc/kervan-mcp", root }])).toEqual({ mcp: { base: first } });
+      expect(await ws.prepare([{ name: "mcp", repo: "acme/mcp", root }])).toEqual({ mcp: { base: first } });
       expect(readFileSync(join(root, "src/a.ts"), "utf8")).toBe("a\n");
 
       // A run left work behind, and installed dependencies.
@@ -114,11 +114,11 @@ describe("GitWorkspace", () => {
       git(mcpSrc, "commit", "-q", "-am", "next");
       const second = git(mcpSrc, "rev-parse", "HEAD").trim();
 
-      expect(await ws.prepare([{ name: "mcp", repo: "onurkoocc/kervan-mcp", root }])).toEqual({ mcp: { base: second } });
+      expect(await ws.prepare([{ name: "mcp", repo: "acme/mcp", root }])).toEqual({ mcp: { base: second } });
       expect(readFileSync(join(root, "src/a.ts"), "utf8")).toBe("a2\n");
       expect(existsSync(join(root, "src/leftover.ts"))).toBe(false);
       expect(existsSync(join(root, "node_modules/dep.js"))).toBe(true);
-      await expect(ws.prepare([{ name: "core", repo: "onurkoocc/kervan-core", root: join(tmp, "work", "kervan-core") }])).rejects.toThrow(/no source for component core/);
+      await expect(ws.prepare([{ name: "core", repo: "acme/core", root: join(tmp, "work", "acme-core") }])).rejects.toThrow(/no source for component core/);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
@@ -144,9 +144,9 @@ describe.runIf(REAL)("two agents on two components in real sandboxes (B3)", () =
   it("each writes only its component; the other component's working copy is out of its sandbox", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "mandate-b3-"));
     try {
-      const modules = kervanModules(kervanAt(tmp));
-      const mcpRoot = fwd(join(tmp, "kervan-mcp"));
-      const coreRoot = fwd(join(tmp, "kervan-core"));
+      const modules = acmeModules(acmeAt(tmp));
+      const mcpRoot = fwd(join(tmp, "acme-mcp"));
+      const coreRoot = fwd(join(tmp, "acme-core"));
       for (const r of [mcpRoot, coreRoot]) mkdirSync(join(r, "src"), { recursive: true });
       writeFileSync(join(mcpRoot, "src/tools.ts"), "export const tools = [];\n");
       writeFileSync(join(coreRoot, "src/Api.java"), "class Api {}\n");
@@ -157,7 +157,7 @@ describe.runIf(REAL)("two agents on two components in real sandboxes (B3)", () =
           [toolUse("m1", "read_file", { path: "src/tools.ts" })],
           [toolUse("m2", "write_file", { path: "src/tools.ts", content: "export const tools = ['get_shipment'];\n" })],
           // Out of its grant: refused, and it would not reach the sandbox's files either.
-          [toolUse("m3", "write_file", { path: "../kervan-core/src/Api.java", content: "broken" })],
+          [toolUse("m3", "write_file", { path: "../acme-core/src/Api.java", content: "broken" })],
           [toolUse("m4", "finish", { result: { files: ["src/tools.ts"] } })],
         ],
         CoreDev: [

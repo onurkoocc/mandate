@@ -1,6 +1,6 @@
 // Imported modules (Doc 4 §4.1, §19; design doc 9 §2.1). A program that
 // imports names from a module the caller has loaded sees those definitions:
-// a system model such as `kervan.system` is an ordinary module, and programs
+// a system model such as `acme.system` is an ordinary module, and programs
 // import its components, interfaces and environments with `use`.
 //
 // Linking does not change the program or its hash. It builds the table of

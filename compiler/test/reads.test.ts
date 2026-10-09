@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import { check } from "../src/check.js";
 import { readRepo } from "./helpers.js";
 
-const modules = { "kervan.system": check(readRepo("examples/kervan/kervan-system/system/kervan.system.mdt"), "mdt").program! };
-const INCIDENT = readRepo("examples/kervan/programs/incident.mdt");
+const modules = { "acme.system": check(readRepo("fixtures/system/acme.system.mdt"), "mdt").program! };
+const INCIDENT = readRepo("fixtures/system/incident.mdt");
 
 function mutate(from: string, to: string): string {
   expect(INCIDENT.includes(from), from).toBe(true);

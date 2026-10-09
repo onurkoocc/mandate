@@ -17,11 +17,11 @@
 //                 with "repos": ["owner/a", "owner/b"], also git.merge for change sets into those repositories (B4)
 //     "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"],
 //                   "process": { "key": ".mandate/verifier.key", "trusted": ["keys/verifier.pub"] } }   // optional: a verifier process of its own
-//     "workspace": { "components": { "mcp": { "url": "https://github.com/onurkoocc/kervan-mcp.git", "ref": "main" } } }
+//     "workspace": { "components": { "mcp": { "url": "https://github.com/acme/mcp.git", "ref": "main" } } }
 //     "broker":    { "prod_sim/core": { "url_env": "MANDATE_PROD_SIM_CORE_URL" }, "prod_sim/mcp": { "logs": "data/prod_sim/logs" } }
 //                 // the read broker (B6): a read-only database login (from the environment) or a logs directory per environment/component
 //     "samples":   "samples.json"          // sample rows for design runs, by "<environment>.<read>"
-//     "boundary": { "integration": { "dir": "../kervan-system/compose", "files": ["base.yml", "staging.yml", "integration.yml"], "service": "e2e" },
+//     "boundary": { "integration": { "dir": "../acme-system/compose", "files": ["base.yml", "staging.yml", "integration.yml"], "service": "e2e" },
 //                   "ci": { "mode": "rerun", "workflow": "ci" }, "pinned": { "mcp": ["test/**"] }, "extraRead": { "core": ["/root/.m2"] } }
 //                 // boundary evidence (B5): test.suite_each, test.contract, test.integration, test.ci
 //     "onboard":  { "hosts": { "auth": "auth" }, "extraRead": { "core": ["/root/.m2"] } }

@@ -1,9 +1,9 @@
-// Kervan task class 3 in a run (design doc 9 §12, B5): a change to the token
-// audience on kervan-mcp's side only. Its own tests pass and no interface
+// Acme task class 3 in a run (design doc 9 §12, B5): a change to the token
+// audience on acme-mcp's side only. Its own tests pass and no interface
 // spec changes, so only the end-to-end check can catch it, and does: the run
 // stops before anything lands. With every criterion met the change lands as
 // a change set; a file changed after the checks makes the evidence stale
-// (G01). Docker is a fake here; examples/kervan/b5.sh runs the real system.
+// (G01). Docker is a fake here.
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -22,16 +22,16 @@ import { isObj, type Obj } from "../src/values.js";
 import type { WorkspaceAdapter } from "../src/workspace.js";
 import { fakeGitHubs } from "./fake-github.js";
 import { closeAll, world } from "./helpers.js";
-import { KERVAN_SOURCE, kervanModules, lockFor } from "./kervan.js";
+import { ACME_SOURCE, acmeModules, lockFor } from "./acme.js";
 
 afterAll(closeAll);
 
-const AUDIENCE = readFileSync(new URL("../../examples/kervan/programs/audience.mdt", import.meta.url), "utf8");
+const AUDIENCE = readFileSync(new URL("../../fixtures/system/audience.mdt", import.meta.url), "utf8");
 const git = (cwd: string, ...a: string[]): string => execFileSync("git", ["-c", "user.email=t@mandate", "-c", "user.name=t", "-c", "core.autocrlf=false", ...a], { cwd, encoding: "utf8" });
 
-/** kervan-mcp's working copy: its expected audience in src/config.ts, and a test that agrees with it. */
+/** acme-mcp's working copy: its expected audience in src/config.ts, and a test that agrees with it. */
 function mcpRepo(dir: string): { root: string; base: string } {
-  const root = join(dir, "kervan-mcp");
+  const root = join(dir, "acme-mcp");
   const files: Record<string, string> = {
     "src/config.ts": 'export const audience = process.env.MCP_RESOURCE ?? "http://mcp:3001/mcp";\n',
     "test/config.test.ts": 'expect audience "http://mcp:3001/mcp"\n',
@@ -78,9 +78,9 @@ function e2eDocker(root: string, during?: () => void): Docker {
 async function audienceRun(change: { config: string; test: string; files?: Record<string, string> }, o: { during?: (root: string) => void } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "mandate-aud-"));
   const mcp = mcpRepo(dir);
-  const modules = kervanModules(KERVAN_SOURCE.replace('"/work/kervan-mcp"', JSON.stringify(mcp.root.replace(/\\/g, "/"))));
+  const modules = acmeModules(ACME_SOURCE.replace('"/work/acme-mcp"', JSON.stringify(mcp.root.replace(/\\/g, "/"))));
   const agents = new SimAgents()
-    .on("Planner.plan", () => ({ ok: { summary: "Accept the logical audience kervan-mcp", components: ["mcp"], changes: {} }, cost: { steps: 2 } }))
+    .on("Planner.plan", () => ({ ok: { summary: "Accept the logical audience acme-mcp", components: ["mcp"], changes: {} }, cost: { steps: 2 } }))
     .on("McpDev.implement", () => {
       // The agent moves mcp's side of the audience agreement, and its test with it.
       writeFileSync(join(mcp.root, "src/config.ts"), change.config);
@@ -93,12 +93,12 @@ async function audienceRun(change: { config: string; test: string; files?: Recor
   w.adapters.verifier = new BoundaryVerifier({ integration: { dir, files: ["base.yml"], service: "e2e" }, pinned: { mcp: [] } }, sandbox, e2eDocker(mcp.root, o.during ? () => o.during!(mcp.root) : undefined));
   const workspace: WorkspaceAdapter = { prepare: async () => ({ mcp: { base: mcp.base } }) };
   w.adapters.workspace = workspace;
-  const gh = fakeGitHubs(["onurkoocc/kervan-mcp"]);
+  const gh = fakeGitHubs(["acme/mcp"]);
   // The repository on GitHub and the working copy share history: main is the run's base commit.
-  const remote = gh.repos["onurkoocc/kervan-mcp"]!;
+  const remote = gh.repos["acme/mcp"]!;
   remote.commits.set(mcp.base, { ...remote.commits.get(remote.refs.get("heads/main")!)!, message: "seed" });
   remote.refs.set("heads/main", mcp.base);
-  w.adapters.tools["git.merge"] = new GitHubMerges({ token: "t", repos: ["onurkoocc/kervan-mcp"], fetch: gh.fetch });
+  w.adapters.tools["git.merge"] = new GitHubMerges({ token: "t", repos: ["acme/mcp"], fetch: gh.fetch });
   const rt = new Runtime(w.db, w.adapters);
   const program = check(AUDIENCE, "mdt", { modules }).program!;
   let run = await rt.startRun({ pkg: buildPackage(program, lockFor(modules), modules), workflow: "Audience", input: { task: { id: "K-3", request: "Use the logical audience" } } });
@@ -108,15 +108,15 @@ async function audienceRun(change: { config: string; test: string; files?: Recor
   return { rt, run, dir, mcp, gh, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-describe("Kervan task class 3: an audience change on one side (B5)", () => {
+describe("Acme task class 3: an audience change on one side (B5)", () => {
   it("passes mcp's own tests and every contract diff, fails end to end, and lands nothing", async () => {
-    const t = await audienceRun({ config: 'export const audience = process.env.MCP_RESOURCE ?? "kervan-mcp";\n', test: 'expect audience "kervan-mcp"\n' });
+    const t = await audienceRun({ config: 'export const audience = process.env.MCP_RESOURCE ?? "acme-mcp";\n', test: 'expect audience "acme-mcp"\n' });
     try {
       expect(t.run.state).toBe("waiting");
       expect(isObj(t.run.waiting) && JSON.stringify(t.run.waiting["request"])).toContain("integrated");
       const evidence = Object.fromEntries((await t.rt.evidence(t.run.run_id)).filter((e) => e.contract === "BoundaryAccepted").map((e) => [e.criterion, e.passed]));
       expect(evidence).toEqual({ suites: true, contracts: true, integrated: false, planned: true });
-      expect(t.gh.repos["onurkoocc/kervan-mcp"]!.pulls).toHaveLength(0);
+      expect(t.gh.repos["acme/mcp"]!.pulls).toHaveLength(0);
     } finally {
       t.cleanup();
     }
@@ -132,7 +132,7 @@ describe("Kervan task class 3: an audience change on one side (B5)", () => {
         run = await t.rt.decideAction(run.run_id, { sender: String(r["role"]), messageId: `d${i}` }, { commandId: String(w["command"]), revision: run.revision, digest: String(r["action_digest"]), approve: true, by: String(r["role"]) });
       }
       expect(run.state, JSON.stringify(run.attention ?? run.error)).toBe("succeeded");
-      const repo = t.gh.repos["onurkoocc/kervan-mcp"]!;
+      const repo = t.gh.repos["acme/mcp"]!;
       expect(repo.pulls[0]!.merged).toBe(true);
       expect(repo.filesOf("main")!.get("src/config.ts")).toContain("leeway");
 
@@ -150,10 +150,10 @@ describe("Kervan task class 3: an audience change on one side (B5)", () => {
       expect(cs!.order).toEqual([{ component: "mcp", because: ["first: it consumes nothing another member provides"] }]);
       expect(cs!.reality).toBe("Live run: mcp confirmed.");
       expect(cs!.authority).toEqual([]);
-      expect(view.modules.map((m) => m.module)).toEqual(["kervan.system"]);
+      expect(view.modules.map((m) => m.module)).toEqual(["acme.system"]);
       const md = toMarkdown(runDoc(view, program));
       expect(md).toContain("## Change set at");
-      expect(md).toContain("Module kervan.system");
+      expect(md).toContain("Module acme.system");
     } finally {
       t.cleanup();
     }
@@ -168,7 +168,7 @@ describe("Kervan task class 3: an audience change on one side (B5)", () => {
       expect(planned.passed).toBe(false);
       expect(JSON.stringify(planned.detail)).toContain("unplanned_change");
       expect(JSON.stringify(planned.detail)).toContain("CustomerTools changed (additive), and the plan does not name it");
-      expect(t.gh.repos["onurkoocc/kervan-mcp"]!.pulls).toHaveLength(0);
+      expect(t.gh.repos["acme/mcp"]!.pulls).toHaveLength(0);
     } finally {
       t.cleanup();
     }
@@ -184,7 +184,7 @@ describe("Kervan task class 3: an audience change on one side (B5)", () => {
       expect(t.run.state).toBe("attention_required");
       expect((t.run.attention as Obj)["violation"]).toBe("stale_evidence");
       expect(String((t.run.attention as Obj)["message"])).toContain("mcp/src/config.ts");
-      expect(t.gh.repos["onurkoocc/kervan-mcp"]!.pulls).toHaveLength(0);
+      expect(t.gh.repos["acme/mcp"]!.pulls).toHaveLength(0);
     } finally {
       t.cleanup();
     }

@@ -9,12 +9,12 @@ import type { Json } from "../src/json/strict-json.js";
 import { printProgram } from "../src/print/printer.js";
 import { readRepo, syntaxFixtures } from "./helpers.js";
 
-const files = ["examples/fixbug/fixbug.mdt", "examples/kervan/kervan-system/system/kervan.system.mdt", "examples/kervan/programs/repos.mdt", ...syntaxFixtures()];
+const files = ["fixtures/fixbug/fixbug.mdt", "fixtures/system/acme.system.mdt", "fixtures/system/repos.mdt", ...syntaxFixtures()];
 
 /** Warnings each example is expected to carry; everything else must be clean. */
 const EXPECTED_WARNINGS: Record<string, string[]> = {
   // Both `static` criteria of FixAccepted become run-time checks (§10.2).
-  "examples/fixbug/fixbug.mdt": ["MDT-W0601", "MDT-W0601"],
+  "fixtures/fixbug/fixbug.mdt": ["MDT-W0601", "MDT-W0601"],
 };
 
 describe.each(files)("%s", (file) => {
@@ -46,14 +46,14 @@ describe.each(files)("%s", (file) => {
 
 describe("FixBug", () => {
   it("matches the committed canonical IR, which is the source of truth in 0.1", () => {
-    const fromText = check(readRepo("examples/fixbug/fixbug.mdt"), "mdt");
-    const fromIr = check(readRepo("examples/fixbug/fixbug.ir.json"), "json");
+    const fromText = check(readRepo("fixtures/fixbug/fixbug.mdt"), "mdt");
+    const fromIr = check(readRepo("fixtures/fixbug/fixbug.ir.json"), "json");
     expect(fromIr.ok).toBe(true);
     expect(fromIr.hashes).toEqual(fromText.hashes);
   });
 
   it("lowers the workflow as the design describes", () => {
-    const p = check(readRepo("examples/fixbug/fixbug.mdt"), "mdt").program!;
+    const p = check(readRepo("fixtures/fixbug/fixbug.mdt"), "mdt").program!;
     const wf = p.defs["FixBug"]!;
     expect(wf.kind).toBe("workflow");
     if (wf.kind !== "workflow") return;

@@ -3,8 +3,8 @@
 import { readFileSync } from "node:fs";
 import type { Lock } from "@mandate/compiler";
 
-const FIXBUG_LOCK = JSON.parse(readFileSync(new URL("../../examples/fixbug/mandate.lock.json", import.meta.url), "utf8")) as Lock;
-/** FixBug's lock (examples/fixbug/mandate.lock.json) as a package carries it. */
+const FIXBUG_LOCK = JSON.parse(readFileSync(new URL("../../fixtures/fixbug/mandate.lock.json", import.meta.url), "utf8")) as Lock;
+/** FixBug's lock (fixtures/fixbug/mandate.lock.json) as a package carries it. */
 export const { lock: _format, ...LOCK } = FIXBUG_LOCK;
 
 /** One model call under tier standard: a country's capital. */

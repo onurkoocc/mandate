@@ -3,8 +3,9 @@
 Most engineering work changes systems that already run: several
 repositories, several languages, a CI that already exists, people who own
 each part. Mandate does not rewrite such a system; it describes it. This page
-is how (design doc 9). The reference system is Kervan
-([`examples/kervan`](../examples/kervan/SPEC.md)).
+is how (design doc 9). The examples use Acme, a fictional system of six
+components whose model is a test fixture
+([`fixtures/system/acme.system.mdt`](../fixtures/system/acme.system.mdt)).
 
 ## The system model
 
@@ -19,7 +20,7 @@ ordinary IR, so the same hash, checks and views apply to them.
 
 ```mandate
 mandate @ 0.3
-module kervan.system @ 0.1
+module acme.system @ 0.1
 
 interface CoreApi {
   protocol openapi
@@ -27,8 +28,8 @@ interface CoreApi {
 }
 
 component core {
-  repo     "onurkoocc/kervan-core"
-  root     "/work/kervan-core"
+  repo     "acme/core"
+  root     "/work/acme-core"
   lang     java
   owner    role "core_owner"
   test     exec("mvn", ["-B", "-q", "-o", "test"])
@@ -67,7 +68,7 @@ A system model is a module. A program imports what it works on:
 
 ```mandate
 use std.{component, model}
-use kervan.system.{mcp, core}
+use acme.system.{mcp, core}
 ```
 
 - The compiler loads imported modules given with `--module <file>`
@@ -211,7 +212,7 @@ control plane, never in an agent's sandbox:
   configuration publishes a port or has a network that is not internal,
   the check is refused by name (`integration_isolation`) and nothing runs
   (INV-11). Candidate code is built with dependencies fetched from lock
-  files only, and runs with no network (examples/kervan/SPEC.md §11).
+  files only, and runs with no network.
 - **What the evidence is about.** Each check's subject is every component's
   working copy, keyed `<component>/<path>`. A change set member's frozen
   files are checked against it, so a file changed after a check is not
@@ -225,17 +226,13 @@ A component's own tests are part of its change: a requested behavior
 change updates them, so `test.suite_each` runs them as changed and names
 them. What an agent cannot touch are the boundary checks: interface specs
 are diffed against the base commit, and the end-to-end scenarios live in
-another repository (kervan-system). Tests that state what must not change
+another repository (acme-system). Tests that state what must not change
 can be pinned per component (`pinned`).
 
-Kervan's design task of class 3 shows why the boundary matters. A change
-moves only kervan-mcp's side of the token-audience agreement. Its own tests
-pass, no interface spec changes, and only `test.integration` fails
-This is shown in `runtime/test/audience.test.ts` and against the real system
-in `runtime/test/kervan-live.test.ts` (`MANDATE_KERVAN=1`, Docker). There,
-kervan-mcp's own tests pass in a container sandbox with no network, every
-spec diff is empty, and the real end-to-end check fails; restored, it
-passes.
+A task of class 3 (doc 9 §10.3) shows why the boundary matters. A change
+moves only mcp's side of the token-audience agreement. Its own tests pass
+and no interface spec changes; only `test.integration` fails
+(`runtime/test/audience.test.ts`).
 
 ## The change set view (B8)
 
@@ -266,7 +263,7 @@ Writes go through the effect broker.
 
 ```mandate
 use std.{data, model}
-use kervan.system.{prod_sim}
+use acme.system.{prod_sim}
 
 capability Reads = data.read(prod_sim, mcp_errors, shipment_overview)
 
@@ -330,7 +327,7 @@ environment prod_sim {
   environments it names, and an effect in another environment is not
   covered (E0301). `env.deploy(staging)` does not deploy to prod.
 
-Kervan's prod_sim needs the release manager for a deploy, and staging
+Acme's prod_sim needs the release manager for a deploy, and staging
 accepts policy. A run whose policy would let policy authorize every deploy
 deploys to staging at once, and waits for the release manager on
 prod_sim (`runtime/test/environment.test.ts`). Deploy and migrate
@@ -343,9 +340,9 @@ Gate 5.
 Taking an existing system into Mandate means describing it, not rewriting
 it, and the description is checked like any other agent output. Onboarding
 starts from what is certain, the repositories
-([`kervan.repos`](../examples/kervan/programs/repos.mdt): components with
+([`acme.repos`](../fixtures/system/repos.mdt): components with
 `lang other` and an unassigned owner), and is a program of its own
-([`onboard.mdt`](../examples/kervan/programs/onboard.mdt)):
+([`onboard.mdt`](../fixtures/system/onboard.mdt)):
 
 1. An agent reads the repositories and writes the model into the working
    copy of the repository that will hold it. Its result is `Inferred`: an
@@ -390,8 +387,8 @@ commands other than the convention. Running the onboarding program again
 on the accepted model finds the same drift as unmet evidence. Updating the
 model is an approved change, as before.
 
-Kervan's committed model leaves one dependency out on purpose: kervan-auth
-fetches the client metadata kervan-voice publishes (`CIMD_ALLOWED_HOSTS`,
+The fixture model leaves one dependency out on purpose: acme-auth
+fetches the client metadata acme-voice publishes (`CIMD_ALLOWED_HOSTS`,
 `src/config.ts`), and the model has auth consume nothing. `mandate drift`
 finds it, as does `test.consumes` on that model. Both also report auth's
 reference to mcp, the resource it issues tokens for, which the model leaves

@@ -77,7 +77,7 @@ in doc 4. Comments are not part of the IR, so `mandate fmt` drops them.
 The design (§3.3) defers the text form to 0.2 and keeps JSON as the only
 authoring surface in 0.1. This implementation ships the text form anyway,
 because writing test programs as JSON IR is slow and error-prone; the IR stays
-authoritative, and `examples/fixbug/fixbug.ir.json` is the committed source
+authoritative, and `fixtures/fixbug/fixbug.ir.json` is the committed source
 for the FixBug example, with `fixbug.mdt` as its projection.
 
 A file whose first line is `mandate @ 0.2` (or `0.3`) is a program of that
@@ -104,7 +104,7 @@ use of them is described in [`runtime.md`](runtime.md#agent-loops-82).
 system rather than run anything (design doc 9 §2; [`system.md`](system.md)).
 
 ```json
-"mcp": { "kind": "component", "repo": "onurkoocc/kervan-mcp", "root": "/work/kervan-mcp",
+"mcp": { "kind": "component", "repo": "acme/mcp", "root": "/work/acme-mcp",
          "lang": "ts", "owner": "support_platform_owner",
          "build": [{ "command": "npm", "args": ["run", "build"] }],
          "test":  [{ "command": "npm", "args": ["test"] }],

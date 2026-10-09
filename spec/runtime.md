@@ -780,8 +780,8 @@ If the run has moved since, the decision is refused (`stale_revision`) and
 nothing is recorded. What a person approves is bound to the digest that
 `status` showed.
 
-`examples/fixbug-target/` holds FixBug bound to the Gate 3 test repository,
-with its lock, configuration and input. `runtime/test/gate3.test.ts`
+`fixtures/fixbug-target/` holds FixBug bound to a seeded test project,
+with its lock and input. `runtime/test/gate3.test.ts`
 rehearses the acceptance run with a scripted model, on Linux with
 Bubblewrap:
 
@@ -913,7 +913,7 @@ Configuration (`mandate.runtime.json`):
 
 ```json
 "boundary": {
-  "integration": { "dir": "../kervan-system/compose", "files": ["base.yml", "staging.yml", "integration.yml"], "service": "e2e" },
+  "integration": { "dir": "../acme-system/compose", "files": ["base.yml", "staging.yml", "integration.yml"], "service": "e2e" },
   "ci": { "mode": "rerun", "workflow": "ci" },
   "pinned": { "mcp": ["test/**"] },
   "extraRead": { "core": ["/root/.m2"] }

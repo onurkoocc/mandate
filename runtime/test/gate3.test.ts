@@ -1,5 +1,5 @@
 // A rehearsal of the Gate 3 acceptance run (P1-10) that spends nothing:
-// examples/fixbug-target/fixbug.mdt against the seeded project at
+// fixtures/fixbug-target/fixbug.mdt against the seeded project at
 // /work/repo, every agent and every test in a real Bubblewrap sandbox, the
 // real verifier, a scripted model and an in-memory GitHub. Linux with
 // MANDATE_MXC=1 only (CI job `sandbox`); /work must be writable.
@@ -20,7 +20,7 @@ import { FakeGitHub } from "./fake-github.js";
 import { closeAll, world } from "./helpers.js";
 
 const REAL = process.platform === "linux" && process.env["MANDATE_MXC"] === "1";
-const example = (f: string) => new URL(`../../examples/fixbug-target/${f}`, import.meta.url);
+const example = (f: string) => new URL(`../../fixtures/fixbug-target/${f}`, import.meta.url);
 const WORK = "/work/repo";
 
 const FIXED = (readFileSync(example("seed/src/pagination.ts"), "utf8") as string).replace("Math.floor(total / perPage)", "Math.ceil(total / perPage)");

@@ -1,4 +1,4 @@
-// Change sets (design doc 9 §3; BACKLOG item 32, B4). Kervan's three-member
+// Change sets (design doc 9 §3; BACKLOG item 32, B4). Acme's three-member
 // set (auth, core, mcp) is prepared, approved by each component's owner and
 // then by the architect over the set digest S, and committed in the order the
 // interface graph asks for. An unknown outcome on the middle member stops the
@@ -19,13 +19,13 @@ import { isObj, type Obj } from "../src/values.js";
 import type { WorkspaceAdapter } from "../src/workspace.js";
 import { fakeGitHubs } from "./fake-github.js";
 import { closeAll, world, type World } from "./helpers.js";
-import { KERVAN_SOURCE, kervanModules, lockFor } from "./kervan.js";
-import { LAND } from "./kervan-changeset.js";
+import { ACME_SOURCE, acmeModules, lockFor } from "./acme.js";
+import { LAND } from "./acme-changeset.js";
 
 afterAll(closeAll);
 
 async function land(o: { tool?: SimTool; src?: string } = {}): Promise<World & { merge: SimTool }> {
-  const modules = kervanModules();
+  const modules = acmeModules();
   const merge = o.tool ?? new SimTool("git.merge", "reconcilable");
   const w = await world(o.src ?? LAND, { modules, lock: lockFor(modules), tools: [merge] });
   return { ...w, merge };
@@ -50,7 +50,7 @@ const componentOf = (w: World & { merge: SimTool }, op: string): string => {
   return String(p[0]!["component"]);
 };
 
-describe("a change set over Kervan (B4)", () => {
+describe("a change set over Acme (B4)", () => {
   it("asks each owner for its member, then the architect for the set, and lands the members in order", async () => {
     const w = await land();
     const started = await w.rt.startRun({ pkg: w.pkg, workflow: "Land", input: { task: "add scope" }, runId: "cs1" });
@@ -64,7 +64,7 @@ describe("a change set over Kervan (B4)", () => {
     expect((set["members"] as Obj[]).map((m) => [m["component"], m["approver"], m["action_digest"]])).toEqual(requests.slice(0, 3).map((r) => [r["component"], r["role"], r["action_digest"]]));
     expect(w.merge.executions.map((e) => componentOf(w, e.operationKey))).toEqual(["auth", "core", "mcp"]);
     // Each member names its component and the base commit the run started from.
-    expect((w.merge.executions[1]!.params as Obj[])[0]).toEqual({ base: "core-commit-1", component: "core", repo: "onurkoocc/kervan-core", root: "/work/kervan-core" });
+    expect((w.merge.executions[1]!.params as Obj[])[0]).toEqual({ base: "core-commit-1", component: "core", repo: "acme/core", root: "/work/acme-core" });
     const [cs] = await w.rt.journal.changesets("cs1");
     expect(cs).toMatchObject({ state: "committed", set_digest: set["action_digest"] });
     expect(await w.rt.replayRun("cs1")).toEqual({ status: "complete", value: "landed" });
@@ -145,17 +145,17 @@ describe("git.merge on GitHub (B4)", () => {
   it("lands each member on its repository from the run's base commit, merged at the head it made; a lost merge answer is reconciled", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "mandate-merge-"));
     try {
-      const roots = { auth: join(tmp, "kervan-auth"), core: join(tmp, "kervan-core"), mcp: join(tmp, "kervan-mcp") };
-      let src = KERVAN_SOURCE;
-      for (const [c, r] of Object.entries(roots)) src = src.replace(`"/work/kervan-${c}"`, JSON.stringify(r.replace(/\\/g, "/")));
-      const modules = kervanModules(src);
+      const roots = { auth: join(tmp, "acme-auth"), core: join(tmp, "acme-core"), mcp: join(tmp, "acme-mcp") };
+      let src = ACME_SOURCE;
+      for (const [c, r] of Object.entries(roots)) src = src.replace(`"/work/acme-${c}"`, JSON.stringify(r.replace(/\\/g, "/")));
+      const modules = acmeModules(src);
       const files: Record<string, string> = { auth: "src/token.ts", core: "src/main/java/Api.java", mcp: "src/tools.ts" };
       for (const [c, f] of Object.entries(files)) {
         mkdirSync(join(roots[c as keyof typeof roots], f, ".."), { recursive: true });
         writeFileSync(join(roots[c as keyof typeof roots], f), `// ${c} change\n`);
       }
-      const gh = fakeGitHubs(["onurkoocc/kervan-auth", "onurkoocc/kervan-core", "onurkoocc/kervan-mcp"]);
-      gh.repos["onurkoocc/kervan-core"]!.mergeFaults.push("lose_response");
+      const gh = fakeGitHubs(["acme/auth", "acme/core", "acme/mcp"]);
+      gh.repos["acme/core"]!.mergeFaults.push("lose_response");
       const merges = new GitHubMerges({ token: "t", repos: Object.keys(gh.repos), fetch: gh.fetch });
       // The base each run starts from is each repository's main.
       const workspace: WorkspaceAdapter = { prepare: async (cs) => Object.fromEntries(cs.map((c) => [c.name, { base: gh.repos[c.repo]!.refs.get("heads/main")! }])) };
@@ -169,12 +169,12 @@ describe("git.merge on GitHub (B4)", () => {
       expect(run.state).toBe("attention_required");
       const stopped = ((run.attention as Obj)["changeset_partial"] as Obj)["stopped_at"] as Obj;
       expect(stopped).toMatchObject({ component: "core", state: "unknown_outcome" });
-      expect(gh.repos["onurkoocc/kervan-mcp"]!.pulls).toHaveLength(0);
+      expect(gh.repos["acme/mcp"]!.pulls).toHaveLength(0);
 
       const done = await rt.reconcileAction("gm1", String(stopped["operation"]));
       expect(done.state, JSON.stringify(done.attention ?? done.error)).toBe("succeeded");
       for (const [c, f] of Object.entries(files)) {
-        const repo = gh.repos[`onurkoocc/kervan-${c}`]!;
+        const repo = gh.repos[`acme/${c}`]!;
         expect(repo.pulls).toHaveLength(1);
         expect(repo.pulls[0]!.merged).toBe(true);
         expect(repo.filesOf("main")!.get(f)).toBe(`// ${c} change\n`);

@@ -1,4 +1,4 @@
-// The system model in the IR (design doc 9 §2; BACKLOG item 30, B2): Kervan's
+// The system model in the IR (design doc 9 §2; BACKLOG item 30, B2): Acme's
 // model checks; each system-model rule fires on one mutation of it; programs
 // import it and write capabilities over its components; the lock pins it; and
 // changing it is a governance change.
@@ -14,29 +14,29 @@ import { sandboxRequirements } from "../src/target/sandbox.js";
 import { semanticDiff, system } from "../src/views/views.js";
 import { readRepo } from "./helpers.js";
 
-const KERVAN = readRepo("examples/kervan/kervan-system/system/kervan.system.mdt");
+const ACME = readRepo("fixtures/system/acme.system.mdt");
 
-function kervan(): Program {
-  const r = check(KERVAN, "mdt");
+function acme(): Program {
+  const r = check(ACME, "mdt");
   expect(r.diagnostics.map((d) => `${d.code} ${d.message}`)).toEqual([]);
   return r.program!;
 }
 
-/** Kervan's model with one textual change; fails loudly if the text is gone. */
+/** Acme's model with one textual change; fails loudly if the text is gone. */
 function mutate(from: string, to: string): string {
-  expect(KERVAN.includes(from), from).toBe(true);
-  return KERVAN.replace(from, to);
+  expect(ACME.includes(from), from).toBe(true);
+  return ACME.replace(from, to);
 }
 
 function codesOf(src: string, opts: Parameters<typeof check>[2] = {}): string[] {
   return check(src, "mdt", opts).diagnostics.map((d) => d.code);
 }
 
-/** A program that works on Kervan's mcp and core components. */
+/** A program that works on Acme's mcp and core components. */
 const PROGRAM = `mandate @ 0.3
-module kervan.tasks.sample @ 0.1
+module acme.tasks.sample @ 0.1
 use std.{component, model}
-use kervan.system.{mcp, core, prod_sim}
+use acme.system.{mcp, core, prod_sim}
 
 capability McpRead  = component.read(mcp)
 capability McpSrc   = component.write(mcp, "src", "test")
@@ -70,15 +70,15 @@ workflow Change(task: Text) -> Text
 }
 `;
 
-const modules = (): Record<string, Program> => ({ "kervan.system": kervan() });
+const modules = (): Record<string, Program> => ({ "acme.system": acme() });
 
-describe("Kervan's system model (B2)", () => {
+describe("Acme's system model (B2)", () => {
   it("checks clean as mandate/0.3", () => {
-    expect(kervan().language).toBe("mandate/0.3");
+    expect(acme().language).toBe("mandate/0.3");
   });
 
   it("is shown as a system: components, interfaces with provider and consumers, environments", () => {
-    const v = system(kervan());
+    const v = system(acme());
     expect(v.components.map((c) => c.name)).toEqual(["auth", "core", "evals", "mcp", "search", "voice"]);
     const tokens = v.interfaces.find((i) => i.name === "TokenIssuance")!;
     expect(tokens).toMatchObject({ protocol: "oauth", provider: "auth", consumers: ["mcp", "voice"] });
@@ -94,7 +94,7 @@ describe("Kervan's system model (B2)", () => {
   });
 
   it("is refused in a mandate/0.2 program (E0104)", () => {
-    expect(codesOf(KERVAN.replace("mandate @ 0.3", "mandate @ 0.2"))).toContain("MDT-E0104");
+    expect(codesOf(ACME.replace("mandate @ 0.3", "mandate @ 0.2"))).toContain("MDT-E0104");
   });
 
   it("E1001: an interface needs exactly one provider", () => {
@@ -103,7 +103,7 @@ describe("Kervan's system model (B2)", () => {
   });
 
   it("E1003: two components never share a working copy", () => {
-    expect(codesOf(mutate('root     "/work/kervan-mcp"', 'root     "/work/kervan-auth/mcp"'))).toEqual(["MDT-E1003"]);
+    expect(codesOf(mutate('root     "/work/acme-mcp"', 'root     "/work/acme-auth/mcp"'))).toEqual(["MDT-E1003"]);
   });
 
   it("E0120: provides and consumes name interfaces; a read names a component", () => {
@@ -135,9 +135,9 @@ describe("Kervan's system model (B2)", () => {
 
   it("deploy is a std effect: it needs env.deploy over the environment it deploys to (E0301)", () => {
     const ship = (envs: string) => `mandate @ 0.3
-module kervan.tasks.ship @ 0.1
+module acme.tasks.ship @ 0.1
 use std.{env, human}
-use kervan.system.{staging, prod_sim, mcp}
+use acme.system.{staging, prod_sim, mcp}
 capability Deploys = env.deploy(${envs})
 type Release = { version: Text }
 contract Approved(r: Release) {
@@ -167,9 +167,9 @@ describe("programs import the system model", () => {
     const r = check(PROGRAM, "mdt", { modules: modules() });
     expect(r.diagnostics.map((d) => `${d.code} ${d.message}`)).toEqual([]);
     const req = sandboxRequirements(r.program!, modules());
-    expect(req["McpDev"]!.filesystem).toEqual({ read: ["/work/kervan-mcp"], write: ["/work/kervan-mcp/src", "/work/kervan-mcp/test"] });
+    expect(req["McpDev"]!.filesystem).toEqual({ read: ["/work/acme-mcp"], write: ["/work/acme-mcp/src", "/work/acme-mcp/test"] });
     expect(req["McpDev"]!.exec).toEqual([{ command: "npm", args_prefix: [["test"]] }]);
-    expect(req["CoreDev"]!.filesystem).toEqual({ read: ["/work/kervan-core"], write: ["/work/kervan-core/src"] });
+    expect(req["CoreDev"]!.filesystem).toEqual({ read: ["/work/acme-core"], write: ["/work/acme-core/src"] });
   });
 
   it("without the module loaded, its names are opaque and capabilities over them cannot be opened (E1002)", () => {
@@ -185,7 +185,7 @@ describe("programs import the system model", () => {
   it("E1002: component capabilities take components, paths inside them and declared commands", () => {
     const with_ = (line: string): string[] => codesOf(PROGRAM.replace('capability CoreSrc  = component.write(core, "src")', line), { modules: modules() });
     expect(with_('capability CoreSrc  = component.write(prod_sim, "src")')).toContain("MDT-E1002");
-    expect(with_('capability CoreSrc  = component.write(core, "../kervan-auth")')).toContain("MDT-E1002");
+    expect(with_('capability CoreSrc  = component.write(core, "../acme-auth")')).toContain("MDT-E1002");
     expect(with_("capability CoreSrc  = component.exec(search, build)")).toContain("MDT-E1002");
     expect(with_("capability CoreSrc  = component.exec(mcp, deploy)")).toContain("MDT-E1002");
   });
@@ -195,27 +195,27 @@ describe("programs import the system model", () => {
     const twoCommands = mutate('  build    exec("npm", ["ci", "--ignore-scripts"]), exec("npm", ["run", "build"])\n  test     exec("npm", ["test"])\n  provides CustomerTools', '  build    exec("node", ["build.js"])\n  test     exec("npm", ["test"])\n  provides CustomerTools');
     const m = check(twoCommands, "mdt").program!;
     const src = PROGRAM.replace("capability Model    = model.infer(tier: standard)", 'capability Model    = model.infer(tier: standard)\ncapability McpAll   = component.exec(mcp, build, test)\ncapability McpCi    = McpAll.narrow("npm")');
-    expect(codesOf(src, { modules: { "kervan.system": m } })).toContain("MDT-E1002");
+    expect(codesOf(src, { modules: { "acme.system": m } })).toContain("MDT-E1002");
   });
 
   it("E0120 and E0121: imported names exist in the module and do not collide with local ones", () => {
-    expect(codesOf(PROGRAM.replace("use kervan.system.{mcp, core, prod_sim}", "use kervan.system.{mcp, core, prod_sim, ledger}"), { modules: modules() })).toContain("MDT-E0120");
+    expect(codesOf(PROGRAM.replace("use acme.system.{mcp, core, prod_sim}", "use acme.system.{mcp, core, prod_sim, ledger}"), { modules: modules() })).toContain("MDT-E0120");
     expect(codesOf(PROGRAM.replace("type Patch = { files: List<Path> }", "type Patch = { files: List<Path> }\ntype ShipmentRow = Text"), { modules: modules() })).toContain("MDT-E0121");
   });
 
   it("E0142: the lock pins the system model by its hash", () => {
-    const hash = hashProgram(kervan() as unknown as Json).program;
-    const models = JSON.parse(readRepo("examples/fixbug/mandate.lock.json")) as Lock;
-    const lock = (pin?: string): Lock => ({ ...models, modules: pin ? { "kervan.system": pin } : {} });
+    const hash = hashProgram(acme() as unknown as Json).program;
+    const models = JSON.parse(readRepo("fixtures/fixbug/mandate.lock.json")) as Lock;
+    const lock = (pin?: string): Lock => ({ ...models, modules: pin ? { "acme.system": pin } : {} });
     expect(codesOf(PROGRAM, { modules: modules(), lock: lock(hash) })).toEqual([]);
     expect(codesOf(PROGRAM, { modules: modules(), lock: lock("sha256:00") })).toEqual(["MDT-E0142"]);
     expect(codesOf(PROGRAM, { modules: modules(), lock: lock() })).toEqual(["MDT-E0142"]);
   });
 
   it("loadModules checks each module and keys it by name", () => {
-    const { modules: m, problems } = loadModules([{ file: "kervan.system.mdt", text: KERVAN, kind: "mdt" }]);
+    const { modules: m, problems } = loadModules([{ file: "acme.system.mdt", text: ACME, kind: "mdt" }]);
     expect(problems).toEqual([]);
-    expect(Object.keys(m)).toEqual(["kervan.system"]);
+    expect(Object.keys(m)).toEqual(["acme.system"]);
     const bad = loadModules([{ file: "bad.mdt", text: mutate("  provides TokenIssuance\n}", "}"), kind: "mdt" }]);
     expect(bad.problems.flatMap((p) => p.diagnostics.map((d) => d.code))).toEqual(["MDT-E1001"]);
   });
@@ -223,7 +223,7 @@ describe("programs import the system model", () => {
 
 describe("changing the system model is a governance change (doc 9 §1, §5.3)", () => {
   it("is reported by a patch", () => {
-    const p = kervan();
+    const p = acme();
     const base = hashProgram(p as unknown as Json).program;
     const r = applyPatch(p, base, [{ op: "replace", path: "/defs/prod_sim/authorize/deploy", value: { by: "policy" } }]);
     expect(r.ok).toBe(true);
@@ -231,7 +231,7 @@ describe("changing the system model is a governance change (doc 9 §1, §5.3)", 
   });
 
   it("is listed under governance in the semantic diff", () => {
-    const before = kervan();
+    const before = acme();
     const after = check(mutate('owner    role "core_owner"', 'owner    role "platform_owner"'), "mdt").program!;
     const v = semanticDiff(before, after);
     expect(v.governance.map((g) => g.text)).toEqual(['~ component core.owner: "core_owner" → "platform_owner"']);

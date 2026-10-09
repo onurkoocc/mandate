@@ -1,5 +1,5 @@
 // `changeset` (design doc 9 §3; BACKLOG item 32, B4): one mutation per rule
-// on a Kervan change set: the order against the interface graph, the order
+// on a Acme change set: the order against the interface graph, the order
 // listing its members, breaking changes, critical members on their
 // component's repository, and a verified plan.
 
@@ -9,9 +9,9 @@ import { printProgram } from "../src/print/printer.js";
 import { architecture, authority } from "../src/views/views.js";
 import { readRepo } from "./helpers.js";
 
-const LAND = readRepo("examples/kervan/programs/land.mdt");
+const LAND = readRepo("fixtures/system/land.mdt");
 
-const modules = { "kervan.system": check(readRepo("examples/kervan/kervan-system/system/kervan.system.mdt"), "mdt").program! };
+const modules = { "acme.system": check(readRepo("fixtures/system/acme.system.mdt"), "mdt").program! };
 
 function mutate(from: string, to: string): string {
   expect(LAND.includes(from), from).toBe(true);
@@ -23,7 +23,7 @@ function errors(src: string): string[] {
 }
 
 describe("changeset checks (B4)", () => {
-  it("accepts Kervan's change set, prints it back to the same hash, and refuses it in 0.2", () => {
+  it("accepts Acme's change set, prints it back to the same hash, and refuses it in 0.2", () => {
     const r = check(LAND, "mdt", { modules });
     expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
     const again = check(printProgram(r.program!), "mdt", { modules });
@@ -68,7 +68,7 @@ describe("changeset checks (B4)", () => {
 
   it("shows who approves what, in which order, in the architecture and authority views", () => {
     const p = { ...check(LAND, "mdt", { modules }).program! };
-    p.defs = { ...modules["kervan.system"].defs, ...p.defs };
+    p.defs = { ...modules["acme.system"].defs, ...p.defs };
     const node = architecture(p).workflows[0]!.nodes.find((n) => n.kind === "changeset")!;
     expect(node.label).toBe("change set auth → core → mcp");
     expect(node.detail).toEqual([

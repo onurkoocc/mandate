@@ -25,7 +25,8 @@ anything runs. This repository holds the 0.1 reference implementation.
    adapter, see [`spec/sandbox.md`](spec/sandbox.md); and the compact core
    spec, [`spec/core.md`](spec/core.md).
 5. **Gate 0 (done):** FixBug in Open Agent Spec, with extensions and a
-   runtime probe; see [`examples/fixbug/agentspec/`](examples/fixbug/agentspec/).
+   runtime probe. Agent Spec cannot carry Mandate's guarantees, so the IR
+   stays separate.
 6. **0.2, Gate 3 (done):** language version 0.2; the lock file
    ([`spec/lock.md`](spec/lock.md)) and W0504; the Anthropic model adapter;
    agent loops with tools from capabilities, progress checks and
@@ -34,7 +35,8 @@ anything runs. This repository holds the 0.1 reference implementation.
    on Claude Opus 5.5, each in its own sandbox, fixed a seeded bug in a
    test repository. The contract's tests ran in sandboxes of the runtime's
    own, a person approved from the CLI, and one pull request was opened,
-   for 0.23 USD. See [`examples/fixbug-target/`](examples/fixbug-target/).
+   for 0.23 USD. `gate3.test.ts` rehearses it on simulated models
+   (`fixtures/fixbug-target/`).
 7. **Gate 4, the rest of 0.2 (done):** evidence and authority against an
    adversarial environment, with no real money or production effect. A
    content-addressed artifact store, with evidence bound to the bytes it
@@ -68,9 +70,7 @@ anything runs. This repository holds the 0.1 reference implementation.
    A change set's view shows the approved plan, each component's change,
    the evidence matrix, the order and why, and what was real; a change
    outside the plan is an `unplanned_change`.
-   The reference system is Kervan, seven repositories in TypeScript,
-   Java and Python ([`examples/kervan/`](examples/kervan/SPEC.md)). See
-   [`spec/system.md`](spec/system.md).
+   See [`spec/system.md`](spec/system.md).
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
@@ -82,10 +82,9 @@ spec/        core spec, IR schema and rules, static checks, diagnostic codes, ru
              views, the compiler's MCP server
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
-examples/    example programs; fixbug/ is the design document's §20 workflow,
-             fixbug/agentspec/ the same workflow in Open Agent Spec (Gate 0),
-             fixbug-target/ the workflow bound to the Gate 3 test repository,
-             kervan/ the brownfield reference system: its seven repositories and its system model
+fixtures/    the tests' programs: fixbug/ is the design document's §20 workflow,
+             fixbug-target/ the same workflow bound to a seeded test project,
+             system/ a fictional system's model (Acme) and programs over it
 ```
 
 ## Using the compiler
@@ -93,10 +92,10 @@ examples/    example programs; fixbug/ is the design document's §20 workflow,
 ```sh
 npm install
 npm run build
-node compiler/dist/cli.js check examples/fixbug/fixbug.mdt
-node compiler/dist/cli.js check examples/fixbug/fixbug.ir.json --json
-node compiler/dist/cli.js fmt examples/fixbug/fixbug.ir.json
-node compiler/dist/cli.js sandbox examples/fixbug/fixbug.mdt --agent Implementer
+node compiler/dist/cli.js check fixtures/fixbug/fixbug.mdt
+node compiler/dist/cli.js check fixtures/fixbug/fixbug.ir.json --json
+node compiler/dist/cli.js fmt fixtures/fixbug/fixbug.ir.json
+node compiler/dist/cli.js sandbox fixtures/fixbug/fixbug.mdt --agent Implementer
 node compiler/dist/cli.js explain E0320
 npm test
 ```
@@ -155,7 +154,7 @@ authority, cost) against §15, and the semantic diff between two versions:
 governance apart from behavior, and a new network target shown as a
 governance change (G11).
 `compiler/test/system.test.ts` checks the system model (design doc 9 §2):
-Kervan's model and its view, one mutation per rule (E1001–E1005), programs
+Acme's model and its view, one mutation per rule (E1001–E1005), programs
 that import it and write capabilities over its components, C5 across
 components, the lock's pin (E0142), and changes to the model reported as
 governance changes.
@@ -307,7 +306,8 @@ in-memory GitHub:
 `live.test.ts` repeats the lost response against the real test repository
 when `MANDATE_GITHUB_TOKEN` is set.
 
-The brownfield tests run on Kervan (design doc 9 §12):
+The brownfield tests run on the Acme fixture, a fictional system of six
+components (design doc 9 §12):
 
 - `system.test.ts` and `workspace.test.ts` (B2, B3): the run manifest, and
   two components written in parallel, each agent seeing only its own. On
@@ -322,14 +322,12 @@ The brownfield tests run on Kervan (design doc 9 §12):
   does not name is an `unplanned_change` (B8).
 - `broker.test.ts` (B6): the incident review, read_only and masked, with
   a replay that never asks the broker; and `shadow-diff`.
-- `onboard.test.ts` (B7): Kervan's model drafted from its repositories,
-  checked and landed; the committed model's deliberate drift found by
-  `mandate drift` and by `test.consumes`.
+- `onboard.test.ts` (B7): Acme's model drafted from generated
+  repositories, checked and landed; the fixture model's deliberate drift
+  found by `mandate drift` and by `test.consumes`.
 - `environment.test.ts` (B9): an environment's tier is never lowered;
   prod_sim's deploy waits for the release manager although the run's
   policy says policy.
-- `kervan-live.test.ts` repeats B5 and B6 against the real Kervan in
-  Docker when `MANDATE_KERVAN=1`.
 
 `sandbox.test.ts` runs FixBug's five agents in five MXC sandboxes, one per
 agent. Implementer may write only `/work/repo/src`, and TestWriter only

@@ -1,0 +1,60 @@
+// Taking Acme into Mandate (design doc 9 §7; BACKLOG item 35, B7). An agent
+// reads the repositories and writes the system model they describe into
+// acme-system. The model starts as Inferred: what an agent says a service
+// consumes is not the system's truth until it is checked and accepted (INV-04).
+//
+//   described   the draft checks clean, describes every repository, and every
+//               interface's spec is in its provider's repository at the base
+//               commit and parses
+//   consumed    every call the code makes to another component is modelled; a
+//               dependency the model claims and the code does not show is a warning
+//   runnable    every component's build and test commands run in a sandbox at
+//               the base commit
+//   architect   a person accepts it
+//
+// The accepted model lands in acme-system as one change: the first version
+// of the system model. Run again later, the same program finds drift.
+
+mandate @ 0.3
+
+module acme.onboard @ 0.1
+
+use std.{component, model, test, git, human}
+use acme.repos.{auth, mcp, core, search, voice, evals, system}
+
+capability ReadAll  = component.read(auth, mcp, core, search, voice, evals, system)
+capability Model    = component.write(system, "system")
+capability Land     = component.repo(system)
+capability ModelStd = model.infer(tier: standard)
+
+type Request = { id: Text, note: Text }
+type Draft = { path: Text, files: List<Text>, summary: Text }
+
+contract ModelAccepted(draft: Draft) {
+  accept described "The draft is a system model of every repository, its specs at the base commit" by test.system_specs(draft.path, at: system)
+  accept consumed "Every call between components is modelled" by test.consumes(draft.path, at: system)
+  accept runnable "Every component builds and tests with the commands the draft names" by test.commands(draft.path, at: system)
+  accept architect "The architect accepted the model" by human.approve(role: "architect")
+}
+
+agent Cartographer {
+  role   "Reads the repositories and writes the system model they describe: components, interfaces, who consumes what, owners."
+  caps   ReadAll, Model, ModelStd
+  budget { tokens: 1M, spend: 3 USD, steps: 20 }
+  skill draft(request: Request) -> Inferred<Draft> ! {Fs.Read, Fs.Write, Model}
+}
+
+workflow Onboard(request: Request) -> Text
+  caps    ReadAll, Model, Land, ModelStd
+  budget  { spend: 5 USD, time: 1h }
+{
+  let draft = delegate Cartographer.draft(request)
+  let accepted = verify draft against ModelAccepted(draft)
+    on unmet(c) => escalate human("Open criteria: {c}")
+  let landed = changeset(accepted) {
+    member system = git.merge(accepted)
+    order system
+    approve role "architect"
+  } idempotent_by request.id
+  "accepted"
+}

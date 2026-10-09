@@ -6,7 +6,7 @@ import { check } from "../src/check.js";
 import { requirementFor, sandboxRequirements, type SandboxRequirement } from "../src/target/sandbox.js";
 import { readRepo } from "./helpers.js";
 
-const FIXBUG = readRepo("examples/fixbug/fixbug.mdt");
+const FIXBUG = readRepo("fixtures/fixbug/fixbug.mdt");
 
 function requirements(src: string): Record<string, SandboxRequirement> {
   const r = check(src, "mdt");

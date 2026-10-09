@@ -1,7 +1,7 @@
 // The read broker and run modes (design doc 9 §5; BACKLOG item 34, B6).
 // Declared reads run in the control plane against a replica (PGlite here)
 // and log files; values are bound, never spliced; only declared fields come
-// back, masked above the caller's class. Kervan's incident review runs in
+// back, masked above the caller's class. Acme's incident review runs in
 // read_only mode: real reads, masked data, nothing written, and replay never
 // asks the broker again. read_only and design runs commit nothing, and the
 // shadow comparison says what a read_only run would have done (V19).
@@ -17,10 +17,10 @@ import { SimAgents, SimTool } from "../src/sim.js";
 import { isObj, type Obj } from "../src/values.js";
 import { shadowDiff } from "../src/views.js";
 import { closeAll, world } from "./helpers.js";
-import { kervanModules, lockFor } from "./kervan.js";
-import { LAND } from "./kervan-changeset.js";
+import { acmeModules, lockFor } from "./acme.js";
+import { LAND } from "./acme-changeset.js";
 
-const INCIDENT = readFileSync(new URL("../../examples/kervan/programs/incident.mdt", import.meta.url), "utf8");
+const INCIDENT = readFileSync(new URL("../../fixtures/system/incident.mdt", import.meta.url), "utf8");
 const dir = mkdtempSync(join(tmpdir(), "mandate-broker-"));
 let replica: PGlite;
 
@@ -106,9 +106,9 @@ describe("DeclaredReads", () => {
   });
 });
 
-/** Kervan's incident review, the investigator scripted. */
+/** Acme's incident review, the investigator scripted. */
 async function incident(mode: "read_only" | "live") {
-  const modules = kervanModules();
+  const modules = acmeModules();
   const agents = new SimAgents().on("Investigator.analyze", () => ({ ok: { root_cause: "a batch marked Izmir deliveries out for delivery early", evidence: ["t1"], affected_cities: ["Izmir"] }, cost: { steps: 3 } }));
   const w = await world(INCIDENT, { modules, lock: lockFor(modules), agents });
   w.adapters.broker = broker();
@@ -117,7 +117,7 @@ async function incident(mode: "read_only" | "live") {
   return { w, rt, run, agents };
 }
 
-describe("Kervan's incident review, read_only (B6)", () => {
+describe("Acme's incident review, read_only (B6)", () => {
   it("reads through the broker with the customers masked, writes nothing, and replays without the broker", async () => {
     const { w, rt, run, agents } = await incident("read_only");
     expect(run.state, JSON.stringify(run.error ?? run.attention)).toBe("succeeded");
@@ -137,7 +137,7 @@ describe("Kervan's incident review, read_only (B6)", () => {
 
 describe("read_only and design runs commit nothing (doc 9 §5.2, V19)", () => {
   async function landWorld() {
-    const modules = kervanModules();
+    const modules = acmeModules();
     const merge = new SimTool("git.merge", "reconcilable");
     return { w: await world(LAND, { modules, lock: lockFor(modules), tools: [merge] }), merge };
   }
@@ -194,7 +194,7 @@ describe("read_only and design runs commit nothing (doc 9 §5.2, V19)", () => {
   });
 
   it("refuses a design run's read without sample rows, and answers one with them", async () => {
-    const modules = kervanModules();
+    const modules = acmeModules();
     const agents = new SimAgents().on("Investigator.analyze", () => ({ ok: { root_cause: "?", evidence: [], affected_cities: [] }, cost: { steps: 1 } }));
     const w = await world(INCIDENT, { modules, lock: lockFor(modules), agents });
     const failed = await w.rt.startRun({ pkg: w.pkg, workflow: "Investigate", input: { incident: { since: "x", tracking_no: "KRV1" } }, mode: "design" });

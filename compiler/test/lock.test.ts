@@ -6,7 +6,7 @@ import { check } from "../src/check.js";
 import { perCallBound, validateLock, type Lock } from "../src/lock.js";
 import { codes, readRepo } from "./helpers.js";
 
-const LOCK = JSON.parse(readRepo("examples/fixbug/mandate.lock.json")) as Lock;
+const LOCK = JSON.parse(readRepo("fixtures/fixbug/mandate.lock.json")) as Lock;
 
 const agent = (budget: string) => `mandate @ 0.2
 
@@ -68,7 +68,7 @@ describe("lock file", () => {
   });
 
   it("checks FixBug without warnings about its budgets (K13)", () => {
-    const r = check(readRepo("examples/fixbug/fixbug.mdt"), "mdt", { lock: LOCK });
+    const r = check(readRepo("fixtures/fixbug/fixbug.mdt"), "mdt", { lock: LOCK });
     expect(r.ok).toBe(true);
     expect(codes(r.diagnostics).filter((c) => c !== "MDT-W0601")).toEqual([]);
   });
