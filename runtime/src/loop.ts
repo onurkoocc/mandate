@@ -26,6 +26,10 @@
 //   ContextExhausted  the conversation is over the locked input limit
 //   Refused           the model declined
 //
+// When a parallel sibling fails (fail_fast), the loop stops before its next
+// step and leaves its delegation in flight, so if the run goes on, after a
+// person raised its budget for example, the loop resumes from the journal.
+//
 // `partial` lists the files the loop wrote, so a person or a restart can use
 // them.
 
@@ -65,7 +69,7 @@ export interface LoopIO {
   step(id: string, kind: string, request: Value, reserve: (() => Promise<Cost | undefined>) | undefined, call: () => Promise<Outcome>, label: string): Promise<Value>;
   chat: ChatModel;
   sandbox: MxcAdapter;
-  /** Whether an error means a parallel sibling failed and this branch must stop (fail_fast). */
+  /** Whether an error means a parallel sibling failed and this branch must stop (fail_fast); it is passed on. */
   stopped(e: unknown): boolean;
 }
 
@@ -96,7 +100,8 @@ export async function runAgentLoop(task: LoopTask, io: LoopIO): Promise<Outcome>
     return { ok: result, cost: {}, meta: loop.summary(planned.policy.$source) };
   } catch (e) {
     if (e instanceof Stop) return { error: { tag: "SkillFailed", args: [{ kind: e.kind, detail: e.detail, partial: loop.partial() }] }, cost: {}, meta: loop.summary(planned.policy.$source) };
-    if (io.stopped(e)) return { error: { tag: "SkillFailed", args: [{ kind: "DependencyFailed", detail: "a parallel branch failed", partial: loop.partial() }] }, cost: {}, meta: loop.summary(planned.policy.$source) };
+    // A sibling failed: the delegation stays in flight, as after a crash, so a resumed run goes on from its last step.
+    if (io.stopped(e)) throw e;
     if (e instanceof Fault) {
       const args = e.tag === "SkillFailed" && isObj(e.args[0] ?? null) ? [{ ...(e.args[0] as Block), partial: loop.partial() }] : e.args;
       return { error: { tag: e.tag, args }, cost: {}, meta: loop.summary(planned.policy.$source) };

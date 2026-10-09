@@ -223,3 +223,73 @@ describe("plan_execute (§8.2)", () => {
     expect(w.chat.calls[1]!.tools.map((t) => t.name)).toEqual(["finish"]);
   });
 });
+
+describe("agent loops in par (§8.7 fail_fast, §8.6)", () => {
+  const PAR = `mandate @ 0.2
+
+module loops.parallel @ 0.1
+
+use std.{fs, model, human}
+
+capability RepoRead  = fs.read("/work/repo")
+capability SrcWrite  = fs.write("/work/repo/src")
+capability TestWrite = fs.write("/work/repo/test")
+capability ModelStd  = model.infer(tier: standard)
+
+agent Fixer {
+  caps   RepoRead, SrcWrite, ModelStd
+  budget { spend: 1 USD, steps: 6 }
+  skill apply(task: Text) -> Inferred<Text> ! {Fs.Read, Fs.Write, Model}
+}
+
+agent Tester {
+  caps   RepoRead, TestWrite, ModelStd
+  budget { spend: 1 USD, steps: 6 }
+  skill write(task: Text) -> Inferred<Text> ! {Fs.Read, Fs.Write, Model}
+}
+
+workflow Both(task: Text) -> Inferred<Text>
+  caps   RepoRead, SrcWrite, TestWrite, ModelStd
+  budget { spend: 3 USD }
+{
+  par {
+    fix  = delegate Fixer.apply(task)
+    test = delegate Tester.write(task)
+  }
+  fix
+}
+
+on budget_exceeded in Both => pause and human.ask("Budget exceeded. Continue or cancel?")
+`;
+
+  it("a sibling over the budget pauses the run for a person, and after a raise the stopped loop resumes from the journal", async () => {
+    const w = await world(PAR);
+    const host = new SimSandboxHost();
+    host.files.set("/work/repo/src/a.ts", "bug");
+    const chat = new SimChat((req, n) => {
+      const fixer = req.system.startsWith("You are Fixer,");
+      const turn = req.messages.filter((m) => (m as { role?: string }).role === "assistant").length;
+      if (fixer) return turn === 0 ? [toolUse(`f${n}`, "read_file", { path: "/work/repo/src/a.ts" })] : [toolUse(`f${n}`, "finish", { result: "fixed" })];
+      return [toolUse(`t${n}`, "finish", { result: "tested" })];
+    });
+    w.adapters.loop = { chat, sandbox: new MxcAdapter({ host, schemaVersion: "0.8.0", modelEndpoints: {}, modelsInControlPlane: true }) };
+
+    // 1.5 USD covers one agent's 1 USD budget, not both: the second reservation does not fit.
+    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Both", input: { task: "t" }, runId: "par1", limits: { spend: { micros: 1_500_000, currency: "USD" } } });
+    expect(run.state).toBe("waiting");
+    expect(run.waiting).toMatchObject({ kind: "budget_exceeded", detail: { $tag: "BudgetExceeded" } });
+    const fixer = (await w.rt.journal.command("par1", "/defs/Both/body/0/branches/fix"))!;
+    expect(fixer.state).toBe("dispatched");
+
+    const raised = await w.rt.raiseLimits("par1", { sender: "erin", messageId: "r1" }, { revision: run.revision, limits: { spend: { micros: 3_000_000, currency: "USD" } }, by: "erin" });
+    const ask = run.waiting as { command: string };
+    const done = await w.rt.submitInput("par1", { sender: "erin", messageId: "a1" }, { commandId: ask.command, revision: raised.revision, value: "continue" });
+    expect(done.state, JSON.stringify(done.error ?? done.attention)).toBe("succeeded");
+    expect(done.result).toBe("fixed");
+    // Each recorded step ran once: the Fixer's first turn and read were not sent again after the raise.
+    expect(host.executions).toHaveLength(1);
+    expect(chat.calls.filter((c) => c.system.startsWith("You are Fixer,"))).toHaveLength(2);
+    const report = await w.rt.budgetReport("par1");
+    expect(report.dimensions[0]).toMatchObject({ limit: 3_000_000, reserved: 0 });
+  });
+});

@@ -338,7 +338,11 @@ The loop stops with `SkillFailed(kind, detail, partial)` (§8.7):
 | `SchemaMismatch`, `InvalidTool`, `InvalidArguments` | Still wrong after the repairs |
 | `ContextExhausted` | The conversation is over the locked input limit |
 | `Refused` | The model declined |
-| `DependencyFailed` | A parallel branch failed (fail_fast) |
+
+When a parallel branch fails (fail_fast), a loop stops before its next
+step, and leaves its delegation in flight, as after a crash. If the run goes
+on, for example after a person raised its budget, the loop resumes from
+the journal. The block fails with the fault that stopped the others.
 
 `partial` lists the files the loop wrote. A turn observed something new
 when one of its tool calls returned something the loop had not seen from
