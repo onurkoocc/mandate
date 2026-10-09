@@ -52,3 +52,27 @@ workflow Locate(issue: Text) -> Inferred<List<Finding>>
   delegate Explorer.locate(issue)
 }
 `;
+
+/** Opens a pull request in the Gate 3 test repository once a person approves the draft (P1-9). */
+export const OPEN_PR = `mandate @ 0.2
+
+module live.pull @ 0.1
+
+use std.{git, human}
+use company.domain.{PullRequestDraft}
+
+capability PR = git.pr("onurkoocc/mandate-fixbug-target")
+
+contract Approved(draft: PullRequestDraft) {
+  accept owner_approved "The code owner approved" by human.approve(role: "code_owner")
+}
+
+workflow Open(draft: PullRequestDraft) -> Bool
+  caps PR
+{
+  let checked = verify draft against Approved(draft)
+  effect git.open_pr(checked)
+    idempotent_by draft.issue.id
+  true
+}
+`;

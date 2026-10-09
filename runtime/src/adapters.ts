@@ -138,12 +138,21 @@ export interface AuthorizationContext {
   decidedBy: string;
 }
 
+/** What a program binds an effect to: for `git.*`, the repositories of its `git.pr(…)` capabilities. */
+export interface Binding {
+  repos: string[];
+}
+
 /** Tool adapter contract (§16.1). Silence, a timeout or an HTTP 500 is `unknown`, never `notApplied`. */
 export interface ToolAdapter {
   describe(): ToolContract;
+  /** Whether this adapter can serve the program's binding; asked before a run starts. */
+  validateBinding?(binding: Binding): Promise<{ supported: true } | { unsupported: string }>;
   prepare(params: Value): Promise<{ prepared: true } | { rejected: string }>;
   execute(action: PreparedAction, auth: AuthorizationContext, operationKey: string): Promise<{ confirmed: Value } | { rejected: string } | { unknown: string }>;
   reconcile(operationKey: string): Promise<{ applied: Value } | { notApplied: string } | { unknown: string }>;
+  /** Stops an operation if it has not taken effect: Cancelled with proof, or TooLate with its receipt. */
+  cancel?(operationKey: string): Promise<{ cancelled: string } | { tooLate: Value } | { unknown: string }>;
 }
 
 export interface Clock {

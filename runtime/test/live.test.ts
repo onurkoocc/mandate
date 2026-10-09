@@ -4,14 +4,17 @@
 // workspace id, CLAUDE_WORKSPACE_ID or anthropic-workspace-id. Each case
 // spends real money; keep them small (K14).
 
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { check } from "@mandate/compiler";
 import { afterAll, describe, expect, it } from "vitest";
 import { AnthropicModel, priceUsage } from "../src/anthropic.js";
+import { GitHubPullRequests } from "../src/github.js";
 import { MxcAdapter } from "../src/sandbox.js";
 import { SimSandboxHost } from "../src/sim.js";
 import { isObj } from "../src/values.js";
-import { ASK_CAPITAL, LOCK, READ_LOOP } from "./models.js";
+import { ASK_CAPITAL, LOCK, OPEN_PR, READ_LOOP } from "./models.js";
 import { closeAll, world } from "./helpers.js";
 
 const LIVE = process.env["MANDATE_LIVE"] === "1";
@@ -70,5 +73,58 @@ describe.skipIf(!LIVE)("live: an agent loop (P1-7)", () => {
     expect(host.executions.length).toBeGreaterThan(0);
     expect(turns.every((t) => t.cost && t.cost !== "unknown" && Object.keys(t.reserved).length === 0)).toBe(true);
     expect(await w.rt.replayRun("live-2")).toEqual({ status: "complete", value: run.result });
+  });
+});
+
+const TARGET = "onurkoocc/mandate-fixbug-target";
+const githubToken = (): string | undefined => process.env["MANDATE_GITHUB_TOKEN"] ?? process.env["GITHUB_TOKEN"];
+
+describe.skipIf(!LIVE || !githubToken())("live: git.open_pr on the test repository (P1-9)", () => {
+  it("leaves exactly one pull request after a lost response is reconciled", async () => {
+    const token = githubToken()!;
+    const workdir = mkdtempSync(join(tmpdir(), "mandate-live-pr-"));
+    mkdirSync(join(workdir, "src"), { recursive: true });
+    writeFileSync(join(workdir, "src", "pagination.ts"), "// live test of git.open_pr; this pull request is closed by the test\n");
+    const real = new GitHubPullRequests({ token, repo: TARGET, workdir });
+    // The pull request is opened for real, then its answer is lost.
+    let sent = 0;
+    const lossy = Object.assign(Object.create(real) as GitHubPullRequests, {
+      execute: async (...a: Parameters<GitHubPullRequests["execute"]>) => {
+        sent++;
+        const r = await real.execute(...a);
+        return "confirmed" in r ? { unknown: "the response was lost" } : r;
+      },
+    });
+    const w = await world(OPEN_PR);
+    w.adapters.tools["git.open_pr"] = lossy;
+    const draft = { issue: { id: `live-${Date.now()}`, title: "live test of git.open_pr" }, patch: { files: ["src/pagination.ts"] } };
+    let branch: string | undefined;
+    try {
+      const waiting = await w.rt.startRun({ pkg: w.pkg, workflow: "Open", input: { draft }, runId: "live-3" });
+      const wait = waiting.waiting as { command: string; request: { subject_digest: string } };
+      const lost = await w.rt.decideAction("live-3", { sender: "test", messageId: "a1" }, { commandId: wait.command, revision: waiting.revision, digest: wait.request.subject_digest, approve: true, by: "test" });
+      expect(lost.state).toBe("attention_required");
+      const [action] = await w.rt.journal.actions("live-3");
+      expect(action!.state).toBe("unknown_outcome");
+
+      const done = await w.rt.reconcileAction("live-3", action!.operation_key);
+      expect(done.state).toBe("succeeded");
+      const [settled] = await w.rt.journal.actions("live-3");
+      const receipt = settled!.receipt as { number: number; url: string; branch: string };
+      branch = receipt.branch;
+      const res = await fetch(`https://api.github.com/repos/${TARGET}/pulls?state=all&head=onurkoocc:${encodeURIComponent(branch)}`, { headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" } });
+      const prs = (await res.json()) as Array<{ number: number }>;
+      console.log(`live pr: ${JSON.stringify({ receipt, sent, pulls: prs.map((p) => p.number) })}`);
+      expect(prs.map((p) => p.number)).toEqual([receipt.number]);
+      expect(sent).toBe(1);
+    } finally {
+      // Leave the test repository as it was: close the pull request and delete its branch.
+      const headers = { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" };
+      const [settled] = await w.rt.journal.actions("live-3");
+      const n = (settled?.receipt as { number?: number } | null)?.number;
+      if (n) await fetch(`https://api.github.com/repos/${TARGET}/pulls/${n}`, { method: "PATCH", headers, body: JSON.stringify({ state: "closed" }) });
+      if (branch) await fetch(`https://api.github.com/repos/${TARGET}/git/refs/heads/${branch}`, { method: "DELETE", headers });
+      rmSync(workdir, { recursive: true, force: true });
+    }
   });
 });

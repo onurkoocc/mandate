@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { canonicalize, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, modelTiers, validateLock, type Json, type Lock, type Program } from "@mandate/compiler";
+import { canonicalize, capFromCall, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, modelTiers, validateLock, type CapVal, type Expr, type Json, type Lock, type Program } from "@mandate/compiler";
 import type { Adapters, Cost } from "./adapters.js";
 import type { Db, Row } from "./db.js";
 import { Faults } from "./faults.js";
@@ -112,6 +112,7 @@ export class Runtime {
     verifyPackage(o.pkg);
     const wf = o.pkg.program.defs[o.workflow];
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
+    await this.validateBindings(o.pkg.program, o.workflow);
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(wf.budget), costDims(o.limits));
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}) };
@@ -125,6 +126,34 @@ export class Runtime {
     });
     this.packages.set(o.pkg.hash, o.pkg);
     return this.drive(runId, true);
+  }
+
+  /**
+   * Asks every tool adapter the workflow can reach whether it serves the
+   * program's binding (§16.1 ValidateBinding). A `git.*` effect is bound to the
+   * repositories of the workflow's `git.pr(…)` capabilities. A run whose
+   * effects an adapter cannot serve does not start.
+   */
+  private async validateBindings(program: Program, workflow: string): Promise<void> {
+    const wf = program.defs[workflow];
+    if (wf?.kind !== "workflow") return;
+    const effects = new Set<string>();
+    const visit = (v: unknown): void => {
+      if (Array.isArray(v)) v.forEach(visit);
+      else if (v && typeof v === "object") {
+        const node = v as { op?: unknown; name?: unknown };
+        if (node.op === "effect" && typeof node.name === "string") effects.add(node.name);
+        Object.values(v).forEach(visit);
+      }
+    };
+    visit(wf);
+    const repos = wf.caps.map((c) => capOf(program, c)).filter((c) => c?.ctor === "git.pr").flatMap((c) => c!.scope ?? []);
+    for (const name of [...effects].sort()) {
+      const tool = this.adapters.tools[name];
+      if (!tool?.validateBinding) continue;
+      const r = await tool.validateBinding({ repos: name.startsWith("git.") ? repos : [] });
+      if ("unsupported" in r) throw new Violation("unsupported_binding", `The adapter for ${name} cannot serve this program: ${r.unsupported}.`);
+    }
   }
 
   private async drive(runId: string, start = false): Promise<RunRow> {
@@ -447,8 +476,30 @@ export class Runtime {
       await this.journal.event(tx, runId, "cancel_requested", {});
       return run.state === "waiting" || run.state === "accepted" || run.state === "attention_required";
     });
+    // An action whose outcome is unknown is asked to stop: an adapter that can prove it never took effect resolves it.
+    for (const a of await this.journal.actions(runId)) {
+      if (a.state === "unknown_outcome") await this.cancelAction(runId, a.operation_key);
+    }
     if (idle) await this.closeCancelled(runId);
     if (this.driver) await this.driver.wake(runId);
+    return this.journal.run(runId);
+  }
+
+  /**
+   * Asks the adapter to stop an action (§16.1 Cancel). Cancelled, with the
+   * adapter's proof: the action is resolved as never applied. Too late: it was
+   * applied, and its receipt is recorded. Unknown, or an adapter without
+   * Cancel: nothing changes.
+   */
+  async cancelAction(runId: string, operationKey: string): Promise<RunRow> {
+    const action = await this.journal.action(operationKey);
+    if (!action || action.run_id !== runId) throw new Violation("unknown_action", `No action ${operationKey} in run ${runId}.`);
+    const tool = this.adapters.tools[action.effect];
+    if (tool?.cancel && (action.state === "unknown_outcome" || action.state === "prepared")) {
+      const r = await tool.cancel(operationKey);
+      if ("cancelled" in r) await this.journal.finishAction(runId, undefined, operationKey, "cancelled", { detail: { cancelled: r.cancelled } });
+      else if ("tooLate" in r) await this.journal.finishAction(runId, undefined, operationKey, "confirmed", { receipt: r.tooLate });
+    }
     return this.journal.run(runId);
   }
 
@@ -522,4 +573,13 @@ export function refusingAdapters(real: Adapters): Adapters {
     clock: real.clock,
     random: refuse("random"),
   };
+}
+
+/** A capability expression's value: a named capability is looked up. */
+function capOf(program: Program, e: Expr): CapVal | undefined {
+  if (e.op === "var") {
+    const d = program.defs[e.name];
+    return d?.kind === "capability" ? capOf(program, d.value) : undefined;
+  }
+  return capFromCall(e);
 }

@@ -170,6 +170,18 @@ with `MANDATE_MXC=1` (the CI job `sandbox`), it checks the blocking itself:
 writes outside the grant, reads outside it, network, the environment, and
 an agent loop working through the sandbox.
 
+`github.test.ts` checks the `git.open_pr` adapter for GitHub against an
+in-memory GitHub:
+
+- FixBug opens one pull request with the verified files;
+- a lost response is reconciled to that one pull request;
+- a request that never arrived is sent again without opening a second one;
+- a cancelled run resolves an action that never took effect;
+- a program bound to another repository does not start.
+
+`live.test.ts` repeats the lost response against the real test repository
+when `MANDATE_GITHUB_TOKEN` is set.
+
 `sandbox.test.ts` runs FixBug's five agents in five MXC sandboxes, one per
 agent. Implementer may write only `/work/repo/src`, and TestWriter only
 `/work/repo/test`. A host that cannot enforce a requirement never starts the

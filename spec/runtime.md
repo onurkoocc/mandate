@@ -184,6 +184,51 @@ died after commit. The adapter's retry class then decides what happens:
 An `unknown_outcome` is never retried blindly. The run needs attention
 until `ReconcileAction` resolves it (R04, R05).
 
+Two more operations of the adapter contract (§16.1) are optional on an
+adapter:
+
+- **`ValidateBinding`.** Before a run starts, the runtime asks each adapter
+  of an effect the workflow can reach whether it serves the program's
+  binding. For `git.*`, the binding is the repositories of the workflow's
+  `git.pr(…)` capabilities. A run an adapter cannot serve does not start
+  (`unsupported_binding`).
+- **`Cancel`.** `CancelAction`, which `CancelRun` also calls for every
+  action with an unknown outcome, asks the adapter to stop it:
+  - Cancelled, with the adapter's proof: the action is resolved as never
+    applied.
+  - Too late: it was applied, and its receipt is recorded.
+  - Unknown: nothing changes.
+
+### `git.open_pr` on GitHub
+
+`GitHubPullRequests` (`runtime/src/github.ts`) opens a pull request in one
+repository, through GitHub's REST API. Its token is a fine-grained one for
+that repository only (BACKLOG K18). It is held in the runtime process and
+never reaches a sandbox.
+
+`git.open_pr(checked)` opens one pull request with the files the checked
+draft names (`patch.files` and `tests.files`), read from the working copy
+the agents changed:
+
+- one commit on top of the base branch;
+- on the branch `mandate/<issue>-<op>`;
+- `<op>` is derived from the operation key, so the same operation always
+  names the same branch.
+
+The pull request body names the operation, the action digest and the
+authorization.
+
+The effect is `reconcilable`:
+
+- `Reconcile` looks for a pull request from a branch of the operation, and
+  reports it applied, or proves it was not.
+- Sending the action again reuses the branch, and finds an existing pull
+  request instead of opening a second one.
+- After a lost response there is one pull request.
+
+`Prepare` refuses a file outside the working copy, or one that is not in
+it. `Cancel` is too late once a pull request exists.
+
 ## Contracts and evidence (§10)
 
 `verify x against C(…)` checks C's `require` clauses, then its criteria
@@ -431,5 +476,4 @@ The same mechanisms are tested under Temporal against a local dev server:
   the `drive` activity, not on a Temporal timer.
 - **`map`, and so R11 by input index and R12.** The 0.1 IR has no `map`.
   `par` results are bound by name, and that binding is tested in its place.
-- **The adapter contract's `ValidateBinding` and `Cancel`.**
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.
