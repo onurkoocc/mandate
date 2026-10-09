@@ -92,6 +92,8 @@ export interface Policy {
   authorize?: Record<string, AuthorizePolicy>;
   /** How long a policy authorization stays valid. */
   authorizationTtlMs?: number;
+  /** The run's priority class in shared rate limits (§8.6): `high` for work a person waits for. Default `normal`. */
+  priority?: "high" | "normal";
 }
 
 /** Replay reached a command whose result is not in the journal. */
@@ -592,7 +594,7 @@ export class Interpreter {
       const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, bound, within);
       if (prior) return replayed(prior, id);
       faults.check("after_dispatch", { id, kind });
-      const limited = opts.buckets?.length && this.o.limiter ? await this.o.limiter.take(opts.buckets) : undefined;
+      const limited = opts.buckets?.length && this.o.limiter ? await this.o.limiter.take(opts.buckets, this.o.policy.priority ?? "normal") : undefined;
       const outcome = limited ?? (await call());
       faults.check("before_record", { id, kind });
       if ("error" in outcome && outcome.error.tag === "Throttled" && !queueFull(outcome.error)) {

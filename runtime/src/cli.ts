@@ -38,7 +38,7 @@ interface Args {
   flags: Record<string, string | true>;
 }
 
-const VALUED = new Set(["--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format"]);
+const VALUED = new Set(["--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format"]);
 
 function parse(argv: string[]): Args {
   const positional: string[] = [];
@@ -58,7 +58,7 @@ function parse(argv: string[]): Args {
 class Usage extends Error {}
 
 const USAGE = `usage:
-  mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M] [--lock FILE]
+  mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M] [--lock FILE] [--priority high|normal]
   mandate status <run> [--json]
   mandate approve <run> --revision N --by NAME
   mandate decline <run> --revision N --by NAME
@@ -100,6 +100,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         input: input(str(a, "--input")),
         ...(typeof a.flags["--run-id"] === "string" ? { runId: a.flags["--run-id"] } : {}),
         ...(typeof a.flags["--limit"] === "string" ? { limits: limits(a.flags["--limit"]) } : {}),
+        ...(a.flags["--priority"] === "high" || a.flags["--priority"] === "normal" ? { priority: a.flags["--priority"] } : {}),
       });
       out(await report(rt, run, json, config));
       return 0;

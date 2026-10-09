@@ -69,6 +69,8 @@ export interface StartOptions {
   limits?: Cost;
   authorize?: Policy["authorize"];
   authorizationTtlMs?: number;
+  /** Priority class in shared rate limits (§8.6). */
+  priority?: Policy["priority"];
 }
 
 export interface Message {
@@ -148,7 +150,7 @@ export class Runtime {
     const lowered = this.remoteGuarantees(o.pkg.program);
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(wf.budget), costDims(o.limits));
-    const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}) };
+    const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
     await this.db.tx(async (tx) => {
       await tx.query("insert into packages (package_hash, program, lock) values ($1, $2, $3) on conflict (package_hash) do nothing", [
         o.pkg.hash,

@@ -165,6 +165,18 @@ describe("a shared token bucket (§8.6)", () => {
     expect(w.model.calls).toHaveLength(2);
   });
 
+  it("keeps a reserve for work a person waits for: batch runs cannot drain it (priority classes)", async () => {
+    const w = await world(PROGRAM);
+    const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { durableTimers: true, signer: w.rt.signer, rateLimits: { model: { capacity: 2, perSecond: 0.01, reserve: 1 } } });
+    // A batch run takes the one token it may; the next batch run waits, though one token is left.
+    expect((await rt.startRun({ pkg: w.pkg, workflow: "Ask", input: ISSUE, runId: "p1" })).state).toBe("succeeded");
+    const batch = await rt.startRun({ pkg: w.pkg, workflow: "Ask", input: ISSUE, runId: "p2" });
+    expect(batch.waiting).toMatchObject({ kind: "timer", request: { reason: "throttled" } });
+    // A run a person waits for takes the reserved token at once.
+    expect((await rt.startRun({ pkg: w.pkg, workflow: "Ask", input: ISSUE, runId: "p3", priority: "high" })).state).toBe("succeeded");
+    expect(w.model.calls).toHaveLength(2);
+  });
+
   it("refuses outright when too many calls already wait: back pressure, never a silent queue", async () => {
     const w = await world(PROGRAM);
     const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { durableTimers: true, signer: w.rt.signer, rateLimits: { "model:standard": { capacity: 1, perSecond: 0.01, queue: 0 } } });

@@ -588,7 +588,11 @@ time, and they are kept apart (`runtime/src/ratelimit.ts`).
 - **Configuration.** `rateLimits` in `mandate.runtime.json`, or
   `RuntimeOptions.rateLimits`.
 
-Priority classes between buckets' waiters are not implemented.
+- **Priority classes.** A run is `high` (work a person waits for) or
+  `normal` (batch; the default), set at `StartRun` or with
+  `mandate run --priority high`. A bucket may keep `reserve` tokens that
+  only `high` calls may take, so batch runs cannot drain it while a person
+  waits.
 
 ## Run states
 

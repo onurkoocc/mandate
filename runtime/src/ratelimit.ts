@@ -13,6 +13,11 @@
 // attempt a supervisor counts, and its reservation is not held while it
 // waits. At most `queue` calls may wait on a bucket; past that a call is
 // refused outright (`queue_full`), never queued silently: back pressure.
+//
+// Priority classes share a bucket unequally (§8.6: work a person waits for
+// before batch work). A run is `high` or `normal`. A bucket may keep
+// `reserve` tokens that only `high` calls may take, so batch runs cannot
+// drain it while a person waits.
 
 import type { Outcome } from "./adapters.js";
 import { num, type Db, type Row } from "./db.js";
@@ -23,7 +28,11 @@ export interface BucketConfig {
   perSecond: number;
   /** How many calls may wait on the bucket at once. Default 100. */
   queue?: number;
+  /** Tokens only `high` priority calls may take. Default 0. */
+  reserve?: number;
 }
+
+export type Priority = "high" | "normal";
 
 export class RateLimiter {
   constructor(
@@ -33,6 +42,7 @@ export class RateLimiter {
   ) {
     for (const [k, b] of Object.entries(buckets)) {
       if (!(b.capacity >= 1) || !(b.perSecond > 0)) throw new Error(`Rate limit ${k} needs a capacity of at least 1 and a positive rate.`);
+      if ((b.reserve ?? 0) < 0 || (b.reserve ?? 0) >= b.capacity) throw new Error(`Rate limit ${k}: reserve must be at least 0 and below the capacity.`);
     }
   }
 
@@ -43,7 +53,7 @@ export class RateLimiter {
   }
 
   /** Takes one token from each bucket, or none: undefined when the call may go, a Throttled outcome when it may not. */
-  async take(keys: string[]): Promise<Outcome | undefined> {
+  async take(keys: string[], priority: Priority = "normal"): Promise<Outcome | undefined> {
     if (!keys.length) return undefined;
     return this.db.tx(async (tx) => {
       const now = this.now();
@@ -55,10 +65,13 @@ export class RateLimiter {
         const level = Math.min(cfg.capacity, Number(b!["tokens"]) + (Math.max(0, now - num(b!["updated_at"])) / 1000) * cfg.perSecond);
         levels.push({ key, level, cfg });
       }
-      const empty = levels.filter((l) => l.level < 1);
+      // A normal call must leave the bucket's reserve for high priority work.
+      const need = (l: { cfg: BucketConfig }): number => 1 + (priority === "high" ? 0 : (l.cfg.reserve ?? 0));
+      const empty = levels.filter((l) => l.level < need(l));
       if (empty.length) {
-        const worst = empty.reduce((a, b) => ((1 - a.level) / a.cfg.perSecond >= (1 - b.level) / b.cfg.perSecond ? a : b));
-        const retry = Math.ceil(((1 - worst.level) / worst.cfg.perSecond) * 1000);
+        const wait = (l: (typeof levels)[number]): number => (need(l) - l.level) / l.cfg.perSecond;
+        const worst = empty.reduce((a, b) => (wait(a) >= wait(b) ? a : b));
+        const retry = Math.ceil(wait(worst) * 1000);
         const [q] = await tx.query<Row>("select count(*) as n from commands where state = 'throttled' and error->'args'->0->>'bucket' = $1", [worst.key]);
         const full = num(q?.["n"]) >= (worst.cfg.queue ?? 100);
         return { error: { tag: "Throttled", args: [{ retry_after_ms: retry, bucket: worst.key, ...(full ? { queue_full: true } : {}) }] }, cost: {} };
