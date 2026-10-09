@@ -131,6 +131,12 @@ export interface InterpOptions {
   trusted: TrustedKeys;
   /** Replay reads the journal only and never calls an adapter (R13). */
   replay: boolean;
+  /**
+   * Who keeps a wait's timer (a restart's backoff, §8.7). Inline, this worker
+   * sleeps. Durable, the run waits and its scheduler (Temporal) wakes it with
+   * `tick` when the time comes, so no worker holds a lease while it waits.
+   */
+  durableTimers?: boolean;
 }
 
 const RESTARTABLE = new Set(["Timeout", "SkillFailed"]);
@@ -583,6 +589,21 @@ export class Interpreter {
     return replayed(row, id);
   }
 
+  /**
+   * Waits `ms` before going on (§8.7 backoff, §8.6 Throttled). Inline, the
+   * worker sleeps. With durable timers the start is journaled, so the end is
+   * fixed; until it comes the run waits (`kind: "timer"`, with the end as its
+   * deadline), and its scheduler resumes it then. Replay never waits.
+   */
+  private async pause(id: string, ms: number, reason: string): Promise<void> {
+    if (this.o.replay || ms <= 0) return;
+    if (!this.o.durableTimers) return this.o.adapters.clock.sleep(ms);
+    const started = Number(await this.command(id, "time", {}, undefined, async () => ({ ok: this.o.adapters.clock.now() })));
+    const until = started + ms;
+    if (this.o.adapters.clock.now() >= until) return;
+    throw new Suspend({ kind: "timer", command: id, request: { reason, until, deadline: until } });
+  }
+
   private async random(id: string): Promise<number> {
     return Number(await this.command(id, "random", {}, undefined, async () => ({ ok: this.o.adapters.random() })));
   }
@@ -706,7 +727,7 @@ export class Interpreter {
         if (!(f instanceof Fault) || !RESTARTABLE.has(f.tag) || attempt >= max) throw f;
         // Exponential backoff with jitter; the jitter is journaled so replay waits the same (§8.7).
         const jitter = await this.random(`${id}/jitter`);
-        if (!this.o.replay) await this.o.adapters.clock.sleep(Math.round(backoff * 2 ** attempt * (0.5 + jitter)));
+        await this.pause(`${id}/backoff`, Math.round(backoff * 2 ** attempt * (0.5 + jitter)), "restart_backoff");
       }
     }
   }

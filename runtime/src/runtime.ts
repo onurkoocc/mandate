@@ -101,6 +101,12 @@ export interface RuntimeOptions {
   signer?: EvidenceSigner;
   /** Other public keys whose evidence this runtime accepts, e.g. an earlier key. Its own always counts. */
   trustedKeys?: string[];
+  /**
+   * A run's timers (a restart's backoff) are kept by its scheduler: the run
+   * waits, and `tick` resumes it when the time comes. A Temporal worker's
+   * runtime needs this; without it, the worker sleeps through the wait.
+   */
+  durableTimers?: boolean;
 }
 
 export class Runtime {
@@ -109,6 +115,7 @@ export class Runtime {
   readonly artifacts: ArtifactStore;
   readonly signer: EvidenceSigner;
   readonly trusted: TrustedKeys;
+  readonly durableTimers: boolean;
   private readonly packages = new Map<string, Package>();
 
   constructor(
@@ -123,6 +130,7 @@ export class Runtime {
     this.artifacts = options.artifacts ?? new ArtifactStore(db, new MemoryBlobs(), () => adapters.clock.now());
     this.signer = options.signer ?? EvidenceSigner.generate();
     this.trusted = new TrustedKeys([this.signer.publicKey, ...(options.trustedKeys ?? [])]);
+    this.durableTimers = options.durableTimers ?? false;
   }
 
   // ── StartRun / resume ─────────────────────────────────────────────────
@@ -318,6 +326,7 @@ export class Runtime {
       signer: this.signer,
       trusted: this.trusted,
       replay,
+      durableTimers: this.durableTimers,
     });
   }
 
@@ -455,14 +464,19 @@ export class Runtime {
     return this.journal.run(runId);
   }
 
-  /** Expires waits whose deadline has passed: no dispatch happens after a deadline (R15). */
+  /**
+   * Acts on a wait whose deadline has passed: a decision expires, so nothing
+   * is dispatched after its deadline (R15); a timer is due, so the run goes on.
+   */
   async tick(runId: string): Promise<RunRow> {
     const run = await this.journal.run(runId);
     const w = run.waiting;
-    if (run.state !== "waiting" || !isObj(w) || w["kind"] !== "decision") return run;
+    if (run.state !== "waiting" || !isObj(w)) return run;
     const req = w["request"];
     const deadline = isObj(req) ? req["deadline"] : null;
     if (typeof deadline !== "number" || this.adapters.clock.now() < deadline) return run;
+    if (w["kind"] === "timer") return this.drive(runId);
+    if (w["kind"] !== "decision") return run;
     await this.db.tx(async (tx) => {
       await this.journal.lock(tx, runId);
       await tx.query("update commands set state = 'failed', error = $3 where run_id = $1 and command_id = $2 and state = 'waiting'", [

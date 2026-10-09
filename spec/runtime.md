@@ -462,6 +462,16 @@ the results, and is offered only `finish`.
   `Timeout` or `SkillFailed`, and never on other faults. Backoff is
   exponential with jitter. The jitter is a journaled command, so replay
   neither draws it again nor waits.
+- **Timers.** Who waits out a backoff depends on the runtime. Inline, the
+  worker sleeps. With durable timers (`{ durableTimers: true }`, which a
+  Temporal worker's runtime must use):
+  - the start of the wait is a journaled `time` command, so its end is
+    fixed;
+  - until the end, the run is `waiting` with
+    `{ kind: "timer", request: { reason, until, deadline } }`, and no
+    worker holds its lease;
+  - `tick` resumes the run once the end has come. A worker that resumes it
+    earlier waits again, for the same end.
 - **Branch results.** `par` branches start together, and their results are
   bound by branch name, never by completion order.
 - **`fail_fast`.** Under `fail_fast` (the default), the first fault stops
@@ -662,8 +672,15 @@ id `mandate-run/<run id>`, and the workflow loops:
 3. If the run is waiting or needs attention, the workflow sleeps until a
    `wake` signal arrives, or until the deadline of the wait the run is in.
 4. On a signal it drives the run again. When the deadline passes, the
-   `expire` activity runs `Runtime.tick`, which expires the wait and drives
-   the run on (R15).
+   `expire` activity runs `Runtime.tick`. That expires a decision's wait
+   (R15), or resumes a run whose timer is due (a restart's backoff); either
+   way the run goes on. A backoff is a Temporal timer, never a sleep inside
+   an activity.
+5. **Continue-as-new.** After 200 waits, or sooner when Temporal suggests
+   it, the workflow continues as a new execution with an empty history
+   (`TemporalDriver(client, queue, { waitsPerHistory })`). Nothing is lost:
+   the run's state is in PostgreSQL, and the new execution drives the run
+   first. A wake sent meanwhile reaches the new execution.
 
 Activities heartbeat. When a worker dies, Temporal retries the activity on
 another worker, which takes a new lease and resumes from the journal. The
@@ -683,15 +700,13 @@ The same mechanisms are tested under Temporal against a local dev server:
 - a crash after a recorded result (R01) and after commit (R02);
 - input and approval;
 - a deadline timer (R15);
+- a restart's backoff on a durable timer;
+- continue-as-new after several waits;
 - cancel;
 - reconciliation (R04).
 
 ## Not in this runtime yet
 
-- **Continue-as-new.** A run that waits very many times grows its workflow
-  history; the workflow does not yet start a fresh history.
-- **Restart backoff as a durable timer.** The backoff wait happens inside
-  the `drive` activity, not on a Temporal timer.
 - **`map`, and so R11 by input index and R12.** The 0.1 IR has no `map`.
   `par` results are bound by name, and that binding is tested in its place.
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.

@@ -154,6 +154,9 @@ adapters:
 
 `temporal.test.ts` runs the same workflow under Temporal. The approval
 wakes the run, and a worker that crashes after commit still opens one PR.
+A restart's backoff waits on a durable Temporal timer, not in an activity,
+and a run that waits many times continues as a new execution without
+losing anything.
 
 `loop.test.ts` runs bodiless skills as agent loops (0.2) against a scripted
 model and a simulated sandbox. It checks:

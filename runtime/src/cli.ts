@@ -265,6 +265,8 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
       lines.push(...subjectLines(req["subject"] ?? null));
       if (config.verifier) lines.push(`  the change in ${config.verifier.workdir}: git -C ${config.verifier.workdir} diff ${config.verifier.base}`);
       lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} --by <you>`, `  decline: mandate decline ${run.run_id} --revision ${run.revision} --by <you>`);
+    } else if (w["kind"] === "timer") {
+      lines.push(`waiting for: a timer until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "")}); the scheduler resumes the run then`);
     } else if (w["kind"] === "decision") {
       lines.push(`waiting for: approval of action ${req["effect"] ?? ""} (digest ${req["action_digest"]})`);
       lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} --by <you>`);
