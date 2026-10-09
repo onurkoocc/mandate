@@ -168,7 +168,7 @@ capabilities:
 budget:
   tokens: null
   spend:
-    micros: 20000000
+    micros: 50000000
     currency: USD
   time_ms: 10800000
   steps: null
@@ -321,7 +321,7 @@ $referenced_components:
     url: https://api.anthropic.com/v1/
     api_key: null
     default_generation_parameters:
-      max_tokens: 16000
+      max_tokens: 12000
       reasoning_effort: high
   node.counterexamples:
     component_type: MandateAgentNode
@@ -441,12 +441,12 @@ $referenced_components:
       - $component_ref: cap.RepoRead
       - $component_ref: cap.ModelStd
       budget:
-        tokens: 300000
+        tokens: 1120000
         spend:
-          micros: 3000000
+          micros: 7040000
           currency: USD
         time_ms: null
-        steps: 30
+        steps: 8
       effects:
       - Fs.Read
       - Model
@@ -643,12 +643,12 @@ $referenced_components:
       - $component_ref: cap.RepoRead
       - $component_ref: cap.ModelStd
       budget:
-        tokens: 400000
+        tokens: 1680000
         spend:
-          micros: 3000000
+          micros: 10560000
           currency: USD
         time_ms: 900000
-        steps: 40
+        steps: 12
       effects:
       - Fs.Read
       - Model
@@ -1064,12 +1064,12 @@ $referenced_components:
             - $component_ref: cap.Build
             - $component_ref: cap.ModelStd
             budget:
-              tokens: 800000
+              tokens: 2800000
               spend:
-                micros: 8000000
+                micros: 17600000
                 currency: USD
               time_ms: 2700000
-              steps: 80
+              steps: 20
             effects:
             - Exec
             - Fs.Read
@@ -1334,12 +1334,12 @@ $referenced_components:
             - $component_ref: cap.Build
             - $component_ref: cap.ModelStd
             budget:
-              tokens: 300000
+              tokens: 1680000
               spend:
-                micros: 3000000
+                micros: 10560000
                 currency: USD
               time_ms: 1200000
-              steps: 40
+              steps: 12
             effects:
             - Exec
             - Fs.Read
@@ -1536,12 +1536,12 @@ $referenced_components:
       capabilities:
       - $component_ref: cap.ModelStd
       budget:
-        tokens: 150000
+        tokens: 560000
         spend:
-          micros: 1500000
+          micros: 3520000
           currency: USD
         time_ms: null
-        steps: 10
+        steps: 4
       effects:
       - Model
       epistemic: Inferred
