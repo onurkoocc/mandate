@@ -8,6 +8,7 @@
 // and CI against a real PostgreSQL), and PGlite, PostgreSQL compiled to
 // WebAssembly, for in-process tests and local runs without a server.
 
+import { mkdirSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import pg from "pg";
 
@@ -149,6 +150,7 @@ function ident(s: string): string {
 }
 
 function pgliteDb(dataDir?: string): Db {
+  if (dataDir) mkdirSync(dataDir, { recursive: true });
   const lite = dataDir ? new PGlite(dataDir) : new PGlite();
   const wrap = (q: Pick<PGlite, "query">): Tx => ({
     async query<T extends Row>(sql: string, params: unknown[] = []): Promise<T[]> {
