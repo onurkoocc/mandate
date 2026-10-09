@@ -924,3 +924,29 @@ Configuration (`mandate.runtime.json`):
   verification is a pluggable hook (`GitHubCi.attest`); without one, every
   result is unattested.
 - Evidence records name the producer `mandate-boundary-verifier@0.3`.
+
+## Read broker and run modes (design doc 9 §5, B6)
+
+- **`ReadBroker`** (`adapters.broker`): `query(ReadRequest)` →
+  `{ rows, masked, as_of, truncated, row_count }`. The request carries the
+  environment, the read, its component, the query or log filter from the
+  IR, the parameters, `max_rows`, every field's data class and the caller's
+  `max_class`.
+- **`DeclaredReads`** is configured per `<environment>/<component>`:
+  `"broker": { "prod_sim/core": { "url_env": "MANDATE_PROD_SIM_CORE_URL" }, "prod_sim/mcp": { "logs": "data/prod_sim/logs" } }`.
+  Database URLs come from the environment only. SQL `:name` placeholders
+  become `$n` and run as `select * from (<query>) limit max_rows + 1` in a
+  `read only` transaction with a statement timeout. Logs are
+  `<component>.jsonl` filtered by the read's expression (comparisons,
+  `and`, `or`, `not`, literals, fields, parameters; nothing else runs).
+- **`SampleReads`** (`adapters.samples`, `"samples": "samples.json"`)
+  answers design runs from rows by `<environment>.<read>`. A design run
+  without samples fails the read with `PolicyDenied(no_samples)`; a run
+  without a broker, with `no_broker`.
+- **Modes.** `StartRun({ mode })` / `mandate run --mode design|read_only|live`.
+  The manifest records the mode. A read_only effect is prepared and then
+  recorded `would_apply` (an action state that is never open); it returns
+  `{ would_apply, effect, action_digest, operation }`. A design effect is
+  a `simulate` command. Evidence records of non-live runs carry `mode`.
+- **`shadowDiff(rt, a, b)`** / `mandate shadow-diff`: see
+  [`system.md`](system.md#reads-and-run-modes-b6).

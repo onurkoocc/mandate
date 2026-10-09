@@ -225,3 +225,48 @@ moves only kervan-mcp's side of the token-audience agreement. Its own tests
 pass, no interface spec changes, and only `test.integration` fails
 (`runtime/test/audience.test.ts`; against the real system,
 `examples/kervan/b5.sh`).
+
+## Reads and run modes (B6)
+
+Production is read through the read broker in the control plane, never
+from an agent's sandbox: agents have no network and no credential (K7).
+Writes go through the effect broker.
+
+```mandate
+use std.{data, model}
+use kervan.system.{prod_sim}
+
+capability Reads = data.read(prod_sim, mcp_errors, shipment_overview)
+
+let rows = data.read(prod_sim.shipment_overview, tracking_no: t, max_class: internal)
+```
+
+- **Declared only (K43).** A read names one the environment declares, and
+  passes each of its parameters once, by name (E1201). Values, including a
+  model's, are bound parameters, never query text. The broker runs the SQL
+  in a read-only transaction with a statement timeout, through a read-only
+  login only it holds, or filters log files by the declared expression.
+- **Masking.** Only the row type's fields come back. A field of a class
+  above `max_class` (the environment's class when absent) comes back as
+  `{ "$masked": "<class>" }` and is typed `Masked`. Rows are `Untrusted`,
+  with the class of what is left. A confidential row cannot reach a model
+  limited to internal data (E0220). A field the program needs unmasked does
+  not check (E0201): a class is never lowered.
+- **Authority.** `data.read(env, read…)` (all the environment's reads
+  without names). Each call needs one covering its read (E0301).
+- **Recorded.** Each read is a journaled command with its `as_of`; replay
+  reads the journal and never asks the broker (INV-09).
+
+A run's **mode** is part of its manifest (R), and its views show it:
+
+| Mode | Reads | Critical effects | Evidence |
+|---|---|---|---|
+| `design` | Sample rows (`samples`), never production | Simulated: recorded, nothing prepared or sent | Carries `mode: "design"` |
+| `read_only` | Through the broker | Prepared and frozen, then recorded `would_apply`: never authorized or committed. A change set prepares its members and stops | Carries `mode: "read_only"` |
+| `live` | Through the broker | prepare → authorize → commit | As before |
+
+A read_only run is the **shadow run** of Doc 4 §8.3 (old item 22).
+`mandate shadow-diff <a> <b>` compares what two runs prepared, node by node,
+by what each action would do: effect, parameters, frozen files and business
+key. It reports `same`, `differs`, `only_a` or `only_b`, with how many
+actions each run committed (V19; a read_only run commits none).

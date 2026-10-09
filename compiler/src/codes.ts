@@ -257,6 +257,10 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Change set without a verified plan",
     explain: "A change set lands a plan that was accepted before any code was written: its plan argument must be Verified against a contract. The set digest covers the plan, so an approval of the set is an approval of this plan's change (design doc 9 §3.4).",
   },
+  "MDT-E1201": {
+    title: "Read not as declared",
+    explain: "data.read runs a read an environment declares: data.read(env.read, param: value, …, max_class: c). Every parameter is passed once, by name, and nothing else; values are bound as parameters and never become query text (K43). max_class is a data class; fields above it come back masked, typed Masked (design doc 9 §5.1).",
+  },
   "MDT-E0902": {
     title: "Sandbox requirement cannot be enforced",
     explain: "The sandbox adapter probed the host and it cannot enforce part of an agent's sandbox requirement: a backend, a path, host or command allow-list, a timeout, or a scope that is not statically known. The run refuses to start the agent (unsupported_sandbox_profile) instead of running it with less isolation (INV-11, G05).",

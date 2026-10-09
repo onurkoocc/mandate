@@ -19,6 +19,7 @@ export { MxcHost, disallowed } from "./mxc.js";
 export { denialsIn, MIN_BUILD, WindowsMxcHost, windowsBuild, winQuote, type WindowsMxcHostOptions } from "./mxc-windows.js";
 export * from "./signals.js";
 export { runTests, type TestOptions, type TestResult } from "./testing.js";
-export { freshness, runDoc, runView, type AsOf, type Freshness, type RunView } from "./views.js";
+export { freshness, runDoc, runView, shadowDiff, type AsOf, type Freshness, type RunView, type ShadowRow } from "./views.js";
+export { bind, BROKER_ID, DeclaredReads, evaluate, SampleReads, type ReadSourceConfig, type SqlRunner } from "./broker.js";
 export * from "./sim.js";
 export * from "./values.js";

@@ -58,7 +58,7 @@ describe("a run's components and their base commits (B3)", () => {
     expect(b.manifest_hash).not.toBe(a.manifest_hash);
 
     const { view } = await runView(w.rt, "ws2");
-    expect(view.manifest).toEqual({ hash: b.manifest_hash, components: [{ name: "core", repo: "onurkoocc/kervan-core", base: "core-commit-1" }, { name: "mcp", repo: "onurkoocc/kervan-mcp", base: "mcp-commit-2" }] });
+    expect(view.manifest).toEqual({ hash: b.manifest_hash, mode: "live", components: [{ name: "core", repo: "onurkoocc/kervan-core", base: "core-commit-1" }, { name: "mcp", repo: "onurkoocc/kervan-mcp", base: "mcp-commit-2" }] });
     expect(await w.rt.replayRun("ws2")).toEqual({ status: "complete", value: "done" });
   });
 

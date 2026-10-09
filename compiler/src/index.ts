@@ -15,7 +15,7 @@ export { applyPatch, type GovernanceChange, type PatchOp, type PatchResult } fro
 export { printProgram } from "./print/printer.js";
 export { resolveNames } from "./resolve/resolve.js";
 export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, within, type CapResult, type CapVal } from "./check/caps.js";
-export { DECISION_POLICIES, STD_EFFECTS, STD_FNS } from "./std/std.js";
+export { BUILTIN_EFFECTS, classRank, DATA_CLASSES, DECISION_POLICIES, STD_EFFECTS, STD_FNS, type DataClass } from "./std/std.js";
 export { denialDiagnostics, requirementFor, sandboxRequirements, SANDBOX_DENIALS_FORMAT, SANDBOX_REQUIREMENT_FORMAT, type DenialReport, type SandboxRequirement } from "./target/sandbox.js";
 export { htmlEscape, mdEscape, toHtml, toMarkdown, type Block, type Cell, type Doc } from "./views/doc.js";
 export * from "./views/views.js";

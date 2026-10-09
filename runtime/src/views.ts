@@ -18,7 +18,7 @@
 import { architecture, architectureBlocks, authority, authorityBlocks, programRef, VIEW_FORMAT, type Block, type Cell, type Doc, type ProgramRef, type Program } from "@mandate/compiler";
 import type { BudgetReport } from "./journal.js";
 import type { Runtime } from "./runtime.js";
-import { canonical, isObj, show, type Obj, type Value } from "./values.js";
+import { canonical, digest, isObj, show, type Obj, type Value } from "./values.js";
 
 export interface AsOf {
   revision: number;
@@ -32,8 +32,8 @@ export interface RunView {
   program: ProgramRef;
   package: string;
   run: { id: string; workflow: string; tenant: string; state: string };
-  /** What the run started from (B3): the manifest's hash R, and each component at its base commit. */
-  manifest: { hash: string | null; components: Array<{ name: string; repo: string; base: string }> };
+  /** What the run started from (B3): the manifest's hash R, its mode (B6), and each component at its base commit. */
+  manifest: { hash: string | null; mode: string; components: Array<{ name: string; repo: string; base: string }> };
   as_of: AsOf;
   waiting: Value;
   attention: Value;
@@ -82,6 +82,7 @@ export async function runView(rt: Runtime, runId: string): Promise<{ view: RunVi
     run: { id: run.run_id, workflow: run.workflow, tenant: run.tenant, state: run.state },
     manifest: {
       hash: run.manifest_hash,
+      mode: isObj(run.manifest) && typeof run.manifest["mode"] === "string" ? run.manifest["mode"] : "live",
       components: Object.entries(isObj(run.manifest) && isObj(run.manifest["components"] ?? null) ? (run.manifest["components"] as Obj) : {}).sort(([a], [b]) => (a < b ? -1 : 1)).map(([name, c]) => ({ name, repo: String((c as Obj)["repo"]), base: String((c as Obj)["base"]) })),
     },
     as_of,
@@ -191,10 +192,56 @@ export function runDoc(v: RunView, program: Program): Doc {
       ["Package", v.package],
       ["Run", `${v.run.id} (tenant ${v.run.tenant})`],
       ...(v.manifest.hash ? [["Started from", v.manifest.hash] as [string, string]] : []),
+      ["Mode", v.manifest.mode === "live" ? "live" : v.manifest.mode === "read_only" ? "read_only: real reads, effects prepared and never committed" : "design: sample reads, effects simulated"],
       ...v.manifest.components.map((c) => [`Component ${c.name}`, `${c.repo} @ ${c.base}`] as [string, string]),
       ["As of", `revision ${v.as_of.revision}, event ${v.as_of.event}`],
       ["View", `${VIEW_FORMAT}, generated from the program and the run's journal`],
     ],
     blocks: [...statusBlocks(v), ...evidenceBlocks(v), ...costBlocks(v), ...actionBlocks(v), ...architectureBlocks(architecture(program)), ...authorityBlocks(authority(program))],
   };
+}
+
+/** One external action of a shadow comparison: the same node in two runs. */
+export interface ShadowRow {
+  node: string;
+  effect: string;
+  /** `same`: the same action would be taken; `differs`: other parameters or files; `only_a` / `only_b`. */
+  state: "same" | "differs" | "only_a" | "only_b";
+  a?: { state: string; fingerprint: string };
+  b?: { state: string; fingerprint: string };
+}
+
+/**
+ * The shadow comparison (Doc 4 §8.3, V19; design doc 9 §5.2): what two runs
+ * of the same workflow prepared, node by node, compared by what the action
+ * would do (effect, parameters, frozen files, business key), not by run.
+ * A `read_only` run commits nothing; the comparison says what it would have
+ * changed compared with the other.
+ */
+export async function shadowDiff(rt: Runtime, a: string, b: string): Promise<{ a: { run: string; mode: string; committed: number }; b: { run: string; mode: string; committed: number }; rows: ShadowRow[] }> {
+  const side = async (runId: string) => {
+    const run = await rt.getRun(runId);
+    const actions = await rt.journal.actions(runId);
+    const byNode = new Map(actions.map((x) => [x.command_id, x]));
+    const committed = actions.filter((x) => ["dispatched", "confirmed", "unknown_outcome", "rejected"].includes(x.state)).length;
+    return { run: runId, mode: isObj(run.manifest) && typeof run.manifest["mode"] === "string" ? run.manifest["mode"] : "live", committed, byNode };
+  };
+  const fp = (x: { effect: string; params: Value; artifacts: Value }): string => digest("request", { effect: x.effect, params: x.params, artifacts: isObj(x.artifacts ?? null) ? Object.fromEntries(Object.entries(x.artifacts as Obj).map(([p, f]) => [p, isObj(f) ? f["digest"] ?? null : null])) : null });
+  const A = await side(a);
+  const B = await side(b);
+  const rows: ShadowRow[] = [];
+  for (const node of [...new Set([...A.byNode.keys(), ...B.byNode.keys()])].sort()) {
+    const x = A.byNode.get(node);
+    const y = B.byNode.get(node);
+    const fx = x ? fp(x) : undefined;
+    const fy = y ? fp(y) : undefined;
+    rows.push({
+      node,
+      effect: (x ?? y)!.effect,
+      state: !x ? "only_b" : !y ? "only_a" : fx === fy ? "same" : "differs",
+      ...(x ? { a: { state: x.state, fingerprint: fx! } } : {}),
+      ...(y ? { b: { state: y.state, fingerprint: fy! } } : {}),
+    });
+  }
+  return { a: { run: A.run, mode: A.mode, committed: A.committed }, b: { run: B.run, mode: B.mode, committed: B.committed }, rows };
 }

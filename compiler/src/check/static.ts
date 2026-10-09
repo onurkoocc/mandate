@@ -15,6 +15,7 @@
 //                                              working copies, declared reads (doc 9 §2, §5)
 //   change sets                 E1101–E1105   order against the interface graph, members,
 //                                              breaking changes, a verified plan (doc 9 §3)
+//   reads                       E1201         data.read of a declared read, masking (doc 9 §5.1)
 //
 // Std calls the checker does not describe have unknown type and no effects,
 // so missing knowledge never produces an error.
@@ -1030,6 +1031,7 @@ class Checker implements TypeEnv {
       const dec = ep.inner.k === "named" && ep.inner.name === "Decision" ? (ep.inner.args[0] ?? UNKNOWN) : UNKNOWN;
       return { ty: named("DecisionOutcome", dec), cls };
     }
+    if (p === "data.read" && this.isModuleRoot(e.callee, frame)) return this.dataRead(e, frame, path);
     if (p && STD_FNS[p] && this.isModuleRoot(e.callee, frame)) {
       const f = STD_FNS[p]!;
       for (const eff of f.effects) this.use(frame, { effect: eff, path });
@@ -1046,6 +1048,57 @@ class Checker implements TypeEnv {
       return { ty: named("Capability"), cls };
     }
     return { ty: UNKNOWN, cls };
+  }
+
+  /**
+   * `data.read(env.read, p: v, …, max_class: c)` (design doc 9 §5.1, K43): a
+   * read the environment declares, run by the read broker. Values reach it
+   * only as its typed parameters; model output may be a value, never query
+   * text. The rows are Untrusted. Fields of a class above `max_class` come
+   * back masked and are typed `Masked`, so a field the program needs unmasked
+   * does not check (a class is never lowered, §5.5).
+   */
+  private dataRead(e: Extract<Expr, { op: "call" }>, frame: Frame, path: string): Val {
+    const fail = (message: string, at = path): Val => {
+      this.report("E1201", message, at);
+      return { ty: named("Untrusted", named("List", UNKNOWN)), cls: PUBLIC };
+    };
+    const first = e.args[0];
+    if (!first || first.name !== undefined || first.value.op !== "field" || first.value.of.op !== "var") return fail("data.read names a declared read first: data.read(env.read, param: value, …).");
+    const envName = first.value.of.name;
+    const env = this.def(envName);
+    if (env?.kind !== "environment") return fail(`'${envName}' is not an environment.`, `${path}/args/0/value`);
+    const readName = first.value.name;
+    const src = env.reads?.[readName];
+    if (!src) return fail(`${envName} declares no read '${readName}'.`, `${path}/args/0/value`);
+    let maxClass: DataClass = env.class;
+    const given = new Set<string>();
+    e.args.slice(1).forEach((a, k) => {
+      const i = k + 1;
+      const ap = `${path}/args/${i}/value`;
+      if (a.name === "max_class") {
+        const c = a.value.op === "var" ? a.value.name : "";
+        if (!(DATA_CLASSES as string[]).includes(c)) this.report("E1201", `max_class is a data class (${DATA_CLASSES.join(", ")}).`, ap);
+        else maxClass = c as DataClass;
+        return;
+      }
+      const param = src.params.find((p) => p.name === a.name);
+      if (!a.name || !param) {
+        this.report("E1201", `${envName}.${readName} takes ${src.params.map((p) => p.name).join(", ") || "no parameters"}${a.name ? `, not '${a.name}'` : "; pass each by name"}.`, ap);
+        return;
+      }
+      if (given.has(a.name)) this.report("E1201", `${a.name} is given twice.`, ap);
+      given.add(a.name);
+      // A parameter's value may come from a model or a person: it is bound as a value, never spliced into the query.
+      const v = this.expr(a.value, frame, ap);
+      this.problem(assignable(withLevel(epistemic(v.ty).inner, "plain"), this.ty(param.type), this), ap);
+    });
+    for (const p of src.params) if (!given.has(p.name)) this.report("E1201", `${envName}.${readName} needs ${p.name}.`, path);
+    const row = this.ty(src.returns);
+    const fields = fieldsOf(row, this);
+    const shown: Ty = fields ? { k: "record", fields: Object.fromEntries(Object.entries(fields).map(([f, t]) => [f, classRank(this.typeClass(t)) > classRank(maxClass) ? named("Masked") : t])) } : row;
+    this.use(frame, { effect: "Data.Read", scope: [`${envName}.${readName}`], path });
+    return { ty: named("Untrusted", named("List", shown)), cls: this.typeClass(shown) };
   }
 
   private record(e: Extract<Expr, { op: "record" }>, frame: Frame, path: string): Val {

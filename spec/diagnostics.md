@@ -106,3 +106,4 @@ assigned here.
 | MDT-E1103 | Breaking change in one change set | — | assigned; expand → migrate → contract |
 | MDT-E1104 | Change set member is not a critical effect | — | assigned |
 | MDT-E1105 | Change set without a verified plan | — | assigned |
+| MDT-E1201 | Read not as declared | — | assigned; data.read of a declared read, its parameters by name, max_class |

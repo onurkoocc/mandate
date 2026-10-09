@@ -131,6 +131,7 @@ export function capsFromCall(e: Expr, defs: Record<string, Def> = {}): CapResult
   if (e.op !== "call") return undefined;
   const ctor = calleePath(e.callee);
   if (ctor && COMPONENT_CTORS.has(ctor)) return componentCaps(ctor, e.args, defs);
+  if (ctor === "data.read") return readCaps(e.args, defs);
   const c = capFromCall(e);
   return c ? { caps: [c] } : undefined;
 }
@@ -183,6 +184,27 @@ function componentCaps(ctor: string, args: Arg[], defs: Record<string, Def>): Ca
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([command, prefixes]) => ({ ctor: "exec", effect: "Exec", write: false, scope: [command], argsPrefix: uniquePrefixes(prefixes), via: shown, components: [name] })),
   };
+}
+
+/**
+ * `data.read(env, read…)`: the authority to run those declared reads of an
+ * environment through the read broker (design doc 9 §5.1); without read
+ * names, every read the environment declares. Scope items are `env.read`.
+ */
+function readCaps(args: Arg[], defs: Record<string, Def>): CapResult {
+  const env = args[0]?.value.op === "var" ? args[0].value.name : undefined;
+  const d = env && Object.hasOwn(defs, env) ? defs[env] : undefined;
+  if (!env || d?.kind !== "environment") return { caps: [], problem: `data.read takes an environment first; ${env ? `'${env}' is not one` : "the first argument is not an environment name"}` };
+  const declared = Object.keys(d.reads ?? {});
+  const named: string[] = [];
+  for (const a of args.slice(1)) {
+    const r = a.value.op === "var" ? a.value.name : a.value.op === "text" ? a.value.value : undefined;
+    if (!r || !declared.includes(r)) return { caps: [], problem: `${env} declares no read ${r ? `'${r}'` : "named by that argument"}` };
+    named.push(r);
+  }
+  const reads = (named.length ? named : declared).sort();
+  if (!reads.length) return { caps: [], problem: `${env} declares no reads` };
+  return { caps: [{ ctor: "data.read", effect: "Data.Read", write: false, scope: reads.map((r) => `${env}.${r}`), via: `data.read(${[env, ...named].join(", ")})` }] };
 }
 
 function uniquePrefixes(ps: string[][]): string[][] {

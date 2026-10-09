@@ -15,6 +15,8 @@
 import {
   calleePath,
   capsOf,
+  classRank,
+  type DataClass,
   DECISION_POLICIES,
   hashProgram,
   modelTiers,
@@ -38,7 +40,7 @@ import {
   type Verifier,
   type WorkflowDef,
 } from "@mandate/compiler";
-import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, RunComponents, SystemFacts, ToolAdapter } from "./adapters.js";
+import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
@@ -149,6 +151,8 @@ export interface InterpOptions {
   verifiers?: TrustedKeys;
   /** The components the run works on, at their base commits (B3); verifier calls are told. */
   workspace?: RunComponents;
+  /** How the run touches the outside world (B6); `live` when absent. */
+  mode?: RunMode;
   /** Shared rate limits (§8.6); none when absent. */
   limiter?: RateLimiter;
   /** Replay reads the journal only and never calls an adapter (R13). */
@@ -559,12 +563,72 @@ export class Interpreter {
       return this.wait(path, "input", { question: pos[0] ?? null });
     }
     if (p === "time.now") return this.command(path, "time", {}, undefined, async () => ({ ok: this.o.adapters.clock.now() }));
+    if (p === "data.read") return this.dataRead(e, ctx, path);
     if (p && STD_FNS[p]) {
       const { pos, named } = await this.args(e.args, ctx, path);
       return this.command(path, "read", { call: p, args: pos, named }, undefined, () => this.o.adapters.reads.call(p, pos, named));
     }
     if (e.callee.op === "field" && e.callee.name === "narrow") return { $capability: path };
     throw new Violation("unsupported_call", `The runtime cannot call ${p ?? "this expression"} at ${path}.`);
+  }
+
+  /**
+   * `data.read(env.read, p: v, …, max_class: c)` (design doc 9 §5.1): a
+   * journaled read through the broker; replay reads the journal. A `design`
+   * run reads sample rows instead. The program gets the rows.
+   */
+  private async dataRead(e: Extract<Expr, { op: "call" }>, ctx: Ctx, path: string): Promise<Value> {
+    const first = e.args[0]!.value as Extract<Expr, { op: "field" }>;
+    const envName = (first.of as Extract<Expr, { op: "var" }>).name;
+    const env = this.def(envName);
+    const src = env?.kind === "environment" ? env.reads?.[first.name] : undefined;
+    if (!src || env?.kind !== "environment") throw new Violation("unknown_read", `No read ${envName}.${first.name}.`);
+    const params: Obj = {};
+    let maxClass: DataClass = env.class;
+    for (let i = 1; i < e.args.length; i++) {
+      const a = e.args[i]!;
+      if (a.name === "max_class") maxClass = (a.value as Extract<Expr, { op: "var" }>).name as DataClass;
+      else if (a.name) params[a.name] = plain(await this.expr(a.value, ctx, `${path}/args/${i}/value`));
+    }
+    const mode = this.o.mode ?? "live";
+    const broker = mode === "design" ? this.o.adapters.samples : this.o.adapters.broker;
+    const req: ReadRequest = { environment: envName, read: first.name, from: src.from, query: "sql" in src.query ? { sql: src.query.sql } : { logs: src.query.logs as unknown as Value }, params, maxRows: src.max_rows, fields: this.fieldClasses(src.returns), maxClass, commandId: path };
+    const r = await this.command(path, "read", { read: `${envName}.${first.name}`, params, max_class: maxClass, mode }, undefined, async () => {
+      if (!broker) return { error: { tag: "PolicyDenied", args: [{ reason: mode === "design" ? "no_samples" : "no_broker", read: `${envName}.${first.name}` }] }, cost: {} };
+      return broker.query(req);
+    }, { siblings: ctx.siblings, label: `read ${envName}.${first.name}` });
+    return isObj(r) && Array.isArray(r["rows"]) ? r["rows"] : [];
+  }
+
+  /** The data class of each field of a row type (§5.5): its named type's class, the highest along the way. */
+  private fieldClasses(t: TypeExpr): Record<string, DataClass> {
+    const resolve = (x: TypeExpr, seen: Set<string>): TypeExpr | undefined => {
+      if ("record" in x) return x;
+      if ("refine" in x) return resolve(x.refine, seen);
+      if ("ref" in x && !seen.has(x.ref)) {
+        const d = this.def(x.ref);
+        if (d?.kind === "type") return resolve(d.type, new Set([...seen, x.ref]));
+      }
+      return undefined;
+    };
+    const classOf = (x: TypeExpr, seen: Set<string>): DataClass => {
+      let best: DataClass = "public";
+      const bump = (c: DataClass): void => {
+        if (classRank(c) > classRank(best)) best = c;
+      };
+      if ("ref" in x && !seen.has(x.ref)) {
+        const d = this.def(x.ref);
+        if (d?.kind === "type") {
+          if (d.class) bump(d.class);
+          bump(classOf(d.type, new Set([...seen, x.ref])));
+        }
+        for (const a of x.args ?? []) bump(classOf(a, seen));
+      } else if ("record" in x) for (const f of Object.values(x.record)) bump(classOf(f, seen));
+      else if ("refine" in x) bump(classOf(x.refine, seen));
+      return best;
+    };
+    const rec = resolve(t, new Set());
+    return rec && "record" in rec ? Object.fromEntries(Object.entries(rec.record).map(([f, ft]) => [f, classOf(ft, new Set())])) : {};
   }
 
   // ── commands ──────────────────────────────────────────────────────────
@@ -982,6 +1046,8 @@ export class Interpreter {
         artifacts: outputs,
         detail,
         at: this.o.adapters.clock.now(),
+        // Evidence from a design or read_only run says so (doc 9 §5.2); it never stands for a live one.
+        ...(this.o.mode && this.o.mode !== "live" ? { mode: this.o.mode } : {}),
       };
       await this.o.journal.recordEvidence(this.o.runId, { record, ...this.o.signer.sign(record) });
     }
@@ -1046,8 +1112,13 @@ export class Interpreter {
     const info = this.effectInfo(e.name);
     const { pos } = await this.args(e.args, ctx, path);
     const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
+    const mode = this.o.mode ?? "live";
+    // A design run touches nothing: the effect is recorded as what it would have been (doc 9 §5.2).
+    if (mode === "design") return this.simulated(e.name, plain(pos), path);
     const p = await this.prepareAction(e.name, info, pos, plain(pos), key, ctx, path);
     if (!p.action) return p.receipt;
+    // A read_only run goes as far as prepare: the action is frozen and recorded as what would apply, never committed.
+    if (mode === "read_only") return this.wouldApply(p.action);
     let action = p.action;
     const { journal, runId, fence } = this.o;
     let justCommitted = false;
@@ -1175,6 +1246,12 @@ export class Interpreter {
     if (!isObj(plan) || !("$verified" in plan)) throw new Fault("PolicyDenied", [{ changeset: path, reason: "unverified_plan" }]);
     if (!this.o.replay) await this.checkVerified("changeset", plan);
     const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
+    const mode = this.o.mode ?? "live";
+    if (mode === "design") {
+      const sim: Obj = {};
+      for (const m of e.order) sim[m] = await this.simulated(e.members[m]!.effect, plain((await this.args(e.members[m]!.args, ctx, `${path}/members/${m}`)).pos), `${path}/members/${m}`);
+      return { simulated: true, members: sim };
+    }
     const members: Array<{ component: string; effect: string; approver: string; tool: ToolAdapter; action?: ActionRow; receipt?: Value }> = [];
     for (const m of e.order) {
       const mem = e.members[m]!;
@@ -1186,6 +1263,12 @@ export class Interpreter {
       const target: Obj = { component: m, repo: comp.repo, root: comp.root, base: this.o.workspace?.[m]?.base ?? null };
       const p = await this.prepareAction(mem.effect, this.effectInfo(mem.effect), pos, [target, ...(plain(pos) as Value[])], key, ctx, mp, { changeset: path }, m);
       members.push({ component: m, effect: mem.effect, approver: mem.approver ?? comp.owner, tool: p.tool, ...(p.action ? { action: p.action } : { receipt: p.receipt }) });
+    }
+    if (mode === "read_only") {
+      // What the set would land: each member prepared and frozen, nothing approved or committed.
+      const would: Obj = {};
+      for (const m of members) would[m.component] = this.o.replay ? { would_apply: true, effect: m.effect } : await this.wouldApply(m.action!);
+      return { would_apply: true, members: would };
     }
     if (this.o.replay) return { members: Object.fromEntries(members.map((m) => [m.component, m.receipt ?? null])) };
     const setDigest = digest("action", {
@@ -1289,6 +1372,17 @@ export class Interpreter {
       this.facts = Object.keys(components).length ? { components, interfaces } : null;
     }
     return this.facts ?? undefined;
+  }
+
+  /** A `design` run's effect: recorded as a command, nothing prepared, authorized or sent. */
+  private simulated(effect: string, params: Value, path: string): Promise<Value> {
+    return this.command(`${path}/simulated`, "simulate", { effect, params }, undefined, async () => ({ ok: { simulated: true, effect, params_digest: digest("request", params) }, cost: {} }));
+  }
+
+  /** A `read_only` run's effect: prepared and frozen, then recorded as what would apply. */
+  private async wouldApply(action: ActionRow): Promise<Value> {
+    if (action.state === "prepared") await this.o.journal.finishAction(this.o.runId, this.o.fence, action.operation_key, "would_apply", { detail: { mode: "read_only" } });
+    return { would_apply: true, effect: action.effect, action_digest: action.action_digest, operation: action.operation_key };
   }
 
   /** The compensation an effect offers (§8.5), if it declares one. */

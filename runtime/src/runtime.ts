@@ -5,7 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import { canonicalize, capsOf, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, link, linkedProgram, modelTiers, references, SANDBOX_DENIALS_FORMAT, validateLock, type DenialReport, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
-import type { Adapters, Cost, RunComponents } from "./adapters.js";
+import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
@@ -88,6 +88,8 @@ export interface StartOptions {
   authorizationTtlMs?: number;
   /** Priority class in shared rate limits (§8.6). */
   priority?: Policy["priority"];
+  /** How the run touches the outside world (design doc 9 §5.2): `live` (default), `read_only` or `design`. */
+  mode?: RunMode;
 }
 
 export interface Message {
@@ -178,7 +180,7 @@ export class Runtime {
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
     // The components the program works on start from one base commit each, recorded in the run's manifest (B3).
     const components = await this.prepareWorkspace(runId, o.pkg);
-    const manifest = { format: RUN_MANIFEST_FORMAT, package: o.pkg.hash, workflow: o.workflow, tenant: policy.tenant, input: digest("request", o.input), components } as unknown as Value;
+    const manifest = { format: RUN_MANIFEST_FORMAT, package: o.pkg.hash, workflow: o.workflow, tenant: policy.tenant, input: digest("request", o.input), mode: o.mode ?? "live", components } as unknown as Value;
     const manifestHash = digest("run", manifest);
     await this.db.tx(async (tx) => {
       await tx.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict (package_hash) do nothing", [
@@ -424,6 +426,7 @@ export class Runtime {
       trusted: this.trusted,
       verifiers: this.verifiers,
       ...(isObj(run.manifest) && isObj(run.manifest["components"] ?? null) ? { workspace: run.manifest["components"] as unknown as RunComponents } : {}),
+      ...(isObj(run.manifest) && typeof run.manifest["mode"] === "string" ? { mode: run.manifest["mode"] as RunMode } : {}),
       replay,
       durableTimers: this.durableTimers,
       ...(this.limiter ? { limiter: this.limiter } : {}),
@@ -756,6 +759,8 @@ export function refusingAdapters(real: Adapters): Adapters {
     model: { infer: refuse("a model"), upperBound: () => ({}) },
     verifier: { check: refuse("a verifier") },
     reads: { call: refuse("a read") },
+    broker: { describe: () => ({ id: "refused", digest: "" }), query: refuse("the read broker") },
+    samples: { describe: () => ({ id: "refused", digest: "" }), query: refuse("sample reads") },
     tools: Object.fromEntries(
       Object.entries(real.tools).map(([k, t]) => [k, { describe: () => t.describe(), prepare: refuse(`${k}.prepare`), execute: refuse(`${k}.execute`), reconcile: refuse(`${k}.reconcile`) }]),
     ),

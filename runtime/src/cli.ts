@@ -33,7 +33,7 @@ import type { RunRow } from "./journal.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { runTests } from "./testing.js";
-import { runDoc, runView } from "./views.js";
+import { runDoc, runView, shadowDiff } from "./views.js";
 import { isObj, show, type Obj, type Value } from "./values.js";
 
 interface Args {
@@ -43,7 +43,7 @@ interface Args {
   modules: string[];
 }
 
-const VALUED = new Set(["--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format"]);
 
 function parse(argv: string[]): Args {
   const positional: string[] = [];
@@ -68,7 +68,8 @@ function parse(argv: string[]): Args {
 class Usage extends Error {}
 
 const USAGE = `usage:
-  mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M] [--lock FILE] [--module FILE]… [--priority high|normal]
+  mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M] [--lock FILE] [--module FILE]… [--priority high|normal] [--mode design|read_only|live]
+  mandate shadow-diff <run> <other run>
   mandate status <run> [--json]
   mandate approve <run> --revision N --by NAME
   mandate decline <run> --revision N --by NAME
@@ -84,7 +85,7 @@ const USAGE = `usage:
   mandate test <program> [--json] [--lock FILE]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -119,6 +120,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         ...(typeof a.flags["--run-id"] === "string" ? { runId: a.flags["--run-id"] } : {}),
         ...(typeof a.flags["--limit"] === "string" ? { limits: limits(a.flags["--limit"]) } : {}),
         ...(a.flags["--priority"] === "high" || a.flags["--priority"] === "normal" ? { priority: a.flags["--priority"] } : {}),
+        ...(a.flags["--mode"] !== undefined ? { mode: runMode(a.flags["--mode"]) } : {}),
       });
       out(await report(rt, run, json, config));
       return 0;
@@ -178,6 +180,12 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         out(new TextDecoder().decode(got.bytes));
         return 0;
       }
+      case "shadow-diff": {
+        const other = a.positional[1] ?? fail("shadow-diff needs two runs");
+        const d = await shadowDiff(rt, runId, other);
+        out(json ? JSON.stringify(d, null, 2) + "\n" : `${d.rows.map((r) => `${r.node}\t${r.effect}\t${r.state}`).join("\n")}\ncommitted in ${d.a.run}: ${d.a.committed}, in ${d.b.run}: ${d.b.committed}\n`);
+        return 0;
+      }
       case "replay": {
         const r = await rt.replayRun(runId);
         out(json ? JSON.stringify(r, null, 2) + "\n" : `replay: ${r.status}${"value" in r ? `\n${show(r.value)}` : ""}${"stoppedAt" in r ? ` at ${r.stoppedAt}` : ""}${"missing" in r ? ` (missing ${r.missing})` : ""}\n`);
@@ -223,6 +231,11 @@ async function test(a: Args, out: (s: string) => void): Promise<number> {
 
 function fail(message: string): never {
   throw new Usage(message);
+}
+
+function runMode(v: string | true): "design" | "read_only" | "live" {
+  if (v === "design" || v === "read_only" || v === "live") return v;
+  throw new Usage("--mode is design, read_only or live");
 }
 
 function str(a: Args, flag: string): string {

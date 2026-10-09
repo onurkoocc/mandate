@@ -58,7 +58,10 @@ anything runs. This repository holds the 0.1 reference implementation.
    stops for a person (`git.merge` on GitHub). Boundary evidence checks
    each component's tests, interface specs against the declared change,
    the system end to end on an internal network, and attested or re-run
-   CI. The reference
+   CI. Production is read only through a broker in the control plane:
+   declared, parameterized queries, data masked by class. A run is
+   `live`, `read_only` (prepared, never committed) or `design`, and
+   `mandate shadow-diff` compares what two runs would do. The reference
    system is Kervan, seven repositories in TypeScript, Java and Python
    ([`examples/kervan/`](examples/kervan/SPEC.md)). See
    [`spec/system.md`](spec/system.md).
@@ -154,6 +157,10 @@ governance changes.
 the order against the interface graph (E1101), the order and its members
 (E1102), breaking changes (E1103), critical members (E1104), a verified
 plan (E1105), and each member's repository held by the workflow (E0301).
+`compiler/test/reads.test.ts` checks declared reads (design doc 9 §5):
+a read of the environment's, its parameters by name (E1201), masking
+by class (E0220 without it, E0201 for a field needed unmasked), and
+data.read authority (E0301).
 `compiler/test/static.test.ts` also checks the §20 FixBug table: 18.5 USD of
 child budgets inside 20 USD, delegated capabilities inside the workflow's,
 disjoint writes for the two parallel agents, step limits, review never

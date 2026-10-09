@@ -118,8 +118,8 @@ describe("Kervan's system model (B2)", () => {
   });
 
   it("E0201: a log filter is a Bool over the row's fields and the read's parameters", () => {
-    expect(codesOf(mutate('logs where level == "error" and ts >= since', "logs where status + 1"))).toEqual(["MDT-E0201"]);
-    expect(codesOf(mutate('logs where level == "error" and ts >= since', 'logs where severity == "error"'))).toEqual(["MDT-E0120"]);
+    expect(codesOf(mutate('logs where (level == "error" or level == "warn") and ts >= since', "logs where status + 1"))).toEqual(["MDT-E0201"]);
+    expect(codesOf(mutate('logs where (level == "error" or level == "warn") and ts >= since', 'logs where severity == "error"'))).toEqual(["MDT-E0120"]);
   });
 
   it("E1005: a read cannot return data above its environment's class", () => {

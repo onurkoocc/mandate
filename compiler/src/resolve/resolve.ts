@@ -19,7 +19,7 @@ export const BUILTIN_TYPES = new Set([
   "List", "Set", "Map", "Option", "Result", "Ratio", "Prob",
   "Inferred", "Verified", "Untrusted", "Evidence", "Decision",
   "PreparedAction", "Authorization", "Receipt", "Task", "Prompt", "Budget",
-  "EvidenceRef", "ArtifactRef", "CapRef", "OperationKey", "Approval", "Question",
+  "EvidenceRef", "ArtifactRef", "CapRef", "OperationKey", "Approval", "Question", "Masked",
 ]);
 
 /** Functions available without an import. */

@@ -17,7 +17,7 @@ export function classRank(c: DataClass): number {
 
 /** Built-in effects (§6.1). `External` effects are named by their declaration, e.g. `git.open_pr`. */
 export const BUILTIN_EFFECTS = new Set([
-  "Fs.Read", "Fs.Write", "Net", "Model", "Tool", "Exec", "Human", "Delegate", "Spend", "Time", "Random",
+  "Fs.Read", "Fs.Write", "Net", "Model", "Tool", "Exec", "Human", "Delegate", "Spend", "Time", "Random", "Data.Read",
 ]);
 
 /** Effects that need no capability: waiting on a person, reading the clock, drawing a random number. */
@@ -40,6 +40,8 @@ export const CAP_CTORS: Record<string, CapCtor> = {
   exec: { effect: "Exec", write: false, scope: "commands" },
   "git.pr": { effect: "git.*", write: true, scope: "positional" },
   "money.spend": { effect: "Spend", write: false, scope: "none" },
+  // Declared reads of an environment through the read broker (design doc 9 §5.1), scoped `env.read`.
+  "data.read": { effect: "Data.Read", write: false, scope: "none" },
   // Effects on an environment (design doc 9 §5.3, §9 L4), scoped by environment name.
   "env.deploy": { effect: "deploy", write: true, scope: "positional" },
   "env.migrate": { effect: "migrate", write: true, scope: "positional" },

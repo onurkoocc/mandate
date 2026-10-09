@@ -136,7 +136,7 @@ A model asked to choose from a closed set returns
 
 Each step that touches the world is an effect. The built-in effects are
 `Fs.Read`, `Fs.Write`, `Net`, `Model`, `Tool`, `Exec`, `Human`,
-`Delegate`, `Spend`, `Time` and `Random`. External effects carry their
+`Delegate`, `Spend`, `Time`, `Random` and `Data.Read` (0.3). External effects carry their
 declared name, e.g. `git.open_pr`.
 
 - A function or skill must declare every effect it uses, including those of
@@ -168,6 +168,7 @@ passed explicitly, and can only shrink.
 | `component.read(c…)`, `component.write(c, p…)` | `Fs.Read`, `Fs.Write` | The components' roots, or paths inside them |
 | `component.exec(c, build \| test)` | `Exec` | The commands the component declares |
 | `component.repo(c…)` | `git.*` | The components' repositories |
+| `data.read(env, r…)` | `Data.Read` | Declared reads of an environment |
 | `env.deploy(e…)`, `env.migrate(e…)` | `deploy`, `migrate` | Environments |
 
 `Human`, `Time`, `Random` and `Delegate` need no capability. The rules:
@@ -417,6 +418,12 @@ Mandate describes a working system instead of rewriting it
   approver approves the set digest S. Members commit in order; a failure or
   an unknown outcome after a member has landed stops the set as
   `changeset_partial`, and compensation is offered, never run.
+- **Reads and modes.** `data.read(env.r, p: v, max_class: c)` runs a read
+  the environment declares, through the control plane's broker: values are
+  bound parameters, never query text, and fields above `c` come back masked
+  (typed `Masked`). A run's mode is `live`, `read_only` (real reads;
+  effects prepared, never committed) or `design` (sample reads, simulated
+  effects); it is part of the manifest, and evidence carries it.
 - **Boundary evidence.** `test.suite_each`, `test.contract`,
   `test.integration` and `test.ci` check a change where components meet:
   each component's tests pinned to the base, interface specs against the

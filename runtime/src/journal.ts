@@ -80,7 +80,7 @@ export interface CommandRow {
   throttled: number;
 }
 
-export type ActionState = "prepared" | "dispatched" | "confirmed" | "rejected" | "unknown_outcome" | "cancelled";
+export type ActionState = "prepared" | "dispatched" | "confirmed" | "rejected" | "unknown_outcome" | "cancelled" | "would_apply";
 
 export interface ActionRow {
   operation_key: string;

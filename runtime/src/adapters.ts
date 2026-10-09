@@ -2,7 +2,7 @@
 // nondeterministic step goes through one of these, and its result is journaled
 // before the program sees it, so replay never calls them again (INV-09).
 
-import type { Budget, Command, RetryClass, SandboxRequirement, TypeExpr } from "@mandate/compiler";
+import type { Budget, Command, DataClass, RetryClass, SandboxRequirement, TypeExpr } from "@mandate/compiler";
 import type { MxcAdapter } from "./sandbox.js";
 import type { WorkspaceAdapter } from "./workspace.js";
 import type { Value } from "./values.js";
@@ -171,6 +171,35 @@ export interface VerifierAdapter {
   check(req: VerifyRequest): Promise<CheckResult>;
 }
 
+/** How a run touches the outside world (design doc 9 §5.2): recorded in its manifest. */
+export type RunMode = "design" | "read_only" | "live";
+
+/** One declared read (design doc 9 §5.1): the query and the row's fields with their classes come from the program. */
+export interface ReadRequest {
+  environment: string;
+  read: string;
+  /** The component whose data it reads. */
+  from: string;
+  query: { sql: string } | { logs: Value };
+  params: Record<string, Value>;
+  maxRows: number;
+  /** Every field of the row type and its data class. */
+  fields: Record<string, DataClass>;
+  /** The highest class the caller may receive; fields above it come back masked. */
+  maxClass: DataClass;
+  commandId: string;
+}
+
+/**
+ * The read broker (doc 9 §5.1). Its result is
+ * `{ rows, masked, as_of, truncated, row_count }`; rows hold only the
+ * declared fields, masked ones as `{ $masked: class }`.
+ */
+export interface ReadBroker {
+  describe(): { id: string; digest: string };
+  query(req: ReadRequest): Promise<Outcome>;
+}
+
 /** Read-only std calls (fs.read_text, net.https.get, …). */
 export interface ReadAdapter {
   call(name: string, args: Value[], named: Record<string, Value>): Promise<Outcome>;
@@ -262,6 +291,10 @@ export interface Adapters {
   tools: Record<string, ToolAdapter>;
   /** Working copies of a system model's components (design doc 9 §12, B3); needed by a run that works on components. */
   workspace?: WorkspaceAdapter;
+  /** Declared reads of an environment (design doc 9 §5.1, B6), for `read_only` and `live` runs. */
+  broker?: ReadBroker;
+  /** Sample rows answering declared reads in `design` runs (B6). */
+  samples?: ReadBroker;
   clock: Clock;
   random(): number;
 }
