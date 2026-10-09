@@ -9,7 +9,7 @@ import type { Json } from "../src/json/strict-json.js";
 import { printProgram } from "../src/print/printer.js";
 import { readRepo, syntaxFixtures } from "./helpers.js";
 
-const files = ["examples/fixbug/fixbug.mdt", "examples/kervan/kervan-system/system/kervan.system.mdt", ...syntaxFixtures()];
+const files = ["examples/fixbug/fixbug.mdt", "examples/kervan/kervan-system/system/kervan.system.mdt", "examples/kervan/programs/repos.mdt", ...syntaxFixtures()];
 
 /** Warnings each example is expected to carry; everything else must be clean. */
 const EXPECTED_WARNINGS: Record<string, string[]> = {

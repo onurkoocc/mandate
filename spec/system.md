@@ -280,3 +280,64 @@ A read_only run is the **shadow run** of Doc 4 §8.3 (old item 22).
 by what each action would do: effect, parameters, frozen files and business
 key. It reports `same`, `differs`, `only_a` or `only_b`, with how many
 actions each run committed (V19; a read_only run commits none).
+
+## Onboarding and drift (B7)
+
+Taking an existing system into Mandate means describing it, not rewriting
+it, and the description is checked like any other agent output. Onboarding
+starts from what is certain, the repositories
+([`kervan.repos`](../examples/kervan/programs/repos.mdt): components with
+`lang other` and an unassigned owner), and is a program of its own
+([`onboard.mdt`](../examples/kervan/programs/onboard.mdt)):
+
+1. An agent reads the repositories and writes the model into the working
+   copy of the repository that will hold it. Its result is `Inferred`: an
+   agent saying a service consumes another is not the system's truth
+   (INV-04).
+2. The runtime checks the draft against the repositories:
+
+   | Method | Checks | Met when |
+   |---|---|---|
+   | `test.system_specs(path, at: c)` | The draft module checks clean and defines only components, interfaces, environments and the types their reads return. It describes every other repository of the run, by name and repository, and nothing else. Each interface's spec is in its provider's repository at the base commit, and parses | No problem |
+   | `test.consumes(path, at: c)` | Each repository at its base commit is scanned for calls to the other components: a URL to a component's host, or a host as the default of a host, URL, issuer or endpoint setting, outside tests | Every call is a `consumes` of the model. A `consumes` the code does not show is a warning (best effort) |
+   | `test.commands(path, at: c)` | Every component's `build` and `test` commands, in a sandbox over its base commit, with no network | Every command exits 0 |
+
+   A person accepts it: `human.approve(role: "architect")`.
+3. The accepted model lands in that repository as a change set of one
+   member: the first version of the system model.
+
+The evidence binds to the draft's bytes, so the file that lands is the file
+that was checked (G01).
+
+`mandate onboard --component name=dir…` drafts a model from working copies
+without a model or a run. It infers each component's language and commands
+from `package.json`, `pom.xml` or `pyproject.toml`, and its interfaces from
+spec files by convention: `docs/openapi.json`, `docs/mcp-tools.json`,
+`docs/oauth-metadata.json` and a Flyway migration directory. Consumption
+comes from calls in the code, each listed with its file and line, and
+owners from `CODEOWNERS`. The draft checks clean. It is a start, not the
+model: interface names are made up, and a person names them.
+
+**Drift** is the same comparison against an accepted model:
+`mandate drift --module model.mdt --component name=dir…`. It reports, as
+drift (exit 1):
+
+- a component whose working copy is missing;
+- a language that differs;
+- a spec that is missing or does not parse;
+- a spec no interface names;
+- a call the model does not declare, with where it is.
+
+As warnings, it reports a `consumes` the code does not show and test
+commands other than the convention. Running the onboarding program again
+on the accepted model finds the same drift as unmet evidence. Updating the
+model is an approved change, as before.
+
+Kervan's committed model leaves one dependency out on purpose: kervan-auth
+fetches the client metadata kervan-voice publishes (`CIMD_ALLOWED_HOSTS`,
+`src/config.ts`), and the model has auth consume nothing. `mandate drift`
+finds it, as does `test.consumes` on that model. Both also report auth's
+reference to mcp, the resource it issues tokens for, which the model leaves
+out as well: a reference is not always a call, and a person decides what
+the model says. A model drafted from the
+repositories is accepted and lands (`runtime/test/onboard.test.ts`).

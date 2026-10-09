@@ -24,6 +24,8 @@
 //     "boundary": { "integration": { "dir": "../kervan-system/compose", "files": ["base.yml", "staging.yml", "integration.yml"], "service": "e2e" },
 //                   "ci": { "mode": "rerun", "workflow": "ci" }, "pinned": { "mcp": ["test/**"] }, "extraRead": { "core": ["/root/.m2"] } }
 //                 // boundary evidence (B5): test.suite_each, test.contract, test.integration, test.ci
+//     "onboard":  { "hosts": { "auth": "auth" }, "extraRead": { "core": ["/root/.m2"] } }
+//                 // onboarding evidence (B7): test.system_specs, test.consumes, test.commands
 //                 // where each component of a system model comes from (B3); checked out at its root
 //   }
 
@@ -42,6 +44,7 @@ import { openDb, type Db } from "./db.js";
 import { GitHubPullRequests } from "./github.js";
 import { GitHubMerges } from "./github-merge.js";
 import { BoundaryVerifier, GitHubCi, realDocker, type IntegrationConfig } from "./boundary.js";
+import { OnboardVerifier, type OnboardConfig } from "./onboard.js";
 import { DeclaredReads, SampleReads } from "./broker.js";
 import type { Value } from "./values.js";
 import { MxcHost } from "./mxc.js";
@@ -83,6 +86,8 @@ export interface RuntimeConfig {
   samples?: string;
   /** Boundary evidence across components (design doc 9 §4, B5). */
   boundary?: { integration?: IntegrationConfig; ci?: { mode?: "attested" | "rerun"; workflow?: string }; pinned?: Record<string, string[]>; extraRead?: Record<string, string[]>; timeoutMs?: number };
+  /** Checks of a drafted system model against the repositories (design doc 9 §7, B7). */
+  onboard?: OnboardConfig;
   /** Where each component of a system model is cloned from, and the ref a run starts from (design doc 9 §12, B3). */
   workspace?: { components: Record<string, ComponentSource> };
   /** The configuration file itself, so a verifier process can read it too. */
@@ -90,8 +95,9 @@ export interface RuntimeConfig {
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "evidence", "rateLimits", "model", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples"],
+  "": ["database", "artifacts", "evidence", "rateLimits", "model", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard"],
   boundary: ["integration", "ci", "pinned", "extraRead", "timeoutMs"],
+  onboard: ["hosts", "extraRead", "timeoutMs"],
   "boundary.integration": ["dir", "files", "service", "services", "env", "timeoutMs", "probeImage"],
   "boundary.ci": ["mode", "workflow"],
   workspace: ["components"],
@@ -271,12 +277,13 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
       : undefined;
   // Boundary checks need the run's working copies, so they run in this process; other checks go to the verifier above.
   const boundary = config.boundary && sandbox ? boundaryVerifier(config, sandbox, env, own) : undefined;
+  const onboard = config.onboard ? new OnboardVerifier(config.onboard, sandbox, boundary ?? own) : undefined;
   return {
     agents: { run: async () => missing("agent adapter: agents run as agent loops, which need model and sandbox") },
     ...(model && sandbox ? { loop: { chat: model, sandbox } } : {}),
     model: model ?? { infer: async () => missing("model"), upperBound: () => missing("model") },
     // A verifier process of its own signs each check with its own key; otherwise the checks run here.
-    verifier: boundary ?? own ?? { check: async () => missing("verifier") },
+    verifier: onboard ?? boundary ?? own ?? { check: async () => missing("verifier") },
     reads: { call: async () => missing("reader") },
     tools,
     ...(config.workspace ? { workspace: new GitWorkspace(config.workspace.components) } : {}),

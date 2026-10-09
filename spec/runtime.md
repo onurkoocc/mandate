@@ -723,6 +723,8 @@ mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
 mandate replay <run>
 mandate artifact <run> <blob:sha256:…>
 mandate show <run> [--format md|html|json]
+mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER/REPO]… [--name MODULE]
+mandate drift --module MODEL --component NAME=DIR… [--json]
 ```
 
 **Configuration.** Each call reads `mandate.runtime.json`, or the file
@@ -962,3 +964,29 @@ Configuration (`mandate.runtime.json`):
   a `simulate` command. Evidence records of non-live runs carry `mode`.
 - **`shadowDiff(rt, a, b)`** / `mandate shadow-diff`: see
   [`system.md`](system.md#reads-and-run-modes-b6).
+
+## Onboarding verifier and drift (design doc 9 §7, B7)
+
+- **`OnboardVerifier`** (`runtime/src/onboard.ts`; configured by
+  `"onboard": { "hosts": {…}, "extraRead": {…}, "timeoutMs": n }`) answers
+  `test.system_specs`, `test.consumes` and `test.commands`, and hands
+  every other method to the verifier it wraps. Each takes the draft's path
+  and `at:`, the component whose working copy holds it. Its evidence
+  names the draft, binds to every component's working copy, and comes from
+  handler `mandate-onboard-verifier@0.3`.
+- Repositories are read at the run's base commit (`git archive`), never
+  as the working copy left them. `test.commands` runs each component's
+  build and test commands in the sandbox, writable only in that tree.
+  Linked dependency directories are readable and never writable. With no
+  network (K7), a build that fetches dependencies needs a cache that
+  `extraRead` makes readable. A command that cannot run fails the
+  criterion; it is not skipped (INV-11).
+- `hosts` maps a network name to a component (by default, each
+  component's own name). The scanner matches `http(s)://<host>` URLs, and
+  a quoted host as the default of a `*HOST*`, `*URL*`, `*ISSUER*` or
+  `*ENDPOINT*` setting. It skips tests, `docs`, dependency and build
+  directories.
+- `scan`, `draft` and `drift` are exported. `mandate onboard` and
+  `mandate drift` (no configuration needed) print a draft module, or the
+  findings (`--json`). `drift` exits 1 on drift, and 0 when there are only
+  warnings.

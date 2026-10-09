@@ -61,9 +61,12 @@ anything runs. This repository holds the 0.1 reference implementation.
    CI. Production is read only through a broker in the control plane:
    declared, parameterized queries, data masked by class. A run is
    `live`, `read_only` (prepared, never committed) or `design`, and
-   `mandate shadow-diff` compares what two runs would do. The reference
-   system is Kervan, seven repositories in TypeScript, Java and Python
-   ([`examples/kervan/`](examples/kervan/SPEC.md)). See
+   `mandate shadow-diff` compares what two runs would do. An onboarding
+   program drafts a system model from the repositories and has it
+   checked (specs, calls in the code, commands) and accepted;
+   `mandate drift` finds where a model and its repositories disagree.
+   The reference system is Kervan, seven repositories in TypeScript,
+   Java and Python ([`examples/kervan/`](examples/kervan/SPEC.md)). See
    [`spec/system.md`](spec/system.md).
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
@@ -300,6 +303,25 @@ in-memory GitHub:
 
 `live.test.ts` repeats the lost response against the real test repository
 when `MANDATE_GITHUB_TOKEN` is set.
+
+The brownfield tests run on Kervan (design doc 9 §12):
+
+- `system.test.ts` and `workspace.test.ts` (B2, B3): the run manifest, and
+  two components written in parallel, each agent seeing only its own. On
+  CI, the sandbox jobs repeat this in real Bubblewrap and AppContainer
+  sandboxes.
+- `changeset.test.ts` (B4): owners, then the set digest; an ordered commit;
+  an unknown middle member stops the set as `changeset_partial`, and
+  reconciliation continues it.
+- `specdiff.test.ts`, `boundary.test.ts` and `audience.test.ts` (B5):
+  task class 3, caught only end to end.
+- `broker.test.ts` (B6): the incident review, read_only and masked, with
+  a replay that never asks the broker; and `shadow-diff`.
+- `onboard.test.ts` (B7): Kervan's model drafted from its repositories,
+  checked and landed; the committed model's deliberate drift found by
+  `mandate drift` and by `test.consumes`.
+- `kervan-live.test.ts` repeats B5 and B6 against the real Kervan in
+  Docker when `MANDATE_KERVAN=1`.
 
 `sandbox.test.ts` runs FixBug's five agents in five MXC sandboxes, one per
 agent. Implementer may write only `/work/repo/src`, and TestWriter only

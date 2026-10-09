@@ -15,21 +15,25 @@
 //   mandate rotate-key                                    a new evidence key; the old one's public half stays trusted
 //   mandate denials <run>                                 what learning-mode sandboxes denied, for `mandate check --denials` (W0311)
 //   mandate test <program> [--json]                       run the program's tests (§6.4); needs no configuration
+//   mandate onboard --component name=dir…                 a draft system model from working copies (doc 9 §7); no configuration
+//   mandate drift --module model --component name=dir…    where a system model and the working copies disagree; no configuration
 //
 // Every command reads `mandate.runtime.json` (or --config). A decision names
 // the revision the person saw in `status`: if the run has moved since, it is
 // refused (`stale_revision`) and nothing is recorded. What a person approves
 // is what `status` showed them: the decision is bound to its digest.
 
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { check, kindOf, linkedProgram, loadModules, parseStrictJson, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { basename, dirname, join, resolve } from "node:path";
+import { check, kindOf, linkedProgram, loadModules, parseStrictJson, printProgram, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
 import type { Cost } from "./adapters.js";
 import { adaptersFor, connect, readConfig, runtimeOptions, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { EvidenceSigner } from "./evidence.js";
 import { openDb, type Db } from "./db.js";
 import type { RunRow } from "./journal.js";
+import { draft, drift, scan, type RepoFacts } from "./onboard.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { runTests } from "./testing.js";
@@ -41,20 +45,29 @@ interface Args {
   flags: Record<string, string | true>;
   /** `--module FILE`, repeatable: modules the program imports, such as a system model. */
   modules: string[];
+  /** Repeatable `name=value` flags: `--component`, `--host`, `--repo`. */
+  pairs: Record<string, Record<string, string>>;
 }
 
-const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name"]);
+const PAIRS = new Set(["--component", "--host", "--repo"]);
 
 function parse(argv: string[]): Args {
   const positional: string[] = [];
   const flags: Record<string, string | true> = {};
   const modules: string[] = [];
+  const pairs: Record<string, Record<string, string>> = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--module") {
       const v = argv[++i];
       if (v === undefined) throw new Usage("--module needs a file");
       modules.push(v);
+    } else if (PAIRS.has(a)) {
+      const v = argv[++i];
+      const eq = v?.indexOf("=") ?? -1;
+      if (v === undefined || eq < 1) throw new Usage(`${a} takes name=value`);
+      (pairs[a] ??= {})[v.slice(0, eq)] = v.slice(eq + 1);
     } else if (!a.startsWith("--")) positional.push(a);
     else if (VALUED.has(a)) {
       const v = argv[++i];
@@ -62,7 +75,7 @@ function parse(argv: string[]): Args {
       flags[a] = v;
     } else flags[a] = true;
   }
-  return { positional, flags, modules };
+  return { positional, flags, modules, pairs };
 }
 
 class Usage extends Error {}
@@ -83,9 +96,11 @@ const USAGE = `usage:
   mandate denials <run>
   mandate rotate-key
   mandate test <program> [--json] [--lock FILE]
+  mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER/REPO]… [--name MODULE]
+  mandate drift --module MODEL --component NAME=DIR… [--host HOST=NAME]… [--json]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -96,6 +111,8 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     const configFile = typeof a.flags["--config"] === "string" ? a.flags["--config"] : "mandate.runtime.json";
     if (!cmd || !CONTROL_COMMANDS.has(cmd)) throw new Usage(`unknown command ${cmd ?? ""}`);
     if (cmd === "test") return await test(a, out);
+    if (cmd === "onboard") return onboard(a, out);
+    if (cmd === "drift") return driftCommand(a, out);
     if (!existsSync(configFile)) throw new Usage(`no runtime configuration at ${configFile} (see spec/runtime.md, "Control CLI")`);
     const config = readConfig(configFile);
     db = await connect(config);
@@ -226,6 +243,65 @@ async function test(a: Args, out: (s: string) => void): Promise<number> {
     return results.every((r) => r.ok) ? 0 : 1;
   } finally {
     await db.close();
+  }
+}
+
+/** Each `--component name=dir` scanned; components are reached by their own names unless `--host` says otherwise. */
+function scanned(a: Args): RepoFacts[] {
+  const components = a.pairs["--component"] ?? {};
+  if (!Object.keys(components).length) throw new Usage("name the working copies with --component name=dir");
+  const hosts = a.pairs["--host"] ?? Object.fromEntries(Object.keys(components).map((c) => [c, c]));
+  return Object.entries(components).sort(([x], [y]) => (x < y ? -1 : 1)).map(([c, dir]) => {
+    if (!existsSync(dir)) throw new Usage(`no working copy at ${dir}`);
+    return scan(c, resolve(dir), hosts);
+  });
+}
+
+/** A draft system model from working copies, as a module on stdout: a start, checked and accepted before it is the model (doc 9 §7). */
+function onboard(a: Args, out: (s: string) => void): number {
+  const facts = scanned(a);
+  const dirs = a.pairs["--component"]!;
+  const repos: Record<string, string> = {};
+  for (const f of facts) repos[f.component] = a.pairs["--repo"]?.[f.component] ?? originOf(f.root) ?? `unknown/${basename(f.root)}`;
+  const roots = Object.fromEntries(facts.map((f) => [f.component, `/work/${basename(resolve(dirs[f.component]!))}`]));
+  const program = draft(facts, { module: typeof a.flags["--name"] === "string" ? a.flags["--name"] : "system", repos, roots });
+  const text = printProgram(program);
+  out(`// A system model drafted by \`mandate onboard\` from ${facts.length} working copies. Interface names are made up and owners
+// come from CODEOWNERS; consumption is inferred from calls in the code:
+${facts.flatMap((f) => f.refers.map((r) => `//   ${f.component} → ${r.component}  ${r.evidence.file}:${r.evidence.line}`)).join("\n") || "//   (none found)"}
+// It is not the system's model until it is checked and accepted (see examples/kervan/programs/onboard.mdt).
+
+${text}`);
+  return check(text, "mdt").ok ? 0 : 1;
+}
+
+/** Where a system model and the working copies disagree; exit 1 on drift, warnings alone exit 0. */
+function driftCommand(a: Args, out: (s: string) => void): number {
+  const file = a.modules[0] ?? a.positional[0] ?? fail("drift needs the model: --module FILE");
+  const r = check(readFileSync(file, "utf8"), kindOf(file));
+  if (!r.ok || !r.program) {
+    for (const d of r.diagnostics) process.stderr.write(`${d.code}: ${d.message}\n`);
+    return 1;
+  }
+  const findings = drift(r.program.defs, Object.fromEntries(scanned(a).map((f) => [f.component, f])));
+  if (a.flags["--json"] === true) out(JSON.stringify(findings, null, 2) + "\n");
+  else {
+    for (const f of findings) {
+      out(`${f.severity === "drift" ? "drift  " : "warning"} ${f.component}: ${f.detail} (${f.kind})\n`);
+      for (const e of f.evidence ?? []) out(`          ${e.file}:${e.line}  ${e.text}\n`);
+    }
+    if (!findings.length) out("no drift\n");
+  }
+  return findings.some((f) => f.severity === "drift") ? 1 : 0;
+}
+
+/** `owner/repo` from a working copy's GitHub remote, if it has one. */
+function originOf(dir: string): string | undefined {
+  try {
+    const url = execFileSync("git", ["-C", dir, "remote", "get-url", "origin"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return url.match(/github\.com[:/]([^/]+\/[^/]+?)(\.git)?$/)?.[1];
+  } catch {
+    return undefined;
   }
 }
 

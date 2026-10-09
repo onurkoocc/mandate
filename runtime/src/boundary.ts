@@ -39,7 +39,7 @@ import { globRegExp } from "./verifier.js";
 export const BOUNDARY_HANDLER = "mandate-boundary-verifier@0.3";
 
 /** Directories linked, not copied, into a test copy, and readable where they are: dependencies. */
-const LINKED = ["node_modules", ".venv", "target"];
+export const LINKED = ["node_modules", ".venv", "target"];
 
 export interface IntegrationConfig {
   /** The directory the compose files are in; compose runs from here. */
@@ -467,7 +467,7 @@ function copyOf(src: string, prefix: string): { dir: string; extraRead: string[]
 }
 
 /** The tree of `commit` from the repository at `root`, in a temporary directory; undefined if the commit is not there. */
-function checkout(root: string, commit: string): { dir: string; remove(): void } | undefined {
+export function checkout(root: string, commit: string): { dir: string; remove(): void } | undefined {
   if (git(root, ["cat-file", "-e", `${commit}^{commit}`]) === undefined) {
     git(root, ["fetch", "--quiet", "origin", commit]);
     if (git(root, ["cat-file", "-e", `${commit}^{commit}`]) === undefined) return undefined;
@@ -483,7 +483,7 @@ function checkout(root: string, commit: string): { dir: string; remove(): void }
   return { dir, remove: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-function git(root: string, args: string[]): Buffer | undefined {
+export function git(root: string, args: string[]): Buffer | undefined {
   if (!existsSync(join(root, ".git"))) return undefined;
   try {
     return execFileSync("git", ["-c", "core.autocrlf=false", "-C", root, ...args], { maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "ignore"] });
@@ -492,7 +492,7 @@ function git(root: string, args: string[]): Buffer | undefined {
   }
 }
 
-function tail(text: string, max = 4000): string {
+export function tail(text: string, max = 4000): string {
   return text.length > max ? `…${text.slice(-max)}` : text;
 }
 
