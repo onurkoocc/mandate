@@ -124,6 +124,52 @@ describe("FixBug runs end to end", () => {
     expect((await w.rt.evidence("fb3")).find((e) => e.criterion === "owner_approved")).toMatchObject({ passed: false, detail: { by: "carol", role: "code_owner" } });
   });
 
+  it("an approval not given before its deadline is unmet: on unmet escalates and no PR is prepared (R15)", async () => {
+    const DAY = 86_400_000;
+    const src = FIXBUG.replace('by human.approve(role: "code_owner")', 'by human.approve(role: "code_owner", deadline: 24h)');
+    const pr = new SimTool("git.open_pr");
+    const w = await world(src, { tools: [pr], agents: fixbugAgents() });
+    const t0 = w.clock.now();
+    const asked = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb5" });
+    const approval = waitOf(asked.waiting);
+    expect(approval.request).toMatchObject({ criterion: "owner_approved", deadline: t0 + DAY });
+
+    // A new worker taking the run over does not move the deadline.
+    w.clock.advance(DAY - 1);
+    expect(waitOf((await w.rt.resume("fb5")).waiting).request["deadline"]).toBe(t0 + DAY);
+    expect((await w.rt.tick("fb5")).waiting).toMatchObject({ command: approval.command });
+
+    // At the deadline the criterion is unmet, and the run goes to `on unmet`.
+    w.clock.advance(1);
+    const expired = await w.rt.tick("fb5");
+    expect(expired.state).toBe("waiting");
+    const escalation = waitOf(expired.waiting);
+    expect(escalation.command).toBe("/defs/FixBug/body/5/value/on_unmet/then");
+    expect(escalation.request).toEqual({ escalation: 'Open acceptance criteria: ["owner_approved"]' });
+    expect((await w.rt.evidence("fb5")).find((e) => e.criterion === "owner_approved")).toMatchObject({ passed: false, detail: { by: null, role: "code_owner", expired: true } });
+
+    // A late approval finds nothing to approve, and nothing was sent.
+    await expect(w.rt.decideAction("fb5", OWNER, { commandId: approval.command, revision: expired.revision, digest: String(approval.request["subject_digest"]), approve: true, by: "carol" })).rejects.toMatchObject({
+      code: "no_wait",
+    });
+    expect(pr.prepares).toHaveLength(0);
+    expect((await w.rt.cancelRun("fb5")).state).toBe("cancelled");
+    expect(pr.executions).toHaveLength(0);
+  });
+
+  it("an approval that arrives after its deadline, before the clock expires it, is unmet too (R15)", async () => {
+    const src = FIXBUG.replace('by human.approve(role: "code_owner")', 'by human.approve(role: "code_owner", deadline: 1h)');
+    const pr = new SimTool("git.open_pr");
+    const w = await world(src, { tools: [pr], agents: fixbugAgents() });
+    const asked = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb6" });
+    const approval = waitOf(asked.waiting);
+    w.clock.advance(3_600_000);
+    const late = await w.rt.decideAction("fb6", OWNER, { commandId: approval.command, revision: asked.revision, digest: String(approval.request["subject_digest"]), approve: true, by: "carol" });
+    expect(waitOf(late.waiting).request).toEqual({ escalation: 'Open acceptance criteria: ["owner_approved"]' });
+    expect((await w.rt.evidence("fb6")).find((e) => e.criterion === "owner_approved")).toMatchObject({ passed: false, detail: { expired: true } });
+    expect(pr.prepares).toHaveLength(0);
+  });
+
   it("a caller limit below the agents' budgets stops at budget_exceeded before the PR", async () => {
     const w = await fixbug();
     const run = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb4", limits: { spend: { micros: 10 * USD, currency: "USD" } } });

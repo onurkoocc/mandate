@@ -116,6 +116,12 @@ describe("FixBug (§20) passes Gate 1", () => {
     expect(d.at.path).toBe("/defs/Explorer/skills/locate");
   });
 
+  it("bounds the code owner's approval with a Duration deadline (§8.8, R15)", () => {
+    const by = 'by human.approve(role: "code_owner")';
+    expect(fixbugErrors(by, 'by human.approve(role: "code_owner", deadline: 24h)')).toEqual([]);
+    expect(fixbugErrors(by, 'by human.approve(role: "code_owner", deadline: "tomorrow")')).toEqual(["MDT-E0201"]);
+  });
+
   it("never accepts review alone as evidence", () => {
     const src = fixbug("by static not pr.review.blocking\n       and review(model: standard, isolated)", "by review(model: standard, isolated)");
     expect(only(src, "MDT-E0603").at.path).toBe("/defs/FixAccepted/accept/no_blocking_review/by");

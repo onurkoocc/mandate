@@ -508,7 +508,8 @@ export class Interpreter {
     const row = this.o.replay ? await journal.command(runId, id) : await journal.openWait(runId, fence, { id, kind, digest: digest("request", { kind, request }) }, request);
     if (!row || row.state === "waiting") {
       if (this.o.replay) throw new ReplayEnd(id, "no_result");
-      throw new Suspend({ kind, command: id, request });
+      // The request as first recorded: a resumed worker must not move its deadline.
+      throw new Suspend({ kind, command: id, request: row?.result ?? request });
     }
     return replayed(row, id);
   }
@@ -651,7 +652,7 @@ export class Interpreter {
       method = "human.approve";
       const r = await this.approval((v as { call: Extract<Expr, { op: "call" }> }).call, contract, name, ctx, `${path}/call`);
       passed = r["approved"] === true;
-      detail = { by: r["by"] ?? null, role: r["role"] ?? null };
+      detail = { by: r["by"] ?? null, role: r["role"] ?? null, ...(r["expired"] === true ? { expired: true } : {}) };
     } else {
       const call = v.call;
       method = call.op === "call" ? (calleePath(call.callee) ?? "call") : "call";
@@ -691,14 +692,22 @@ export class Interpreter {
     const c = this.def(contract) as ContractDef;
     const subject = plain(c.params.map((p) => this.variable(p.name, ctx)));
     const role = named["role"] ?? null;
-    const decision = await this.wait(id, "decision", {
-      contract,
-      criterion,
-      role,
-      subject,
-      subject_digest: digest("request", { contract, criterion, subject }),
-      deadline: null,
-    });
+    const within = named["deadline"];
+    let decision: Value;
+    try {
+      decision = await this.wait(id, "decision", {
+        contract,
+        criterion,
+        role,
+        subject,
+        subject_digest: digest("request", { contract, criterion, subject }),
+        deadline: typeof within === "number" ? this.o.adapters.clock.now() + within : null,
+      });
+    } catch (f) {
+      // Past its deadline the approval was not given: the criterion is unmet, and `on unmet` decides (§8.8, R15).
+      if (f instanceof Fault && f.tag === "Rejected" && f.args[0] === "approval_expired") return { approved: false, by: null, role, expired: true };
+      throw f;
+    }
     return isObj(decision) ? { ...decision, role } : { approved: false, role };
   }
 

@@ -893,7 +893,12 @@ class Checker implements TypeEnv {
     if (p && STD_FNS[p] && this.isModuleRoot(e.callee, frame)) {
       const f = STD_FNS[p]!;
       for (const eff of f.effects) this.use(frame, { effect: eff, path });
-      if (p === "human.approve") frame.approved = true;
+      if (p === "human.approve") {
+        frame.approved = true;
+        // An approval may wait at most `deadline`; past it the approval is not given (§8.8, R15).
+        const i = e.args.findIndex((a) => a.name === "deadline");
+        if (i >= 0) this.problem(assignable(args[i]!.ty, named("Duration"), this), `${path}/args/${i}/value`);
+      }
       return { ty: this.ty(f.returns), cls };
     }
     if (e.callee.op === "field" && e.callee.name === "narrow") {

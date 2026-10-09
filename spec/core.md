@@ -250,7 +250,9 @@ contract FixAccepted(issue: Issue, pr: PullRequestDraft) {
   checked at run time, with a warning.
 - **Order.** `verify` checks `require`, then the criteria in order of
   their method: static, then tests, then evals and reviews, then people.
-  A person is asked only once every other criterion is met.
+  A person is asked only once every other criterion is met. With
+  `human.approve(role: r, deadline: d)`, an approval not given within `d`
+  is unmet.
 - **Evidence.** Each check records evidence. The verifier produces the
   evidence, never the agent. When every criterion is met, the value
   becomes `Verified<T, C>`, carrying the ids of its evidence.

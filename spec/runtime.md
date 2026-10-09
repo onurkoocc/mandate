@@ -151,6 +151,12 @@ verifier call:
 - An approval is evidence for the criterion, with who decided as its
   detail. It authorizes no action; external effects are still authorized
   on their own (below).
+- `human.approve(role: r, deadline: d)` waits at most `d`. The deadline is
+  fixed when the wait opens, and a new worker does not move it. Past it,
+  the criterion is unmet and recorded with `expired: true`. That holds
+  whether `tick` (under Temporal, a durable timer) gets there first or a
+  late `DecideAction` does. The run then goes to `on unmet` like any other
+  unmet criterion.
 
 Unmet criteria go to `on unmet(c)`, or else fail the verify with
 `Rejected`. An answer to an `escalate` there is the escalation's value,
