@@ -190,7 +190,12 @@ produces is the upper bound of real use.
   - `loop plan_execute` checks the whole plan before any tool runs.
 - **Workflows.** A `workflow` body is deterministic orchestration. Every
   nondeterministic step in it is a recorded command (§7). Functions and
-  workflows cannot call each other in a cycle.
+  workflows cannot call each other in a cycle. `ensures e` states a
+  postcondition over `result`; a run whose result breaks it fails.
+- **Tests.** `test "…" { with handlers { … } run W(args) expect ok }` runs a
+  workflow against deterministic handlers: recorded model answers, an
+  in-memory file system, a fixed clock, an automatic approver. Only tests
+  may swap handlers; in a real run the runtime picks them.
 
 ### 5.1 Statements and expressions
 
@@ -201,7 +206,7 @@ produces is the upper bound of real use.
 | `loop max_iter n { … } until c` | Bounded iteration; a loop needs `max_iter` or `until` |
 | `par { a = e₁ ; b = e₂ }` | Runs branches together. Results are bound by branch name, never by finishing order |
 | `switch e { P => e, … }` | Must cover every variant |
-| `delegate A.s(args) [with caps K] [budget b] [isolated] [supervise …]` | Runs agent A's skill s with the granted authority and budget; `isolated` passes nothing implicitly |
+| `delegate A.s(args) [with caps K] [budget b] [isolated] [timeout d] [supervise …]` | Runs agent A's skill s with the granted authority and budget; `isolated` passes nothing implicitly; past `d`, the attempt fails with `Timeout` |
 | `infer T from e [using m]` | Asks a model for a `T`; the result is `Inferred<T>` |
 | `verify x against C(args) [on unmet(c) => e]` | Checks contract C (§6) |
 | `effect E(args) idempotent_by k [compensate F]` | An external effect (§7.2) |
@@ -374,7 +379,5 @@ Every conforming implementation keeps these:
 - **Agent loops:** these strategies are not implemented yet:
   - `degrade` and `escalate` as supervision strategies;
   - `Throttled` and shared rate limits.
-- **Not enforced yet:** a delegate's `timeout`, a workflow's `ensures`, and
-  running `tests`. All three are checked, not enforced.
 - **Not generated yet:** these targets: host code, MCP, A2A, AX and
   views.

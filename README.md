@@ -72,6 +72,7 @@ npm test
 | `patch <program> <patch.json> [--json]` | Apply `{ "base": "sha256:…", "ops": [ … ] }` |
 | `sandbox <file> [--agent <name>]` | Print each local agent's sandbox requirement, or one agent's |
 | `explain <code>` | Explain a diagnostic code |
+| `test <file> [--json]` | Run the program's tests against their effect handlers (§6.4) |
 
 Exit status is 1 when an error diagnostic is reported and 2 on usage errors.
 Warnings do not change the exit status. FixBug checks with two W0601
@@ -181,6 +182,13 @@ to what it checked: a test records the files it ran against, an action
 applies the files frozen at prepare, and a file changed after its test is
 never committed on the old evidence (G01). Another run's or tenant's
 artifact is refused like a missing one (G08).
+
+`enforce.test.ts` checks what 0.1 only checked statically: a delegation's
+`timeout`, in a loop and in a single call, with a restart that gets a
+deadline of its own, and a workflow's `ensures`. `tests.test.ts` runs
+FixBug's own tests (§6.4) against recorded answers, an in-memory working
+copy, a fake git and an automatic code owner, and fails a test whose
+handler is unknown.
 
 `evidence.test.ts` checks the signed evidence records (§10.3): who
 produced each, what it ran against, its logs as artifacts, a valid

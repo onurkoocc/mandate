@@ -42,6 +42,8 @@ export interface DelegateRequest {
   isolated: boolean;
   /** 0 for the first try; restarts reuse the operation and raise the attempt (§8.7). */
   attempt: number;
+  /** With `delegate … timeout d`: when the attempt must have finished (epoch ms). A later result is discarded. */
+  deadline?: number;
   commandId: string;
   /**
    * What the agent's sandbox must enforce, built from this delegation's grant

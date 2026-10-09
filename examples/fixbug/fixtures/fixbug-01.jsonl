@@ -1,0 +1,5 @@
+{"for": "Explorer.locate", "ok": [{"file": "src/Pager.java", "line": 3, "claim": "pageCount rounds down and loses a partial last page", "evidence": "ev:explorer-1"}], "cost": {"spend": {"micros": 1200000, "currency": "USD"}}}
+{"for": "Planner.plan", "ok": {"steps": ["Round the page count up"], "touches": ["src/Pager.java"], "risks": []}, "cost": {"spend": {"micros": 400000, "currency": "USD"}}}
+{"for": "Implementer.apply", "ok": {"files": ["src/Pager.java"], "summary": "pageCount rounds up"}, "cost": {"spend": {"micros": 2100000, "currency": "USD"}}}
+{"for": "TestWriter.regression", "ok": {"files": ["test/PagerTest.java"], "cases": ["a partial last page"]}, "cost": {"spend": {"micros": 900000, "currency": "USD"}}}
+{"for": "Reviewer.counterexamples", "ok": {"counterexamples": [], "blocking": false}, "cost": {"spend": {"micros": 600000, "currency": "USD"}}}

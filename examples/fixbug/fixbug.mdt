@@ -101,3 +101,28 @@ workflow FixBug(issue: Issue) -> PullRequest
 }
 
 on budget_exceeded in FixBug => pause and human.ask("Budget exceeded. Continue or cancel?")
+
+// ── Tests (§6.4): the same workflow against recorded answers ───────────────
+test "FixBug happy path" {
+  with handlers {
+    Model  = replay("fixtures/fixbug-01.jsonl"),
+    Fs     = memfs("fixtures/repo-snapshot"),
+    Verify = pass_all(),
+    git    = fake_git(),
+    Human  = auto_approve(role: "code_owner"),
+    Time   = fixed_clock("2026-10-07T21:00:00Z"),
+  }
+  run FixBug(fixtures.issue_42) expect ok
+}
+
+test "FixBug with a failing suite asks a person" {
+  with handlers {
+    Model  = replay("fixtures/fixbug-01.jsonl"),
+    Fs     = memfs("fixtures/repo-snapshot"),
+    Verify = results(suite_green: false),
+    git    = fake_git(),
+    Human  = auto_approve(role: "code_owner"),
+    Time   = fixed_clock("2026-10-07T21:00:00Z"),
+  }
+  run FixBug(fixtures.issue_42) expect waiting
+}

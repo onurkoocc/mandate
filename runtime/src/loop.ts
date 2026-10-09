@@ -103,7 +103,8 @@ export async function runAgentLoop(task: LoopTask, io: LoopIO): Promise<Outcome>
     // A sibling failed: the delegation stays in flight, as after a crash, so a resumed run goes on from its last step.
     if (io.stopped(e)) throw e;
     if (e instanceof Fault) {
-      const args = e.tag === "SkillFailed" && isObj(e.args[0] ?? null) ? [{ ...(e.args[0] as Block), partial: loop.partial() }] : e.args;
+      // A loop that failed or ran out of time keeps what it wrote (§8.7 `partial`).
+      const args = (e.tag === "SkillFailed" || e.tag === "Timeout") && isObj(e.args[0] ?? null) ? [{ ...(e.args[0] as Block), partial: loop.partial() }] : e.args;
       return { error: { tag: e.tag, args }, cost: {}, meta: loop.summary(planned.policy.$source) };
     }
     throw e;

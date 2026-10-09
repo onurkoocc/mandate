@@ -1047,7 +1047,8 @@ class Checker implements TypeEnv {
       }
     }
 
-    if (e.timeout) this.expr(e.timeout, frame, `${path}/timeout`);
+    // A delegation's timeout is a Duration (§8.7, §9.1); the runtime enforces it.
+    if (e.timeout) this.problem(assignable(this.expr(e.timeout, frame, `${path}/timeout`).ty, named("Duration"), this), `${path}/timeout`);
     if (e.supervise) this.supervise(e.supervise, `${path}/supervise`);
     const remote = !!agent.remote;
     frame.delegated.push({ caps: effective, path, external: remote });

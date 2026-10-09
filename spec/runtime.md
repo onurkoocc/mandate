@@ -469,6 +469,54 @@ the results, and is offered only `finish`.
   when every branch has settled, so an external action already in flight is
   followed to its result (R10).
 
+## Timeouts and postconditions (§4.6, §8.7, §9.1)
+
+- **`delegate … timeout d`.** Each attempt must finish within `d` of its
+  start. The start is a journaled `time` command (`<delegate>/started`), so a
+  resumed worker keeps the same deadline, and a restart gets a deadline of
+  its own.
+  - An agent loop is stopped before its next step once the deadline has
+    passed. A step not sent by then is never sent.
+  - An adapter that answers in one call gets the deadline in its request. A
+    result that arrives after it is discarded; what the call spent is
+    settled.
+  - Either way the attempt fails with `Timeout({ delegate, after_ms })`. A
+    loop's fault keeps the files it wrote (`partial`). `Timeout` can be
+    restarted.
+- **`ensures e`.** After the body returns, `e` is evaluated with `result`
+  bound to the result. A run whose result breaks it fails with
+  `Rejected({ reason: "ensures" })`, or needs attention if one of its
+  actions is still unresolved.
+
+## Tests (§6.4)
+
+A program's `test` blocks run with `mandate test <program>`
+(`runtime/src/testing.ts`). Each runs workflows against deterministic
+handlers, on an in-process database of its own:
+
+| Handler | Stands for |
+|---|---|
+| `Time = fixed_clock("<ISO time>")` | The clock; it starts there and moves only when the run waits |
+| `Model = replay("<file.jsonl>")` | Recorded answers, one JSON object per line: `{ "for": "Agent.skill" \| "infer", "ok": … }` or `"error"`, with an optional `"cost"`; each key's answers are used in order |
+| `Fs = memfs("<dir>")` | The working copy: `fs.read_text` and `fs.list` read it, and checks and git effects see its files |
+| `Verify = pass_all()`, `results(criterion: Bool, …)` | Contract checks |
+| `git = fake_git()` | Every `git.*` effect, applied in memory |
+| `Human = auto_approve(role: r)`, `auto_decline(role: r)`, `answer("<text>")` | A person who decides every wait for role `r` (any role without it), or answers every question |
+
+- **Arguments.** `run W(args) expect e` runs `W`. `fixtures.<name>` is the
+  JSON file `fixtures/<name>.json` next to the program.
+- **Expectations.** `expect ok` means the run succeeded. `failed`,
+  `waiting`, `attention_required` and `cancelled` name the state it must
+  end in.
+- **Files.** Handler files and fixtures must be inside the program's
+  directory.
+- **Unknown handlers.** A handler the runner does not know fails the test
+  by name. An effect with no handler stops the run, as an unconfigured
+  adapter does (`no_handler`).
+
+Swapping handlers is possible only in tests. In a real run, the runtime
+picks every handler (INV-03).
+
 ## Run states
 
 | State | Meaning |

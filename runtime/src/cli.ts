@@ -10,6 +10,7 @@
 //   mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
 //   mandate replay <run>
 //   mandate artifact <run> <blob:sha256:…>
+//   mandate test <program> [--json]                       run the program's tests (§6.4); needs no configuration
 //
 // Every command reads `mandate.runtime.json` (or --config). A decision names
 // the revision the person saw in `status`: if the run has moved since, it is
@@ -22,10 +23,11 @@ import { dirname, join } from "node:path";
 import { check, kindOf, parseStrictJson, type Lock, type Program } from "@mandate/compiler";
 import type { Cost } from "./adapters.js";
 import { adaptersFor, connect, readConfig, runtimeOptions, type RuntimeConfig } from "./control.js";
-import type { Db } from "./db.js";
+import { openDb, type Db } from "./db.js";
 import type { RunRow } from "./journal.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
+import { runTests } from "./testing.js";
 import { isObj, show, type Obj, type Value } from "./values.js";
 
 interface Args {
@@ -62,9 +64,10 @@ const USAGE = `usage:
   mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
   mandate replay <run>
   mandate artifact <run> <blob:sha256:…>
+  mandate test <program> [--json] [--lock FILE]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "test"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -74,6 +77,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     const a = parse(rest);
     const configFile = typeof a.flags["--config"] === "string" ? a.flags["--config"] : "mandate.runtime.json";
     if (!cmd || !CONTROL_COMMANDS.has(cmd)) throw new Usage(`unknown command ${cmd ?? ""}`);
+    if (cmd === "test") return await test(a, out);
     if (!existsSync(configFile)) throw new Usage(`no runtime configuration at ${configFile} (see spec/runtime.md, "Control CLI")`);
     const config = readConfig(configFile);
     db = await connect(config);
@@ -156,6 +160,24 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     throw e;
   } finally {
     await db?.close();
+  }
+}
+
+/** Runs a program's tests against their handlers, on an in-process database of their own; exit 1 if any fails. */
+async function test(a: Args, out: (s: string) => void): Promise<number> {
+  const file = a.positional[0] ?? fail("test needs a program file");
+  const { program, lock } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined);
+  const db = await openDb();
+  try {
+    const results = await runTests(program, { db, dir: dirname(file), lock });
+    if (a.flags["--json"] === true) out(JSON.stringify(results, null, 2) + "\n");
+    else {
+      for (const r of results) out(`${r.ok ? "ok  " : "FAIL"} ${r.test}: ${r.workflow} expected ${r.expected}, ${r.ok ? "got it" : `got ${r.state}${r.detail !== undefined ? ` (${show(r.detail).slice(0, 300)})` : ""}`}\n`);
+      if (!results.length) out("no tests\n");
+    }
+    return results.every((r) => r.ok) ? 0 : 1;
+  } finally {
+    await db.close();
   }
 }
 

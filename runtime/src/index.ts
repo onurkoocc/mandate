@@ -9,5 +9,6 @@ export { Journal, TERMINAL, type ActionRow, type BudgetReport, type CommandRow, 
 export { buildPackage, refusingAdapters, Runtime, verifyPackage, type Lock, type Message, type Package, type ReplayResult, type RuntimeOptions, type StartOptions } from "./runtime.js";
 export * from "./sandbox.js";
 export * from "./signals.js";
+export { runTests, type TestOptions, type TestResult } from "./testing.js";
 export * from "./sim.js";
 export * from "./values.js";

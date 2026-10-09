@@ -122,6 +122,12 @@ describe("FixBug (§20) passes Gate 1", () => {
     expect(fixbugErrors(by, 'by human.approve(role: "code_owner", deadline: "tomorrow")')).toEqual(["MDT-E0201"]);
   });
 
+  it("bounds a delegation with a Duration timeout (§8.7, §9.1)", () => {
+    const call = "let findings = delegate Explorer.locate(issue)";
+    expect(fixbugErrors(call, `${call} timeout 10m`)).toEqual([]);
+    expect(fixbugErrors(call, `${call} timeout 600`)).toEqual(["MDT-E0201"]);
+  });
+
   it("never accepts review alone as evidence", () => {
     const src = fixbug("by static not pr.review.blocking\n       and review(model: standard, isolated)", "by review(model: standard, isolated)");
     expect(only(src, "MDT-E0603").at.path).toBe("/defs/FixAccepted/accept/no_blocking_review/by");

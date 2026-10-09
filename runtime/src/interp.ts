@@ -62,6 +62,16 @@ import {
 /** What a command reserves when it is sent: a fixed bound, or one measured just before sending. */
 type Reserve = Cost | Budget | undefined | (() => Promise<Cost | Budget | undefined>);
 
+interface CommandOptions {
+  /** The par block's shared state: a failed sibling stops this command before it is sent (fail_fast). */
+  siblings?: Siblings | undefined;
+  label?: string;
+  /** The command whose reservation pays for this one: the steps of an agent loop are charged to their delegation. */
+  within?: string;
+  /** Called before a command that is not in the journal yet is sent; it may refuse it with a fault (a deadline). */
+  guard?: () => void;
+}
+
 export type AuthorizePolicy = { by: "policy" } | { by: "human"; role: string; deadlineMs?: number };
 
 export interface Policy {
@@ -148,12 +158,19 @@ export class Interpreter {
       vars.set(p.name, input[p.name]!);
     }
     const ctx: Ctx = { scope: { vars }, where: "workflow" };
+    let result: Value;
     try {
-      return await this.block(wf.body, ctx, `/defs/${name}/body`);
+      result = await this.block(wf.body, ctx, `/defs/${name}/body`);
     } catch (e) {
-      if (e instanceof Return) return e.value;
-      throw e;
+      if (!(e instanceof Return)) throw e;
+      result = e.value;
     }
+    // `ensures e` (§4.6): the workflow's postcondition over its result. A run whose result breaks it does not succeed.
+    if (wf.ensures) {
+      const held = truthy(unwrap(await this.expr(wf.ensures, { scope: { vars: new Map([["result", result]]), parent: ctx.scope }, where: "workflow" }, `/defs/${name}/ensures`)));
+      if (!held) throw new Fault("Rejected", [{ reason: "ensures", workflow: name }]);
+    }
+    return result;
   }
 
   workflowDef(name: string): WorkflowDef {
@@ -525,17 +542,24 @@ export class Interpreter {
    * `within` names the command whose reservation pays for this one: the steps
    * of an agent loop are charged to their delegation (Journal.dispatch).
    */
-  private async command(id: string, kind: string, request: Value, reserve: Reserve, call: () => Promise<Outcome>, siblings?: Siblings, label?: string, within?: string): Promise<Value> {
+  private async command(id: string, kind: string, request: Value, reserve: Reserve, call: () => Promise<Outcome>, opts: CommandOptions = {}): Promise<Value> {
+    const { siblings, label, within, guard } = opts;
     const requestDigest = digest("request", { kind, request });
     const { journal, runId, fence, faults } = this.o;
     if (this.o.replay) return replayed(await journal.command(runId, id), id);
     if (siblings?.failed) throw new SiblingStopped();
     let bound: Cost | Budget | undefined;
-    if (typeof reserve === "function") {
-      // Measuring the bound may itself call out (a token count), so it is done only for a command that will be sent.
+    if (typeof reserve === "function" || guard) {
+      // Measuring the bound may itself call out (a token count), and a guard (a deadline) applies only to what is
+      // still to be sent: both are skipped for a command the journal already has a result for.
       const earlier = await journal.command(runId, id);
-      if (!earlier || (earlier.state !== "succeeded" && earlier.state !== "failed")) bound = await reserve();
-    } else bound = reserve;
+      const settled = earlier && (earlier.state === "succeeded" || earlier.state === "failed");
+      if (!settled) {
+        guard?.();
+        if (typeof reserve === "function") bound = await reserve();
+      }
+    }
+    if (typeof reserve !== "function") bound = reserve;
     const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, bound, within);
     if (prior) return replayed(prior, id);
     faults.check("after_dispatch", { id, kind });
@@ -568,7 +592,7 @@ export class Interpreter {
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
     const tier = this.tierFor(e.using, path);
     const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
-    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), ctx.siblings, "infer");
+    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), { siblings: ctx.siblings, label: "infer" });
   }
 
   /**
@@ -600,11 +624,19 @@ export class Interpreter {
     const sup = e.supervise;
     const max = sup?.name === "restart" ? Number(constValue(sup.args?.find((a) => a.name === "max")?.value ?? { op: "int", value: 1 })) : 0;
     const backoff = sup?.name === "restart" ? Number(constValue(sup.args?.find((a) => a.name === "backoff")?.value ?? { op: "duration", ms: 0 })) : 0;
+    // `timeout d` (§8.7, §9.1): each attempt must finish within d of its start. The start is journaled, so a resumed
+    // worker keeps the deadline; a step not sent by then is refused, and a result that comes later is discarded.
+    const timeoutMs = e.timeout ? Number(unwrap(await this.expr(e.timeout, ctx, `${path}/timeout`))) : undefined;
     for (let attempt = 0; ; attempt++) {
       const id = attempt ? `${path}#${attempt}` : path;
       const request = { agent: e.agent, skill: e.skill, args: pos, caps: caps as unknown as Value, isolated: !!e.isolated };
       const loop = this.o.adapters.loop;
       try {
+        const deadline = timeoutMs === undefined ? undefined : Number(await this.command(`${id}/started`, "time", {}, undefined, async () => ({ ok: this.o.adapters.clock.now() }))) + timeoutMs;
+        const timedOut = (late?: true): Fault => new Fault("Timeout", [{ delegate: `${e.agent}.${e.skill}`, after_ms: timeoutMs ?? 0, ...(late ? { late_result: true } : {}) }]);
+        const overdue = deadline === undefined ? undefined : (): void => {
+          if (this.o.adapters.clock.now() >= deadline) throw timedOut();
+        };
         if (loop && sandbox && !skill.body) {
           // A bodiless skill runs as an agent loop in this process (§8.2, K7). The delegation reserves the
           // agent's budget less what its finished steps already spent, so a resumed loop is not charged twice.
@@ -635,14 +667,13 @@ export class Interpreter {
                 return { error: { tag: "PolicyDenied", args: [{ reason: "model_tier", detail: `the agent loop needs exactly one model tier in its grant, not ${tiers.length}` }] }, cost: {} };
               }
               return runAgentLoop(task, {
-                step: (cid, kind, req, reserve, call, label) => this.command(cid, kind, req, reserve, call, ctx.siblings, label, id),
+                step: (cid, kind, req, reserve, call, label) => this.command(cid, kind, req, reserve, call, { siblings: ctx.siblings, label, within: id, ...(overdue ? { guard: overdue } : {}) }),
                 chat: loop.chat,
                 sandbox: loop.sandbox,
                 stopped: (x) => x instanceof SiblingStopped,
               });
             },
-            ctx.siblings,
-            `${e.agent}.${e.skill}`,
+            { siblings: ctx.siblings, label: `${e.agent}.${e.skill}`, ...(overdue ? { guard: overdue } : {}) },
           );
         }
         return await this.command(
@@ -650,10 +681,25 @@ export class Interpreter {
           "delegate",
           request,
           budget,
-          () =>
-            this.o.adapters.agents.run({ agent: e.agent, skill: e.skill, args: pos, caps, isolated: !!e.isolated, attempt, commandId: id, ...(budget ? { budget } : {}), ...(sandbox ? { sandbox } : {}) }),
-          ctx.siblings,
-          `${e.agent}.${e.skill}`,
+          async (): Promise<Outcome> => {
+            const out = await this.o.adapters.agents.run({
+              agent: e.agent,
+              skill: e.skill,
+              args: pos,
+              caps,
+              isolated: !!e.isolated,
+              attempt,
+              commandId: id,
+              ...(budget ? { budget } : {}),
+              ...(sandbox ? { sandbox } : {}),
+              ...(deadline !== undefined ? { deadline } : {}),
+            });
+            if (deadline === undefined || this.o.adapters.clock.now() <= deadline) return out;
+            // Past the deadline: what it spent is settled, the result is not used.
+            const t = timedOut(true);
+            return { error: { tag: t.tag, args: t.args }, ...(out.cost !== undefined ? { cost: out.cost } : {}), ...(out.meta !== undefined ? { meta: out.meta } : {}) };
+          },
+          { siblings: ctx.siblings, label: `${e.agent}.${e.skill}`, ...(overdue ? { guard: overdue } : {}) },
         );
       } catch (f) {
         // restart reruns the same operation with the same input; never on UnknownOutcome (§8.7).
@@ -794,8 +840,7 @@ export class Interpreter {
             ...(res.cost ? { cost: res.cost } : {}),
           };
         },
-        undefined,
-        `${contract}.${name}`,
+        { label: `${contract}.${name}` },
       );
       passed = isObj(r) && r["passed"] === true;
       detail = isObj(r) ? (r["detail"] ?? null) : null;

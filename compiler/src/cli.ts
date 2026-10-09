@@ -12,6 +12,7 @@
 //
 //   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact
 //                                          control a run (the runtime's CLI, @mandate/runtime/cli)
+//   mandate test <file>                    run the program's tests with their effect handlers (§6.4)
 //
 // <file> is .mdt text or .json canonical IR. `check` and `sandbox` read the
 // lock file named by --lock, or else mandate.lock.json next to <file> if there
@@ -43,6 +44,7 @@ function usage(): never {
       "  sandbox <file> [--agent <name>] [--lock <lock.json>]",
       "  explain <code>",
       "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact   (see `mandate status`)",
+      "  test <file> [--json]",
       "",
     ].join("\n"),
   );
@@ -199,7 +201,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "test"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {
