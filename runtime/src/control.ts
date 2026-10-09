@@ -14,16 +14,19 @@
 //     "sandbox":  { "host": "mxc", "baseline": ["/usr/local"], "mode": "enforcement" | "learning" },
 //                 on Windows: { "host": "mxc", "toolchain": ["C:\\Program Files\\nodejs"], "isolation": "process" }
 //     "github":   { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },   // MANDATE_GITHUB_TOKEN
-//     "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"] }
+//     "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"],
+//                   "process": { "key": ".mandate/verifier.key", "trusted": ["keys/verifier.pub"] } }   // optional: a verifier process of its own
 //   }
 
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseStrictJson, type Lock, type Program } from "@mandate/compiler";
-import type { Adapters, ToolAdapter } from "./adapters.js";
+import type { Adapters, ToolAdapter, VerifierAdapter } from "./adapters.js";
 import { AnthropicModel } from "./anthropic.js";
 import { ArtifactStore, DirBlobs } from "./artifacts.js";
-import { EvidenceSigner } from "./evidence.js";
+import { EvidenceSigner, TrustedKeys } from "./evidence.js";
 import type { BucketConfig } from "./ratelimit.js";
 import type { RuntimeOptions } from "./runtime.js";
 import { openDb, type Db } from "./db.js";
@@ -34,6 +37,7 @@ import { MxcAdapter } from "./sandbox.js";
 import { wallClock } from "./sim.js";
 import { Violation } from "./signals.js";
 import { SandboxVerifier, type VerifierConfig } from "./verifier.js";
+import { ProcessVerifier } from "./verifier-service.js";
 
 export interface RuntimeConfig {
   database: string;
@@ -50,7 +54,17 @@ export interface RuntimeConfig {
   model?: { provider: "anthropic" };
   sandbox?: { host: "mxc"; baseline?: string[]; path?: string[]; toolchain?: string[]; isolation?: "process" | "session"; mode?: "enforcement" | "learning" };
   github?: { repo: string; base?: string; workdir: string };
-  verifier?: VerifierConfig;
+  verifier?: VerifierConfig & {
+    /**
+     * Run the verifier as a process of its own, with its own ed25519 key
+     * (P2-11): `key` is where it keeps it (default `.mandate/verifier.key`,
+     * created on first use); `trusted` names the public keys (PEM) whose
+     * attestations count, by default the key's own `.pub` file.
+     */
+    process?: { key: string; trusted?: string[] };
+  };
+  /** The configuration file itself, so a verifier process can read it too. */
+  file?: string;
 }
 
 const KEYS: Record<string, string[]> = {
@@ -59,7 +73,8 @@ const KEYS: Record<string, string[]> = {
   model: ["provider"],
   sandbox: ["host", "baseline", "path", "toolchain", "isolation", "mode"],
   github: ["repo", "base", "workdir"],
-  verifier: ["workdir", "base", "suites", "command", "timeoutMs"],
+  verifier: ["workdir", "base", "suites", "command", "timeoutMs", "process"],
+  "verifier.process": ["key", "trusted"],
 };
 
 /** Reads `mandate.runtime.json` strictly: unknown fields are refused. Relative paths are relative to the file. */
@@ -68,7 +83,7 @@ export function readConfig(file: string): RuntimeConfig {
   if (!parsed.ok) throw new Violation("bad_config", `${file}: ${parsed.diagnostics.map((d) => d.message).join("; ")}`);
   const c = parsed.value.value as unknown as Record<string, Record<string, unknown>>;
   for (const [section, allowed] of Object.entries(KEYS)) {
-    const obj = section ? c[section] : c;
+    const obj = section ? (section.split(".").reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], c) as Record<string, unknown> | undefined) : c;
     if (obj === undefined) continue;
     for (const k of Object.keys(obj)) if (!allowed.includes(k)) throw new Violation("bad_config", `${file}: unknown field ${section ? `${section}.` : ""}${k}`);
   }
@@ -91,6 +106,13 @@ export function readConfig(file: string): RuntimeConfig {
   }
   if (config.github) config.github.workdir = at(config.github.workdir);
   if (config.verifier) config.verifier.workdir = at(config.verifier.workdir);
+  if (config.verifier?.process) {
+    const vp = config.verifier.process as { key?: unknown; trusted?: unknown };
+    if (vp.key !== undefined && typeof vp.key !== "string") throw new Violation("bad_config", `${file}: "verifier.process.key" is a file`);
+    if (vp.trusted !== undefined && (!Array.isArray(vp.trusted) || !vp.trusted.every((t) => typeof t === "string"))) throw new Violation("bad_config", `${file}: "verifier.process.trusted" is a list of files`);
+    config.verifier.process = { key: at((vp.key as string | undefined) ?? ".mandate/verifier.key"), ...(vp.trusted ? { trusted: (vp.trusted as string[]).map(at) } : {}) };
+  }
+  config.file = resolve(file);
   return config;
 }
 
@@ -111,7 +133,50 @@ export function runtimeOptions(config: RuntimeConfig, db: Db): RuntimeOptions {
     // Keys rotated out (`mandate rotate-key`) and keys the configuration names: their evidence still counts.
     trustedKeys: [...EvidenceSigner.trustedIn(trustedKeysDir(config)), ...(config.evidence.trusted ?? []).map((f) => readFileSync(f, "utf8"))],
     ...(config.rateLimits ? { rateLimits: config.rateLimits } : {}),
+    ...(config.verifier?.process ? { trustedVerifiers: verifierKeys(config) } : {}),
   };
+}
+
+/** The verifier process's entry point, next to this module. */
+export const VERIFIER_MAIN = fileURLToPath(new URL("./verifier-main.js", import.meta.url));
+
+/**
+ * The verifier keys whose attestations count. Without `trusted`, the key's
+ * own `.pub` file; the verifier process creates its key and that file the
+ * first time (the runtime never reads the private key).
+ */
+export function verifierKeys(config: RuntimeConfig, main: string[] = [process.execPath, VERIFIER_MAIN]): TrustedKeys {
+  const vp = config.verifier?.process;
+  if (!vp) return new TrustedKeys();
+  const files = vp.trusted ?? [`${vp.key}.pub`];
+  if (!vp.trusted && !existsSync(files[0]!)) execFileSync(main[0]!, [...main.slice(1), "--init-key", vp.key], { stdio: ["ignore", "ignore", "inherit"] });
+  return new TrustedKeys(files.map((f) => readFileSync(f, "utf8")));
+}
+
+/** A verifier in this process, from the configuration: the verifier process runs this one. */
+export function localVerifier(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv = process.env): VerifierAdapter {
+  const sandbox = sandboxFor(config);
+  if (!config.verifier || !sandbox) return { check: async () => missing("verifier") };
+  return new SandboxVerifier(config.verifier, sandbox, modelFor(config, program, lock, env));
+}
+
+function modelFor(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv): AnthropicModel | undefined {
+  if (!config.model) return undefined;
+  const apiKey = env["CLAUDE_API_KEY"] ?? env["ANTHROPIC_API_KEY"];
+  if (!apiKey) throw new Violation("no_credentials", "model.provider is anthropic, but neither CLAUDE_API_KEY nor ANTHROPIC_API_KEY is set.");
+  const workspaceId = env["CLAUDE_WORKSPACE_ID"] ?? env["anthropic-workspace-id"];
+  return new AnthropicModel({ lock, program, apiKey, ...(workspaceId ? { workspaceId } : {}) });
+}
+
+// Linux: Bubblewrap; Windows: the AppContainer process container (P2-27). Each refuses by name what it cannot enforce.
+function sandboxFor(config: RuntimeConfig): MxcAdapter | undefined {
+  const s = config.sandbox;
+  if (!s) return undefined;
+  const host =
+    process.platform === "win32"
+      ? new WindowsMxcHost({ ...(s.toolchain ? { toolchain: s.toolchain } : {}), ...(s.isolation ? { backend: s.isolation } : {}) })
+      : new MxcHost({ ...(s.baseline ? { baseline: s.baseline } : {}), ...(s.path ? { path: s.path } : {}) });
+  return new MxcAdapter({ host, schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true, ...(s.isolation ? { isolation: s.isolation } : {}), ...(s.mode ? { mode: s.mode } : {}) });
 }
 
 /** A stand-in for an adapter the configuration leaves out: calling it stops the run for a person. */
@@ -124,32 +189,24 @@ function missing(what: string): never {
  * lock; secrets are read from the environment here and nowhere else (K7, K18).
  */
 export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv = process.env): Adapters {
-  let model: AnthropicModel | undefined;
-  if (config.model) {
-    const apiKey = env["CLAUDE_API_KEY"] ?? env["ANTHROPIC_API_KEY"];
-    if (!apiKey) throw new Violation("no_credentials", "model.provider is anthropic, but neither CLAUDE_API_KEY nor ANTHROPIC_API_KEY is set.");
-    const workspaceId = env["CLAUDE_WORKSPACE_ID"] ?? env["anthropic-workspace-id"];
-    model = new AnthropicModel({ lock, program, apiKey, ...(workspaceId ? { workspaceId } : {}) });
-  }
+  const model = modelFor(config, program, lock, env);
   const tools: Record<string, ToolAdapter> = {};
   if (config.github) {
     const token = env["MANDATE_GITHUB_TOKEN"];
     if (!token) throw new Violation("no_credentials", "github is configured, but MANDATE_GITHUB_TOKEN is not set.");
     tools["git.open_pr"] = new GitHubPullRequests({ token, repo: config.github.repo, workdir: config.github.workdir, ...(config.github.base ? { base: config.github.base } : {}) });
   }
-  // Linux: Bubblewrap; Windows: the AppContainer process container (P2-27). Each refuses by name what it cannot enforce.
-  const s = config.sandbox;
-  const host = !s
-    ? undefined
-    : process.platform === "win32"
-      ? new WindowsMxcHost({ ...(s.toolchain ? { toolchain: s.toolchain } : {}), ...(s.isolation ? { backend: s.isolation } : {}) })
-      : new MxcHost({ ...(s.baseline ? { baseline: s.baseline } : {}), ...(s.path ? { path: s.path } : {}) });
-  const sandbox = host ? new MxcAdapter({ host, schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true, ...(s?.isolation ? { isolation: s.isolation } : {}), ...(s?.mode ? { mode: s.mode } : {}) }) : undefined;
+  const sandbox = sandboxFor(config);
   return {
     agents: { run: async () => missing("agent adapter: agents run as agent loops, which need model and sandbox") },
     ...(model && sandbox ? { loop: { chat: model, sandbox } } : {}),
     model: model ?? { infer: async () => missing("model"), upperBound: () => missing("model") },
-    verifier: config.verifier && sandbox ? new SandboxVerifier(config.verifier, sandbox, model) : { check: async () => missing("verifier") },
+    // A verifier process of its own signs each check with its own key; otherwise the checks run here.
+    verifier: config.verifier?.process
+      ? new ProcessVerifier({ command: [process.execPath, VERIFIER_MAIN, "--config", config.file!], trusted: verifierKeys(config), package: { program, lock }, env })
+      : config.verifier && sandbox
+        ? new SandboxVerifier(config.verifier, sandbox, model)
+        : { check: async () => missing("verifier") },
     reads: { call: async () => missing("reader") },
     tools,
     clock: wallClock,

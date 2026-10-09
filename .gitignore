@@ -9,3 +9,5 @@ __pycache__/
 .venv/
 # A runtime's local state: its database, artifacts and evidence key.
 .mandate/
+# Test entry points bundled for child processes.
+runtime/test/.build/

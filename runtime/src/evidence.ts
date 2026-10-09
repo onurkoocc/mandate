@@ -51,8 +51,9 @@ export interface Signature {
   signature: string;
 }
 
-function message(record: EvidenceRecord): Buffer {
-  return Buffer.from(`${EVIDENCE_FORMAT}\n${canonical(record as unknown as Value)}`, "utf8");
+/** What a signature covers: the statement's format, a newline, and the statement's JCS bytes. */
+function message(format: string, statement: Value): Buffer {
+  return Buffer.from(`${format}\n${canonical(statement)}`, "utf8");
 }
 
 /** The id of a public key: the SHA-256 of its SPKI DER encoding. */
@@ -122,7 +123,12 @@ export class EvidenceSigner {
   }
 
   sign(record: EvidenceRecord): Signature {
-    return { key_id: this.keyId, signature: `ed25519:${sign(null, message(record), this.privateKey).toString("base64")}` };
+    return this.signStatement(EVIDENCE_FORMAT, record as unknown as Value);
+  }
+
+  /** Signs any statement of a named format, e.g. a verifier's check attestation. */
+  signStatement(format: string, statement: Value): Signature {
+    return { key_id: this.keyId, signature: `ed25519:${sign(null, message(format, statement), this.privateKey).toString("base64")}` };
   }
 }
 
@@ -143,10 +149,15 @@ export class TrustedKeys {
 
   /** Whether `sig` is a valid signature of `record` by one of these keys. */
   verify(record: EvidenceRecord, sig: Signature): boolean {
+    return this.verifyStatement(EVIDENCE_FORMAT, record as unknown as Value, sig);
+  }
+
+  /** Whether `sig` is a valid signature of a statement of `format` by one of these keys. */
+  verifyStatement(format: string, statement: Value, sig: Signature): boolean {
     const key = this.keys.get(sig.key_id);
-    if (!key || !sig.signature.startsWith("ed25519:")) return false;
+    if (!key || typeof sig.signature !== "string" || !sig.signature.startsWith("ed25519:")) return false;
     try {
-      return verify(null, message(record), key, Buffer.from(sig.signature.slice("ed25519:".length), "base64"));
+      return verify(null, message(format, statement), key, Buffer.from(sig.signature.slice("ed25519:".length), "base64"));
     } catch {
       return false;
     }

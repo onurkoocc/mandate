@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { canonicalize, capFromCall, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, modelTiers, SANDBOX_DENIALS_FORMAT, validateLock, type CapVal, type DenialReport, type Expr, type Json, type Lock, type Program } from "@mandate/compiler";
 import type { Adapters, Cost } from "./adapters.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
+import { attestationProblem } from "./attestation.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
 import { RateLimiter, type BucketConfig } from "./ratelimit.js";
 import type { Db, Row } from "./db.js";
@@ -105,6 +106,12 @@ export interface RuntimeOptions {
   /** Other public keys whose evidence this runtime accepts, e.g. an earlier key. Its own always counts. */
   trustedKeys?: string[];
   /**
+   * Public keys of verifiers that run as processes of their own (P2-11).
+   * A check that carries a verifier attestation counts only when one of
+   * these signed it.
+   */
+  trustedVerifiers?: TrustedKeys;
+  /**
    * A run's timers (a restart's backoff) are kept by its scheduler: the run
    * waits, and `tick` resumes it when the time comes. A Temporal worker's
    * runtime needs this; without it, the worker sleeps through the wait.
@@ -120,6 +127,7 @@ export class Runtime {
   readonly artifacts: ArtifactStore;
   readonly signer: EvidenceSigner;
   readonly trusted: TrustedKeys;
+  readonly verifiers: TrustedKeys;
   readonly durableTimers: boolean;
   readonly limiter: RateLimiter | undefined;
   private readonly packages = new Map<string, Package>();
@@ -136,6 +144,7 @@ export class Runtime {
     this.artifacts = options.artifacts ?? new ArtifactStore(db, new MemoryBlobs(), () => adapters.clock.now());
     this.signer = options.signer ?? EvidenceSigner.generate();
     this.trusted = new TrustedKeys([this.signer.publicKey, ...(options.trustedKeys ?? [])]);
+    this.verifiers = options.trustedVerifiers ?? new TrustedKeys();
     this.durableTimers = options.durableTimers ?? false;
     this.limiter = options.rateLimits && Object.keys(options.rateLimits).length ? new RateLimiter(db, options.rateLimits, () => adapters.clock.now()) : undefined;
   }
@@ -352,6 +361,7 @@ export class Runtime {
       artifacts: this.artifacts,
       signer: this.signer,
       trusted: this.trusted,
+      verifiers: this.verifiers,
       replay,
       durableTimers: this.durableTimers,
       ...(this.limiter ? { limiter: this.limiter } : {}),
@@ -384,14 +394,16 @@ export class Runtime {
 
   /**
    * Checks every evidence record of a run against its signature: whether a
-   * trusted key signed exactly this record (§10.3). Views show the result.
+   * trusted key signed exactly this record (§10.3), and, for a check made by
+   * a verifier of its own, whether a trusted verifier key attested the same
+   * result (P2-11). Views show the result.
    */
   async verifyEvidence(runId: string): Promise<Array<{ evidence_id: string; criterion: string; valid: boolean; key_id: string | null }>> {
     return (await this.journal.evidence(runId)).map((e) => ({
       evidence_id: e.evidence_id,
       criterion: e.criterion,
       key_id: e.key_id,
-      valid: !!e.record && !!e.key_id && !!e.signature && this.trusted.verify(e.record as unknown as EvidenceRecord, { key_id: e.key_id, signature: e.signature }) && (e.record as unknown as EvidenceRecord).evidence_id === e.evidence_id && (e.record as unknown as EvidenceRecord).passed === e.passed,
+      valid: !!e.record && !!e.key_id && !!e.signature && this.trusted.verify(e.record as unknown as EvidenceRecord, { key_id: e.key_id, signature: e.signature }) && (e.record as unknown as EvidenceRecord).evidence_id === e.evidence_id && (e.record as unknown as EvidenceRecord).passed === e.passed && !attestationProblem(e.record as unknown as EvidenceRecord, this.verifiers),
     }));
   }
 

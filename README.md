@@ -236,7 +236,15 @@ signature by the control plane's key, a record changed after signing shown
 as invalid, and a Verified value whose evidence no longer verifies refused
 before anything is prepared. `verifier.test.ts` checks the runtime's
 verifier, including a pinned acceptance suite an agent tried to weaken
-(G06).
+(G06). `verifier-process.test.ts` runs the verifier as a process of its
+own: each check comes back signed by the verifier's key, a result changed
+on the way or signed by an untrusted key is not met, and a record the
+runtime's key re-signed without the verifier's attestation is invalid.
+`evidence.test.ts` also rotates the evidence key: what the old key signed
+still verifies.
+
+`loop.test.ts` also cancels a run while its agent's process hangs: the
+sandbox is stopped at once (§16.1 Stop), not left to the process's timeout.
 
 `mxc-windows.test.ts` checks the Windows sandbox host, MXC with the
 AppContainer process container (P2-27). Against a fake SDK it checks the
@@ -290,7 +298,7 @@ These cases from §25 are covered:
 | G03 | An agent that says "approved" creates no authorization; a Verified value whose evidence does not verify is refused | `gate4`, `evidence` |
 | G04 | A sub-agent gets no more than it is handed: its sandbox and tools are narrowed to the grant | `gate4` (and E0701 statically) |
 | G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop`, `mxc`, `mxc-windows` |
-| G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed | `verifier` |
+| G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed; a check its verifier did not sign is not met | `verifier`, `verifier-process` |
 | G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`), `mxc-windows` (AppContainer, CI job `sandbox-windows`) |
 | G08 | Another tenant's or run's artifact is refused like a missing one | `artifacts` |
 | G09 | A model's markup is shown as plain text in every view, never as a control | `views` |

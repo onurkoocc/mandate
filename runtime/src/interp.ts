@@ -39,6 +39,7 @@ import {
 } from "@mandate/compiler";
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
+import { attestationProblem } from "./attestation.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
 import type { RateLimiter } from "./ratelimit.js";
 import type { Faults } from "./faults.js";
@@ -143,6 +144,8 @@ export interface InterpOptions {
   /** Signs every evidence record (§10.3); `trusted` decides which signatures count. */
   signer: EvidenceSigner;
   trusted: TrustedKeys;
+  /** Verifier keys whose check attestations count (P2-11). */
+  verifiers?: TrustedKeys;
   /** Shared rate limits (§8.6); none when absent. */
   limiter?: RateLimiter;
   /** Replay reads the journal only and never calls an adapter (R13). */
@@ -1200,6 +1203,10 @@ export class Interpreter {
       if (r.contract !== contract) problems.push(`${r.evidence_id} is evidence for ${r.contract}`);
       if (!record || !r.key_id || !r.signature || !this.o.trusted.verify(record, { key_id: r.key_id, signature: r.signature })) problems.push(`${r.evidence_id} is not signed by a trusted key`);
       else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion) problems.push(`${r.evidence_id} does not match its signed record`);
+      else {
+        const why = attestationProblem(record, this.o.verifiers);
+        if (why) problems.push(`${r.evidence_id}: ${why}`);
+      }
     }
     const c = this.def(contract);
     const criteria = c?.kind === "contract" ? [...Object.keys(c.accept), ...Object.keys(c.invariant ?? {})] : [];

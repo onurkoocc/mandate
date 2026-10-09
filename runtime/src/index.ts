@@ -2,6 +2,8 @@
 export * from "./adapters.js";
 export * from "./artifacts.js";
 export * from "./evidence.js";
+export { ATTESTATION_FORMAT, attestationProblem, statementOf, type Attestation, type CheckStatement } from "./attestation.js";
+export { ProcessVerifier, serveVerifier, type ProcessVerifierOptions, type VerifierPackage } from "./verifier-service.js";
 export { RateLimiter, type BucketConfig, type Priority } from "./ratelimit.js";
 export { openDb, SCHEMA, type Db, type Tx } from "./db.js";
 export { Faults, type FaultPoint } from "./faults.js";

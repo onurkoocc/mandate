@@ -334,7 +334,8 @@ value's word. Each must:
 
 - be evidence of this run, for the value's contract;
 - have passed;
-- be signed by a trusted key, exactly as recorded.
+- be signed by a trusted key, exactly as recorded;
+- if it claims a verifier attestation, carry one that holds (below).
 
 Together they must cover every criterion of the contract. Otherwise the
 run stops with the violation `forged_evidence`, before anything is
@@ -358,6 +359,47 @@ read-only sandbox of its own, over a copy of the working copy:
 - **`review(model: tier, isolated)`.** A model reviews the diff in a fresh
   context. It is reserved and settled like any model call, and never
   enough on its own (E0603).
+
+### A verifier of its own
+
+With `verifier.process` in `mandate.runtime.json`, the checks run in a
+separate process (`runtime/src/verifier-main.ts`), which the runtime
+starts and talks to over stdio, one JSON-RPC 2.0 message per line
+(`open`, `key`, `upperBound`, `check`; `runtime/src/verifier-service.ts`).
+It runs the same `SandboxVerifier`, and signs each result with its own
+ed25519 key, which the runtime process never reads. What it signs, its
+*check attestation*, is:
+
+```json
+{
+  "format": "mandate/check-attestation/0.1",
+  "request": "sha256:…",
+  "passed": true, "detail": { … },
+  "subject": { "src/a.ts": "sha256:…" },
+  "producer": { "kind": "runtime", "handler": "mandate-sandbox-verifier@0.2", "sandbox": "mxc:process" },
+  "logs": [ { "kind": "test_log", "phase": "after", "result": "pass", "digest": "sha256:…" } ],
+  "cost": null
+}
+```
+
+The signature covers `mandate/check-attestation/0.1
+` followed by the
+statement's JCS bytes. `ProcessVerifier`, on the runtime's side, computes
+the same statement from the request and the result it received, and
+accepts the result only when the signature verifies against a pinned
+verifier key. Otherwise the criterion is not met, with the detail
+`unattested_check`: a result the verifier did not sign never passes.
+
+An accepted result's `producer` carries `process: "separate"` and the
+attestation (statement, key id, signature) into the evidence record.
+`verifyEvidence` and the `Verified` check (G03) then also require the
+attestation to verify under a trusted verifier key, and to say what the
+record says: passed, detail, the files checked, and each output's digest.
+So the runtime's key alone cannot make a check pass.
+
+The verifier creates its key on first use (`.mandate/verifier.key` by
+default) and writes its public half to `<key>.pub`, which the runtime
+trusts unless `verifier.process.trusted` names other public keys.
 
 Unmet criteria go to `on unmet(c)`, or else fail the verify with
 `Rejected`. An answer to an `escalate` there is the escalation's value,
@@ -691,7 +733,7 @@ mandate show <run> [--format md|html|json]
   "model": { "provider": "anthropic" },
   "sandbox": { "host": "mxc", "baseline": ["/usr/local"] },
   "github": { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },
-  "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"] }
+  "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"], "process": { "key": ".mandate/verifier.key" } }
 }
 ```
 
@@ -707,6 +749,9 @@ mandate show <run> [--format md|html|json]
   next to the key, where every later call loads it, so evidence it signed
   still verifies. Its private half is gone. To stop trusting an old key,
   remove its file: what it signed then shows `SIGNATURE INVALID`.
+- **Verifier process.** `verifier.process` runs the checks in a process of
+  their own with their own key (`key`, default `.mandate/verifier.key`;
+  `trusted`, default the key's `.pub` file). See "A verifier of its own".
 - **Secrets.** They come only from the environment: `CLAUDE_API_KEY` (and
   `CLAUDE_WORKSPACE_ID` for a key that is not scoped to a workspace), and
   `MANDATE_GITHUB_TOKEN`.
