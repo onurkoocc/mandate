@@ -4,6 +4,7 @@
 
 import type { Budget, RetryClass, SandboxRequirement, TypeExpr } from "@mandate/compiler";
 import type { MxcAdapter } from "./sandbox.js";
+import type { WorkspaceAdapter } from "./workspace.js";
 import type { Value } from "./values.js";
 
 export interface Cost {
@@ -117,7 +118,12 @@ export interface VerifyRequest {
   named: Record<string, Value>;
   contract: string;
   criterion: string;
+  /** The components the run works on, with the commit it started from (design doc 9 §12, B3). */
+  workspace?: RunComponents;
 }
+
+/** A run's components by name: repository, working copy root, and the base commit the run started from. */
+export type RunComponents = Record<string, { repo: string; root: string; base: string }>;
 
 /**
  * What a check ran against (§10.3 `subject`): the files of the working copy
@@ -245,6 +251,8 @@ export interface Adapters {
   reads: ReadAdapter;
   /** External effects by name, e.g. `git.open_pr`. */
   tools: Record<string, ToolAdapter>;
+  /** Working copies of a system model's components (design doc 9 §12, B3); needed by a run that works on components. */
+  workspace?: WorkspaceAdapter;
   clock: Clock;
   random(): number;
 }

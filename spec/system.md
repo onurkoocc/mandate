@@ -115,3 +115,14 @@ system (doc 9 §8.1):
 - interfaces with protocol, spec, provider and consumers;
 - environments with their class, declared reads and authorization tiers;
 - the modules the model comes from, by hash.
+
+## The workspace (B3)
+
+A run that works on components starts from one base commit per component.
+The runtime checks each component out at its root before the run starts,
+and records `{ repo, root, base }` per component in the run's manifest,
+whose hash R the run views show. One live run holds a working copy at a
+time. Each delegation's sandbox sees only the components its grant names, so
+two agents writing two components in parallel cannot touch each other's
+work (C5 across components, enforced by the sandbox too). See
+[`runtime.md`](runtime.md#workspace-and-run-manifest-design-doc-9-12-b3).

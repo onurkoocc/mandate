@@ -50,7 +50,9 @@ anything runs. This repository holds the 0.1 reference implementation.
 8. **0.3, existing systems (in progress; BACKLOG §3.1, design doc 9):**
    language version 0.3. The system model (`component`, `interface`,
    `environment`) lives in the IR and is imported as a module pinned by the
-   lock, and capabilities can be written over components. The reference
+   lock, and capabilities can be written over components. A run starts
+   from one base commit per component, recorded in its manifest (R), and
+   each agent's sandbox sees only its components. The reference
    system is Kervan, seven repositories in TypeScript, Java and Python
    ([`examples/kervan/`](examples/kervan/SPEC.md)). See
    [`spec/system.md`](spec/system.md).

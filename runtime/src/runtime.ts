@@ -4,8 +4,9 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { canonicalize, capsOf, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, linkedProgram, modelTiers, SANDBOX_DENIALS_FORMAT, validateLock, type DenialReport, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
-import type { Adapters, Cost } from "./adapters.js";
+import { canonicalize, capsOf, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, link, linkedProgram, modelTiers, references, SANDBOX_DENIALS_FORMAT, validateLock, type DenialReport, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
+import type { Adapters, Cost, RunComponents } from "./adapters.js";
+import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
@@ -175,6 +176,10 @@ export class Runtime {
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(wf.budget), costDims(o.limits));
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
+    // The components the program works on start from one base commit each, recorded in the run's manifest (B3).
+    const components = await this.prepareWorkspace(runId, o.pkg);
+    const manifest = { format: RUN_MANIFEST_FORMAT, package: o.pkg.hash, workflow: o.workflow, tenant: policy.tenant, input: digest("request", o.input), components } as unknown as Value;
+    const manifestHash = digest("run", manifest);
     await this.db.tx(async (tx) => {
       await tx.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict (package_hash) do nothing", [
         o.pkg.hash,
@@ -182,11 +187,51 @@ export class Runtime {
         JSON.stringify(o.pkg.lock),
         JSON.stringify(o.pkg.modules ?? {}),
       ]);
-      await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits });
+      await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash });
       for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
     });
     this.packages.set(o.pkg.hash, o.pkg);
     return this.drive(runId, true);
+  }
+
+  /**
+   * The working copies of the components a package's program works on
+   * (design doc 9 §12, B3). Their roots are claimed for this run first, so a
+   * root another unfinished run holds is refused before anything in it is
+   * touched (`workspace_busy`); then the workspace adapter checks each one out
+   * at its base commit. A program that works on components and a runtime
+   * without a workspace adapter do not start (INV-11).
+   */
+  private async prepareWorkspace(runId: string, pkg: Package): Promise<RunComponents> {
+    const wanted = componentsOf(pkg);
+    if (!wanted.length) return {};
+    const ws = this.adapters.workspace;
+    if (!ws) throw new Violation("no_workspace", `The program works on components (${wanted.map((c) => c.name).join(", ")}), and this runtime has no workspace adapter.`);
+    await this.db.tx(async (tx) => {
+      for (const c of wanted) {
+        const [held] = await tx.query<Row>("select w.run_id, w.claimed_at, r.state from workspace_claims w left join runs r on r.run_id = w.run_id where w.root = $1 for update of w", [c.root]);
+        if (held && held["run_id"] !== runId) {
+          // A claim whose run never got created is stale after ten minutes (a start that died between claim and run).
+          const live = held["state"] ? !TERMINAL.has(held["state"] as RunRow["state"]) : this.adapters.clock.now() - Number(held["claimed_at"]) < 600_000;
+          if (live) throw new Violation("workspace_busy", `${c.name}'s working copy ${c.root} is in use by run ${String(held["run_id"])}.`);
+        }
+        await tx.query("insert into workspace_claims (root, run_id, claimed_at) values ($1, $2, $3) on conflict (root) do update set run_id = $2, claimed_at = $3", [c.root, runId, this.adapters.clock.now()]);
+      }
+    });
+    let bases: Record<string, { base: string }>;
+    try {
+      bases = await ws.prepare(wanted);
+    } catch (e) {
+      await this.db.query("delete from workspace_claims where run_id = $1", [runId]);
+      throw new Violation("workspace_failed", `The components' working copies could not be prepared: ${(e as Error).message}`);
+    }
+    const out: RunComponents = {};
+    for (const c of wanted) {
+      const base = bases[c.name]?.base;
+      if (!base) throw new Violation("workspace_failed", `The workspace adapter gave no base commit for ${c.name}.`);
+      out[c.name] = { repo: c.repo, root: c.root, base };
+    }
+    return out;
   }
 
   /**
@@ -378,6 +423,7 @@ export class Runtime {
       signer: this.signer,
       trusted: this.trusted,
       verifiers: this.verifiers,
+      ...(isObj(run.manifest) && isObj(run.manifest["components"] ?? null) ? { workspace: run.manifest["components"] as unknown as RunComponents } : {}),
       replay,
       durableTimers: this.durableTimers,
       ...(this.limiter ? { limiter: this.limiter } : {}),
@@ -716,4 +762,18 @@ export function refusingAdapters(real: Adapters): Adapters {
     clock: real.clock,
     random: refuse("random"),
   };
+}
+
+/** The format of a run's manifest: what it started from (design doc 9 §12). */
+export const RUN_MANIFEST_FORMAT = "mandate/run-manifest/0.1";
+
+/** The components of the package's system model that its program refers to, by name. */
+export function componentsOf(pkg: Package): WorkspaceComponent[] {
+  const defs = link(pkg.program, pkg.modules).defs;
+  const names = new Set<string>();
+  for (const d of Object.values(pkg.program.defs)) for (const r of references(d)) if (Object.hasOwn(defs, r) && defs[r]!.kind === "component") names.add(r);
+  return [...names].sort().map((name) => {
+    const c = defs[name] as Extract<(typeof defs)[string], { kind: "component" }>;
+    return { name, repo: c.repo, root: c.root };
+  });
 }

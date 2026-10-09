@@ -150,6 +150,13 @@ alter table evidence add column if not exists record jsonb;
 alter table evidence add column if not exists key_id text;
 alter table evidence add column if not exists signature text;
 alter table packages add column if not exists modules jsonb;
+alter table runs add column if not exists manifest jsonb;
+alter table runs add column if not exists manifest_hash text;
+create table if not exists workspace_claims (
+  root text primary key,
+  run_id text not null,
+  claimed_at bigint not null
+);
 `;
 
 /** Opens PostgreSQL at `url`, or an in-process PGlite database when `url` is absent. */

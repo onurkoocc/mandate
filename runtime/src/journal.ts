@@ -38,6 +38,10 @@ export interface RunRow {
   result: Value;
   error: Value;
   summary: Value;
+  /** What the run started from (design doc 9 §12): package, workflow, input, components at their base commits. */
+  manifest: Value;
+  /** R: the hash of the manifest. */
+  manifest_hash: string | null;
 }
 
 export interface EvidenceRow {
@@ -169,17 +173,17 @@ export class Journal {
 
   async createRun(
     tx: Tx,
-    r: { runId: string; tenant: string; packageHash: string; workflow: string; input: Value; policy: Value; limits: Record<string, number> },
+    r: { runId: string; tenant: string; packageHash: string; workflow: string; input: Value; policy: Value; limits: Record<string, number>; manifest: Value; manifestHash: string },
   ): Promise<void> {
     const at = this.now();
     await tx.query(
-      "insert into runs (run_id, tenant, package_hash, workflow, input, policy, state, created_at, updated_at) values ($1, $2, $3, $4, $5, $6, 'accepted', $7, $7)",
-      [r.runId, r.tenant, r.packageHash, r.workflow, json(r.input), json(r.policy), at],
+      "insert into runs (run_id, tenant, package_hash, workflow, input, policy, state, created_at, updated_at, manifest, manifest_hash) values ($1, $2, $3, $4, $5, $6, 'accepted', $7, $7, $8, $9)",
+      [r.runId, r.tenant, r.packageHash, r.workflow, json(r.input), json(r.policy), at, json(r.manifest), r.manifestHash],
     );
     for (const [dim, limit] of Object.entries(r.limits)) {
       await tx.query("insert into budgets (run_id, dimension, limit_value) values ($1, $2, $3)", [r.runId, dim, limit]);
     }
-    await this.event(tx, r.runId, "run_accepted", { workflow: r.workflow, package: r.packageHash, limits: r.limits });
+    await this.event(tx, r.runId, "run_accepted", { workflow: r.workflow, package: r.packageHash, limits: r.limits, manifest: r.manifestHash });
   }
 
   /** Takes the run's lease for a new worker: the fence goes up, so older workers' writes are refused (R06). */
@@ -205,6 +209,8 @@ export class Journal {
       [runId, state, json(fields.waiting ?? null), json(fields.attention ?? null), json(fields.result ?? null), json(fields.error ?? null), fields.summary === undefined ? null : json(fields.summary), this.now()],
     );
     await this.event(tx, runId, `run_${state}`, { ...fields } as Value);
+    // A finished run gives its components' working copies back (B3).
+    if (TERMINAL.has(state)) await tx.query("delete from workspace_claims where run_id = $1", [runId]);
   }
 
   // ── commands ──────────────────────────────────────────────────────────
@@ -614,6 +620,8 @@ function toRun(r: Row): RunRow {
     result: (r["result"] ?? null) as Value,
     error: (r["error"] ?? null) as Value,
     summary: (r["summary"] ?? null) as Value,
+    manifest: (r["manifest"] ?? null) as Value,
+    manifest_hash: (r["manifest_hash"] ?? null) as string | null,
   };
 }
 

@@ -30,6 +30,7 @@ import type {
 import type { Enforceable, ExecRequest, ExecResult, MxcPolicy, SandboxHost } from "./sandbox.js";
 import { sha256Of } from "./artifacts.js";
 import { inside, WRITE_SCRIPT } from "./tools.js";
+import type { WorkspaceAdapter, WorkspaceComponent } from "./workspace.js";
 import { digest, isObj, type Value } from "./values.js";
 
 export class SimClock implements Clock {
@@ -416,8 +417,29 @@ export class SimSandboxHost implements SandboxHost {
   }
 }
 
+/**
+ * A simulated workspace (B3): every component is "checked out" at a commit
+ * named after it and the number of times it was prepared, so a test can make
+ * a base move with `advance`.
+ */
+export class SimCheckouts implements WorkspaceAdapter {
+  readonly prepared: WorkspaceComponent[][] = [];
+  private readonly heads = new Map<string, number>();
+
+  async prepare(components: WorkspaceComponent[]): Promise<Record<string, { base: string }>> {
+    this.prepared.push(components);
+    return Object.fromEntries(components.map((c) => [c.name, { base: `${c.name}-commit-${this.heads.get(c.name) ?? 1}` }]));
+  }
+
+  /** A new commit lands on the component's branch. */
+  advance(component: string): void {
+    this.heads.set(component, (this.heads.get(component) ?? 1) + 1);
+  }
+}
+
 export interface Sim {
   adapters: Adapters;
+  workspace: SimCheckouts;
   /** The simulated clock; unused when `simulate` was given another clock. */
   clock: SimClock;
   agents: SimAgents;
@@ -435,6 +457,7 @@ export const wallClock: Clock = {
 
 export function simulate(o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; seed?: number; clock?: Clock } = {}): Sim {
   const clock = new SimClock();
+  const workspace = new SimCheckouts();
   const agents = o.agents ?? new SimAgents();
   const model = o.model ?? new SimModel();
   const verifier = o.verifier ?? new SimVerifier();
@@ -446,7 +469,7 @@ export function simulate(o: { tools?: SimTool[]; agents?: SimAgents; model?: Sim
     seed = (seed * 1103515245 + 12345) % 2 ** 31;
     return seed / 2 ** 31;
   };
-  return { adapters: { agents, model, verifier, reads, tools, clock: o.clock ?? clock, random }, clock, agents, model, verifier, reads, tools };
+  return { adapters: { agents, model, verifier, reads, tools, workspace, clock: o.clock ?? clock, random }, clock, agents, model, verifier, reads, tools, workspace };
 }
 
 /** The files a pull request draft names: `patch.files` and `tests.files`. */

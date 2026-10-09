@@ -37,7 +37,7 @@ import {
   type Verifier,
   type WorkflowDef,
 } from "@mandate/compiler";
-import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ToolAdapter } from "./adapters.js";
+import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, RunComponents, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
@@ -146,6 +146,8 @@ export interface InterpOptions {
   trusted: TrustedKeys;
   /** Verifier keys whose check attestations count (P2-11). */
   verifiers?: TrustedKeys;
+  /** The components the run works on, at their base commits (B3); verifier calls are told. */
+  workspace?: RunComponents;
   /** Shared rate limits (§8.6); none when absent. */
   limiter?: RateLimiter;
   /** Replay reads the journal only and never calls an adapter (R13). */
@@ -918,7 +920,7 @@ export class Interpreter {
       // settings, not variables: an unbound bare name is passed as its text.
       const symbolic = call.op === "call" ? call.args.map((a) => (a.value.op === "var" && this.isModulePath(a.value, ctx) ? { ...a, value: { op: "text" as const, value: a.value.name } } : a)) : [];
       const { pos, named } = call.op === "call" ? await this.args(symbolic, ctx, `${path}/call`) : { pos: [], named: {} };
-      const req = { method, args: pos, named, contract, criterion: name };
+      const req = { method, args: pos, named, contract, criterion: name, ...(this.o.workspace && Object.keys(this.o.workspace).length ? { workspace: this.o.workspace } : {}) };
       const verifier = this.o.adapters.verifier;
       const r = await this.command(
         `${path}/call`,

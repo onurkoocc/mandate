@@ -42,7 +42,7 @@ export async function world(
   return { ...sim, rt: new Runtime(db, sim.adapters, faults), db, pkg: buildPackage(r.program!, o.lock ?? LOCK, o.modules), faults };
 }
 
-const TABLES = ["rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];
+const TABLES = ["workspace_claims", "rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];
 
 export async function closeAll(): Promise<void> {
   const db = shared;

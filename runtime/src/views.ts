@@ -32,6 +32,8 @@ export interface RunView {
   program: ProgramRef;
   package: string;
   run: { id: string; workflow: string; tenant: string; state: string };
+  /** What the run started from (B3): the manifest's hash R, and each component at its base commit. */
+  manifest: { hash: string | null; components: Array<{ name: string; repo: string; base: string }> };
   as_of: AsOf;
   waiting: Value;
   attention: Value;
@@ -78,6 +80,10 @@ export async function runView(rt: Runtime, runId: string): Promise<{ view: RunVi
     program: programRef(program),
     package: run.package_hash,
     run: { id: run.run_id, workflow: run.workflow, tenant: run.tenant, state: run.state },
+    manifest: {
+      hash: run.manifest_hash,
+      components: Object.entries(isObj(run.manifest) && isObj(run.manifest["components"] ?? null) ? (run.manifest["components"] as Obj) : {}).sort(([a], [b]) => (a < b ? -1 : 1)).map(([name, c]) => ({ name, repo: String((c as Obj)["repo"]), base: String((c as Obj)["base"]) })),
+    },
     as_of,
     waiting: run.waiting,
     attention: run.attention,
@@ -184,6 +190,8 @@ export function runDoc(v: RunView, program: Program): Doc {
       ["Program", v.program.hash],
       ["Package", v.package],
       ["Run", `${v.run.id} (tenant ${v.run.tenant})`],
+      ...(v.manifest.hash ? [["Started from", v.manifest.hash] as [string, string]] : []),
+      ...v.manifest.components.map((c) => [`Component ${c.name}`, `${c.repo} @ ${c.base}`] as [string, string]),
       ["As of", `revision ${v.as_of.revision}, event ${v.as_of.event}`],
       ["View", `${VIEW_FORMAT}, generated from the program and the run's journal`],
     ],

@@ -16,6 +16,8 @@
 //     "github":   { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },   // MANDATE_GITHUB_TOKEN
 //     "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"],
 //                   "process": { "key": ".mandate/verifier.key", "trusted": ["keys/verifier.pub"] } }   // optional: a verifier process of its own
+//     "workspace": { "components": { "mcp": { "url": "https://github.com/onurkoocc/kervan-mcp.git", "ref": "main" } } }
+//                 // where each component of a system model comes from (B3); checked out at its root
 //   }
 
 import { execFileSync } from "node:child_process";
@@ -37,6 +39,7 @@ import { MxcAdapter } from "./sandbox.js";
 import { wallClock } from "./sim.js";
 import { Violation } from "./signals.js";
 import { SandboxVerifier, type VerifierConfig } from "./verifier.js";
+import { GitWorkspace, type ComponentSource } from "./workspace.js";
 import { ProcessVerifier } from "./verifier-service.js";
 
 export interface RuntimeConfig {
@@ -63,12 +66,15 @@ export interface RuntimeConfig {
      */
     process?: { key: string; trusted?: string[] };
   };
+  /** Where each component of a system model is cloned from, and the ref a run starts from (design doc 9 §12, B3). */
+  workspace?: { components: Record<string, ComponentSource> };
   /** The configuration file itself, so a verifier process can read it too. */
   file?: string;
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "evidence", "rateLimits", "model", "sandbox", "github", "verifier"],
+  "": ["database", "artifacts", "evidence", "rateLimits", "model", "sandbox", "github", "verifier", "workspace"],
+  workspace: ["components"],
   evidence: ["key", "trusted"],
   model: ["provider"],
   sandbox: ["host", "baseline", "path", "toolchain", "isolation", "mode"],
@@ -105,6 +111,17 @@ export function readConfig(file: string): RuntimeConfig {
     }
   }
   if (config.github) config.github.workdir = at(config.github.workdir);
+  if (config.workspace) {
+    const comps = (config.workspace as { components?: unknown }).components;
+    if (!comps || typeof comps !== "object" || Array.isArray(comps)) throw new Violation("bad_config", `${file}: "workspace.components" maps component names to { "url", "ref" }`);
+    for (const [name, src] of Object.entries(comps as Record<string, Record<string, unknown>>)) {
+      if (!src || typeof src["url"] !== "string" || Object.keys(src).some((k) => k !== "url" && k !== "ref") || (src["ref"] !== undefined && typeof src["ref"] !== "string")) {
+        throw new Violation("bad_config", `${file}: workspace.components.${name} must be { "url": …, "ref": … }`);
+      }
+      // A local source is relative to the configuration, like every other path in it.
+      if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(src["url"]) && !src["url"].startsWith("git@")) src["url"] = at(src["url"]);
+    }
+  }
   if (config.verifier) config.verifier.workdir = at(config.verifier.workdir);
   if (config.verifier?.process) {
     const vp = config.verifier.process as { key?: unknown; trusted?: unknown };
@@ -209,6 +226,7 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
         : { check: async () => missing("verifier") },
     reads: { call: async () => missing("reader") },
     tools,
+    ...(config.workspace ? { workspace: new GitWorkspace(config.workspace.components) } : {}),
     clock: wallClock,
     random: Math.random,
   };

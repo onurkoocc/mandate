@@ -81,11 +81,11 @@ jobs:
       - run: npm ci
       - name: Make /work writable for the Gate 3 rehearsal
         run: sudo mkdir -p /work && sudo chown "$(id -u):$(id -g)" /work
-      - name: Sandbox enforcement on Bubblewrap (G05, G07) and the Gate 3 rehearsal
+      - name: Sandbox enforcement on Bubblewrap (G05, G07), the Gate 3 rehearsal, and two components in two sandboxes (B3)
         working-directory: runtime
         env:
           MANDATE_MXC: "1"
-        run: npx vitest run test/mxc.test.ts test/gate3.test.ts
+        run: npx vitest run test/mxc.test.ts test/gate3.test.ts test/workspace.test.ts
 
   sandbox-windows:
     runs-on: windows-latest
@@ -100,4 +100,4 @@ jobs:
         working-directory: runtime
         env:
           MANDATE_MXC: "1"
-        run: npx vitest run test/mxc-windows.test.ts
+        run: npx vitest run test/mxc-windows.test.ts test/workspace.test.ts

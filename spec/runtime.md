@@ -28,8 +28,9 @@ Two database drivers share one interface (`runtime/src/db.ts`):
 
 | Table | Holds |
 |---|---|
-| `packages` | Content-addressed packages: program and lock |
-| `runs` | State, revision, lease fence, cancel flag, waiting / attention / result / error / summary |
+| `packages` | Content-addressed packages: program, lock, and the imported modules it was checked with |
+| `runs` | State, revision, lease fence, cancel flag, waiting / attention / result / error / summary; the manifest and its hash R |
+| `workspace_claims` | Which run holds each component's working copy (B3) |
 | `events` | The run's append-only event log |
 | `commands` | One row per nondeterministic step: request digest, state, result or error, cost |
 | `budgets` | Limit and settled amount per dimension (`tokens`, `steps`, `spend:<currency>`) |
@@ -659,7 +660,9 @@ listed in the run's summary (R09).
 `StartRun` does not trust whoever built the package. It:
 
 - recomputes the program and package hashes;
-- requires every imported non-std module to be pinned in the lock;
+- requires every imported non-std module to be pinned in the lock, and every
+  module the package carries (a system model) to hash to its pin and pass
+  the checks itself (`module_hash_mismatch`);
 - when the lock pins models, requires it to be well formed
   (`malformed_lock`) and to pin every model tier the program names
   (`unlocked_model_tier`);
@@ -709,7 +712,7 @@ commands are in the runtime (`@mandate/runtime/cli`) and are reached
 through the compiler's `mandate` command:
 
 ```sh
-mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD]
+mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD] [--module FILE]…
 mandate status <run> [--json]
 mandate approve <run> --revision N --by NAME
 mandate decline <run> --revision N --by NAME
@@ -833,3 +836,32 @@ The same mechanisms are tested under Temporal against a local dev server:
 - **`map`, and so R11 by input index and R12.** The 0.1 IR has no `map`.
   `par` results are bound by name, and that binding is tested in its place.
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.
+
+## Workspace and run manifest (design doc 9 §12, B3)
+
+A program that works on components of a system model starts from one base
+commit per component.
+
+- **Before the run.** `StartRun` finds the components the program refers
+  to. It claims their roots in `workspace_claims`; a root that another
+  unfinished run holds is refused with `workspace_busy` before anything in
+  it is touched. The workspace adapter then checks each one out at its base
+  commit. A finished run (`succeeded`, `failed`, `cancelled`) releases its
+  claims. A program that works on components and a runtime without a
+  workspace adapter do not start (`no_workspace`, INV-11).
+- **The manifest.** The run records what it started from:
+  `{ format: "mandate/run-manifest/0.1", package, workflow, tenant, input:
+  <digest>, components: { name: { repo, root, base } } }`. Its hash, R, is
+  `digest("run", manifest)`. The same program from another base commit is
+  another R. `mandate show` lists R and each component at its commit;
+  verifier calls are told the components (`VerifyRequest.workspace`).
+- **`GitWorkspace`** (configuration `"workspace": { "components": { "<name>":
+  { "url": …, "ref": "main" } } }`). It clones a missing root, fetches the
+  ref, and checks out the fetched commit, detached and byte for byte
+  (`core.autocrlf=false`). It removes untracked work an earlier run left
+  and keeps ignored files (dependencies). Its credentials stay in the
+  control plane.
+- **Sandboxes.** Each delegation's sandbox is built from its grant, so it
+  sees only its components' roots: an agent working on `mcp` cannot read
+  or write `core` (`runtime/test/workspace.test.ts`, also on a real
+  Bubblewrap and AppContainer host).
