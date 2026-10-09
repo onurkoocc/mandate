@@ -1315,7 +1315,18 @@ class Checker implements TypeEnv {
       if (agent?.kind !== "agent") return c;
       const skill = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill] : undefined;
       const b = e.budget ?? skill?.budget ?? agent.budget;
-      if (b) addSeq(c, budgetCost(b, `${e.agent}.${e.skill}`, path));
+      // Every attempt reserves again: restart(max: n) runs up to n + 1 times, and degrade(to: F) may run F after it.
+      const sup = e.supervise;
+      const maxArg = sup?.name === "restart" ? sup.args?.find((a) => a.name === "max")?.value : undefined;
+      const attempts = sup?.name === "restart" ? (maxArg?.op === "int" ? maxArg.value : 1) + 1 : 1;
+      if (b) addSeq(c, attempts > 1 ? scale(budgetCost(b, `${e.agent}.${e.skill}`, path), attempts) : budgetCost(b, `${e.agent}.${e.skill}`, path));
+      const to = sup?.name === "degrade" ? sup.args?.find((a) => a.name === "to")?.value : undefined;
+      const fb = to?.op === "var" ? this.def(to.name) : undefined;
+      if (fb?.kind === "agent") {
+        const fbSkill = Object.hasOwn(fb.skills, e.skill) ? fb.skills[e.skill] : undefined;
+        const fbBudget = e.budget ?? fbSkill?.budget ?? fb.budget;
+        if (fbBudget) addSeq(c, budgetCost(fbBudget, `${to!.op === "var" ? to.name : ""}.${e.skill}`, path));
+      }
     } else if (e.op === "call" && e.callee.op === "var") {
       const name = e.callee.name;
       const f = this.def(name);

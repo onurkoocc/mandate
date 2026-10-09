@@ -162,3 +162,8 @@ A fallback `F` must do the same job with no more authority (E0715):
 - `F` holds what the call hands over with `with caps`.
 
 A delegation's `timeout` must be a `Duration`.
+
+Supervision counts against the static budget (E0501), since every attempt
+reserves again: `restart(max: n)` counts the delegate's budget `n + 1`
+times, and `degrade(to: F)` adds `F`'s budget. `escalate` counts once: a
+retry is a person's decision, and the run's ledger still bounds it.

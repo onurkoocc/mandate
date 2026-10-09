@@ -734,6 +734,19 @@ workflow W(i: Issue) -> Bool
     expect(errorsOf(w("delegate A.s(i) with caps R supervise degrade(to: Cheap)"))).toEqual(["MDT-E0715"]);
   });
 
+  it("counts every attempt a supervisor may make against the workflow's budget (E0501)", () => {
+    const w = (budget: string, sup: string) => program(`${agents}
+workflow W(i: Issue) -> Bool
+  caps M
+  budget { spend: ${budget} }
+{
+  let t = delegate A.s(i) supervise ${sup}
+  true
+}`);
+    expect(errorsOf(w("4 USD", "restart(max: 1)"))).toEqual([]);
+    expect(errorsOf(w("3 USD", "restart(max: 1)"))).toEqual(["MDT-E0501"]);
+  });
+
   it("E0105: a workflow expands to at most 1000 static nodes", () => {
     const src = program(`${agents}
 workflow W(i: Issue) -> Bool
