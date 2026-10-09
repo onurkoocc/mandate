@@ -9,6 +9,8 @@ export { Interpreter, ReplayEnd, type AuthorizePolicy, type Policy } from "./int
 export { Journal, TERMINAL, type ActionRow, type BudgetReport, type CommandRow, type EvidenceRow, type RunRow, type RunState } from "./journal.js";
 export { buildPackage, refusingAdapters, Runtime, verifyPackage, type Lock, type Message, type Package, type ReplayResult, type RuntimeOptions, type StartOptions } from "./runtime.js";
 export * from "./sandbox.js";
+export { MxcHost, disallowed } from "./mxc.js";
+export { denialsIn, MIN_BUILD, WindowsMxcHost, windowsBuild, winQuote, type WindowsMxcHostOptions } from "./mxc-windows.js";
 export * from "./signals.js";
 export { runTests, type TestOptions, type TestResult } from "./testing.js";
 export { freshness, runDoc, runView, type AsOf, type Freshness, type RunView } from "./views.js";

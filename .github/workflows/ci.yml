@@ -86,3 +86,18 @@ jobs:
         env:
           MANDATE_MXC: "1"
         run: npx vitest run test/mxc.test.ts test/gate3.test.ts
+
+  sandbox-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Sandbox enforcement in an AppContainer (G05, G07; P2-27)
+        working-directory: runtime
+        env:
+          MANDATE_MXC: "1"
+        run: npx vitest run test/mxc-windows.test.ts

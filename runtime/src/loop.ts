@@ -94,18 +94,24 @@ export async function runAgentLoop(task: LoopTask, io: LoopIO): Promise<Outcome>
   const host = io.sandbox.o.host;
   const loop = new Loop(task, io, tools, resultSchema);
   let handle: string | undefined;
+  // In learning mode the sandbox records what its policy denied (§16.1 Collect); it travels with the result, for W0311.
+  const summary = async (): Promise<Value> => {
+    const collected = handle !== undefined && host.collect ? await host.collect(handle) : undefined;
+    const base = loop.summary(planned.policy.$source) as Block;
+    return collected?.denials.length ? { ...base, mode: planned.policy.mode, sandbox_denials: collected.denials as unknown as Value } : base;
+  };
   try {
     handle = await host.create(planned.policy);
     const result = await loop.run(handle);
-    return { ok: result, cost: {}, meta: loop.summary(planned.policy.$source) };
+    return { ok: result, cost: {}, meta: await summary() };
   } catch (e) {
-    if (e instanceof Stop) return { error: { tag: "SkillFailed", args: [{ kind: e.kind, detail: e.detail, partial: loop.partial() }] }, cost: {}, meta: loop.summary(planned.policy.$source) };
+    if (e instanceof Stop) return { error: { tag: "SkillFailed", args: [{ kind: e.kind, detail: e.detail, partial: loop.partial() }] }, cost: {}, meta: await summary() };
     // A sibling failed: the delegation stays in flight, as after a crash, so a resumed run goes on from its last step.
     if (io.stopped(e)) throw e;
     if (e instanceof Fault) {
       // A loop that failed or ran out of time keeps what it wrote (§8.7 `partial`).
       const args = (e.tag === "SkillFailed" || e.tag === "Timeout") && isObj(e.args[0] ?? null) ? [{ ...(e.args[0] as Block), partial: loop.partial() }] : e.args;
-      return { error: { tag: e.tag, args }, cost: {}, meta: loop.summary(planned.policy.$source) };
+      return { error: { tag: e.tag, args }, cost: {}, meta: await summary() };
     }
     throw e;
   } finally {

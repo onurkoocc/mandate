@@ -227,6 +227,14 @@ before anything is prepared. `verifier.test.ts` checks the runtime's
 verifier, including a pinned acceptance suite an agent tried to weaken
 (G06).
 
+`mxc-windows.test.ts` checks the Windows sandbox host, MXC with the
+AppContainer process container (P2-27). Against a fake SDK it checks the
+build thresholds, session isolation refused by name, the request MXC gets,
+and learning mode's denials carried from a run to W0311. On Windows with
+`MANDATE_MXC=1` (the CI job `sandbox-windows`) it repeats the Linux
+blocking tests against a real AppContainer, and also checks the clipboard
+and learning mode.
+
 `github.test.ts` checks the `git.open_pr` adapter for GitHub against an
 in-memory GitHub:
 
@@ -270,9 +278,9 @@ These cases from §25 are covered:
 | G02 | A decision or authorization applies only to the digest of what was shown | `gate4`, `effects`, `fixbug` |
 | G03 | An agent that says "approved" creates no authorization; a Verified value whose evidence does not verify is refused | `gate4`, `evidence` |
 | G04 | A sub-agent gets no more than it is handed: its sandbox and tools are narrowed to the grant | `gate4` (and E0701 statically) |
-| G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop`, `mxc` |
+| G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop`, `mxc`, `mxc-windows` |
 | G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed | `verifier` |
-| G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`) |
+| G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`), `mxc-windows` (AppContainer, CI job `sandbox-windows`) |
 | G08 | Another tenant's or run's artifact is refused like a missing one | `artifacts` |
 | G09 | A model's markup is shown as plain text in every view, never as a control | `views` |
 | G10 | A view the run has moved past says so, and a decision taken on it is refused | `views` |

@@ -128,6 +128,11 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Unused capability",
     explain: "A workflow or agent holds a capability that nothing it runs uses. The generated sandbox policy is the upper bound of real use, so unused authority should be removed.",
   },
+  "MDT-W0311": {
+    title: "Policy and real use disagree",
+    explain:
+      "In learning mode, an agent's sandbox denied an access its policy does not allow, and recorded it (MXC captureDenials). Either the agent needs it, and its capability must grow (a governance change a person approves), or the agent reached for something it should not. The denial stayed denied; this is feedback, not a grant. `mandate denials <run>` exports a run's report and `mandate check <program> --denials <report>` reports it (§11.3, §12.2).",
+  },
   "MDT-E0320": {
     title: "Overlapping writes in par",
     explain: "Two branches of a par block can write the same scope. Write capabilities (fs.write, git.*) must be disjoint across branches; read capabilities may be shared (C5).",

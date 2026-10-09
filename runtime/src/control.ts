@@ -11,7 +11,8 @@
 //     "rateLimits": { "model": { "capacity": 50, "perSecond": 1, "queue": 100 } },     // shared token buckets (§8.6)
 
 //     "model":    { "provider": "anthropic" },                  // CLAUDE_API_KEY, CLAUDE_WORKSPACE_ID
-//     "sandbox":  { "host": "mxc", "baseline": ["/usr/local"] },
+//     "sandbox":  { "host": "mxc", "baseline": ["/usr/local"], "mode": "enforcement" | "learning" },
+//                 on Windows: { "host": "mxc", "toolchain": ["C:\\Program Files\\nodejs"], "isolation": "process" }
 //     "github":   { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },   // MANDATE_GITHUB_TOKEN
 //     "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"] }
 //   }
@@ -28,6 +29,7 @@ import type { RuntimeOptions } from "./runtime.js";
 import { openDb, type Db } from "./db.js";
 import { GitHubPullRequests } from "./github.js";
 import { MxcHost } from "./mxc.js";
+import { WindowsMxcHost } from "./mxc-windows.js";
 import { MxcAdapter } from "./sandbox.js";
 import { wallClock } from "./sim.js";
 import { Violation } from "./signals.js";
@@ -46,7 +48,7 @@ export interface RuntimeConfig {
   /** Token buckets every run on this database draws from (§8.6): `model`, `model:<tier>`, `tool`. */
   rateLimits?: Record<string, BucketConfig>;
   model?: { provider: "anthropic" };
-  sandbox?: { host: "mxc"; baseline?: string[]; path?: string[] };
+  sandbox?: { host: "mxc"; baseline?: string[]; path?: string[]; toolchain?: string[]; isolation?: "process" | "session"; mode?: "enforcement" | "learning" };
   github?: { repo: string; base?: string; workdir: string };
   verifier?: VerifierConfig;
 }
@@ -55,7 +57,7 @@ const KEYS: Record<string, string[]> = {
   "": ["database", "artifacts", "evidence", "rateLimits", "model", "sandbox", "github", "verifier"],
   evidence: ["key", "trusted"],
   model: ["provider"],
-  sandbox: ["host", "baseline", "path"],
+  sandbox: ["host", "baseline", "path", "toolchain", "isolation", "mode"],
   github: ["repo", "base", "workdir"],
   verifier: ["workdir", "base", "suites", "command", "timeoutMs"],
 };
@@ -129,7 +131,14 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
     if (!token) throw new Violation("no_credentials", "github is configured, but MANDATE_GITHUB_TOKEN is not set.");
     tools["git.open_pr"] = new GitHubPullRequests({ token, repo: config.github.repo, workdir: config.github.workdir, ...(config.github.base ? { base: config.github.base } : {}) });
   }
-  const sandbox = config.sandbox ? new MxcAdapter({ host: new MxcHost({ ...(config.sandbox.baseline ? { baseline: config.sandbox.baseline } : {}), ...(config.sandbox.path ? { path: config.sandbox.path } : {}) }), schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true }) : undefined;
+  // Linux: Bubblewrap; Windows: the AppContainer process container (P2-27). Each refuses by name what it cannot enforce.
+  const s = config.sandbox;
+  const host = !s
+    ? undefined
+    : process.platform === "win32"
+      ? new WindowsMxcHost({ ...(s.toolchain ? { toolchain: s.toolchain } : {}), ...(s.isolation ? { backend: s.isolation } : {}) })
+      : new MxcHost({ ...(s.baseline ? { baseline: s.baseline } : {}), ...(s.path ? { path: s.path } : {}) });
+  const sandbox = host ? new MxcAdapter({ host, schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true, ...(s?.isolation ? { isolation: s.isolation } : {}), ...(s?.mode ? { mode: s.mode } : {}) }) : undefined;
   return {
     agents: { run: async () => missing("agent adapter: agents run as agent loops, which need model and sandbox") },
     ...(model && sandbox ? { loop: { chat: model, sandbox } } : {}),

@@ -116,7 +116,7 @@ export class MxcHost implements SandboxHost {
   async execute(handle: string, req: ExecRequest): Promise<ExecResult> {
     const policy = this.policies.get(handle);
     if (!policy) return refused(`no sandbox ${handle}`);
-    const why = this.disallowed(policy, req.argv);
+    const why = disallowed(policy, req.argv);
     if (why) return refused(why);
     const sdk = await this.load();
     if (!sdk) return refused(this.unavailable ?? "MXC is not available");
@@ -153,19 +153,27 @@ export class MxcHost implements SandboxHost {
     return "destroyed";
   }
 
-  /** Why the host will not start `argv` under `policy`, or undefined when it may. */
-  private disallowed(policy: MxcPolicy, argv: string[]): string | undefined {
-    const [cmd, ...args] = argv;
-    if (!cmd) return "empty command";
-    const { readOnly, readWrite } = policy.filesystem;
-    const target = args[args.length - 1] ?? "";
-    if (HELPERS.has(cmd)) return inside(target, [...readOnly, ...readWrite]) ? undefined : `${target} is outside this sandbox's paths`;
-    if (cmd === "sh" && args.length === 4 && args[0] === "-c" && args[1] === WRITE_SCRIPT) return inside(target, readWrite) ? undefined : `${target} is outside this sandbox's write paths`;
-    const allowed = policy.process.allowedCommands.filter((c) => c.command === cmd);
-    if (!allowed.length) return `${cmd} is not an allowed command in this sandbox`;
-    if (!allowed.some((c) => !c.argsPrefix || c.argsPrefix.some((p) => p.every((x, i) => args[i] === x)))) return `${argv.join(" ")} does not start with an allowed argument prefix`;
-    return undefined;
-  }
+}
+
+/**
+ * Why a host will not start `argv` under `policy`, or undefined when it may.
+ * A sandbox backend that cannot limit which programs run (Bubblewrap, an
+ * AppContainer) enforces the command allow-list here, before any process
+ * starts: a process is one of the runtime's own tool helpers (cat, ls, grep,
+ * the write_file script) on a path inside the policy's paths, or an allowed
+ * command whose arguments start with an allowed prefix.
+ */
+export function disallowed(policy: MxcPolicy, argv: string[]): string | undefined {
+  const [cmd, ...args] = argv;
+  if (!cmd) return "empty command";
+  const { readOnly, readWrite } = policy.filesystem;
+  const target = args[args.length - 1] ?? "";
+  if (HELPERS.has(cmd)) return inside(target, [...readOnly, ...readWrite]) ? undefined : `${target} is outside this sandbox's paths`;
+  if (cmd === "sh" && args.length === 4 && args[0] === "-c" && args[1] === WRITE_SCRIPT) return inside(target, readWrite) ? undefined : `${target} is outside this sandbox's write paths`;
+  const allowed = policy.process.allowedCommands.filter((c) => c.command === cmd);
+  if (!allowed.length) return `${cmd} is not an allowed command in this sandbox`;
+  if (!allowed.some((c) => !c.argsPrefix || c.argsPrefix.some((p) => p.every((x, i) => args[i] === x)))) return `${argv.join(" ")} does not start with an allowed argument prefix`;
+  return undefined;
 }
 
 /** POSIX single-quoting: Bubblewrap runs the command line through `sh -c`. */

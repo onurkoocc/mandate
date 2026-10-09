@@ -128,3 +128,12 @@ describe("exec without argument prefixes", () => {
     expect(req([cap([["test"]]), cap([["run", "build"]])])).toEqual([{ command: "npm", args_prefix: [["run", "build"], ["test"]] }]);
   });
 });
+
+describe("Windows paths (P2-27)", () => {
+  it("keeps a drive letter, so a Windows sandbox gets the paths the program names", () => {
+    const fs = (ctor: string, scope: string[]) => ({ ctor, effect: ctor === "fs.read" ? "Fs.Read" : "Fs.Write", write: ctor === "fs.write", scope });
+    const req = requirementFor({ agent: "A", def: "sha256:x" }, [fs("fs.read", ["C:/work/repo", "C:/work/repo/src/../docs"]), fs("fs.write", ["C:/work/repo/src"])] as never, null);
+    expect(req.filesystem).toEqual({ read: ["C:/work/repo"], write: ["C:/work/repo/src"] });
+    expect(requirementFor({ agent: "A", def: "sha256:x" }, [fs("fs.read", ["/work/repo"])] as never, null).filesystem.read).toEqual(["/work/repo"]);
+  });
+});

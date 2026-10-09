@@ -54,6 +54,7 @@ Warnings (`W…`) never make a check fail.
 | MDT-E0301 | Capability not in scope | — | Appendix B |
 | MDT-E0305 | Capability widened | — | Appendix B |
 | MDT-W0310 | Unused capability | — | Appendix B |
+| MDT-W0311 | Policy and real use disagree (learning mode) | — | Appendix B |
 | MDT-E0320 | Overlapping writes in par | V03 | Appendix B |
 | MDT-E0401 | Undeclared effect | — | Appendix B |
 | MDT-E0402 | Unknown effect | — | assigned |

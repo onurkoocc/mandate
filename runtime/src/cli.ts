@@ -11,6 +11,7 @@
 //   mandate replay <run>
 //   mandate artifact <run> <blob:sha256:…>
 //   mandate show <run> [--format md|html|json]           the run's views (§15): status, evidence, cost, actions
+//   mandate denials <run>                                 what learning-mode sandboxes denied, for `mandate check --denials` (W0311)
 //   mandate test <program> [--json]                       run the program's tests (§6.4); needs no configuration
 //
 // Every command reads `mandate.runtime.json` (or --config). A decision names
@@ -67,10 +68,11 @@ const USAGE = `usage:
   mandate replay <run>
   mandate artifact <run> <blob:sha256:…>
   mandate show <run> [--format md|html|json]
+  mandate denials <run>
   mandate test <program> [--json] [--lock FILE]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "test"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "denials", "test"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -142,6 +144,9 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         out(format === "json" ? JSON.stringify(view, null, 2) + "\n" : format === "html" ? toHtml(runDoc(view, program)) : toMarkdown(runDoc(view, program)));
         return 0;
       }
+      case "denials":
+        out(JSON.stringify(await rt.sandboxDenials(runId), null, 2) + "\n");
+        return 0;
       case "artifact": {
         const ref = a.positional[1] ?? fail("artifact needs a reference, blob:sha256:…");
         const got = await rt.artifact(runId, ref);

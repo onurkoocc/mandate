@@ -51,7 +51,22 @@ export interface SandboxHost {
   create(policy: MxcPolicy): Promise<string>;
   /** Runs one process under the sandbox's policy. What the policy denies fails inside the process. */
   execute(handle: string, req: ExecRequest): Promise<ExecResult>;
+  /**
+   * What the sandbox recorded (§16.1 `Collect`): in learning mode, the
+   * accesses its policy denied, for the compiler's W0311. Optional; a host
+   * without learning mode records nothing.
+   */
+  collect?(handle: string): Promise<{ denials: SandboxDenial[] }>;
   destroy(handle: string): Promise<"destroyed" | "retained_for_investigation">;
+}
+
+/** One access a sandbox's policy denied, recorded in learning mode. */
+export interface SandboxDenial {
+  resource: string;
+  /** e.g. `read`, `write`, `execute`. */
+  access: string;
+  /** e.g. `file`, `other`. */
+  kind: string;
 }
 
 /** A sandbox policy in the representative MXC shape of §11.3. */

@@ -9,6 +9,7 @@
 // cannot be enforced (INV-11). External effects such as `git.pr` are not
 // part of a sandbox: they go through the runtime's effect broker (§8.8).
 
+import { diag, type Diagnostic } from "../diag.js";
 import { hashProgram } from "../hash.js";
 import type { AgentDef, Budget, Expr, Program } from "../ir/types.js";
 import type { Json } from "../json/strict-json.js";
@@ -134,8 +135,10 @@ function agentTimeout(a: AgentDef): number | null {
   return skills.length && skills.every((t) => t !== undefined) ? Math.max(...(skills as number[])) : null;
 }
 
+/** A path by its segments; a Windows path keeps its drive (`C:/work/repo`), any other is rooted at `/`. */
 function normalize(path: string): string {
-  return "/" + segments(path).join("/");
+  const s = segments(path);
+  return /^[A-Za-z]:$/.test(s[0] ?? "") ? s.join("/") : "/" + s.join("/");
 }
 
 /** Sorted, without duplicates, and without paths that lie inside another one. */
@@ -151,4 +154,40 @@ function uniqueLists(lists: string[][]): string[][] {
 
 function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+export const SANDBOX_DENIALS_FORMAT = "mandate/sandbox-denials/0.1";
+
+/** What sandboxes in learning mode denied during a run, as `mandate denials <run>` exports it. */
+export interface DenialReport {
+  format: typeof SANDBOX_DENIALS_FORMAT;
+  /** The program the run ran. */
+  program: string;
+  denials: Array<{ agent: string; resource: string; access: string }>;
+}
+
+/**
+ * W0311 (§11.3, §12.2): what an agent's sandbox denied in learning mode, as
+ * feedback on its policy. One warning per agent, access and resource. A
+ * report made for another program is refused, since its agents' policies
+ * may differ.
+ */
+export function denialDiagnostics(program: Program, report: DenialReport): Diagnostic[] {
+  const hash = hashProgram(program as unknown as Json).program;
+  if (report.format !== SANDBOX_DENIALS_FORMAT) return [diag("E0104", `A denial report must have format ${SANDBOX_DENIALS_FORMAT}.`, { path: "" })];
+  if (report.program !== hash) return [diag("E0104", `The denial report is for program ${report.program}, not ${hash}.`, { path: "" }, { facts: { report: report.program, program: hash } })];
+  const seen = new Set<string>();
+  const out: Diagnostic[] = [];
+  for (const d of report.denials) {
+    const key = `${d.agent} ${d.access} ${d.resource}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const agent = program.defs[d.agent];
+    out.push(
+      diag("W0311", `In learning mode, ${d.agent}'s sandbox denied ${d.access} of ${d.resource}: its policy does not allow it. If ${d.agent} needs it, its capability must grow (a governance change); if not, it reached too far.`, { path: agent?.kind === "agent" ? `/defs/${d.agent}/caps` : "" }, {
+        facts: { agent: d.agent, access: d.access, resource: d.resource },
+      }),
+    );
+  }
+  return out;
 }

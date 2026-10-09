@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { canonicalize, capFromCall, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, modelTiers, validateLock, type CapVal, type Expr, type Json, type Lock, type Program } from "@mandate/compiler";
+import { canonicalize, capFromCall, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, modelTiers, SANDBOX_DENIALS_FORMAT, validateLock, type CapVal, type DenialReport, type Expr, type Json, type Lock, type Program } from "@mandate/compiler";
 import type { Adapters, Cost } from "./adapters.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
@@ -391,6 +391,25 @@ export class Runtime {
       key_id: e.key_id,
       valid: !!e.record && !!e.key_id && !!e.signature && this.trusted.verify(e.record as unknown as EvidenceRecord, { key_id: e.key_id, signature: e.signature }) && (e.record as unknown as EvidenceRecord).evidence_id === e.evidence_id && (e.record as unknown as EvidenceRecord).passed === e.passed,
     }));
+  }
+
+  /**
+   * What the run's sandboxes denied in learning mode (§16.1 Collect), by
+   * agent, as the report `mandate check --denials` turns into W0311.
+   */
+  async sandboxDenials(runId: string): Promise<DenialReport> {
+    const run = await this.journal.run(runId);
+    const program = await this.program(run.package_hash);
+    const labels = new Map((await this.db.query<Row>("select command_id, label from commands where run_id = $1", [runId])).map((r) => [String(r["command_id"]), String(r["label"] ?? "")]));
+    const denials: DenialReport["denials"] = [];
+    for (const e of await this.journal.events(runId)) {
+      if (e.type !== "command_completed" || !isObj(e.data)) continue;
+      const meta = isObj(e.data["meta"] ?? null) ? (e.data["meta"] as Obj) : undefined;
+      const found = meta && Array.isArray(meta["sandbox_denials"]) ? meta["sandbox_denials"] : [];
+      const agent = (labels.get(String(e.data["command"])) ?? "").split(".")[0] ?? "";
+      for (const d of found) if (isObj(d)) denials.push({ agent, resource: String(d["resource"]), access: String(d["access"]) });
+    }
+    return { format: SANDBOX_DENIALS_FORMAT, program: hashProgram(program as unknown as Json).program, denials };
   }
 
   /** An artifact of a run, scoped by the run's tenant: another run's or tenant's digest is refused like a missing one (G08). */

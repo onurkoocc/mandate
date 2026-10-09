@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // mandate — command-line front end for the 0.1 reference compiler.
 //
-//   mandate check <file> [--json] [--lock <lock.json>]
+//   mandate check <file> [--json] [--lock <lock.json>] [--denials <report.json>]
 //                                          validate, resolve names, print hashes
 //   mandate ir <file> [--canonical]        print canonical IR (pretty, or the exact JCS bytes)
 //   mandate fmt <file>                     print the .mdt projection of the IR
@@ -15,7 +15,7 @@
 //                                          the program's human views (§15): architecture,
 //                                          authority and cost; with --against, what changed
 //
-//   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show
+//   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials
 //                                          control a run (the runtime's CLI, @mandate/runtime/cli)
 //   mandate test <file>                    run the program's tests with their effect handlers (§6.4)
 //
@@ -36,7 +36,7 @@ import type { Lock } from "./lock.js";
 import { applyPatch, type PatchOp } from "./patch/patch.js";
 import { printProgram } from "./print/printer.js";
 import { serveStdio } from "./mcp/server.js";
-import { sandboxRequirements } from "./target/sandbox.js";
+import { denialDiagnostics, sandboxRequirements, type DenialReport } from "./target/sandbox.js";
 import { toHtml, toMarkdown } from "./views/doc.js";
 import { architecture, authority, cost, diffDoc, programDoc, semanticDiff } from "./views/views.js";
 
@@ -44,7 +44,7 @@ function usage(): never {
   process.stderr.write(
     [
       "usage: mandate <command> [options]",
-      "  check <file> [--json] [--lock <lock.json>]",
+      "  check <file> [--json] [--lock <lock.json>] [--denials <report.json>]",
       "  ir <file> [--canonical]",
       "  fmt <file>",
       "  hash <file>",
@@ -53,7 +53,7 @@ function usage(): never {
       "  explain <code>",
       "  view <file> [--against <old file>] [--format md|html|json] [--lock <lock.json>]",
       "  mcp   (an MCP server on stdio)",
-      "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show   (see `mandate status`)",
+      "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials   (see `mandate status`)",
       "  test <file> [--json]",
       "",
     ].join("\n"),
@@ -104,6 +104,7 @@ function main(argv: string[]): void {
   const agent = option(plain, "--agent");
   const lockFile = option(plain, "--lock");
   const against = option(plain, "--against");
+  const denials = option(plain, "--denials");
   const format = option(plain, "--format") ?? "md";
   const flags = new Set(plain.filter((a) => a.startsWith("--")));
   const args = plain.filter((a) => !a.startsWith("--"));
@@ -114,6 +115,16 @@ function main(argv: string[]): void {
       const file = args[0] ?? usage();
       const lock = readLock(file, lockFile, asJson);
       const r = check(read(file), kindOf(file), lock ? { lock } : {});
+      // W0311: what sandboxes denied in learning mode, as feedback on the policies (§11.3).
+      if (denials !== undefined && r.program && r.ok) {
+        const parsed = parseStrictJson(read(denials));
+        if (!parsed.ok) {
+          report(parsed.diagnostics, denials, asJson);
+          process.exit(1);
+        }
+        r.diagnostics.push(...denialDiagnostics(r.program, parsed.value.value as unknown as DenialReport));
+        r.ok = !hasErrors(r.diagnostics);
+      }
       report(r.diagnostics, file, asJson, r.hashes ? { hashes: r.hashes } : {});
       if (!asJson && r.ok) process.stdout.write(`ok ${r.hashes!.program}\n`);
       process.exit(r.ok ? 0 : 1);
@@ -242,7 +253,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "test"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact", "show", "denials", "test"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {
