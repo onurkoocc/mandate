@@ -176,6 +176,12 @@ with `MANDATE_MXC=1` (the CI job `sandbox`), it checks the blocking itself:
 writes outside the grant, reads outside it, network, the environment, and
 an agent loop working through the sandbox.
 
+`artifacts.test.ts` checks the artifact store and the binding of evidence
+to what it checked: a test records the files it ran against, an action
+applies the files frozen at prepare, and a file changed after its test is
+never committed on the old evidence (G01). Another run's or tenant's
+artifact is refused like a missing one (G08).
+
 `github.test.ts` checks the `git.open_pr` adapter for GitHub against an
 in-memory GitHub:
 
@@ -183,6 +189,8 @@ in-memory GitHub:
 - a lost response is reconciled to that one pull request;
 - a request that never arrived is sent again without opening a second one;
 - a cancelled run resolves an action that never took effect;
+- the pull request carries the files frozen at prepare, even if the working
+  copy changes while the action waits for authorization;
 - a program bound to another repository does not start.
 
 `live.test.ts` repeats the lost response against the real test repository
@@ -213,8 +221,10 @@ These cases from §25 are covered:
 | R16 | An unknown charge keeps its reservation until it is settled | `budget` |
 | S09 | Unlocked modules, changed packages and failing checks are refused at load | `messages` |
 | E0406, E0407 | Commit needs a matching, unconsumed, unexpired authorization | `effects` |
+| G01 | A file changed after its test cannot be committed on the old evidence | `artifacts` |
 | G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop`, `mxc` |
 | G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`) |
+| G08 | Another tenant's or run's artifact is refused like a missing one | `artifacts` |
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
 | V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |
 

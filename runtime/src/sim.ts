@@ -9,6 +9,8 @@ import type {
   AgentAdapter,
   AuthorizationContext,
   ChatModel,
+  CheckResult,
+  CheckSubject,
   Clock,
   Cost,
   DelegateRequest,
@@ -16,6 +18,7 @@ import type {
   ModelAdapter,
   Outcome,
   PreparedAction,
+  PreparedFile,
   ReadAdapter,
   ToolAdapter,
   ToolContract,
@@ -25,6 +28,7 @@ import type {
   VerifyRequest,
 } from "./adapters.js";
 import type { Enforceable, ExecRequest, ExecResult, MxcPolicy, SandboxHost } from "./sandbox.js";
+import { sha256Of } from "./artifacts.js";
 import { inside, WRITE_SCRIPT } from "./tools.js";
 import { digest, isObj, type Value } from "./values.js";
 
@@ -145,15 +149,35 @@ export function toolUse(id: string, name: string, input: Value): Value {
   return { type: "tool_use", id, name, input };
 }
 
+/** A working copy for simulated checks and actions: file contents by path. */
+export class SimWorkspace {
+  readonly files = new Map<string, string>();
+  constructor(files: Record<string, string> = {}) {
+    for (const [p, c] of Object.entries(files)) this.files.set(p, c);
+  }
+  write(path: string, content: string): void {
+    this.files.set(path, content);
+  }
+  snapshot(): CheckSubject {
+    return { files: Object.fromEntries([...this.files.keys()].sort().map((p) => [p, sha256Of(this.files.get(p)!)])) };
+  }
+}
+
 export class SimVerifier implements VerifierAdapter {
   readonly calls: VerifyRequest[] = [];
-  /** Results by criterion name or method; anything unlisted passes. */
-  constructor(readonly results: Record<string, boolean> = {}) {}
+  /**
+   * Results by criterion name or method; anything unlisted passes. With a
+   * workspace, a test check (`test.*`) reports the files it ran against.
+   */
+  constructor(
+    readonly results: Record<string, boolean> = {},
+    readonly workspace?: SimWorkspace,
+  ) {}
 
-  async check(req: VerifyRequest): Promise<{ passed: boolean; detail?: Value }> {
+  async check(req: VerifyRequest): Promise<CheckResult> {
     this.calls.push(req);
     const r = this.results[req.criterion] ?? this.results[req.method] ?? true;
-    return { passed: r, detail: { method: req.method } };
+    return { passed: r, detail: { method: req.method }, ...(this.workspace && req.method.startsWith("test.") ? { subject: this.workspace.snapshot() } : {}) };
   }
 }
 
@@ -184,9 +208,14 @@ export class SimTool implements ToolAdapter {
   readonly applied = new Map<string, Value>();
   private readonly plan: ToolBehavior[] = [];
 
+  /** Applied files by operation key, as `execute` received them from the artifact store. */
+  readonly sent = new Map<string, Record<string, string>>();
+
   constructor(
     readonly name: string,
     readonly retryClass: RetryClass = "idempotent",
+    /** With a workspace, `prepare` reads the files the draft names (`patch.files`, `tests.files`), as git.open_pr does. */
+    readonly workspace?: SimWorkspace,
   ) {}
 
   /** Behaviors for the next execute calls, in order; afterwards it confirms. */
@@ -199,13 +228,21 @@ export class SimTool implements ToolAdapter {
     return { id: `sim/${this.name}`, digest: digest("request", { adapter: this.name, retry: this.retryClass }), retryClass: this.retryClass };
   }
 
-  async prepare(params: Value): Promise<{ prepared: true }> {
+  async prepare(params: Value): Promise<{ prepared: true; artifacts?: PreparedFile[] } | { rejected: string }> {
     this.prepares.push(params);
-    return { prepared: true };
+    if (!this.workspace) return { prepared: true };
+    const artifacts: PreparedFile[] = [];
+    for (const f of draftFiles(params)) {
+      const content = this.workspace.files.get(f);
+      if (content === undefined) return { rejected: `${f} does not exist in the working copy` };
+      artifacts.push({ path: f, content });
+    }
+    return { prepared: true, artifacts };
   }
 
   async execute(action: PreparedAction, auth: AuthorizationContext, operationKey: string): Promise<{ confirmed: Value } | { rejected: string } | { unknown: string }> {
     this.executions.push({ operationKey, params: action.params, authorization: auth.authorizationId });
+    if (action.artifacts) this.sent.set(operationKey, Object.fromEntries(action.artifacts.map((a) => [a.path, new TextDecoder().decode(a.content)])));
     // An idempotent system ties one key to one result (§8.9).
     if (this.retryClass === "idempotent" && this.applied.has(operationKey)) return { confirmed: this.applied.get(operationKey)! };
     const b = this.plan.shift() ?? "confirm";
@@ -375,6 +412,18 @@ export function simulate(o: { tools?: SimTool[]; agents?: SimAgents; model?: Sim
     return seed / 2 ** 31;
   };
   return { adapters: { agents, model, verifier, reads, tools, clock: o.clock ?? clock, random }, clock, agents, model, verifier, reads, tools };
+}
+
+/** The files a pull request draft names: `patch.files` and `tests.files`. */
+function draftFiles(params: Value): string[] {
+  const d = Array.isArray(params) ? params[0] : params;
+  if (!isObj(d ?? null)) return [];
+  const files = (k: string): string[] => {
+    const part = (d as Record<string, Value>)[k];
+    const list = isObj(part ?? null) ? (part as Record<string, Value>)["files"] : undefined;
+    return Array.isArray(list) ? list.filter((f): f is string => typeof f === "string") : [];
+  };
+  return [...new Set([...files("patch"), ...files("tests")])].sort();
 }
 
 function ok(stdout: string): ExecResult {

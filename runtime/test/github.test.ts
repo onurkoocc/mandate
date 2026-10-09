@@ -105,6 +105,27 @@ describe("git.open_pr on GitHub", () => {
     const adapter = new GitHubPullRequests({ token: "t", repo: "company/backend", workdir, fetch: new FakeGitHub("company/backend").fetch });
     expect(await adapter.prepare([{ issue: { id: "1" }, patch: { files: ["src/missing.ts"] } }])).toEqual({ rejected: "src/missing.ts does not exist in the working copy" });
     expect(await adapter.prepare([{ issue: { id: "1" }, patch: { files: ["../etc/passwd"] } }])).toEqual({ rejected: "../etc/passwd is outside the working copy" });
-    expect(await adapter.prepare([{ issue: { id: "1" }, patch: { files: ["src/a.ts"] } }])).toEqual({ prepared: true });
+    expect(await adapter.prepare([{ issue: { id: "1" }, patch: { files: ["src/a.ts"] } }])).toEqual({ prepared: true, artifacts: [{ path: "src/a.ts", content: "export const a = 2;\n" }] });
+  });
+
+  it("sends the files as they were frozen at prepare, not as the working copy has them at execute (§8.8)", async () => {
+    const gh = new FakeGitHub("company/backend");
+    const w = await fixbug(gh);
+    const waiting = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "gh6", authorize: { "git.open_pr": { by: "human", role: "maintainer" } } });
+    const owner = waitOf(waiting.waiting);
+    const prepared = await w.rt.decideAction("gh6", { sender: "carol", messageId: "a1" }, { commandId: owner.command, revision: waiting.revision, digest: String(owner.request["subject_digest"]), approve: true, by: "carol" });
+    // The action is prepared and waits for the maintainer; meanwhile the working copy changes.
+    const authorize = waitOf(prepared.waiting);
+    expect(authorize.request).toMatchObject({ effect: "git.open_pr", role: "maintainer" });
+    const [action] = await w.rt.journal.actions("gh6");
+    expect(action!.artifacts).toMatchObject({ "src/a.ts": { ref: expect.stringMatching(/^blob:sha256:/) } });
+    writeFileSync(join(workdir, "src", "a.ts"), "export const a = 666;\n");
+    try {
+      const done = await w.rt.decideAction("gh6", { sender: "dave", messageId: "a2" }, { commandId: authorize.command, revision: prepared.revision, digest: String(authorize.request["action_digest"]), approve: true, by: "dave" });
+      expect(done.state).toBe("succeeded");
+      expect(gh.filesOf(gh.pulls[0]!.head.ref)!.get("src/a.ts")).toBe("export const a = 2;\n");
+    } finally {
+      writeFileSync(join(workdir, "src", "a.ts"), "export const a = 2;\n");
+    }
   });
 });

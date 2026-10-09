@@ -37,7 +37,8 @@ import {
   type Verifier,
   type WorkflowDef,
 } from "@mandate/compiler";
-import type { Adapters, Cost, Outcome, ToolAdapter } from "./adapters.js";
+import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ToolAdapter } from "./adapters.js";
+import type { ArtifactStore } from "./artifacts.js";
 import type { Faults } from "./faults.js";
 import { runAgentLoop, type LoopTask } from "./loop.js";
 import type { ActionRow, CommandRow, Journal } from "./journal.js";
@@ -112,6 +113,8 @@ export interface InterpOptions {
   fence: number;
   policy: Policy;
   faults: Faults;
+  /** Where an action's files and a check's outputs are kept (§16.1). */
+  artifacts: ArtifactStore;
   /** Replay reads the journal only and never calls an adapter (R13). */
   replay: boolean;
 }
@@ -738,6 +741,7 @@ export class Interpreter {
     let passed: boolean;
     let method: string;
     let detail: Value = null;
+    let files: Obj | undefined;
     if ("static" in v) {
       // A static criterion the compiler could not prove is checked here (W0601).
       method = "static";
@@ -763,16 +767,21 @@ export class Interpreter {
         verifier.upperBound ? () => verifier.upperBound!(req) : undefined,
         async () => {
           const res = await verifier.check(req);
-          return { ok: { passed: res.passed, detail: res.detail ?? null }, ...(res.cost ? { cost: res.cost } : {}) };
+          return { ok: { passed: res.passed, detail: res.detail ?? null, ...(res.subject ? { subject: { files: res.subject.files } } : {}) }, ...(res.cost ? { cost: res.cost } : {}) };
         },
         undefined,
         `${contract}.${name}`,
       );
       passed = isObj(r) && r["passed"] === true;
       detail = isObj(r) ? (r["detail"] ?? null) : null;
+      const checked = isObj(r) && isObj(r["subject"] ?? null) ? (r["subject"] as Obj) : undefined;
+      if (checked && isObj(checked["files"] ?? null)) files = checked["files"] as Obj;
     }
+    // What the check was about: the contract's arguments, and for a check of the working copy, its files (§10.3).
+    const subject: Obj = { contract_args: this.subjectDigest(contract, ctx), ...(files ? { files } : {}) };
+    if (files && !this.o.replay) subject["tree"] = (await this.o.artifacts.putTree(this.scope(), { format: "mandate/tree/0.1", files: files as Record<string, string> })).ref;
     const id = digest("request", { run: this.o.runId, criterion: path, method, passed });
-    if (!this.o.replay) await this.o.journal.recordEvidence(this.o.runId, { id, contract, criterion: name, method, passed, detail });
+    if (!this.o.replay) await this.o.journal.recordEvidence(this.o.runId, { id, contract, criterion: name, method, passed, detail, subject });
     if (passed) evidence.push(id);
     return passed;
   }
@@ -783,6 +792,16 @@ export class Interpreter {
    * applies only to the subject the person was shown (G02). An approval here
    * is evidence for the criterion; it authorizes no action.
    */
+  /** A digest of a contract's arguments: what its evidence is about. */
+  private subjectDigest(contract: string, ctx: Ctx): string {
+    const c = this.def(contract) as ContractDef;
+    return digest("request", { contract, subject: plain(c.params.map((p) => this.variable(p.name, ctx))) });
+  }
+
+  private scope(): { tenant: string; runId: string } {
+    return { tenant: this.o.policy.tenant, runId: this.o.runId };
+  }
+
   private async approval(call: Extract<Expr, { op: "call" }>, contract: string, criterion: string, ctx: Ctx, id: string): Promise<Obj> {
     const { named } = await this.args(call.args, ctx, id);
     const c = this.def(contract) as ContractDef;
@@ -837,6 +856,25 @@ export class Interpreter {
     if (!tool) throw new Violation("no_adapter", `No adapter for effect ${e.name}.`);
     const contract = tool.describe();
     const params = plain(pos);
+    // Prepare (§8.8): the adapter checks the parameters and reads the files the action will apply. They are frozen
+    // into the artifact store, and the journaled command keeps their digests, so a resumed worker or a replay finds
+    // the same action; execute later sends exactly these bytes.
+    if (ctx.siblings?.failed && !this.o.replay && !(await this.o.journal.command(this.o.runId, `${path}/prepare`))) throw new SiblingStopped();
+    const prepared = await this.command(`${path}/prepare`, "prepare", { effect: e.name, params }, undefined, async () => {
+      const pre = await tool.prepare(params);
+      if ("rejected" in pre) return { error: { tag: "Rejected", args: [pre.rejected] }, cost: {} };
+      const frozen: Obj = {};
+      for (const f of [...(pre.artifacts ?? [])].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
+        const a = await this.o.artifacts.put(this.scope(), f.content, f.mediaType ?? "text/plain; charset=utf-8");
+        frozen[f.path] = { ref: a.ref, digest: a.digest };
+      }
+      return { ok: { artifacts: frozen }, cost: {} };
+    });
+    const frozen = isObj(prepared) && isObj(prepared["artifacts"] ?? null) ? (prepared["artifacts"] as Obj) : {};
+    const files = Object.fromEntries(Object.entries(frozen).map(([p, a]) => [p, isObj(a) ? String(a["digest"]) : ""]));
+    const evidence = evidenceOf(pos);
+    // Evidence is bound to what it checked: an action that would apply other bytes is refused (G01, INV-05).
+    if (Object.keys(files).length && !this.o.replay) await this.checkEvidenceFresh(e.name, files, evidence);
     const actionDigest = digest("action", {
       package: this.o.packageHash,
       run: this.o.runId,
@@ -845,8 +883,9 @@ export class Interpreter {
       adapter: contract.id,
       adapter_contract: contract.digest,
       params,
-      evidence: evidenceOf(pos),
+      evidence,
       idempotency_key: key,
+      ...(Object.keys(files).length ? { artifacts: files } : {}),
     });
     const operationKey = digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: path, action: actionDigest });
     const { journal, runId, fence } = this.o;
@@ -858,8 +897,6 @@ export class Interpreter {
     }
     if (ctx.siblings?.failed && (!action || action.state === "prepared")) throw new SiblingStopped();
     if (!action) {
-      const pre = await tool.prepare(params);
-      if ("rejected" in pre) throw new Fault("Rejected", [pre.rejected]);
       action = await journal.prepare(runId, fence, {
         operationKey,
         commandId: path,
@@ -867,6 +904,7 @@ export class Interpreter {
         actionDigest,
         params,
         retryClass: info.retryClass ?? contract.retryClass,
+        ...(Object.keys(frozen).length ? { artifacts: frozen } : {}),
       });
     }
     let justCommitted = false;
@@ -921,7 +959,8 @@ export class Interpreter {
       }
     }
     const auth = await this.authRow(action);
-    const res = await tool.execute({ effect: action.effect, params: action.params, actionDigest: action.action_digest, operationKey: op }, auth, op);
+    const artifacts = await this.actionArtifacts(action);
+    const res = await tool.execute({ effect: action.effect, params: action.params, actionDigest: action.action_digest, operationKey: op, ...(artifacts.length ? { artifacts } : {}) }, auth, op);
     faults.check("after_execute", { id: action.command_id, kind: "effect" });
     if ("confirmed" in res) {
       await journal.finishAction(runId, fence, op, "confirmed", { receipt: res.confirmed });
@@ -933,6 +972,37 @@ export class Interpreter {
     }
     await journal.finishAction(runId, fence, op, "unknown_outcome", { detail: res.unknown });
     return this.settledAction({ ...action, state: "unknown_outcome" });
+  }
+
+  /** The files frozen at prepare, read back from the artifact store (which checks their digests). */
+  private async actionArtifacts(action: ActionRow): Promise<ActionArtifact[]> {
+    const frozen = isObj(action.artifacts ?? null) ? (action.artifacts as Obj) : {};
+    const out: ActionArtifact[] = [];
+    for (const [path, a] of Object.entries(frozen)) {
+      if (!isObj(a)) continue;
+      const got = await this.o.artifacts.get(this.scope(), String(a["ref"]));
+      out.push({ path, ref: String(a["ref"]), digest: got.digest, content: got.bytes });
+    }
+    return out;
+  }
+
+  /**
+   * G01: every file the action applies must have the bytes the run's checks
+   * saw. Each piece of evidence that names the working copy's files (a test)
+   * must list the file with the same digest; a file changed or added since
+   * the check makes the evidence stale, and the action is refused.
+   */
+  private async checkEvidenceFresh(effect: string, files: Record<string, string>, ids: string[]): Promise<void> {
+    const rows = ids.length ? await this.o.journal.evidence(this.o.runId, ids) : [];
+    const stale: string[] = [];
+    for (const r of rows) {
+      const checked = isObj(r.subject) && isObj(r.subject["files"] ?? null) ? (r.subject["files"] as Obj) : undefined;
+      if (!checked) continue;
+      for (const [p, d] of Object.entries(files)) {
+        if (checked[p] !== d) stale.push(`${p} (${r.criterion}: ${checked[p] === undefined ? "not in what was checked" : "changed since the check"})`);
+      }
+    }
+    if (stale.length) throw new Violation("stale_evidence", `${effect} would apply files other than the ones its evidence checked (G01): ${[...new Set(stale)].sort().join(", ")}.`);
   }
 
   private async authRow(action: ActionRow): Promise<{ authorizationId: string; decidedBy: string }> {

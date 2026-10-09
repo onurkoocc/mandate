@@ -10,7 +10,7 @@
 //   mandate sandbox <file> [--agent <name>] print each agent's sandbox requirement
 //   mandate explain <code>                 explain a diagnostic code
 //
-//   mandate run | status | approve | decline | answer | cancel | raise-limits | replay
+//   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact
 //                                          control a run (the runtime's CLI, @mandate/runtime/cli)
 //
 // <file> is .mdt text or .json canonical IR. `check` and `sandbox` read the
@@ -42,7 +42,7 @@ function usage(): never {
       "  patch <program> <patch.json> [--json]   patch.json: { \"base\": \"sha256:…\", \"ops\": [ … ] }",
       "  sandbox <file> [--agent <name>] [--lock <lock.json>]",
       "  explain <code>",
-      "  run | status | approve | decline | answer | cancel | raise-limits | replay   (see `mandate status`)",
+      "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact   (see `mandate status`)",
       "",
     ].join("\n"),
   );
@@ -199,7 +199,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {

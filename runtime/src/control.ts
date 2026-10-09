@@ -6,6 +6,8 @@
 //
 //   {
 //     "database": "pglite:.mandate/db" | "postgresql://…",
+//     "artifacts": ".mandate/artifacts",                         // default
+
 //     "model":    { "provider": "anthropic" },                  // CLAUDE_API_KEY, CLAUDE_WORKSPACE_ID
 //     "sandbox":  { "host": "mxc", "baseline": ["/usr/local"] },
 //     "github":   { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },   // MANDATE_GITHUB_TOKEN
@@ -17,6 +19,7 @@ import { dirname, resolve } from "node:path";
 import { parseStrictJson, type Lock, type Program } from "@mandate/compiler";
 import type { Adapters, ToolAdapter } from "./adapters.js";
 import { AnthropicModel } from "./anthropic.js";
+import { ArtifactStore, DirBlobs } from "./artifacts.js";
 import { openDb, type Db } from "./db.js";
 import { GitHubPullRequests } from "./github.js";
 import { MxcHost } from "./mxc.js";
@@ -27,6 +30,8 @@ import { SandboxVerifier, type VerifierConfig } from "./verifier.js";
 
 export interface RuntimeConfig {
   database: string;
+  /** The artifact store's directory (§16.1). Default `.mandate/artifacts` next to the configuration. */
+  artifacts: string;
   model?: { provider: "anthropic" };
   sandbox?: { host: "mxc"; baseline?: string[]; path?: string[] };
   github?: { repo: string; base?: string; workdir: string };
@@ -34,7 +39,7 @@ export interface RuntimeConfig {
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "model", "sandbox", "github", "verifier"],
+  "": ["database", "artifacts", "model", "sandbox", "github", "verifier"],
   model: ["provider"],
   sandbox: ["host", "baseline", "path"],
   github: ["repo", "base", "workdir"],
@@ -56,6 +61,8 @@ export function readConfig(file: string): RuntimeConfig {
   const at = (p: string): string => resolve(here, p);
   const config = c as unknown as RuntimeConfig;
   if (config.database.startsWith("pglite:")) config.database = `pglite:${at(config.database.slice("pglite:".length))}`;
+  if (c["artifacts"] !== undefined && typeof c["artifacts"] !== "string") throw new Violation("bad_config", `${file}: "artifacts" is a directory`);
+  config.artifacts = at(config.artifacts ?? ".mandate/artifacts");
   if (config.github) config.github.workdir = at(config.github.workdir);
   if (config.verifier) config.verifier.workdir = at(config.verifier.workdir);
   return config;
@@ -63,6 +70,11 @@ export function readConfig(file: string): RuntimeConfig {
 
 export function connect(config: RuntimeConfig): Promise<Db> {
   return openDb(config.database);
+}
+
+/** The artifact store over the configured directory, indexed in the run database. */
+export function artifactStore(config: RuntimeConfig, db: Db): ArtifactStore {
+  return new ArtifactStore(db, new DirBlobs(config.artifacts));
 }
 
 /** A stand-in for an adapter the configuration leaves out: calling it stops the run for a person. */

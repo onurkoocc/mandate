@@ -110,10 +110,26 @@ export interface VerifyRequest {
   criterion: string;
 }
 
+/**
+ * What a check ran against (§10.3 `subject`): the files of the working copy
+ * by path and content digest. Evidence is bound to it: an action that would
+ * apply a file with other bytes than the ones tested is refused (G01).
+ */
+export interface CheckSubject {
+  files: Record<string, string>;
+}
+
+export interface CheckResult {
+  passed: boolean;
+  detail?: Value;
+  cost?: Cost;
+  subject?: CheckSubject;
+}
+
 export interface VerifierAdapter {
   /** A check that costs something (a model review) is reserved first, like any model call (§8.6). */
   upperBound?(req: VerifyRequest): Promise<Cost | undefined>;
-  check(req: VerifyRequest): Promise<{ passed: boolean; detail?: Value; cost?: Cost }>;
+  check(req: VerifyRequest): Promise<CheckResult>;
 }
 
 /** Read-only std calls (fs.read_text, net.https.get, …). */
@@ -128,11 +144,28 @@ export interface ToolContract {
   retryClass: RetryClass;
 }
 
+/** A file an action will apply, as its adapter's `prepare` read it. */
+export interface PreparedFile {
+  path: string;
+  content: string;
+  mediaType?: string;
+}
+
+/** A frozen file of a prepared action: stored at prepare, sent from the store at execute (§8.8). */
+export interface ActionArtifact {
+  path: string;
+  ref: string;
+  digest: string;
+  content: Uint8Array;
+}
+
 export interface PreparedAction {
   effect: string;
   params: Value;
   actionDigest: string;
   operationKey: string;
+  /** The files the action applies, exactly as they were frozen at prepare. */
+  artifacts?: ActionArtifact[];
 }
 
 export interface AuthorizationContext {
@@ -150,7 +183,12 @@ export interface ToolAdapter {
   describe(): ToolContract;
   /** Whether this adapter can serve the program's binding; asked before a run starts. */
   validateBinding?(binding: Binding): Promise<{ supported: true } | { unsupported: string }>;
-  prepare(params: Value): Promise<{ prepared: true } | { rejected: string }>;
+  /**
+   * Checks the parameters and reads what the action will apply. Files it
+   * returns are frozen into the artifact store and the action digest (§8.8),
+   * so `execute` sends those bytes, whatever happens to the working copy.
+   */
+  prepare(params: Value): Promise<{ prepared: true; artifacts?: PreparedFile[] } | { rejected: string }>;
   execute(action: PreparedAction, auth: AuthorizationContext, operationKey: string): Promise<{ confirmed: Value } | { rejected: string } | { unknown: string }>;
   reconcile(operationKey: string): Promise<{ applied: Value } | { notApplied: string } | { unknown: string }>;
   /** Stops an operation if it has not taken effect: Cancelled with proof, or TooLate with its receipt. */

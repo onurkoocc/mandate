@@ -9,6 +9,7 @@
 //   mandate cancel <run>
 //   mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
 //   mandate replay <run>
+//   mandate artifact <run> <blob:sha256:…>
 //
 // Every command reads `mandate.runtime.json` (or --config). A decision names
 // the revision the person saw in `status`: if the run has moved since, it is
@@ -20,7 +21,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { check, kindOf, parseStrictJson, type Lock, type Program } from "@mandate/compiler";
 import type { Cost } from "./adapters.js";
-import { adaptersFor, connect, readConfig, type RuntimeConfig } from "./control.js";
+import { adaptersFor, artifactStore, connect, readConfig, type RuntimeConfig } from "./control.js";
 import type { Db } from "./db.js";
 import type { RunRow } from "./journal.js";
 import { buildPackage, Runtime } from "./runtime.js";
@@ -60,9 +61,10 @@ const USAGE = `usage:
   mandate cancel <run>
   mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
   mandate replay <run>
+  mandate artifact <run> <blob:sha256:…>
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay", "artifact"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -82,7 +84,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       const file = a.positional[0] ?? fail("run needs a program file");
       const workflow = str(a, "--workflow");
       const { program, lock } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined);
-      const rt = new Runtime(db, adaptersFor(config, program, lock, env));
+      const rt = new Runtime(db, adaptersFor(config, program, lock, env), undefined, undefined, { artifacts: artifactStore(config, db) });
       const run = await rt.startRun({
         pkg: buildPackage(program, lock),
         workflow,
@@ -126,6 +128,12 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       case "raise-limits":
         run = await rt.raiseLimits(runId, msg, { revision: revision(a), limits: limits(str(a, "--limit")), by: str(a, "--by") });
         break;
+      case "artifact": {
+        const ref = a.positional[1] ?? fail("artifact needs a reference, blob:sha256:…");
+        const got = await rt.artifact(runId, ref);
+        out(new TextDecoder().decode(got.bytes));
+        return 0;
+      }
       case "replay": {
         const r = await rt.replayRun(runId);
         out(json ? JSON.stringify(r, null, 2) + "\n" : `replay: ${r.status}${"value" in r ? `\n${show(r.value)}` : ""}${"stoppedAt" in r ? ` at ${r.stoppedAt}` : ""}${"missing" in r ? ` (missing ${r.missing})` : ""}\n`);
@@ -208,7 +216,7 @@ function load(file: string, lockFile: string | undefined): { program: Program; l
 async function runtimeFor(db: Db, config: RuntimeConfig, runId: string, env: NodeJS.ProcessEnv): Promise<Runtime> {
   const [row] = await db.query<{ program: Program; lock: Lock }>("select p.program, p.lock from runs r join packages p on p.package_hash = r.package_hash where r.run_id = $1", [runId]);
   if (!row) throw new Violation("unknown_run", `No run ${runId}.`);
-  return new Runtime(db, adaptersFor(config, row.program, row.lock, env));
+  return new Runtime(db, adaptersFor(config, row.program, row.lock, env), undefined, undefined, { artifacts: artifactStore(config, db) });
 }
 
 function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {

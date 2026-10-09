@@ -39,6 +39,7 @@ Two database drivers share one interface (`runtime/src/db.ts`):
 | `evidence` | Contract criteria results that back a `Verified` value |
 | `inbox` | Inbound message keys with their payload digests |
 | `outbox` | Committed actions waiting for, or past, delivery |
+| `artifacts` | Which run (and tenant) recorded which artifact digest; the bytes live in the artifact store |
 
 Every write that must be atomic runs in one transaction that first locks the
 run's row (`select … for update`). This covers reserve plus dispatch,
@@ -64,6 +65,30 @@ with the violation `nondeterministic_replay`.
 A command is at least once. A crash between the call and its record sends
 the call again. External effects are protected separately, as described
 below.
+
+## Artifacts (§16.1)
+
+Large data stays out of events and commands. The artifact store keeps it
+by content: an artifact is named by the SHA-256 of its bytes,
+`blob:sha256:<hex>` (`runtime/src/artifacts.ts`). It holds:
+
+- the files an action will apply, frozen when the action is prepared;
+- what a check ran against: the working copy's tree, a manifest of
+  `path → sha256` (`mandate/tree/0.1`).
+
+The bytes are kept once, in a content-addressed directory
+(`<dir>/sha256/<2 hex>/<hex>`), or in memory for in-process runs. Access is
+not shared. The `artifacts` table records which tenant and run stored which
+digest, and a run reads only its own artifacts:
+
+- A digest recorded by another tenant or another run is refused exactly
+  like one nobody stored (`artifact_not_found`), so a refusal does not say
+  whether the artifact exists (G08).
+- Reading hashes the bytes again; bytes that no longer match their digest
+  are refused (`artifact_corrupt`).
+
+`Runtime.artifact(run, ref)` reads one, and `mandate artifact <run> <ref>`
+prints it.
 
 ## Budget (§8.6)
 
@@ -151,11 +176,16 @@ the system prompt marks as data only.
 
 ## External effects (§8.5, §8.8, §8.9)
 
-1. **Prepare.** The adapter validates the parameters. The runtime then
-   freezes them into an action digest. The digest covers the package, run,
-   node, effect, adapter id, adapter contract digest, parameters, evidence
-   and idempotency key. The operation key is derived from the tenant, run,
-   node and action digest.
+1. **Prepare.** The adapter validates the parameters and reads the files
+   the action will apply. The runtime stores the files in the artifact
+   store, and prepare is a journaled command (`<node>/prepare`) whose result
+   keeps their digests, so a resumed worker finds the same action. The
+   runtime then freezes everything into an action digest. The digest covers
+   the package, run, node, effect, adapter id, adapter contract digest,
+   parameters, evidence, idempotency key and the files' digests. The
+   operation key is derived from the tenant, run, node and action digest.
+   Execute later gets the files from the store: it sends the bytes that
+   were frozen, whatever happened to the working copy since.
 2. **Authorize.** By default, policy authorizes the action, and a person
    authorizes an irreversible one; `StartRun` can override this per effect.
    A person's approval applies only to the digest they saw, and only before
@@ -171,6 +201,14 @@ the system prompt marks as data only.
 
 At run time, a parameter declared `Verified<T, C>` must carry evidence for
 `C` (INV-13). Without it the effect fails with `PolicyDenied`.
+
+Evidence is bound to what it checked (G01, INV-05). A test records the
+working copy's files with their digests. Before an action is created, every
+file it will apply must appear, with the same digest, in each such piece of
+evidence the action's parameters carry. A file changed since the check, or
+one the check never saw, makes the evidence stale: the run stops with the
+violation `stale_evidence` (`attention_required`), and nothing is
+prepared or sent.
 
 A worker may find an action already dispatched, because the previous worker
 died after commit. The adapter's retry class then decides what happens:
@@ -234,8 +272,10 @@ it. `Cancel` is too late once a pull request exists.
 `verify x against C(…)` checks C's `require` clauses, then its criteria
 in order of their method: static checks, tests, evals and reviews, then
 people; by name within each group. A criterion that combines methods runs
-with its last one. Each check records one evidence row: contract, criterion, method, passed,
-and detail. A criterion that names several checks (`static … and
+with its last one. Each check records one evidence row: contract,
+criterion, method, passed, detail, and its subject. The subject is a
+digest of the contract's arguments; a check of the working copy adds its
+files by digest, and the tree as an artifact. A criterion that names several checks (`static … and
 review(…)`) records one row per check, so a review is never the only
 evidence for it. Only when every criterion passed does the value become
 `Verified<T, C>`, carrying the ids of its evidence. The ids also enter the
@@ -452,6 +492,7 @@ mandate answer <run> --revision N --by NAME <text>
 mandate cancel <run>
 mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
 mandate replay <run>
+mandate artifact <run> <blob:sha256:…>
 ```
 
 **Configuration.** Each call reads `mandate.runtime.json`, or the file
@@ -460,6 +501,7 @@ mandate replay <run>
 ```json
 {
   "database": "pglite:.mandate/db",
+  "artifacts": ".mandate/artifacts",
   "model": { "provider": "anthropic" },
   "sandbox": { "host": "mxc", "baseline": ["/usr/local"] },
   "github": { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },
@@ -469,6 +511,8 @@ mandate replay <run>
 
 - **Database.** `pglite:<dir>` keeps the database in a directory, so a run
   outlives each call; `postgresql://…` uses a server.
+- **Artifacts.** The artifact store's directory, `.mandate/artifacts` next
+  to the configuration by default.
 - **Secrets.** They come only from the environment: `CLAUDE_API_KEY` (and
   `CLAUDE_WORKSPACE_ID` for a key that is not scoped to a workspace), and
   `MANDATE_GITHUB_TOKEN`.

@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { canonicalize, capFromCall, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, modelTiers, validateLock, type CapVal, type Expr, type Json, type Lock, type Program } from "@mandate/compiler";
 import type { Adapters, Cost } from "./adapters.js";
+import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import type { Db, Row } from "./db.js";
 import { Faults } from "./faults.js";
 import { Interpreter, ReplayEnd, type Policy } from "./interp.js";
@@ -91,9 +92,16 @@ export interface Driver {
   wake(runId: string): Promise<void>;
 }
 
+/** What a runtime keeps besides PostgreSQL. */
+export interface RuntimeOptions {
+  /** Artifact bytes (§16.1). Default: in memory, indexed in PostgreSQL. */
+  artifacts?: ArtifactStore;
+}
+
 export class Runtime {
   readonly journal: Journal;
   readonly faults: Faults;
+  readonly artifacts: ArtifactStore;
   private readonly packages = new Map<string, Package>();
 
   constructor(
@@ -101,9 +109,11 @@ export class Runtime {
     readonly adapters: Adapters,
     faults?: Faults,
     readonly driver?: Driver,
+    options: RuntimeOptions = {},
   ) {
     this.journal = new Journal(db, () => adapters.clock.now());
     this.faults = faults ?? new Faults();
+    this.artifacts = options.artifacts ?? new ArtifactStore(db, new MemoryBlobs(), () => adapters.clock.now());
   }
 
   // ── StartRun / resume ─────────────────────────────────────────────────
@@ -295,6 +305,7 @@ export class Runtime {
       fence,
       policy: run.policy as unknown as Policy,
       faults: this.faults,
+      artifacts: this.artifacts,
       replay,
     });
   }
@@ -321,6 +332,18 @@ export class Runtime {
   /** Contract criteria results recorded for the run: the evidence behind its Verified values (§10). */
   evidence(runId: string): Promise<EvidenceRow[]> {
     return this.journal.evidence(runId);
+  }
+
+  /** An artifact of a run, scoped by the run's tenant: another run's or tenant's digest is refused like a missing one (G08). */
+  async artifact(runId: string, ref: string, tenant?: string): Promise<{ bytes: Uint8Array; media_type: string; digest: string }> {
+    const run = await this.journal.run(runId);
+    if (tenant !== undefined && tenant !== run.tenant) throw new Violation("artifact_not_found", "No such artifact in this run.");
+    return this.artifacts.get({ tenant: run.tenant, runId }, ref);
+  }
+
+  async artifactList(runId: string): Promise<ArtifactRef[]> {
+    const run = await this.journal.run(runId);
+    return this.artifacts.list({ tenant: run.tenant, runId });
   }
 
   // ── SubmitInput / DecideAction ────────────────────────────────────────

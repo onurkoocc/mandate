@@ -16,12 +16,13 @@
 // working copy, and every test runs in a sandbox.
 
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { requirementFor, type CapVal, type TypeExpr } from "@mandate/compiler";
-import type { Cost, InferRequest, ModelAdapter, VerifierAdapter, VerifyRequest } from "./adapters.js";
+import type { CheckResult, CheckSubject, Cost, InferRequest, ModelAdapter, VerifierAdapter, VerifyRequest } from "./adapters.js";
+import { sha256Of } from "./artifacts.js";
 import type { MxcAdapter } from "./sandbox.js";
 import { isObj, type Value } from "./values.js";
 
@@ -51,7 +52,14 @@ export class SandboxVerifier implements VerifierAdapter {
     return this.model.upperBound(this.reviewRequest(req));
   }
 
-  async check(req: VerifyRequest): Promise<{ passed: boolean; detail?: Value; cost?: Cost }> {
+  async check(req: VerifyRequest): Promise<CheckResult> {
+    // What this check is about: the working copy, file by file, as it is now. The evidence is bound to it (G01).
+    const subject = this.snapshot();
+    const r = await this.run(req);
+    return { ...r, subject };
+  }
+
+  private async run(req: VerifyRequest): Promise<Omit<CheckResult, "subject">> {
     switch (req.method) {
       case "test.suite":
         return this.suite(req.args[0]);
@@ -61,6 +69,21 @@ export class SandboxVerifier implements VerifierAdapter {
         return this.review(req);
     }
     return { passed: false, detail: { unsupported: `the verifier has no method ${req.method}` } };
+  }
+
+  /** Every file of the working copy (but .git and node_modules) by path relative to it, with its content digest. */
+  snapshot(): CheckSubject {
+    const files: Record<string, string> = {};
+    const walk = (dir: string, rel: string): void => {
+      for (const e of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+        if (e.name === ".git" || e.name === "node_modules") continue;
+        const r = rel ? `${rel}/${e.name}` : e.name;
+        if (e.isDirectory()) walk(join(dir, e.name), r);
+        else if (e.isFile()) files[r] = sha256Of(readFileSync(join(dir, e.name)));
+      }
+    };
+    walk(this.o.workdir, "");
+    return { files };
   }
 
   private async suite(names: Value | undefined): Promise<{ passed: boolean; detail: Value }> {
