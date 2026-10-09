@@ -167,9 +167,10 @@ container of its own:
 | Time | The policy's timeout, per process |
 
 - **Tools.** An AppContainer has no `cat`, `ls`, `grep` or `sh`, so the
-  runtime's file tools run as `node sandbox-helper <op>`
+  runtime's file tools run as `node sandbox-helper.mjs <op>`
   (`runtime/src/sandbox-helper.ts`), with the results the Linux tools
-  give. A write's content is staged in a read-only file that the helper
+  give. The helper is plain JavaScript that the host writes to a directory
+  of its own, so Node needs nothing outside the granted paths to run it. A write's content is staged in a read-only file that the helper
   copies into place, under the sandbox's write policy.
 - **Node.** Two adjustments are set through `NODE_OPTIONS`. Module paths are
   not resolved through `realpath`, which would read every parent directory

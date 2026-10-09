@@ -102,8 +102,8 @@ describe("WindowsMxcHost against a fake SDK", () => {
     const { handle } = await sandbox(host, requirement({ read: ["C:/work/repo"], write: ["C:/work/repo/src"] }));
     await host.execute(handle, { argv: ["cat", "--", "C:/work/repo/a.ts"] });
     await host.execute(handle, { argv: ["sh", "-c", WRITE_SCRIPT, "sh", "C:/work/repo/src/b.ts"], stdin: "fixed" });
-    expect(sdk.runs[0]!.command).toMatch(/^node\.exe .*sandbox-helper\.(js|ts)"? cat C:\\work\\repo\\a\.ts$/);
-    expect(sdk.runs[1]!.command).toMatch(/sandbox-helper\.(js|ts)"? write .*mandate-stage-.*content"? C:\\work\\repo\\src\\b\.ts$/);
+    expect(sdk.runs[0]!.command).toMatch(/^node\.exe .*sandbox-helper\.mjs"? cat C:\\work\\repo\\a\.ts$/);
+    expect(sdk.runs[1]!.command).toMatch(/sandbox-helper\.mjs"? write .*mandate-stage-.*content"? C:\\work\\repo\\src\\b\.ts$/);
     expect(sdk.runs[1]!.filesystem.readonlyPaths.some((p) => p.includes("mandate-stage-"))).toBe(true);
     const refused = async (argv: string[]) => (await host.execute(handle, { argv })).stderr;
     expect(await refused(["curl", "https://example.com"])).toContain("curl is not an allowed command");
@@ -155,7 +155,8 @@ describe.runIf(REAL)("WindowsMxcHost with an AppContainer on this host (G05, G07
 
   it("reads, lists, searches and writes inside the granted paths", async () => {
     const { handle } = await open();
-    expect((await host.execute(handle, { argv: ["cat", "--", fwd(join(repo, "src", "a.ts"))] })).stdout).toBe("bug\n");
+    const cat = await host.execute(handle, { argv: ["cat", "--", fwd(join(repo, "src", "a.ts"))] });
+    expect(cat.stdout, cat.stderr).toBe("bug\n");
     expect((await host.execute(handle, { argv: ["ls", "-1Ap", "--", fwd(repo)] })).stdout).toBe("src/\ntest/\n");
     expect((await host.execute(handle, { argv: ["grep", "-rnI", "--", "bu.", fwd(join(repo, "src"))] })).stdout).toBe(`${fwd(join(repo, "src", "a.ts"))}:1:bug\n`);
     const w = await host.execute(handle, { argv: ["sh", "-c", WRITE_SCRIPT, "sh", fwd(join(repo, "src", "deep", "b.ts"))], stdin: "fixed\n" });
@@ -311,11 +312,17 @@ workflow Look(task: Text) -> Inferred<Text>
 });
 
 describe.runIf(REAL)("learning mode in a real AppContainer (W0311)", () => {
-  it("keeps a denied read denied, and records it", async () => {
+  it("keeps a denied read denied, and records it; a host that cannot capture denials refuses learning mode by name", async () => {
     const root = mkdtempSync(join(tmpdir(), "mandate-wxc-learn-"));
     mkdirSync(join(root, "repo"));
     writeFileSync(join(root, "secret.txt"), "secret\n");
     const host = new WindowsMxcHost();
+    if (!(await host.probe()).modes.includes("learning")) {
+      // INV-11: without learning mode, a requirement for it is refused by name, never run as plain enforcement.
+      expect(await adapter(host, "learning").plan(requirement({ read: [fwd(join(root, "repo"))] }))).toEqual({ unsupported: ["mode learning"] });
+      rmSync(root, { recursive: true, force: true });
+      return;
+    }
     const { handle } = await sandbox(host, requirement({ read: [fwd(join(root, "repo"))], exec: [{ command: "node", args_prefix: [["-e"]] }] }), "learning");
     const r = await host.execute(handle, { argv: ["node", "-e", `try { require('fs').readFileSync(${JSON.stringify(join(root, "secret.txt"))}); console.log('READ') } catch (e) { console.log('denied', e.code) }`] });
     expect(r.stdout).toContain("denied");

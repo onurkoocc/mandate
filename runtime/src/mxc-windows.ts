@@ -10,7 +10,7 @@
 // - Execute: one process per tool call, in a process container (AppContainer)
 //   under the policy:
 //     filesystem  the policy's read-only and read-write paths; the toolchain
-//                 (node.exe's directory) and this runtime's tool helper read-only;
+//                 (node.exe's directory) and the runtime's tool helper read-only;
 //                 a fresh scratch directory for the process's temporary files
 //     network     egress and ingress denied, host loopback too
 //     UI          an isolated desktop of its own: no clipboard, no input
@@ -35,9 +35,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { release, tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { disallowed } from "./mxc.js";
+import { helperFile } from "./sandbox-helper.js";
 import type { Enforceable, ExecRequest, ExecResult, MxcPolicy, SandboxDenial, SandboxHost } from "./sandbox.js";
 import { WRITE_SCRIPT } from "./tools.js";
 
@@ -128,12 +128,6 @@ export function winQuote(arg: string): string {
 
 const win = (p: string): string => p.replace(/\//g, "\\");
 
-/** The tool helper: compiled next to this file, or its source when run from source (Node strips the types). */
-export function helperPath(): string {
-  const js = fileURLToPath(new URL("./sandbox-helper.js", import.meta.url));
-  return existsSync(js) ? js : fileURLToPath(new URL("./sandbox-helper.ts", import.meta.url));
-}
-
 interface Open {
   policy: MxcPolicy;
   scratch: string;
@@ -144,7 +138,7 @@ export class WindowsMxcHost implements SandboxHost {
   private sdk: WindowsMxcSdk | undefined;
   private readonly open = new Map<string, Open>();
   private readonly toolchain: string[];
-  private readonly helper = helperPath();
+  private readonly helper = helperFile();
   /** Why the last probe found nothing enforceable, for the operator. */
   unavailable: string | undefined;
 
