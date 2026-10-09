@@ -749,14 +749,16 @@ export class Interpreter {
       // settings, not variables: an unbound bare name is passed as its text.
       const symbolic = call.op === "call" ? call.args.map((a) => (a.value.op === "var" && this.isModulePath(a.value, ctx) ? { ...a, value: { op: "text" as const, value: a.value.name } } : a)) : [];
       const { pos, named } = call.op === "call" ? await this.args(symbolic, ctx, `${path}/call`) : { pos: [], named: {} };
+      const req = { method, args: pos, named, contract, criterion: name };
+      const verifier = this.o.adapters.verifier;
       const r = await this.command(
         `${path}/call`,
         "verify",
-        { method, args: pos, named, contract, criterion: name },
-        undefined,
+        req,
+        verifier.upperBound ? () => verifier.upperBound!(req) : undefined,
         async () => {
-          const res = await this.o.adapters.verifier.check({ method, args: pos, named, contract, criterion: name });
-          return { ok: { passed: res.passed, detail: res.detail ?? null } };
+          const res = await verifier.check(req);
+          return { ok: { passed: res.passed, detail: res.detail ?? null }, ...(res.cost ? { cost: res.cost } : {}) };
         },
         undefined,
         `${contract}.${name}`,

@@ -111,7 +111,9 @@ export interface VerifyRequest {
 }
 
 export interface VerifierAdapter {
-  check(req: VerifyRequest): Promise<{ passed: boolean; detail?: Value }>;
+  /** A check that costs something (a model review) is reserved first, like any model call (§8.6). */
+  upperBound?(req: VerifyRequest): Promise<Cost | undefined>;
+  check(req: VerifyRequest): Promise<{ passed: boolean; detail?: Value; cost?: Cost }>;
 }
 
 /** Read-only std calls (fs.read_text, net.https.get, …). */
