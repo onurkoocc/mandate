@@ -14,7 +14,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SystemFacts, VerifyRequest } from "../src/adapters.js";
+import pg from "pg";
 import { BoundaryVerifier } from "../src/boundary.js";
+import { DeclaredReads } from "../src/broker.js";
+import { Runtime } from "../src/runtime.js";
+import { SimAgents } from "../src/sim.js";
+import type { Obj } from "../src/values.js";
+import { closeAll, world } from "./helpers.js";
+import { kervanModules, lockFor } from "./kervan.js";
 import { ContainerHost } from "../src/container.js";
 import { MxcAdapter } from "../src/sandbox.js";
 
@@ -112,4 +119,51 @@ describe.runIf(LIVE)("KD-03 on the real Kervan: caught only at the boundary (B5)
     const integrated = await verifier.check(req("test.integration", [["mcp"]], { env: "staging" }));
     expect(integrated.passed, JSON.stringify(integrated.detail).slice(0, 3000)).toBe(true);
   }, 2_400_000);
+});
+
+describe.runIf(LIVE)("Kervan's incident review on the real prod_sim, read_only (B6)", () => {
+  const system = fileURLToPath(new URL("kervan-system", KERVAN));
+  let data: string;
+  const replica = "postgresql://kervan_reader:kervan_reader@127.0.0.1:55432/kervan";
+
+  beforeAll(() => {
+    data = mkdtempSync(join(tmpdir(), "mandate-prodsim-"));
+    execFileSync("bash", ["scripts/up.sh", "prod_sim"], { cwd: system, env: { ...process.env, KERVAN_DATA: data.replace(/\\/g, "/") }, stdio: "ignore" });
+  }, 900_000);
+
+  afterAll(async () => {
+    execFileSync("bash", ["scripts/down.sh", "prod_sim"], { cwd: system, env: { ...process.env, KERVAN_DATA: data.replace(/\\/g, "/") }, stdio: "ignore" });
+    rmSync(data, { recursive: true, force: true });
+    await closeAll();
+  }, 300_000);
+
+  it("reads the replica and the logs through the broker, the customers masked, writing nothing", async () => {
+    // One of the incident's parcels, and its customer's real name, read here only to show it never reaches the run.
+    const client = new pg.Client({ connectionString: replica });
+    await client.connect();
+    const parcel = (await client.query("select tracking_no, full_name from v_shipment_overview where status = 'OUT_FOR_DELIVERY' and destination_city = 'Bursa' order by tracking_no limit 1")).rows[0] as { tracking_no: string; full_name: string };
+    await client.end();
+    expect(parcel?.tracking_no).toMatch(/^KRV/);
+
+    const INCIDENT = readFileSync(new URL("programs/incident.mdt", KERVAN), "utf8");
+    const modules = kervanModules();
+    const agents = new SimAgents().on("Investigator.analyze", () => ({ ok: { root_cause: "seen", evidence: [], affected_cities: ["Bursa"] }, cost: { steps: 1 } }));
+    const w = await world(INCIDENT, { modules, lock: lockFor(modules), agents });
+    const logs = join(data, "prod_sim", "logs");
+    w.adapters.broker = new DeclaredReads({ "prod_sim/core": { url: replica, logs }, "prod_sim/mcp": { logs } });
+    const since = new Date(Date.now() - 5 * 86_400_000).toISOString();
+    const run = await new Runtime(w.db, w.adapters).startRun({ pkg: w.pkg, workflow: "Investigate", input: { incident: { since, tracking_no: parcel.tracking_no } }, mode: "read_only" });
+    expect(run.state, JSON.stringify(run.error ?? run.attention)).toBe("succeeded");
+
+    const [errors, warnings, events, shipment] = agents.calls[0]!.args as Obj[][];
+    // The incident: refused reschedules in mcp's logs, core's refusals, and the parcel's early "out for delivery".
+    expect(errors!.some((l) => l["tool"] === "reschedule_delivery" && l["status"] === 409)).toBe(true);
+    expect(warnings!.length).toBeGreaterThan(0);
+    expect(events!.length).toBeGreaterThan(0);
+    expect(shipment![0]).toMatchObject({ tracking_no: parcel.tracking_no, status: "OUT_FOR_DELIVERY", full_name: { $masked: "confidential" }, phone: { $masked: "confidential" } });
+    const recorded = JSON.stringify(await w.db.query("select * from commands where run_id = $1", [run.run_id]));
+    expect(recorded).not.toContain(parcel.full_name);
+    expect(await w.db.query("select * from actions where run_id = $1", [run.run_id])).toEqual([]);
+    expect(await w.rt.replayRun(run.run_id)).toMatchObject({ status: "complete" });
+  }, 300_000);
 });
