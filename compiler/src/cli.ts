@@ -10,6 +10,9 @@
 //   mandate sandbox <file> [--agent <name>] print each agent's sandbox requirement
 //   mandate explain <code>                 explain a diagnostic code
 //
+//   mandate run | status | approve | decline | answer | cancel | raise-limits | replay
+//                                          control a run (the runtime's CLI, @mandate/runtime/cli)
+//
 // <file> is .mdt text or .json canonical IR. `check` and `sandbox` read the
 // lock file named by --lock, or else mandate.lock.json next to <file> if there
 // is one. Exit status is 1 when any error diagnostic is reported, 2 on usage
@@ -39,6 +42,7 @@ function usage(): never {
       "  patch <program> <patch.json> [--json]   patch.json: { \"base\": \"sha256:…\", \"ops\": [ … ] }",
       "  sandbox <file> [--agent <name>] [--lock <lock.json>]",
       "  explain <code>",
+      "  run | status | approve | decline | answer | cancel | raise-limits | replay   (see `mandate status`)",
       "",
     ].join("\n"),
   );
@@ -195,4 +199,21 @@ function main(argv: string[]): void {
   }
 }
 
-main(process.argv.slice(2));
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "raise-limits", "replay"]);
+
+/** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
+async function control(argv: string[]): Promise<void> {
+  const specifier: string = "@mandate/runtime/cli";
+  let runtime: { main(argv: string[]): Promise<number> };
+  try {
+    runtime = (await import(specifier)) as typeof runtime;
+  } catch (e) {
+    process.stderr.write(`mandate: ${argv[0]} needs @mandate/runtime (built): ${(e as Error).message}\n`);
+    process.exit(2);
+  }
+  process.exit(await runtime.main(argv));
+}
+
+const argv = process.argv.slice(2);
+if (CONTROL.has(argv[0] ?? "")) void control(argv);
+else main(argv);

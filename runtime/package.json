@@ -12,6 +12,10 @@
     "./temporal": {
       "types": "./dist/temporal/index.d.ts",
       "default": "./dist/temporal/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
     }
   },
   "main": "dist/index.js",
