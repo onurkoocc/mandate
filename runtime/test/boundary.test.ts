@@ -171,6 +171,14 @@ describe("test.integration", () => {
     expect(docker.calls.at(-1)).toContain("down");
   });
 
+  it("builds a component under the service it names, and none for a component that is no service", async () => {
+    const docker = fakeDocker({});
+    const v = new BoundaryVerifier({ integration: { ...INTEGRATION, services: { auth: null, mcp: "gateway" } } }, sandbox(host()), docker);
+    expect((await v.check(req("test.integration", ["staging", ["mcp"]]))).passed).toBe(true);
+    const project = docker.calls.find((c) => c.includes("build"))![2]!;
+    expect(docker.override).toEqual({ services: { gateway: { image: `${project}-gateway`, build: { context: mcp.root.replace(/\\/g, "/") } } }, networks: { default: { internal: true } } });
+  });
+
   it("fails when the end-to-end service fails", async () => {
     const v = new BoundaryVerifier({ integration: INTEGRATION }, sandbox(host()), fakeDocker({ up: 1 }));
     expect((await v.check(req("test.integration", ["staging", ["mcp"]]))).passed).toBe(false);

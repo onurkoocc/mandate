@@ -52,8 +52,12 @@ export interface IntegrationConfig {
   files: string[];
   /** The service whose exit code is the result, e.g. `e2e`. */
   service: string;
-  /** Component → the compose service built from its working copy. Default: the component's name. */
-  services?: Record<string, string>;
+  /**
+   * Component → the compose service built from its working copy. Default: the
+   * component's name. null: the component is no service of its own (a
+   * repository of compose files, seeds and scenarios, read from `dir`).
+   */
+  services?: Record<string, string | null>;
   /** Variables for compose, e.g. { "ACME_ENV": "staging" }. */
   env?: Record<string, string>;
   /** Default 20 minutes. */
@@ -352,7 +356,9 @@ export class BoundaryVerifier implements VerifierAdapter {
       const services: Record<string, Value> = {};
       for (const [name, c] of Object.entries(sys.components)) {
         if (!c.base) continue;
-        const svc = cfg.services?.[name] ?? name;
+        // A component that is no service of its own (compose files, seeds, scenarios) is read from `dir` instead.
+        const svc = cfg.services && Object.hasOwn(cfg.services, name) ? cfg.services[name] : name;
+        if (svc === null || svc === undefined) continue;
         services[svc] = { image: `${project}-${svc}`, build: { context: c.root.replace(/\\/g, "/") } };
       }
       writeFileSync(join(work, "mandate.yml"), JSON.stringify({ services, networks: { default: { internal: true } } }, null, 2));
