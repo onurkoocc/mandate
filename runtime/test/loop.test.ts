@@ -194,6 +194,17 @@ describe("an agent loop (§8.2, K7, K8)", () => {
     expect(never.chat.calls).toHaveLength(3);
   });
 
+  it("G14: does not take a result whose Path leaves the working copy; the model is asked again", async () => {
+    const outside = [toolUse("x", "finish", { result: { files: ["src/a.ts", "../../outside/a.ts"], diff: "-bug\n+fixed" } })];
+    const w = await loopWorld((_r, n) => (n === 1 ? outside : [toolUse("t", "finish", { result: PATCH })]));
+    // The finish tool's schema tells the model the rule before it answers.
+    const finish = w.chat;
+    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: { task: "t" }, runId: "l14" });
+    expect(run.result).toEqual(PATCH);
+    expect(JSON.stringify(finish.calls[0]!.tools.find((t) => t.name === "finish"))).toContain('"pattern"');
+    expect(JSON.stringify(finish.calls[1]!.messages.at(-1))).toContain("/files/1 is not a Path: a path relative to the repository root");
+  });
+
   it("stops with StepLimit when the agent's steps cannot cover another turn, and keeps what it wrote", async () => {
     const w = await loopWorld(
       (_r, n) => [toolUse(`t${n}`, "write_file", { path: `src/f${n}.ts`, content: String(n) })],

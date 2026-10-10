@@ -46,6 +46,7 @@ import { nearestSpan } from "../ir/validate.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
 import { LIMITS } from "../limits.js";
+import { pathProblem } from "../path.js";
 import {
   BUILTIN_EFFECTS,
   classRank,
@@ -886,7 +887,7 @@ class Checker implements TypeEnv {
       case "dec":
         return lit(named("Dec"));
       case "text":
-        return lit(TEXT);
+        return lit({ ...TEXT, lit: e.value } as Ty);
       case "bool":
         return lit(BOOL);
       case "money":
@@ -896,7 +897,11 @@ class Checker implements TypeEnv {
       case "list":
       case "set": {
         const items = e.items.map((x, i) => this.expr(x, frame, `${path}/items/${i}`));
-        return { ty: named(e.op === "list" ? "List" : "Set", items[0]?.ty ?? UNKNOWN), cls: this.maxClass(...items.map((x) => x.cls)) };
+        // The items' type is the first item's; among text literals, the first that is not a Path, so that none passes for one.
+        const bad = items.find((x) => x.ty.k === "named" && x.ty.lit !== undefined && pathProblem(x.ty.lit) !== undefined);
+        const plainText = items.find((x) => x.ty.k === "named" && x.ty.name === "Text" && x.ty.lit === undefined);
+        const item = plainText ?? bad ?? items[0];
+        return { ty: named(e.op === "list" ? "List" : "Set", item?.ty ?? UNKNOWN), cls: this.maxClass(...items.map((x) => x.cls)) };
       }
       case "template": {
         const parts = e.parts.map((p, i) => ("expr" in p ? this.expr(p.expr, frame, `${path}/parts/${i}/expr`).cls : PUBLIC));

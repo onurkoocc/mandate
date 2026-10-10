@@ -1,5 +1,6 @@
-// Paths the agents name, used in the control plane (Doc 11 §7): relative to
-// their root or refused, and written or deleted only through real directories.
+// G14, the use-site line (Doc 11 §7, K68): paths the agents name, used in the
+// control plane, are relative to their root or refused, and written or deleted
+// only through real directories. The type is the first line (gate4.test.ts).
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -80,6 +80,27 @@ Money is integer micro-units plus an ISO 4217 code. Amounts in different
 currencies are never added implicitly. A duration is milliseconds. A
 `Budget` is `{ tokens?, spend?, time?, steps? }`.
 
+<a id="paths"></a>A `Path` names a file relative to the root of a working copy, the same
+way on every host and executor (K68). It is one or more segments separated
+by `/`. No segment is empty, `.` or `..`, so a Path never starts or ends
+with `/`. It contains no `\`, no `:` (a Windows drive or alternate data
+stream) and no NUL. As a JSON Schema pattern (ECMA 262):
+
+```text
+^(S)(/(S))*$    S = [^/\\:\x00.][^/\\:\x00]* | \.[^/\\:\x00.][^/\\:\x00]* | \.\.[^/\\:\x00]+
+```
+
+- A model's answer of a type that contains `Path` is checked against this
+  rule, like the rest of its schema. A value that breaks it is refused, and
+  the model is asked again or the call is `Rejected` (G14).
+- A text literal is a `Path` where a Path is expected, if it keeps the rule;
+  otherwise it does not check (E0204, V20). Any other `Text` is not a Path.
+- A run's input is checked against its workflow's parameter types, so a
+  Path in it keeps the rule too (`input_mismatch`).
+- The runtime still checks each path where it uses one, against the working
+  copy on disk (a link on the way is refused). The type is the first line,
+  not the only one.
+
 ### 2.1 How a value is known
 
 A type also records how its value is known:

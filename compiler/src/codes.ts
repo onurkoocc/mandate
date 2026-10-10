@@ -76,6 +76,10 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Missing field",
     explain: "A record literal leaves out fields its type requires.",
   },
+  "MDT-E0204": {
+    title: "Not a Path",
+    explain: "A text literal stands where a Path is expected but breaks the Path rule (K68): a Path is relative to the working copy's root, its segments are separated by `/`, and it has no empty, `.` or `..` segment, no leading `/`, and no `\`, `:` or NUL. A model's answer that breaks the rule is refused by schema validation at run time (G14).",
+  },
   "MDT-E0210": {
     title: "Inferred value where T is expected",
     explain: "Model output (Inferred<T>) is used where a plain or verified T is required, for example as a critical effect parameter or to steer control flow. Verify it against a contract first, or use a decision policy (R1, R4, D1).",

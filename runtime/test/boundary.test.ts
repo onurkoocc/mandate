@@ -99,7 +99,7 @@ describe("test.suite_each", () => {
     write(mcp.root, "test/value.test.ts", "1\n");
   });
 
-  it("does not follow a link an agent left in a component's working copy when it pins its tests (Doc 11 §7)", async () => {
+  it("G14: does not follow a link an agent left in a component's working copy when it pins its tests (Doc 11 §7)", async () => {
     const linked = repo("acme-linked", { "src/value.ts": "1\n", "test/value.test.ts": "1\n" });
     const victim = join(tmp, "victim");
     write(victim, "value.test.ts", "victim\n");

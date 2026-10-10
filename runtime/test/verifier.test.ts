@@ -150,7 +150,7 @@ describe("the Gate 3 verifier (K20)", () => {
 // The files a patch names are what the agents said (Inferred). The verifier
 // works outside every sandbox, so it may neither follow such a path out of
 // the working copy nor through a link in its copies (Doc 11 §7).
-describe("paths the agents name (Doc 11 §7)", () => {
+describe("G14: paths the agents name stay inside the working copy, where they are used (Doc 11 §7)", () => {
   const work = mkdtempSync(join(tmpdir(), "mandate-verify-paths-"));
   const victim = mkdtempSync(join(tmpdir(), "mandate-victim-"));
   afterAll(() => {

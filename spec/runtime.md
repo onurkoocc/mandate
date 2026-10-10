@@ -173,7 +173,10 @@ agent's sandbox. Everything it sends is pinned by the package's lock file
 
 `infer T from e` asks for `T` through structured output: the JSON Schema
 of `T` (`runtime/src/schema.ts`), with the input in a `<data>` block that
-the system prompt marks as data only.
+the system prompt marks as data only. The answer is checked against the
+same schema again whatever the provider promised: one that does not fit is
+`Rejected("schema_mismatch", problems)`. A `Path` in it keeps the Path rule
+([`core.md`](core.md#paths), G14).
 
 ## External effects (§8.5, §8.8, §8.9)
 
@@ -358,7 +361,8 @@ read-only sandbox of its own, over a copy of the working copy:
   the patched files as they were at the base commit, and pass as the
   agents left them. The files the patch and the tests name are what the
   agents said: a file outside the working copy is unmet, by name, before
-  anything is copied.
+  anything is copied. This is G14's second line: the `Path` type refuses
+  such a name first, and every use of a path checks it again.
 - **Copies.** A copy holds the working copy's real files and directories.
   Links the agents left are not copied, and the verifier writes or deletes
   in a copy only through real directories: the linked `node_modules` is
@@ -683,7 +687,11 @@ listed in the run's summary (R09).
   the executor's ValidateBinding before the run starts
   (`no_executor`, `unsupported_binding`;
   [`executors.md`](executors.md));
-- runs the compiler's checks on the canonical IR again.
+- runs the compiler's checks on the canonical IR again;
+- checks the input against the workflow's parameter types, with the same
+  schemas a model's answer is checked against (`input_mismatch`). A `Path`
+  in it keeps the Path rule (G14). A type the program imports but does not
+  define accepts any value.
 
 ## Control API (§16.1)
 
