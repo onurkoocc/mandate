@@ -130,7 +130,7 @@ describe("infer through the Anthropic adapter", () => {
     let calls = 0;
     const client = new FakeClient(() => {
       if (++calls === 1) throw new Sdk.RateLimitError(429, { type: "error", error: { type: "rate_limit_error", message: "slow down" } }, "slow down", new Headers({ "retry-after": "7" }));
-      return message('{"capital":"Ankara"}');
+      return message('{"value":{"capital":"Ankara"}}');
     });
     const w = await world(ASK_CAPITAL, { lock: LOCK, realModel: new AnthropicModel({ lock: LOCK, program, client }) });
     const t0 = w.clock.now();

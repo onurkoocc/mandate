@@ -41,6 +41,7 @@ Warnings (`W…`) never make a check fail.
 | MDT-E0201 | Type mismatch | — | Appendix B |
 | MDT-E0202 | Unknown field | — | assigned |
 | MDT-E0203 | Missing field | — | assigned |
+| MDT-E0204 | Not a Path | V20 | assigned; a text literal where a Path is expected must keep the Path rule (K68, [core.md](core.md#paths)) |
 | MDT-E0210 | Inferred value where T is expected | V01, V08 | Appendix B |
 | MDT-E0211 | Untrusted value where T is expected | — | assigned |
 | MDT-E0212 | Verified against a different contract | — | Appendix B |

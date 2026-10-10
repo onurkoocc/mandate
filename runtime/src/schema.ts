@@ -11,10 +11,12 @@
 // `company.domain`) accepts any JSON value.
 
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
-import type { Def, Expr, Program, TypeExpr } from "@mandate/compiler";
+import { PATH_PATTERN, type Def, type Expr, type Program, type TypeExpr } from "@mandate/compiler";
 import type { Value } from "./values.js";
 
 export type JsonSchema = Record<string, unknown>;
+
+const PATH_RULE = "a path relative to the repository root: segments separated by /, no . or .. segment, no leading /, no \\, : or NUL";
 
 const BASE: Record<string, JsonSchema> = {
   Bool: { type: "boolean" },
@@ -22,7 +24,8 @@ const BASE: Record<string, JsonSchema> = {
   Dec: { type: "string", pattern: "^-?[0-9]+(\\.[0-9]+)?$" },
   Text: { type: "string" },
   Bytes: { type: "string", contentEncoding: "base64" },
-  Path: { type: "string" },
+  // Relative, normalized, portable (K68, G14): spec/core.md#paths.
+  Path: { type: "string", pattern: PATH_PATTERN, description: PATH_RULE },
   Url: { type: "string" },
   Time: { type: "integer", description: "milliseconds since the Unix epoch" },
   Duration: { type: "integer", minimum: 0, description: "milliseconds" },
@@ -130,5 +133,5 @@ export function schemaErrors(schema: JsonSchema, value: Value): string[] {
     compiled.set(schema, validate);
   }
   if (validate(value)) return [];
-  return (validate.errors ?? []).slice(0, 10).map((e) => `${e.instancePath || "/"} ${e.message ?? "is invalid"}`);
+  return (validate.errors ?? []).slice(0, 10).map((e) => `${e.instancePath || "/"} ${e.keyword === "pattern" && e.params["pattern"] === PATH_PATTERN ? `is not a Path: ${PATH_RULE}` : (e.message ?? "is invalid")}`);
 }

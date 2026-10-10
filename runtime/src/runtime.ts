@@ -13,6 +13,7 @@ import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js"
 import { RateLimiter, type BucketConfig } from "./ratelimit.js";
 import type { Db, Row } from "./db.js";
 import { Faults } from "./faults.js";
+import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Policy } from "./interp.js";
 import { costDims, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type RunRow } from "./journal.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
@@ -176,7 +177,15 @@ export class Runtime {
     verifyPackage(o.pkg);
     const wf = o.pkg.program.defs[o.workflow];
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
-    await this.validateBindings(linkedProgram(o.pkg.program, o.pkg.modules), o.workflow);
+    const linked = linkedProgram(o.pkg.program, o.pkg.modules);
+    // The input is a value of the workflow's parameter types, as a model's answer is of its type: a Path in it keeps the Path rule (K68).
+    const input = isObj(o.input ?? null) ? (o.input as Obj) : {};
+    for (const p of wf.params) {
+      if (!Object.hasOwn(input, p.name)) continue;
+      const problems = schemaErrors(typeSchema(linked, p.type), input[p.name]!);
+      if (problems.length) throw new Violation("input_mismatch", `Input '${p.name}' of ${o.workflow} does not fit its type: ${problems.join(", ")}.`);
+    }
+    await this.validateBindings(linked, o.workflow);
     await this.validateExecutor(o.pkg);
     const lowered = this.remoteGuarantees(o.pkg.program);
     const runId = o.runId ?? randomUUID();

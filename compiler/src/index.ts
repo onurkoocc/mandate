@@ -10,6 +10,7 @@ export { irSchema, validateIr } from "./ir/validate.js";
 export { canonicalize } from "./json/jcs.js";
 export { parseStrictJson, type Json } from "./json/strict-json.js";
 export { LIMITS } from "./limits.js";
+export { isPath, PATH_PATTERN, pathProblem } from "./path.js";
 export { parseMdt, RESERVED } from "./parse/parser.js";
 export { applyPatch, type GovernanceChange, type PatchOp, type PatchResult } from "./patch/patch.js";
 export { printProgram } from "./print/printer.js";

@@ -481,6 +481,32 @@ fn look(i: Issue) -> Text ! {Model} {
   });
 });
 
+describe("V20 a Path is relative and normalized (K68)", () => {
+  const at = (literal: string): string => program(`type Finding = { file: Path, line: Int }\nfn open(p: Path) -> Bool { true }\nlet a = open(${literal})\nlet f = Finding { file: ${literal}, line: 1 }`);
+
+  it("takes a text literal that keeps the rule where a Path is expected", () => {
+    for (const ok of ['"src/a.ts"', '"README.md"', '".github/workflows/ci.yml"', '"a/..b/c..d/.e"', '"x y/z"']) expect(errorsOf(at(ok)), ok).toEqual([]);
+  });
+
+  it("refuses one that leaves the working copy, is absolute or is not portable (E0204)", () => {
+    for (const bad of ['"../x"', '"src/../../x"', '"/etc/passwd"', '"C:/Windows"', '"src\\\\a.ts"', '"a//b"', '"./a"', '"a/"', '""', '"file.txt:stream"']) {
+      expect(errorsOf(at(bad)), bad).toEqual(["MDT-E0204", "MDT-E0204"]);
+    }
+    expect(check(at('"../x"'), "mdt").diagnostics[0]!.message).toContain('"../x" is not a Path: it has a `.` or `..` segment');
+  });
+
+  it("checks every literal of a list", () => {
+    const src = (items: string): string => program(`fn touch(ps: List<Path>) -> Bool { true }\nlet a = touch([${items}])`);
+    expect(errorsOf(src('"src/a.ts", "test/a.test.ts"'))).toEqual([]);
+    expect(errorsOf(src('"src/a.ts", "../b.ts"'))).toEqual(["MDT-E0204"]);
+  });
+
+  it("takes no other Text as a Path: a template or a variable is not one (E0201)", () => {
+    expect(errorsOf(program('fn open(p: Path) -> Bool { true }\nfn f(t: Text) -> Bool { open(t) }'))).toEqual(["MDT-E0201"]);
+    expect(errorsOf(program('fn open(p: Path) -> Bool { true }\nfn f(t: Text) -> Bool { open("src/{t}") }'))).toEqual(["MDT-E0201"]);
+  });
+});
+
 describe("effects", () => {
   it("E0401: a function uses an effect it does not declare", () => {
     const d = only(program("fn f(t: Text) -> Inferred<Text> ! {Fs.Read} {\n  infer Text from quote(t)\n}"), "MDT-E0401");

@@ -16,10 +16,12 @@
 // knowledge never produces a false error.
 
 import type { Def, TypeExpr } from "../ir/types.js";
+import { pathProblem } from "../path.js";
 
 export type Ty =
   | { k: "unknown" }
-  | { k: "named"; name: string; args: Ty[] }
+  /** `lit`: a text literal's value, so that it can stand where a Path is expected (K68). */
+  | { k: "named"; name: string; args: Ty[]; lit?: string }
   | { k: "record"; fields: Record<string, Ty> };
 
 export const UNKNOWN: Ty = { k: "unknown" };
@@ -199,6 +201,11 @@ function sameShape(a: Ty, e: Ty, env: TypeEnv, fullA: Ty, fullE: Ty): Problem | 
   if (ua.k === "unknown" || ue.k === "unknown") return undefined;
   const mismatch = (): Problem => ({ code: "E0201", message: `Expected ${show(fullE)} but got ${show(fullA)}.` });
   if (ua.k === "named" && ue.k === "named") {
+    // A text literal is a Path where one is expected, if it keeps the Path rule.
+    if (ua.name === "Text" && ue.name === "Path" && ua.lit !== undefined) {
+      const why = pathProblem(ua.lit);
+      return why ? { code: "E0204", message: `${JSON.stringify(ua.lit)} is not a Path: ${why}. A Path is relative to the working copy's root, with \`/\` between segments and no \`.\` or \`..\` segment.` } : undefined;
+    }
     if (ua.name !== ue.name && !(NUMERIC_WIDENING[ua.name] ?? []).includes(ue.name)) return mismatch();
     const n = Math.min(ua.args.length, ue.args.length);
     for (let i = 0; i < n; i++) {

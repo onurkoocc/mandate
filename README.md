@@ -155,6 +155,7 @@ document's §25 are covered:
 | V06 | `UnknownOutcome` is reconciled, never restarted | E0712 |
 | V07 | A switch on a decision handles `Uncertain` | E0230 |
 | V08 | A decision cannot reach a critical effect directly | E0210 |
+| V20 | A text literal stands for a `Path` only if it is relative and normalized (K68) | E0204 |
 
 S09 (load-time verification) is covered by the runtime, below.
 `compiler/test/mcp.test.ts` checks the compiler's MCP server (§14): its
@@ -279,9 +280,13 @@ sent again without counting as an attempt, without holding its
 reservation and without a `BudgetExceeded`; a shared token bucket makes a
 second run wait, and refuses outright when its queue is full.
 
-`gate4.test.ts` lists Gate 4's thirteen cases (§25, G01–G13) and where each
-is tested, and holds those without a home of their own: G02, G03, G04, G12
-and G13.
+`gate4.test.ts` lists Gate 4's thirteen cases (§25, G01–G13) and G14, and
+where each is tested, and holds those without a home of their own: G02,
+G03, G04, G12, G13 and G14's type layer. G14 (K68) is that a path an agent
+names cannot take the control plane out of the working copy, in two lines:
+the `Path` type (a model's answer, a run's input and a text literal keep
+the rule; [`spec/core.md`](spec/core.md#paths)) and the check where the
+runtime uses a path (`paths.ts`).
 
 `views.test.ts` checks a run's views (§15): status, evidence and cost
 under the program's hash; a reviewer's markup shown as plain text (G09);
@@ -386,6 +391,7 @@ These cases from §25 are covered:
 | G11 | A new network target shows in the semantic diff as a governance change | `views` (compiler) |
 | G12 | A remote agent without idempotent delivery: refused if required, else sent at most once | `gate4` |
 | G13 | One authorization is consumed by one commit; a second is refused | `gate4`, `effects` |
+| G14 | A path an agent names that leaves the working copy, is absolute or is not portable is refused: as a model's answer, a skill's result or a run's input by its type, and where the runtime uses it, without following a link | `gate4`, `loop` (the type); `paths`, `verifier`, `boundary` (the use site) |
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
 | V14 | A throttled call waits and is sent again; no restart is counted and no BudgetExceeded is raised | `supervision`, `anthropic` |
 | V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |

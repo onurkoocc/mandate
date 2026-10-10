@@ -1,5 +1,6 @@
-// Gate 4 (Doc 4 §21.2, §25 G01–G13): evidence and authority hold against an
-// adversarial environment, with no real money and no production effect.
+// Gate 4 (Doc 4 §21.2, §25 G01–G13), and the G cases added after it (G14):
+// evidence and authority hold against an adversarial environment, with no
+// real money and no production effect.
 // Every G case has a test; the ones that belong to a mechanism live next to
 // it, and this file holds the rest:
 //
@@ -16,11 +17,13 @@
 //   G11  a new network target → shown as a governance change     compiler views.test.ts
 //   G12  an A2A server without idempotency → guarantee lowered   here
 //   G13  one authorization, two commits → the second refused     here, effects.test.ts
+//   G14  an agent names a path outside the working copy → refused  here, loop.test.ts (the type);
+//                                                               paths, verifier, boundary .test.ts (the use site)
 
 import { afterAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { MxcAdapter } from "../src/sandbox.js";
-import { SimAgents, SimChat, SimSandboxHost, SimTool, toolUse, type SimTurn } from "../src/sim.js";
+import { SimAgents, SimChat, SimModel, SimSandboxHost, SimTool, toolUse, type SimTurn } from "../src/sim.js";
 import { isObj } from "../src/values.js";
 import { closeAll, start, world } from "./helpers.js";
 import { NOTIFY } from "./programs.js";
@@ -166,5 +169,54 @@ describe("G13: one authorization, one commit", () => {
     await j.prepare("g13", done.fence, { operationKey: "op-again", commandId: "again", effect: "git.comment", actionDigest: action!.action_digest, params: action!.params, retryClass: "idempotent" });
     await expect(j.commit("g13", done.fence, "op-again", auth!.authorization_id)).rejects.toMatchObject({ code: "MDT-E0407" });
     expect(tool.executions).toHaveLength(1);
+  });
+});
+
+// G14 (K68): a path an agent names cannot take the control plane out of the
+// working copy. The type is the first line: a Path is relative and
+// normalized, and a value that breaks the rule is refused before anything
+// uses it. The use-site checks are the second (paths.test.ts, the verifier's
+// copies in verifier.test.ts, the pinned suites in boundary.test.ts).
+const LOCATE = `module g14 @ 0.1
+use std.{model}
+
+capability ModelStd = model.infer(tier: standard)
+
+type Finding = { file: Path, line: Int }
+
+workflow Locate(task: Text) -> Inferred<Finding>
+  caps   ModelStd
+  budget { tokens: 10k }
+{
+  infer Finding from quote(task)
+}
+
+workflow Touch(files: List<Path>) -> Int
+  caps   ModelStd
+{
+  len(files)
+}
+`;
+
+describe("G14: a path an agent names stays inside the working copy (the type)", () => {
+  it("refuses a model's answer whose Path leaves the working copy, is absolute or is not portable", async () => {
+    for (const [i, file] of ["../../etc/passwd", "/etc/passwd", "C:/Windows/win.ini", "src\\a.ts", "src/./a.ts"].entries()) {
+      const model = new SimModel(() => ({ ok: { file, line: 3 }, cost: { tokens: 10 } }));
+      const w = await world(LOCATE, { model });
+      const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Locate", input: { task: "where is the bug?" }, runId: `g14-${i}` });
+      expect(run.state, file).toBe("failed");
+      expect(run.error).toMatchObject({ $tag: "Rejected", $args: ["schema_mismatch", [expect.stringContaining("/file is not a Path")]] });
+    }
+    const w = await world(LOCATE, { model: new SimModel(() => ({ ok: { file: "src/pagination.ts", line: 3 }, cost: { tokens: 10 } })) });
+    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Locate", input: { task: "where is the bug?" }, runId: "g14-ok" });
+    expect(run.result).toEqual({ file: "src/pagination.ts", line: 3 });
+  });
+
+  it("does not start a run whose input names a path outside the working copy", async () => {
+    const w = await world(LOCATE);
+    await expect(w.rt.startRun({ pkg: w.pkg, workflow: "Touch", input: { files: ["src/a.ts", "../b.ts"] }, runId: "g14-in" })).rejects.toMatchObject({ code: "input_mismatch" });
+    expect(await w.db.query("select run_id from runs")).toEqual([]);
+    const ok = await w.rt.startRun({ pkg: w.pkg, workflow: "Touch", input: { files: ["src/a.ts", "test/a.test.ts"] }, runId: "g14-in-ok" });
+    expect(ok.result).toBe(2);
   });
 });

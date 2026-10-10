@@ -48,6 +48,7 @@ import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type Trusted
 import type { RateLimiter } from "./ratelimit.js";
 import type { Faults } from "./faults.js";
 import { runAgentLoop, type LoopTask } from "./loop.js";
+import { schemaErrors, typeSchema } from "./schema.js";
 import type { ActionRow, CommandRow, Journal } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
 import {
@@ -724,7 +725,16 @@ export class Interpreter {
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
     const tier = this.tierFor(e.using, path);
     const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
-    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.o.adapters.model.infer(req), { siblings: ctx.siblings, label: "infer", ...this.limits("infer", tier) });
+    return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.checkedInfer(req), { siblings: ctx.siblings, label: "infer", ...this.limits("infer", tier) });
+  }
+
+  /** A model's answer to `infer`, checked against the type it was asked for: its word that it fits is not taken (INV-04, G14). */
+  private async checkedInfer(req: Parameters<Adapters["model"]["infer"]>[0]): Promise<Outcome> {
+    const out = await this.o.adapters.model.infer(req);
+    if (!("ok" in out)) return out;
+    const problems = schemaErrors(typeSchema(this.o.program, req.type), out.ok);
+    if (!problems.length) return out;
+    return { error: { tag: "Rejected", args: ["schema_mismatch", problems as unknown as Value] }, ...(out.cost ? { cost: out.cost } : {}), ...(out.meta ? { meta: out.meta } : {}) };
   }
 
   /**
