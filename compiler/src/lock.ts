@@ -15,7 +15,10 @@ import { readFileSync } from "node:fs";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import { capFromCall, type CapVal } from "./check/caps.js";
 import { diag, type Diagnostic, type Span } from "./diag.js";
+import { hashProgram } from "./hash.js";
 import type { Budget, Def, Expr, Program } from "./ir/types.js";
+import type { Json } from "./json/strict-json.js";
+import type { Modules } from "./modules.js";
 
 export const LOCK_FORMAT = "mandate/lock/0.2";
 
@@ -147,6 +150,29 @@ export function lockChecks(program: Program, lock: Lock, spans?: Map<string, Spa
       }
     }
   }
+  return out;
+}
+
+/**
+ * Every imported module the caller loaded is pinned in the lock by its
+ * program hash (S09, INV-02): a system model that changed since the lock was
+ * written is a different program, not the one the run was approved with
+ * (E0142). A module that is imported but not loaded must still be locked.
+ */
+export function moduleLockChecks(program: Program, lock: Lock, modules: Modules = {}): Diagnostic[] {
+  const out: Diagnostic[] = [];
+  (program.uses ?? []).forEach((u, i) => {
+    if (u.module === "std" || u.module.startsWith("std.")) return;
+    const pinned = Object.hasOwn(lock.modules, u.module) ? lock.modules[u.module] : undefined;
+    const m = Object.hasOwn(modules, u.module) ? modules[u.module] : undefined;
+    if (pinned === undefined) {
+      out.push(diag("E0142", `Module ${u.module} is imported but not in the lock file.`, { path: `/uses/${i}` }, { facts: { module: u.module } }));
+      return;
+    }
+    if (!m) return;
+    const hash = hashProgram(m as unknown as Json).program;
+    if (hash !== pinned) out.push(diag("E0142", `Module ${u.module} hashes to ${hash}, but the lock pins ${pinned}.`, { path: `/uses/${i}` }, { facts: { module: u.module, pinned, hash } }));
+  });
   return out;
 }
 

@@ -14,8 +14,19 @@
 //     "sandbox":  { "host": "mxc", "baseline": ["/usr/local"], "mode": "enforcement" | "learning" },
 //                 on Windows: { "host": "mxc", "toolchain": ["C:\\Program Files\\nodejs"], "isolation": "process" }
 //     "github":   { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },   // MANDATE_GITHUB_TOKEN
+//                 with "repos": ["owner/a", "owner/b"], also git.merge for change sets into those repositories (B4)
 //     "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"],
 //                   "process": { "key": ".mandate/verifier.key", "trusted": ["keys/verifier.pub"] } }   // optional: a verifier process of its own
+//     "workspace": { "components": { "mcp": { "url": "https://github.com/acme/mcp.git", "ref": "main" } } }
+//     "broker":    { "prod_sim/core": { "url_env": "MANDATE_PROD_SIM_CORE_URL" }, "prod_sim/mcp": { "logs": "data/prod_sim/logs" } }
+//                 // the read broker (B6): a read-only database login (from the environment) or a logs directory per environment/component
+//     "samples":   "samples.json"          // sample rows for design runs, by "<environment>.<read>"
+//     "boundary": { "integration": { "dir": "../acme-system/compose", "files": ["base.yml", "staging.yml", "integration.yml"], "service": "e2e" },
+//                   "ci": { "mode": "rerun", "workflow": "ci" }, "pinned": { "mcp": ["test/**"] }, "extraRead": { "core": ["/root/.m2"] } }
+//                 // boundary evidence (B5): test.suite_each, test.contract, test.integration, test.ci
+//     "onboard":  { "hosts": { "auth": "auth" }, "extraRead": { "core": ["/root/.m2"] } }
+//                 // onboarding evidence (B7): test.system_specs, test.consumes, test.commands
+//                 // where each component of a system model comes from (B3); checked out at its root
 //   }
 
 import { execFileSync } from "node:child_process";
@@ -31,12 +42,18 @@ import type { BucketConfig } from "./ratelimit.js";
 import type { RuntimeOptions } from "./runtime.js";
 import { openDb, type Db } from "./db.js";
 import { GitHubPullRequests } from "./github.js";
+import { GitHubMerges } from "./github-merge.js";
+import { BoundaryVerifier, GitHubCi, realDocker, type IntegrationConfig } from "./boundary.js";
+import { OnboardVerifier, type OnboardConfig } from "./onboard.js";
+import { DeclaredReads, SampleReads } from "./broker.js";
+import type { Value } from "./values.js";
 import { MxcHost } from "./mxc.js";
 import { WindowsMxcHost } from "./mxc-windows.js";
 import { MxcAdapter } from "./sandbox.js";
 import { wallClock } from "./sim.js";
 import { Violation } from "./signals.js";
 import { SandboxVerifier, type VerifierConfig } from "./verifier.js";
+import { GitWorkspace, type ComponentSource } from "./workspace.js";
 import { ProcessVerifier } from "./verifier-service.js";
 
 export interface RuntimeConfig {
@@ -53,7 +70,7 @@ export interface RuntimeConfig {
   rateLimits?: Record<string, BucketConfig>;
   model?: { provider: "anthropic" };
   sandbox?: { host: "mxc"; baseline?: string[]; path?: string[]; toolchain?: string[]; isolation?: "process" | "session"; mode?: "enforcement" | "learning" };
-  github?: { repo: string; base?: string; workdir: string };
+  github?: { repo?: string; base?: string; workdir?: string; repos?: string[] };
   verifier?: VerifierConfig & {
     /**
      * Run the verifier as a process of its own, with its own ed25519 key
@@ -63,16 +80,31 @@ export interface RuntimeConfig {
      */
     process?: { key: string; trusted?: string[] };
   };
+  /** The read broker's sources, by `<environment>/<component>` (design doc 9 §5.1, B6). */
+  broker?: Record<string, { url_env?: string; logs?: string }>;
+  /** A JSON file of sample rows for design runs, by `<environment>.<read>`. */
+  samples?: string;
+  /** Boundary evidence across components (design doc 9 §4, B5). */
+  boundary?: { integration?: IntegrationConfig; ci?: { mode?: "attested" | "rerun"; workflow?: string }; pinned?: Record<string, string[]>; extraRead?: Record<string, string[]>; timeoutMs?: number };
+  /** Checks of a drafted system model against the repositories (design doc 9 §7, B7). */
+  onboard?: OnboardConfig;
+  /** Where each component of a system model is cloned from, and the ref a run starts from (design doc 9 §12, B3). */
+  workspace?: { components: Record<string, ComponentSource> };
   /** The configuration file itself, so a verifier process can read it too. */
   file?: string;
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "evidence", "rateLimits", "model", "sandbox", "github", "verifier"],
+  "": ["database", "artifacts", "evidence", "rateLimits", "model", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard"],
+  boundary: ["integration", "ci", "pinned", "extraRead", "timeoutMs"],
+  onboard: ["hosts", "extraRead", "timeoutMs"],
+  "boundary.integration": ["dir", "files", "service", "services", "env", "timeoutMs", "probeImage"],
+  "boundary.ci": ["mode", "workflow"],
+  workspace: ["components"],
   evidence: ["key", "trusted"],
   model: ["provider"],
   sandbox: ["host", "baseline", "path", "toolchain", "isolation", "mode"],
-  github: ["repo", "base", "workdir"],
+  github: ["repo", "base", "workdir", "repos"],
   verifier: ["workdir", "base", "suites", "command", "timeoutMs", "process"],
   "verifier.process": ["key", "trusted"],
 };
@@ -104,7 +136,27 @@ export function readConfig(file: string): RuntimeConfig {
       throw new Violation("bad_config", `${file}: rateLimits.${k} must be a bucket model, model:<tier> or tool with capacity, perSecond and an optional queue`);
     }
   }
-  if (config.github) config.github.workdir = at(config.github.workdir);
+  if (config.github?.workdir) config.github.workdir = at(config.github.workdir);
+  if (config.github && (!!config.github.repo !== !!config.github.workdir || (config.github.repos !== undefined && (!Array.isArray(config.github.repos) || !config.github.repos.every((r) => typeof r === "string"))))) {
+    throw new Violation("bad_config", `${file}: "github" takes "repo" with "workdir" (git.open_pr), and "repos", a list of owner/name (git.merge)`);
+  }
+  if (config.boundary?.integration) config.boundary.integration.dir = at(config.boundary.integration.dir);
+  for (const [k, s] of Object.entries(config.broker ?? {})) {
+    if (!/^[A-Za-z_]\w*\/[A-Za-z_]\w*$/.test(k) || !s || typeof s !== "object" || Object.keys(s).some((x) => x !== "url_env" && x !== "logs")) throw new Violation("bad_config", `${file}: broker.${k} must be "<environment>/<component>": { "url_env" | "logs" }`);
+    if (s.logs) s.logs = at(s.logs);
+  }
+  if (config.samples !== undefined) config.samples = at(config.samples);
+  if (config.workspace) {
+    const comps = (config.workspace as { components?: unknown }).components;
+    if (!comps || typeof comps !== "object" || Array.isArray(comps)) throw new Violation("bad_config", `${file}: "workspace.components" maps component names to { "url", "ref" }`);
+    for (const [name, src] of Object.entries(comps as Record<string, Record<string, unknown>>)) {
+      if (!src || typeof src["url"] !== "string" || Object.keys(src).some((k) => k !== "url" && k !== "ref") || (src["ref"] !== undefined && typeof src["ref"] !== "string")) {
+        throw new Violation("bad_config", `${file}: workspace.components.${name} must be { "url": …, "ref": … }`);
+      }
+      // A local source is relative to the configuration, like every other path in it.
+      if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(src["url"]) && !src["url"].startsWith("git@")) src["url"] = at(src["url"]);
+    }
+  }
   if (config.verifier) config.verifier.workdir = at(config.verifier.workdir);
   if (config.verifier?.process) {
     const vp = config.verifier.process as { key?: unknown; trusted?: unknown };
@@ -179,6 +231,25 @@ function sandboxFor(config: RuntimeConfig): MxcAdapter | undefined {
   return new MxcAdapter({ host, schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true, ...(s.isolation ? { isolation: s.isolation } : {}), ...(s.mode ? { mode: s.mode } : {}) });
 }
 
+/** The read broker; database URLs (with their read-only logins) come from the environment only (K7). */
+function brokerFor(config: RuntimeConfig, env: NodeJS.ProcessEnv): DeclaredReads {
+  const sources: Record<string, { url?: string; logs?: string }> = {};
+  for (const [k, s] of Object.entries(config.broker ?? {})) {
+    const url = s.url_env ? env[s.url_env] : undefined;
+    if (s.url_env && !url) throw new Violation("no_credentials", `broker.${k} reads ${s.url_env}, which is not set.`);
+    sources[k] = { ...(url ? { url } : {}), ...(s.logs ? { logs: s.logs } : {}) };
+  }
+  return new DeclaredReads(sources);
+}
+
+function boundaryVerifier(config: RuntimeConfig, sandbox: MxcAdapter, env: NodeJS.ProcessEnv, inner: VerifierAdapter | undefined): BoundaryVerifier {
+  const b = config.boundary!;
+  const token = env["MANDATE_GITHUB_TOKEN"];
+  const ci = b.ci && token ? { ci: { ...(b.ci.mode ? { mode: b.ci.mode } : {}), source: new GitHubCi({ token, ...(b.ci.workflow ? { workflow: b.ci.workflow } : {}) }) } } : {};
+  if (b.ci && !token) throw new Violation("no_credentials", "boundary.ci reads GitHub Actions, but MANDATE_GITHUB_TOKEN is not set.");
+  return new BoundaryVerifier({ ...(b.integration ? { integration: b.integration } : {}), ...(b.pinned ? { pinned: b.pinned } : {}), ...(b.extraRead ? { extraRead: b.extraRead } : {}), ...(b.timeoutMs ? { timeoutMs: b.timeoutMs } : {}), ...ci }, sandbox, realDocker, inner);
+}
+
 /** A stand-in for an adapter the configuration leaves out: calling it stops the run for a person. */
 function missing(what: string): never {
   throw new Violation("no_adapter", `The runtime configuration has no ${what}.`);
@@ -194,21 +265,30 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
   if (config.github) {
     const token = env["MANDATE_GITHUB_TOKEN"];
     if (!token) throw new Violation("no_credentials", "github is configured, but MANDATE_GITHUB_TOKEN is not set.");
-    tools["git.open_pr"] = new GitHubPullRequests({ token, repo: config.github.repo, workdir: config.github.workdir, ...(config.github.base ? { base: config.github.base } : {}) });
+    const base = config.github.base ? { base: config.github.base } : {};
+    if (config.github.repo && config.github.workdir) tools["git.open_pr"] = new GitHubPullRequests({ token, repo: config.github.repo, workdir: config.github.workdir, ...base });
+    if (config.github.repos?.length) tools["git.merge"] = new GitHubMerges({ token, repos: config.github.repos, ...base });
   }
   const sandbox = sandboxFor(config);
+  const own = config.verifier?.process
+    ? new ProcessVerifier({ command: [process.execPath, VERIFIER_MAIN, "--config", config.file!], trusted: verifierKeys(config), package: { program, lock }, env })
+    : config.verifier && sandbox
+      ? new SandboxVerifier(config.verifier, sandbox, model)
+      : undefined;
+  // Boundary checks need the run's working copies, so they run in this process; other checks go to the verifier above.
+  const boundary = config.boundary && sandbox ? boundaryVerifier(config, sandbox, env, own) : undefined;
+  const onboard = config.onboard ? new OnboardVerifier(config.onboard, sandbox, boundary ?? own) : undefined;
   return {
     agents: { run: async () => missing("agent adapter: agents run as agent loops, which need model and sandbox") },
     ...(model && sandbox ? { loop: { chat: model, sandbox } } : {}),
     model: model ?? { infer: async () => missing("model"), upperBound: () => missing("model") },
     // A verifier process of its own signs each check with its own key; otherwise the checks run here.
-    verifier: config.verifier?.process
-      ? new ProcessVerifier({ command: [process.execPath, VERIFIER_MAIN, "--config", config.file!], trusted: verifierKeys(config), package: { program, lock }, env })
-      : config.verifier && sandbox
-        ? new SandboxVerifier(config.verifier, sandbox, model)
-        : { check: async () => missing("verifier") },
+    verifier: onboard ?? boundary ?? own ?? { check: async () => missing("verifier") },
     reads: { call: async () => missing("reader") },
     tools,
+    ...(config.workspace ? { workspace: new GitWorkspace(config.workspace.components) } : {}),
+    ...(config.broker ? { broker: brokerFor(config, env) } : {}),
+    ...(config.samples ? { samples: new SampleReads(JSON.parse(readFileSync(config.samples, "utf8")) as Record<string, Value[]>) } : {}),
     clock: wallClock,
     random: Math.random,
   };

@@ -1,0 +1,40 @@
+// A change set over Acme (design doc 9 §3; BACKLOG item 32): a verified plan,
+// one verified change per component, landed as one set in the order the
+// interface graph asks for: auth and core provide what mcp consumes.
+
+mandate @ 0.3
+module acme.tasks.land @ 0.1
+use std.{component, git}
+use acme.system.{auth, mcp, core, TokenIssuance, CoreApi}
+
+capability Repos = component.repo(auth, mcp, core)
+
+type Plan = { summary: Text }
+type Change = { files: List<Text> }
+
+contract PlanAccepted(plan: Plan) {
+  accept summarized "The plan says what changes" by static len(plan.summary) >= 1
+}
+
+contract ChangeAccepted(change: Change) {
+  accept listed "The change names its files" by static len(change.files) >= 1
+}
+
+workflow Land(task: Text) -> Text
+  caps Repos
+{
+  let plan = verify Plan { summary: task } against PlanAccepted(Plan { summary: task })
+  let a = verify Change { files: ["src/token.ts"] } against ChangeAccepted(Change { files: ["src/token.ts"] })
+  let c = verify Change { files: ["src/main/java/Api.java"] } against ChangeAccepted(Change { files: ["src/main/java/Api.java"] })
+  let m = verify Change { files: ["src/tools.ts"] } against ChangeAccepted(Change { files: ["src/tools.ts"] })
+  let landed = changeset(plan) {
+    member auth = git.merge(a)
+    member core = git.merge(c)
+    member mcp = git.merge(m)
+    order auth, core, mcp
+    change TokenIssuance additive
+    change CoreApi additive
+    approve role "architect"
+  } idempotent_by task
+  "landed"
+}

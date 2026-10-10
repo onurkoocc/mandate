@@ -18,9 +18,10 @@
 //                  criteria removed or changed, irreversible effects), behavior
 //                  changes, and what stayed the same (§15.3)
 
-import { calleePath, capFromCall, capCovers, showCap, within, type CapVal } from "../check/caps.js";
+import { calleePath, capCovers, capsOf, showCap, within, type CapVal } from "../check/caps.js";
 import { hashProgram } from "../hash.js";
-import type { AgentDef, Budget, ContractDef, EffectDef, Expr, Program, Stmt, Verifier, WorkflowDef } from "../ir/types.js";
+import type { AgentDef, Budget, ComponentDef, ContractDef, EffectDef, EnvironmentDef, Expr, InterfaceDef, Program, Stmt, TypeExpr, Verifier, WorkflowDef } from "../ir/types.js";
+import { link, linkedProgram, type Modules } from "../modules.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
 import { perCallBound, type Lock } from "../lock.js";
@@ -42,30 +43,17 @@ export function programRef(p: Program): ProgramRef {
 
 // ── capabilities ──────────────────────────────────────────────────────────
 
-/** A capability expression's value: a named capability, a constructor call, or `c.narrow(…)` with literal scopes. */
-export function capOf(program: Program, e: Expr): CapVal | undefined {
-  if (e.op === "var") {
-    const d = program.defs[e.name];
-    if (d?.kind !== "capability") return undefined;
-    const v = capOf(program, d.value);
-    return v ? { ...v, name: e.name } : undefined;
-  }
-  if (e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow") {
-    const base = capOf(program, e.callee.of);
-    if (!base) return undefined;
-    const scope = e.args.flatMap((a) => (a.value.op === "text" ? [a.value.value] : []));
-    const { scope: _wide, ...rest } = base;
-    return scope.length === e.args.length ? { ...rest, scope, name: `${base.name ?? base.ctor}.narrow` } : rest;
-  }
-  return capFromCall(e);
+/** The capabilities a list of capability expressions stands for (component capabilities may stand for several). */
+export function capsIn(program: Program, list: Expr[]): CapVal[] {
+  return list.flatMap((e) => capsOf(program.defs, e));
 }
 
 /** What a delegation is granted at run time: the agent's capabilities inside the workflow's, `with caps` replacing its kinds (C2). */
 export function grantOf(program: Program, wf: WorkflowDef, agent: AgentDef, withCaps: Expr[] = []): CapVal[] {
-  const avail = wf.caps.map((c) => capOf(program, c)).filter((c): c is CapVal => !!c);
-  let out = agent.caps.map((c) => capOf(program, c)).filter((c): c is CapVal => !!c).filter((c) => avail.some((a) => capCovers(a, c)));
+  const avail = capsIn(program, wf.caps);
+  let out = capsIn(program, agent.caps).filter((c) => avail.some((a) => capCovers(a, c)));
   if (withCaps.length) {
-    const given = withCaps.map((c) => capOf(program, c)).filter((c): c is CapVal => !!c);
+    const given = capsIn(program, withCaps);
     const kinds = new Set(given.map((g) => g.ctor));
     out = [...out.filter((c) => !kinds.has(c.ctor)), ...given];
   }
@@ -142,6 +130,8 @@ function children(e: Expr): Expr[] {
       return [e.value, ...e.args.map((a) => a.value)];
     case "effect":
       return e.args.map((a) => a.value);
+    case "changeset":
+      return [e.plan, ...Object.values(e.members).flatMap((m) => m.args.map((a) => a.value))];
     case "escalate":
       return [e.to];
     case "pause":
@@ -204,7 +194,7 @@ function supervision(e: Extract<Expr, { op: "delegate" }>): string | undefined {
 
 export interface ArchNode {
   id: string;
-  kind: "delegate" | "verify" | "effect" | "human" | "infer" | "read";
+  kind: "delegate" | "verify" | "effect" | "changeset" | "human" | "infer" | "read";
   label: string;
   detail: string[];
 }
@@ -297,6 +287,19 @@ class Graph {
         const detail = [info.irreversible ? "irreversible" : info.critical ? "critical" : "", e.idempotent_by ? "idempotent" : "", e.compensate ? `compensation offered: ${e.compensate}` : ""].filter(Boolean);
         return [this.add("effect", e.name, detail, prev)];
       }
+      case "changeset": {
+        // Who approves what, and in which order the members land (doc 9 §3).
+        const owner = (m: string): string => {
+          const c = this.program.defs[m];
+          return e.members[m]!.approver ?? (c?.kind === "component" ? c.owner : "owner");
+        };
+        const detail = [
+          ...e.order.map((m, i) => `${i + 1}. ${m}: ${e.members[m]?.effect ?? "?"} (approved by ${owner(m)})`),
+          ...Object.entries(e.changes ?? {}).map(([i, k]) => `${i}: ${k}`),
+          `the set approved by ${e.approver}`,
+        ];
+        return [this.add("changeset", `change set ${e.order.join(" → ")}`, detail, prev)];
+      }
       case "infer":
         return [this.add("infer", `infer ${"ref" in e.type ? e.type.ref : "value"}`, [], prev)];
       case "escalate":
@@ -339,6 +342,7 @@ function mermaid(wf: string, budget: string, nodes: ArchNode[], edges: ArchEdge[
       case "verify":
         return `${n.id}{{${text}}}`;
       case "effect":
+      case "changeset":
         return `${n.id}[(${text})]`;
       case "human":
         return `${n.id}[/${text}/]`;
@@ -393,6 +397,10 @@ function workflowEffects(program: Program, body: Stmt[]): string[] {
         const info = effectInfo(program, n.name);
         out.add(`${n.name} (${info.irreversible ? "irreversible; a person authorizes" : info.critical ? "critical; policy authorizes" : "not critical"})`);
       }
+      if (n.op === "changeset") {
+        const cs = v as Extract<Expr, { op: "changeset" }>;
+        for (const [m, mem] of Object.entries(cs.members)) out.add(`${mem.effect} on ${m} (change set: its owner and ${cs.approver} authorize)`);
+      }
       Object.values(v).forEach(visit);
     }
   };
@@ -404,11 +412,11 @@ export function authority(program: Program): AuthorityView {
   const rows: AuthorityRow[] = [];
   const defs = Object.entries(program.defs).sort(([a], [b]) => (a < b ? -1 : 1));
   for (const [name, d] of defs) {
-    if (d.kind === "agent") rows.push({ who: d.remote ? `${name} (remote)` : name, kind: "agent", effects: [], ...authorityOf(d.caps.map((c) => capOf(program, c)).filter((c): c is CapVal => !!c)) });
+    if (d.kind === "agent") rows.push({ who: d.remote ? `${name} (remote)` : name, kind: "agent", effects: [], ...authorityOf(capsIn(program, d.caps)) });
   }
   for (const [name, d] of defs) {
     if (d.kind !== "workflow") continue;
-    rows.push({ who: name, kind: "workflow", effects: workflowEffects(program, d.body), ...authorityOf(d.caps.map((c) => capOf(program, c)).filter((c): c is CapVal => !!c)) });
+    rows.push({ who: name, kind: "workflow", effects: workflowEffects(program, d.body), ...authorityOf(capsIn(program, d.caps)) });
     const visit = (v: unknown): void => {
       if (Array.isArray(v)) v.forEach(visit);
       else if (v && typeof v === "object") {
@@ -576,6 +584,46 @@ function scopeDiff(before: CapVal | undefined, after: CapVal | undefined): { add
   return { added, removed, other };
 }
 
+type SystemDef = ComponentDef | InterfaceDef | EnvironmentDef;
+
+export function isSystem(kind: string): boolean {
+  return kind === "component" || kind === "interface" || kind === "environment";
+}
+
+/** Field by field, what changed in a component, an interface or an environment. */
+function systemChanges(name: string, b: SystemDef, a: SystemDef): string[] {
+  const out: string[] = [];
+  const field = (label: string, x: unknown, y: unknown): void => {
+    if (j(x ?? null) !== j(y ?? null)) out.push(`${a.kind} ${name}.${label}: ${j(x ?? null)} → ${j(y ?? null)}`);
+  };
+  if (a.kind === "component" && b.kind === "component") {
+    for (const f of ["repo", "root", "lang", "owner", "build", "test", "provides", "consumes"] as const) field(f, b[f], a[f]);
+  } else if (a.kind === "interface" && b.kind === "interface") {
+    field("protocol", b.protocol, a.protocol);
+    field("spec", b.spec, a.spec);
+  } else if (a.kind === "environment" && b.kind === "environment") {
+    field("class", b.class, a.class);
+    for (const r of [...new Set([...Object.keys(b.reads ?? {}), ...Object.keys(a.reads ?? {})])].sort()) field(`reads.${r}`, b.reads?.[r], a.reads?.[r]);
+    for (const e of [...new Set([...Object.keys(b.authorize ?? {}), ...Object.keys(a.authorize ?? {})])].sort()) field(`authorize.${e}`, b.authorize?.[e], a.authorize?.[e]);
+  }
+  return out;
+}
+
+/** scopeDiff over what two capability definitions stand for, paired by kind (and by command for exec). */
+function scopeDiffs(before: CapVal[], after: CapVal[]): { added: string[]; removed: string[]; other: string[] } {
+  const key = (c: CapVal): string => (c.ctor === "exec" ? `exec:${(c.scope ?? []).join(",")}` : c.ctor);
+  const out = { added: [] as string[], removed: [] as string[], other: [] as string[] };
+  for (const k of [...new Set([...before, ...after].map(key))].sort()) {
+    const d = scopeDiff(before.find((c) => key(c) === k), after.find((c) => key(c) === k));
+    out.added.push(...d.added);
+    out.removed.push(...d.removed);
+    out.other.push(...d.other);
+  }
+  return out;
+}
+
+const shownCaps = (p: Program, e: Expr): string => capsOf(p.defs, e).map(showCap).join(", ") || j(e);
+
 function budgetChanges(name: string, before: Budget | undefined, after: Budget | undefined): { up: string[]; down: string[] } {
   const up: string[] = [];
   const down: string[] = [];
@@ -611,11 +659,12 @@ export function semanticDiff(before: Program, after: Program): DiffView {
     const path = `/defs/${name}`;
     if (b && a && j(b) === j(a)) continue;
     if (!a) {
-      (b?.kind === "contract" ? governance : behavior).push({ path, text: `- ${b!.kind} ${name} removed` });
+      (b?.kind === "contract" || isSystem(b!.kind) ? governance : behavior).push({ path, text: `- ${b!.kind} ${name} removed` });
       continue;
     }
     if (!b) {
-      if (a.kind === "capability") governance.push({ path, text: `+ capability ${showCap(capOf(after, { op: "var", name }) ?? { ctor: "?", effect: "?", write: false, name })}` });
+      if (a.kind === "capability") governance.push({ path, text: `+ capability ${shownCaps(after, { op: "var", name })}` });
+      else if (isSystem(a.kind)) governance.push({ path, text: `+ ${a.kind} ${name} (system model)` });
       else if (a.kind === "agent" && a.remote) governance.push({ path, text: `+ remote agent ${name}` });
       else if (a.kind === "effect" && a.irreversible) governance.push({ path, text: `+ irreversible effect ${name}` });
       else behavior.push({ path, text: `+ ${a.kind} ${name}` });
@@ -627,7 +676,7 @@ export function semanticDiff(before: Program, after: Program): DiffView {
     }
     switch (a.kind) {
       case "capability": {
-        const d = scopeDiff(capOf(before, { op: "var", name }), capOf(after, { op: "var", name }));
+        const d = scopeDiffs(capsOf(before.defs, { op: "var", name }), capsOf(after.defs, { op: "var", name }));
         for (const x of d.added) governance.push({ path, text: `+ ${name}: ${x}` });
         for (const x of d.other) governance.push({ path, text: `~ ${name}: ${x}` });
         for (const x of d.removed) behavior.push({ path, text: `- ${name}: ${x} (narrowed)` });
@@ -639,10 +688,10 @@ export function semanticDiff(before: Program, after: Program): DiffView {
         const had = new Set(bd.caps.map(j));
         const has = new Set(a.caps.map(j));
         a.caps.forEach((c, i) => {
-          if (!had.has(j(c))) governance.push({ path: `${path}/caps/${i}`, text: `+ ${name}: ${showCap(capOf(after, c) ?? { ctor: "?", effect: "?", write: false })}` });
+          if (!had.has(j(c))) governance.push({ path: `${path}/caps/${i}`, text: `+ ${name}: ${shownCaps(after, c)}` });
         });
         bd.caps.forEach((c) => {
-          if (!has.has(j(c))) behavior.push({ path: `${path}/caps`, text: `- ${name}: ${showCap(capOf(before, c) ?? { ctor: "?", effect: "?", write: false })} (narrowed)` });
+          if (!has.has(j(c))) behavior.push({ path: `${path}/caps`, text: `- ${name}: ${shownCaps(before, c)} (narrowed)` });
         });
         const bc = budgetChanges(name, bd.budget, a.budget);
         bc.up.forEach((t) => governance.push({ path: `${path}/budget`, text: `~ ${t}` }));
@@ -695,6 +744,12 @@ export function semanticDiff(before: Program, after: Program): DiffView {
         else if (j(be) !== j(a)) behavior.push({ path, text: `~ effect ${name} changed` });
         break;
       }
+      case "component":
+      case "interface":
+      case "environment":
+        // The system model is the institution's, not the program's: every change to it is a governance change (doc 9 §1, §5.3).
+        for (const t of systemChanges(name, b as SystemDef, a)) governance.push({ path, text: `~ ${t}` });
+        break;
       default:
         behavior.push({ path, text: `~ ${a.kind} ${name} changed` });
     }
@@ -713,6 +768,103 @@ export function semanticDiff(before: Program, after: Program): DiffView {
   if (!governance.some((g) => g.text.startsWith("+") || g.text.includes("tier") || g.text.includes("data class"))) unchanged.push("no authority added");
   if (!governance.some((g) => g.text.includes(".budget."))) unchanged.push("no budget raised");
   return { format: VIEW_FORMAT, kind: "diff", from: programRef(before), to: programRef(after), governance, behavior, unchanged };
+}
+
+// ── system (design doc 9 §8.1) ────────────────────────────────────────────
+
+export interface SystemView {
+  format: typeof VIEW_FORMAT;
+  kind: "system";
+  program: ProgramRef;
+  /** The modules the system model comes from, by hash; empty when the program defines it itself. */
+  modules: Array<{ module: string; hash: string }>;
+  components: Array<{ name: string; repo: string; root: string; lang: string; owner: string; build: string[]; test: string[]; provides: string[]; consumes: string[] }>;
+  interfaces: Array<{ name: string; protocol: string; spec: string; provider: string | null; consumers: string[] }>;
+  environments: Array<{ name: string; class: string; reads: Array<{ name: string; from: string; kind: "sql" | "logs"; params: string; returns: string; max_rows: number }>; authorize: Array<{ effect: string; tier: string }> }>;
+  /** The consumption graph: an edge from consumer to provider, labelled with the interface. */
+  mermaid: string;
+}
+
+const showCommand = (c: { command: string; args: string[] }): string => [c.command, ...c.args].join(" ");
+
+function typeText(t: TypeExpr): string {
+  if ("ref" in t) return t.args ? `${t.ref}<${t.args.map(typeText).join(", ")}>` : t.ref;
+  if ("record" in t) return `{ ${Object.entries(t.record).map(([k, v]) => `${k}: ${typeText(v)}`).join(", ")} }`;
+  if ("refine" in t) return `${typeText(t.refine)} where …`;
+  if ("enum" in t) return `enum { ${t.enum.join(", ")} }`;
+  return "union";
+}
+
+/**
+ * The system a program works on: components with their owners, interfaces
+ * with provider and consumers, environments with their reads and the
+ * weakest authorization each effect accepts there. With `modules`, the
+ * imported system model is shown with its module hash.
+ */
+export function system(program: Program, modules: Modules = {}): SystemView {
+  const linked = link(program, modules);
+  const defs = Object.entries(linked.defs).sort(([a], [b]) => (a < b ? -1 : 1));
+  const comps = defs.filter((x): x is [string, ComponentDef] => x[1].kind === "component");
+  const components = comps.map(([name, c]) => ({
+    name,
+    repo: c.repo,
+    root: c.root,
+    lang: c.lang,
+    owner: c.owner,
+    build: (c.build ?? []).map(showCommand),
+    test: (c.test ?? []).map(showCommand),
+    provides: c.provides ?? [],
+    consumes: c.consumes ?? [],
+  }));
+  const interfaces = defs
+    .filter((x): x is [string, InterfaceDef] => x[1].kind === "interface")
+    .map(([name, i]) => ({
+      name,
+      protocol: i.protocol,
+      spec: i.spec,
+      provider: comps.find(([, c]) => c.provides?.includes(name))?.[0] ?? null,
+      consumers: comps.filter(([, c]) => c.consumes?.includes(name)).map(([n]) => n),
+    }));
+  const environments = defs
+    .filter((x): x is [string, EnvironmentDef] => x[1].kind === "environment")
+    .map(([name, e]) => ({
+      name,
+      class: e.class,
+      reads: Object.entries(e.reads ?? {}).map(([rn, r]) => ({ name: rn, from: r.from, kind: ("sql" in r.query ? "sql" : "logs") as "sql" | "logs", params: r.params.map((p) => `${p.name}: ${typeText(p.type)}`).join(", "), returns: typeText(r.returns), max_rows: r.max_rows })),
+      authorize: Object.entries(e.authorize ?? {}).map(([effect, t]) => ({ effect, tier: t.by === "policy" ? "policy" : `a person (${t.role})` })),
+    }));
+  const id = (n: string): string => `c_${n}`;
+  const lines = ["flowchart LR", ...components.map((c) => `  ${id(c.name)}["${mermaidText(`${c.name} (${c.lang})`)}<br/>${mermaidText(c.owner)}"]`)];
+  for (const i of interfaces) for (const consumer of i.consumers) if (i.provider) lines.push(`  ${id(consumer)} -->|${mermaidText(i.name)}| ${id(i.provider)}`);
+  const used = [...new Set(Object.values(linked.origin))].sort();
+  return {
+    format: VIEW_FORMAT,
+    kind: "system",
+    program: programRef(program),
+    modules: used.map((m) => ({ module: m, hash: hashProgram(modules[m]! as unknown as Json).program })),
+    components,
+    interfaces,
+    environments,
+    mermaid: lines.join("\n"),
+  };
+}
+
+export function hasSystem(program: Program, modules: Modules = {}): boolean {
+  return Object.values(link(program, modules).defs).some((d) => isSystem(d.kind));
+}
+
+export function systemBlocks(v: SystemView): Block[] {
+  const out: Block[] = [{ h: "System" }];
+  if (v.modules.length) out.push({ p: `System model from ${v.modules.map((m) => `${m.module} (${m.hash})`).join(", ")}.` });
+  out.push({ code: v.mermaid, lang: "mermaid" });
+  out.push({ table: { head: ["Component", "Repository", "Root", "Language", "Owner", "Build", "Test", "Provides", "Consumes"], rows: v.components.map((c) => [c.name, c.repo, c.root, c.lang, c.owner, list(c.build), list(c.test), list(c.provides), list(c.consumes)]) } });
+  out.push({ table: { head: ["Interface", "Protocol", "Spec", "Provider", "Consumers"], rows: v.interfaces.map((i) => [i.name, i.protocol, i.spec, i.provider ?? "none", list(i.consumers)]) } });
+  for (const e of v.environments) {
+    out.push({ p: `Environment ${e.name}: holds data up to ${e.class}.` });
+    if (e.reads.length) out.push({ table: { head: ["Read", "From", "Kind", "Parameters", "Row", "Max rows"], rows: e.reads.map((r) => [r.name, r.from, r.kind, r.params || "—", r.returns, String(r.max_rows)]) } });
+    if (e.authorize.length) out.push({ table: { head: ["Effect", "Authorized at least by"], rows: e.authorize.map((a) => [a.effect, a.tier]) } });
+  }
+  return out;
 }
 
 // ── documents ─────────────────────────────────────────────────────────────
@@ -769,17 +921,25 @@ export function diffBlocks(v: DiffView): Block[] {
   ];
 }
 
-/** The program's views as one document, headed by the hash they show. */
-export function programDoc(program: Program, lock?: Lock): Doc {
+/**
+ * The program's views as one document, headed by the hash they show. With
+ * `modules`, capabilities over components open into the imported system
+ * model, which is shown too.
+ */
+export function programDoc(program: Program, lock?: Lock, modules: Modules = {}): Doc {
   const ref = programRef(program);
+  const linked = Object.keys(modules).length ? linkedProgram(program, modules) : program;
+  // A module that only describes a system (a system model) has no workflows or agents to show.
+  const runs = Object.values(program.defs).some((d) => d.kind === "workflow" || d.kind === "agent");
+  const views = (p: Program): Block[] => (runs ? [...architectureBlocks(architecture(p)), ...authorityBlocks(authority(p)), ...costBlocks(cost(p, lock))] : []);
   return {
     title: `${ref.module} ${ref.version}`,
     meta: [
       ["Program", ref.hash],
       ["Language", ref.language],
-      ["View", `${VIEW_FORMAT}, generated from the program alone`],
+      ["View", `${VIEW_FORMAT}, generated from the program${Object.keys(modules).length ? " and the modules it imports" : " alone"}`],
     ],
-    blocks: [...architectureBlocks(architecture(program)), ...authorityBlocks(authority(program)), ...costBlocks(cost(program, lock))],
+    blocks: [...views(linked), ...(hasSystem(program, modules) ? systemBlocks(system(program, modules)) : [])],
   };
 }
 

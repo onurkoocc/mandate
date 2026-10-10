@@ -60,6 +60,10 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Model tier not locked",
     explain: "A capability names a model tier that the lock file does not map to a model, an effort and a tariff. The runtime refuses to load such a package (BACKLOG K10, K11).",
   },
+  "MDT-E0142": {
+    title: "Imported module not locked",
+    explain: "A program imports a module that the lock file does not pin, or a loaded module whose program hash differs from the one the lock pins. A run's imported modules, such as its system model, are fixed by hash (S09, INV-02); a changed module is a new lock and a new package.",
+  },
   "MDT-E0201": {
     title: "Type mismatch",
     explain: "A value's type does not match what the position expects: a wrong argument count, a different nominal type, or a plain T where Verified<T> is required.",
@@ -212,6 +216,54 @@ export const CODES: Record<string, { title: string; explain: string }> = {
   "MDT-E0715": {
     title: "Fallback is not equivalent",
     explain: "degrade(to: F) must name an agent that does the same job with no more authority: F has the same skill with the same parameter and result types, holds no capability the original agent lacks, and holds what the call hands over with `with caps` (§8.7).",
+  },
+  "MDT-E1001": {
+    title: "Interface without exactly one provider",
+    explain: "Every interface of a system model is provided by exactly one component (`provides`). The provider answers for changes to it, and its spec file is read at the provider's base commit (design doc 9 §2.1).",
+  },
+  "MDT-E1002": {
+    title: "Capability over a component or an environment cannot be opened",
+    explain: "component.read, component.write, component.exec and component.repo take components of the system model. component.write takes paths inside the component; component.exec runs only the build or test commands the component declares. A capability that stands for several values (one per command) cannot be narrowed as one. env.deploy and env.migrate take environments of the system model, and data.read an environment and its declared reads (design doc 9 §2.2, §5).",
+  },
+  "MDT-E1003": {
+    title: "Component working copies overlap",
+    explain: "Two components have the same root, or one root lies inside the other. Each component's working copy is its own, so sandboxes, write scopes and changes are told apart by root (C5 across components).",
+  },
+  "MDT-E1004": {
+    title: "Read does not match its declaration",
+    explain: "A declared read runs one SELECT statement (or a log filter) whose values come only from its parameters: every `:name` placeholder is a parameter and every parameter is used, and parameters are scalars. Model output can be a parameter value, never query text (design doc 9 §5.1, K43).",
+  },
+  "MDT-E1005": {
+    title: "Read above its environment's class",
+    explain: "A read returns rows of a higher data class than the environment it belongs to declares. An environment's class is the most sensitive data it holds; a program cannot lower a class (§5.5).",
+  },
+  "MDT-E1006": {
+    title: "Environment tier does not bind",
+    explain: "An environment sets the least authorization tier for effects in it: `authorize deploy by human(role: \"release_manager\")` (design doc 9 §5.3). The tier is the organization's, not the program's, so it lives in the system model and a change to it is a governance change. It must name a critical effect, since nothing else is ever authorized. At run time the stronger of the tier and the runtime's policy applies; a program cannot lower it.",
+  },
+  "MDT-E1101": {
+    title: "Change set order breaks the interface graph",
+    explain: "A change set declares how interfaces change. For an additive change, the provider lands before every member that consumes the interface, and the provider is a member of the set. When no order can satisfy the graph (a cycle), the change must be split into steps (design doc 9 §3.3).",
+  },
+  "MDT-E1102": {
+    title: "Change set order does not list its members",
+    explain: "A change set's `order` names every member exactly once; it is the order in which the members are committed (design doc 9 §3.2).",
+  },
+  "MDT-E1103": {
+    title: "Breaking change in one change set",
+    explain: "An interface that changes in a breaking way cannot change in one step: some consumer would break between two merges. Plan it as expand → migrate → contract: add the new form, move every consumer to it, then remove the old one, each its own change set (design doc 9 §3.3).",
+  },
+  "MDT-E1104": {
+    title: "Change set member is not a critical effect",
+    explain: "Each member of a change set is the external action that lands one component's change (git.merge, git.open_pr, deploy …), so it is a critical effect, prepared, authorized and committed like one (design doc 9 §3.2).",
+  },
+  "MDT-E1105": {
+    title: "Change set without a verified plan",
+    explain: "A change set lands a plan that was accepted before any code was written: its plan argument must be Verified against a contract. The set digest covers the plan, so an approval of the set is an approval of this plan's change (design doc 9 §3.4).",
+  },
+  "MDT-E1201": {
+    title: "Read not as declared",
+    explain: "data.read runs a read an environment declares: data.read(env.read, param: value, …, max_class: c). Every parameter is passed once, by name, and nothing else; values are bound as parameters and never become query text (K43). max_class is a data class; fields above it come back masked, typed Masked (design doc 9 §5.1).",
   },
   "MDT-E0902": {
     title: "Sandbox requirement cannot be enforced",

@@ -25,10 +25,18 @@ import {
   type BinaryOp,
   type Budget,
   type CallSpec,
+  type ChangeKind,
+  type ChangesetExpr,
+  type ChangesetMember,
+  type Command,
+  type ComponentDef,
   type ContractDef,
   type Criterion,
   type Def,
   type EffectDef,
+  type EnvironmentDef,
+  type InterfaceDef,
+  INTERFACE_PROTOCOLS,
   type EffectRef,
   type Expr,
   type OnHandler,
@@ -36,10 +44,12 @@ import {
   type Pattern,
   Progress,
   type Program,
+  type ReadSource,
   type Skill,
   type Stmt,
   type TemplatePart,
   type TestDef,
+  type Tier,
   type TypeExpr,
   type Use,
   type Variant,
@@ -280,6 +290,12 @@ class Parser {
   private decl(): [string, Def, Token] {
     const t = this.t;
     if (t.kind !== "ident") this.fail(`Expected a declaration but found ${this.describe()}.`);
+    // The system model's kinds are contextual: `component.read(…)` stays an expression elsewhere.
+    if ((t.text === "component" || t.text === "interface" || t.text === "environment") && this.la(1).kind === "ident" && this.isP("{", this.la(2))) {
+      if (t.text === "component") return this.componentDecl();
+      if (t.text === "interface") return this.interfaceDecl();
+      return this.environmentDecl();
+    }
     switch (t.text) {
       case "type":
         return this.typeDecl();
@@ -506,6 +522,172 @@ class Parser {
     if (this.eatW("ensures")) def.ensures = this.expr({ noStruct: true });
     def.body = this.block();
     return [name, def, nameTok];
+  }
+
+  // ── system model (0.3; design doc 9 §2) ───────────────────────────────
+
+  private componentDecl(): [string, Def, Token] {
+    this.bump();
+    const nameTok = this.t;
+    const name = this.ident("a component name");
+    const def: ComponentDef = { kind: "component", repo: "", root: "", lang: "", owner: "" };
+    const seen = new Set<string>();
+    this.expectP("{");
+    while (!this.isP("}")) {
+      const t = this.t;
+      const field = this.ident("a component field");
+      if (seen.has(field)) this.dup("component field", field, t);
+      seen.add(field);
+      switch (field) {
+        case "repo":
+          def.repo = this.string("a repository, owner/name");
+          break;
+        case "root":
+          def.root = this.string("an absolute path");
+          break;
+        case "lang":
+          def.lang = this.ident("a language");
+          break;
+        case "owner":
+          this.expectW("role");
+          def.owner = this.string("a role");
+          break;
+        case "build":
+        case "test":
+          def[field] = this.commands();
+          break;
+        case "provides":
+        case "consumes": {
+          const names: string[] = [];
+          do names.push(this.ident("an interface name"));
+          while (this.eatP(","));
+          def[field] = [...new Set(names)].sort();
+          break;
+        }
+        default:
+          this.fail(`Expected repo, root, lang, owner, build, test, provides or consumes in a component but found '${field}'.`, t);
+      }
+    }
+    this.expectP("}");
+    for (const f of ["repo", "root", "lang", "owner"] as const) if (!seen.has(f)) this.fail(`Component '${name}' needs '${f}'.`, nameTok);
+    return [name, def, nameTok];
+  }
+
+  /** `exec("npm", ["run", "build"]), exec(…)`: the processes a component runs. */
+  private commands(): Command[] {
+    const out: Command[] = [];
+    do {
+      this.expectW("exec");
+      this.expectP("(");
+      const command = this.string("a command");
+      const args: string[] = [];
+      if (this.eatP(",")) {
+        this.expectP("[");
+        while (!this.isP("]")) {
+          args.push(this.string("an argument"));
+          if (!this.eatP(",")) break;
+        }
+        this.expectP("]");
+      }
+      this.expectP(")");
+      out.push({ command, args });
+    } while (this.eatP(","));
+    return out;
+  }
+
+  private interfaceDecl(): [string, Def, Token] {
+    this.bump();
+    const nameTok = this.t;
+    const name = this.ident("an interface name");
+    let protocol: InterfaceDef["protocol"] | undefined;
+    let spec: string | undefined;
+    this.expectP("{");
+    while (!this.isP("}")) {
+      const t = this.t;
+      const field = this.ident("an interface field");
+      if (field === "protocol") {
+        if (protocol) this.dup("interface field", field, t);
+        const pt = this.t;
+        const p = this.ident("a protocol");
+        if (!(INTERFACE_PROTOCOLS as readonly string[]).includes(p)) this.fail(`Unknown protocol '${p}'; expected ${INTERFACE_PROTOCOLS.join(", ")}.`, pt);
+        protocol = p as InterfaceDef["protocol"];
+      } else if (field === "spec") {
+        if (spec !== undefined) this.dup("interface field", field, t);
+        spec = this.string("a spec path");
+      } else this.fail(`Expected protocol or spec in an interface but found '${field}'.`, t);
+    }
+    this.expectP("}");
+    if (!protocol || spec === undefined) this.fail(`Interface '${name}' needs 'protocol' and 'spec'.`, nameTok);
+    return [name, { kind: "interface", protocol, spec }, nameTok];
+  }
+
+  private environmentDecl(): [string, Def, Token] {
+    this.bump();
+    const nameTok = this.t;
+    const name = this.ident("an environment name");
+    const def: EnvironmentDef = { kind: "environment", class: "public" };
+    let classed = false;
+    this.expectP("{");
+    while (!this.isP("}")) {
+      const t = this.t;
+      if (this.eatW("class")) {
+        if (classed) this.dup("environment field", "class", t);
+        classed = true;
+        const ct = this.t;
+        const cls = this.ident("a data class");
+        if (!(DATA_CLASSES as string[]).includes(cls)) this.fail(`Unknown data class '${cls}'; expected one of ${DATA_CLASSES.join(", ")}.`, ct);
+        def.class = cls as DataClass;
+      } else if (this.eatW("read")) {
+        const rt = this.t;
+        const rn = this.ident("a read name");
+        def.reads ??= Object.create(null) as Record<string, ReadSource>;
+        if (rn in def.reads) this.dup("read", rn, rt);
+        def.reads[rn] = this.at(this.readSource(), rt);
+      } else if (this.eatW("authorize")) {
+        const et = this.t;
+        const effect = this.qname();
+        this.expectW("by");
+        def.authorize ??= Object.create(null) as Record<string, Tier>;
+        if (effect in def.authorize) this.dup("authorization tier", effect, et);
+        def.authorize[effect] = this.tier();
+      } else this.fail(`Expected class, read or authorize in an environment but found ${this.describe(t)}.`);
+    }
+    this.expectP("}");
+    if (!classed) this.fail(`Environment '${name}' needs 'class'.`, nameTok);
+    return [name, def, nameTok];
+  }
+
+  /** `from c sql "…" | logs where e, params (…), returns T, max_rows n`. */
+  private readSource(): ReadSource {
+    this.expectW("from");
+    const from = this.ident("a component name");
+    let query: ReadSource["query"];
+    if (this.eatW("sql")) query = { sql: this.string("an SQL query") };
+    else if (this.eatW("logs")) {
+      this.expectW("where");
+      query = { logs: this.expr({ noStruct: true }) };
+    } else return this.fail(`Expected 'sql' or 'logs' after the read's component but found ${this.describe()}.`);
+    this.expectW("params");
+    const params = this.params();
+    this.expectW("returns");
+    const returns = this.typeExpr();
+    this.expectW("max_rows");
+    const nt = this.t;
+    if (nt.kind !== "int") this.fail("max_rows takes an integer.");
+    const max_rows = this.bump().num!;
+    return { from, query, params, returns, max_rows };
+  }
+
+  /** `policy` or `human(role: "…")`. */
+  private tier(): Tier {
+    if (this.eatW("policy")) return { by: "policy" };
+    this.expectW("human");
+    this.expectP("(");
+    this.expectW("role");
+    this.expectP(":");
+    const role = this.string("a role");
+    this.expectP(")");
+    return { by: "human", role };
   }
 
   private contractDecl(): [string, Def, Token] {
@@ -1056,6 +1238,7 @@ class Parser {
       }
     }
     // Contextual expression keywords: only when what follows can start an operand.
+    if (t.text === "changeset" && this.isP("(", this.la(1))) return this.at(this.changesetExpr(), t);
     if (t.text === "escalate" && startsOperand(this.la(1))) {
       this.bump();
       return this.at({ op: "escalate", to: this.binary(PREC_AND + 1, ctx) }, t);
@@ -1088,6 +1271,61 @@ class Parser {
       else if (this.eatW("supervise")) e.supervise = this.callSpec();
       else return e;
     }
+  }
+
+  /**
+   * `changeset(plan) { member c = effect(args) [approved_by role "r"] …
+   * order c, … change Interface kind … approve role "r" } [idempotent_by e]`
+   * (0.3; design doc 9 §3).
+   */
+  private changesetExpr(): Expr {
+    this.bump();
+    this.expectP("(");
+    const plan = this.expr();
+    this.expectP(")");
+    const e: ChangesetExpr = { op: "changeset", plan, members: Object.create(null) as Record<string, ChangesetMember>, order: [], approver: "" };
+    let ordered = false;
+    this.expectP("{");
+    while (!this.isP("}")) {
+      const t = this.t;
+      const word = this.ident("member, order, change or approve");
+      if (word === "member") {
+        const mt = this.t;
+        const name = this.ident("a component name");
+        this.expectP("=");
+        const effect = this.qname();
+        const m: ChangesetMember = { effect, args: this.args() };
+        if (this.eatW("approved_by")) {
+          this.expectW("role");
+          m.approver = this.string("a role");
+        }
+        if (name in e.members) this.dup("change set member", name, mt);
+        e.members[name] = this.at(m, mt);
+      } else if (word === "order") {
+        if (ordered) this.dup("change set field", "order", t);
+        ordered = true;
+        do e.order.push(this.ident("a member name"));
+        while (this.eatP(","));
+      } else if (word === "change") {
+        const it = this.t;
+        const iface = this.ident("an interface name");
+        const kt = this.t;
+        const kind = this.ident("additive, breaking or none");
+        if (kind !== "additive" && kind !== "breaking" && kind !== "none") this.fail(`Unknown change kind '${kind}'; expected additive, breaking or none.`, kt);
+        e.changes ??= Object.create(null) as Record<string, ChangeKind>;
+        if (iface in e.changes) this.dup("interface change", iface, it);
+        e.changes[iface] = kind;
+      } else if (word === "approve") {
+        if (e.approver) this.dup("change set field", "approve", t);
+        this.expectW("role");
+        e.approver = this.string("a role");
+      } else this.fail(`Expected member, order, change or approve in a change set but found '${word}'.`, t);
+    }
+    this.expectP("}");
+    if (!e.approver) this.fail("A change set names the role that approves it: approve role \"…\".");
+    if (!ordered) this.fail("A change set lists its commit order: order c, ….");
+    if (this.eatW("idempotent_by")) e.idempotent_by = this.expr();
+    return e;
   }
 
   private verifyExpr(): Expr {

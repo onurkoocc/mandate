@@ -26,6 +26,7 @@ implementation.
 | MDT-E0131 | Patch cannot be applied | — | assigned |
 | MDT-E0140 | Malformed lock file | — | assigned; see [`lock.md`](lock.md) |
 | MDT-E0141 | Model tier not locked | — | assigned; also refused at load time |
+| MDT-E0142 | Imported module not locked | S09 | assigned; a loaded module whose hash differs from the lock's pin, or an import the lock does not pin; also refused at load time |
 
 `mandate explain <code>` prints the explanation for each code.
 
@@ -86,3 +87,24 @@ and is not reported yet.
 | Code | Title | Conformance case | Notes |
 |---|---|---|---|
 | MDT-E0902 | Sandbox requirement cannot be enforced | G05 | Appendix B; raised by the sandbox adapter as `unsupported_sandbox_profile` |
+
+## System model and existing systems (0.3)
+
+Design doc 9 adds definitions and checks for working, multi-repo systems
+([`system.md`](system.md)). Appendix B has no family for them; E10xx is
+assigned here.
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E1001 | Interface without exactly one provider | — | assigned |
+| MDT-E1002 | Capability over a component or an environment cannot be opened | — | assigned; not a component, a path outside it, an undeclared command kind, narrowing a capability that stands for several commands, or env.deploy / env.migrate over something not an environment |
+| MDT-E1003 | Component working copies overlap | — | assigned; C5 across components |
+| MDT-E1004 | Read does not match its declaration | — | assigned; one SELECT, placeholders = parameters, scalar parameters (K43) |
+| MDT-E1005 | Read above its environment's class | — | assigned |
+| MDT-E1006 | Environment tier does not bind | — | assigned; an environment's `authorize` names an effect that is not critical. At run time the stronger of the tier and the runtime's policy applies |
+| MDT-E1101 | Change set order breaks the interface graph | — | assigned; an additive change's provider lands first and is a member; no cycles |
+| MDT-E1102 | Change set order does not list its members | — | assigned |
+| MDT-E1103 | Breaking change in one change set | — | assigned; expand → migrate → contract |
+| MDT-E1104 | Change set member is not a critical effect | — | assigned |
+| MDT-E1105 | Change set without a verified plan | — | assigned |
+| MDT-E1201 | Read not as declared | — | assigned; data.read of a declared read, its parameters by name, max_class |

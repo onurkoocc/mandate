@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { check } from "@mandate/compiler";
+import { check, type Modules } from "@mandate/compiler";
 import { expect } from "vitest";
 import { ISSUE } from "./programs.js";
 import type { Clock, ModelAdapter } from "../src/adapters.js";
@@ -28,9 +28,9 @@ let shared: Promise<Db> | undefined;
  */
 export async function world(
   src: string,
-  o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; clock?: Clock; lock?: Lock; realModel?: ModelAdapter } = {},
+  o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; clock?: Clock; lock?: Lock; realModel?: ModelAdapter; modules?: Modules } = {},
 ): Promise<World> {
-  const r = check(src, "mdt");
+  const r = check(src, "mdt", o.modules ? { modules: o.modules } : {});
   expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
   const url = process.env["MANDATE_TEST_DATABASE_URL"];
   shared ??= openDb(url, url ? `t_${randomUUID().replaceAll("-", "")}` : undefined);
@@ -39,10 +39,10 @@ export async function world(
   const sim = simulate(o);
   if (o.realModel) sim.adapters.model = o.realModel;
   const faults = new Faults();
-  return { ...sim, rt: new Runtime(db, sim.adapters, faults), db, pkg: buildPackage(r.program!, o.lock ?? LOCK), faults };
+  return { ...sim, rt: new Runtime(db, sim.adapters, faults), db, pkg: buildPackage(r.program!, o.lock ?? LOCK, o.modules), faults };
 }
 
-const TABLES = ["rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];
+const TABLES = ["changesets", "workspace_claims", "rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];
 
 export async function closeAll(): Promise<void> {
   const db = shared;

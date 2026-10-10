@@ -17,13 +17,14 @@
 //   - optional fields are omitted rather than written as null or false.
 
 /** The newest language version; what new programs are written in. */
-export const LANGUAGE_VERSION = "mandate/0.2";
+export const LANGUAGE_VERSION = "mandate/0.3";
 /**
  * Every language version this compiler reads. 0.2 adds the agent loop
- * strategy and its progress thresholds (`loop`, `progress`); a 0.1 program
- * reads and hashes exactly as before.
+ * strategy and its progress thresholds (`loop`, `progress`). 0.3 adds the
+ * system model (`component`, `interface`, `environment`) and change sets
+ * (design doc 9). An older program reads and hashes exactly as before.
  */
-export const LANGUAGE_VERSIONS = ["mandate/0.1", "mandate/0.2"] as const;
+export const LANGUAGE_VERSIONS = ["mandate/0.1", "mandate/0.2", "mandate/0.3"] as const;
 export type LanguageVersion = (typeof LANGUAGE_VERSIONS)[number];
 
 export function isLanguageVersion(v: unknown): v is LanguageVersion {
@@ -54,7 +55,84 @@ export type Def =
   | EffectDef
   | AgentDef
   | WorkflowDef
-  | ContractDef;
+  | ContractDef
+  | ComponentDef
+  | InterfaceDef
+  | EnvironmentDef;
+
+/** Definition kinds of the system model (0.3; design doc 9 §2). */
+export const SYSTEM_KINDS = ["component", "interface", "environment"] as const;
+
+/** One process a component runs to build or test itself: a command and its fixed arguments. */
+export interface Command {
+  command: string;
+  args: string[];
+}
+
+/**
+ * A deployable unit of an existing system (doc 9 §2.1): its repository, where
+ * its working copy sits in a sandbox, who owns it, how it builds and tests,
+ * and the interfaces it provides and consumes.
+ */
+export interface ComponentDef {
+  kind: "component";
+  /** The git repository, `owner/name`. */
+  repo: string;
+  /** Absolute path of the component's working copy wherever it is checked out for a run. */
+  root: string;
+  /** Its main language, e.g. `ts`, `java`, `py`. */
+  lang: string;
+  /** The role that owns it; its owner approves its member of a change set. */
+  owner: string;
+  build?: Command[];
+  test?: Command[];
+  /** Interface names, sorted. */
+  provides?: string[];
+  /** Interface names, sorted. */
+  consumes?: string[];
+}
+
+export const INTERFACE_PROTOCOLS = ["openapi", "mcp_tools", "oauth", "event", "db_schema"] as const;
+export type InterfaceProtocol = (typeof INTERFACE_PROTOCOLS)[number];
+
+/**
+ * A contract between components (doc 9 §2.1). Its provider is the one
+ * component that provides it; its consumers are the components that consume
+ * it. `spec` is a path in the provider's repository, read at the run's base
+ * commit.
+ */
+export interface InterfaceDef {
+  kind: "interface";
+  protocol: InterfaceProtocol;
+  spec: string;
+}
+
+/** Who must authorize an effect kind in an environment, at least (doc 9 §5.3). */
+export type Tier = { by: "policy" } | { by: "human"; role: string };
+
+/**
+ * A declared, parameterized read from an environment (doc 9 §5.1, K43). The
+ * query text is part of the program; values reach it only as parameters.
+ */
+export interface ReadSource {
+  /** The component whose data it reads. */
+  from: string;
+  query: { sql: string } | { logs: Expr };
+  params: Param[];
+  /** The type of one row. */
+  returns: TypeExpr;
+  max_rows: number;
+}
+
+/** An environment such as `staging` or `prod` (doc 9 §2.1, §5). */
+export interface EnvironmentDef {
+  kind: "environment";
+  /** The highest data class the environment holds. */
+  class: "public" | "internal" | "confidential" | "restricted";
+  reads?: Record<string, ReadSource>;
+  /** Effect name → the weakest authorization it accepts in this environment. */
+  authorize?: Record<string, Tier>;
+}
 
 export interface TypeDef {
   kind: "type";
@@ -276,11 +354,39 @@ export type Expr =
   | { op: "await"; of: Expr }
   | { op: "verify"; value: Expr; contract: string; args: Arg[]; on_unmet?: { bind: string; then: Expr } }
   | { op: "effect"; name: string; args: Arg[]; idempotent_by?: Expr; compensate?: string }
+  | ChangesetExpr
   | { op: "escalate"; to: Expr }
   | { op: "pause"; then?: Expr }
   | { op: "switch"; on: Expr; cases: Array<{ pattern: Pattern; then: Expr }> }
   | { op: "try"; of: Expr }
   | { op: "block"; body: Stmt[] };
+
+/** How a change set changes an interface (design doc 9 §3.3). */
+export type ChangeKind = "additive" | "breaking" | "none";
+
+/** One member of a change set: the critical effect that lands one component's change. */
+export interface ChangesetMember {
+  effect: string;
+  args: Arg[];
+  /** Who approves this member; the component's owner when absent. */
+  approver?: string;
+}
+
+/**
+ * `changeset` (0.3; design doc 9 §3, K42): prepare → authorize → commit over
+ * a set of external actions, one per component. Members are keyed by
+ * component; `order` is the commit order; `changes` declares how each
+ * interface changes; `approver` is the role that approves the whole set.
+ */
+export interface ChangesetExpr {
+  op: "changeset";
+  plan: Expr;
+  members: Record<string, ChangesetMember>;
+  order: string[];
+  changes?: Record<string, ChangeKind>;
+  approver: string;
+  idempotent_by?: Expr;
+}
 
 export type BinaryOp = "and" | "or" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "subseteq" | "+" | "-" | "*" | "/";
 

@@ -1,0 +1,180 @@
+// A system model test fixture (design doc 9 §2): Acme, a fictional delivery
+// company of six components.
+// The components, the interfaces between them and the environments they run
+// in, as a Mandate module. Programs import what they work on:
+//
+//   use acme.system.{mcp, core, CoreApi, prod_sim}
+//
+// The lock file pins this module by its hash, so a run's system model never
+// changes under it. Changing anything here is a governance change.
+
+mandate @ 0.3
+
+module acme.system @ 0.1
+
+// ── Interfaces ─────────────────────────────────────────────────────────────
+interface TokenIssuance {
+  protocol oauth
+  spec     "docs/oauth-metadata.json"
+}
+
+interface CustomerTools {
+  protocol mcp_tools
+  spec     "docs/mcp-tools.json"
+}
+
+interface CoreApi {
+  protocol openapi
+  spec     "docs/openapi.json"
+}
+
+interface CoreSchema {
+  protocol db_schema
+  spec     "src/main/resources/db/migration"
+}
+
+interface SearchApi {
+  protocol openapi
+  spec     "docs/openapi.json"
+}
+
+interface AgentApi {
+  protocol openapi
+  spec     "docs/openapi.json"
+}
+
+// ── Components ────────────────────────────────────────────────────────────
+component auth {
+  repo     "acme/auth"
+  root     "/work/acme-auth"
+  lang     ts
+  owner    role "identity_owner"
+  build    exec("npm", ["ci", "--ignore-scripts"]), exec("npm", ["run", "build"])
+  test     exec("npm", ["test"])
+  provides TokenIssuance
+}
+
+component mcp {
+  repo     "acme/mcp"
+  root     "/work/acme-mcp"
+  lang     ts
+  owner    role "support_platform_owner"
+  build    exec("npm", ["ci", "--ignore-scripts"]), exec("npm", ["run", "build"])
+  test     exec("npm", ["test"])
+  provides CustomerTools
+  consumes CoreApi, SearchApi, TokenIssuance
+}
+
+component core {
+  repo     "acme/core"
+  root     "/work/acme-core"
+  lang     java
+  owner    role "core_owner"
+  build    exec("mvn", ["-B", "-q", "-o", "-DskipTests", "package"])
+  test     exec("mvn", ["-B", "-q", "-o", "test"])
+  provides CoreApi, CoreSchema
+}
+
+component search {
+  repo     "acme/search"
+  root     "/work/acme-search"
+  lang     py
+  owner    role "search_owner"
+  test     exec("python", ["-m", "pytest", "-q"])
+  provides SearchApi
+}
+
+component voice {
+  repo     "acme/voice"
+  root     "/work/acme-voice"
+  lang     ts
+  owner    role "agent_owner"
+  build    exec("npm", ["ci", "--ignore-scripts"]), exec("npm", ["run", "build"])
+  test     exec("npm", ["test"])
+  provides AgentApi
+  consumes CustomerTools, TokenIssuance
+}
+
+component evals {
+  repo     "acme/voice-evals"
+  root     "/work/acme-voice-evals"
+  lang     py
+  owner    role "agent_owner"
+  test     exec("python", ["-m", "pytest", "-q"])
+  consumes AgentApi
+}
+
+// ── Data the environments hold ────────────────────────────────────────────
+type CustomerName = Text classified confidential
+type Phone = Text classified confidential
+type Email = Text classified confidential
+
+// One row of v_shipment_overview: shipment, delivery and its customer.
+type ShipmentRow = {
+  tracking_no: Text, status: Text, destination_city: Text, delivery_date: Text,
+  delivery_status: Text, attempts: Int, full_name: CustomerName, phone: Phone, email: Email
+}
+
+// The same without the customer: what a lower environment may hold.
+type ShipmentStatusRow = { tracking_no: Text, status: Text, destination_city: Text, delivery_date: Text, delivery_status: Text, attempts: Int }
+
+type TicketRow = { ticket_id: Text, tracking_no: Text, category: Text, status: Text, channel: Text, created_at: Text }
+
+type EventRow = { tracking_no: Text, at: Text, description: Text }
+
+// One log line. Logs hold no personal data.
+type LogLine = { ts: Text, level: Text, service: Text, msg: Text, tool: Text, status: Int, trace_id: Text }
+
+// ── Environments (doc 9 §10.2) ─────────────────────────────────────────────
+environment dev {
+  class internal
+  read shipment_status from core
+    sql "select tracking_no, status, destination_city, delivery_date, delivery_status, attempts from v_shipment_overview where tracking_no = :tracking_no"
+    params (tracking_no: Text)
+    returns ShipmentStatusRow
+    max_rows 1
+}
+
+environment staging {
+  class internal
+  read shipment_status from core
+    sql "select tracking_no, status, destination_city, delivery_date, delivery_status, attempts from v_shipment_overview where tracking_no = :tracking_no"
+    params (tracking_no: Text)
+    returns ShipmentStatusRow
+    max_rows 1
+  authorize deploy by policy
+  authorize migrate by policy
+}
+
+// The "production" of Acme: confidential synthetic customer data, read only
+// through the read broker, written only through the CD adapter.
+environment prod_sim {
+  class confidential
+  read shipment_overview from core
+    sql "select tracking_no, status, destination_city, delivery_date, delivery_status, attempts, full_name, phone, email from v_shipment_overview where tracking_no = :tracking_no"
+    params (tracking_no: Text)
+    returns ShipmentRow
+    max_rows 1
+  read shipment_events from core
+    sql "select tracking_no, at, description from shipment_events where tracking_no = :tracking_no order by at"
+    params (tracking_no: Text)
+    returns EventRow
+    max_rows 200
+  read tickets_since from core
+    sql "select ticket_id, tracking_no, category, status, channel, created_at from tickets where created_at >= cast(:since as timestamptz) order by created_at desc"
+    params (since: Text)
+    returns TicketRow
+    max_rows 500
+  read mcp_errors from mcp
+    logs where (level == "error" or level == "warn") and ts >= since
+    params (since: Text)
+    returns LogLine
+    max_rows 500
+  read core_warnings from core
+    logs where (level == "warn" or level == "error") and ts >= since
+    params (since: Text)
+    returns LogLine
+    max_rows 500
+  authorize deploy by human(role: "release_manager")
+  authorize migrate by human(role: "db_owner")
+}

@@ -9,7 +9,7 @@ import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.
 import { diag, ptrToken, type Diagnostic, type Span } from "../diag.js";
 import type { Json } from "../json/strict-json.js";
 import { LIMITS } from "../limits.js";
-import { isLanguageVersion, LANGUAGE_VERSIONS } from "./types.js";
+import { isLanguageVersion, LANGUAGE_VERSIONS, SYSTEM_KINDS } from "./types.js";
 
 let validator: ValidateFunction | undefined;
 
@@ -56,6 +56,7 @@ export function validateIr(value: Json, spans?: Map<string, Span>): Diagnostic[]
 
   const defs = value["defs"];
   if (defs && typeof defs === "object" && !Array.isArray(defs)) {
+    if (lang !== "mandate/0.3") out.push(...newerConstructs(defs, lang, at));
     for (const [name, d] of Object.entries(defs)) {
       if (!d || typeof d !== "object" || Array.isArray(d) || d["kind"] !== "agent") continue;
       for (const field of ["loop", "progress"]) {
@@ -76,6 +77,35 @@ export function validateIr(value: Json, spans?: Map<string, Span>): Diagnostic[]
         }),
       );
     }
+  }
+  return out;
+}
+
+/** Expression forms that exist only from mandate/0.3 on. */
+const OPS_03 = new Set(["changeset"]);
+
+/**
+ * The system model and change sets are mandate/0.3 (design doc 9). An older
+ * program that uses them is refused by name, not read with another meaning.
+ */
+function newerConstructs(defs: { [k: string]: Json }, lang: string, at: (p: string) => { path: string; span?: Span }): Diagnostic[] {
+  const out: Diagnostic[] = [];
+  const walk = (v: Json, path: string): void => {
+    if (Array.isArray(v)) v.forEach((x, i) => walk(x, `${path}/${i}`));
+    else if (v && typeof v === "object") {
+      if (typeof v["op"] === "string" && OPS_03.has(v["op"])) {
+        out.push(diag("E0104", `'${v["op"]}' is a mandate/0.3 expression; this program is ${lang}.`, at(path), { facts: { op: v["op"], language: lang } }));
+      }
+      for (const [k, x] of Object.entries(v)) walk(x, `${path}/${ptrToken(k)}`);
+    }
+  };
+  for (const [name, d] of Object.entries(defs)) {
+    const path = `/defs/${ptrToken(name)}`;
+    if (d && typeof d === "object" && !Array.isArray(d) && (SYSTEM_KINDS as readonly string[]).includes(String(d["kind"]))) {
+      out.push(diag("E0104", `${name}: '${String(d["kind"])}' is a mandate/0.3 definition; this program is ${lang}.`, at(`${path}/kind`), { facts: { kind: d["kind"], language: lang } }));
+      continue;
+    }
+    walk(d, path);
   }
   return out;
 }

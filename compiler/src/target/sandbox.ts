@@ -11,10 +11,11 @@
 
 import { diag, type Diagnostic } from "../diag.js";
 import { hashProgram } from "../hash.js";
-import type { AgentDef, Budget, Expr, Program } from "../ir/types.js";
+import type { AgentDef, Budget, Program } from "../ir/types.js";
 import type { Json } from "../json/strict-json.js";
 import { DEFAULT_MODEL_MAX_CLASS, type DataClass } from "../std/std.js";
-import { capFromCall, segments, showCap, within, type CapVal } from "../check/caps.js";
+import { capsOf, segments, showCap, within, type CapVal } from "../check/caps.js";
+import { link, type Modules } from "../modules.js";
 
 export const SANDBOX_REQUIREMENT_FORMAT = "mandate/sandbox-requirement/0.1";
 
@@ -97,31 +98,15 @@ export function requirementFor(subject: SandboxRequirement["subject"], caps: Cap
  * elsewhere and are bound over A2A, so they get none. The program should
  * already pass `check`.
  */
-export function sandboxRequirements(program: Program): Record<string, SandboxRequirement> {
+export function sandboxRequirements(program: Program, modules: Modules = {}): Record<string, SandboxRequirement> {
   const hashes = hashProgram(program as unknown as Json).defs;
-  const capOf = (e: Expr): CapVal | undefined => {
-    if (e.op === "var") {
-      const d = program.defs[e.name];
-      const c = d?.kind === "capability" ? capOf(d.value) : undefined;
-      return c && { ...c, name: e.name };
-    }
-    if (e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow") {
-      // C3: a narrowed capability keeps its kind and takes the narrower scope.
-      const base = capOf(e.callee.of);
-      const scope = e.args.flatMap((a) => (a.value.op === "text" ? [a.value.value] : []));
-      if (!base) return undefined;
-      if (scope.length === e.args.length) return { ...base, scope };
-      // A scope that is not literal is not statically known: unbounded, never the base's.
-      const { scope: _dropped, ...unknown } = base;
-      return unknown;
-    }
-    return capFromCall(e);
-  };
+  // Capabilities over components open into paths and commands of the imported system model (doc 9 §2.2).
+  const defs = link(program, modules).defs;
   const out: Record<string, SandboxRequirement> = {};
   for (const name of Object.keys(program.defs).sort()) {
     const d = program.defs[name]!;
     if (d.kind !== "agent" || d.remote) continue;
-    const held = d.caps.map(capOf).filter((c): c is CapVal => c !== undefined);
+    const held = d.caps.flatMap((c) => capsOf(defs, c));
     out[name] = requirementFor({ agent: name, def: hashes[name]! }, held, agentTimeout(d));
   }
   return out;

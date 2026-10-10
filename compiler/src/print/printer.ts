@@ -9,6 +9,7 @@ import type {
   Arg,
   Budget,
   CallSpec,
+  Command,
   Criterion,
   Def,
   EffectRef,
@@ -23,7 +24,7 @@ import type {
   Verifier,
 } from "../ir/types.js";
 
-const KIND_ORDER: Def["kind"][] = ["capability", "type", "const", "effect", "extern", "fn", "contract", "agent", "workflow"];
+const KIND_ORDER: Def["kind"][] = ["interface", "component", "environment", "capability", "type", "const", "effect", "extern", "fn", "contract", "agent", "workflow"];
 
 export function printProgram(p: Program): string {
   const out: string[] = [];
@@ -145,7 +146,33 @@ function printDef(name: string, d: Def): string {
       if (d.ensures) s += `\n  ensures ${noStruct(d.ensures, "  ")}`;
       return s + "\n" + block(d.body, "");
     }
+    case "component": {
+      const lines = [`component ${name} {`, `  repo     ${quoteText(d.repo)}`, `  root     ${quoteText(d.root)}`, `  lang     ${d.lang}`, `  owner    role ${quoteText(d.owner)}`];
+      if (d.build) lines.push(`  build    ${commands(d.build)}`);
+      if (d.test) lines.push(`  test     ${commands(d.test)}`);
+      if (d.provides) lines.push(`  provides ${d.provides.join(", ")}`);
+      if (d.consumes) lines.push(`  consumes ${d.consumes.join(", ")}`);
+      lines.push("}");
+      return lines.join("\n");
+    }
+    case "interface":
+      return [`interface ${name} {`, `  protocol ${d.protocol}`, `  spec     ${quoteText(d.spec)}`, "}"].join("\n");
+    case "environment": {
+      const lines = [`environment ${name} {`, `  class ${d.class}`];
+      for (const [rn, r] of Object.entries(d.reads ?? {})) {
+        lines.push(`  read ${rn} from ${r.from}`);
+        lines.push("sql" in r.query ? `    sql ${quoteParts([{ text: r.query.sql }], false, "    ")}` : `    logs where ${noStruct(r.query.logs, "    ")}`);
+        lines.push(`    params (${params(r.params)})`, `    returns ${type(r.returns)}`, `    max_rows ${r.max_rows}`);
+      }
+      for (const [effect, t] of Object.entries(d.authorize ?? {})) lines.push(`  authorize ${effect} by ${t.by === "policy" ? "policy" : `human(role: ${quoteText(t.role)})`}`);
+      lines.push("}");
+      return lines.join("\n");
+    }
   }
+}
+
+function commands(cs: Command[]): string {
+  return cs.map((c) => `exec(${quoteText(c.command)}${c.args.length ? `, [${c.args.map(quoteText).join(", ")}]` : ""})`).join(", ");
 }
 
 function skillSig(name: string, s: Skill, remote = false): string {
@@ -285,6 +312,7 @@ function precOf(e: Expr): number {
     case "verify":
     case "infer":
     case "effect":
+    case "changeset":
     case "switch":
     case "escalate":
     case "pause":
@@ -385,6 +413,15 @@ function exprInner(e: Expr, ind: string): string {
       if (e.idempotent_by) s += `\n${ind}  idempotent_by ${expr(e.idempotent_by, 0, ind + "  ")}`;
       if (e.compensate) s += `\n${ind}  compensate    ${e.compensate}`;
       return s;
+    }
+    case "changeset": {
+      const lines = [`changeset(${expr(e.plan, 0, ind)}) {`];
+      for (const [m, x] of Object.entries(e.members)) lines.push(`${ind}  member ${m} = ${x.effect}(${args(x.args, ind + "  ")})${x.approver ? ` approved_by role ${quoteText(x.approver)}` : ""}`);
+      lines.push(`${ind}  order ${e.order.join(", ")}`);
+      for (const [i, k] of Object.entries(e.changes ?? {})) lines.push(`${ind}  change ${i} ${k}`);
+      lines.push(`${ind}  approve role ${quoteText(e.approver)}`);
+      lines.push(`${ind}}${e.idempotent_by ? ` idempotent_by ${expr(e.idempotent_by, 0, ind)}` : ""}`);
+      return lines.join("\n");
     }
     case "escalate":
       return `escalate ${expr(e.to, PREC_AND + 1, ind)}`;

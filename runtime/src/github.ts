@@ -46,7 +46,7 @@ export interface GitHubOptions {
 
 type Http = { status: number; body: unknown };
 
-class GitHubError extends Error {
+export class GitHubError extends Error {
   constructor(
     readonly status: number | undefined,
     message: string,
@@ -253,7 +253,7 @@ function receipt(pr: PullJson, branch: string, operationKey: string | undefined)
 }
 
 /** The part of the branch name that names the operation. */
-function opTag(operationKey: string): string {
+export function opTag(operationKey: string): string {
   return createHash("sha256").update(operationKey).digest("hex").slice(0, 12);
 }
 

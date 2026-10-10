@@ -9,8 +9,8 @@ import { htmlEscape, toHtml, toMarkdown } from "../src/views/doc.js";
 import { architecture, authority, cost, programDoc, semanticDiff } from "../src/views/views.js";
 import { readRepo } from "./helpers.js";
 
-const FIXBUG = readRepo("examples/fixbug/fixbug.mdt");
-const LOCK = JSON.parse(readRepo("examples/fixbug/mandate.lock.json")) as Lock;
+const FIXBUG = readRepo("fixtures/fixbug/fixbug.mdt");
+const LOCK = JSON.parse(readRepo("fixtures/fixbug/mandate.lock.json")) as Lock;
 
 function program(src: string): Program {
   const r = check(src, "mdt");

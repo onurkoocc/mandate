@@ -14,7 +14,9 @@
 
 import {
   calleePath,
-  capFromCall,
+  capsOf,
+  classRank,
+  type DataClass,
   DECISION_POLICIES,
   hashProgram,
   modelTiers,
@@ -23,8 +25,10 @@ import {
   STD_EFFECTS,
   STD_FNS,
   type Arg,
+  type Tier,
   type Budget,
   type CapVal,
+  type ChangesetExpr,
   type ContractDef,
   type Def,
   type EffectDef,
@@ -37,7 +41,7 @@ import {
   type Verifier,
   type WorkflowDef,
 } from "@mandate/compiler";
-import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ToolAdapter } from "./adapters.js";
+import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
@@ -146,6 +150,10 @@ export interface InterpOptions {
   trusted: TrustedKeys;
   /** Verifier keys whose check attestations count (P2-11). */
   verifiers?: TrustedKeys;
+  /** The components the run works on, at their base commits (B3); verifier calls are told. */
+  workspace?: RunComponents;
+  /** How the run touches the outside world (B6); `live` when absent. */
+  mode?: RunMode;
   /** Shared rate limits (§8.6); none when absent. */
   limiter?: RateLimiter;
   /** Replay reads the journal only and never calls an adapter (R13). */
@@ -402,6 +410,8 @@ export class Interpreter {
         return this.verify(e, ctx, path);
       case "effect":
         return this.effect(e, ctx, path);
+      case "changeset":
+        return this.changeset(e, ctx, path);
       case "escalate": {
         const message = e.to.op === "call" && calleePath(e.to.callee) === "human" && e.to.args[0] ? await this.expr(e.to.args[0].value, ctx, `${path}/to/args/0/value`) : await this.expr(e.to, ctx, `${path}/to`);
         return this.wait(path, "input", { escalation: message });
@@ -434,6 +444,8 @@ export class Interpreter {
     if (d?.kind === "const") return this.constant(name, d.value);
     if (d?.kind === "capability") return { $capability: name };
     if (d?.kind === "type") return tag(name);
+    // A component, interface or environment stands for its name, e.g. `test.integration(env: staging, …)`.
+    if (d?.kind === "component" || d?.kind === "interface" || d?.kind === "environment") return name;
     // A bare variant name such as `Uncertain` or `Refund`.
     if (/^[A-Z]/.test(name)) return tag(name);
     throw new Violation("unbound", `Unbound name '${name}'.`);
@@ -552,12 +564,72 @@ export class Interpreter {
       return this.wait(path, "input", { question: pos[0] ?? null });
     }
     if (p === "time.now") return this.command(path, "time", {}, undefined, async () => ({ ok: this.o.adapters.clock.now() }));
+    if (p === "data.read") return this.dataRead(e, ctx, path);
     if (p && STD_FNS[p]) {
       const { pos, named } = await this.args(e.args, ctx, path);
       return this.command(path, "read", { call: p, args: pos, named }, undefined, () => this.o.adapters.reads.call(p, pos, named));
     }
     if (e.callee.op === "field" && e.callee.name === "narrow") return { $capability: path };
     throw new Violation("unsupported_call", `The runtime cannot call ${p ?? "this expression"} at ${path}.`);
+  }
+
+  /**
+   * `data.read(env.read, p: v, …, max_class: c)` (design doc 9 §5.1): a
+   * journaled read through the broker; replay reads the journal. A `design`
+   * run reads sample rows instead. The program gets the rows.
+   */
+  private async dataRead(e: Extract<Expr, { op: "call" }>, ctx: Ctx, path: string): Promise<Value> {
+    const first = e.args[0]!.value as Extract<Expr, { op: "field" }>;
+    const envName = (first.of as Extract<Expr, { op: "var" }>).name;
+    const env = this.def(envName);
+    const src = env?.kind === "environment" ? env.reads?.[first.name] : undefined;
+    if (!src || env?.kind !== "environment") throw new Violation("unknown_read", `No read ${envName}.${first.name}.`);
+    const params: Obj = {};
+    let maxClass: DataClass = env.class;
+    for (let i = 1; i < e.args.length; i++) {
+      const a = e.args[i]!;
+      if (a.name === "max_class") maxClass = (a.value as Extract<Expr, { op: "var" }>).name as DataClass;
+      else if (a.name) params[a.name] = plain(await this.expr(a.value, ctx, `${path}/args/${i}/value`));
+    }
+    const mode = this.o.mode ?? "live";
+    const broker = mode === "design" ? this.o.adapters.samples : this.o.adapters.broker;
+    const req: ReadRequest = { environment: envName, read: first.name, from: src.from, query: "sql" in src.query ? { sql: src.query.sql } : { logs: src.query.logs as unknown as Value }, params, maxRows: src.max_rows, fields: this.fieldClasses(src.returns), maxClass, commandId: path };
+    const r = await this.command(path, "read", { read: `${envName}.${first.name}`, params, max_class: maxClass, mode }, undefined, async () => {
+      if (!broker) return { error: { tag: "PolicyDenied", args: [{ reason: mode === "design" ? "no_samples" : "no_broker", read: `${envName}.${first.name}` }] }, cost: {} };
+      return broker.query(req);
+    }, { siblings: ctx.siblings, label: `read ${envName}.${first.name}` });
+    return isObj(r) && Array.isArray(r["rows"]) ? r["rows"] : [];
+  }
+
+  /** The data class of each field of a row type (§5.5): its named type's class, the highest along the way. */
+  private fieldClasses(t: TypeExpr): Record<string, DataClass> {
+    const resolve = (x: TypeExpr, seen: Set<string>): TypeExpr | undefined => {
+      if ("record" in x) return x;
+      if ("refine" in x) return resolve(x.refine, seen);
+      if ("ref" in x && !seen.has(x.ref)) {
+        const d = this.def(x.ref);
+        if (d?.kind === "type") return resolve(d.type, new Set([...seen, x.ref]));
+      }
+      return undefined;
+    };
+    const classOf = (x: TypeExpr, seen: Set<string>): DataClass => {
+      let best: DataClass = "public";
+      const bump = (c: DataClass): void => {
+        if (classRank(c) > classRank(best)) best = c;
+      };
+      if ("ref" in x && !seen.has(x.ref)) {
+        const d = this.def(x.ref);
+        if (d?.kind === "type") {
+          if (d.class) bump(d.class);
+          bump(classOf(d.type, new Set([...seen, x.ref])));
+        }
+        for (const a of x.args ?? []) bump(classOf(a, seen));
+      } else if ("record" in x) for (const f of Object.values(x.record)) bump(classOf(f, seen));
+      else if ("refine" in x) bump(classOf(x.refine, seen));
+      return best;
+    };
+    const rec = resolve(t, new Set());
+    return rec && "record" in rec ? Object.fromEntries(Object.entries(rec.record).map(([f, ft]) => [f, classOf(ft, new Set())])) : {};
   }
 
   // ── commands ──────────────────────────────────────────────────────────
@@ -661,7 +733,7 @@ export class Interpreter {
    * else the only tier the program names. The lock file maps it to a model.
    */
   private tierFor(using: Expr | undefined, path: string): string | undefined {
-    const tierOf = (e: Expr): string | undefined => this.cap(e)?.tier;
+    const tierOf = (e: Expr): string | undefined => this.caps(e).find((c) => c.tier)?.tier;
     if (using) return tierOf(using);
     const def = this.def(path.split("/")[2]!);
     const caps = def?.kind === "workflow" || def?.kind === "agent" ? def.caps : [];
@@ -839,11 +911,11 @@ export class Interpreter {
     const agent = this.def(agentName) as Extract<Def, { kind: "agent" }>;
     const wfName = path.split("/")[2]!;
     const wf = this.def(wfName);
-    const avail = wf?.kind === "workflow" ? wf.caps.map((c) => this.cap(c)).filter((c): c is CapVal => !!c) : undefined;
+    const avail = wf?.kind === "workflow" ? wf.caps.flatMap((c) => this.caps(c)) : undefined;
     const inside = (c: CapVal): boolean => !avail || avail.some((a) => a.ctor === c.ctor && scopeInside(c, a));
-    let out = agent.caps.map((c) => this.cap(c)).filter((c): c is CapVal => !!c).filter(inside);
+    let out = agent.caps.flatMap((c) => this.caps(c)).filter(inside);
     if (withCaps.length) {
-      const given = withCaps.map((c) => this.cap(c)).filter((c): c is CapVal => !!c);
+      const given = withCaps.flatMap((c) => this.caps(c));
       const kinds = new Set(given.map((g) => g.ctor));
       out = [...out.filter((c) => !kinds.has(c.ctor)), ...given];
     }
@@ -851,21 +923,9 @@ export class Interpreter {
     return out.sort((a, b) => (key(a) < key(b) ? -1 : 1));
   }
 
-  private cap(e: Expr): CapVal | undefined {
-    if (e.op === "var") {
-      const d = this.def(e.name);
-      return d?.kind === "capability" ? this.cap(d.value) : undefined;
-    }
-    if (e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow") {
-      const base = this.cap(e.callee.of);
-      if (!base) return undefined;
-      const scope = e.args.flatMap((a) => (a.value.op === "text" ? [a.value.value] : []));
-      if (scope.length === e.args.length) return { ...base, scope };
-      // A narrowing that is not literal leaves the scope unknown, never the base's wider one.
-      const { scope: _dropped, ...unknown } = base;
-      return unknown;
-    }
-    return capFromCall(e);
+  /** What a capability expression stands for, over the program's definitions and its linked system model. */
+  private caps(e: Expr): CapVal[] {
+    return capsOf(this.defs, e);
   }
 
   // ── contracts (§10) ───────────────────────────────────────────────────
@@ -930,12 +990,13 @@ export class Interpreter {
       // settings, not variables: an unbound bare name is passed as its text.
       const symbolic = call.op === "call" ? call.args.map((a) => (a.value.op === "var" && this.isModulePath(a.value, ctx) ? { ...a, value: { op: "text" as const, value: a.value.name } } : a)) : [];
       const { pos, named } = call.op === "call" ? await this.args(symbolic, ctx, `${path}/call`) : { pos: [], named: {} };
-      const req = { method, args: pos, named, contract, criterion: name };
+      const system = this.systemFacts();
+      const req = { method, args: pos, named, contract, criterion: name, ...(system ? { system } : {}) };
       const verifier = this.o.adapters.verifier;
       const r = await this.command(
         `${path}/call`,
         "verify",
-        req,
+        req as unknown as Value,
         verifier.upperBound ? () => verifier.upperBound!(req) : undefined,
         async () => {
           const res = await verifier.check(req);
@@ -986,6 +1047,8 @@ export class Interpreter {
         artifacts: outputs,
         detail,
         at: this.o.adapters.clock.now(),
+        // Evidence from a design or read_only run says so (doc 9 §5.2); it never stands for a live one.
+        ...(this.o.mode && this.o.mode !== "live" ? { mode: this.o.mode } : {}),
       };
       await this.o.journal.recordEvidence(this.o.runId, { record, ...this.o.signer.sign(record) });
     }
@@ -1049,26 +1112,64 @@ export class Interpreter {
   private async effect(e: Extract<Expr, { op: "effect" }>, ctx: Ctx, path: string): Promise<Value> {
     const info = this.effectInfo(e.name);
     const { pos } = await this.args(e.args, ctx, path);
+    const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
+    const mode = this.o.mode ?? "live";
+    // A design run touches nothing: the effect is recorded as what it would have been (doc 9 §5.2).
+    if (mode === "design") return this.simulated(e.name, plain(pos), path);
+    const p = await this.prepareAction(e.name, info, pos, plain(pos), key, ctx, path);
+    if (!p.action) return p.receipt;
+    // A read_only run goes as far as prepare: the action is frozen and recorded as what would apply, never committed.
+    if (mode === "read_only") return this.wouldApply(p.action);
+    let action = p.action;
+    const { journal, runId, fence } = this.o;
+    let justCommitted = false;
+    if (action.state === "prepared") {
+      const authId = await this.authorization(e.name, info, action, path, undefined, this.environmentTier(e.name, e.args));
+      action = await journal.commit(runId, fence, action.operation_key, authId);
+      justCommitted = true;
+      this.o.faults.check("after_commit", { id: path, kind: "effect" });
+    }
+    if (action.state === "dispatched") return this.dispatchAction(p.tool, action, justCommitted);
+    return this.settledAction(action);
+  }
+
+  /**
+   * Prepare (§8.8) for one external action at `path`: the adapter checks the
+   * parameters and reads the files the action will apply; they are frozen
+   * into the artifact store and the action digest, and the action is
+   * recorded. In replay, the confirmed action's receipt (or ReplayEnd).
+   * `extra` joins the digest: a change set member's set.
+   */
+  private async prepareAction(
+    name: string,
+    info: { params: TypeExpr[]; retryClass?: string },
+    pos: Value[],
+    params: Value,
+    key: Value,
+    ctx: Ctx,
+    path: string,
+    extra: Obj = {},
+    /** A change set member's component: its files are checked against evidence keyed `<component>/<path>`. */
+    component?: string,
+  ): Promise<{ tool: ToolAdapter; action: ActionRow; receipt?: undefined } | { tool: ToolAdapter; action?: undefined; receipt: Value }> {
     // INV-13: a parameter declared Verified<T, C> must carry evidence for C at run time too.
     for (const [i, t] of info.params.entries()) {
       if (!("ref" in t) || t.ref !== "Verified") continue;
       const v = pos[i];
       const want = t.args?.[1] && "ref" in t.args[1] ? t.args[1].ref : undefined;
       if (!isObj(v) || !("$verified" in v) || (want && v["$contract"] !== want)) {
-        throw new Fault("PolicyDenied", [{ effect: e.name, parameter: i, reason: "unverified_parameter" }]);
+        throw new Fault("PolicyDenied", [{ effect: name, parameter: i, reason: "unverified_parameter" }]);
       }
-      if (!this.o.replay) await this.checkVerified(e.name, v);
+      if (!this.o.replay) await this.checkVerified(name, v);
     }
-    const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
-    const tool = this.o.adapters.tools[e.name];
-    if (!tool) throw new Violation("no_adapter", `No adapter for effect ${e.name}.`);
+    const tool = this.o.adapters.tools[name];
+    if (!tool) throw new Violation("no_adapter", `No adapter for effect ${name}.`);
     const contract = tool.describe();
-    const params = plain(pos);
     // Prepare (§8.8): the adapter checks the parameters and reads the files the action will apply. They are frozen
     // into the artifact store, and the journaled command keeps their digests, so a resumed worker or a replay finds
     // the same action; execute later sends exactly these bytes.
     if (ctx.siblings?.failed && !this.o.replay && !(await this.o.journal.command(this.o.runId, `${path}/prepare`))) throw new SiblingStopped();
-    const prepared = await this.command(`${path}/prepare`, "prepare", { effect: e.name, params }, undefined, async () => {
+    const prepared = await this.command(`${path}/prepare`, "prepare", { effect: name, params }, undefined, async () => {
       const pre = await tool.prepare(params);
       if ("rejected" in pre) return { error: { tag: "Rejected", args: [pre.rejected] }, cost: {} };
       const frozen: Obj = {};
@@ -1082,48 +1183,227 @@ export class Interpreter {
     const files = Object.fromEntries(Object.entries(frozen).map(([p, a]) => [p, isObj(a) ? String(a["digest"]) : ""]));
     const evidence = evidenceOf(pos);
     // Evidence is bound to what it checked: an action that would apply other bytes is refused (G01, INV-05).
-    if (Object.keys(files).length && !this.o.replay) await this.checkEvidenceFresh(e.name, files, evidence);
+    if (Object.keys(files).length && !this.o.replay) await this.checkEvidenceFresh(name, files, evidence, component);
     const actionDigest = digest("action", {
       package: this.o.packageHash,
       run: this.o.runId,
       node: path,
-      effect: e.name,
+      effect: name,
       adapter: contract.id,
       adapter_contract: contract.digest,
       params,
       evidence,
       idempotency_key: key,
       ...(Object.keys(files).length ? { artifacts: files } : {}),
+      ...extra,
     });
     const operationKey = digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: path, action: actionDigest });
     const { journal, runId, fence } = this.o;
 
-    let action = await journal.action(operationKey);
+    const action = await journal.action(operationKey);
     if (this.o.replay) {
-      if (action?.state === "confirmed") return action.receipt;
+      if (action?.state === "confirmed") return { tool, receipt: action.receipt };
       throw new ReplayEnd(path, "no_result");
     }
     if (ctx.siblings?.failed && (!action || action.state === "prepared")) throw new SiblingStopped();
-    if (!action) {
-      action = await journal.prepare(runId, fence, {
+    if (action) return { tool, action };
+    return {
+      tool,
+      action: await journal.prepare(runId, fence, {
         operationKey,
         commandId: path,
-        effect: e.name,
+        effect: name,
         actionDigest,
         params,
         retryClass: info.retryClass ?? contract.retryClass,
         ...(Object.keys(frozen).length ? { artifacts: frozen } : {}),
+      }),
+    };
+  }
+
+  // ── change sets (0.3; design doc 9 §3) ────────────────────────────────
+
+  /**
+   * `changeset`: prepare → authorize → commit over one action per component.
+   *
+   *   prepare    each member in order, its files frozen and its digest bound
+   *              to the component and the run's base commit; the set digest S
+   *              covers the plan, the members' digests in order, the declared
+   *              interface changes and the approver
+   *   authorize  each component's owner approves its member (bound to the
+   *              member's digest), then the set approver approves S
+   *   commit     members in order; each needs its own authorization and S's,
+   *              which the first commit consumes for this set only
+   *
+   * A member that is refused or whose outcome is unknown stops the set: the
+   * members after it are not sent, and with any member already applied the
+   * run stops for a person as `changeset_partial`, with the applied members
+   * and the compensations they offer (§8.5: offered, never run). After
+   * reconciliation the run goes on from where it stopped.
+   */
+  private async changeset(e: ChangesetExpr, ctx: Ctx, path: string): Promise<Value> {
+    const plan = await this.expr(e.plan, ctx, `${path}/plan`);
+    // INV-13 at run time: the plan was verified, and its evidence holds.
+    if (!isObj(plan) || !("$verified" in plan)) throw new Fault("PolicyDenied", [{ changeset: path, reason: "unverified_plan" }]);
+    if (!this.o.replay) await this.checkVerified("changeset", plan);
+    const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
+    const mode = this.o.mode ?? "live";
+    // What the set lands and why, for its view (doc 9 §3.4, §8.2): recorded with the set in every mode.
+    const summary: Obj = { plan: plain(plan), plan_digest: digest("request", plain(plan)), plan_evidence: evidenceOf(plan), order: e.order, changes: (e.changes ?? {}) as Value, approver: e.approver };
+    const setOf = (members: Value[]): { setDigest: string; setKey: string } => {
+      const setDigest = digest("action", {
+        changeset: path,
+        package: this.o.packageHash,
+        run: this.o.runId,
+        plan: summary["plan_digest"]!,
+        plan_evidence: summary["plan_evidence"]!,
+        members,
+        changes: summary["changes"]!,
+        approver: e.approver,
+        idempotency_key: key,
       });
+      return { setDigest, setKey: digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: path, set: setDigest }) };
+    };
+    if (mode === "design") {
+      const sim: Obj = {};
+      const recorded: Obj[] = [];
+      for (const m of e.order) {
+        const mem = e.members[m]!;
+        const comp = this.def(m);
+        const { pos } = await this.args(mem.args, ctx, `${path}/members/${m}`);
+        sim[m] = await this.simulated(mem.effect, plain(pos), `${path}/members/${m}`);
+        recorded.push({ component: m, effect: mem.effect, approver: mem.approver ?? (comp?.kind === "component" ? comp.owner : ""), evidence: evidenceOf(pos) });
+      }
+      if (!this.o.replay) {
+        const { setDigest, setKey } = setOf(recorded.map((r) => ({ component: r["component"]!, effect: r["effect"]! })));
+        await this.o.journal.prepareChangeset(this.o.runId, this.o.fence, { setKey, commandId: path, setDigest, members: recorded, summary, state: "simulated" });
+      }
+      return { simulated: true, members: sim };
     }
-    let justCommitted = false;
-    if (action.state === "prepared") {
-      const authId = await this.authorization(e.name, info, action, path);
-      action = await journal.commit(runId, fence, operationKey, authId);
-      justCommitted = true;
-      this.o.faults.check("after_commit", { id: path, kind: "effect" });
+    const members: Array<{ component: string; effect: string; approver: string; evidence: string[]; tool: ToolAdapter; action?: ActionRow; receipt?: Value }> = [];
+    for (const m of e.order) {
+      const mem = e.members[m]!;
+      const comp = this.def(m);
+      if (comp?.kind !== "component") throw new Violation("unknown_component", `No component '${m}'.`);
+      const mp = `${path}/members/${m}`;
+      const { pos } = await this.args(mem.args, ctx, mp);
+      // The member names its component and the commit the run started from: an approval is for this change to this base.
+      const target: Obj = { component: m, repo: comp.repo, root: comp.root, base: this.o.workspace?.[m]?.base ?? null };
+      const p = await this.prepareAction(mem.effect, this.effectInfo(mem.effect), pos, [target, ...(plain(pos) as Value[])], key, ctx, mp, { changeset: path }, m);
+      members.push({ component: m, effect: mem.effect, approver: mem.approver ?? comp.owner, evidence: evidenceOf(pos), tool: p.tool, ...(p.action ? { action: p.action } : { receipt: p.receipt }) });
     }
-    if (action.state === "dispatched") return this.dispatchAction(tool, action, justCommitted);
-    return this.settledAction(action);
+    const recorded = (): Value => members.map((m) => ({ component: m.component, effect: m.effect, operation: m.action!.operation_key, action_digest: m.action!.action_digest, approver: m.approver, evidence: m.evidence }));
+    const { setDigest, setKey } = this.o.replay ? { setDigest: "", setKey: "" } : setOf(members.map((m) => ({ component: m.component, effect: m.effect, action: m.action!.action_digest })));
+    if (mode === "read_only") {
+      // What the set would land: each member prepared and frozen, nothing approved or committed.
+      const would: Obj = {};
+      for (const m of members) would[m.component] = this.o.replay ? { would_apply: true, effect: m.effect } : await this.wouldApply(m.action!);
+      if (!this.o.replay) await this.o.journal.prepareChangeset(this.o.runId, this.o.fence, { setKey, commandId: path, setDigest, members: recorded(), summary, state: "would_apply" });
+      return { would_apply: true, members: would };
+    }
+    if (this.o.replay) return { members: Object.fromEntries(members.map((m) => [m.component, m.receipt ?? null])) };
+    const { journal, runId, fence } = this.o;
+    await journal.prepareChangeset(runId, fence, { setKey, commandId: path, setDigest, members: recorded(), summary });
+
+    // Authorize: the owners, member by member, then the set approver.
+    const memberAuth = new Map<string, string>();
+    for (const m of members) {
+      if (m.action!.state !== "prepared") continue;
+      memberAuth.set(m.component, await this.authorization(m.effect, { irreversible: true }, m.action!, `${path}/members/${m.component}`, { role: m.approver, changeset: setDigest, component: m.component }, this.environmentTier(m.effect, e.members[m.component]!.args)));
+    }
+    let setAuth: string | undefined;
+    if (members.some((m) => m.action!.state === "prepared")) {
+      const decision = await this.wait(`${path}/authorize`, "decision", {
+        changeset: path,
+        action_digest: setDigest,
+        role: e.approver,
+        order: e.order,
+        changes: (e.changes ?? {}) as Value,
+        members: members.map((m) => ({ component: m.component, effect: m.effect, action_digest: m.action!.action_digest, approver: m.approver, files: Object.keys(isObj(m.action!.artifacts ?? null) ? (m.action!.artifacts as Obj) : {}) })),
+        deadline: null,
+      });
+      if (!isObj(decision) || decision["approved"] !== true) throw new Fault("Rejected", [{ changeset: path, denied_by: isObj(decision) ? (decision["by"] ?? null) : null }]);
+      setAuth = String(decision["authorization_id"]);
+    }
+
+    // Commit, in order. What is already settled is not sent again.
+    const receipts: Obj = {};
+    for (let i = 0; i < members.length; i++) {
+      const m = members[i]!;
+      let action = m.action!;
+      try {
+        let fresh = false;
+        if (action.state === "prepared") {
+          action = await journal.commit(runId, fence, action.operation_key, memberAuth.get(m.component)!, { key: setKey, digest: setDigest, authorizationId: setAuth! });
+          fresh = true;
+          this.o.faults.check("after_commit", { id: `${path}/members/${m.component}`, kind: "changeset" });
+        }
+        receipts[m.component] = action.state === "dispatched" ? await this.dispatchAction(m.tool, action, fresh) : this.settledAction(action);
+      } catch (f) {
+        if (!(f instanceof Fault) && !(f instanceof Attention)) throw f;
+        const applied = members.slice(0, i).map((x) => x.component);
+        const now = (await journal.action(action.operation_key)) ?? action;
+        const detail: Obj = {
+          set: setDigest,
+          applied: applied.map((c) => ({ component: c, receipt: receipts[c] ?? null })),
+          stopped_at: { component: m.component, effect: m.effect, operation: now.operation_key, state: now.state, detail: now.detail ?? null },
+          not_sent: members.slice(i + 1).map((x) => x.component),
+          // §8.5: compensation is offered to a person, each its own prepare → authorize → commit; never run here.
+          compensation: applied.flatMap((c) => {
+            const offer = this.compensationOf(members.find((x) => x.component === c)!.effect);
+            return offer ? [{ component: c, effect: offer, undoes: members.find((x) => x.component === c)!.action!.operation_key }] : [];
+          }),
+        };
+        const unresolved = now.state === "unknown_outcome" || now.state === "dispatched";
+        if (!applied.length && !unresolved) {
+          // Nothing landed: the set simply failed.
+          await journal.changesetState(runId, fence, setKey, "failed", detail);
+          throw f;
+        }
+        await journal.changesetState(runId, fence, setKey, "partial", detail);
+        throw new Attention({ changeset_partial: detail });
+      }
+    }
+    await journal.changesetState(runId, fence, setKey, "committed", { set: setDigest });
+    return { set_digest: setDigest, members: receipts };
+  }
+
+  private facts?: SystemFacts | null;
+
+  /** The system model the program sees, with each component at the run's base commit; none without one. */
+  private systemFacts(): SystemFacts | undefined {
+    if (this.facts === undefined) {
+      const components: SystemFacts["components"] = {};
+      const interfaces: SystemFacts["interfaces"] = {};
+      for (const [name, d] of Object.entries(this.defs).sort(([a], [b]) => (a < b ? -1 : 1))) {
+        if (d.kind === "component") {
+          components[name] = { repo: d.repo, root: d.root, base: this.o.workspace?.[name]?.base ?? null, lang: d.lang, build: d.build ?? [], test: d.test ?? [], provides: d.provides ?? [], consumes: d.consumes ?? [] };
+        }
+      }
+      for (const [name, d] of Object.entries(this.defs).sort(([a], [b]) => (a < b ? -1 : 1))) {
+        if (d.kind === "interface") interfaces[name] = { protocol: d.protocol, spec: d.spec, provider: Object.entries(components).find(([, c]) => c.provides.includes(name))?.[0] ?? null };
+      }
+      this.facts = Object.keys(components).length ? { components, interfaces } : null;
+    }
+    return this.facts ?? undefined;
+  }
+
+  /** A `design` run's effect: recorded as a command, nothing prepared, authorized or sent. */
+  private simulated(effect: string, params: Value, path: string): Promise<Value> {
+    return this.command(`${path}/simulated`, "simulate", { effect, params }, undefined, async () => ({ ok: { simulated: true, effect, params_digest: digest("request", params) }, cost: {} }));
+  }
+
+  /** A `read_only` run's effect: prepared and frozen, then recorded as what would apply. */
+  private async wouldApply(action: ActionRow): Promise<Value> {
+    if (action.state === "prepared") await this.o.journal.finishAction(this.o.runId, this.o.fence, action.operation_key, "would_apply", { detail: { mode: "read_only" } });
+    return { would_apply: true, effect: action.effect, action_digest: action.action_digest, operation: action.operation_key };
+  }
+
+  /** The compensation an effect offers (§8.5), if it declares one. */
+  private compensationOf(effect: string): string | undefined {
+    const d = this.def(effect);
+    if (d?.kind === "effect") return d.compensation;
+    return STD_EFFECTS[effect]?.compensation;
   }
 
   private settledAction(action: ActionRow): Value {
@@ -1234,13 +1514,15 @@ export class Interpreter {
    * must list the file with the same digest; a file changed or added since
    * the check makes the evidence stale, and the action is refused.
    */
-  private async checkEvidenceFresh(effect: string, files: Record<string, string>, ids: string[]): Promise<void> {
+  private async checkEvidenceFresh(effect: string, files: Record<string, string>, ids: string[], component?: string): Promise<void> {
     const rows = ids.length ? await this.o.journal.evidence(this.o.runId, ids) : [];
     const stale: string[] = [];
     for (const r of rows) {
       const checked = isObj(r.subject) && isObj(r.subject["files"] ?? null) ? (r.subject["files"] as Obj) : undefined;
       if (!checked) continue;
-      for (const [p, d] of Object.entries(files)) {
+      for (const [file, d] of Object.entries(files)) {
+        // Evidence about several components names each file under its component (boundary checks, B5).
+        const p = component ? `${component}/${file}` : file;
         if (checked[p] !== d) stale.push(`${p} (${r.criterion}: ${checked[p] === undefined ? "not in what was checked" : "changed since the check"})`);
       }
     }
@@ -1253,9 +1535,26 @@ export class Interpreter {
     return { authorizationId: String(row["authorization_id"]), decidedBy: String(row["decided_by"]) };
   }
 
-  /** authorize p by policy | human(role) (§8.8). A model or a program cannot produce this. */
-  private async authorization(effect: string, info: { irreversible: boolean }, action: ActionRow, path: string): Promise<string> {
-    const pol = this.o.policy.authorize?.[effect] ?? (info.irreversible ? { by: "human" as const, role: "owner" } : { by: "policy" as const });
+  /**
+   * authorize p by policy | human(role) (§8.8). A model or a program cannot
+   * produce this. A change set member (`member`) is approved by its
+   * component's owner unless the run's policy authorizes the effect itself.
+   */
+  /** The environment an effect's arguments name, and the tier it sets for that effect (doc 9 §5.3). */
+  private environmentTier(effect: string, args: Arg[]): { environment: string; tier: Tier } | undefined {
+    for (const a of args) {
+      if (a.value.op !== "var") continue;
+      const d = this.def(a.value.name);
+      const tier = d?.kind === "environment" ? d.authorize?.[effect] : undefined;
+      if (tier) return { environment: a.value.name, tier };
+    }
+    return undefined;
+  }
+
+  private async authorization(effect: string, info: { irreversible: boolean }, action: ActionRow, path: string, member?: { role: string; changeset: string; component: string }, env?: { environment: string; tier: Tier }): Promise<string> {
+    const base = this.o.policy.authorize?.[effect] ?? (member ? { by: "human" as const, role: member.role } : info.irreversible ? { by: "human" as const, role: "owner" } : { by: "policy" as const });
+    // The environment's tier is the least that applies: a person's tier names who decides, and a policy tier never lowers the runtime's.
+    const pol = env?.tier.by === "human" ? { ...base, by: "human" as const, role: env.tier.role } : base;
     if (pol.by === "policy") {
       const id = digest("operation", { authorize: action.action_digest, by: "policy" });
       const ttl = this.o.policy.authorizationTtlMs ?? 15 * 60_000;
@@ -1267,6 +1566,8 @@ export class Interpreter {
       action_digest: action.action_digest,
       params: action.params,
       role: pol.role,
+      ...(member ? { changeset: member.changeset, component: member.component } : {}),
+      ...(env ? { environment: env.environment, tier: env.tier as unknown as Value } : {}),
       deadline: pol.deadlineMs === undefined ? null : this.o.adapters.clock.now() + pol.deadlineMs,
     });
     if (!isObj(decision) || decision["approved"] !== true) throw new Fault("Rejected", [{ denied_by: isObj(decision) ? (decision["by"] ?? null) : null }]);

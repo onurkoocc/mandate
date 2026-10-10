@@ -4,8 +4,9 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { canonicalize, capFromCall, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, modelTiers, SANDBOX_DENIALS_FORMAT, validateLock, type CapVal, type DenialReport, type Expr, type Json, type Lock, type Program } from "@mandate/compiler";
-import type { Adapters, Cost } from "./adapters.js";
+import { canonicalize, capsOf, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, link, linkedProgram, modelTiers, references, SANDBOX_DENIALS_FORMAT, validateLock, type DenialReport, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
+import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
+import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
@@ -19,17 +20,23 @@ import { digest, isObj, type Obj, type Value } from "./values.js";
 
 export type { Lock };
 
-/** A content-addressed package: the program, its hash and its lock. */
+/**
+ * A content-addressed package: the program, its hash, its lock, and the
+ * imported modules it was checked with (a system model, design doc 9 §2.1).
+ * The lock pins every module by its program hash, so the package hash covers
+ * them too.
+ */
 export interface Package {
   hash: string;
   programHash: string;
   program: Program;
   lock: Lock;
+  modules?: Modules;
 }
 
-export function buildPackage(program: Program, lock: Lock = { modules: {} }): Package {
+export function buildPackage(program: Program, lock: Lock = { modules: {} }, modules: Modules = {}): Package {
   const programHash = hashProgram(program as unknown as Json).program;
-  return { hash: domainHash("package", { program: programHash, lock } as unknown as Json), programHash, program, lock };
+  return { hash: domainHash("package", { program: programHash, lock } as unknown as Json), programHash, program, lock, ...(Object.keys(modules).length ? { modules } : {}) };
 }
 
 /**
@@ -46,6 +53,15 @@ export function verifyPackage(pkg: Package): void {
   }
   const unlocked = (pkg.program.uses ?? []).map((u) => u.module).filter((m) => m !== "std" && !m.startsWith("std.") && !Object.hasOwn(pkg.lock.modules, m));
   if (unlocked.length) throw new Violation("unlocked_module", `Imported modules are not locked: ${[...new Set(unlocked)].join(", ")}.`);
+  // A module the package carries is the one the lock pins, byte for byte (S09, INV-02), and passes the checks itself.
+  const modules = pkg.modules ?? {};
+  for (const [name, m] of Object.entries(modules).sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const hash = hashProgram(m as unknown as Json).program;
+    if (m.module !== name || pkg.lock.modules[name] !== hash) throw new Violation("module_hash_mismatch", `Module ${name} hashes to ${hash}; the lock pins ${pkg.lock.modules[name] ?? "nothing"}.`);
+    const others = Object.fromEntries(Object.entries(modules).filter(([n]) => n !== name));
+    const mr = check(canonicalize(m as unknown as Json), "json", { modules: others });
+    if (!mr.ok) throw new Violation("load_verification_failed", `Module ${name} does not pass the compiler's checks: ${mr.diagnostics.filter((d) => d.severity === "error").map((d) => d.code).join(", ")}.`);
+  }
   // A lock that pins models (spec/lock.md) must be well formed and pin every tier the program names.
   // A lock without models is for simulated models only; the Anthropic adapter refuses to run without one.
   if (pkg.lock.models || pkg.lock.tariffs) {
@@ -54,7 +70,7 @@ export function verifyPackage(pkg: Package): void {
     const missing = [...modelTiers(pkg.program)].filter((t) => !Object.hasOwn(pkg.lock.models ?? {}, t)).sort();
     if (missing.length) throw new Violation("unlocked_model_tier", `Model tiers are not locked: ${missing.join(", ")} (MDT-E0141).`);
   }
-  const r = check(canonicalize(pkg.program as unknown as Json), "json");
+  const r = check(canonicalize(pkg.program as unknown as Json), "json", { modules });
   if (!r.ok) {
     throw new Violation("load_verification_failed", `The program does not pass the compiler's checks: ${r.diagnostics.filter((d) => d.severity === "error").map((d) => d.code).join(", ")}.`);
   }
@@ -72,6 +88,8 @@ export interface StartOptions {
   authorizationTtlMs?: number;
   /** Priority class in shared rate limits (§8.6). */
   priority?: Policy["priority"];
+  /** How the run touches the outside world (design doc 9 §5.2): `live` (default), `read_only` or `design`. */
+  mode?: RunMode;
 }
 
 export interface Message {
@@ -155,22 +173,67 @@ export class Runtime {
     verifyPackage(o.pkg);
     const wf = o.pkg.program.defs[o.workflow];
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
-    await this.validateBindings(o.pkg.program, o.workflow);
+    await this.validateBindings(linkedProgram(o.pkg.program, o.pkg.modules), o.workflow);
     const lowered = this.remoteGuarantees(o.pkg.program);
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(wf.budget), costDims(o.limits));
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
+    // The components the program works on start from one base commit each, recorded in the run's manifest (B3).
+    const components = await this.prepareWorkspace(runId, o.pkg);
+    const manifest = { format: RUN_MANIFEST_FORMAT, package: o.pkg.hash, workflow: o.workflow, tenant: policy.tenant, input: digest("request", o.input), mode: o.mode ?? "live", components } as unknown as Value;
+    const manifestHash = digest("run", manifest);
     await this.db.tx(async (tx) => {
-      await tx.query("insert into packages (package_hash, program, lock) values ($1, $2, $3) on conflict (package_hash) do nothing", [
+      await tx.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict (package_hash) do nothing", [
         o.pkg.hash,
         JSON.stringify(o.pkg.program),
         JSON.stringify(o.pkg.lock),
+        JSON.stringify(o.pkg.modules ?? {}),
       ]);
-      await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits });
+      await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash });
       for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
     });
     this.packages.set(o.pkg.hash, o.pkg);
     return this.drive(runId, true);
+  }
+
+  /**
+   * The working copies of the components a package's program works on
+   * (design doc 9 §12, B3). Their roots are claimed for this run first, so a
+   * root another unfinished run holds is refused before anything in it is
+   * touched (`workspace_busy`); then the workspace adapter checks each one out
+   * at its base commit. A program that works on components and a runtime
+   * without a workspace adapter do not start (INV-11).
+   */
+  private async prepareWorkspace(runId: string, pkg: Package): Promise<RunComponents> {
+    const wanted = componentsOf(pkg);
+    if (!wanted.length) return {};
+    const ws = this.adapters.workspace;
+    if (!ws) throw new Violation("no_workspace", `The program works on components (${wanted.map((c) => c.name).join(", ")}), and this runtime has no workspace adapter.`);
+    await this.db.tx(async (tx) => {
+      for (const c of wanted) {
+        const [held] = await tx.query<Row>("select w.run_id, w.claimed_at, r.state from workspace_claims w left join runs r on r.run_id = w.run_id where w.root = $1 for update of w", [c.root]);
+        if (held && held["run_id"] !== runId) {
+          // A claim whose run never got created is stale after ten minutes (a start that died between claim and run).
+          const live = held["state"] ? !TERMINAL.has(held["state"] as RunRow["state"]) : this.adapters.clock.now() - Number(held["claimed_at"]) < 600_000;
+          if (live) throw new Violation("workspace_busy", `${c.name}'s working copy ${c.root} is in use by run ${String(held["run_id"])}.`);
+        }
+        await tx.query("insert into workspace_claims (root, run_id, claimed_at) values ($1, $2, $3) on conflict (root) do update set run_id = $2, claimed_at = $3", [c.root, runId, this.adapters.clock.now()]);
+      }
+    });
+    let bases: Record<string, { base: string }>;
+    try {
+      bases = await ws.prepare(wanted);
+    } catch (e) {
+      await this.db.query("delete from workspace_claims where run_id = $1", [runId]);
+      throw new Violation("workspace_failed", `The components' working copies could not be prepared: ${(e as Error).message}`);
+    }
+    const out: RunComponents = {};
+    for (const c of wanted) {
+      const base = bases[c.name]?.base;
+      if (!base) throw new Violation("workspace_failed", `The workspace adapter gave no base commit for ${c.name}.`);
+      out[c.name] = { repo: c.repo, root: c.root, base };
+    }
+    return out;
   }
 
   /**
@@ -192,7 +255,7 @@ export class Runtime {
       }
     };
     visit(wf);
-    const repos = wf.caps.map((c) => capOf(program, c)).filter((c) => c?.ctor === "git.pr").flatMap((c) => c!.scope ?? []);
+    const repos = wf.caps.flatMap((c) => capsOf(program.defs, c)).filter((c) => c.ctor === "git.pr").flatMap((c) => c.scope ?? []);
     for (const name of [...effects].sort()) {
       const tool = this.adapters.tools[name];
       if (!tool?.validateBinding) continue;
@@ -362,18 +425,27 @@ export class Runtime {
       signer: this.signer,
       trusted: this.trusted,
       verifiers: this.verifiers,
+      ...(isObj(run.manifest) && isObj(run.manifest["components"] ?? null) ? { workspace: run.manifest["components"] as unknown as RunComponents } : {}),
+      ...(isObj(run.manifest) && typeof run.manifest["mode"] === "string" ? { mode: run.manifest["mode"] as RunMode } : {}),
       replay,
       durableTimers: this.durableTimers,
       ...(this.limiter ? { limiter: this.limiter } : {}),
     });
   }
 
-  private async program(packageHash: string): Promise<Program> {
+  /** The program and modules of a package, as packaged. */
+  private async packaged(packageHash: string): Promise<{ program: Program; modules: Modules }> {
     const cached = this.packages.get(packageHash);
-    if (cached) return cached.program;
-    const [row] = await this.db.query<Row>("select program, lock from packages where package_hash = $1", [packageHash]);
+    if (cached) return { program: cached.program, modules: cached.modules ?? {} };
+    const [row] = await this.db.query<Row>("select program, modules from packages where package_hash = $1", [packageHash]);
     if (!row) throw new Violation("unknown_package", `No package ${packageHash}.`);
-    return row["program"] as Program;
+    return { program: row["program"] as Program, modules: (row["modules"] ?? {}) as Modules };
+  }
+
+  /** The package's program with its imported modules linked in: what the interpreter runs. Never hashed. */
+  private async program(packageHash: string): Promise<Program> {
+    const p = await this.packaged(packageHash);
+    return linkedProgram(p.program, p.modules);
   }
 
   // ── GetRun ────────────────────────────────────────────────────────────
@@ -413,7 +485,7 @@ export class Runtime {
    */
   async sandboxDenials(runId: string): Promise<DenialReport> {
     const run = await this.journal.run(runId);
-    const program = await this.program(run.package_hash);
+    const { program } = await this.packaged(run.package_hash);
     const labels = new Map((await this.db.query<Row>("select command_id, label from commands where run_id = $1", [runId])).map((r) => [String(r["command_id"]), String(r["label"] ?? "")]));
     const denials: DenialReport["denials"] = [];
     for (const e of await this.journal.events(runId)) {
@@ -687,6 +759,8 @@ export function refusingAdapters(real: Adapters): Adapters {
     model: { infer: refuse("a model"), upperBound: () => ({}) },
     verifier: { check: refuse("a verifier") },
     reads: { call: refuse("a read") },
+    broker: { describe: () => ({ id: "refused", digest: "" }), query: refuse("the read broker") },
+    samples: { describe: () => ({ id: "refused", digest: "" }), query: refuse("sample reads") },
     tools: Object.fromEntries(
       Object.entries(real.tools).map(([k, t]) => [k, { describe: () => t.describe(), prepare: refuse(`${k}.prepare`), execute: refuse(`${k}.execute`), reconcile: refuse(`${k}.reconcile`) }]),
     ),
@@ -695,11 +769,16 @@ export function refusingAdapters(real: Adapters): Adapters {
   };
 }
 
-/** A capability expression's value: a named capability is looked up. */
-function capOf(program: Program, e: Expr): CapVal | undefined {
-  if (e.op === "var") {
-    const d = program.defs[e.name];
-    return d?.kind === "capability" ? capOf(program, d.value) : undefined;
-  }
-  return capFromCall(e);
+/** The format of a run's manifest: what it started from (design doc 9 §12). */
+export const RUN_MANIFEST_FORMAT = "mandate/run-manifest/0.1";
+
+/** The components of the package's system model that its program refers to, by name. */
+export function componentsOf(pkg: Package): WorkspaceComponent[] {
+  const defs = link(pkg.program, pkg.modules).defs;
+  const names = new Set<string>();
+  for (const d of Object.values(pkg.program.defs)) for (const r of references(d)) if (Object.hasOwn(defs, r) && defs[r]!.kind === "component") names.add(r);
+  return [...names].sort().map((name) => {
+    const c = defs[name] as Extract<(typeof defs)[string], { kind: "component" }>;
+    return { name, repo: c.repo, root: c.root };
+  });
 }

@@ -1,0 +1,43 @@
+// Acme design task class 5 (design doc 9 §10.3; BACKLOG item 34): a
+// read-only incident review on prod_sim. Everything the investigator sees
+// comes through the read broker: logs and replica rows, the customers'
+// names, phones and emails masked before any model sees them. Nothing is
+// written. Run it with `mandate run … --mode read_only`.
+
+mandate @ 0.3
+
+module acme.tasks.incident @ 0.1
+
+use std.{data, model}
+use acme.system.{prod_sim, LogLine, EventRow}
+
+capability Reads    = data.read(prod_sim, mcp_errors, core_warnings, shipment_events, shipment_overview)
+capability ModelStd = model.infer(tier: standard)
+
+type Incident = { since: Text, tracking_no: Text }
+
+// A shipment as the investigator may see it: the customer's fields masked.
+type ShipmentSeen = {
+  tracking_no: Text, status: Text, destination_city: Text, delivery_date: Text,
+  delivery_status: Text, attempts: Int, full_name: Masked, phone: Masked, email: Masked
+}
+
+type Report = { root_cause: Text, evidence: List<Text>, affected_cities: List<Text> }
+
+agent Investigator {
+  role   "Finds the root cause of an incident from logs and replica rows. Changes nothing."
+  caps   ModelStd
+  budget { tokens: 400k, spend: 2 USD, steps: 6 }
+  skill analyze(errors: Untrusted<List<LogLine>>, warnings: Untrusted<List<LogLine>>, events: Untrusted<List<EventRow>>, shipment: Untrusted<List<ShipmentSeen>>) -> Inferred<Report> ! {Model}
+}
+
+workflow Investigate(incident: Incident) -> Inferred<Report>
+  caps    Reads, ModelStd
+  budget  { spend: 3 USD }
+{
+  let errors   = data.read(prod_sim.mcp_errors, since: incident.since, max_class: internal)
+  let warnings = data.read(prod_sim.core_warnings, since: incident.since, max_class: internal)
+  let events   = data.read(prod_sim.shipment_events, tracking_no: incident.tracking_no, max_class: internal)
+  let shipment = data.read(prod_sim.shipment_overview, tracking_no: incident.tracking_no, max_class: internal)
+  delegate Investigator.analyze(errors, warnings, events, shipment)
+}

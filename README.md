@@ -25,7 +25,8 @@ anything runs. This repository holds the 0.1 reference implementation.
    adapter, see [`spec/sandbox.md`](spec/sandbox.md); and the compact core
    spec, [`spec/core.md`](spec/core.md).
 5. **Gate 0 (done):** FixBug in Open Agent Spec, with extensions and a
-   runtime probe; see [`examples/fixbug/agentspec/`](examples/fixbug/agentspec/).
+   runtime probe. Agent Spec cannot carry Mandate's guarantees, so the IR
+   stays separate.
 6. **0.2, Gate 3 (done):** language version 0.2; the lock file
    ([`spec/lock.md`](spec/lock.md)) and W0504; the Anthropic model adapter;
    agent loops with tools from capabilities, progress checks and
@@ -34,7 +35,8 @@ anything runs. This repository holds the 0.1 reference implementation.
    on Claude Opus 5.5, each in its own sandbox, fixed a seeded bug in a
    test repository. The contract's tests ran in sandboxes of the runtime's
    own, a person approved from the CLI, and one pull request was opened,
-   for 0.23 USD. See [`examples/fixbug-target/`](examples/fixbug-target/).
+   for 0.23 USD. `gate3.test.ts` rehearses it on simulated models
+   (`fixtures/fixbug-target/`).
 7. **Gate 4, the rest of 0.2 (done):** evidence and authority against an
    adversarial environment, with no real money or production effect. A
    content-addressed artifact store, with evidence bound to the bytes it
@@ -47,6 +49,29 @@ anything runs. This repository holds the 0.1 reference implementation.
    continue-as-new under Temporal; and the Windows sandbox backend with
    learning mode (W0311).
 
+8. **0.3, existing systems (in progress; BACKLOG §3.1, design doc 9):**
+   language version 0.3. The system model (`component`, `interface`,
+   `environment`) lives in the IR and is imported as a module pinned by the
+   lock, and capabilities can be written over components. A run starts
+   from one base commit per component, recorded in its manifest (R), and
+   each agent's sandbox sees only its components. Change sets land one
+   change per component as a unit: owners approve their members and an
+   approver the set digest, members commit in order, and a partial set
+   stops for a person (`git.merge` on GitHub). Boundary evidence checks
+   each component's tests, interface specs against the declared change,
+   the system end to end on an internal network, and attested or re-run
+   CI. Production is read only through a broker in the control plane:
+   declared, parameterized queries, data masked by class. A run is
+   `live`, `read_only` (prepared, never committed) or `design`, and
+   `mandate shadow-diff` compares what two runs would do. An onboarding
+   program drafts a system model from the repositories and has it
+   checked (specs, calls in the code, commands) and accepted;
+   `mandate drift` finds where a model and its repositories disagree.
+   A change set's view shows the approved plan, each component's change,
+   the evidence matrix, the order and why, and what was real; a change
+   outside the plan is an `unplanned_change`.
+   See [`spec/system.md`](spec/system.md).
+
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
 
@@ -57,9 +82,9 @@ spec/        core spec, IR schema and rules, static checks, diagnostic codes, ru
              views, the compiler's MCP server
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
-examples/    example programs; fixbug/ is the design document's §20 workflow,
-             fixbug/agentspec/ the same workflow in Open Agent Spec (Gate 0),
-             fixbug-target/ the workflow bound to the Gate 3 test repository
+fixtures/    the tests' programs: fixbug/ is the design document's §20 workflow,
+             fixbug-target/ the same workflow bound to a seeded test project,
+             system/ a fictional system's model (Acme) and programs over it
 ```
 
 ## Using the compiler
@@ -67,17 +92,17 @@ examples/    example programs; fixbug/ is the design document's §20 workflow,
 ```sh
 npm install
 npm run build
-node compiler/dist/cli.js check examples/fixbug/fixbug.mdt
-node compiler/dist/cli.js check examples/fixbug/fixbug.ir.json --json
-node compiler/dist/cli.js fmt examples/fixbug/fixbug.ir.json
-node compiler/dist/cli.js sandbox examples/fixbug/fixbug.mdt --agent Implementer
+node compiler/dist/cli.js check fixtures/fixbug/fixbug.mdt
+node compiler/dist/cli.js check fixtures/fixbug/fixbug.ir.json --json
+node compiler/dist/cli.js fmt fixtures/fixbug/fixbug.ir.json
+node compiler/dist/cli.js sandbox fixtures/fixbug/fixbug.mdt --agent Implementer
 node compiler/dist/cli.js explain E0320
 npm test
 ```
 
 | Command | Does |
 |---|---|
-| `check <file> [--json]` | Validate, resolve and statically check a `.mdt` or `.json` program; print its diagnostics and hash |
+| `check <file> [--json] [--module <file>]…` | Validate, resolve and statically check a `.mdt` or `.json` program, with the modules it imports (a system model); print its diagnostics and hash |
 | `ir <file> [--canonical]` | Print the canonical IR (pretty, or exact JCS bytes) |
 | `fmt <file>` | Print the `.mdt` projection of a program |
 | `hash <file>` | Print the program hash and one hash per definition |
@@ -128,6 +153,19 @@ client, and `mandate mcp` on stdio.
 authority, cost) against §15, and the semantic diff between two versions:
 governance apart from behavior, and a new network target shown as a
 governance change (G11).
+`compiler/test/system.test.ts` checks the system model (design doc 9 §2):
+Acme's model and its view, one mutation per rule (E1001–E1005), programs
+that import it and write capabilities over its components, C5 across
+components, the lock's pin (E0142), and changes to the model reported as
+governance changes.
+`compiler/test/changeset.test.ts` checks change sets (design doc 9 §3):
+the order against the interface graph (E1101), the order and its members
+(E1102), breaking changes (E1103), critical members (E1104), a verified
+plan (E1105), and each member's repository held by the workflow (E0301).
+`compiler/test/reads.test.ts` checks declared reads (design doc 9 §5):
+a read of the environment's, its parameters by name (E1201), masking
+by class (E0220 without it, E0201 for a field needed unmasked), and
+data.read authority (E0301).
 `compiler/test/static.test.ts` also checks the §20 FixBug table: 18.5 USD of
 child budgets inside 20 USD, delegated capabilities inside the workflow's,
 disjoint writes for the two parallel agents, step limits, review never
@@ -267,6 +305,29 @@ in-memory GitHub:
 
 `live.test.ts` repeats the lost response against the real test repository
 when `MANDATE_GITHUB_TOKEN` is set.
+
+The brownfield tests run on the Acme fixture, a fictional system of six
+components (design doc 9 §12):
+
+- `system.test.ts` and `workspace.test.ts` (B2, B3): the run manifest, and
+  two components written in parallel, each agent seeing only its own. On
+  CI, the sandbox jobs repeat this in real Bubblewrap and AppContainer
+  sandboxes.
+- `changeset.test.ts` (B4): owners, then the set digest; an ordered commit;
+  an unknown middle member stops the set as `changeset_partial`, and
+  reconciliation continues it. The change set view (B8): plan, changes,
+  evidence matrix, order and why, in live, read_only and design runs.
+- `specdiff.test.ts`, `boundary.test.ts` and `audience.test.ts` (B5):
+  task class 3, caught only end to end. An interface change the plan
+  does not name is an `unplanned_change` (B8).
+- `broker.test.ts` (B6): the incident review, read_only and masked, with
+  a replay that never asks the broker; and `shadow-diff`.
+- `onboard.test.ts` (B7): Acme's model drafted from generated
+  repositories, checked and landed; the fixture model's deliberate drift
+  found by `mandate drift` and by `test.consumes`.
+- `environment.test.ts` (B9): an environment's tier is never lowered;
+  prod_sim's deploy waits for the release manager although the run's
+  policy says policy.
 
 `sandbox.test.ts` runs FixBug's five agents in five MXC sandboxes, one per
 agent. Implementer may write only `/work/repo/src`, and TestWriter only

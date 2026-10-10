@@ -91,6 +91,24 @@ hashes:
 - **Cost:** limit, settled, reserved and available per dimension, and each
   command's reservation and cost.
 - **External actions:** state, operation and receipt.
+- **Change sets** (design doc 9 §8.2), one section per set:
+  - the approved plan, its digest, and who approved it;
+  - each component's change: its files, each interface it provides with
+    the declared kind and the measured kind (`understated` when the
+    measured change exceeds the declared one), and whether the change
+    is the plan's;
+  - the evidence matrix: the criteria of the members' evidence by
+    component, each cell passed, failed or unknown, with its evidence
+    id;
+  - the order, with the interface each member waits for;
+  - what was real: live, read_only (prepared, never committed) or design
+    (simulated), and each member's action state;
+  - what it changes in authority. A member that lands a Mandate module
+    is diffed against the version the run's package pins (§15.3
+    governance changes), or reported as new; a lock file is named.
+
+The header lists every imported module, such as the system model, by
+program hash.
 
 Every run view names the revision and the last event it shows (`as_of`).
 `freshness(run, as_of)` says how many events the run has moved since. A
@@ -107,3 +125,12 @@ HTML. They are never markup, a link or a control. A model can write
 
 The HTML page is self-contained. Its content security policy allows no
 scripts, frames, forms or remote resources.
+
+## The system
+
+A module that defines or imports a system model (0.3) also gets a system
+view: the consumption graph, components with owners and commands,
+interfaces with provider and consumers, environments with reads and
+authorization tiers, and the hash of each module the model comes from
+(design doc 9 §8.1; [`system.md`](system.md#the-system-view)). Every
+change to the model is shown under governance in the semantic diff.

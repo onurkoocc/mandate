@@ -38,7 +38,7 @@ import { delimiter, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { disallowed } from "./mxc.js";
 import { helperFile } from "./sandbox-helper.js";
-import type { Enforceable, ExecRequest, ExecResult, MxcPolicy, SandboxDenial, SandboxHost } from "./sandbox.js";
+import { makeWritable, type Enforceable, type ExecRequest, type ExecResult, type MxcPolicy, type SandboxDenial, type SandboxHost } from "./sandbox.js";
 import { WRITE_SCRIPT } from "./tools.js";
 
 /** The part of `@microsoft/mxc-sdk/v1` the Windows host uses; tests pass a fake. */
@@ -195,6 +195,7 @@ export class WindowsMxcHost implements SandboxHost {
     // MxcAdapter only plans what the probe said it can enforce; a policy that asks for more is a bug, not a fallback.
     if (policy.network.allowOutbound || policy.network.allowedHosts.length) throw new Error("WindowsMxcHost: this host blocks all outbound network; this policy allows some.");
     if (policy.isolation !== "process") throw new Error(`WindowsMxcHost: ${policy.isolation} isolation cannot run an agent: it cannot block the network.`);
+    makeWritable(policy);
     const handle = `wxc-${randomUUID()}`;
     this.open.set(handle, { policy, scratch: mkdtempSync(join(tmpdir(), "mandate-wxc-")), denials: [], running: 0, stopped: false });
     return handle;

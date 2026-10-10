@@ -6,7 +6,7 @@ import type { Outcome } from "../src/adapters.js";
 import { SimAgents } from "../src/sim.js";
 import { isObj, type Obj, type Value } from "../src/values.js";
 
-export const FIXBUG = readFileSync(new URL("../../examples/fixbug/fixbug.mdt", import.meta.url), "utf8");
+export const FIXBUG = readFileSync(new URL("../../fixtures/fixbug/fixbug.mdt", import.meta.url), "utf8");
 
 export const BUG: Obj = { issue: { id: "BUG-7", reproducible: true, scope: ["src/a.ts"] } };
 

@@ -11,6 +11,11 @@
 //   budgets                     E0501–E0504   static upper bounds, bounded loops, step limits
 //   contracts                   W0601, E0603  runtime fallback, review never alone
 //   delegation                  E0701–E0713   C2, dynamic spawn, supervision
+//   system model                E1001–E1005   providers, component capabilities,
+//                                              working copies, declared reads (doc 9 §2, §5)
+//   change sets                 E1101–E1105   order against the interface graph, members,
+//                                              breaking changes, a verified plan (doc 9 §3)
+//   reads                       E1201         data.read of a declared read, masking (doc 9 §5.1)
 //
 // Std calls the checker does not describe have unknown type and no effects,
 // so missing knowledge never produces an error.
@@ -19,14 +24,18 @@ import { diag, ptr, type Diagnostic, type Span } from "../diag.js";
 import type {
   AgentDef,
   Budget,
+  ChangesetExpr,
+  ComponentDef,
   ContractDef,
   Def,
   EffectDef,
   EffectRef,
+  EnvironmentDef,
   Expr,
   FnDef,
   Pattern,
   Program,
+  ReadSource,
   Skill,
   Stmt,
   TypeExpr,
@@ -55,7 +64,9 @@ import {
   calleePath,
   capAuthorizes,
   capCovers,
-  capFromCall,
+  capsFromCall,
+  capsOf,
+  pathsOverlap,
   scopeWithin,
   showCap,
   writesOverlap,
@@ -117,27 +128,35 @@ interface Frame {
 
 const PUBLIC: DataClass = "public";
 
-export function staticCheck(program: Program, spans?: Map<string, Span>): Diagnostic[] {
+/** Types a read parameter may have: values, never structure that could become query text. */
+const SCALARS = new Set(["Bool", "Int", "Dec", "Text", "Path", "Url", "Time", "Duration", "Id", "Money"]);
+
+/**
+ * `linked` is the table of definitions the program sees with its imported
+ * modules loaded (modules.ts). Only the program's own definitions are
+ * checked; imported ones were checked in their module.
+ */
+export function staticCheck(program: Program, spans?: Map<string, Span>, linked?: Record<string, Def>): Diagnostic[] {
   // Check the canonical form so that .mdt and .ir.json inputs of the same IR
   // report the same diagnostics in the same order.
   const canonical = JSON.parse(canonicalize(program as unknown as Json)) as Program;
-  return new Checker(canonical, spans).run();
+  const defs = linked ? (JSON.parse(canonicalize({ ...linked, ...canonical.defs } as unknown as Json)) as Record<string, Def>) : canonical.defs;
+  return new Checker(canonical, defs, spans).run();
 }
 
 class Checker implements TypeEnv {
   private readonly out: Diagnostic[] = [];
-  private readonly defs: Record<string, Def>;
-  private readonly capDefs = new Map<string, CapVal>();
+  private readonly capDefs = new Map<string, CapVal[]>();
   private readonly fnUsage = new Map<string, Usage[] | "pending">();
   private readonly constVals = new Map<string, Val | "pending">();
   private readonly recursive = new Set<string>();
 
   constructor(
     private readonly program: Program,
+    /** The program's own definitions and the linked imported ones. */
+    private readonly defs: Record<string, Def>,
     private readonly spans?: Map<string, Span>,
-  ) {
-    this.defs = program.defs;
-  }
+  ) {}
 
   // ── TypeEnv ────────────────────────────────────────────────────────────
 
@@ -170,13 +189,15 @@ class Checker implements TypeEnv {
 
   run(): Diagnostic[] {
     for (const [name, d] of Object.entries(this.defs)) {
-      if (d.kind === "capability") {
-        const c = this.evalCap(d.value, ptr("defs", name, "value"));
-        if (c) this.capDefs.set(name, { ...c, name });
-      }
+      if (d.kind !== "capability") continue;
+      // An imported capability was checked in its module; here it is only evaluated.
+      const own = Object.hasOwn(this.program.defs, name);
+      const caps = own ? this.evalCap(d.value, ptr("defs", name, "value")) : capsOf(this.defs, d.value);
+      this.capDefs.set(name, caps.map((c) => ({ ...c, name })));
     }
     this.findRecursion();
-    for (const [name, d] of Object.entries(this.defs)) {
+    this.checkSystem();
+    for (const [name, d] of Object.entries(this.program.defs)) {
       const base = ptr("defs", name);
       switch (d.kind) {
         case "type":
@@ -211,12 +232,21 @@ class Checker implements TypeEnv {
 
   // ── capabilities ───────────────────────────────────────────────────────
 
-  /** Evaluates a capability expression: a name, a constructor call, or `cap.narrow(…)`. */
-  private evalCap(e: Expr, path: string, frame: Frame = this.constFrame()): CapVal | undefined {
-    if (e.op === "var") return this.capDefs.get(e.name);
+  /**
+   * Evaluates a capability expression: a name, a constructor call, or
+   * `cap.narrow(…)`. A capability over a component may stand for several
+   * values (one per command it may run).
+   */
+  private evalCap(e: Expr, path: string, frame: Frame = this.constFrame()): CapVal[] {
+    if (e.op === "var") return this.capDefs.get(e.name) ?? [];
     if (e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow") {
-      const base = this.evalCap(e.callee.of, `${path}/callee/of`, frame);
-      if (!base) return undefined;
+      const bases = this.evalCap(e.callee.of, `${path}/callee/of`, frame);
+      if (bases.length > 1) {
+        this.report("E1002", `${bases.map(showCap).join(" and ")} cannot be narrowed as one; narrow what the component declares instead, e.g. component.write(c, "src") (doc 9 §2.2).`, path);
+        return bases;
+      }
+      const base = bases[0];
+      if (!base) return [];
       const scope: string[] = [];
       let known = true;
       e.args.forEach((a, i) => {
@@ -228,22 +258,24 @@ class Checker implements TypeEnv {
       });
       // A scope known only at run time is intersected with the base then, so it
       // cannot widen; statically it is bounded by the base scope.
-      if (!known) return { ...base };
+      if (!known) return [{ ...base }];
       const narrowed: CapVal = { ...base, scope };
       if (!scopeWithin(base.ctor, narrowed.scope, base.scope)) {
         this.report("E0305", `narrow(${scope.map((s) => JSON.stringify(s)).join(", ")}) is not inside ${showCap(base)}; capabilities can only be narrowed.`, path, {
           base: showCap(base),
           requested: narrowed.scope ?? null,
         });
-        return base;
+        return [base];
       }
-      return narrowed;
+      return [narrowed];
     }
     if (e.op === "call") {
       e.args.forEach((a, i) => this.untrustedInCapArg(a.value, `${path}/args/${i}/value`, frame));
-      return capFromCall(e);
+      const r = capsFromCall(e, this.defs);
+      if (r?.problem) this.report("E1002", `${r.problem} (doc 9 §2.2).`, path, { problem: r.problem });
+      return r?.caps ?? [];
     }
-    return undefined;
+    return [];
   }
 
   /** R5: untrusted content cannot pick a capability's scope. */
@@ -263,12 +295,7 @@ class Checker implements TypeEnv {
   }
 
   private capList(list: Expr[], base: string): CapVal[] {
-    const out: CapVal[] = [];
-    list.forEach((c, i) => {
-      const v = this.evalCap(c, `${base}/${i}`);
-      if (v) out.push(v);
-    });
-    return out;
+    return list.flatMap((c, i) => this.evalCap(c, `${base}/${i}`));
   }
 
   // ── definitions ────────────────────────────────────────────────────────
@@ -395,7 +422,8 @@ class Checker implements TypeEnv {
 
   private capsFor(u: Usage, caps: CapVal[]): CapVal[] {
     const need = this.requiredCap(u.effect);
-    return caps.filter((c) => (need ? c.ctor === need : capAuthorizes(c, u.effect, u.scope)));
+    // A usage with a scope (a change set member's repository) needs a capability whose scope covers it.
+    return caps.filter((c) => (need ? c.ctor === need && (u.scope === undefined || scopeWithin(c.ctor, u.scope, c.scope)) : capAuthorizes(c, u.effect, u.scope)));
   }
 
   private checkUsagesDeclared(usages: Usage[], declared: EffectRef[], who: string): void {
@@ -515,6 +543,79 @@ class Checker implements TypeEnv {
         this.expr(p.call, frame, `${pp}/call`);
       }
     });
+  }
+
+  // ── system model (design doc 9 §2, §5) ───────────────────────────────
+
+  private checkSystem(): void {
+    const own = Object.entries(this.program.defs);
+    const components = Object.entries(this.defs).filter((x): x is [string, ComponentDef] => x[1].kind === "component");
+    for (const [name, d] of own) {
+      if (d.kind !== "interface") continue;
+      // An interface has one provider: who answers for a change to it, and whose base commit holds its spec.
+      const providers = components.filter(([, c]) => c.provides?.includes(name)).map(([n]) => n).sort();
+      if (providers.length !== 1) {
+        this.report("E1001", providers.length ? `Interface ${name} is provided by ${providers.join(" and ")}; an interface has exactly one provider.` : `Interface ${name} has no provider; one component must provide it.`, ptr("defs", name), { providers });
+      }
+    }
+    // Two components never share a working copy: their sandboxes and their changes are told apart by root (C5).
+    const mine = own.filter((x): x is [string, ComponentDef] => x[1].kind === "component").sort(([a], [b]) => (a < b ? -1 : 1));
+    for (let i = 0; i < mine.length; i++) {
+      for (let j = i + 1; j < mine.length; j++) {
+        const [an, a] = mine[i]!;
+        const [bn, b] = mine[j]!;
+        if (pathsOverlap(a.root, b.root)) this.report("E1003", `The working copies of ${an} (${a.root}) and ${bn} (${b.root}) overlap; each component has a root of its own.`, ptr("defs", bn, "root"), { components: [an, bn] });
+      }
+    }
+    for (const [name, d] of own) {
+      if (d.kind !== "environment") continue;
+      for (const [rn, r] of Object.entries(d.reads ?? {})) this.checkRead(name, d, rn, r, ptr("defs", name, "reads", rn));
+      // A tier binds when an effect in this environment is authorized; on anything never authorized it would bind nothing (INV-11).
+      for (const effect of Object.keys(d.authorize ?? {})) {
+        // An unknown name is E0120's.
+        const known = this.def(effect)?.kind === "effect" || STD_EFFECTS[effect] || BUILTIN_EFFECTS.has(effect);
+        if (!known || this.isCriticalEffect(effect)) continue;
+        this.report("E1006", `${name} sets an authorization tier for ${effect}, which is not a critical effect: nothing ever authorizes it.`, ptr("defs", name, "authorize", effect), { environment: name, effect });
+      }
+    }
+  }
+
+
+  /**
+   * A declared read (doc 9 §5.1, K43): one read-only query whose values come
+   * only through its typed, scalar parameters, returning rows no more
+   * sensitive than its environment.
+   */
+  private checkRead(env: string, d: EnvironmentDef, rn: string, r: ReadSource, base: string): void {
+    const names = r.params.map((p) => p.name);
+    r.params.forEach((p, i) => {
+      const t = unalias(this.ty(p.type), this);
+      const scalar = t.k === "named" && SCALARS.has(t.name);
+      if (!scalar) this.report("E1004", `${env}.${rn}: parameter ${p.name} is ${show(t)}; a read's parameters are scalars (text, numbers, times), never a query fragment.`, `${base}/params/${i}/type`);
+    });
+    if ("sql" in r.query) {
+      const sql = r.query.sql.trim().replace(/;\s*$/, "");
+      if (!/^(select|with)\b/i.test(sql) || sql.includes(";")) {
+        this.report("E1004", `${env}.${rn}: a read is one SELECT statement; the broker runs nothing else.`, `${base}/query/sql`);
+      }
+      const used = [...new Set([...sql.matchAll(/(?<![:\w]):([A-Za-z_]\w*)/g)].map((m) => m[1]!))].sort();
+      const missing = used.filter((u) => !names.includes(u));
+      const unused = names.filter((n) => !used.includes(n));
+      if (missing.length || unused.length) {
+        this.report("E1004", `${env}.${rn}: the query's placeholders (${used.map((u) => `:${u}`).join(", ") || "none"}) and its parameters (${names.join(", ") || "none"}) must match.`, `${base}/query/sql`, { missing, unused });
+      }
+    } else {
+      const row = this.ty(r.returns);
+      const vars = new Map<string, Val>();
+      for (const [f, t] of Object.entries(fieldsOf(row, this) ?? {})) vars.set(f, { ty: t, cls: PUBLIC });
+      for (const p of r.params) vars.set(p.name, { ty: this.ty(p.type), cls: PUBLIC });
+      const frame: Frame = { where: "const", def: `${env}.${rn}`, scope: { vars }, usages: [], approved: false, delegated: [] };
+      this.expectBool(this.expr(r.query.logs, frame, `${base}/query/logs`), `${base}/query/logs`);
+    }
+    const cls = this.typeClass(this.ty(r.returns));
+    if (classRank(cls) > classRank(d.class)) {
+      this.report("E1005", `${env}.${rn} returns ${cls} data, but ${env} holds at most ${d.class}.`, `${base}/returns`, { data_class: cls, environment: d.class });
+    }
   }
 
   // ── recursion (S04) ────────────────────────────────────────────────────
@@ -843,6 +944,8 @@ class Checker implements TypeEnv {
         return this.verify(e, frame, path);
       case "effect":
         return this.effectCall(e, frame, path);
+      case "changeset":
+        return this.changeset(e, frame, path);
       case "escalate":
         this.expr(e.to, frame, `${path}/to`);
         return lit(UNKNOWN);
@@ -936,6 +1039,7 @@ class Checker implements TypeEnv {
       const dec = ep.inner.k === "named" && ep.inner.name === "Decision" ? (ep.inner.args[0] ?? UNKNOWN) : UNKNOWN;
       return { ty: named("DecisionOutcome", dec), cls };
     }
+    if (p === "data.read" && this.isModuleRoot(e.callee, frame)) return this.dataRead(e, frame, path);
     if (p && STD_FNS[p] && this.isModuleRoot(e.callee, frame)) {
       const f = STD_FNS[p]!;
       for (const eff of f.effects) this.use(frame, { effect: eff, path });
@@ -952,6 +1056,57 @@ class Checker implements TypeEnv {
       return { ty: named("Capability"), cls };
     }
     return { ty: UNKNOWN, cls };
+  }
+
+  /**
+   * `data.read(env.read, p: v, …, max_class: c)` (design doc 9 §5.1, K43): a
+   * read the environment declares, run by the read broker. Values reach it
+   * only as its typed parameters; model output may be a value, never query
+   * text. The rows are Untrusted. Fields of a class above `max_class` come
+   * back masked and are typed `Masked`, so a field the program needs unmasked
+   * does not check (a class is never lowered, §5.5).
+   */
+  private dataRead(e: Extract<Expr, { op: "call" }>, frame: Frame, path: string): Val {
+    const fail = (message: string, at = path): Val => {
+      this.report("E1201", message, at);
+      return { ty: named("Untrusted", named("List", UNKNOWN)), cls: PUBLIC };
+    };
+    const first = e.args[0];
+    if (!first || first.name !== undefined || first.value.op !== "field" || first.value.of.op !== "var") return fail("data.read names a declared read first: data.read(env.read, param: value, …).");
+    const envName = first.value.of.name;
+    const env = this.def(envName);
+    if (env?.kind !== "environment") return fail(`'${envName}' is not an environment.`, `${path}/args/0/value`);
+    const readName = first.value.name;
+    const src = env.reads?.[readName];
+    if (!src) return fail(`${envName} declares no read '${readName}'.`, `${path}/args/0/value`);
+    let maxClass: DataClass = env.class;
+    const given = new Set<string>();
+    e.args.slice(1).forEach((a, k) => {
+      const i = k + 1;
+      const ap = `${path}/args/${i}/value`;
+      if (a.name === "max_class") {
+        const c = a.value.op === "var" ? a.value.name : "";
+        if (!(DATA_CLASSES as string[]).includes(c)) this.report("E1201", `max_class is a data class (${DATA_CLASSES.join(", ")}).`, ap);
+        else maxClass = c as DataClass;
+        return;
+      }
+      const param = src.params.find((p) => p.name === a.name);
+      if (!a.name || !param) {
+        this.report("E1201", `${envName}.${readName} takes ${src.params.map((p) => p.name).join(", ") || "no parameters"}${a.name ? `, not '${a.name}'` : "; pass each by name"}.`, ap);
+        return;
+      }
+      if (given.has(a.name)) this.report("E1201", `${a.name} is given twice.`, ap);
+      given.add(a.name);
+      // A parameter's value may come from a model or a person: it is bound as a value, never spliced into the query.
+      const v = this.expr(a.value, frame, ap);
+      this.problem(assignable(withLevel(epistemic(v.ty).inner, "plain"), this.ty(param.type), this), ap);
+    });
+    for (const p of src.params) if (!given.has(p.name)) this.report("E1201", `${envName}.${readName} needs ${p.name}.`, path);
+    const row = this.ty(src.returns);
+    const fields = fieldsOf(row, this);
+    const shown: Ty = fields ? { k: "record", fields: Object.fromEntries(Object.entries(fields).map(([f, t]) => [f, classRank(this.typeClass(t)) > classRank(maxClass) ? named("Masked") : t])) } : row;
+    this.use(frame, { effect: "Data.Read", scope: [`${envName}.${readName}`], path });
+    return { ty: named("Untrusted", named("List", shown)), cls: this.typeClass(shown) };
   }
 
   private record(e: Extract<Expr, { op: "record" }>, frame: Frame, path: string): Val {
@@ -1046,26 +1201,40 @@ class Checker implements TypeEnv {
     if (e.caps) {
       e.caps.forEach((c, i) => {
         const cp = `${path}/caps/${i}`;
-        const v = this.evalCap(c, cp, frame);
-        if (!v) return;
-        given.push(v);
-        if (!inContext(v)) {
-          this.report("E0701", `${showCap(v)} is not available in ${frame.def}, so it cannot be delegated (C2).`, cp, {
-            capability: showCap(v),
-            available: (frame.avail ?? []).map(showCap),
-          });
-        }
-        if (!agent.remote && !agentCaps.some((a) => capCovers(a, v))) {
-          this.report("E0701", `${e.agent} does not hold ${showCap(v)}; 'with caps' can only narrow what the agent already holds (C2).`, cp, {
-            capability: showCap(v),
-            agent: agentCaps.map(showCap),
-          });
-        }
+        for (const v of this.evalCap(c, cp, frame)) this.given(v, given, cp, inContext, agent, agentCaps, frame, e.agent);
       });
       const narrowed = new Set(given.map((g) => g.ctor));
       effective = [...effective.filter((c) => !narrowed.has(c.ctor)), ...given];
     }
+    this.delegateRest(e, frame, path, agent, skill, who, effective, given, cls);
+    const remote = !!agent.remote;
+    frame.delegated.push({ caps: effective, path, external: remote });
+    this.use(frame, { effect: "Delegate", path });
+    let ret = this.ty(skill.returns);
+    if (remote && agent.remote!.trust !== "trusted") ret = named("Untrusted", ret);
+    // Model output inherits the highest class of what went in (§5.5).
+    return { ty: ret, cls };
+  }
 
+  /** One capability handed over with `with caps`: it must lie inside both the context and the agent (C2). */
+  private given(v: CapVal, given: CapVal[], cp: string, inContext: (c: CapVal) => boolean, agent: AgentDef, agentCaps: CapVal[], frame: Frame, agentName: string): void {
+    given.push(v);
+    if (!inContext(v)) {
+      this.report("E0701", `${showCap(v)} is not available in ${frame.def}, so it cannot be delegated (C2).`, cp, {
+        capability: showCap(v),
+        available: (frame.avail ?? []).map(showCap),
+      });
+    }
+    if (!agent.remote && !agentCaps.some((a) => capCovers(a, v))) {
+      this.report("E0701", `${agentName} does not hold ${showCap(v)}; 'with caps' can only narrow what the agent already holds (C2).`, cp, {
+        capability: showCap(v),
+        agent: agentCaps.map(showCap),
+      });
+    }
+  }
+
+  /** What a delegation's grant must cover, the data it may receive, its timeout and its supervision. */
+  private delegateRest(e: Extract<Expr, { op: "delegate" }>, frame: Frame, path: string, agent: AgentDef, skill: Skill, who: string, effective: CapVal[], given: CapVal[], cls: DataClass): void {
     // C1 at the delegation site: the authority handed over must cover what the skill uses.
     if (!agent.remote) {
       skill.effects.forEach((x) => {
@@ -1096,13 +1265,6 @@ class Checker implements TypeEnv {
     // A delegation's timeout is a Duration (§8.7, §9.1); the runtime enforces it.
     if (e.timeout) this.problem(assignable(this.expr(e.timeout, frame, `${path}/timeout`).ty, named("Duration"), this), `${path}/timeout`);
     if (e.supervise) this.supervise(e.supervise, `${path}/supervise`, { kind: "delegate", agent: e.agent, skill: e.skill, given });
-    const remote = !!agent.remote;
-    frame.delegated.push({ caps: effective, path, external: remote });
-    this.use(frame, { effect: "Delegate", path });
-    let ret = this.ty(skill.returns);
-    if (remote && agent.remote!.trust !== "trusted") ret = named("Untrusted", ret);
-    // Model output inherits the highest class of what went in (§5.5).
-    return { ty: ret, cls };
   }
 
   private verify(e: Extract<Expr, { op: "verify" }>, frame: Frame, path: string): Val {
@@ -1158,9 +1320,86 @@ class Checker implements TypeEnv {
       this.report("E0405", `Irreversible effect ${e.name} runs without a prior human.approve or a value verified by a contract that requires one (§6.3).`, path);
     }
     if (e.idempotent_by) this.expr(e.idempotent_by, frame, `${path}/idempotent_by`);
-    this.use(frame, { effect: e.name, path });
+    // An effect on an environment (deploy, migrate) is scoped by the environment it names: env.deploy(staging) does
+    // not deploy to prod. One not named in the program is covered by no capability.
+    const byEnv = std?.cap?.startsWith("env.") ? e.args.flatMap((a) => (a.value.op === "var" && this.def(a.value.name)?.kind === "environment" ? [a.value.name] : [])) : undefined;
+    this.use(frame, { effect: e.name, path, ...(byEnv ? { scope: byEnv.length ? byEnv : ["an environment the program does not name"] } : {}) });
     const ret = decl ? this.ty(decl.returns) : std ? this.ty(std.returns) : UNKNOWN;
     return { ty: ret, cls };
+  }
+
+  /**
+   * A change set (design doc 9 §3): a verified plan; members that are
+   * critical effects on their component's repository, held by the workflow;
+   * a commit order with every member once, and consistent with the
+   * interface graph for the changes it declares: the provider of an additive
+   * change lands before its consumers, and a breaking change is never one
+   * set (expand → migrate → contract instead).
+   */
+  private changeset(e: ChangesetExpr, frame: Frame, path: string): Val {
+    const plan = this.expr(e.plan, frame, `${path}/plan`);
+    if (epistemic(plan.ty).level !== "verified") {
+      this.report("E1105", `A change set lands an approved plan: its plan must be verified against a contract, not ${show(plan.ty)} (doc 9 §3.4).`, `${path}/plan`);
+    }
+    if (frame.where !== "workflow") {
+      this.report("E0408", `A change set commits external effects; it runs only in a workflow body, not in a ${frame.where} (§8.8).`, path);
+    }
+    if (e.idempotent_by) this.expr(e.idempotent_by, frame, `${path}/idempotent_by`);
+    else this.report("E0403", "A change set needs 'idempotent_by' (§8.4).", path, { repair_hint: "add `idempotent_by <business key>`" });
+    const components = Object.entries(this.defs).filter((x): x is [string, ComponentDef] => x[1].kind === "component");
+    for (const [m, mem] of Object.entries(e.members)) {
+      const mp = `${path}/members/${m}`;
+      const comp = this.def(m);
+      const args = mem.args.map((a, i) => this.expr(a.value, frame, `${mp}/args/${i}/value`));
+      if (comp?.kind !== "component") continue; // E0120 from name resolution
+      const decl = this.def(mem.effect);
+      const params = decl?.kind === "effect" ? decl.params.map((p) => this.ty(p.type)) : STD_EFFECTS[mem.effect]?.params.map((p) => this.ty(p));
+      if (params) {
+        if (args.length !== params.length) this.report("E0201", `Effect ${mem.effect} takes ${params.length} argument(s) but got ${args.length}.`, mp);
+        params.forEach((t, i) => {
+          const a = args[i];
+          if (a) this.problem(assignable(a.ty, t, this), `${mp}/args/${i}/value`);
+        });
+      }
+      if (!this.isCriticalEffect(mem.effect)) {
+        this.report("E1104", `Member ${m} runs ${mem.effect}, which is not a critical effect; a change set's members are the external actions that land each component's change.`, `${mp}/effect`);
+        continue;
+      }
+      // The member acts on its component's repository: the workflow must hold that authority.
+      this.use(frame, { effect: mem.effect, scope: [comp.repo], path: mp });
+    }
+    const members = Object.keys(e.members);
+    const dupes = e.order.filter((m, i) => e.order.indexOf(m) !== i);
+    const missing = members.filter((m) => !e.order.includes(m));
+    const strangers = e.order.filter((m) => !members.includes(m));
+    if (dupes.length || missing.length || strangers.length) {
+      this.report("E1102", `The order must list every member once: ${[...(missing.length ? [`missing ${missing.join(", ")}`] : []), ...(strangers.length ? [`not members: ${strangers.join(", ")}`] : []), ...(dupes.length ? [`twice: ${[...new Set(dupes)].join(", ")}`] : [])].join("; ")}.`, `${path}/order`, { missing, not_members: strangers, twice: [...new Set(dupes)] });
+      return { ty: named("Receipt", UNKNOWN), cls: plan.cls };
+    }
+    const pos = new Map(e.order.map((m, i) => [m, i]));
+    const edges: Array<[string, string, string]> = [];
+    for (const [iface, kind] of Object.entries(e.changes ?? {})) {
+      const cp = `${path}/changes/${iface}`;
+      if (kind === "breaking") {
+        this.report("E1103", `${iface} changes in a breaking way; that is never one change set. Plan it as expand → migrate → contract: add the new form, move every consumer, then remove the old one (doc 9 §3.3).`, cp, { interface: iface });
+        continue;
+      }
+      if (kind === "none") continue;
+      const provider = components.find(([, c]) => c.provides?.includes(iface))?.[0];
+      if (!provider) continue; // E1001 in the system model
+      if (!pos.has(provider)) {
+        this.report("E1101", `${iface} changes, but its provider ${provider} is not a member of this change set.`, cp, { interface: iface, provider });
+        continue;
+      }
+      for (const [consumer, c] of components) if (c.consumes?.includes(iface) && pos.has(consumer)) edges.push([provider, consumer, iface]);
+    }
+    // An additive change lands at its provider before any consumer that uses it.
+    for (const [p, c, iface] of edges) {
+      if (pos.get(p)! > pos.get(c)!) this.report("E1101", `${c} consumes ${iface}, which ${p} provides and this change set extends; ${p} must land before ${c} (order ${e.order.join(", ")}).`, `${path}/order`, { provider: p, consumer: c, interface: iface });
+    }
+    const cycle = findCycle(members, edges);
+    if (cycle) this.report("E1101", `No order satisfies the interface graph: ${cycle.join(" → ")}. Split the change into steps (doc 9 §3.3).`, `${path}/order`, { cycle });
+    return { ty: named("Receipt", UNKNOWN), cls: plan.cls };
   }
 
   private approvedByHuman(ty: Ty): boolean {
@@ -1436,6 +1675,32 @@ function overlapText(a: CapVal, b: CapVal): string {
   return sa === sb ? sa : `${sa} / ${sb}`;
 }
 
+/** A cycle among `nodes` along `edges` (from → to), if there is one. */
+function findCycle(nodes: string[], edges: Array<[string, string, string]>): string[] | undefined {
+  const next = new Map<string, string[]>(nodes.map((n) => [n, []]));
+  for (const [a, b] of edges) if (a !== b) next.get(a)?.push(b);
+  const state = new Map<string, "open" | "done">();
+  const stack: string[] = [];
+  const visit = (n: string): string[] | undefined => {
+    if (state.get(n) === "done") return undefined;
+    if (state.get(n) === "open") return [...stack.slice(stack.indexOf(n)), n];
+    state.set(n, "open");
+    stack.push(n);
+    for (const m of next.get(n) ?? []) {
+      const c = visit(m);
+      if (c) return c;
+    }
+    stack.pop();
+    state.set(n, "done");
+    return undefined;
+  };
+  for (const n of [...nodes].sort()) {
+    const c = visit(n);
+    if (c) return c;
+  }
+  return undefined;
+}
+
 function patternVars(p: Pattern): string[] {
   if (p.p === "bind") return [p.name];
   if (p.p === "tag") return (p.args ?? []).flatMap(patternVars);
@@ -1528,6 +1793,8 @@ function children(e: Expr): Expr[] {
       return [e.value, ...e.args.map((a) => a.value), ...(e.on_unmet ? [e.on_unmet.then] : [])];
     case "effect":
       return [...e.args.map((a) => a.value), ...(e.idempotent_by ? [e.idempotent_by] : [])];
+    case "changeset":
+      return [e.plan, ...Object.values(e.members).flatMap((m) => m.args.map((a) => a.value)), ...(e.idempotent_by ? [e.idempotent_by] : [])];
     case "escalate":
       return [e.to];
     case "pause":

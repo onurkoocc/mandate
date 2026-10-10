@@ -44,6 +44,8 @@ export interface EvidenceRecord {
   artifacts: Value[];
   detail: Value;
   at: number;
+  /** The run's mode when it was not `live` (design doc 9 §5.2): such evidence never stands for a live run. */
+  mode?: "design" | "read_only";
 }
 
 export interface Signature {

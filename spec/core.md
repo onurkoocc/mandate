@@ -14,6 +14,7 @@ means. The detailed rules are on the other pages:
 - [`sandbox.md`](sandbox.md): sandboxes;
 - [`views.md`](views.md): the views people review;
 - [`mcp.md`](mcp.md): the compiler as an MCP server for agents;
+- [`system.md`](system.md): existing systems: the system model, change sets, boundary evidence, reads and run modes;
 - [`diagnostics.md`](diagnostics.md): diagnostic codes.
 
 *Must* marks a rule that every conforming implementation follows.
@@ -30,9 +31,9 @@ A program is one module: a canonical JSON IR document, closed by
 
 - The IR is the source of truth. The `.mdt` text form is a projection:
   text lowers into IR and IR prints back as text, and both keep the hash.
-- `language` is `mandate/0.1` or `mandate/0.2`; 0.2 adds an agent's
-  `loop` and `progress` (§5). In text, a 0.2 file starts with
-  `mandate @ 0.2`.
+- `language` is `mandate/0.1`, `0.2` or `0.3`; 0.2 adds an agent's
+  `loop` and `progress` (§5), 0.3 the system model and change sets (§10).
+  In text, a file names its version first: `mandate @ 0.3`.
 - A reader must reject, not repair, any of these: another `language`, an
   unknown field, a duplicate key, a non-integer or out-of-range number, a
   lone surrogate, or input over the limits (1 MiB of source, nesting 64,
@@ -60,6 +61,9 @@ Definition kinds:
 | `agent` | A role, capabilities, a budget and skills; or a remote A2A binding |
 | `workflow` | An entry point: parameters, capabilities, budget, body, event handlers |
 | `contract` | Acceptance criteria over its parameters |
+| `component` | 0.3: a deployable unit of a system: repository, root, owner, build and test commands, interfaces it provides and consumes |
+| `interface` | 0.3: a contract between components (`openapi`, `mcp_tools`, `oauth`, `event`, `db_schema`) and its spec file |
+| `environment` | 0.3: an environment: its data class, declared reads, and the weakest authorization each effect accepts there |
 
 ## 2. Types
 
@@ -132,7 +136,7 @@ A model asked to choose from a closed set returns
 
 Each step that touches the world is an effect. The built-in effects are
 `Fs.Read`, `Fs.Write`, `Net`, `Model`, `Tool`, `Exec`, `Human`,
-`Delegate`, `Spend`, `Time` and `Random`. External effects carry their
+`Delegate`, `Spend`, `Time`, `Random` and `Data.Read` (0.3). External effects carry their
 declared name, e.g. `git.open_pr`.
 
 - A function or skill must declare every effect it uses, including those of
@@ -161,6 +165,11 @@ passed explicitly, and can only shrink.
 | `exec(commands: […], args_prefix: […])` | `Exec` | Commands and their argument prefixes |
 | `git.pr(repo)` | `git.*` | Repositories |
 | `money.spend(…)` | `Spend` | — |
+| `component.read(c…)`, `component.write(c, p…)` | `Fs.Read`, `Fs.Write` | The components' roots, or paths inside them |
+| `component.exec(c, build \| test)` | `Exec` | The commands the component declares |
+| `component.repo(c…)` | `git.*` | The components' repositories |
+| `data.read(env, r…)` | `Data.Read` | Declared reads of an environment |
+| `env.deploy(e…)`, `env.migrate(e…)` | `deploy`, `migrate` | Environments |
 
 `Human`, `Time`, `Random` and `Delegate` need no capability. The rules:
 
@@ -386,3 +395,37 @@ Every conforming implementation keeps these:
 
 - **Not in the IR:** `map`, dynamic `spawn` and `await`.
 - **Not generated yet:** these targets: host code, MCP, A2A and AX.
+
+## 10. Existing systems (0.3)
+
+Mandate describes a working system instead of rewriting it
+([`system.md`](system.md)).
+
+- **System model.** `component`, `interface` and `environment` definitions
+  live in an ordinary module, e.g. `acme.system`. Programs import what they
+  work on with `use`, and the lock pins the module by hash. Every interface
+  has exactly one provider. Changing the model is a governance change.
+- **Capabilities over components.** `component.read(c)` and its siblings
+  open into the paths, commands and repositories the model declares, so every
+  check (C1–C5) and every sandbox treats them like capabilities written out.
+- **Workspace.** A run starts from one base commit per component, recorded
+  in its manifest (hash R).
+- **Change sets.** `changeset(plan) { member c = git.merge(x) … order …
+  change I additive approve role "r" }` lands one change per component as a
+  unit. The plan is verified. The order respects the interface graph: an
+  additive change lands at its provider first, and a breaking change is
+  never one set (E1101–E1105). Each owner approves its member, then the set
+  approver approves the set digest S. Members commit in order; a failure or
+  an unknown outcome after a member has landed stops the set as
+  `changeset_partial`, and compensation is offered, never run.
+- **Reads and modes.** `data.read(env.r, p: v, max_class: c)` runs a read
+  the environment declares, through the control plane's broker: values are
+  bound parameters, never query text, and fields above `c` come back masked
+  (typed `Masked`). A run's mode is `live`, `read_only` (real reads;
+  effects prepared, never committed) or `design` (sample reads, simulated
+  effects); it is part of the manifest, and evidence carries it.
+- **Boundary evidence.** `test.suite_each`, `test.contract`,
+  `test.integration` and `test.ci` check a change where components meet:
+  each component's tests pinned to the base, interface specs against the
+  declared change, the system end to end on a network with no way out, and
+  CI that counts only attested or re-run.

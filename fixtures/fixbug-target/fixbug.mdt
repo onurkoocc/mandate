@@ -1,7 +1,7 @@
 // FixBug (design doc 4, §20) bound to the Gate 3 test repository
 // (BACKLOG K17): a TypeScript project checked out at /work/repo, tested
 // with `node --test`, pull requests into onurkoocc/mandate-fixbug-target.
-// The workflow, the agents and the contract are those of examples/fixbug;
+// The workflow, the agents and the contract are those of fixtures/fixbug;
 // the capabilities name this deployment, and the domain types are written
 // out, so each agent's result schema says what to hand back.
 

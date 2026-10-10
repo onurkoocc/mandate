@@ -38,6 +38,10 @@ export interface RunRow {
   result: Value;
   error: Value;
   summary: Value;
+  /** What the run started from (design doc 9 §12): package, workflow, input, components at their base commits. */
+  manifest: Value;
+  /** R: the hash of the manifest. */
+  manifest_hash: string | null;
 }
 
 export interface EvidenceRow {
@@ -76,7 +80,7 @@ export interface CommandRow {
   throttled: number;
 }
 
-export type ActionState = "prepared" | "dispatched" | "confirmed" | "rejected" | "unknown_outcome" | "cancelled";
+export type ActionState = "prepared" | "dispatched" | "confirmed" | "rejected" | "unknown_outcome" | "cancelled" | "would_apply";
 
 export interface ActionRow {
   operation_key: string;
@@ -91,6 +95,19 @@ export interface ActionRow {
   detail: Value;
   /** Files the action applies, frozen at prepare: path → { ref, digest }. */
   artifacts: Value;
+}
+
+export interface ChangesetRow {
+  set_key: string;
+  command_id: string;
+  set_digest: string;
+  /** In commit order: component, effect, operation, action digest, approver, and the evidence the member's change carries. */
+  members: Value;
+  /** `prepared`, `committed`, `partial`, `failed`; `would_apply` in a read_only run, `simulated` in a design run. */
+  state: string;
+  detail: Value;
+  /** What the set lands and why (doc 9 §3.4, §8.2): the plan, its digest and evidence, the order, the declared interface changes, the approver. */
+  summary: Value;
 }
 
 export interface AuthorizationRow {
@@ -169,17 +186,17 @@ export class Journal {
 
   async createRun(
     tx: Tx,
-    r: { runId: string; tenant: string; packageHash: string; workflow: string; input: Value; policy: Value; limits: Record<string, number> },
+    r: { runId: string; tenant: string; packageHash: string; workflow: string; input: Value; policy: Value; limits: Record<string, number>; manifest: Value; manifestHash: string },
   ): Promise<void> {
     const at = this.now();
     await tx.query(
-      "insert into runs (run_id, tenant, package_hash, workflow, input, policy, state, created_at, updated_at) values ($1, $2, $3, $4, $5, $6, 'accepted', $7, $7)",
-      [r.runId, r.tenant, r.packageHash, r.workflow, json(r.input), json(r.policy), at],
+      "insert into runs (run_id, tenant, package_hash, workflow, input, policy, state, created_at, updated_at, manifest, manifest_hash) values ($1, $2, $3, $4, $5, $6, 'accepted', $7, $7, $8, $9)",
+      [r.runId, r.tenant, r.packageHash, r.workflow, json(r.input), json(r.policy), at, json(r.manifest), r.manifestHash],
     );
     for (const [dim, limit] of Object.entries(r.limits)) {
       await tx.query("insert into budgets (run_id, dimension, limit_value) values ($1, $2, $3)", [r.runId, dim, limit]);
     }
-    await this.event(tx, r.runId, "run_accepted", { workflow: r.workflow, package: r.packageHash, limits: r.limits });
+    await this.event(tx, r.runId, "run_accepted", { workflow: r.workflow, package: r.packageHash, limits: r.limits, manifest: r.manifestHash });
   }
 
   /** Takes the run's lease for a new worker: the fence goes up, so older workers' writes are refused (R06). */
@@ -205,6 +222,8 @@ export class Journal {
       [runId, state, json(fields.waiting ?? null), json(fields.attention ?? null), json(fields.result ?? null), json(fields.error ?? null), fields.summary === undefined ? null : json(fields.summary), this.now()],
     );
     await this.event(tx, runId, `run_${state}`, { ...fields } as Value);
+    // A finished run gives its components' working copies back (B3).
+    if (TERMINAL.has(state)) await tx.query("delete from workspace_claims where run_id = $1", [runId]);
   }
 
   // ── commands ──────────────────────────────────────────────────────────
@@ -494,7 +513,7 @@ export class Journal {
    * run must not be cancelled (R08). Consuming it and writing the outbox
    * record happen in one transaction.
    */
-  async commit(runId: string, fence: number, operationKey: string, authorizationId: string): Promise<ActionRow> {
+  async commit(runId: string, fence: number, operationKey: string, authorizationId: string, set?: { key: string; digest: string; authorizationId: string }): Promise<ActionRow> {
     return this.db.tx(async (tx) => {
       const run = await this.lock(tx, runId, fence);
       const [arow] = await tx.query<Row>("select * from actions where operation_key = $1 and run_id = $2", [operationKey, runId]);
@@ -514,6 +533,20 @@ export class Journal {
         throw new Fault("Rejected", ["authorization_expired"]);
       }
       if (run.cancel_requested) throw new Cancelled();
+      // A change set member also needs the set's authorization, bound to the set digest S (design doc 9 §3.2).
+      // The first member's commit consumes it for this set; it never authorizes another set (G13).
+      if (set) {
+        const [s] = await tx.query<Row>("select * from authorizations where authorization_id = $1", [set.authorizationId]);
+        if (!s) throw new Violation("MDT-E0406", `Commit of a change set member without the set's authorization.`);
+        const sa = toAuth(s);
+        if (sa.action_digest !== set.digest) throw new Violation("MDT-E0406", `The set authorization was given for another change set (digest ${sa.action_digest}, set ${set.digest}).`);
+        if (sa.consumed_by !== null && sa.consumed_by !== set.key) throw new Violation("MDT-E0407", `Authorization ${set.authorizationId} was already consumed by ${sa.consumed_by}.`);
+        if (sa.consumed_by === null) {
+          if (sa.expires_at !== null && this.now() >= sa.expires_at) throw new Fault("Rejected", ["authorization_expired"]);
+          await tx.query("update authorizations set consumed_by = $2 where authorization_id = $1", [set.authorizationId, set.key]);
+          await tx.query("update changesets set state = 'committing' where set_key = $1", [set.key]);
+        }
+      }
       await tx.query("update authorizations set consumed_by = $2 where authorization_id = $1", [authorizationId, operationKey]);
       await tx.query("update actions set state = 'dispatched' where operation_key = $1", [operationKey]);
       await tx.query(
@@ -544,6 +577,42 @@ export class Journal {
       await tx.query("update outbox set state = $2, attempts = attempts + 1 where operation_key = $1", [operationKey, state === "prepared" ? "pending" : "done"]);
       await this.event(tx, runId, `action_${state}`, { operation: operationKey, ...(data.detail !== undefined ? { detail: data.detail } : {}) });
     });
+  }
+
+  // ── change sets (design doc 9 §3) ─────────────────────────────────────
+
+  /** Records a prepared change set once: its digest S and its members in commit order. */
+  async prepareChangeset(runId: string, fence: number, c: { setKey: string; commandId: string; setDigest: string; members: Value; summary: Value; state?: "prepared" | "would_apply" | "simulated" }): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [row] = await tx.query<Row>("select set_key from changesets where set_key = $1", [c.setKey]);
+      if (row) return;
+      const state = c.state ?? "prepared";
+      await tx.query("insert into changesets (set_key, run_id, command_id, set_digest, members, state, summary) values ($1, $2, $3, $4, $5, $6, $7)", [c.setKey, runId, c.commandId, c.setDigest, json(c.members), state, json(c.summary)]);
+      await this.event(tx, runId, `changeset_${state}`, { set: c.setDigest, command: c.commandId, members: c.members });
+    });
+  }
+
+  /** A change set's state: `committing`, `committed`, `partial` (some members applied) or `failed` (none). */
+  async changesetState(runId: string, fence: number, setKey: string, state: "committed" | "partial" | "failed", detail: Value): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      await tx.query("update changesets set state = $2, detail = $3 where set_key = $1", [setKey, state, json(detail)]);
+      await this.event(tx, runId, `changeset_${state}`, detail);
+    });
+  }
+
+  async changesets(runId: string): Promise<ChangesetRow[]> {
+    const rows = await this.db.query<Row>("select * from changesets where run_id = $1 order by command_id", [runId]);
+    return rows.map((r) => ({
+      set_key: String(r["set_key"]),
+      command_id: String(r["command_id"]),
+      set_digest: String(r["set_digest"]),
+      members: (r["members"] ?? []) as Value,
+      state: String(r["state"]),
+      detail: (r["detail"] ?? null) as Value,
+      summary: (r["summary"] ?? null) as Value,
+    }));
   }
 
   async evidence(runId: string, ids?: string[]): Promise<EvidenceRow[]> {
@@ -614,6 +683,8 @@ function toRun(r: Row): RunRow {
     result: (r["result"] ?? null) as Value,
     error: (r["error"] ?? null) as Value,
     summary: (r["summary"] ?? null) as Value,
+    manifest: (r["manifest"] ?? null) as Value,
+    manifest_hash: (r["manifest_hash"] ?? null) as string | null,
   };
 }
 

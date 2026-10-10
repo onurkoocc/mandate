@@ -28,8 +28,9 @@ Two database drivers share one interface (`runtime/src/db.ts`):
 
 | Table | Holds |
 |---|---|
-| `packages` | Content-addressed packages: program and lock |
-| `runs` | State, revision, lease fence, cancel flag, waiting / attention / result / error / summary |
+| `packages` | Content-addressed packages: program, lock, and the imported modules it was checked with |
+| `runs` | State, revision, lease fence, cancel flag, waiting / attention / result / error / summary; the manifest and its hash R |
+| `workspace_claims` | Which run holds each component's working copy (B3) |
 | `events` | The run's append-only event log |
 | `commands` | One row per nondeterministic step: request digest, state, result or error, cost |
 | `budgets` | Limit and settled amount per dimension (`tokens`, `steps`, `spend:<currency>`) |
@@ -659,7 +660,9 @@ listed in the run's summary (R09).
 `StartRun` does not trust whoever built the package. It:
 
 - recomputes the program and package hashes;
-- requires every imported non-std module to be pinned in the lock;
+- requires every imported non-std module to be pinned in the lock, and every
+  module the package carries (a system model) to hash to its pin and pass
+  the checks itself (`module_hash_mismatch`);
 - when the lock pins models, requires it to be well formed
   (`malformed_lock`) and to pin every model tier the program names
   (`unlocked_model_tier`);
@@ -709,16 +712,19 @@ commands are in the runtime (`@mandate/runtime/cli`) and are reached
 through the compiler's `mandate` command:
 
 ```sh
-mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD]
+mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD] [--module FILE]…
 mandate status <run> [--json]
 mandate approve <run> --revision N --by NAME
 mandate decline <run> --revision N --by NAME
 mandate answer <run> --revision N --by NAME <text>
 mandate cancel <run>
+mandate reconcile <run> <operation>
 mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
 mandate replay <run>
 mandate artifact <run> <blob:sha256:…>
 mandate show <run> [--format md|html|json]
+mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER/REPO]… [--name MODULE]
+mandate drift --module MODEL --component NAME=DIR… [--json]
 ```
 
 **Configuration.** Each call reads `mandate.runtime.json`, or the file
@@ -774,8 +780,8 @@ If the run has moved since, the decision is refused (`stale_revision`) and
 nothing is recorded. What a person approves is bound to the digest that
 `status` showed.
 
-`examples/fixbug-target/` holds FixBug bound to the Gate 3 test repository,
-with its lock, configuration and input. `runtime/test/gate3.test.ts`
+`fixtures/fixbug-target/` holds FixBug bound to a seeded test project,
+with its lock and input. `runtime/test/gate3.test.ts`
 rehearses the acceptance run with a scripted model, on Linux with
 Bubblewrap:
 
@@ -833,3 +839,158 @@ The same mechanisms are tested under Temporal against a local dev server:
 - **`map`, and so R11 by input index and R12.** The 0.1 IR has no `map`.
   `par` results are bound by name, and that binding is tested in its place.
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.
+
+## Workspace and run manifest (design doc 9 §12, B3)
+
+A program that works on components of a system model starts from one base
+commit per component.
+
+- **Before the run.** `StartRun` finds the components the program refers
+  to. It claims their roots in `workspace_claims`; a root that another
+  unfinished run holds is refused with `workspace_busy` before anything in
+  it is touched. The workspace adapter then checks each one out at its base
+  commit. A finished run (`succeeded`, `failed`, `cancelled`) releases its
+  claims. A program that works on components and a runtime without a
+  workspace adapter do not start (`no_workspace`, INV-11).
+- **The manifest.** The run records what it started from:
+  `{ format: "mandate/run-manifest/0.1", package, workflow, tenant, input:
+  <digest>, components: { name: { repo, root, base } } }`. Its hash, R, is
+  `digest("run", manifest)`. The same program from another base commit is
+  another R. `mandate show` lists R and each component at its commit;
+  verifier calls are told the components (`VerifyRequest.workspace`).
+- **`GitWorkspace`** (configuration `"workspace": { "components": { "<name>":
+  { "url": …, "ref": "main" } } }`). It clones a missing root, fetches the
+  ref, and checks out the fetched commit, detached and byte for byte
+  (`core.autocrlf=false`). It removes untracked work an earlier run left
+  and keeps ignored files (dependencies). Its credentials stay in the
+  control plane.
+- **Sandboxes.** Each delegation's sandbox is built from its grant, so it
+  sees only its components' roots: an agent working on `mcp` cannot read
+  or write `core` (`runtime/test/workspace.test.ts`, also on a real
+  Bubblewrap and AppContainer host).
+
+## Change sets (design doc 9 §3, B4)
+
+`changeset` extends prepare → authorize → commit to one action per
+component; [`system.md`](system.md#change-sets-b4) has the semantics.
+
+- **Storage.** The `changesets` table holds the set digest S, the members
+  in commit order (component, effect, operation, action digest, approver,
+  and the evidence ids the member's change carries), a summary (the plan,
+  its digest and evidence, the order, the declared changes, the approver)
+  for the change set view, and the state. A read_only run records its set
+  as `would_apply`, and a design run as `simulated`. Otherwise the state
+  is `prepared`, `committing` (the first member's commit
+  consumed S's authorization), `committed`, `partial` (some members landed)
+  or `failed` (none did). Events `changeset_prepared`,
+  `changeset_committed`, `changeset_partial` and `changeset_failed`.
+- **Commit.** `Journal.commit` takes the set's authorization as well. In the
+  same transaction it checks that the authorization exists, is for S, and
+  was not consumed by another set (E0406, E0407), and that it has not
+  expired.
+- **Waits.** A member's approval is a `decision` wait at
+  `<changeset>/members/<component>/authorize`, with the member's
+  `action_digest`, `changeset` (S) and `component`. The set's approval is
+  one at `<changeset>/authorize` with `action_digest` = S. `mandate approve`
+  answers both.
+- **Partial set.** The run's `attention` is
+  `{ changeset_partial: { set, applied, stopped_at, not_sent, compensation } }`.
+  `mandate reconcile` (ReconcileAction) on the stopped member's operation
+  resumes the run.
+- **`git.merge`** (`GitHubMerges`): configured with `"github": { "repos": […] }`
+  and MANDATE_GITHUB_TOKEN. Its retry class is `reconcilable`.
+
+## Boundary verifier (design doc 9 §4, B5)
+
+`BoundaryVerifier` answers `test.suite_each`, `test.contract`,
+`test.integration`, `test.ci` and `test.planned` (B8), and passes every other method to the
+verifier it wraps. Verify requests carry the system
+(`VerifyRequest.system`): every component with its repository, root, base
+commit, language, commands and interfaces, and every interface with its
+protocol, spec and provider.
+
+Configuration (`mandate.runtime.json`):
+
+```json
+"boundary": {
+  "integration": { "dir": "../acme-system/compose", "files": ["base.yml", "staging.yml", "integration.yml"], "service": "e2e" },
+  "ci": { "mode": "rerun", "workflow": "ci" },
+  "pinned": { "mcp": ["test/**"] },
+  "extraRead": { "core": ["/root/.m2"] }
+}
+```
+
+- `integration` writes an override that builds each of the run's components
+  from its working copy and makes the default network internal. It reads
+  the resolved configuration back (`docker compose config`) and refuses
+  published ports and networks that are not internal. Each overridden
+  service gets an image name of the project's, so candidate images never
+  replace others. It runs `build`, then `run --rm <service>` (which starts
+  what the service depends on), and then `down -v --rmi local`.
+- `suite_each` runs a component's tests as its change left them and lists
+  the test files that differ from the base commit (`tests_changed`). Files
+  `pinned` names run as they were at the base commit.
+- A component's toolchain (a JDK, an interpreter) may live in a container:
+  `ContainerHost` is a sandbox host for the same contract. It runs each
+  command in its configured image with `--network none`, all capabilities
+  dropped, a read-only root file system and a tmpfs `/tmp`. Only the
+  policy's paths are mounted, read-only unless writable, and the
+  allow-list is enforced before start. A linked dependency directory is
+  mounted in its place, read-only, with tmpfs cache directories. It is
+  probed and planned like MXC (isolation `container`).
+- `ci` reads GitHub Actions (MANDATE_GITHUB_TOKEN). Attestation
+  verification is a pluggable hook (`GitHubCi.attest`); without one, every
+  result is unattested.
+- Evidence records name the producer `mandate-boundary-verifier@0.3`.
+
+## Read broker and run modes (design doc 9 §5, B6)
+
+- **`ReadBroker`** (`adapters.broker`): `query(ReadRequest)` →
+  `{ rows, masked, as_of, truncated, row_count }`. The request carries the
+  environment, the read, its component, the query or log filter from the
+  IR, the parameters, `max_rows`, every field's data class and the caller's
+  `max_class`.
+- **`DeclaredReads`** is configured per `<environment>/<component>`:
+  `"broker": { "prod_sim/core": { "url_env": "MANDATE_PROD_SIM_CORE_URL" }, "prod_sim/mcp": { "logs": "data/prod_sim/logs" } }`.
+  Database URLs come from the environment only. SQL `:name` placeholders
+  become `$n` and run as `select * from (<query>) limit max_rows + 1` in a
+  `read only` transaction with a statement timeout. Logs are
+  `<component>.jsonl` filtered by the read's expression (comparisons,
+  `and`, `or`, `not`, literals, fields, parameters; nothing else runs).
+- **`SampleReads`** (`adapters.samples`, `"samples": "samples.json"`)
+  answers design runs from rows by `<environment>.<read>`. A design run
+  without samples fails the read with `PolicyDenied(no_samples)`; a run
+  without a broker, with `no_broker`.
+- **Modes.** `StartRun({ mode })` / `mandate run --mode design|read_only|live`.
+  The manifest records the mode. A read_only effect is prepared and then
+  recorded `would_apply` (an action state that is never open); it returns
+  `{ would_apply, effect, action_digest, operation }`. A design effect is
+  a `simulate` command. Evidence records of non-live runs carry `mode`.
+- **`shadowDiff(rt, a, b)`** / `mandate shadow-diff`: see
+  [`system.md`](system.md#reads-and-run-modes-b6).
+
+## Onboarding verifier and drift (design doc 9 §7, B7)
+
+- **`OnboardVerifier`** (`runtime/src/onboard.ts`; configured by
+  `"onboard": { "hosts": {…}, "extraRead": {…}, "timeoutMs": n }`) answers
+  `test.system_specs`, `test.consumes` and `test.commands`, and hands
+  every other method to the verifier it wraps. Each takes the draft's path
+  and `at:`, the component whose working copy holds it. Its evidence
+  names the draft, binds to every component's working copy, and comes from
+  handler `mandate-onboard-verifier@0.3`.
+- Repositories are read at the run's base commit (`git archive`), never
+  as the working copy left them. `test.commands` runs each component's
+  build and test commands in the sandbox, writable only in that tree.
+  Linked dependency directories are readable and never writable. With no
+  network (K7), a build that fetches dependencies needs a cache that
+  `extraRead` makes readable. A command that cannot run fails the
+  criterion; it is not skipped (INV-11).
+- `hosts` maps a network name to a component (by default, each
+  component's own name). The scanner matches `http(s)://<host>` URLs, and
+  a quoted host as the default of a `*HOST*`, `*URL*`, `*ISSUER*` or
+  `*ENDPOINT*` setting. It skips tests, `docs`, dependency and build
+  directories.
+- `scan`, `draft` and `drift` are exported. `mandate onboard` and
+  `mandate drift` (no configuration needed) print a draft module, or the
+  findings (`--json`). `drift` exits 1 on drift, and 0 when there are only
+  warnings.

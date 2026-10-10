@@ -13,7 +13,7 @@ import { closeAll, LOCK, world } from "./helpers.js";
 
 afterAll(closeAll);
 
-const FIXBUG_FILE = fileURLToPath(new URL("../../examples/fixbug/fixbug.mdt", import.meta.url));
+const FIXBUG_FILE = fileURLToPath(new URL("../../fixtures/fixbug/fixbug.mdt", import.meta.url));
 
 function program(src: string): Program {
   const r = check(src, "mdt");

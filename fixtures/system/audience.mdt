@@ -1,0 +1,73 @@
+// Acme design task class 3 (design doc 9 §10.3; BACKLOG item 33): a
+// change to the token audience acme-mcp accepts. A planner proposes, the
+// architect accepts the plan, an agent changes acme-mcp, and the runtime
+// checks the change at the boundary before anything lands:
+//
+//   suites      acme-mcp's own tests, pinned to the base commit
+//   contracts   no interface changes, as the plan says
+//   integrated  the whole system, built from the candidate, end to end on
+//               staging data, on a network with no way out
+//   planned     nothing outside the accepted plan changed: no other component,
+//               no interface the plan does not name
+//
+// A change that moves only one side of the audience agreement passes the
+// first two and is caught by the third.
+
+mandate @ 0.3
+
+module acme.tasks.audience @ 0.1
+
+use std.{component, model, test, git, human}
+use acme.system.{mcp, staging}
+
+capability McpRead  = component.read(mcp)
+capability McpSrc   = component.write(mcp, "src", "test")
+capability McpTest  = component.exec(mcp, test)
+capability McpRepo  = component.repo(mcp)
+capability ModelStd = model.infer(tier: standard)
+
+type Task = { id: Text, request: Text }
+type Plan = { summary: Text, components: List<Text>, changes: Map<Text, Text> }
+type Change = { files: List<Text>, summary: Text }
+
+contract PlanAccepted(plan: Plan) {
+  accept architect "The architect accepted the plan" by human.approve(role: "architect")
+}
+
+contract BoundaryAccepted(change: Change, plan: Plan) {
+  accept suites "Each component the plan changes passes its own tests" by test.suite_each(plan.components)
+  accept contracts "Interfaces change only as the plan declares" by test.contract(plan.changes)
+  accept integrated "The system works end to end on staging data" by test.integration(env: staging, plan.components)
+  accept planned "Nothing outside the accepted plan changed" by test.planned(plan)
+}
+
+agent Planner {
+  role   "Turns a request into a plan: which components change, and how each interface changes."
+  caps   McpRead, ModelStd
+  budget { tokens: 400k, spend: 2 USD, steps: 6 }
+  skill plan(task: Task) -> Inferred<Plan> ! {Fs.Read, Model}
+}
+
+agent McpDev {
+  role   "Changes acme-mcp as the accepted plan says, with its tests."
+  caps   McpRead, McpSrc, McpTest, ModelStd
+  budget { tokens: 800k, time: 20m, spend: 4 USD, steps: 12 }
+  skill implement(plan: Verified<Plan, PlanAccepted>) -> Inferred<Change> ! {Fs.Read, Fs.Write, Exec, Model}
+}
+
+workflow Audience(task: Task) -> Text
+  caps    McpRead, McpSrc, McpTest, McpRepo, ModelStd
+  budget  { spend: 8 USD, time: 1h }
+{
+  let draft = delegate Planner.plan(task)
+  let plan = verify draft against PlanAccepted(draft)
+  let change = delegate McpDev.implement(plan)
+  let checked = verify change against BoundaryAccepted(change, plan)
+    on unmet(c) => escalate human("Open acceptance criteria: {c}")
+  let landed = changeset(plan) {
+    member mcp = git.merge(checked)
+    order mcp
+    approve role "architect"
+  } idempotent_by task.id
+  "landed"
+}

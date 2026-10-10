@@ -12,7 +12,7 @@ import { check } from "../src/check.js";
 import { McpServer, serveStdio } from "../src/mcp/server.js";
 import { readRepo } from "./helpers.js";
 
-const FIXBUG = readRepo("examples/fixbug/fixbug.mdt");
+const FIXBUG = readRepo("fixtures/fixbug/fixbug.mdt");
 const V = { "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientInfo": { name: "test", version: "1" }, "io.modelcontextprotocol/clientCapabilities": {} };
 
 function call(s: McpServer, name: string, args: Record<string, unknown>, id = 1) {
