@@ -23,12 +23,13 @@
 // git is called in the runtime process, on the working copy.
 
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { requirementFor, type CapVal, type TypeExpr } from "@mandate/compiler";
 import type { CheckLog, CheckResult, CheckSubject, Cost, InferRequest, ModelAdapter, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { sha256Of } from "./artifacts.js";
+import { inside, outside, PathRefused, realEntries, removeWithin, writeWithin } from "./paths.js";
 import { MxcAdapter } from "./sandbox.js";
 import { isObj, type Value } from "./values.js";
 
@@ -157,11 +158,14 @@ export class SandboxVerifier implements VerifierAdapter {
         pinned[f] = sha256Of(content);
         const here = join(this.o.workdir, f);
         if (!existsSync(here) || sha256Of(readFileSync(here)) !== pinned[f]) modified.push(f);
-        mkdirSync(dirname(join(copy.dir, f)), { recursive: true });
-        writeFileSync(join(copy.dir, f), content);
+        // A copy links its dependencies: a pinned file is written only through real directories.
+        writeWithin(copy.dir, f, content);
       }
       const r = await this.runTests(copy.dir, files, `suite ${name}`, copy.extraRead);
       return { ...r, pinned, modified };
+    } catch (e) {
+      if (e instanceof PathRefused) return { exitCode: 125, timedOut: false, output: `suite ${name} cannot be pinned: ${e.message}` };
+      throw e;
     } finally {
       copy.remove();
     }
@@ -170,19 +174,25 @@ export class SandboxVerifier implements VerifierAdapter {
   // ── test.red_then_green ───────────────────────────────────────────────
 
   private async redThenGreen(patch: Value, tests: Value): Promise<Omit<CheckResult, "subject">> {
-    const patched = filesOf(patch);
+    const named = filesOf(patch);
     const testFiles = filesOf(tests);
     if (!testFiles.length) return { passed: false, detail: { reason: "the tests name no files" } };
-    if (!patched.length) return { passed: false, detail: { reason: "the patch names no files" } };
+    if (!named.length) return { passed: false, detail: { reason: "the patch names no files" } };
+    // The files are what the agents said (Inferred): one outside the working copy is refused, not followed (Doc 11 §7).
+    const escaping = [...outside(this.o.workdir, named), ...outside(this.o.workdir, testFiles)];
+    if (escaping.length) return { passed: false, detail: { reason: "files outside the working copy", files: escaping } };
+    const patched = named.map((f) => inside(this.o.workdir, f)!);
     // Red: the patched files as they were at the base commit, the new tests as written.
     const red = this.copy("mandate-red-");
     try {
       for (const f of patched) {
         const before = this.gitBytes(["show", `${this.o.base}:${f}`]);
-        if (before === undefined) rmSync(join(red.dir, f), { force: true });
-        else {
-          mkdirSync(dirname(join(red.dir, f)), { recursive: true });
-          writeFileSync(join(red.dir, f), before);
+        try {
+          if (before === undefined) removeWithin(red.dir, f);
+          else writeWithin(red.dir, f, before);
+        } catch (e) {
+          if (e instanceof PathRefused) return { passed: false, detail: { reason: e.message, files: [f] } };
+          throw e;
         }
       }
       const r = await this.runTests(red.dir, testFiles, "red", red.extraRead);
@@ -232,11 +242,12 @@ export class SandboxVerifier implements VerifierAdapter {
 
   /**
    * A copy of the working copy without .git, to change and test. node_modules
-   * is linked, not copied, and the sandbox may read it where it is.
+   * is linked, not copied, and the sandbox may read it where it is. Links the
+   * working copy holds are left out: a copy holds real files only.
    */
   private copy(prefix: string): { dir: string; extraRead: string[]; remove(): void } {
     const dir = mkdtempSync(join(tmpdir(), prefix));
-    cpSync(this.o.workdir, dir, { recursive: true, filter: (src) => !/[\\/](\.git|node_modules)$/.test(src) });
+    cpSync(this.o.workdir, dir, { recursive: true, filter: realEntries(this.o.workdir, /[\\/](\.git|node_modules)$/) });
     const modules = join(this.o.workdir, "node_modules");
     const extraRead: string[] = [];
     if (existsSync(modules)) {

@@ -19,11 +19,11 @@
 // applied if it was not, and only then may the merge be sent again, which
 // finds the same branch and pull request.
 
-import { posix } from "node:path";
 import { readFile } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { join } from "node:path";
 import type { AuthorizationContext, PreparedAction, PreparedFile, ToolAdapter, ToolContract } from "./adapters.js";
 import { GitHubError, opTag } from "./github.js";
+import { inside } from "./paths.js";
 import { digest, isObj, type Obj, type Value } from "./values.js";
 
 export interface GitHubMergeOptions {
@@ -229,12 +229,6 @@ export class GitHubMerges implements ToolAdapter {
 
 function receipt(repo: string, pr: PullJson, branch: string, operationKey: string): Value {
   return { system: "github", repo, number: pr.number, url: pr.html_url, branch, merged: !!pr.merged, merge_sha: pr.merge_commit_sha ?? null, operation: operationKey };
-}
-
-/** `f` relative to `root`, with forward slashes; undefined when it is not inside it. */
-function inside(root: string, f: string): string | undefined {
-  const rel = posix.normalize((isAbsolute(f) ? relative(root, f) : f).split(sep).join("/"));
-  return rel === ".." || rel.startsWith("../") || rel.startsWith("/") || rel === "." ? undefined : rel;
 }
 
 /** A change set member's parameters: its target component, and the verified change with its files. */
