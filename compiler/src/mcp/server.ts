@@ -28,7 +28,8 @@
 import { readFileSync } from "node:fs";
 import type { Readable, Writable } from "node:stream";
 import { createInterface } from "node:readline";
-import { check, load, type SourceKind } from "../check.js";
+import { check, load, loadModules, type SourceKind } from "../check.js";
+import type { Modules } from "../modules.js";
 import { CODES } from "../codes.js";
 import type { Lock } from "../lock.js";
 import { hasErrors } from "../diag.js";
@@ -54,6 +55,11 @@ type Response = { jsonrpc: "2.0"; id: string | number | null; result: unknown } 
 
 const SOURCE = { type: "string", description: "The program: .mdt text or canonical JSON IR." };
 const KIND = { type: "string", enum: ["mdt", "json"], description: "What `source` is. Default: json if it starts with '{', else mdt." };
+const MODULES = {
+  type: "array",
+  items: { type: "string" },
+  description: "Modules the program imports with `use` (e.g. a system model), each as .mdt text or JSON IR. Added to the modules the server was started with (`mandate mcp --module <file>`).",
+};
 
 /** The tools, as `tools/list` gives them. Input schemas are JSON Schema 2020-12. */
 export const TOOLS = [
@@ -61,7 +67,7 @@ export const TOOLS = [
     name: "mandate.check",
     title: "Check a program",
     description: "Validates a Mandate program (text or IR), resolves names and runs every static check. Returns ok, the program and definition hashes, and the diagnostics with their codes, facts and repair patches.",
-    inputSchema: { type: "object", properties: { source: SOURCE, kind: KIND, lock: { type: "object", description: "The lock file (mandate.lock.json), to check model tiers and W0504." } }, required: ["source"], additionalProperties: false },
+    inputSchema: { type: "object", properties: { source: SOURCE, kind: KIND, modules: MODULES, lock: { type: "object", description: "The lock file (mandate.lock.json), to check model tiers and W0504." } }, required: ["source"], additionalProperties: false },
   },
   {
     name: "mandate.explain",
@@ -79,6 +85,7 @@ export const TOOLS = [
       properties: {
         source: SOURCE,
         kind: KIND,
+        modules: MODULES,
         base: { type: "string", description: "The program hash the patch was written against, sha256:…" },
         ops: { type: "array", items: { type: "object", properties: { op: { enum: ["add", "remove", "replace"] }, path: { type: "string" }, value: {} }, required: ["op", "path"], additionalProperties: false } },
       },
@@ -90,7 +97,7 @@ export const TOOLS = [
     name: "mandate.caps_of",
     title: "Authority of an agent or workflow",
     description: "The paths, hosts, model tiers, commands, repositories, money and external effects an agent or workflow may use, and each of its delegations' grants.",
-    inputSchema: { type: "object", properties: { source: SOURCE, kind: KIND, name: { type: "string" } }, required: ["source", "name"], additionalProperties: false },
+    inputSchema: { type: "object", properties: { source: SOURCE, kind: KIND, modules: MODULES, name: { type: "string" } }, required: ["source", "name"], additionalProperties: false },
   },
   {
     name: "mandate.project",
@@ -98,7 +105,7 @@ export const TOOLS = [
     description: "A view people review (§15): architecture, authority or cost of a program, or the semantic diff from `before` (governance changes, behavior changes, what stayed the same).",
     inputSchema: {
       type: "object",
-      properties: { source: SOURCE, kind: KIND, view: { enum: ["architecture", "authority", "cost", "diff"] }, before: { type: "string", description: "For diff: the earlier program." }, before_kind: KIND, lock: { type: "object" } },
+      properties: { source: SOURCE, kind: KIND, modules: MODULES, view: { enum: ["architecture", "authority", "cost", "diff"] }, before: { type: "string", description: "For diff: the earlier program." }, before_kind: KIND, lock: { type: "object" } },
       required: ["source", "view"],
       additionalProperties: false,
     },
@@ -125,8 +132,8 @@ function str(args: Record<string, unknown>, k: string): string {
 }
 
 /** A program that passes its checks, or a ToolError with the diagnostics. */
-function program(source: string, kind: unknown, lock?: Lock): Program {
-  const r = check(source, kindFor(source, kind), lock ? { lock } : {});
+function program(source: string, kind: unknown, modules: Modules, lock?: Lock): Program {
+  const r = check(source, kindFor(source, kind), { modules, ...(lock ? { lock } : {}) });
   if (!r.ok) throw new ToolError(`the program does not check: ${r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`).join("; ")}`);
   return r.program!;
 }
@@ -143,12 +150,23 @@ function specText(section: unknown): string {
   return lines.slice(start, end < 0 ? undefined : end).join("\n");
 }
 
+/** The server's modules and the call's own: what a program's `use` may import. */
+function modulesFor(args: Record<string, unknown>, base: Modules): Modules {
+  const given = args["modules"];
+  if (given === undefined) return base;
+  if (!Array.isArray(given) || !given.every((m) => typeof m === "string")) throw new ToolError("modules must be a list of module sources");
+  const { modules, problems } = loadModules(given.map((text, i) => ({ file: `modules[${i}]`, text, kind: kindFor(text, undefined) })));
+  if (problems.length) throw new ToolError(`a module does not load: ${problems.flatMap((p) => p.diagnostics.map((d) => `${p.file}: ${d.code} ${d.message}`)).join("; ")}`);
+  return { ...base, ...modules };
+}
+
 /** Runs one tool; the structured result, or a ToolError for a call the tool cannot serve. */
-export function callTool(name: string, args: Record<string, unknown>): unknown {
+export function callTool(name: string, args: Record<string, unknown>, serverModules: Modules = {}): unknown {
+  const modules = modulesFor(args, serverModules);
   switch (name) {
     case "mandate.check": {
       const source = str(args, "source");
-      const r = check(source, kindFor(source, args["kind"]), args["lock"] ? { lock: args["lock"] as Lock } : {});
+      const r = check(source, kindFor(source, args["kind"]), { modules, ...(args["lock"] ? { lock: args["lock"] as Lock } : {}) });
       return { ok: r.ok, ...(r.hashes ? { hashes: r.hashes } : {}), diagnostics: r.diagnostics };
     }
     case "mandate.explain": {
@@ -165,7 +183,7 @@ export function callTool(name: string, args: Record<string, unknown>): unknown {
       if (!Array.isArray(args["ops"])) throw new ToolError("ops must be a list of RFC 6902 operations");
       const r = applyPatch(loaded.program, str(args, "base"), args["ops"] as PatchOp[]);
       // The patched program's own checks, so the agent sees what it would be asked to fix next.
-      const checked = r.program ? check(JSON.stringify(r.program), "json") : undefined;
+      const checked = r.program ? check(JSON.stringify(r.program), "json", { modules }) : undefined;
       return {
         ok: r.ok && !!checked?.ok,
         ...(r.hash ? { hash: r.hash } : {}),
@@ -176,7 +194,7 @@ export function callTool(name: string, args: Record<string, unknown>): unknown {
       };
     }
     case "mandate.caps_of": {
-      const p = program(str(args, "source"), args["kind"]);
+      const p = program(str(args, "source"), args["kind"], modules);
       const who = str(args, "name");
       const rows = authority(p).rows.filter((r) => r.who === who || r.who === `${who} (remote)` || r.who.startsWith(`${who} → `));
       if (!rows.length) throw new ToolError(`${who} is not an agent or workflow of this program`);
@@ -184,7 +202,7 @@ export function callTool(name: string, args: Record<string, unknown>): unknown {
     }
     case "mandate.project": {
       const lock = args["lock"] as Lock | undefined;
-      const p = program(str(args, "source"), args["kind"], lock);
+      const p = program(str(args, "source"), args["kind"], modules, lock);
       switch (args["view"]) {
         case "architecture":
           return architecture(p);
@@ -193,7 +211,7 @@ export function callTool(name: string, args: Record<string, unknown>): unknown {
         case "cost":
           return cost(p, lock);
         case "diff":
-          return semanticDiff(program(str(args, "before"), args["before_kind"]), p);
+          return semanticDiff(program(str(args, "before"), args["before_kind"], modules), p);
       }
       throw new ToolError("view must be architecture, authority, cost or diff");
     }
@@ -206,6 +224,9 @@ export function callTool(name: string, args: Record<string, unknown>): unknown {
 /** One server: one process, which may open a legacy session with `initialize`. */
 export class McpServer {
   private legacy: string | undefined;
+
+  /** `modules`: what every call's program may import, e.g. the system model (`mandate mcp --module <file>`). */
+  constructor(private readonly modules: Modules = {}) {}
 
   /** Answers one JSON-RPC message; undefined for a notification. */
   handle(msg: unknown): Response | undefined {
@@ -253,7 +274,7 @@ export class McpServer {
         const args = (params["arguments"] && typeof params["arguments"] === "object" ? params["arguments"] : {}) as Record<string, unknown>;
         if (typeof name !== "string" || !TOOLS.some((t) => t.name === name)) return fail(-32602, `Unknown tool: ${String(name)}`);
         try {
-          const structured = callTool(name, args);
+          const structured = callTool(name, args, this.modules);
           return ok({ content: [{ type: "text", text: JSON.stringify(structured, null, 2) }], structuredContent: structured, isError: false }, modern);
         } catch (e) {
           if (!(e instanceof ToolError)) throw e;
@@ -267,8 +288,8 @@ export class McpServer {
 }
 
 /** Serves newline-delimited JSON-RPC on a pair of streams until the input ends. */
-export async function serveStdio(input: Readable = process.stdin, output: Writable = process.stdout): Promise<void> {
-  const server = new McpServer();
+export async function serveStdio(input: Readable = process.stdin, output: Writable = process.stdout, modules: Modules = {}): Promise<void> {
+  const server = new McpServer(modules);
   const lines = createInterface({ input, crlfDelay: Infinity });
   for await (const line of lines) {
     if (!line.trim()) continue;

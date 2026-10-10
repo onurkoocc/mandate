@@ -48,6 +48,18 @@ describe("the compiler's MCP server (§14)", () => {
     expect(call(s, "mandate.explain", { code: "E9999" })).toMatchObject({ isError: true, content: [{ text: "unknown code E9999" }] });
   });
 
+  it("checks a program over a system model: the server's modules, or the call's own", () => {
+    const system = readRepo("fixtures/system/acme.system.mdt");
+    const program = readRepo("fixtures/system/audience.mdt");
+    // Without the module its `use` cannot resolve.
+    expect(call(new McpServer(), "mandate.check", { source: program }).structuredContent).toMatchObject({ ok: false });
+    const fromServer = new McpServer({ "acme.system": check(system, "mdt").program! });
+    expect(call(fromServer, "mandate.check", { source: program }).structuredContent).toMatchObject({ ok: true });
+    expect(call(new McpServer(), "mandate.check", { source: program, modules: [system] }).structuredContent).toMatchObject({ ok: true });
+    expect(call(new McpServer(), "mandate.project", { source: program, modules: [system], view: "authority" }).isError).toBe(false);
+    expect(call(new McpServer(), "mandate.check", { source: program, modules: ["not a module"] })).toMatchObject({ isError: true });
+  });
+
   it("applies a patch against its base, flags governance changes, and refuses a stale base", () => {
     const s = new McpServer();
     const ir = JSON.stringify(check(FIXBUG, "mdt").program);

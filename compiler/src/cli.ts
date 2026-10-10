@@ -11,7 +11,7 @@
 //   mandate target acs <file> [--out <dir>] write each agent's ACS manifest and Rego policy
 //                                          for an AGT host (spec/executors.md, item 40)
 //   mandate explain <code>                 explain a diagnostic code
-//   mandate mcp                            serve check, explain, apply_patch and views to agents
+//   mandate mcp [--module <file>]…         serve check, explain, apply_patch and views to agents
 //                                          over MCP on stdio (§14)
 //   mandate view <file> [--against <old>] [--format md|html|json] [--lock <lock.json>]
 //                                          the program's human views (§15): architecture,
@@ -59,7 +59,7 @@ function usage(): never {
       "  target acs <file> [--out <dir>] [--json] [--lock <lock.json>] [--module <file>]…",
       "  explain <code>",
       "  view <file> [--against <old file>] [--format md|html|json] [--lock <lock.json>] [--module <file>]…",
-      "  mcp   (an MCP server on stdio)",
+      "  mcp [--module <file>]…   (an MCP server on stdio)",
       "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key   (see `mandate status`)",
       "  test <file> [--json]",
       "",
@@ -283,7 +283,7 @@ function main(argv: string[]): void {
     }
     // falls through
     case "mcp":
-      void serveStdio().then(() => process.exit(0));
+      void serveStdio(process.stdin, process.stdout, modules).then(() => process.exit(0));
       return;
     case "explain": {
       const raw = args[0] ?? usage();
