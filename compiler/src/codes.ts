@@ -277,6 +277,14 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Executor cannot hold the locked output limit",
     explain: "Claude Managed Agents cannot cap the output of one model request: the model may write up to its own ceiling. The upper bound of a call (spec/lock.md) and every reservation use the lock's max_output_tokens, so for a tier whose agents run there the lock must state that ceiling (K80).",
   },
+  "MDT-E0906": {
+    title: "Agent cannot be written as an ACS policy",
+    explain: "`mandate target acs` writes each local agent's per-call rules as an ACS manifest and Rego bundle. An agent with a capability that has no static scope, or a spend budget in a currency other than USD (the only one ACS hosts count), cannot be written so that every call is checked. It is left out by name rather than with a weaker rule (INV-11; spec/executors.md).",
+  },
+  "MDT-W0907": {
+    title: "Guarantee not carried by the target",
+    explain: "An ACS host checks one call at a time. What one call cannot show is not in the target: the workflow, narrowing at delegation, disjoint writes, the steps budget, progress, the journal, replay, evidence and prepare → authorize → commit. These need the Mandate runtime. The warning lists them, and the target's profile says how each guarantee holds (spec/executors.md).",
+  },
   "MDT-E0905": {
     title: "Data class too high for the executor",
     explain: "An agent bound to Claude Managed Agents may send its model data above `internal`. The service keeps session history and is not zero-retention, so such an agent runs on the local runtime instead (K46).",

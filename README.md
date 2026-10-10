@@ -78,6 +78,10 @@ anything runs. This repository holds the 0.1 reference implementation.
    that the runtime runs in the agent's own sandbox (the bridge, K79), so
    the loop's checks, the journal and the budget hold as for a local loop.
    See [`spec/executors.md`](spec/executors.md).
+7. **ACS target (item 40):** `mandate target acs` writes each agent's
+   per-call rules as an Agent Control Specification manifest and generated
+   Rego, for Microsoft AGT hosts. The Rego fails closed, is bound to the
+   package hash, and comes with the profile of what one call cannot show.
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
@@ -118,6 +122,7 @@ npm test
 | `explain <code>` | Explain a diagnostic code |
 | `test <file> [--json]` | Run the program's tests against their effect handlers (§6.4) |
 | `mcp` | Serve `check`, `explain`, `apply_patch`, authority and views to agents over MCP on stdio ([`spec/mcp.md`](spec/mcp.md)) |
+| `target acs <file> [--out <dir>]` | Each agent's ACS manifest, Rego policy and sandbox requirement, for an AGT host ([`spec/executors.md`](spec/executors.md)) |
 | `view <file> [--against <old>] [--format md\|html\|json]` | The program's views: architecture, authority, cost; with `--against`, what changed ([`spec/views.md`](spec/views.md)) |
 
 Exit status is 1 when an error diagnostic is reported and 2 on usage errors.
@@ -177,6 +182,9 @@ data.read authority (E0301).
 ([`spec/executors.md`](spec/executors.md)): strict reading (E0140), X01 a
 binding that no longer fits (E0903), X02 the output ceiling (E0904), and
 X03 the data class (E0905).
+`compiler/test/acs.test.ts` checks the ACS target (X05): one manifest and
+bundle per agent bound to the package hash, W0907 and E0906, and, with
+`MANDATE_OPA`, the generated Rego on a real OPA.
 `compiler/test/static.test.ts` also checks the §20 FixBug table: 18.5 USD of
 child budgets inside 20 USD, delegated capabilities inside the workflow's,
 disjoint writes for the two parallel agents, step limits, review never

@@ -4,8 +4,13 @@ An executor runs a program's agents somewhere other than the reference
 runtime's own agent loop, while the runtime keeps everything the guarantees
 rest on. Mandate compiles onto existing executors; it does not replace them.
 
-This page covers the one executor so far, **Claude Managed Agents**, in the
-form called *Form A* (design doc 10 §3.1, decision K45):
+This page covers two targets:
+
+- **Claude Managed Agents**, an executor. It is described first, below.
+- **The Agent Control Specification**, for AGT hosts. See "ACS target".
+
+Managed Agents runs in the form called *Form A* (design doc 10 §3.1,
+decision K45):
 
 - The workflow body, the journal, the budget ledger, the evidence and the
   approvals stay in the Mandate runtime.
@@ -218,6 +223,91 @@ tools.
 - **Compiling the workflow body into the service (design doc 10, Form B).**
   It is not offered.
 
+## ACS target (item 40)
+
+```sh
+mandate target acs <file> [--out <dir>] [--lock <lock.json>] [--module <file>]… [--json]
+```
+
+The **Agent Control Specification** (ACS) is the decision contract that
+Microsoft's Agent Governance Toolkit (AGT) hosts enforce. ACS is
+`responsibleai/agent-control-spec`, and the manifest contract is
+`0.4.0-alpha.1`. An ACS host calls the engine at each intervention point
+of an agent loop and acts on its verdict. The intervention points include
+`pre_tool_call` and `pre_model_call`.
+
+ACS checks **one call at a time**. So the target carries what one call can
+be checked against, and the Mandate runtime keeps the rest. This is the same
+split as the bridge above. Gate 0b (design doc 12) has the comparison.
+
+For each local agent, `mandate target acs` writes three files:
+
+| File | What it is |
+|---|---|
+| `<Agent>.manifest.json` | The ACS manifest. All eight intervention points are bound to one Rego policy. The tool catalog is the agent's tools (K8). |
+| `<Agent>/policy.rego` | The generated policy |
+| `<Agent>.sandbox-requirement.json` | The agent's sandbox requirement ([`sandbox.md`](sandbox.md)). ACS does not enforce a sandbox, so the host's sandbox must enforce this one. |
+
+It also writes one `profile.json` for the whole target.
+
+**How the rules are written.** Gate 0b observed that ACS silently ignores
+unknown members in its open slots: tool entries, policy and binding fields,
+and metadata. So the target relies on none of them:
+
+- Every rule is generated Rego, and every rule fails closed:
+  - a missing field denies;
+  - a missing budget counter denies;
+  - a missing data-class label denies.
+
+  This is unlike AGT's stock budget helpers, which treat a missing counter
+  as zero.
+- **The binding.** Every verdict first requires
+  `snapshot.envelope.agent.version` to be the package hash. That is the
+  program and the lock, or the program hash when there is no lock. A host
+  that does not know it was given a Mandate policy is denied everything, so
+  it cannot run the agent with the rules left out.
+
+| At | The policy checks |
+|---|---|
+| every point | the binding, then each budget counter the agent's budget limits: `token_count`, `cost_usd` and `elapsed_seconds` must be present and under the limit |
+| `pre_tool_call` | the tool is one of the agent's. Paths are resolved against the first readable root, with no `.`, `..` or empty segment, and must lie inside the read or write roots. `run` takes only the listed commands and argument prefixes. Any other tool, an effect tool included, is denied. |
+| `pre_model_call` | the model's name is one the lock pins for the agent's tier |
+| `input` | every label in `input.ifc.source_labels` is at most the agent's `max_class`, and there is at least one label |
+| the other points | the binding and the budget only |
+
+The generated Rego is checked against OPA 1.4.2 by
+`compiler/test/acs.test.ts` with `MANDATE_OPA` set. It has 18 cases: allow
+inside the grant, deny outside it, path traversal, prefix tricks, a missing
+counter, a wrong binding and data classes.
+
+**What is left out by name.**
+
+- An agent whose rules cannot be written is left out with `MDT-E0906`. This
+  covers a capability with no static scope, and a spend budget not in USD
+  (ACS hosts count USD only).
+- `MDT-W0907` names the guarantees the target does not carry.
+
+| Guarantee | ACS host alone | Why |
+|---|---|---|
+| `package.identity` | Partial | The binding check; the host asserts the version |
+| `static.checks` | Full | The compiler runs first |
+| `caps.paths_commands` | Partial | At every `pre_tool_call`, at the agent's declared scope; the host must call it for every tool call |
+| `caps.delegation_narrowing` | None | A manifest is per agent; `with caps` narrowing needs the runtime |
+| `caps.network` | None | Left to the host's sandbox, from the written requirement |
+| `parallel.isolation` | None | Needs the runtime |
+| `model.pinning` | Partial | Model name only; effort is not in the snapshot |
+| `model.max_class` | Partial | At `input`; the host propagates labels |
+| `budget.tokens_spend` | Partial | The host's counters, settled after a call |
+| `budget.steps` | None | ACS counts tool calls, not model turns |
+| `budget.time` | Partial | The host's `elapsed_seconds` |
+| `loop.progress`, `journal.turns`, `replay.no_adapter`, `evidence.verifier` | None | Need the runtime |
+| `effects.prepare_authorize_commit` | None | The agent gets no effect tool; committing one needs the runtime |
+| `credentials.control_plane`, `cancel` | None | The host's |
+
+**Not targeted.** AGT's intent declarations (`agent_os.intent`) are not
+targeted. They default to a soft block, and the plan is not hashed. Mandate's
+`plan_execute` checks a whole plan before any of it runs (V16).
+
 ## Core check (K72)
 
 *Does this executor exclude the local, serverless Core mode?* No:
@@ -233,3 +323,8 @@ tools.
 
 What the executor adds is the service's hosted loop, not a second set of
 rules.
+
+The ACS target does not exclude Core mode either:
+
+- it is a projection of the same IR, written by the compiler alone;
+- a Core user who never runs an AGT host never needs it.
