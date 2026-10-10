@@ -58,6 +58,13 @@ export interface ContainerHostOptions {
    * still be built and tested. Nothing written there persists.
    */
   scratch?: string[];
+  /**
+   * Directories outside every policy that a link at the top of a mounted path
+   * may point to, e.g. a dependency cache the host prepared: the target is
+   * mounted read-only in the link's place. Like the verifier's `extraRead`, it
+   * is part of the toolchain, never a path an agent can write.
+   */
+  linkTargets?: string[];
   docker?: Docker;
 }
 
@@ -175,7 +182,8 @@ export class ContainerHost implements SandboxHost {
       // A link inside a mount (a test copy's linked node_modules) does not resolve in the container: its target, if the
       // policy allows it, is mounted in its place, read-only.
       for (const [entry, target] of links(m.host)) {
-        if (!sb.mounts.some((o) => norm(target) === norm(o.host) || norm(target).startsWith(`${norm(o.host)}/`))) continue;
+        const under = (dir: string) => norm(target) === norm(dir) || norm(target).startsWith(`${norm(dir)}/`);
+        if (!sb.mounts.some((o) => under(o.host)) && !(this.o.linkTargets ?? []).some((d) => under(hostPath(d)))) continue;
         argv.push("--mount", `type=bind,source=${norm(target)},target=/m/${i}/${entry},readonly`);
         if (entry === "node_modules") argv.push(...caches(target, `/m/${i}/${entry}`));
       }

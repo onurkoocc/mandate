@@ -11,7 +11,7 @@
 // anything runs, a read-only path cannot be written from inside, no host can
 // be reached, and a hung process is killed at its timeout (G05, G07).
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -79,6 +79,23 @@ describe("ContainerHost against a fake Docker", () => {
     expect((await host.execute(h, { argv: ["npm", "install", "left-pad"] })).exitCode).toBe(126);
     expect((await host.execute(h, { argv: ["cat", "--", "/etc/passwd"] })).exitCode).toBe(126);
     expect(docker.calls).toEqual([]);
+  });
+
+  it("mounts a link's target read-only in its place only inside the policy or a configured link target", async () => {
+    const deps = mkdtempSync(join(tmpdir(), "mandate-deps-"));
+    const repo = join(root, "linked");
+    mkdirSync(repo, { recursive: true });
+    symlinkSync(deps, join(repo, "node_modules"), "junction");
+    const at = repo.replace(/\\/g, "/");
+    const without = new FakeDocker();
+    const a = new ContainerHost({ images: { npm: "node:22-slim" }, docker: without });
+    await a.execute(await a.create(policy({ write: [at], exec: [{ command: "npm", argsPrefix: [["test"]] }] })), { argv: ["npm", "test"], cwd: at });
+    expect(without.calls[0]!.args.some((x) => x.includes("/node_modules,readonly"))).toBe(false);
+    const withDeps = new FakeDocker();
+    const b = new ContainerHost({ images: { npm: "node:22-slim" }, linkTargets: [deps], docker: withDeps });
+    await b.execute(await b.create(policy({ write: [at], exec: [{ command: "npm", argsPrefix: [["test"]] }] })), { argv: ["npm", "test"], cwd: at });
+    expect(withDeps.calls[0]!.args.some((x) => x.endsWith("target=/m/0/node_modules,readonly"))).toBe(true);
+    rmSync(deps, { recursive: true, force: true });
   });
 
   it("kills a process at its timeout inside the container, and Stop removes the containers", async () => {
