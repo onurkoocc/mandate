@@ -126,7 +126,9 @@ export class ContainerHost implements SandboxHost {
       }
       return p;
     };
-    const cwd = req.cwd ? inside(req.cwd) : sb.mounts.length ? "/m/0" : "/tmp";
+    // Without a working directory, the first mounted directory: a grant may name a single file (README.md) first.
+    const firstDir = sb.mounts.findIndex((m) => isDir(m.host));
+    const cwd = req.cwd ? inside(req.cwd) : firstDir >= 0 ? `/m/${firstDir}` : "/tmp";
     const timeoutMs = req.timeoutMs ?? (sb.policy.timeoutSeconds ? sb.policy.timeoutSeconds * 1000 : undefined);
     const argv = ["exec", "-i", "-w", cwd];
     for (const [k, v] of Object.entries(this.o.env ?? {})) argv.push("-e", `${k}=${v}`);

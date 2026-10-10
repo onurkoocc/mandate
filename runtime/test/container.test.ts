@@ -138,6 +138,13 @@ describe.runIf(process.env["MANDATE_CONTAINER"] === "1")("ContainerHost on a rea
       // No network.
       const net = await host.execute(h, { argv: ["node", "-e", "require('dns').lookup('example.com',(e)=>{console.log(e?'NO':'YES')})"], cwd: repo });
       expect(net.stdout).toContain("NO");
+      // A grant whose first path is a file still runs tools: the working directory is a directory of the grant.
+      const h2 = await host.create(policy({ read: [repo], write: [`${repo}/README.md`] }));
+      try {
+        expect((await host.execute(h2, { argv: ["ls", "-1Ap", "--", src] })).exitCode).toBe(0);
+      } finally {
+        await host.destroy(h2);
+      }
       // A hung process is killed at its timeout.
       const hung = await host.execute(h, { argv: ["node", "-e", "setInterval(()=>{},1000)"], cwd: repo, timeoutMs: 3000 });
       expect(hung.timedOut).toBe(true);
