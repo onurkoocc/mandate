@@ -49,7 +49,7 @@ anything runs. This repository holds the 0.1 reference implementation.
    continue-as-new under Temporal; and the Windows sandbox backend with
    learning mode (W0311).
 
-8. **0.3, existing systems (in progress; BACKLOG §3.1, design doc 9):**
+8. **0.3, existing systems (done; design doc 9):**
    language version 0.3. The system model (`component`, `interface`,
    `environment`) lives in the IR and is imported as a module pinned by the
    lock, and capabilities can be written over components. A run starts
@@ -71,14 +71,14 @@ anything runs. This repository holds the 0.1 reference implementation.
    the evidence matrix, the order and why, and what was real; a change
    outside the plan is an `unplanned_change`.
    See [`spec/system.md`](spec/system.md).
-6. **Executors (item 39):** a program's agents can run on Claude Managed
+9. **Executors (item 39):** a program's agents can run on Claude Managed
    Agents in Form A. `mandate deploy --target managed-agents` deploys them
    and writes the binding into the lock. ValidateBinding runs before every
    run. Each delegation is one session, and every tool is a custom tool
    that the runtime runs in the agent's own sandbox (the bridge, K79), so
    the loop's checks, the journal and the budget hold as for a local loop.
    See [`spec/executors.md`](spec/executors.md).
-7. **ACS target (item 40):** `mandate target acs` writes each agent's
+10. **ACS target (item 40):** `mandate target acs` writes each agent's
    per-call rules as an Agent Control Specification manifest and generated
    Rego, for Microsoft AGT hosts. The Rego fails closed, is bound to the
    package hash, and comes with the profile of what one call cannot show.
@@ -186,8 +186,8 @@ X03 the data class (E0905).
 `compiler/test/acs.test.ts` checks the ACS target (X05): one manifest and
 bundle per agent bound to the package hash, W0907 and E0906, and, with
 `MANDATE_OPA`, the generated Rego on a real OPA.
-`compiler/test/static.test.ts` also checks the §20 FixBug table: 18.5 USD of
-child budgets inside 20 USD, delegated capabilities inside the workflow's,
+`compiler/test/static.test.ts` also checks the §20 FixBug table: 49.28 USD of
+child budgets inside 50 USD, delegated capabilities inside the workflow's,
 disjoint writes for the two parallel agents, step limits, review never
 counted alone, and a verified, idempotent PR. It also applies one mutation
 per rule to FixBug and checks that the rule fires.
@@ -215,8 +215,8 @@ adapters:
   and the run waits for the code owner. After the approval it opens exactly
   one PR. The test checks:
   - the evidence for every criterion;
-  - the budget table: 18.5 USD of agent budgets reserved within 20 USD,
-    11 USD reserved while the two parallel agents run, 11 USD settled;
+  - the budget table: 49.28 USD of agent budgets reserved within 50 USD,
+    and 11 USD settled;
   - a replay that calls no adapter.
 - **A failing check.** It is escalated, and the code owner is never asked.
 - **A declined approval.** It is escalated too, and a person's answer to
@@ -227,7 +227,7 @@ adapters:
   there first. The run escalates and no PR is prepared.
 - **A caller limit below the agents' budgets.** It stops at
   `budget_exceeded` before the Implementer runs, and the workflow's handler
-  asks a person. A person raises the limit from 10 to 20 USD (a governance
+  asks a person. A person raises the limit from 12 to 50 USD (a governance
   change, never past the workflow's own budget) and answers. The run then
   goes on from the Implementer to the PR. Answered without a raise, it
   asks again.
