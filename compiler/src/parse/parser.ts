@@ -564,8 +564,15 @@ class Parser {
           def[field] = [...new Set(names)].sort();
           break;
         }
+        case "governance": {
+          const globs: string[] = [];
+          do globs.push(this.string("a file pattern, e.g. \"deploy/**\""));
+          while (this.eatP(","));
+          def.governance = [...new Set(globs)].sort();
+          break;
+        }
         default:
-          this.fail(`Expected repo, root, lang, owner, build, test, provides or consumes in a component but found '${field}'.`, t);
+          this.fail(`Expected repo, root, lang, owner, build, test, provides, consumes or governance in a component but found '${field}'.`, t);
       }
     }
     this.expectP("}");

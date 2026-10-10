@@ -152,6 +152,7 @@ function printDef(name: string, d: Def): string {
       if (d.test) lines.push(`  test     ${commands(d.test)}`);
       if (d.provides) lines.push(`  provides ${d.provides.join(", ")}`);
       if (d.consumes) lines.push(`  consumes ${d.consumes.join(", ")}`);
+      if (d.governance) lines.push(`  governance ${d.governance.map(quoteText).join(", ")}`);
       lines.push("}");
       return lines.join("\n");
     }

@@ -18,6 +18,7 @@ import {
   classRank,
   type DataClass,
   DECISION_POLICIES,
+  governanceFiles,
   hashProgram,
   modelTiers,
   PROGRESS_DEFAULTS,
@@ -1126,7 +1127,7 @@ export class Interpreter {
     const { journal, runId, fence } = this.o;
     let justCommitted = false;
     if (action.state === "prepared") {
-      const authId = await this.authorization(e.name, info, action, path, undefined, this.environmentTier(e.name, e.args));
+      const authId = await this.authorization(e.name, info, action, path, undefined, this.environmentTier(e.name, e.args), this.governanceOf(action));
       action = await journal.commit(runId, fence, action.operation_key, authId);
       justCommitted = true;
       this.o.faults.check("after_commit", { id: path, kind: "effect" });
@@ -1311,7 +1312,7 @@ export class Interpreter {
     const memberAuth = new Map<string, string>();
     for (const m of members) {
       if (m.action!.state !== "prepared") continue;
-      memberAuth.set(m.component, await this.authorization(m.effect, { irreversible: true }, m.action!, `${path}/members/${m.component}`, { role: m.approver, changeset: setDigest, component: m.component }, this.environmentTier(m.effect, e.members[m.component]!.args)));
+      memberAuth.set(m.component, await this.authorization(m.effect, { irreversible: true }, m.action!, `${path}/members/${m.component}`, { role: m.approver, changeset: setDigest, component: m.component }, this.environmentTier(m.effect, e.members[m.component]!.args), this.governanceOf(m.action!, m.component)));
     }
     let setAuth: string | undefined;
     if (members.some((m) => m.action!.state === "prepared")) {
@@ -1321,7 +1322,7 @@ export class Interpreter {
         role: e.approver,
         order: e.order,
         changes: (e.changes ?? {}) as Value,
-        members: members.map((m) => ({ component: m.component, effect: m.effect, action_digest: m.action!.action_digest, approver: m.approver, files: Object.keys(isObj(m.action!.artifacts ?? null) ? (m.action!.artifacts as Obj) : {}) })),
+        members: members.map((m) => ({ component: m.component, effect: m.effect, action_digest: m.action!.action_digest, approver: m.approver, files: Object.keys(isObj(m.action!.artifacts ?? null) ? (m.action!.artifacts as Obj) : {}), governance: (this.governanceOf(m.action!, m.component)?.files ?? []) as unknown as Value })),
         deadline: null,
       });
       if (!isObj(decision) || decision["approved"] !== true) throw new Fault("Rejected", [{ changeset: path, denied_by: isObj(decision) ? (decision["by"] ?? null) : null }]);
@@ -1553,10 +1554,51 @@ export class Interpreter {
     return undefined;
   }
 
-  private async authorization(effect: string, info: { irreversible: boolean }, action: ActionRow, path: string, member?: { role: string; changeset: string; component: string }, env?: { environment: string; tier: Tier }): Promise<string> {
+  /**
+   * The governance-class files an action carries (K70): CI workflows,
+   * lockfiles, agent settings, the Mandate lock, CODEOWNERS, and a
+   * component's own patterns. Their owner is the component's owner, or the
+   * runtime's `owner` for an action outside a change set.
+   */
+  private governanceOf(action: ActionRow, component?: string): { files: Array<{ file: string; kind: string }>; owner: string } | undefined {
+    const files = isObj(action.artifacts ?? null) ? Object.keys(action.artifacts as Obj) : [];
+    if (!files.length) return undefined;
+    const d = component ? this.def(component) : undefined;
+    const c = d?.kind === "component" ? d : undefined;
+    const found = governanceFiles(files, c?.governance ?? []);
+    return found.length ? { files: found, owner: c?.owner ?? "owner" } : undefined;
+  }
+
+  private async authorization(
+    effect: string,
+    info: { irreversible: boolean },
+    action: ActionRow,
+    path: string,
+    member?: { role: string; changeset: string; component: string },
+    env?: { environment: string; tier: Tier },
+    gov?: { files: Array<{ file: string; kind: string }>; owner: string },
+  ): Promise<string> {
     const base = this.o.policy.authorize?.[effect] ?? (member ? { by: "human" as const, role: member.role } : info.irreversible ? { by: "human" as const, role: "owner" } : { by: "policy" as const });
     // The environment's tier is the least that applies: a person's tier names who decides, and a policy tier never lowers the runtime's.
-    const pol = env?.tier.by === "human" ? { ...base, by: "human" as const, role: env.tier.role } : base;
+    let pol: AuthorizePolicy = env?.tier.by === "human" ? { ...base, by: "human" as const, role: env.tier.role } : base;
+    // A governance-class file needs its owner (K70), and is never lowered: a policy becomes the owner's decision, and
+    // another person's decision comes after the owner's own, both bound to the same action digest.
+    const governance = gov ? (gov.files as unknown as Value) : undefined;
+    if (gov && pol.by === "policy") pol = { by: "human", role: gov.owner };
+    else if (gov && pol.by === "human" && pol.role !== gov.owner) {
+      const gate = await this.wait(`${path}/governance`, "decision", {
+        gate: "governance",
+        effect,
+        action_digest: action.action_digest,
+        params: action.params,
+        role: gov.owner,
+        governance: governance!,
+        then: pol.role,
+        ...(member ? { changeset: member.changeset, component: member.component } : {}),
+        deadline: null,
+      });
+      if (!isObj(gate) || gate["approved"] !== true) throw new Fault("Rejected", [{ denied_by: isObj(gate) ? (gate["by"] ?? null) : null, governance: governance! }]);
+    }
     if (pol.by === "policy") {
       const id = digest("operation", { authorize: action.action_digest, by: "policy" });
       const ttl = this.o.policy.authorizationTtlMs ?? 15 * 60_000;
@@ -1570,9 +1612,10 @@ export class Interpreter {
       role: pol.role,
       ...(member ? { changeset: member.changeset, component: member.component } : {}),
       ...(env ? { environment: env.environment, tier: env.tier as unknown as Value } : {}),
+      ...(governance ? { governance } : {}),
       deadline: pol.deadlineMs === undefined ? null : this.o.adapters.clock.now() + pol.deadlineMs,
     });
-    if (!isObj(decision) || decision["approved"] !== true) throw new Fault("Rejected", [{ denied_by: isObj(decision) ? (decision["by"] ?? null) : null }]);
+    if (!isObj(decision) || decision["approved"] !== true) throw new Fault("Rejected", [{ denied_by: isObj(decision) ? (decision["by"] ?? null) : null, ...(governance ? { governance } : {}) }]);
     return String(decision["authorization_id"]);
   }
 }

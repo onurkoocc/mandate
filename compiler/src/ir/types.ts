@@ -90,6 +90,8 @@ export interface ComponentDef {
   provides?: string[];
   /** Interface names, sorted. */
   consumes?: string[];
+  /** Its own governance-class file patterns, added to the language's defaults (K70), sorted. */
+  governance?: string[];
 }
 
 export const INTERFACE_PROTOCOLS = ["openapi", "mcp_tools", "oauth", "event", "db_schema"] as const;

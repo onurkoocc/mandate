@@ -60,6 +60,7 @@ import {
   UNGATED_EFFECTS,
   type DataClass,
 } from "../std/std.js";
+import { patternProblem } from "../std/governance.js";
 import {
   calleePath,
   capAuthorizes,
@@ -566,6 +567,13 @@ class Checker implements TypeEnv {
         const [bn, b] = mine[j]!;
         if (pathsOverlap(a.root, b.root)) this.report("E1003", `The working copies of ${an} (${a.root}) and ${bn} (${b.root}) overlap; each component has a root of its own.`, ptr("defs", bn, "root"), { components: [an, bn] });
       }
+    }
+    // A component's own governance-class patterns are relative to its repository's root, like the files they match (K70).
+    for (const [name, d] of mine) {
+      (d.governance ?? []).forEach((g, i) => {
+        const why = patternProblem(g);
+        if (why) this.report("E1007", `${name}: governance pattern ${JSON.stringify(g)} matches no file of the repository: ${why}. A pattern is relative to the repository's root, e.g. "deploy/**".`, ptr("defs", name, "governance", String(i)), { component: name, pattern: g });
+      });
     }
     for (const [name, d] of own) {
       if (d.kind !== "environment") continue;

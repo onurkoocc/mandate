@@ -241,6 +241,10 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Environment tier does not bind",
     explain: "An environment sets the least authorization tier for effects in it: `authorize deploy by human(role: \"release_manager\")` (design doc 9 §5.3). The tier is the organization's, not the program's, so it lives in the system model and a change to it is a governance change. It must name a critical effect, since nothing else is ever authorized. At run time the stronger of the tier and the runtime's policy applies; a program cannot lower it.",
   },
+  "MDT-E1007": {
+    title: "Governance pattern not relative",
+    explain: "A component's `governance` pattern must be relative to its repository's root, like the files it matches: no leading `/`, no empty, `.` or `..` segment, no `\`, `:` or NUL. Its patterns are added to the language's governance-class files (CI workflows, lockfiles, agent settings, the Mandate lock, CODEOWNERS); an action carrying such a file needs the component owner's approval (K70).",
+  },
   "MDT-E1101": {
     title: "Change set order breaks the interface graph",
     explain: "A change set declares how interfaces change. For an additive change, the provider lands before every member that consumes the interface, and the provider is a member of the set. When no order can satisfy the graph (a cycle), the change must be split into steps (design doc 9 §3.3).",

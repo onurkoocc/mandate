@@ -61,7 +61,7 @@ Definition kinds:
 | `agent` | A role, capabilities, a budget and skills; or a remote A2A binding |
 | `workflow` | An entry point: parameters, capabilities, budget, body, event handlers |
 | `contract` | Acceptance criteria over its parameters |
-| `component` | 0.3: a deployable unit of a system: repository, root, owner, build and test commands, interfaces it provides and consumes |
+| `component` | 0.3: a deployable unit of a system: repository, root, owner, build and test commands, interfaces it provides and consumes, its own governance-class file patterns |
 | `interface` | 0.3: a contract between components (`openapi`, `mcp_tools`, `oauth`, `event`, `db_schema`) and its spec file |
 | `environment` | 0.3: an environment: its data class, declared reads, and the weakest authorization each effect accepts there |
 
@@ -148,6 +148,10 @@ declared name, e.g. `git.open_pr`.
 - An **irreversible** effect also needs one of these: an earlier
   `human.approve` in the same body, or an argument verified by a contract
   that has a `human.approve` criterion.
+- An effect whose action carries a **governance-class file** (a CI
+  workflow, a lockfile, agent settings, the Mandate lock, CODEOWNERS)
+  needs the code owner's approval at run time, whatever else authorizes it
+  (K70; [`system.md`](system.md#governance-class-files-k70)).
 - A **retry class** is declared, not inferred from a name. It is one of
   `read_only`, `idempotent`, `reconcilable` or `non_retryable`.
 

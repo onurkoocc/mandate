@@ -1781,6 +1781,15 @@
             },
             "consumes": {
               "$ref": "#/$defs/NameSet"
+            },
+            "governance": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "uniqueItems": true
             }
           },
           "additionalProperties": false,

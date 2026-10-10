@@ -597,7 +597,7 @@ function systemChanges(name: string, b: SystemDef, a: SystemDef): string[] {
     if (j(x ?? null) !== j(y ?? null)) out.push(`${a.kind} ${name}.${label}: ${j(x ?? null)} → ${j(y ?? null)}`);
   };
   if (a.kind === "component" && b.kind === "component") {
-    for (const f of ["repo", "root", "lang", "owner", "build", "test", "provides", "consumes"] as const) field(f, b[f], a[f]);
+    for (const f of ["repo", "root", "lang", "owner", "build", "test", "provides", "consumes", "governance"] as const) field(f, b[f], a[f]);
   } else if (a.kind === "interface" && b.kind === "interface") {
     field("protocol", b.protocol, a.protocol);
     field("spec", b.spec, a.spec);
@@ -778,7 +778,8 @@ export interface SystemView {
   program: ProgramRef;
   /** The modules the system model comes from, by hash; empty when the program defines it itself. */
   modules: Array<{ module: string; hash: string }>;
-  components: Array<{ name: string; repo: string; root: string; lang: string; owner: string; build: string[]; test: string[]; provides: string[]; consumes: string[] }>;
+  /** `governance`: the component's own governance-class patterns, beyond the language's defaults (K70). */
+  components: Array<{ name: string; repo: string; root: string; lang: string; owner: string; build: string[]; test: string[]; provides: string[]; consumes: string[]; governance: string[] }>;
   interfaces: Array<{ name: string; protocol: string; spec: string; provider: string | null; consumers: string[] }>;
   environments: Array<{ name: string; class: string; reads: Array<{ name: string; from: string; kind: "sql" | "logs"; params: string; returns: string; max_rows: number }>; authorize: Array<{ effect: string; tier: string }> }>;
   /** The consumption graph: an edge from consumer to provider, labelled with the interface. */
@@ -815,6 +816,7 @@ export function system(program: Program, modules: Modules = {}): SystemView {
     test: (c.test ?? []).map(showCommand),
     provides: c.provides ?? [],
     consumes: c.consumes ?? [],
+    governance: c.governance ?? [],
   }));
   const interfaces = defs
     .filter((x): x is [string, InterfaceDef] => x[1].kind === "interface")
@@ -858,6 +860,10 @@ export function systemBlocks(v: SystemView): Block[] {
   if (v.modules.length) out.push({ p: `System model from ${v.modules.map((m) => `${m.module} (${m.hash})`).join(", ")}.` });
   out.push({ code: v.mermaid, lang: "mermaid" });
   out.push({ table: { head: ["Component", "Repository", "Root", "Language", "Owner", "Build", "Test", "Provides", "Consumes"], rows: v.components.map((c) => [c.name, c.repo, c.root, c.lang, c.owner, list(c.build), list(c.test), list(c.provides), list(c.consumes)]) } });
+  // K70: what a component's owner must approve whatever else authorizes the action.
+  const own = v.components.filter((c) => c.governance.length);
+  out.push({ p: `Governance-class files: an action that carries one needs its component owner's approval. The language's own are CI workflows, lockfiles, agent settings, the Mandate lock and CODEOWNERS${own.length ? "; components add:" : "; no component adds any."}` });
+  if (own.length) out.push({ table: { head: ["Component", "Owner", "Its own governance-class files"], rows: own.map((c) => [c.name, c.owner, list(c.governance)]) } });
   out.push({ table: { head: ["Interface", "Protocol", "Spec", "Provider", "Consumers"], rows: v.interfaces.map((i) => [i.name, i.protocol, i.spec, i.provider ?? "none", list(i.consumers)]) } });
   for (const e of v.environments) {
     out.push({ p: `Environment ${e.name}: holds data up to ${e.class}.` });

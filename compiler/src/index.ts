@@ -15,6 +15,7 @@ export { applyPatch, type GovernanceChange, type PatchOp, type PatchResult } fro
 export { printProgram } from "./print/printer.js";
 export { resolveNames } from "./resolve/resolve.js";
 export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, within, type CapResult, type CapVal } from "./check/caps.js";
+export { GOVERNANCE_FILES, GOVERNANCE_KINDS, globRegExp, governanceFiles, governanceKind, type GovernanceKind } from "./std/governance.js";
 export { BUILTIN_EFFECTS, classRank, DATA_CLASSES, DECISION_POLICIES, STD_EFFECTS, STD_FNS, type DataClass } from "./std/std.js";
 export { ACS_PROFILE, ACS_TARGET_FORMAT, ACS_VERSION, acsTarget, type AcsAgent, type AcsTarget } from "./target/acs.js";
 export { agentModels, bindingChecks, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, MA_MAX_CLASS, type ManagedAgentsAgentBinding, type ManagedAgentsBinding, type ProfileLevel } from "./target/managed-agents.js";

@@ -32,14 +32,13 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { requirementFor, type CapVal } from "@mandate/compiler";
+import { globRegExp, requirementFor, type CapVal } from "@mandate/compiler";
 import type { CheckLog, CheckResult, CheckSubject, SystemFacts, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { sha256Of } from "./artifacts.js";
 import { PathRefused, realEntries, writeWithin } from "./paths.js";
 import { MxcAdapter } from "./sandbox.js";
 import { covers, diffMigrations, diffSpec, type ChangeKind } from "./specdiff.js";
 import { isObj, plain, type Value } from "./values.js";
-import { globRegExp } from "./verifier.js";
 
 export const BOUNDARY_HANDLER = "mandate-boundary-verifier@0.3";
 

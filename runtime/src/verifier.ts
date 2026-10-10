@@ -26,7 +26,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { requirementFor, type CapVal, type TypeExpr } from "@mandate/compiler";
+import { globRegExp, requirementFor, type CapVal, type TypeExpr } from "@mandate/compiler";
 import type { CheckLog, CheckResult, CheckSubject, Cost, InferRequest, ModelAdapter, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { sha256Of } from "./artifacts.js";
 import { inside, outside, PathRefused, realEntries, removeWithin, writeWithin } from "./paths.js";
@@ -293,21 +293,6 @@ export class SandboxVerifier implements VerifierAdapter {
   }
 }
 
-/** A glob over `/`-separated paths: `**` any number of segments, `*` within a segment, `?` one character. */
-export function globRegExp(glob: string): RegExp {
-  let re = "";
-  for (let i = 0; i < glob.length; i++) {
-    const c = glob[i]!;
-    if (c === "*" && glob[i + 1] === "*") {
-      const slash = glob[i + 2] === "/";
-      re += slash ? "(?:[^/]+/)*" : ".*";
-      i += slash ? 2 : 1;
-    } else if (c === "*") re += "[^/]*";
-    else if (c === "?") re += "[^/]";
-    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  }
-  return new RegExp(`^${re}$`);
-}
 
 function filesOf(v: Value): string[] {
   const files = isObj(v) ? v["files"] : undefined;

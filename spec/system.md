@@ -14,7 +14,7 @@ ordinary IR, so the same hash, checks and views apply to them.
 
 | Kind | Declares |
 |---|---|
-| `component` | A deployable unit: its repository (`owner/name`), the root of its working copy, its language, the role that owns it, its `build` and `test` commands, and the interfaces it `provides` and `consumes` |
+| `component` | A deployable unit: its repository (`owner/name`), the root of its working copy, its language, the role that owns it, its `build` and `test` commands, the interfaces it `provides` and `consumes`, and its own `governance` file patterns ([below](#governance-class-files-k70)) |
 | `interface` | A contract between components: its `protocol` (`openapi`, `mcp_tools`, `oauth`, `event`, `db_schema`) and the path of its spec file in the provider's repository |
 | `environment` | An environment: the highest data `class` it holds, its declared `read`s, and for each effect the weakest authorization it accepts there (`authorize deploy by human(role: "release_manager")`) |
 
@@ -247,6 +247,7 @@ at a revision; a decision on an older revision is refused (INV-10, G10):
 | Evidence matrix | Criteria by component: passed, failed or unknown, with the evidence id. A check that reports per component (`suite_each`, `contract`, `planned`) fills each cell from that component's own part |
 | Order | Each member with the interfaces it waits for: "after auth: mcp consumes TokenIssuance, which auth provides and this set changes it (additive)" |
 | Reality | The mode; in a live run, each member's action state |
+| Governance-class files | Each member's files that change what the next run may do, with their class and who must approve them ([below](#governance-class-files-k70)) |
 | Authority | A member that lands a Mandate module, such as the system model, diffed against the version the run's package pins; governance changes listed. A new module, or the lock, is named |
 
 **Plan ↔ change.** The set digest S covers the plan's digest and evidence.
@@ -254,6 +255,61 @@ at a revision; a decision on an older revision is refused (INV-10, G10):
 path or an interface outside it is an `unplanned_change`, and the criterion
 is unmet. Read_only and design runs record their sets too, as
 `would_apply` and `simulated`, so the view says what would have landed.
+
+## Governance-class files (K70)
+
+Some files in a target repository decide what the next run, or the next
+person, may do. An agent that changes one can weaken the gate it is judged
+by: a CI workflow that stops running the tests, a lockfile that fetches
+other code, agent settings that allow more, a lock that pins another model,
+a CODEOWNERS that names another approver. This is G06 (a pinned acceptance
+suite) carried into the target repository.
+
+**The class.** The language fixes a default set, and every implementation
+uses it (`compiler/src/std/governance.ts`):
+
+| Class | Files (`**` any number of directories) |
+|---|---|
+| CI | `.github/workflows/**`, `.github/actions/**`, `.gitlab-ci.yml`, `.gitlab/**`, `.circleci/**`, `**/Jenkinsfile`, `azure-pipelines.yml`, `.azure-pipelines/**`, `.buildkite/**`, `.travis.yml`, `bitbucket-pipelines.yml`, `.drone.yml` |
+| Lockfile | `**/package-lock.json`, `**/npm-shrinkwrap.json`, `**/yarn.lock`, `**/pnpm-lock.yaml`, `**/bun.lock`, `**/bun.lockb`, `**/poetry.lock`, `**/uv.lock`, `**/Pipfile.lock`, `**/pdm.lock`, `**/Cargo.lock`, `**/go.sum`, `**/Gemfile.lock`, `**/composer.lock`, `**/gradle.lockfile`, `**/packages.lock.json`, `**/flake.lock` |
+| Agent settings | `.claude/**`, `**/CLAUDE.md`, `**/CLAUDE.local.md`, `**/AGENTS.md`, `.mcp.json`, `.cursor/**`, `.cursorrules`, `.codex/**`, `.gemini/**`, `**/GEMINI.md`, `.github/copilot-instructions.md`, `.github/instructions/**`, `.windsurfrules` |
+| Mandate | `**/mandate.lock.json`, `**/mandate.runtime.json` |
+| Code owners | `CODEOWNERS`, `.github/CODEOWNERS`, `docs/CODEOWNERS` |
+
+A component adds its own patterns, relative to its repository's root
+(E1007). It cannot remove a default. Its patterns are part of the system
+model, so changing them is a governance change too:
+
+```mandate
+component core {
+  …
+  governance "deploy/**"
+}
+```
+
+**The approval.** Any action whose frozen files include one of them needs
+the code owner's approval: a change set member, and also `git.merge` or
+`git.open_pr` on their own. A pull request is enough, since a workflow
+changed on a branch of the same repository runs when the pull request
+opens. The owner is the component's `owner`, or the runtime's `owner` role
+for an action outside a change set. This is part of Mandate Core, not only
+of the system model (K69).
+
+- **Never lowered.** Where the run's policy would authorize the action
+  itself, the owner decides instead.
+- **Not replaced.** Where another person would decide (a member's
+  `approved_by`, an environment's tier), the owner decides first, then that
+  person. The owner's decision is a gate bound to the action digest and
+  authorizes nothing by itself (`gate: "governance"`). Declining it rejects
+  the action, and nothing is sent.
+- **Shown.** Every decision request names the files and their class, and so
+  does the set approver's view of each member. The change set view lists
+  them as a class of their own, with who must approve them.
+
+`fixtures/system/loosen-ci.mdt` is a change to core that drops its CI's test
+step. Under a policy that authorizes `git.merge` by itself, it still waits
+for `core_owner`, and declined, it lands nothing
+(`runtime/test/governance.test.ts`).
 
 ## Reads and run modes (B6)
 
