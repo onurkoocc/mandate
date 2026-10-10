@@ -25,8 +25,9 @@
 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { isAbsolute, join, posix, relative, sep } from "node:path";
+import { join } from "node:path";
 import type { AuthorizationContext, PreparedAction, PreparedFile, ToolAdapter, ToolContract } from "./adapters.js";
+import { inside } from "./paths.js";
 import { digest, isObj, type Value } from "./values.js";
 
 export interface GitHubOptions {
@@ -179,8 +180,7 @@ export class GitHubPullRequests implements ToolAdapter {
 
   /** `f` relative to the working copy, with forward slashes; undefined when it is not inside it. */
   private inside(f: string): string | undefined {
-    const rel = posix.normalize((isAbsolute(f) ? relative(this.o.workdir, f) : f).split(sep).join("/"));
-    return rel === ".." || rel.startsWith("../") || rel.startsWith("/") || rel === "." ? undefined : rel;
+    return inside(this.o.workdir, f);
   }
 
   private async refSha(ref: string): Promise<string> {

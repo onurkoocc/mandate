@@ -356,7 +356,13 @@ read-only sandbox of its own, over a copy of the working copy:
   `{ "files": "…", "pinned": false }` runs the working copy's files instead.
 - **`test.red_then_green(patch, tests)`.** The new tests must fail with
   the patched files as they were at the base commit, and pass as the
-  agents left them.
+  agents left them. The files the patch and the tests name are what the
+  agents said: a file outside the working copy is unmet, by name, before
+  anything is copied.
+- **Copies.** A copy holds the working copy's real files and directories.
+  Links the agents left are not copied, and the verifier writes or deletes
+  in a copy only through real directories: the linked `node_modules` is
+  never written through.
 - **`review(model: tier, isolated)`.** A model reviews the diff in a fresh
   context. It is reserved and settled like any model call, and never
   enough on its own (E0603).

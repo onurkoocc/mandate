@@ -4,9 +4,9 @@
 // tests use real git and node; the MXC tests check the isolation itself.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import type { InferRequest, ModelAdapter, Outcome } from "../src/adapters.js";
 import { FULL_SANDBOX } from "../src/sim.js";
@@ -144,5 +144,89 @@ describe("the Gate 3 verifier (K20)", () => {
     expect(r).toMatchObject({ passed: true, cost: { tokens: 1200 } });
     expect(seen[0]!.tier).toBe("standard");
     expect(String(seen[0]!.input)).toContain("Math.ceil");
+  });
+});
+
+// The files a patch names are what the agents said (Inferred). The verifier
+// works outside every sandbox, so it may neither follow such a path out of
+// the working copy nor through a link in its copies (Doc 11 §7).
+describe("paths the agents name (Doc 11 §7)", () => {
+  const work = mkdtempSync(join(tmpdir(), "mandate-verify-paths-"));
+  const victim = mkdtempSync(join(tmpdir(), "mandate-victim-"));
+  afterAll(() => {
+    rmSync(work, { recursive: true, force: true });
+    rmSync(victim, { recursive: true, force: true });
+  });
+  const g = (...args: string[]) => execFileSync("git", ["-C", work, "-c", "user.email=t@t", "-c", "user.name=t", ...args], { encoding: "utf8" });
+  const link = (target: string, at: string) => symlinkSync(target, at, process.platform === "win32" ? "junction" : "dir");
+  const unlink = (at: string) => (process.platform === "win32" ? rmdirSync(at) : unlinkSync(at));
+  mkdirSync(join(work, "src"), { recursive: true });
+  mkdirSync(join(work, "test"), { recursive: true });
+  mkdirSync(join(work, "acceptance"), { recursive: true });
+  writeFileSync(join(work, "src", "pages.mjs"), "export const pageCount = (t, p) => Math.floor(t / p);\n");
+  writeFileSync(join(work, "acceptance", "pages.test.mjs"), 'import { test } from "node:test";\ntest("ok", () => {});\n');
+  g("init", "-q", "-b", "main");
+  g("add", "-A");
+  g("commit", "-q", "-m", "seed");
+  g("tag", "seed");
+  writeFileSync(join(work, "src", "pages.mjs"), "export const pageCount = (t, p) => Math.ceil(t / p);\n");
+  writeFileSync(join(work, "test", "partial.test.mjs"), 'import { test } from "node:test"; import assert from "node:assert/strict"; import { pageCount } from "../src/pages.mjs";\ntest("partial page", () => assert.equal(pageCount(1, 5), 1));\n');
+  // Installed dependencies: the verifier's copies link them, and must leave them where they are.
+  mkdirSync(join(work, "node_modules", "dep"), { recursive: true });
+  writeFileSync(join(work, "node_modules", "dep", "index.js"), "module.exports = 1;\n");
+  writeFileSync(join(victim, "keep.txt"), "keep\n");
+  writeFileSync(join(victim, "pages.test.mjs"), "victim\n");
+
+  const verifier = (suites: Record<string, string> = {}) => new SandboxVerifier({ workdir: work, base: "seed", suites }, new MxcAdapter({ host: new DirectHost(), schemaVersion: "0.9.0", modelEndpoints: {} }));
+  const redThenGreen = (patched: string[], tests = ["test/partial.test.mjs"]) =>
+    verifier().check({ method: "test.red_then_green", args: [{ files: patched }, { files: tests }], named: {}, contract: "FixAccepted", criterion: "regression_test" });
+  const untouched = () => {
+    expect(readFileSync(join(victim, "keep.txt"), "utf8")).toBe("keep\n");
+    expect(readFileSync(join(victim, "pages.test.mjs"), "utf8")).toBe("victim\n");
+    expect(existsSync(join(work, "node_modules", "dep", "index.js"))).toBe(true);
+  };
+
+  it("refuses a patch or tests that name a file outside the working copy, and deletes nothing", async () => {
+    const escape = `../${basename(victim)}/keep.txt`;
+    for (const [patched, tests] of [
+      [["src/pages.mjs", escape], undefined],
+      [["src/pages.mjs", join(victim, "keep.txt")], undefined],
+      [["src/pages.mjs"], [escape]],
+    ] as const) {
+      const r = await redThenGreen([...patched], tests ? [...tests] : undefined);
+      expect(r.passed).toBe(false);
+      expect(r.detail).toMatchObject({ reason: "files outside the working copy" });
+    }
+    untouched();
+  });
+
+  it("does not follow the linked node_modules from a copy", async () => {
+    const r = await redThenGreen(["src/pages.mjs", "node_modules/dep/index.js"]);
+    expect(r.passed).toBe(false);
+    expect(r.detail).toMatchObject({ reason: expect.stringContaining("passes through a link (node_modules)") });
+    untouched();
+  });
+
+  it("leaves the real node_modules in place when it removes a copy (Doc 11 §7.2)", async () => {
+    const r = await redThenGreen(["src/pages.mjs"]);
+    expect(r.passed, JSON.stringify(r.detail)).toBe(true);
+    untouched();
+  });
+
+  it("does not follow a link the agents left in the working copy: its copies hold real files only", async () => {
+    // A link out of the working copy, and a pinned suite's directory replaced by one.
+    link(victim, join(work, "out"));
+    rmSync(join(work, "acceptance"), { recursive: true, force: true });
+    link(victim, join(work, "acceptance"));
+    try {
+      const r = await redThenGreen(["src/pages.mjs", "out/keep.txt"]);
+      expect(r.passed, JSON.stringify(r.detail)).toBe(true);
+      // The pinned suite runs its files from the base commit, written into a real directory of the copy.
+      const s = await verifier({ acceptance: "acceptance/**/*.test.mjs" }).check({ method: "test.suite", args: [["acceptance"]], named: {}, contract: "FixAccepted", criterion: "suite_green" });
+      expect(s.passed, JSON.stringify(s.detail)).toBe(true);
+      untouched();
+    } finally {
+      for (const at of ["out", "acceptance"]) unlink(join(work, at));
+    }
   });
 });

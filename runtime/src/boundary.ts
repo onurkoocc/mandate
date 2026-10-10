@@ -29,12 +29,13 @@
 // change set will land (G01).
 
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { requirementFor, type CapVal } from "@mandate/compiler";
 import type { CheckLog, CheckResult, CheckSubject, SystemFacts, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { sha256Of } from "./artifacts.js";
+import { PathRefused, realEntries, writeWithin } from "./paths.js";
 import { MxcAdapter } from "./sandbox.js";
 import { covers, diffMigrations, diffSpec, type ChangeKind } from "./specdiff.js";
 import { isObj, plain, type Value } from "./values.js";
@@ -202,8 +203,13 @@ export class BoundaryVerifier implements VerifierAdapter {
           pinned[f] = sha256Of(content);
           const here = join(from ?? c.root, f);
           if (!existsSync(here) || sha256Of(readFileSync(here)) !== pinned[f]) modified.push(f);
-          mkdirSync(dirname(join(copy.dir, f)), { recursive: true });
-          writeFileSync(join(copy.dir, f), content);
+          // A copy links its dependencies: a pinned file is written only through real directories.
+          try {
+            writeWithin(copy.dir, f, content);
+          } catch (e) {
+            if (e instanceof PathRefused) return { passed: false, exitCodes: [125], pinned, modified, testsChanged, output: `${name}'s tests cannot be pinned: ${e.message}` };
+            throw e;
+          }
         }
       }
       const exitCodes: number[] = [];
@@ -511,10 +517,10 @@ function listFiles(dir: string, rel = ""): string[] {
   return readdirSync(join(dir, rel), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? listFiles(dir, rel ? `${rel}/${e.name}` : e.name) : e.isFile() ? [rel ? `${rel}/${e.name}` : e.name] : []));
 }
 
-/** A copy of a working copy without .git; dependency directories are linked and stay readable where they are. */
+/** A copy of a working copy without .git, of real files only; dependency directories are linked and stay readable where they are. */
 function copyOf(src: string, prefix: string): { dir: string; extraRead: string[]; remove(): void } {
   const dir = mkdtempSync(join(tmpdir(), prefix));
-  cpSync(src, dir, { recursive: true, filter: (p) => !new RegExp(`[\\\\/](\\.git|${LINKED.map((l) => l.replace(".", "\\.")).join("|")})$`).test(p) });
+  cpSync(src, dir, { recursive: true, filter: realEntries(src, new RegExp(`[\\\\/](\\.git|${LINKED.map((l) => l.replace(".", "\\.")).join("|")})$`)) });
   const extraRead: string[] = [];
   for (const l of LINKED) {
     const there = join(src, l);

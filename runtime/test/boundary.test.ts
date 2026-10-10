@@ -5,7 +5,7 @@
 // host that leaks), and CI that counts only attested or re-run.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -97,6 +97,21 @@ describe("test.suite_each", () => {
     expect((r.detail as { runs: Array<Record<string, unknown>> }).runs[0]).toMatchObject({ component: "mcp", passed: true, tests_changed: ["test/value.test.ts"] });
     write(mcp.root, "src/value.ts", "1\n");
     write(mcp.root, "test/value.test.ts", "1\n");
+  });
+
+  it("does not follow a link an agent left in a component's working copy when it pins its tests (Doc 11 §7)", async () => {
+    const linked = repo("acme-linked", { "src/value.ts": "1\n", "test/value.test.ts": "1\n" });
+    const victim = join(tmp, "victim");
+    write(victim, "value.test.ts", "victim\n");
+    // The agent replaced the test directory with a link out of its working copy.
+    rmSync(join(linked.root, "test"), { recursive: true, force: true });
+    symlinkSync(victim, join(linked.root, "test"), process.platform === "win32" ? "junction" : "dir");
+    const facts: SystemFacts = { components: { linked: { ...sys.components["mcp"]!, repo: "acme/linked", root: linked.root, base: linked.base } }, interfaces: {} };
+    const v = new BoundaryVerifier({ pinned: { linked: ["test/**"] } }, sandbox(host()));
+    const r = await v.check({ ...req("test.suite_each", [["linked"]]), system: facts });
+    // The copy holds real files only: the pinned test is written into it from the base commit, and runs.
+    expect(r.passed, JSON.stringify(r.detail)).toBe(true);
+    expect(readFileSync(join(victim, "value.test.ts"), "utf8")).toBe("victim\n");
   });
 
   it("refuses a component without test commands or outside the system", async () => {
