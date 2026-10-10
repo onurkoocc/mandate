@@ -73,6 +73,8 @@ component core {
   build    exec("mvn", ["-B", "-q", "-o", "-DskipTests", "package"])
   test     exec("mvn", ["-B", "-q", "-o", "test"])
   provides CoreApi, CoreSchema
+  // Beyond the language's governance-class files (K70): core's deploy scripts.
+  governance "deploy/**"
 }
 
 component search {

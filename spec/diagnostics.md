@@ -107,6 +107,7 @@ assigned here.
 | MDT-E1004 | Read does not match its declaration | — | assigned; one SELECT, placeholders = parameters, scalar parameters (K43) |
 | MDT-E1005 | Read above its environment's class | — | assigned |
 | MDT-E1006 | Environment tier does not bind | — | assigned; an environment's `authorize` names an effect that is not critical. At run time the stronger of the tier and the runtime's policy applies |
+| MDT-E1007 | Governance pattern not relative | — | assigned; a component's `governance` patterns are relative to its repository's root ([system.md](system.md#governance-class-files-k70)) |
 | MDT-E1101 | Change set order breaks the interface graph | — | assigned; an additive change's provider lands first and is a member; no cycles |
 | MDT-E1102 | Change set order does not list its members | — | assigned |
 | MDT-E1103 | Breaking change in one change set | — | assigned; expand → migrate → contract |

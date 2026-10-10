@@ -19,7 +19,7 @@
 // that came from a model, a tool or a person's answer is shown as untrusted
 // plain content (G09).
 
-import { architecture, architectureBlocks, authority, authorityBlocks, check, hashProgram, linkedProgram, programRef, semanticDiff, VIEW_FORMAT, type Block, type Cell, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/compiler";
+import { architecture, architectureBlocks, authority, authorityBlocks, check, governanceFiles, hashProgram, linkedProgram, programRef, semanticDiff, VIEW_FORMAT, type Block, type Cell, type ComponentDef, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/compiler";
 import type { BudgetReport, ChangesetRow, EvidenceRow } from "./journal.js";
 import type { Runtime } from "./runtime.js";
 import { covers, type ChangeKind } from "./specdiff.js";
@@ -70,6 +70,10 @@ export interface ChangesetView {
     /** The member's action: `confirmed`, `prepared`, …, or `simulated`. */
     action: string;
     files: string[];
+    /** Its governance-class files (K70), each with its kind: the component's owner approves these whatever else authorizes the member. */
+    governance: Array<{ file: string; kind: string }>;
+    /** The component's owner, who approves its governance-class files. */
+    owner: string;
     /** Each interface the component provides that the set or the plan names, or whose spec a check measured. */
     interfaces: Array<{ interface: string; declared: string | null; measured: string | null }>;
     /** Why the change is not the plan's, if it is not. */
@@ -210,12 +214,15 @@ async function changesetView(
     const declared = (iface: string): string | null => (typeof setChanges[iface] === "string" ? String(setChanges[iface]) : typeof planChanges[iface] === "string" ? String(planChanges[iface]) : null);
     const ifaces = new Set([...Object.keys(setChanges), ...Object.keys(planChanges)].filter((i) => providerOf(i) === c));
     for (const i of measured.keys()) ifaces.add(i);
+    const comp = defs[c]?.kind === "component" ? (defs[c] as ComponentDef) : undefined;
     components.push({
       component: c,
       effect: String(m["effect"]),
       approver: String(m["approver"] ?? ""),
       action: s.state === "simulated" ? "simulated" : (action?.state ?? "not prepared"),
       files,
+      governance: governanceFiles(files, comp?.governance ?? []),
+      owner: comp?.owner ?? "owner",
       interfaces: [...ifaces].sort().map((i) => ({ interface: i, declared: declared(i), measured: measured.get(i) ?? null })),
       unplanned,
     });
@@ -385,6 +392,15 @@ function costBlocks(v: RunView): Block[] {
   ];
 }
 
+const GOVERNANCE_LABEL: Record<string, string> = {
+  ci: "CI",
+  lockfile: "lockfile",
+  agent_settings: "agent settings",
+  mandate: "Mandate lock or configuration",
+  code_owners: "code owners",
+  component: "the component's own",
+};
+
 const RESULT: Record<Cellval, string> = { passed: "passed", failed: "FAILED", unknown: "unknown" };
 
 function changesetBlocks(v: RunView): Block[] {
@@ -412,6 +428,10 @@ function changesetBlocks(v: RunView): Block[] {
       out.push({ table: { head: ["Criterion", "Method", ...names], rows: s.matrix.map((r) => [`${r.contract}.${r.criterion}`, r.method, ...names.map((n) => (r.cells[n]!.evidence_id ? mono(`${RESULT[r.cells[n]!.result]} ${r.cells[n]!.evidence_id!.slice(0, 19)}`) : RESULT[r.cells[n]!.result]))]) } });
     } else out.push({ p: "No member carries evidence." });
     out.push({ table: { head: ["#", "Component", "Why here"], rows: s.order.map((o, i) => [String(i + 1), o.component, o.because.join("; ")]) } });
+    // K70: files that change what the next run may do are a class of their own, with who must approve them.
+    const gov = s.components.flatMap((c) => c.governance.map((g) => [c.component, mono(g.file), GOVERNANCE_LABEL[g.kind] ?? g.kind, c.approver === c.owner ? `${c.owner} (the owner; also approves the member)` : `${c.owner} (the owner), before ${c.approver}`]));
+    if (gov.length) out.push({ p: "Governance-class files: they change what the next run may do, so the component's owner approves them whatever else authorizes the member." }, { table: { head: ["Component", "File", "Class", "Needs"], rows: gov } });
+    else out.push({ p: "No member carries a governance-class file (CI workflows, lockfiles, agent settings, the Mandate lock, CODEOWNERS, a component's own)." });
     if (s.authority.length) out.push({ table: { head: ["Component", "File", "What it changes in authority"], rows: s.authority.map((a) => [a.component, mono(a.file), a.changes.join("; ")]) } });
     else out.push({ p: "No member changes a Mandate program, the system model or the lock: the set changes no capability, budget or environment tier." });
   }

@@ -894,6 +894,23 @@ commit per component.
   or write `core` (`runtime/test/workspace.test.ts`, also on a real
   Bubblewrap and AppContainer host).
 
+## Governance-class files (K70)
+
+Before an action carrying files is authorized, its files are matched
+against the governance class ([`system.md`](system.md#governance-class-files-k70)).
+If any match, their owner (the component's `owner`, or `owner` outside a
+change set) must approve:
+
+- a `policy` authorizer becomes the owner's decision;
+- another person's decision waits for the owner's own first, at
+  `<node>/governance`. That decision request carries `gate: "governance"`,
+  the files and `then` (the role that decides next). Approving it records
+  `governance_approved` and creates no authorization; declining it records
+  `governance_denied` and the action is `Rejected` with the files.
+
+Every decision request for such an action carries `governance`: the files
+and their class.
+
 ## Change sets (design doc 9 §3, B4)
 
 `changeset` extends prepare → authorize → commit to one action per

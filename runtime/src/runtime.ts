@@ -559,6 +559,8 @@ export class Runtime {
     type Resolution = { state: "succeeded"; result: Value } | { state: "failed"; error: Value };
     const fresh = await this.resolveWait(runId, msg, d.commandId, d.revision, "decision", d as unknown as Value, async (tx, request, run): Promise<Resolution> => {
       const criterion = isObj(request) && typeof request["subject_digest"] === "string";
+      // The code owner's own decision on a governance-class file (K70): a gate before the action's authorization, not one.
+      const gate = isObj(request) && request["gate"] === "governance";
       const bound = isObj(request) ? (criterion ? request["subject_digest"] : request["action_digest"]) : undefined;
       if (bound !== d.digest) {
         throw new Violation("decision_digest_mismatch", "The decision names something other than what is waiting for approval.");
@@ -567,8 +569,9 @@ export class Runtime {
       if (typeof deadline === "number" && this.adapters.clock.now() >= deadline) {
         return { state: "failed", error: { tag: "Rejected", args: ["approval_expired"] } };
       }
-      if (!d.approve || criterion) {
+      if (!d.approve || criterion || gate) {
         if (criterion) await this.journal.event(tx, runId, d.approve ? "criterion_approved" : "criterion_denied", { command: d.commandId, by: d.by });
+        if (gate) await this.journal.event(tx, runId, d.approve ? "governance_approved" : "governance_denied", { command: d.commandId, digest: d.digest, by: d.by });
         return { state: "succeeded", result: { approved: d.approve, by: d.by } };
       }
       const id = digest("operation", { authorize: d.digest, by: d.by, message: msg.messageId });

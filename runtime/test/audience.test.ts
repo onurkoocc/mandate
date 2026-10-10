@@ -140,7 +140,7 @@ describe("Acme task class 3: an audience change on one side (B5)", () => {
       const { view, program } = await runView(t.rt, run.run_id);
       const [cs] = view.changesets;
       expect(cs!.plan.approved_by).toEqual([{ criterion: "PlanAccepted.architect", by: "architect", role: "architect" }]);
-      expect(cs!.components).toEqual([{ component: "mcp", effect: "git.merge", approver: "support_platform_owner", action: "confirmed", files: ["src/config.ts", "test/config.test.ts"], interfaces: [{ interface: "CustomerTools", declared: null, measured: "none" }], unplanned: [] }]);
+      expect(cs!.components).toEqual([{ component: "mcp", effect: "git.merge", approver: "support_platform_owner", action: "confirmed", files: ["src/config.ts", "test/config.test.ts"], governance: [], owner: "support_platform_owner", interfaces: [{ interface: "CustomerTools", declared: null, measured: "none" }], unplanned: [] }]);
       expect(cs!.matrix.map((r) => [r.criterion, r.method, r.cells["mcp"]!.result])).toEqual([
         ["contracts", "test.contract", "passed"],
         ["integrated", "test.integration", "passed"],

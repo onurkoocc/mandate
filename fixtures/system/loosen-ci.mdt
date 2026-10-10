@@ -1,0 +1,50 @@
+// A change that loosens a component's CI (K70; BACKLOG item 46). Core's
+// change edits its code and its CI workflow, and the workflow no longer runs
+// the tests. The workflow is a governance-class file: core's owner approves
+// it, whatever the run's policy says and whoever else approves the member.
+
+mandate @ 0.3
+module acme.tasks.loosen_ci @ 0.1
+use std.{component, git}
+use acme.system.{core}
+
+capability Repos = component.repo(core)
+
+type Plan = { summary: Text }
+type Change = { files: List<Path> }
+
+contract PlanAccepted(plan: Plan) {
+  accept summarized "The plan says what changes" by static len(plan.summary) >= 1
+}
+
+contract ChangeAccepted(change: Change) {
+  accept listed "The change names its files" by static len(change.files) >= 1
+}
+
+// Core's member, approved as the run's policy says.
+workflow Speed(task: Text, files: List<Path>) -> Text
+  caps Repos
+{
+  let plan = verify Plan { summary: task } against PlanAccepted(Plan { summary: task })
+  let c = verify Change { files: files } against ChangeAccepted(Change { files: files })
+  let landed = changeset(plan) {
+    member core = git.merge(c)
+    order  core
+    approve role "architect"
+  } idempotent_by task
+  "landed"
+}
+
+// The same member, approved by the release manager instead of core's owner.
+workflow Release(task: Text, files: List<Path>) -> Text
+  caps Repos
+{
+  let plan = verify Plan { summary: task } against PlanAccepted(Plan { summary: task })
+  let c = verify Change { files: files } against ChangeAccepted(Change { files: files })
+  let landed = changeset(plan) {
+    member core = git.merge(c) approved_by role "release_manager"
+    order  core
+    approve role "architect"
+  } idempotent_by task
+  "landed"
+}

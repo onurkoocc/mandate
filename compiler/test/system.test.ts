@@ -12,6 +12,7 @@ import type { Program } from "../src/ir/types.js";
 import type { Lock } from "../src/lock.js";
 import { sandboxRequirements } from "../src/target/sandbox.js";
 import { semanticDiff, system } from "../src/views/views.js";
+import { governanceFiles, governanceKind } from "../src/std/governance.js";
 import { readRepo } from "./helpers.js";
 
 const ACME = readRepo("fixtures/system/acme.system.mdt");
@@ -236,5 +237,68 @@ describe("changing the system model is a governance change (doc 9 §1, §5.3)", 
     const v = semanticDiff(before, after);
     expect(v.governance.map((g) => g.text)).toEqual(['~ component core.owner: "core_owner" → "platform_owner"']);
     expect(v.behavior).toEqual([]);
+  });
+});
+
+describe("governance-class files (K70, item 46)", () => {
+  it("the language's defaults: CI, lockfiles, agent settings, the Mandate lock, code owners; nothing else", () => {
+    const kinds = Object.fromEntries(
+      [
+        ".github/workflows/ci.yml",
+        ".gitlab-ci.yml",
+        "services/api/Jenkinsfile",
+        "package-lock.json",
+        "web/pnpm-lock.yaml",
+        "go.sum",
+        ".claude/settings.json",
+        "AGENTS.md",
+        "pkg/CLAUDE.md",
+        ".mcp.json",
+        "mandate.lock.json",
+        ".github/CODEOWNERS",
+        "src/ci.ts",
+        "package.json",
+        "docs/workflows/ci.md",
+      ].map((f) => [f, governanceKind(f) ?? null]),
+    );
+    expect(kinds).toEqual({
+      ".github/workflows/ci.yml": "ci",
+      ".gitlab-ci.yml": "ci",
+      "services/api/Jenkinsfile": "ci",
+      "package-lock.json": "lockfile",
+      "web/pnpm-lock.yaml": "lockfile",
+      "go.sum": "lockfile",
+      ".claude/settings.json": "agent_settings",
+      "AGENTS.md": "agent_settings",
+      "pkg/CLAUDE.md": "agent_settings",
+      ".mcp.json": "agent_settings",
+      "mandate.lock.json": "mandate",
+      ".github/CODEOWNERS": "code_owners",
+      "src/ci.ts": null,
+      "package.json": null,
+      "docs/workflows/ci.md": null,
+    });
+  });
+
+  it("a component adds its own patterns, never removes a default", () => {
+    expect(governanceFiles(["deploy/release.sh", "src/A.java", ".github/workflows/ci.yml"], ["deploy/**"])).toEqual([
+      { file: ".github/workflows/ci.yml", kind: "ci" },
+      { file: "deploy/release.sh", kind: "component" },
+    ]);
+    const core = system(acme()).components.find((c) => c.name === "core")!;
+    expect(core.governance).toEqual(["deploy/**"]);
+  });
+
+  it("E1007: a component's pattern is relative to its repository's root", () => {
+    for (const bad of ['"/etc/**"', '"../other/**"', '"deploy//x"', '"C:/deploy/**"']) {
+      expect(codesOf(mutate('governance "deploy/**"', `governance ${bad}`)), bad).toEqual(["MDT-E1007"]);
+    }
+    // An empty pattern is not a pattern: the schema refuses it before the check.
+    expect(codesOf(mutate('governance "deploy/**"', 'governance ""'))).toEqual(["MDT-E0104"]);
+  });
+
+  it("changing a component's patterns is a governance change", () => {
+    const after = check(mutate('governance "deploy/**"', 'governance "deploy/prod/**"'), "mdt").program!;
+    expect(semanticDiff(acme(), after).governance.map((g) => g.text)).toEqual(['~ component core.governance: ["deploy/**"] → ["deploy/prod/**"]']);
   });
 });

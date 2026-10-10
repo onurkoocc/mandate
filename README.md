@@ -347,6 +347,12 @@ components (design doc 9 §12):
 - `environment.test.ts` (B9): an environment's tier is never lowered;
   prod_sim's deploy waits for the release manager although the run's
   policy says policy.
+- `governance.test.ts` (K70, item 46): a change that loosens core's CI does
+  not land until core's owner approves it, although the run's policy
+  authorizes `git.merge`. The owner decides before a member's own approver,
+  for core's own `deploy/**` too. A pull request that changes agent
+  settings waits for the owner outside any system model. The change set
+  view shows governance-class files as a class of their own.
 
 `sandbox.test.ts` runs FixBug's five agents in five MXC sandboxes, one per
 agent. Implementer may write only `/work/repo/src`, and TestWriter only

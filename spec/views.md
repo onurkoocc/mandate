@@ -103,6 +103,10 @@ hashes:
   - the order, with the interface each member waits for;
   - what was real: live, read_only (prepared, never committed) or design
     (simulated), and each member's action state;
+  - its governance-class files (CI, lockfiles, agent settings, the
+    Mandate lock, CODEOWNERS, a component's own patterns), each with its
+    class and the owner who must approve it (K70;
+    [`system.md`](system.md#governance-class-files-k70));
   - what it changes in authority. A member that lands a Mandate module
     is diffed against the version the run's package pins (§15.3
     governance changes), or reported as new; a lock file is named.
@@ -129,7 +133,8 @@ scripts, frames, forms or remote resources.
 ## The system
 
 A module that defines or imports a system model (0.3) also gets a system
-view: the consumption graph, components with owners and commands,
+view: the consumption graph, components with owners, commands and their
+own governance-class patterns,
 interfaces with provider and consumers, environments with reads and
 authorization tiers, and the hash of each module the model comes from
 (design doc 9 §8.1; [`system.md`](system.md#the-system-view)). Every
