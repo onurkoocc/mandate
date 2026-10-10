@@ -61,7 +61,7 @@ describe("ContainerHost against a fake Docker", () => {
     const starts = docker.calls.filter((c) => c.args[0] === "run");
     expect(starts).toHaveLength(1);
     const start = starts[0]!.args;
-    expect(start).toEqual(expect.arrayContaining(["--network", "none", "--cap-drop", "ALL", "--read-only", "--entrypoint", "sleep", "busybox:1.36", "infinity"]));
+    expect(start).toEqual(expect.arrayContaining(["--network", "none", "--cap-drop", "ALL", "--read-only", "--entrypoint", "sleep", "debian:bookworm-slim", "infinity"]));
     // The write path is mounted writable, the read path read-only.
     expect(start.some((a) => a.includes(`source=${src},target=/m/0`) && !a.includes("readonly"))).toBe(true);
     expect(start.some((a) => a.endsWith("readonly") && a.includes("target=/m/1"))).toBe(true);

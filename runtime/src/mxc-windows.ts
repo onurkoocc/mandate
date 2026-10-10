@@ -217,7 +217,7 @@ export class WindowsMxcHost implements SandboxHost {
     try {
       if (cmd === "cat") argv = [node, this.helper, "cat", win(args[args.length - 1]!)];
       else if (cmd === "ls") argv = [node, this.helper, "ls", win(args[args.length - 1]!)];
-      else if (cmd === "grep") argv = [node, this.helper, "grep", args[args.length - 2]!, win(args[args.length - 1]!)];
+      else if (cmd === "grep") argv = [node, this.helper, "grep", args[args.length - 2]!, win(args[args.length - 1]!), ...args.filter((a) => a.startsWith("--exclude-dir=")).map((a) => a.slice("--exclude-dir=".length))];
       else if (cmd === "sh" && args[1] === WRITE_SCRIPT) {
         staged = mkdtempSync(join(tmpdir(), "mandate-stage-"));
         writeFileSync(join(staged, "content"), req.stdin ?? "");

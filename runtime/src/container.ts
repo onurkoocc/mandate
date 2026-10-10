@@ -48,7 +48,7 @@ export interface ContainerHostOptions {
    * components share a command name. Undefined falls back to `images`.
    */
   imageFor?: (command: string, cwd: string | undefined) => string | undefined;
-  /** The image the tool helpers run in when no command image shares their path. Default busybox:1.36. */
+  /** The image the tool helpers run in when no command image shares their path: GNU grep and coreutils. Default debian:bookworm-slim. */
   helperImage?: string;
   /** Variables every process gets, e.g. { MAVEN_OPTS: "-Dmaven.repo.local=/m/0/.m2" }. Nothing else from the host. */
   env?: Record<string, string>;
@@ -160,7 +160,7 @@ export class ContainerHost implements SandboxHost {
     }
     // A helper runs where the sandbox already has a container, so a read after a test sees the same file system.
     const [first] = sb.containers.keys();
-    return first ?? this.o.helperImage ?? "busybox:1.36";
+    return first ?? this.o.helperImage ?? "debian:bookworm-slim";
   }
 
   private containerFor(handle: string, sb: Sandbox, image: string): Promise<string> {

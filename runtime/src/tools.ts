@@ -24,6 +24,9 @@ export const MAX_TOOL_OUTPUT = 20_000;
 /** The shell script `write_file` runs: `sh -c WRITE_SCRIPT sh <path>`, with the content on stdin. */
 export const WRITE_SCRIPT = 'mkdir -p -- "$(dirname -- "$1")" && cat > "$1"';
 
+/** Directories `grep` does not descend into: version control, dependencies and build output, never what an agent changes. */
+export const GREP_SKIP = [".git", "node_modules", "target", "dist", "build", "__pycache__", ".venv"];
+
 export const FINISH = "finish";
 export const SUBMIT_PLAN = "submit_plan";
 
@@ -64,7 +67,7 @@ export function toolsFor(grants: CapVal[], result: JsonSchema): AgentTools {
       { name: "list_dir", description: `List a directory. You may read under: ${list(scope.read)}.`, input_schema: obj({ path: STR }, ["path"]) as Value },
       {
         name: "grep",
-        description: `Search files under a path for a regular expression (grep -rn). You may read under: ${list(scope.read)}.`,
+        description: `Search files under a path for a regular expression (grep -rn; ${GREP_SKIP.join(", ")} are skipped). You may read under: ${list(scope.read)}.`,
         input_schema: obj({ pattern: STR, path: STR }, ["pattern", "path"]) as Value,
       },
     );
@@ -122,7 +125,7 @@ export function commandFor(tools: AgentTools, name: string, input: Record<string
       if (name === "list_dir") return { argv: ["ls", "-1Ap", "--", p] };
       const pattern = input["pattern"];
       if (typeof pattern !== "string") return new Denied("pattern must be a string");
-      return { argv: ["grep", "-rnI", "--", pattern, p] };
+      return { argv: ["grep", "-rnI", ...GREP_SKIP.map((d) => `--exclude-dir=${d}`), "--", pattern, p] };
     }
     case "write_file": {
       const p = path();
