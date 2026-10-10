@@ -11,6 +11,8 @@
 //     "rateLimits": { "model": { "capacity": 50, "perSecond": 1, "queue": 100 } },     // shared token buckets (§8.6)
 
 //     "model":    { "provider": "anthropic" },                  // CLAUDE_API_KEY, CLAUDE_WORKSPACE_ID
+//     "executor": { "managed-agents": { "pollMs": 1000, "maxTurnMs": 3600000 } }
+//                 // agents the lock binds to Claude Managed Agents run there (K45, K79); CLAUDE_API_KEY; needs "sandbox"
 //     "sandbox":  { "host": "mxc", "baseline": ["/usr/local"], "mode": "enforcement" | "learning" },
 //                 on Windows: { "host": "mxc", "toolchain": ["C:\\Program Files\\nodejs"], "isolation": "process" }
 //     "github":   { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },   // MANDATE_GITHUB_TOKEN
@@ -34,7 +36,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseStrictJson, type Lock, type Program } from "@mandate/compiler";
-import type { Adapters, ToolAdapter, VerifierAdapter } from "./adapters.js";
+import Anthropic from "@anthropic-ai/sdk";
+import type { Adapters, Executor, ToolAdapter, VerifierAdapter } from "./adapters.js";
+import { managedAgentsExecutor, sdkApi } from "./managed-agents.js";
 import { AnthropicModel } from "./anthropic.js";
 import { ArtifactStore, DirBlobs } from "./artifacts.js";
 import { EvidenceSigner, TrustedKeys } from "./evidence.js";
@@ -69,6 +73,8 @@ export interface RuntimeConfig {
   /** Token buckets every run on this database draws from (§8.6): `model`, `model:<tier>`, `tool`. */
   rateLimits?: Record<string, BucketConfig>;
   model?: { provider: "anthropic" };
+  /** Executors the lock may bind agents to (K45): Claude Managed Agents. Their agents' tools still run in `sandbox` (K79). */
+  executor?: { "managed-agents"?: { pollMs?: number; maxTurnMs?: number } };
   sandbox?: { host: "mxc"; baseline?: string[]; path?: string[]; toolchain?: string[]; isolation?: "process" | "session"; mode?: "enforcement" | "learning" };
   github?: { repo?: string; base?: string; workdir?: string; repos?: string[] };
   verifier?: VerifierConfig & {
@@ -95,7 +101,9 @@ export interface RuntimeConfig {
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "evidence", "rateLimits", "model", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard"],
+  "": ["database", "artifacts", "evidence", "rateLimits", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard"],
+  executor: ["managed-agents"],
+  "executor.managed-agents": ["pollMs", "maxTurnMs"],
   boundary: ["integration", "ci", "pinned", "extraRead", "timeoutMs"],
   onboard: ["hosts", "extraRead", "timeoutMs"],
   "boundary.integration": ["dir", "files", "service", "services", "env", "timeoutMs", "probeImage"],
@@ -214,10 +222,36 @@ export function localVerifier(config: RuntimeConfig, program: Program, lock: Loc
 
 function modelFor(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv): AnthropicModel | undefined {
   if (!config.model) return undefined;
-  const apiKey = env["CLAUDE_API_KEY"] ?? env["ANTHROPIC_API_KEY"];
-  if (!apiKey) throw new Violation("no_credentials", "model.provider is anthropic, but neither CLAUDE_API_KEY nor ANTHROPIC_API_KEY is set.");
-  const workspaceId = env["CLAUDE_WORKSPACE_ID"] ?? env["anthropic-workspace-id"];
+  const { apiKey, workspaceId } = anthropicCredentials(env, "model.provider is anthropic");
   return new AnthropicModel({ lock, program, apiKey, ...(workspaceId ? { workspaceId } : {}) });
+}
+
+/** The Anthropic API key and workspace, from the environment only (K7). */
+export function anthropicCredentials(env: NodeJS.ProcessEnv, why: string): { apiKey: string; workspaceId?: string } {
+  const apiKey = env["CLAUDE_API_KEY"] ?? env["ANTHROPIC_API_KEY"];
+  if (!apiKey) throw new Violation("no_credentials", `${why}, but neither CLAUDE_API_KEY nor ANTHROPIC_API_KEY is set.`);
+  const workspaceId = env["CLAUDE_WORKSPACE_ID"] ?? env["anthropic-workspace-id"];
+  return { apiKey, ...(workspaceId ? { workspaceId } : {}) };
+}
+
+/** An SDK client for the Anthropic API, with the workspace header when the key needs one. */
+export function anthropicClient(env: NodeJS.ProcessEnv, why: string): Anthropic {
+  const { apiKey, workspaceId } = anthropicCredentials(env, why);
+  return new Anthropic({ apiKey, ...(workspaceId ? { defaultHeaders: { "anthropic-workspace-id": workspaceId } } : {}) });
+}
+
+/**
+ * The Managed Agents executor for a lock that binds agents to it. A lock
+ * that binds agents and a configuration without the executor give none: the
+ * run then refuses to start (no_executor), and a bound agent never runs
+ * anywhere else.
+ */
+function executorFor(config: RuntimeConfig, lock: Lock, env: NodeJS.ProcessEnv): Executor | undefined {
+  const binding = lock.bindings?.["managed-agents"];
+  const c = config.executor?.["managed-agents"];
+  if (!binding || !c) return undefined;
+  const api = sdkApi(anthropicClient(env, "executor.managed-agents is configured"));
+  return managedAgentsExecutor({ binding, lock, api, ...(c.pollMs ? { pollMs: c.pollMs } : {}), ...(c.maxTurnMs ? { maxTurnMs: c.maxTurnMs } : {}) });
 }
 
 // Linux: Bubblewrap; Windows: the AppContainer process container (P2-27). Each refuses by name what it cannot enforce.
@@ -270,6 +304,7 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
     if (config.github.repos?.length) tools["git.merge"] = new GitHubMerges({ token, repos: config.github.repos, ...base });
   }
   const sandbox = sandboxFor(config);
+  const executor = executorFor(config, lock, env);
   const own = config.verifier?.process
     ? new ProcessVerifier({ command: [process.execPath, VERIFIER_MAIN, "--config", config.file!], trusted: verifierKeys(config), package: { program, lock }, env })
     : config.verifier && sandbox
@@ -280,7 +315,9 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
   const onboard = config.onboard ? new OnboardVerifier(config.onboard, sandbox, boundary ?? own) : undefined;
   return {
     agents: { run: async () => missing("agent adapter: agents run as agent loops, which need model and sandbox") },
-    ...(model && sandbox ? { loop: { chat: model, sandbox } } : {}),
+    ...(sandbox && (model || executor)
+      ? { loop: { chat: model ?? { turnBound: () => missing("model"), turn: () => missing("model") }, sandbox, ...(executor ? { executor } : {}) } }
+      : {}),
     model: model ?? { infer: async () => missing("model"), upperBound: () => missing("model") },
     // A verifier process of its own signs each check with its own key; otherwise the checks run here.
     verifier: onboard ?? boundary ?? own ?? { check: async () => missing("verifier") },

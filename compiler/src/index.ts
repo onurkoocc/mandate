@@ -1,7 +1,7 @@
 // Public API of the Mandate 0.1 reference compiler.
 export { check, load, loadModules, kindOf, type CheckOptions, type CheckResult, type LoadResult, type ModuleSource, type SourceKind } from "./check.js";
 export { link, linkedProgram, references, type Linked, type Modules } from "./modules.js";
-export { LOCK_FORMAT, lockChecks, moduleLockChecks, lockSchema, modelTiers, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
+export { LOCK_FORMAT, LOCK_FORMATS, lockChecks, moduleLockChecks, lockSchema, modelTiers, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
 export { CODES } from "./codes.js";
 export { diag, formatDiagnostic, hasErrors, type Diagnostic, type Repair, type Span } from "./diag.js";
 export { domainHash, hashProgram, type HashDomain, type ProgramHashes } from "./hash.js";
@@ -16,6 +16,8 @@ export { printProgram } from "./print/printer.js";
 export { resolveNames } from "./resolve/resolve.js";
 export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, within, type CapResult, type CapVal } from "./check/caps.js";
 export { BUILTIN_EFFECTS, classRank, DATA_CLASSES, DECISION_POLICIES, STD_EFFECTS, STD_FNS, type DataClass } from "./std/std.js";
+export { ACS_PROFILE, ACS_TARGET_FORMAT, ACS_VERSION, acsTarget, type AcsAgent, type AcsTarget } from "./target/acs.js";
+export { agentModels, bindingChecks, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, MA_MAX_CLASS, type ManagedAgentsAgentBinding, type ManagedAgentsBinding, type ProfileLevel } from "./target/managed-agents.js";
 export { denialDiagnostics, requirementFor, sandboxRequirements, SANDBOX_DENIALS_FORMAT, SANDBOX_REQUIREMENT_FORMAT, type DenialReport, type SandboxRequirement } from "./target/sandbox.js";
 export { htmlEscape, mdEscape, toHtml, toMarkdown, type Block, type Cell, type Doc } from "./views/doc.js";
 export * from "./views/views.js";

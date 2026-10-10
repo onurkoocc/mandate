@@ -87,6 +87,11 @@ and is not reported yet.
 | Code | Title | Conformance case | Notes |
 |---|---|---|---|
 | MDT-E0902 | Sandbox requirement cannot be enforced | G05 | Appendix B; raised by the sandbox adapter as `unsupported_sandbox_profile` |
+| MDT-E0903 | Executor binding does not fit | X01 | assigned; a lock binding that names a missing or remote agent, an agent without one tier, a model or effort the lock no longer maps, another API beta, or a profile that claims too much or leaves a guarantee out ([`executors.md`](executors.md)); also refused at load time |
+| MDT-E0904 | Executor cannot hold the locked output limit | X02 | assigned; K80 |
+| MDT-E0905 | Data class too high for the executor | X03 | assigned; K46 |
+| MDT-E0906 | Agent cannot be written as an ACS policy | X05 | assigned; an unscoped capability or a non-USD spend budget (`mandate target acs`, K82) |
+| MDT-W0907 | Guarantee not carried by the target | X05 | assigned; names what an ACS host alone does not give |
 
 ## System model and existing systems (0.3)
 

@@ -8,6 +8,8 @@
 //   mandate hash <file>                    print program and definition hashes
 //   mandate patch <program> <patch.json>   apply an IR patch (see `patch` below)
 //   mandate sandbox <file> [--agent <name>] print each agent's sandbox requirement
+//   mandate target acs <file> [--out <dir>] write each agent's ACS manifest and Rego policy
+//                                          for an AGT host (spec/executors.md, item 40)
 //   mandate explain <code>                 explain a diagnostic code
 //   mandate mcp                            serve check, explain, apply_patch and views to agents
 //                                          over MCP on stdio (§14)
@@ -26,7 +28,7 @@
 // is one. Exit status is 1 when any error diagnostic is reported, 2 on usage
 // errors.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { check, kindOf, load, loadModules } from "./check.js";
 import { CODES } from "./codes.js";
@@ -40,6 +42,7 @@ import { applyPatch, type PatchOp } from "./patch/patch.js";
 import { printProgram } from "./print/printer.js";
 import { serveStdio } from "./mcp/server.js";
 import { denialDiagnostics, sandboxRequirements, type DenialReport } from "./target/sandbox.js";
+import { acsTarget } from "./target/acs.js";
 import { toHtml, toMarkdown } from "./views/doc.js";
 import { architecture, authority, cost, diffDoc, hasSystem, programDoc, semanticDiff, system } from "./views/views.js";
 
@@ -53,6 +56,7 @@ function usage(): never {
       "  hash <file>",
       "  patch <program> <patch.json> [--json]   patch.json: { \"base\": \"sha256:…\", \"ops\": [ … ] }",
       "  sandbox <file> [--agent <name>] [--lock <lock.json>] [--module <file>]…",
+      "  target acs <file> [--out <dir>] [--json] [--lock <lock.json>] [--module <file>]…",
       "  explain <code>",
       "  view <file> [--against <old file>] [--format md|html|json] [--lock <lock.json>] [--module <file>]…",
       "  mcp   (an MCP server on stdio)",
@@ -122,6 +126,7 @@ function main(argv: string[]): void {
   const moduleFiles = options(plain, "--module");
   const agent = option(plain, "--agent");
   const lockFile = option(plain, "--lock");
+  const outDir = option(plain, "--out");
   const against = option(plain, "--against");
   const denials = option(plain, "--denials");
   const format = option(plain, "--format") ?? "md";
@@ -226,6 +231,31 @@ function main(argv: string[]): void {
       process.exit(0);
     }
     // falls through
+    case "target": {
+      if (args[0] !== "acs") usage();
+      const file = args[1] ?? usage();
+      const lock = readLock(file, lockFile, asJson);
+      const r = check(read(file), kindOf(file), { modules, ...(lock ? { lock } : {}) });
+      if (!r.ok) {
+        report(r.diagnostics, file, asJson);
+        process.exit(1);
+      }
+      const t = acsTarget(r.program!, modules, lock);
+      const dir = outDir ?? "acs";
+      mkdirSync(dir, { recursive: true });
+      for (const [name, a] of Object.entries(t.agents)) {
+        mkdirSync(join(dir, name), { recursive: true });
+        writeFileSync(join(dir, `${name}.manifest.json`), JSON.stringify(a.manifest, null, 2) + "\n");
+        writeFileSync(join(dir, name, "policy.rego"), a.rego);
+        writeFileSync(join(dir, `${name}.sandbox-requirement.json`), JSON.stringify(a.requirement, null, 2) + "\n");
+      }
+      const summary = { format: t.format, acs_version: t.acs_version, program: t.program, binding: t.binding, agents: Object.keys(t.agents), profile: t.profile };
+      writeFileSync(join(dir, "profile.json"), JSON.stringify(summary, null, 2) + "\n");
+      report(t.diagnostics, file, asJson, { ...summary, out: dir });
+      if (!asJson) process.stdout.write(`wrote ${Object.keys(t.agents).length} agent(s) to ${dir}; hosts present ${t.binding} as envelope.agent.version\n`);
+      process.exit(hasErrors(t.diagnostics) ? 1 : 0);
+    }
+    // falls through
     case "view": {
       const file = args[0] ?? usage();
       if (!["md", "html", "json"].includes(format)) usage();
@@ -273,7 +303,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {

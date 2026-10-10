@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { canonicalize } from "./json/jcs.js";
 import type { Json } from "./json/strict-json.js";
 
-export type HashDomain = "program" | "def" | "package" | "run" | "action" | "operation" | "request";
+export type HashDomain = "program" | "def" | "package" | "run" | "action" | "operation" | "request" | "binding";
 
 export function domainHash(domain: HashDomain, value: Json, version = "0.1"): string {
   const h = createHash("sha256");

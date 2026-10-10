@@ -7,6 +7,8 @@
 //   <delegate>/step/<n>                 one model turn
 //   <delegate>/step/<n>/tool/<k>        one tool call of that turn
 //   <delegate>/plan/<i>                 one step of a checked plan (plan_execute)
+//   <delegate>/session                  the executor session the turns run in (K45)
+//   <delegate>/session/close            closing it when the loop ends
 //
 // so recovery and replay rebuild the conversation from the journal and call
 // no adapter for what is already recorded (INV-09). A step is charged to the
@@ -59,6 +61,8 @@ export interface LoopTask {
   progress: Required<Progress>;
   /** The agent's `steps` budget, which also bounds a plan's length. */
   maxSteps?: number;
+  /** The delegation's spend budget, for a chat whose sessions can be capped too. */
+  spend?: { micros: number; currency: string };
   sandbox: SandboxRequirement;
   program: Program;
 }
@@ -108,13 +112,20 @@ export async function runAgentLoop(task: LoopTask, io: LoopIO): Promise<Outcome>
   };
   try {
     handle = await host.create(planned.policy);
+    await loop.open();
     const result = await loop.run(handle);
+    await loop.close();
     return { ok: result, cost: {}, meta: await summary() };
   } catch (e) {
-    if (e instanceof Stop) return { error: { tag: "SkillFailed", args: [{ kind: e.kind, detail: e.detail, partial: loop.partial() }] }, cost: {}, meta: await summary() };
-    // A sibling failed: the delegation stays in flight, as after a crash, so a resumed run goes on from its last step.
+    if (e instanceof Stop) {
+      await loop.close();
+      return { error: { tag: "SkillFailed", args: [{ kind: e.kind, detail: e.detail, partial: loop.partial() }] }, cost: {}, meta: await summary() };
+    }
+    // A sibling failed: the delegation stays in flight, as after a crash, so a resumed run goes on from its last step
+    // (and in the same executor session).
     if (io.stopped(e)) throw e;
     if (e instanceof Fault) {
+      await loop.close();
       // A loop that failed or ran out of time keeps what it wrote (§8.7 `partial`).
       const args = (e.tag === "SkillFailed" || e.tag === "Timeout") && isObj(e.args[0] ?? null) ? [{ ...(e.args[0] as Block), partial: loop.partial() }] : e.args;
       return { error: { tag: e.tag, args }, cost: {}, meta: await summary() };
@@ -136,6 +147,9 @@ class Loop {
   private turns = 0;
   private toolCalls = 0;
   private handle = "";
+  /** The executor session the turns run in, when the chat keeps one (K45). */
+  private session: Value | undefined;
+  private closed = false;
 
   constructor(
     private readonly task: LoopTask,
@@ -153,6 +167,41 @@ class Loop {
 
   summary(sandbox: string): Value {
     return { strategy: this.task.strategy, tier: this.task.tier, turns: this.turns, tool_calls: this.toolCalls, repairs: this.repairs, sandbox };
+  }
+
+  /** Opens the chat's session for this delegation, once: a journaled step, so a resumed loop finds the same session. */
+  async open(): Promise<void> {
+    const chat = this.io.chat;
+    if (!chat.open) return;
+    const t = this.task;
+    const id = `${t.id}/session`;
+    const tools = this.tools.specs;
+    this.session = await this.io.step(
+      id,
+      "session",
+      { agent: t.agent, skill: t.skill, tier: t.tier, system: this.system, tools: tools as unknown as Value },
+      undefined,
+      () => chat.open!({ agent: t.agent, skill: t.skill, tier: t.tier, system: this.system, tools, ...(t.spend ? { spend: t.spend } : {}), commandId: id }),
+      `${t.agent}.${t.skill} session`,
+    );
+  }
+
+  /**
+   * Closes the session when the loop ends. Closing changes nothing the run
+   * depends on, so a fault in it is recorded with the step and ignored.
+   */
+  async close(): Promise<void> {
+    const chat = this.io.chat;
+    if (this.session === undefined || !chat.close || this.closed) return;
+    this.closed = true;
+    const t = this.task;
+    const id = `${t.id}/session/close`;
+    const session = this.session;
+    try {
+      await this.io.step(id, "session", { session }, undefined, () => chat.close!(session, id), `${t.agent}.${t.skill} session close`);
+    } catch (e) {
+      if (!(e instanceof Fault)) throw e;
+    }
   }
 
   async run(handle: string): Promise<Value> {
@@ -290,7 +339,16 @@ class Loop {
 
   private async turn(where: string, tools: ToolSpec[]): Promise<{ uses: ToolUse[]; stop: string | null }> {
     const t = this.task;
-    const req: TurnRequest = { tier: t.tier, system: this.system, tools, messages: [...this.messages], commandId: `${t.id}/${where}` };
+    const req: TurnRequest = {
+      tier: t.tier,
+      system: this.system,
+      tools,
+      messages: [...this.messages],
+      commandId: `${t.id}/${where}`,
+      agent: t.agent,
+      ...(this.session !== undefined ? { session: this.session } : {}),
+      ...(this.io.cancelled ? { cancelled: this.io.cancelled.bind(this.io) } : {}),
+    };
     const value = await this.io.step(
       req.commandId,
       "turn",
