@@ -22,6 +22,8 @@ export interface CapVal {
   via?: string;
   /** For a capability over components: their names. */
   components?: string[];
+  /** For `component.exec`: the component's root, where its commands run. */
+  root?: string;
   /** Constructor, e.g. `fs.write`. */
   ctor: string;
   /** Authorized effect: `Fs.Write`, `Model`, or a namespace such as `git.*`. */
@@ -183,7 +185,7 @@ function componentCaps(ctor: string, args: Arg[], defs: Record<string, Def>): Ca
   return {
     caps: [...byCommand.entries()]
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([command, prefixes]) => ({ ctor: "exec", effect: "Exec", write: false, scope: [command], argsPrefix: uniquePrefixes(prefixes), via: shown, components: [name] })),
+      .map(([command, prefixes]) => ({ ctor: "exec", effect: "Exec", write: false, scope: [command], argsPrefix: uniquePrefixes(prefixes), via: shown, components: [name], root: comp.root })),
   };
 }
 

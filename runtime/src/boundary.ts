@@ -84,7 +84,7 @@ export interface CiSource {
 
 /** Runs docker; tests pass a fake. */
 export interface Docker {
-  run(args: string[], o?: { cwd?: string; env?: Record<string, string>; timeoutMs?: number }): Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  run(args: string[], o?: { cwd?: string; env?: Record<string, string>; timeoutMs?: number; input?: string }): Promise<{ exitCode: number; stdout: string; stderr: string }>;
 }
 
 /** Where a component's tests usually live, by language: the files `test.suite_each` reports as changed from the base. */
@@ -598,10 +598,12 @@ export const realDocker: Docker = {
   run: (args, o = {}) =>
     new Promise((resolve) => {
       import("node:child_process").then(({ execFile }) => {
-        execFile("docker", args, { cwd: o.cwd, env: { ...process.env, ...(o.env ?? {}) }, timeout: o.timeoutMs ?? 0, maxBuffer: 64 << 20, killSignal: "SIGKILL" }, (err, stdout, stderr) => {
+        const child = execFile("docker", args, { cwd: o.cwd, env: { ...process.env, ...(o.env ?? {}) }, timeout: o.timeoutMs ?? 0, maxBuffer: 64 << 20, killSignal: "SIGKILL" }, (err, stdout, stderr) => {
           const code = err ? (typeof (err as { code?: unknown }).code === "number" ? ((err as { code: number }).code) : 1) : 0;
           resolve({ exitCode: code, stdout: String(stdout), stderr: String(stderr) });
         });
+        child.stdin?.on("error", () => undefined);
+        child.stdin?.end(o.input ?? "");
       });
     }),
 };
