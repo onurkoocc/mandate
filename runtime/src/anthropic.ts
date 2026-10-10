@@ -145,7 +145,7 @@ export class AnthropicModel implements ModelAdapter, ChatModel {
     const schema = typeSchema(this.o.program, req.type);
     const content = `<data>\n${typeof req.input === "string" ? req.input : show(req.input)}\n</data>`;
     const params = this.request(model, INFER_SYSTEM, [{ role: "user", content }], {
-      output_config: { format: { type: "json_schema", schema: { ...wrap(schema) } } },
+      output_config: { format: { type: "json_schema", schema: forApi(wrap(schema)) as Record<string, unknown> } },
     });
     return { params, model, tariff };
   }
@@ -198,6 +198,28 @@ export class AnthropicModel implements ModelAdapter, ChatModel {
 }
 
 /** Structured output needs an object at the top: any other type is wrapped as `{ value: … }`. */
+/**
+ * Keywords structured outputs do not accept (numeric bounds, string lengths,
+ * array sizes and tuple items): the API answers 400 to a schema that has
+ * them. They are left out of what is sent and kept where it counts: the
+ * runtime checks every answer against the whole type before the program sees
+ * it (`checkedInfer`, INV-04), so a value out of bounds is still refused.
+ */
+const UNSUPPORTED = new Set(["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "minItems", "maxItems", "prefixItems", "uniqueItems"]);
+
+/** The schema as the API accepts it: `UNSUPPORTED` keywords removed at every depth. */
+export function forApi(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(forApi);
+  if (!schema || typeof schema !== "object") return schema;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (UNSUPPORTED.has(k)) continue;
+    // A property may be named like a keyword; only keyword positions are filtered.
+    out[k] = k === "properties" && v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).map(([n, s]) => [n, forApi(s)])) : forApi(v);
+  }
+  return out;
+}
+
 function wrap(schema: Record<string, unknown>): Record<string, unknown> {
   const { $defs, ...rest } = schema;
   return { type: "object", properties: { value: rest }, required: ["value"], additionalProperties: false, ...($defs ? { $defs } : {}) };

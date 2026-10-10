@@ -5,7 +5,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { check } from "@mandate/compiler";
 import { afterAll, describe, expect, it } from "vitest";
-import { AnthropicModel, boundOf, priceUsage, type AnthropicClient } from "../src/anthropic.js";
+import { AnthropicModel, boundOf, forApi, priceUsage, type AnthropicClient } from "../src/anthropic.js";
 import { closeAll, world } from "./helpers.js";
 import { ASK_CAPITAL, LOCK } from "./models.js";
 
@@ -93,6 +93,21 @@ describe("infer through the Anthropic adapter", () => {
     // Replay reads the journal and calls nothing.
     expect(await w.rt.replayRun("a1")).toEqual({ status: "complete", value: { capital: "Ankara" } });
     expect(client.created).toHaveLength(1);
+  });
+
+  it("sends no schema keyword the API refuses, and still refuses an answer out of the type's bounds", async () => {
+    const SRC = ASK_CAPITAL.replace("type Answer = { capital: Text }", "type Answer = { capital: Text, wait: Duration, cities: List<Text> where len(cities) >= 2 }");
+    const p = check(SRC, "mdt").program!;
+    const client = new FakeClient(() => message('{"value":{"capital":"Ankara","wait":-5,"cities":["Ankara"]}}'));
+    const w = await world(SRC, { lock: LOCK, realModel: new AnthropicModel({ lock: LOCK, program: p, client }) });
+    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Ask", input: { country: "Turkey" }, runId: "a-bounds" });
+    const sent = JSON.stringify(client.created[0]!.output_config);
+    for (const k of ["minimum", "minItems", "maxItems"]) expect(sent).not.toContain(`"${k}"`);
+    // The bound the API was not told about is checked on the answer: a negative Duration is refused.
+    expect(run.state).not.toBe("succeeded");
+    expect(JSON.stringify(await w.rt.journal.events("a-bounds"))).toContain("schema_mismatch");
+    // A property that happens to be named like a keyword stays.
+    expect(forApi({ type: "object", properties: { minimum: { type: "integer", minimum: 0 } } })).toEqual({ type: "object", properties: { minimum: { type: "integer" } } });
   });
 
   it("does not send a call whose input is over the locked limit", async () => {
