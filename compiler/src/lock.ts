@@ -5,7 +5,9 @@
 //   - models: for each model tier, the model id, its effort and the per-call
 //     input and output token limits the runtime enforces (K10);
 //   - tariffs: each locked model's price per million tokens, in integer
-//     micro-units of one currency, with the date it was read (K11).
+//     micro-units of one currency, with the date it was read (K11);
+//   - bindings: what the program's agents were deployed as on an executor,
+//     such as Claude Managed Agents (K45; target/managed-agents.ts).
 //
 // The lock is part of the package hash, so a price change is a new package.
 // The compiler reads it for W0504: a declared agent budget below the upper
@@ -19,8 +21,11 @@ import { hashProgram } from "./hash.js";
 import type { Budget, Def, Expr, Program } from "./ir/types.js";
 import type { Json } from "./json/strict-json.js";
 import type { Modules } from "./modules.js";
+import { bindingChecks, type ManagedAgentsBinding } from "./target/managed-agents.js";
 
-export const LOCK_FORMAT = "mandate/lock/0.2";
+/** The lock format this compiler writes. It reads 0.2 too, which has no bindings. */
+export const LOCK_FORMAT = "mandate/lock/0.3";
+export const LOCK_FORMATS = ["mandate/lock/0.2", "mandate/lock/0.3"] as const;
 
 export interface ModelLock {
   provider: "anthropic";
@@ -39,10 +44,11 @@ export interface Tariff {
 }
 
 export interface Lock {
-  lock?: typeof LOCK_FORMAT;
+  lock?: (typeof LOCK_FORMATS)[number];
   modules: Record<string, string>;
   models?: Record<string, ModelLock>;
   tariffs?: Record<string, Tariff>;
+  bindings?: { "managed-agents"?: ManagedAgentsBinding };
 }
 
 let validator: ValidateFunction | undefined;
@@ -57,6 +63,7 @@ export function validateLock(value: unknown): Diagnostic[] {
   if (validator(value)) {
     const lock = value as Lock;
     const out: Diagnostic[] = [];
+    if (lock.bindings && lock.lock !== LOCK_FORMAT) out.push(diag("E0140", `Executor bindings need lock format ${LOCK_FORMAT}, not ${String(lock.lock)}.`, { path: "/lock" }, { facts: { lock: lock.lock ?? null } }));
     for (const [tier, m] of Object.entries(lock.models ?? {})) {
       if (!lock.tariffs?.[m.model]) {
         out.push(diag("E0140", `The lock maps tier ${tier} to ${m.model}, which has no tariff.`, { path: `/models/${tier}/model` }, { facts: { tier, model: m.model } }));
@@ -100,8 +107,9 @@ export function modelTiers(program: Program): Set<string> {
 
 /**
  * The checks that need the lock: every model tier the program names is
- * locked (E0141), and every agent's declared budget covers the upper bound
- * of its agent loop, `steps × per-call bound` (W0504, §8.6).
+ * locked (E0141), every agent's declared budget covers the upper bound of
+ * its agent loop, `steps × per-call bound` (W0504, §8.6), and an executor
+ * binding still fits the program and the lock (E0903–E0905).
  */
 export function lockChecks(program: Program, lock: Lock, spans?: Map<string, Span>): Diagnostic[] {
   const at = (path: string): { path: string; span?: Span } => {
@@ -150,6 +158,7 @@ export function lockChecks(program: Program, lock: Lock, spans?: Map<string, Spa
       }
     }
   }
+  out.push(...bindingChecks(program, lock, spans));
   return out;
 }
 

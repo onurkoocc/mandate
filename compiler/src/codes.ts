@@ -269,4 +269,16 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Sandbox requirement cannot be enforced",
     explain: "The sandbox adapter probed the host and it cannot enforce part of an agent's sandbox requirement: a backend, a path, host or command allow-list, a timeout, or a scope that is not statically known. The run refuses to start the agent (unsupported_sandbox_profile) instead of running it with less isolation (INV-11, G05).",
   },
+  "MDT-E0903": {
+    title: "Executor binding does not fit",
+    explain: "The lock binds agents to an executor such as Claude Managed Agents, and the binding no longer fits: it names an agent the program does not have as a local agent, a bound agent has no single model tier, the lock now maps the tier to another model or effort than the one deployed, the binding was made under another API beta, or its guarantee profile claims more than the executor gives or leaves a guarantee out. Deploy again (`mandate deploy`); a binding is never adjusted at run time (K45, INV-11).",
+  },
+  "MDT-E0904": {
+    title: "Executor cannot hold the locked output limit",
+    explain: "Claude Managed Agents cannot cap the output of one model request: the model may write up to its own ceiling. The upper bound of a call (spec/lock.md) and every reservation use the lock's max_output_tokens, so for a tier whose agents run there the lock must state that ceiling (K80).",
+  },
+  "MDT-E0905": {
+    title: "Data class too high for the executor",
+    explain: "An agent bound to Claude Managed Agents may send its model data above `internal`. The service keeps session history and is not zero-retention, so such an agent runs on the local runtime instead (K46).",
+  },
 };

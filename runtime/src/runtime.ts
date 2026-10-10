@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { canonicalize, capsOf, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, link, linkedProgram, modelTiers, references, SANDBOX_DENIALS_FORMAT, validateLock, type DenialReport, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { bindingChecks, canonicalize, capsOf, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, link, linkedProgram, LOCK_FORMAT, modelTiers, references, SANDBOX_DENIALS_FORMAT, validateLock, type DenialReport, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
 import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
@@ -64,11 +64,14 @@ export function verifyPackage(pkg: Package): void {
   }
   // A lock that pins models (spec/lock.md) must be well formed and pin every tier the program names.
   // A lock without models is for simulated models only; the Anthropic adapter refuses to run without one.
-  if (pkg.lock.models || pkg.lock.tariffs) {
-    const bad = validateLock({ lock: "mandate/lock/0.2", ...pkg.lock });
+  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings) {
+    const bad = validateLock({ lock: LOCK_FORMAT, ...pkg.lock });
     if (bad.length) throw new Violation("malformed_lock", `The package's lock is malformed: ${bad.map((d) => d.message).join(" ")}`);
     const missing = [...modelTiers(pkg.program)].filter((t) => !Object.hasOwn(pkg.lock.models ?? {}, t)).sort();
     if (missing.length) throw new Violation("unlocked_model_tier", `Model tiers are not locked: ${missing.join(", ")} (MDT-E0141).`);
+    // An executor binding that no longer fits the program and the lock is not run with (E0903–E0905, K45).
+    const unfit = bindingChecks(linkedProgram(pkg.program, modules), pkg.lock).filter((d) => d.severity === "error");
+    if (unfit.length) throw new Violation("unfit_binding", `The package's executor binding does not fit: ${unfit.map((d) => `${d.code} ${d.message}`).join(" ")}`);
   }
   const r = check(canonicalize(pkg.program as unknown as Json), "json", { modules });
   if (!r.ok) {
@@ -174,6 +177,7 @@ export class Runtime {
     const wf = o.pkg.program.defs[o.workflow];
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
     await this.validateBindings(linkedProgram(o.pkg.program, o.pkg.modules), o.workflow);
+    await this.validateExecutor(o.pkg);
     const lowered = this.remoteGuarantees(o.pkg.program);
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(wf.budget), costDims(o.limits));
@@ -262,6 +266,24 @@ export class Runtime {
       const r = await tool.validateBinding({ repos: name.startsWith("git.") ? repos : [] });
       if ("unsupported" in r) throw new Violation("unsupported_binding", `The adapter for ${name} cannot serve this program: ${r.unsupported}.`);
     }
+  }
+
+  /**
+   * The executor the lock binds agents to (K45). A bound agent is never run
+   * anywhere else: a runtime without that executor, or whose executor no
+   * longer has what was deployed, does not start the run (ValidateBinding,
+   * §16.1; INV-11).
+   */
+  private async validateExecutor(pkg: Package): Promise<void> {
+    const b = pkg.lock.bindings?.["managed-agents"];
+    if (!b) return;
+    const agents = Object.keys(b.agents).sort();
+    const ex = this.adapters.loop?.executor;
+    if (ex?.name !== "managed-agents") throw new Violation("no_executor", `The lock binds ${agents.join(", ")} to Managed Agents, and this runtime has no Managed Agents executor.`);
+    const unserved = agents.filter((a) => !Object.hasOwn(ex.chats, a));
+    if (unserved.length) throw new Violation("no_executor", `The Managed Agents executor does not serve ${unserved.join(", ")}.`);
+    const r = await ex.validateBinding();
+    if ("unsupported" in r) throw new Violation("unsupported_binding", `The Managed Agents binding does not hold: ${r.unsupported}.`);
   }
 
   /**

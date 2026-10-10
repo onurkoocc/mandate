@@ -71,6 +71,13 @@ anything runs. This repository holds the 0.1 reference implementation.
    the evidence matrix, the order and why, and what was real; a change
    outside the plan is an `unplanned_change`.
    See [`spec/system.md`](spec/system.md).
+6. **Executors (item 39):** a program's agents can run on Claude Managed
+   Agents in Form A. `mandate deploy --target managed-agents` deploys them
+   and writes the binding into the lock. ValidateBinding runs before every
+   run. Each delegation is one session, and every tool is a custom tool
+   that the runtime runs in the agent's own sandbox (the bridge, K79), so
+   the loop's checks, the journal and the budget hold as for a local loop.
+   See [`spec/executors.md`](spec/executors.md).
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
@@ -79,7 +86,7 @@ enough for an agent's context.
 
 ```text
 spec/        core spec, IR schema and rules, static checks, diagnostic codes, runtime, sandboxes,
-             views, the compiler's MCP server
+             executors, views, the compiler's MCP server
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
 fixtures/    the tests' programs: fixbug/ is the design document's §20 workflow,
@@ -166,6 +173,10 @@ plan (E1105), and each member's repository held by the workflow (E0301).
 a read of the environment's, its parameters by name (E1201), masking
 by class (E0220 without it, E0201 for a field needed unmasked), and
 data.read authority (E0301).
+`compiler/test/executors.test.ts` checks executor bindings in the lock
+([`spec/executors.md`](spec/executors.md)): strict reading (E0140), X01 a
+binding that no longer fits (E0903), X02 the output ceiling (E0904), and
+X03 the data class (E0905).
 `compiler/test/static.test.ts` also checks the §20 FixBug table: 18.5 USD of
 child budgets inside 20 USD, delegated capabilities inside the workflow's,
 disjoint writes for the two parallel agents, step limits, review never
@@ -370,6 +381,8 @@ These cases from §25 are covered:
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
 | V14 | A throttled call waits and is sent again; no restart is counted and no BudgetExceeded is raised | `supervision`, `anthropic` |
 | V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |
+| X01 | A package whose executor binding no longer fits its lock is refused at load; a changed agent or environment fails ValidateBinding; a bound agent never runs without its executor | `managed-agents` (and E0903 in the compiler) |
+| X04 | A bound agent's turns run in its delegation's session and its tools in the runtime's sandbox, journaled; replay calls neither | `managed-agents` |
 
 R11 and R12 are about `map`, which the 0.1 IR does not have yet; `budget`
 tests that `par` results are bound by branch name instead.

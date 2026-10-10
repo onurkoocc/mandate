@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mandate.dev/spec/lock.schema.json",
-  "title": "Mandate lock file (mandate/lock/0.2)",
-  "description": "Pins imported modules, the model behind each tier and its price. Part of the package hash. See spec/lock.md.",
+  "title": "Mandate lock file (mandate/lock/0.3; reads 0.2)",
+  "description": "Pins imported modules, the model behind each tier and its price, and what the program's agents were deployed as on an executor. Part of the package hash. See spec/lock.md and spec/executors.md.",
   "type": "object",
   "additionalProperties": false,
   "required": ["lock", "modules"],
   "properties": {
-    "lock": { "const": "mandate/lock/0.2" },
+    "lock": { "enum": ["mandate/lock/0.2", "mandate/lock/0.3"] },
     "modules": {
       "type": "object",
       "additionalProperties": { "type": "string", "minLength": 1 }
@@ -47,6 +47,60 @@
               "cache_read": { "type": "integer", "minimum": 0 },
               "cache_write": { "type": "integer", "minimum": 0 }
             }
+          }
+        }
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "managed-agents": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format", "beta", "tools", "environment", "session_fee", "harness_tokens", "agents", "profile"],
+          "properties": {
+            "format": { "const": "mandate/binding/managed-agents/0.1" },
+            "beta": { "type": "string", "minLength": 1 },
+            "tools": { "const": "bridge" },
+            "environment": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "config"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "config": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+              }
+            },
+            "session_fee": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["currency", "micros_per_hour"],
+              "properties": {
+                "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+                "micros_per_hour": { "type": "integer", "minimum": 0 }
+              }
+            },
+            "harness_tokens": { "type": "integer", "minimum": 0 },
+            "agents": {
+              "type": "object",
+              "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "version", "tier", "model", "effort", "max_output_tokens", "config"],
+                "properties": {
+                  "id": { "type": "string", "minLength": 1 },
+                  "version": { "type": "integer", "minimum": 1 },
+                  "tier": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+                  "model": { "type": "string", "minLength": 1 },
+                  "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] },
+                  "max_output_tokens": { "type": "integer", "minimum": 1 },
+                  "config": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+                }
+              }
+            },
+            "profile": { "type": "object", "additionalProperties": { "enum": ["full", "partial", "none"] } }
           }
         }
       }

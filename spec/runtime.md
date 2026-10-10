@@ -508,6 +508,12 @@ A rejected plan never runs (V16). The model may repair it; a third rejected
 plan ends the loop. A checked plan then runs step by step. The model sees
 the results, and is offered only `finish`.
 
+**On an executor.** An agent the lock binds to Claude Managed Agents runs
+the same loop, but with the executor's chat (`Adapters.loop.executor`). Its
+turns run in a session of the service, opened as `<delegate>/session` and
+closed as `<delegate>/session/close`. Its tools still run here, in its
+sandbox. Nothing above changes. See [`executors.md`](executors.md).
+
 ## Supervision and `par` (§7.4, §8.7)
 
 - **Restart.** `supervise restart(max, backoff)` restarts a delegate on
@@ -672,6 +678,11 @@ listed in the run's summary (R09).
 - when the lock pins models, requires it to be well formed
   (`malformed_lock`) and to pin every model tier the program names
   (`unlocked_model_tier`);
+- when the lock binds agents to an executor, requires the binding to fit
+  the program and the lock (`unfit_binding`, E0903–E0905), and then asks
+  the executor's ValidateBinding before the run starts
+  (`no_executor`, `unsupported_binding`;
+  [`executors.md`](executors.md));
 - runs the compiler's checks on the canonical IR again.
 
 ## Control API (§16.1)
@@ -731,7 +742,11 @@ mandate artifact <run> <blob:sha256:…>
 mandate show <run> [--format md|html|json]
 mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER/REPO]… [--name MODULE]
 mandate drift --module MODEL --component NAME=DIR… [--json]
+mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [--name PREFIX] [--harness-tokens N]
 ```
+
+`deploy` writes an executor binding into the lock; it needs
+`CLAUDE_API_KEY` and no configuration ([`executors.md`](executors.md)).
 
 **Configuration.** Each call reads `mandate.runtime.json`, or the file
 `--config` names. It holds the database and the adapters:
@@ -743,6 +758,7 @@ mandate drift --module MODEL --component NAME=DIR… [--json]
   "evidence": { "key": ".mandate/evidence.key" },
   "rateLimits": { "model": { "capacity": 50, "perSecond": 1 } },
   "model": { "provider": "anthropic" },
+  "executor": { "managed-agents": { "pollMs": 1000, "maxTurnMs": 3600000 } },
   "sandbox": { "host": "mxc", "baseline": ["/usr/local"] },
   "github": { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },
   "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"], "process": { "key": ".mandate/verifier.key" } }
@@ -761,6 +777,9 @@ mandate drift --module MODEL --component NAME=DIR… [--json]
   next to the key, where every later call loads it, so evidence it signed
   still verifies. Its private half is gone. To stop trusting an old key,
   remove its file: what it signed then shows `SIGNATURE INVALID`.
+- **Executor.** `executor.managed-agents` runs the agents the lock binds
+  to Claude Managed Agents there, each delegation in a session of its own.
+  Their tools still run in `sandbox`. See [`executors.md`](executors.md).
 - **Verifier process.** `verifier.process` runs the checks in a process of
   their own with their own key (`key`, default `.mandate/verifier.key`;
   `trusted`, default the key's `.pub` file). See "A verifier of its own".

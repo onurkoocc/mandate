@@ -97,6 +97,24 @@ export interface TurnRequest {
   tools: ToolSpec[];
   messages: Value[];
   commandId: string;
+  /** The agent whose loop it is. */
+  agent?: string;
+  /** What the chat's `open` returned for this delegation, when it keeps a conversation of its own (an executor session). */
+  session?: Value;
+  /** Whether the run was cancelled: a chat that waits on a remote turn asks it, to stop the turn (§16.1 Stop). */
+  cancelled?: () => Promise<boolean>;
+}
+
+/** What a chat with sessions of its own opens for one delegation (K45): the first turn's system prompt and tools. */
+export interface OpenRequest {
+  agent: string;
+  skill: string;
+  tier: string;
+  system: string;
+  tools: ToolSpec[];
+  /** The delegation's spend budget, which the session may also be capped at. */
+  spend?: { micros: number; currency: string };
+  commandId: string;
 }
 
 export interface TurnBound {
@@ -106,10 +124,29 @@ export interface TurnBound {
   maxInputTokens: number;
 }
 
-/** The model side of an agent loop. Its calls are made from the runtime process, never from a sandbox (K7). */
+/**
+ * The model side of an agent loop. Its calls are made from the runtime
+ * process, never from a sandbox (K7). A chat that keeps the conversation
+ * elsewhere, such as a Managed Agents session (K45), opens it once per
+ * delegation and closes it when the loop ends; both are journaled steps of
+ * the delegation, so replay opens nothing (INV-09).
+ */
 export interface ChatModel {
   turnBound(req: TurnRequest): Promise<TurnBound>;
   turn(req: TurnRequest): Promise<Outcome>;
+  open?(req: OpenRequest): Promise<Outcome>;
+  close?(session: Value, commandId: string): Promise<Outcome>;
+}
+
+/**
+ * An executor the lock binds agents to (K45), such as Claude Managed Agents:
+ * the agents it runs, each through a chat of its own, and its
+ * ValidateBinding (§16.1), asked before every run.
+ */
+export interface Executor {
+  name: string;
+  chats: Record<string, ChatModel>;
+  validateBinding(): Promise<{ supported: true } | { unsupported: string }>;
 }
 
 export interface VerifyRequest {
@@ -279,6 +316,8 @@ export interface LoopAdapters {
   sandbox: MxcAdapter;
   /** How often a running tool call checks whether its run was cancelled, to stop the sandbox (§16.1 Stop). Default 1000 ms. */
   stopPollMs?: number;
+  /** The executor the lock binds some agents to; their loops talk to its chats, and their tools still run in `sandbox`. */
+  executor?: Executor;
 }
 
 export interface Adapters {

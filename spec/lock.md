@@ -13,7 +13,7 @@ All of these are reported as `MDT-E0140`.
 
 ```json
 {
-  "lock": "mandate/lock/0.2",
+  "lock": "mandate/lock/0.3",
   "modules": { "company.domain": "sha256:0f1e" },
   "models": {
     "standard": { "provider": "anthropic", "model": "claude-opus-5-5", "effort": "high",
@@ -31,6 +31,10 @@ All of these are reported as `MDT-E0140`.
 | `modules` | The version of every imported module other than `std` (S09) |
 | `models` | For each tier: the model id and the effort sent with every call, and the input and output token limits of one call |
 | `tariffs` | Each locked model's prices per million tokens, in integer micro-units of one currency, with the day they were read |
+| `bindings` | What the program's agents were deployed as on an executor (`managed-agents`), written by `mandate deploy`; see [`executors.md`](executors.md). Needs format `0.3` |
+
+The format is `mandate/lock/0.3`. A `0.2` lock, which has no bindings, is
+still read.
 
 ## What reads it
 
@@ -42,6 +46,8 @@ All of these are reported as `MDT-E0140`.
   `mandate.lock.json` next to the program. With a lock it adds two checks:
   - `MDT-E0141`: every model tier the program names is locked.
   - `MDT-W0504`: every agent loop's declared budget covers its upper bound.
+  - `MDT-E0903`–`MDT-E0905`: an executor binding still fits the program
+    and the lock ([`executors.md`](executors.md)).
 - **The runtime.** It refuses to load a package whose lock pins models but is
   malformed (`malformed_lock`) or leaves a named tier unlocked
   (`unlocked_model_tier`). Its model adapter sends each tier's model and

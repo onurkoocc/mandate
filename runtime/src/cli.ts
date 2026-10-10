@@ -17,6 +17,8 @@
 //   mandate test <program> [--json]                       run the program's tests (§6.4); needs no configuration
 //   mandate onboard --component name=dir…                 a draft system model from working copies (doc 9 §7); no configuration
 //   mandate drift --module model --component name=dir…    where a system model and the working copies disagree; no configuration
+//   mandate deploy <program> --target managed-agents      deploy the agents to Claude Managed Agents and write the binding
+//                                                         into the lock (K45); CLAUDE_API_KEY; no configuration
 //
 // Every command reads `mandate.runtime.json` (or --config). A decision names
 // the revision the person saw in `status`: if the run has moved since, it is
@@ -25,11 +27,12 @@
 
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { check, kindOf, linkedProgram, loadModules, parseStrictJson, printProgram, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, parseStrictJson, printProgram, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
 import type { Cost } from "./adapters.js";
-import { adaptersFor, connect, readConfig, runtimeOptions, trustedKeysDir, type RuntimeConfig } from "./control.js";
+import { adaptersFor, anthropicClient, connect, readConfig, runtimeOptions, trustedKeysDir, type RuntimeConfig } from "./control.js";
+import { deployManagedAgents, sdkApi } from "./managed-agents.js";
 import { EvidenceSigner } from "./evidence.js";
 import { openDb, type Db } from "./db.js";
 import type { RunRow } from "./journal.js";
@@ -49,7 +52,7 @@ interface Args {
   pairs: Record<string, Record<string, string>>;
 }
 
-const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens"]);
 const PAIRS = new Set(["--component", "--host", "--repo"]);
 
 function parse(argv: string[]): Args {
@@ -98,9 +101,10 @@ const USAGE = `usage:
   mandate test <program> [--json] [--lock FILE]
   mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER/REPO]… [--name MODULE]
   mandate drift --module MODEL --component NAME=DIR… [--host HOST=NAME]… [--json]
+  mandate deploy <program> --target managed-agents [--lock FILE] [--module FILE]… [--agents A,B] [--name PREFIX] [--harness-tokens N]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -113,6 +117,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     if (cmd === "test") return await test(a, out);
     if (cmd === "onboard") return onboard(a, out);
     if (cmd === "drift") return driftCommand(a, out);
+    if (cmd === "deploy") return await deploy(a, out, env);
     if (!existsSync(configFile)) throw new Usage(`no runtime configuration at ${configFile} (see spec/runtime.md, "Control CLI")`);
     const config = readConfig(configFile);
     db = await connect(config);
@@ -349,21 +354,60 @@ function input(text: string): Obj {
   return parsed.value.value as Obj;
 }
 
-/** The program, checked, and its lock: --lock, or mandate.lock.json next to it. */
-function load(file: string, lockFile: string | undefined, moduleFiles: string[] = []): { program: Program; lock: Lock; modules: Modules } {
-  const lockPath = lockFile ?? join(dirname(file), "mandate.lock.json");
-  let lock: Lock | undefined;
-  if (existsSync(lockPath)) {
-    const parsed = parseStrictJson(readFileSync(lockPath, "utf8"));
-    if (!parsed.ok) throw new Violation("malformed_lock", `${lockPath}: ${parsed.diagnostics.map((d) => d.message).join("; ")}`);
-    lock = parsed.value.value as unknown as Lock;
-  }
+/** The lock file at `lockPath`, read strictly, or undefined when there is none. */
+function readLock(lockPath: string): Lock | undefined {
+  if (!existsSync(lockPath)) return undefined;
+  const parsed = parseStrictJson(readFileSync(lockPath, "utf8"));
+  if (!parsed.ok) throw new Violation("malformed_lock", `${lockPath}: ${parsed.diagnostics.map((d) => d.message).join("; ")}`);
+  return parsed.value.value as unknown as Lock;
+}
+
+/** The program, checked, and its lock: --lock, or mandate.lock.json next to it (or `given`, already read). */
+function load(file: string, lockFile: string | undefined, moduleFiles: string[] = [], given?: Lock): { program: Program; lock: Lock; modules: Modules } {
+  const lock = given ?? readLock(lockFile ?? join(dirname(file), "mandate.lock.json"));
   const { modules, problems } = loadModules(moduleFiles.map((f) => ({ file: f, text: readFileSync(f, "utf8"), kind: kindOf(f) })));
   if (problems.length) throw new Violation("load_verification_failed", problems.flatMap((p) => p.diagnostics.filter((d) => d.severity === "error").map((d) => `${p.file}: ${d.code} ${d.message}`)).join("\n"));
   const r = check(readFileSync(file, "utf8"), kindOf(file), { modules, ...(lock ? { lock } : {}) });
   if (!r.ok) throw new Violation("load_verification_failed", r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`).join("\n"));
   const { lock: _format, ...pinned } = lock ?? { modules: {} };
   return { program: r.program!, lock: pinned, modules };
+}
+
+/**
+ * `mandate deploy --target managed-agents` (K45): deploys the program's
+ * agents and writes the binding into the lock, which makes a new package.
+ * The program is checked against the lock without its old binding, so a
+ * stale binding can be replaced.
+ */
+async function deploy(a: Args, out: (s: string) => void, env: NodeJS.ProcessEnv): Promise<number> {
+  const file = a.positional[0] ?? fail("deploy needs a program file");
+  if (a.flags["--target"] !== "managed-agents") throw new Usage("deploy needs --target managed-agents, the one executor target");
+  const lockPath = typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : join(dirname(file), "mandate.lock.json");
+  const raw = readLock(lockPath) ?? fail(`deploy writes the binding into the lock file, and there is none at ${lockPath}`);
+  const { bindings: _old, ...unbound } = raw;
+  const { program, modules } = load(file, undefined, a.modules, unbound);
+  const agents = typeof a.flags["--agents"] === "string" ? a.flags["--agents"].split(",").map((x) => x.trim()).filter(Boolean) : undefined;
+  const harness = typeof a.flags["--harness-tokens"] === "string" ? Number(a.flags["--harness-tokens"]) : undefined;
+  if (harness !== undefined && (!Number.isInteger(harness) || harness < 0)) throw new Usage("--harness-tokens takes a whole number");
+  const binding = await deployManagedAgents({
+    program: linkedProgram(program, modules),
+    lock: raw,
+    api: sdkApi(anthropicClient(env, "deploy talks to Managed Agents")),
+    ...(agents ? { agents } : {}),
+    ...(typeof a.flags["--name"] === "string" ? { name: a.flags["--name"] } : {}),
+    ...(harness !== undefined ? { harnessTokens: harness } : {}),
+  });
+  const next: Lock = { ...raw, lock: LOCK_FORMAT, bindings: { ...(raw.bindings ?? {}), "managed-agents": binding } };
+  writeFileSync(lockPath, JSON.stringify(next, null, 2) + "\n");
+  const lines = [
+    `deployed to Managed Agents (${binding.beta}), bridge: every tool runs in the runtime's sandbox`,
+    `environment ${binding.environment.id}`,
+    ...Object.entries(binding.agents).map(([n, b]) => `agent ${n}: ${b.id} v${b.version} (${b.model}, effort ${b.effort}, output ceiling ${b.max_output_tokens})`),
+    `profile: ${Object.entries(binding.profile).map(([g, l]) => `${g} ${l}`).join(", ")}`,
+    `the binding is in ${lockPath}: the lock, and so the package hash, changed`,
+  ];
+  out(lines.join("\n") + "\n");
+  return 0;
 }
 
 async function runtimeFor(db: Db, config: RuntimeConfig, runId: string, env: NodeJS.ProcessEnv): Promise<Runtime> {

@@ -226,7 +226,7 @@ function retryAfterMs(headers: unknown): number {
   return Number.isFinite(s) && s > 0 ? Math.ceil(s * 1000) : 30_000;
 }
 
-function failure(e: unknown): Outcome {
+export function failure(e: unknown): Outcome {
   if (e instanceof Anthropic.APIConnectionError) return { error: { tag: "Timeout", args: [e.message] }, cost: "unknown" };
   if (e instanceof Anthropic.APIError) {
     // Over quota or overloaded: not now (§8.6). The runtime waits retry-after and sends the same call again.

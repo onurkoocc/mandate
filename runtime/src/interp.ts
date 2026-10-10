@@ -834,6 +834,7 @@ export class Interpreter {
         strategy: agent.loop ?? "react",
         progress: { ...PROGRESS_DEFAULTS, ...agent.progress },
         ...(budget?.steps !== undefined ? { maxSteps: budget.steps } : {}),
+        ...(budget?.spend ? { spend: budget.spend } : {}),
         sandbox,
         program: this.o.program,
       };
@@ -849,7 +850,8 @@ export class Interpreter {
           return runAgentLoop(task, {
             step: (cid, kind, req, reserve, call, stepLabel) =>
               this.command(cid, kind, req, reserve, call, { siblings: ctx.siblings, label: stepLabel, within: id, ...(overdue ? { guard: overdue } : {}), ...this.limits(kind, task.tier) }),
-            chat: loop.chat,
+            // An agent the lock binds to an executor talks to its chat; its tools still run in this sandbox (K79).
+            chat: loop.executor?.chats[agentName] ?? loop.chat,
             sandbox: loop.sandbox,
             stopped: (x) => x instanceof SiblingStopped,
             cancelled: async () => (await this.o.journal.run(this.o.runId)).cancel_requested,
