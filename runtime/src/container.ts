@@ -183,9 +183,12 @@ export class ContainerHost implements SandboxHost {
       argv.push("--mount", `type=bind,source=${m.host},target=/m/${i}${m.rw ? "" : ",readonly"}`);
       // A link inside a mount (a test copy's linked node_modules) does not resolve in the container: its target, if the
       // policy allows it, is mounted in its place, read-only.
-      for (const [entry, target] of links(m.host)) {
+      for (const [entry, linked] of links(m.host)) {
+        // A link may name its target as a policy path (/work/x/node_modules): where that is on the host, through
+        // any further links, is what is mounted and what is checked.
+        const target = hostPath(linked);
         const under = (dir: string) => norm(target) === norm(dir) || norm(target).startsWith(`${norm(dir)}/`);
-        if (!sb.mounts.some((o) => under(o.host)) && !(this.o.linkTargets ?? []).some((d) => under(hostPath(d)))) continue;
+        if (!sb.mounts.some((o) => under(o.host) || under(hostPath(o.p))) && !(this.o.linkTargets ?? []).some((d) => under(hostPath(d)))) continue;
         argv.push("--mount", `type=bind,source=${norm(target)},target=/m/${i}/${entry},readonly`);
         if (entry === "node_modules") argv.push(...caches(target, `/m/${i}/${entry}`));
       }
