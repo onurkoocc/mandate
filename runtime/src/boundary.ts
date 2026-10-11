@@ -551,7 +551,8 @@ export function checkout(root: string, commit: string): { dir: string; remove():
     rmSync(dir, { recursive: true, force: true });
     return undefined;
   }
-  execFileSync("tar", ["-x", "-C", dir], { input: archive });
+  // On Windows, the system's tar: a GNU tar earlier on PATH (Git for Windows) reads "C:\…" as a remote host.
+  execFileSync(process.platform === "win32" ? `${process.env["SystemRoot"] ?? "C:\\Windows"}\\System32\\tar.exe` : "tar", ["-x", "-C", dir], { input: archive });
   for (const l of LINKED) if (existsSync(join(root, l))) symlinkSync(resolve(root, l), join(dir, l), process.platform === "win32" ? "junction" : "dir");
   return { dir, remove: () => rmSync(dir, { recursive: true, force: true }) };
 }
