@@ -95,10 +95,15 @@ export function bind(sql: string, params: Record<string, Value>): { text: string
   return { text, values: order.map((n) => params[n]) };
 }
 
+/** PostgreSQL's type id of `date`. */
+const DATE_OID = 1082;
+
 function pgRunner(timeoutMs: number): (url: string) => SqlRunner {
   return (url) => ({
     async query(sql, params) {
-      const client = new pg.Client({ connectionString: url });
+      // A `date` is a calendar day, not an instant: kept as its text (YYYY-MM-DD). Parsed, it would become the host's
+      // local midnight and read as the day before wherever the host is east of UTC.
+      const client = new pg.Client({ connectionString: url, types: { getTypeParser: (oid: number, format?: string) => (oid === DATE_OID ? (v: string) => v : pg.types.getTypeParser(oid, format as "text")) } });
       await client.connect();
       try {
         await client.query("begin transaction read only");

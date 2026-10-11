@@ -6,7 +6,7 @@
 //
 //   cat <path>                  the file's bytes                     (cat -- path)
 //   ls <path>                   one entry per line, dirs end in "/"  (ls -1Ap -- path)
-//   grep <pattern> <path>       path:line:text, recursive; exit 1 when nothing matches
+//   grep <pattern> <path> [skip…] path:line:text, recursive, not into directories named skip; exit 1 when nothing matches
 //   write <staged> <target>     copies a staged file to target, making directories
 //
 // The script is plain JavaScript, written by the host to a directory of its
@@ -52,6 +52,7 @@ if (op === "cat") {
 } else if (op === "grep") {
   const pattern = args[0] || "";
   const root = args[1] || "";
+  const skip = new Set(args.slice(2));
   let re;
   try {
     re = new RegExp(pattern);
@@ -67,7 +68,7 @@ if (op === "cat") {
       fail(2, "grep: " + p + ": " + reason(e));
     }
     if (st.isDirectory()) {
-      for (const name of readdirSync(p).sort()) visit(join(p, name));
+      for (const name of readdirSync(p).sort()) if (!skip.has(name)) visit(join(p, name));
       return;
     }
     const bytes = readFileSync(p);

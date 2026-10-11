@@ -9,17 +9,23 @@ structural patches, through tools, instead of through a shell.
 
 | Tool | Input | Result |
 |---|---|---|
-| `mandate.check` | `source` (`.mdt` text or JSON IR), `kind?`, `lock?` | `ok`, the program and definition hashes, and the diagnostics with their codes, facts and repair patches |
+| `mandate.check` | `source` (`.mdt` text or JSON IR), `kind?`, `modules?`, `lock?` | `ok`, the program and definition hashes, and the diagnostics with their codes, facts and repair patches |
 | `mandate.explain` | `code`, e.g. `E0320` | The code, its title and its explanation |
 | `mandate.apply_patch` | `source`, `kind?`, `base` (the program hash the patch was written for), `ops` (RFC 6902 `add`, `remove`, `replace`) | The new program and hash, its diagnostics, the governance changes, and `requires_approval` |
 | `mandate.caps_of` | `source`, `name` of an agent or workflow | Its authority, and each of its delegations' grants ([`views.md`](views.md)) |
 | `mandate.project` | `source`, `view` (`architecture`, `authority`, `cost`, `diff`), `before?` | A human view; `diff` compares `before` with `source` |
 | `mandate.spec` | `section?`, e.g. `4` or `7.2` | The core specification, or one numbered section |
 
+A program that imports a module with `use` (a system model, [`system.md`](system.md))
+is checked against it. The server is started with the modules every call may
+import, `mandate mcp --module <file>…`, and a call may add its own as
+`modules`: a list of module sources, each `.mdt` text or JSON IR. `check`,
+`apply_patch`, `caps_of` and `project` take it.
+
 The server only computes:
 
-- It reads no file but the core specification, writes none, and runs
-  nothing.
+- It reads no file but the core specification and the modules it was
+  started with, writes none, and runs nothing.
 - It holds no credentials.
 - A patch's result is returned, never saved.
 

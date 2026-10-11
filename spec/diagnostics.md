@@ -80,8 +80,9 @@ Warnings (`W…`) never make a check fail.
 
 The runtime checks E0406 (commit without a matching authorization) and
 E0407 (an authorization consumed twice) at commit, and S09 (an unlocked
-module) at load; see [`runtime.md`](runtime.md). W0504 needs model tariffs
-and is not reported yet.
+module) at load; see [`runtime.md`](runtime.md). W0504 needs model tariffs,
+so it is reported when a check is given the lock (`--lock`,
+[`lock.md`](lock.md)).
 
 ## Target generation
 

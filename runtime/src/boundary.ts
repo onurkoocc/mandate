@@ -31,7 +31,7 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { globRegExp, requirementFor, type CapVal } from "@mandate/compiler";
 import type { CheckLog, CheckResult, CheckSubject, SystemFacts, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { sha256Of } from "./artifacts.js";
@@ -52,8 +52,12 @@ export interface IntegrationConfig {
   files: string[];
   /** The service whose exit code is the result, e.g. `e2e`. */
   service: string;
-  /** Component → the compose service built from its working copy. Default: the component's name. */
-  services?: Record<string, string>;
+  /**
+   * Component → the compose service built from its working copy. Default: the
+   * component's name. null: the component is no service of its own (a
+   * repository of compose files, seeds and scenarios, read from `dir`).
+   */
+  services?: Record<string, string | null>;
   /** Variables for compose, e.g. { "ACME_ENV": "staging" }. */
   env?: Record<string, string>;
   /** Default 20 minutes. */
@@ -84,7 +88,7 @@ export interface CiSource {
 
 /** Runs docker; tests pass a fake. */
 export interface Docker {
-  run(args: string[], o?: { cwd?: string; env?: Record<string, string>; timeoutMs?: number }): Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  run(args: string[], o?: { cwd?: string; env?: Record<string, string>; timeoutMs?: number; input?: string }): Promise<{ exitCode: number; stdout: string; stderr: string }>;
 }
 
 /** Where a component's tests usually live, by language: the files `test.suite_each` reports as changed from the base. */
@@ -352,8 +356,12 @@ export class BoundaryVerifier implements VerifierAdapter {
       const services: Record<string, Value> = {};
       for (const [name, c] of Object.entries(sys.components)) {
         if (!c.base) continue;
-        const svc = cfg.services?.[name] ?? name;
-        services[svc] = { image: `${project}-${svc}`, build: { context: c.root.replace(/\\/g, "/") } };
+        // A component that is no service of its own (compose files, seeds, scenarios) is read from `dir` instead.
+        const svc = cfg.services && Object.hasOwn(cfg.services, name) ? cfg.services[name] : name;
+        if (svc === null || svc === undefined) continue;
+        // The root as the host resolves it: on Windows /work/x is on the current drive, where compose would read it
+        // relative to its own files.
+        services[svc] = { image: `${project}-${svc}`, build: { context: resolve(c.root).replace(/\\/g, "/") } };
       }
       writeFileSync(join(work, "mandate.yml"), JSON.stringify({ services, networks: { default: { internal: true } } }, null, 2));
       const config = await compose(["config", "--format", "json"]);
@@ -522,7 +530,8 @@ function copyOf(src: string, prefix: string): { dir: string; extraRead: string[]
   cpSync(src, dir, { recursive: true, filter: realEntries(src, new RegExp(`[\\\\/](\\.git|${LINKED.map((l) => l.replace(".", "\\.")).join("|")})$`)) });
   const extraRead: string[] = [];
   for (const l of LINKED) {
-    const there = join(src, l);
+    // Absolute on the host: a junction to a drive-less /work/… path would point at a network share.
+    const there = resolve(src, l);
     if (!existsSync(there)) continue;
     symlinkSync(there, join(dir, l), process.platform === "win32" ? "junction" : "dir");
     extraRead.push(there);
@@ -542,8 +551,9 @@ export function checkout(root: string, commit: string): { dir: string; remove():
     rmSync(dir, { recursive: true, force: true });
     return undefined;
   }
-  execFileSync("tar", ["-x", "-C", dir], { input: archive });
-  for (const l of LINKED) if (existsSync(join(root, l))) symlinkSync(join(root, l), join(dir, l), process.platform === "win32" ? "junction" : "dir");
+  // On Windows, the system's tar: a GNU tar earlier on PATH (Git for Windows) reads "C:\…" as a remote host.
+  execFileSync(process.platform === "win32" ? `${process.env["SystemRoot"] ?? "C:\\Windows"}\\System32\\tar.exe` : "tar", ["-x", "-C", dir], { input: archive });
+  for (const l of LINKED) if (existsSync(join(root, l))) symlinkSync(resolve(root, l), join(dir, l), process.platform === "win32" ? "junction" : "dir");
   return { dir, remove: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
@@ -598,10 +608,12 @@ export const realDocker: Docker = {
   run: (args, o = {}) =>
     new Promise((resolve) => {
       import("node:child_process").then(({ execFile }) => {
-        execFile("docker", args, { cwd: o.cwd, env: { ...process.env, ...(o.env ?? {}) }, timeout: o.timeoutMs ?? 0, maxBuffer: 64 << 20, killSignal: "SIGKILL" }, (err, stdout, stderr) => {
+        const child = execFile("docker", args, { cwd: o.cwd, env: { ...process.env, ...(o.env ?? {}) }, timeout: o.timeoutMs ?? 0, maxBuffer: 64 << 20, killSignal: "SIGKILL" }, (err, stdout, stderr) => {
           const code = err ? (typeof (err as { code?: unknown }).code === "number" ? ((err as { code: number }).code) : 1) : 0;
           resolve({ exitCode: code, stdout: String(stdout), stderr: String(stderr) });
         });
+        child.stdin?.on("error", () => undefined);
+        child.stdin?.end(o.input ?? "");
       });
     }),
 };

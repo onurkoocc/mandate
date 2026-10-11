@@ -1,4 +1,4 @@
-# Mandate core, 0.1 and 0.2
+# Mandate core, 0.1 to 0.3
 
 Mandate is a coordination and contract language for agents. Agents write
 programs. People review them through generated views. The compiler checks

@@ -24,13 +24,17 @@ export const MAX_TOOL_OUTPUT = 20_000;
 /** The shell script `write_file` runs: `sh -c WRITE_SCRIPT sh <path>`, with the content on stdin. */
 export const WRITE_SCRIPT = 'mkdir -p -- "$(dirname -- "$1")" && cat > "$1"';
 
+/** Directories `grep` does not descend into: version control, dependencies and build output, never what an agent changes. */
+export const GREP_SKIP = [".git", "node_modules", "target", "dist", "build", "__pycache__", ".venv"];
+
 export const FINISH = "finish";
 export const SUBMIT_PLAN = "submit_plan";
 
 export interface Scope {
   read: string[];
   write: string[];
-  exec: Array<{ command: string; argsPrefix?: string[][] }>;
+  /** A command and its argument prefixes; `root`, for a component's command, is where it runs. */
+  exec: Array<{ command: string; argsPrefix?: string[][]; root?: string }>;
 }
 
 export interface AgentTools {
@@ -46,7 +50,7 @@ export interface AgentTools {
 export function scopeOf(grants: CapVal[]): Scope {
   const read = grants.filter((c) => c.ctor === "fs.read" || c.ctor === "fs.write").flatMap((c) => c.scope ?? []).map(norm);
   const write = grants.filter((c) => c.ctor === "fs.write").flatMap((c) => c.scope ?? []).map(norm);
-  const exec = grants.filter((c) => c.ctor === "exec").flatMap((c) => (c.scope ?? []).map((command) => ({ command, ...(c.argsPrefix ? { argsPrefix: c.argsPrefix } : {}) })));
+  const exec = grants.filter((c) => c.ctor === "exec").flatMap((c) => (c.scope ?? []).map((command) => ({ command, ...(c.argsPrefix ? { argsPrefix: c.argsPrefix } : {}), ...(c.root ? { root: norm(c.root) } : {}) })));
   return { read: [...new Set(read)].sort(), write: [...new Set(write)].sort(), exec };
 }
 
@@ -63,7 +67,7 @@ export function toolsFor(grants: CapVal[], result: JsonSchema): AgentTools {
       { name: "list_dir", description: `List a directory. You may read under: ${list(scope.read)}.`, input_schema: obj({ path: STR }, ["path"]) as Value },
       {
         name: "grep",
-        description: `Search files under a path for a regular expression (grep -rn). You may read under: ${list(scope.read)}.`,
+        description: `Search files under a path for a regular expression (grep -rnE, extended syntax; ${GREP_SKIP.join(", ")} are skipped). You may read under: ${list(scope.read)}.`,
         input_schema: obj({ pattern: STR, path: STR }, ["pattern", "path"]) as Value,
       },
     );
@@ -76,11 +80,14 @@ export function toolsFor(grants: CapVal[], result: JsonSchema): AgentTools {
     });
   }
   if (scope.exec.length) {
-    const allowed = scope.exec.map((e) => (e.argsPrefix ? e.argsPrefix.map((p) => [e.command, ...p].join(" ")).join("; ") : `${e.command} …`)).join("; ");
+    const allowed = scope.exec.map((e) => (e.argsPrefix ? e.argsPrefix.map((p) => [e.command, ...p].join(" ")).join("; ") : `${e.command} …`) + (e.root ? ` (in ${e.root})` : "")).join("; ");
+    const roots = [...new Set(scope.exec.flatMap((e) => (e.root ? [e.root] : [])))];
     specs.push({
       name: "run",
-      description: `Run a command and get its exit code and output. Allowed: ${allowed} (further arguments may follow).`,
-      input_schema: obj({ command: STR, args: { type: "array", items: STR } }, ["command", "args"]) as Value,
+      description:
+        `Run a command and get its exit code and output. Allowed: ${allowed} (further arguments may follow).` +
+        (roots.length > 1 ? ` Name the working copy it runs in with cwd: one of ${list(roots)}.` : ""),
+      input_schema: obj({ command: STR, args: { type: "array", items: STR }, ...(roots.length > 1 ? { cwd: STR } : {}) }, ["command", "args"]) as Value,
     });
   }
   const names = new Set(specs.map((s) => s.name));
@@ -118,7 +125,7 @@ export function commandFor(tools: AgentTools, name: string, input: Record<string
       if (name === "list_dir") return { argv: ["ls", "-1Ap", "--", p] };
       const pattern = input["pattern"];
       if (typeof pattern !== "string") return new Denied("pattern must be a string");
-      return { argv: ["grep", "-rnI", "--", pattern, p] };
+      return { argv: ["grep", "-rnIE", ...GREP_SKIP.map((d) => `--exclude-dir=${d}`), "--", pattern, p] };
     }
     case "write_file": {
       const p = path();
@@ -134,9 +141,22 @@ export function commandFor(tools: AgentTools, name: string, input: Record<string
       if (typeof command !== "string" || !Array.isArray(args) || !args.every((a) => typeof a === "string")) return new Denied("command must be a string and args a list of strings");
       const allowed = s.exec.filter((e) => e.command === command);
       if (!allowed.length) return new Denied(`${command} is not a command you may run (${s.exec.map((e) => e.command).join(", ")})`);
-      const ok = allowed.some((e) => !e.argsPrefix || e.argsPrefix.some((p) => p.every((x, i) => args[i] === x)));
-      if (!ok) return new Denied(`${[command, ...args].join(" ")} does not start with an allowed argument prefix`);
-      return { argv: [command, ...(args as string[])], ...(tools.cwd ? { cwd: tools.cwd } : {}) };
+      const fits = allowed.filter((e) => !e.argsPrefix || e.argsPrefix.some((p) => p.every((x, i) => args[i] === x)));
+      if (!fits.length) return new Denied(`${[command, ...args].join(" ")} does not start with an allowed argument prefix`);
+      // A component's command runs in that component's root; with several, the call names which.
+      const roots = [...new Set(fits.flatMap((e) => (e.root ? [e.root] : [])))];
+      const asked = input["cwd"];
+      let cwd = tools.cwd;
+      if (typeof asked === "string" && asked) {
+        const c = norm(posix.isAbsolute(asked) ? asked : posix.join(tools.cwd ?? "/", asked));
+        if (!roots.includes(c)) return new Denied(`${command} may run in ${roots.length ? roots.join(", ") : "its default working directory"}, not ${c}`);
+        cwd = c;
+      } else if (roots.length === 1) {
+        cwd = roots[0];
+      } else if (roots.length > 1) {
+        return new Denied(`${command} is allowed in several working copies; name one with cwd: ${roots.join(", ")}`);
+      }
+      return { argv: [command, ...(args as string[])], ...(cwd ? { cwd } : {}) };
     }
   }
   return new Denied(`there is no tool ${name}`);
