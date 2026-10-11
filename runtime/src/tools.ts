@@ -67,7 +67,7 @@ export function toolsFor(grants: CapVal[], result: JsonSchema): AgentTools {
       { name: "list_dir", description: `List a directory. You may read under: ${list(scope.read)}.`, input_schema: obj({ path: STR }, ["path"]) as Value },
       {
         name: "grep",
-        description: `Search files under a path for a regular expression (grep -rn; ${GREP_SKIP.join(", ")} are skipped). You may read under: ${list(scope.read)}.`,
+        description: `Search files under a path for a regular expression (grep -rnE, extended syntax; ${GREP_SKIP.join(", ")} are skipped). You may read under: ${list(scope.read)}.`,
         input_schema: obj({ pattern: STR, path: STR }, ["pattern", "path"]) as Value,
       },
     );
@@ -125,7 +125,7 @@ export function commandFor(tools: AgentTools, name: string, input: Record<string
       if (name === "list_dir") return { argv: ["ls", "-1Ap", "--", p] };
       const pattern = input["pattern"];
       if (typeof pattern !== "string") return new Denied("pattern must be a string");
-      return { argv: ["grep", "-rnI", ...GREP_SKIP.map((d) => `--exclude-dir=${d}`), "--", pattern, p] };
+      return { argv: ["grep", "-rnIE", ...GREP_SKIP.map((d) => `--exclude-dir=${d}`), "--", pattern, p] };
     }
     case "write_file": {
       const p = path();

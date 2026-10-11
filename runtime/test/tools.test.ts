@@ -63,3 +63,11 @@ capability TA = component.exec(api, test)`, ["R", "TW", "TA"]), { type: "string"
     expect(JSON.stringify(tools.specs.find((s) => s.name === "run"))).toContain("cwd");
   });
 });
+
+describe("grep", () => {
+  it("takes extended regular expressions and skips dependencies and build output", () => {
+    const tools = toolsFor(grants(`capability R = component.read(web, api)`, ["R"]), { type: "string" });
+    const r = commandFor(tools, "grep", { pattern: "MCP_RESOURCE|MCP_AUDIENCE", path: "/work/api" });
+    expect(r).toMatchObject({ argv: expect.arrayContaining(["grep", "-rnIE", "--exclude-dir=node_modules", "--exclude-dir=.git", "--", "MCP_RESOURCE|MCP_AUDIENCE", "/work/api"]) });
+  });
+});
