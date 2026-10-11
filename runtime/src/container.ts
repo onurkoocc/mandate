@@ -25,7 +25,7 @@
 // helpers run in the image of the command that shares their working copy, or
 // in `helperImage`. A command without an image is refused.
 
-import { mkdirSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
 import type { Docker } from "./boundary.js";
 import { realDocker } from "./boundary.js";
@@ -193,7 +193,17 @@ export class ContainerHost implements SandboxHost {
       if (!m.rw && isDir(join(m.host, "node_modules")) && !links(m.host).some(([e]) => e === "node_modules")) argv.push(...caches(join(m.host, "node_modules"), `/m/${i}/node_modules`));
       for (const dir of this.o.scratch ?? []) {
         if (!isDir(m.host) || !looksLikeRoot(m.host)) continue;
-        mkdirSync(join(m.host, dir), { recursive: true });
+        // A link there (a test copy's linked build output) is mounted as a link is; it is not replaced.
+        try {
+          if (lstatSync(join(m.host, dir)).isSymbolicLink()) continue;
+        } catch {
+          /* absent: made below */
+        }
+        try {
+          mkdirSync(join(m.host, dir), { recursive: true });
+        } catch {
+          continue;
+        }
         argv.push("--tmpfs", `/m/${i}/${dir}:rw,exec`);
       }
     });

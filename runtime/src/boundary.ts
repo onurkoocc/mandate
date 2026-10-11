@@ -31,7 +31,7 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { globRegExp, requirementFor, type CapVal } from "@mandate/compiler";
 import type { CheckLog, CheckResult, CheckSubject, SystemFacts, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { sha256Of } from "./artifacts.js";
@@ -359,7 +359,9 @@ export class BoundaryVerifier implements VerifierAdapter {
         // A component that is no service of its own (compose files, seeds, scenarios) is read from `dir` instead.
         const svc = cfg.services && Object.hasOwn(cfg.services, name) ? cfg.services[name] : name;
         if (svc === null || svc === undefined) continue;
-        services[svc] = { image: `${project}-${svc}`, build: { context: c.root.replace(/\\/g, "/") } };
+        // The root as the host resolves it: on Windows /work/x is on the current drive, where compose would read it
+        // relative to its own files.
+        services[svc] = { image: `${project}-${svc}`, build: { context: resolve(c.root).replace(/\\/g, "/") } };
       }
       writeFileSync(join(work, "mandate.yml"), JSON.stringify({ services, networks: { default: { internal: true } } }, null, 2));
       const config = await compose(["config", "--format", "json"]);
