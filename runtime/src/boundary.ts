@@ -43,7 +43,13 @@ import { isObj, plain, type Value } from "./values.js";
 export const BOUNDARY_HANDLER = "mandate-boundary-verifier@0.3";
 
 /** Directories linked, not copied, into a test copy, and readable where they are: dependencies. */
-export const LINKED = ["node_modules", ".venv", "target"];
+export const LINKED = ["node_modules", ".venv"];
+
+/**
+ * Build output, neither copied nor linked: a test copy builds its own. Linked, it
+ * was read-only in a container sandbox and Maven could not write target/classes.
+ */
+export const BUILD_OUTPUT = ["target"];
 
 export interface IntegrationConfig {
   /** The directory the compose files are in; compose runs from here. */
@@ -464,7 +470,7 @@ export function snapshot(sys: SystemFacts): CheckSubject {
     if (!c.base || !existsSync(c.root)) continue;
     const walk = (dir: string, rel: string): void => {
       for (const e of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
-        if (e.name === ".git" || LINKED.includes(e.name)) continue;
+        if (e.name === ".git" || LINKED.includes(e.name) || BUILD_OUTPUT.includes(e.name)) continue;
         const r = rel ? `${rel}/${e.name}` : e.name;
         if (e.isDirectory()) walk(join(dir, e.name), r);
         else if (e.isFile()) files[`${name}/${r}`] = sha256Of(readFileSync(join(dir, e.name)));
@@ -527,7 +533,7 @@ function listFiles(dir: string, rel = ""): string[] {
 /** A copy of a working copy without .git, of real files only; dependency directories are linked and stay readable where they are. */
 function copyOf(src: string, prefix: string): { dir: string; extraRead: string[]; remove(): void } {
   const dir = mkdtempSync(join(tmpdir(), prefix));
-  cpSync(src, dir, { recursive: true, filter: realEntries(src, new RegExp(`[\\\\/](\\.git|${LINKED.map((l) => l.replace(".", "\\.")).join("|")})$`)) });
+  cpSync(src, dir, { recursive: true, filter: realEntries(src, new RegExp(`[\\\\/](\\.git|${[...LINKED, ...BUILD_OUTPUT].map((l) => l.replace(".", "\\.")).join("|")})$`)) });
   const extraRead: string[] = [];
   for (const l of LINKED) {
     // Absolute on the host: a junction to a drive-less /work/… path would point at a network share.

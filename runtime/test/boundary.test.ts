@@ -114,6 +114,28 @@ describe("test.suite_each", () => {
     expect(readFileSync(join(victim, "value.test.ts"), "utf8")).toBe("victim\n");
   });
 
+  it("links a component's dependencies into the test copy, but not its build output: the copy builds its own", async () => {
+    const built = repo("acme-built", { "src/value.ts": "1\n", "test/value.test.ts": "1\n" });
+    write(built.root, "node_modules/dep/index.js", "1\n");
+    write(built.root, "target/classes/Old.class", "stale\n");
+    const seen: Array<{ deps: boolean; target: boolean }> = [];
+    const h = host();
+    const npm = h.programs["npm"]!;
+    h.programs["npm"] = (r, ...rest) => {
+      seen.push({ deps: existsSync(join(r.cwd!, "node_modules/dep/index.js")), target: existsSync(join(r.cwd!, "target")) });
+      return npm(r, ...rest);
+    };
+    const facts: SystemFacts = { components: { built: { ...sys.components["mcp"]!, repo: "acme/built", root: built.root, base: built.base } }, interfaces: {} };
+    const r = await new BoundaryVerifier({}, sandbox(h)).check({ ...req("test.suite_each", [["built"]]), system: facts });
+    expect(r.passed, JSON.stringify(r.detail)).toBe(true);
+    // A linked build directory was read-only in a container sandbox: Maven could not write target/classes (Gate 5, KH-04).
+    expect(seen).toEqual([{ deps: true, target: false }]);
+    expect(h.created[0]!.policy.filesystem.readOnly.some((p) => p.endsWith(join("acme-built", "node_modules")))).toBe(true);
+    expect(h.created[0]!.policy.filesystem.readOnly.some((p) => p.endsWith("target"))).toBe(false);
+    // Build output is not part of the change.
+    expect(Object.keys(r.subject!.files).some((f) => f.startsWith("built/target/"))).toBe(false);
+  });
+
   it("refuses a component without test commands or outside the system", async () => {
     const v = new BoundaryVerifier({}, sandbox(host()));
     expect((await v.check(req("test.suite_each", [["ledger"]]))).passed).toBe(false);
