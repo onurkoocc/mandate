@@ -530,7 +530,8 @@ function copyOf(src: string, prefix: string): { dir: string; extraRead: string[]
   cpSync(src, dir, { recursive: true, filter: realEntries(src, new RegExp(`[\\\\/](\\.git|${LINKED.map((l) => l.replace(".", "\\.")).join("|")})$`)) });
   const extraRead: string[] = [];
   for (const l of LINKED) {
-    const there = join(src, l);
+    // Absolute on the host: a junction to a drive-less /work/… path would point at a network share.
+    const there = resolve(src, l);
     if (!existsSync(there)) continue;
     symlinkSync(there, join(dir, l), process.platform === "win32" ? "junction" : "dir");
     extraRead.push(there);
@@ -551,7 +552,7 @@ export function checkout(root: string, commit: string): { dir: string; remove():
     return undefined;
   }
   execFileSync("tar", ["-x", "-C", dir], { input: archive });
-  for (const l of LINKED) if (existsSync(join(root, l))) symlinkSync(join(root, l), join(dir, l), process.platform === "win32" ? "junction" : "dir");
+  for (const l of LINKED) if (existsSync(join(root, l))) symlinkSync(resolve(root, l), join(dir, l), process.platform === "win32" ? "junction" : "dir");
   return { dir, remove: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
