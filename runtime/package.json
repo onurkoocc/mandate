@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Mandate 0.1 reference runtime: journal, prepare/authorize/commit, budget ledger, supervision, Temporal scheduling",
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": {

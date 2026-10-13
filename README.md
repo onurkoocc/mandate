@@ -5,6 +5,62 @@ and edit programs; people review them through generated views; the compiler
 checks capabilities, effects, budgets, contracts and delegation before
 anything runs. This repository holds the 0.1 reference implementation.
 
+## Why
+
+Agents now act on real systems: they open pull requests, change customer
+records, spend money. Most agent frameworks describe what an agent does. Few
+can show, before the first token is spent, what it is allowed to do. Mandate
+makes that authority a program, and the compiler and runtime enforce it:
+
+- **Capabilities and effects.** Every write, command, network target and model
+  call is declared. A sub-agent gets no more than it is handed, and a host
+  that cannot enforce its sandbox never starts it.
+- **Budgets.** Tokens, time, spend and steps are reserved up front and settled
+  per call. FixBug's five agents fit 49.28 USD inside a 50 USD workflow, and
+  the compiler proves it.
+- **Contracts with evidence.** Acceptance criteria are met by signed evidence
+  bound to the exact bytes it checked. An agent saying "approved" creates no
+  authorization.
+- **People in the loop as typed steps.** `human.approve` has a role and a
+  deadline; a missed deadline escalates, it never passes.
+- **Data classes and trust.** Restricted data cannot reach a model that may not
+  receive it, and `Untrusted<T>` cannot reach the instruction part of a prompt.
+- **Recovery.** An event journal, prepare → authorize → commit, and
+  reconciliation of an unknown outcome instead of a blind retry.
+
+## A taste
+
+Excerpt from [`fixtures/fixbug/fixbug.mdt`](fixtures/fixbug/fixbug.mdt), a five-agent
+bugfix workflow:
+
+```text
+capability RepoRead  = fs.read("/work/repo")
+capability SrcWrite  = fs.write("/work/repo/src")
+capability Build     = exec(commands: ["mvn"], args_prefix: [["-q", "test"], ["-q", "verify"]])
+capability ModelStd  = model.infer(tier: standard)
+capability PR        = git.pr("company/backend")
+
+contract FixAccepted(issue: Issue, pr: PullRequestDraft) {
+  require issue.reproducible
+  accept regression_test "A regression test fails before the fix and passes after it"
+    by test.red_then_green(pr.patch, pr.tests)
+  accept scope_respected "The change stays inside the task scope"
+    by static pr.patch.files ⊆ issue.scope
+  accept owner_approved "The code owner approved"
+    by human.approve(role: "code_owner")
+}
+
+agent Implementer {
+  role   "Applies the plan, only in the files it may change."
+  caps   RepoRead, SrcWrite, Build, ModelStd
+  budget { tokens: 2800k, time: 45m, spend: 17.6 USD, steps: 20 }
+}
+```
+
+The live acceptance run of 0.2: those five agents on Claude Opus 5.5, each in
+its own sandbox, fixed a seeded bug, a person approved from the CLI, and one
+pull request was opened, for 0.23 USD.
+
 ## Status
 
 0.1 was built in four steps, then Gates 0, 3 and 4 took it to 0.2:
@@ -420,3 +476,7 @@ MANDATE_LIVE=1 npx vitest run test/live.test.ts     # from runtime/
 
 Models, efforts, token limits and prices come from the lock file
 ([`spec/lock.md`](spec/lock.md)).
+
+## License
+
+Apache License 2.0. See [`LICENSE`](LICENSE).
