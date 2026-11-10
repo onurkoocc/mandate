@@ -218,7 +218,7 @@ function sameShape(a: Ty, e: Ty, env: TypeEnv, fullA: Ty, fullE: Ty): Problem | 
   const fe = fieldsOf(ue, env);
   if (fa && fe) {
     for (const [k, v] of Object.entries(fe)) {
-      if (!(k in fa)) return mismatch();
+      if (!Object.hasOwn(fa, k)) return mismatch();
       const p = assignable(fa[k]!, v, env);
       if (p) return p;
     }

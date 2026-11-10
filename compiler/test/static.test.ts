@@ -465,6 +465,15 @@ fn go(d: PullRequestDraft) -> Bool {
     expect(errorsOf(program("type P = { a: Text }\nfn f(p: P) -> Text { p.b }"))).toEqual(["MDT-E0202"]);
   });
 
+  it("E0202 and E0203: a field named like a member of Object.prototype is a field like any other", () => {
+    const messages = (src: string): string[] => check(src, "mdt").diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`);
+    for (const f of ["constructor", "toString", "valueOf", "hasOwnProperty"]) {
+      expect(messages(program(`type P = { a: Text }\nfn f(p: P) -> Text { p.${f} }`)), f).toEqual([`MDT-E0202 P has no field '${f}'.`]);
+      expect(messages(program(`type P = { a: Text }\nlet x = P { a: "x", ${f}: "y" }`)), f).toEqual([`MDT-E0202 P has no field '${f}'.`]);
+      expect(messages(program(`type P = { ${f}: Text, a: Text }\nlet x = P { a: "x" }`)), f).toEqual([`MDT-E0203 P is missing field(s) ${f}.`]);
+    }
+  });
+
   it("E0201: wrong argument types and counts", () => {
     expect(errorsOf(program('fn f(n: Int) -> Int { n }\nlet x = f("one")'))).toEqual(["MDT-E0201"]);
     expect(errorsOf(program("fn f(n: Int) -> Int { n }\nlet x = f(1, 2)"))).toEqual(["MDT-E0201"]);
