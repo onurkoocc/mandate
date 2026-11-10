@@ -123,6 +123,30 @@ workflow W(issue: Issue) -> Text
     expect(r.diagnostics.map((d) => d.facts?.["name"]).sort()).toEqual(["A", "x"]);
   });
 
+  it("reports an effect whose name only Object.prototype has, like any unknown effect", () => {
+    const withEffect = (name: string): string => `mandate @ 0.3
+module m @ 0.1
+use std.{fs}
+capability R = fs.read("/repo")
+environment prod {
+  class internal
+  authorize ${name} by policy
+}
+workflow W(t: Text) -> Bool
+  caps R
+{
+  effect ${name}(t)
+  true
+}`;
+    const expected = (name: string) => [
+      { code: "MDT-E0120", path: "/defs/prod/authorize/" + name, name },
+      { code: "MDT-E0120", path: "/defs/W/body/0/value/name", name },
+    ];
+    const shape = (src: string) => check(src, "mdt").diagnostics.map((d) => ({ code: d.code, path: d.at.path, name: d.facts?.["name"] }));
+    expect(shape(withEffect("nope"))).toEqual(expected("nope"));
+    for (const name of ["toString", "constructor", "hasOwnProperty", "valueOf"]) expect(shape(withEffect(name)), name).toEqual(expected(name));
+  });
+
   it("checks the JSON IR the same way as text", () => {
     const p = minimal();
     p["defs"] = { Greeting: { kind: "type", type: { ref: "Txt" } } };

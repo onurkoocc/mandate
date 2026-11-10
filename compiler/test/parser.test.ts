@@ -34,6 +34,14 @@ describe("lexical forms", () => {
     expect(codes(check("module m @ 0.1\nlet x = 1.5ms\n", "mdt").diagnostics)).toEqual(["MDT-E0101"]);
   });
 
+  it("refuses a number suffix that is only a name Object.prototype has", () => {
+    for (const suffix of ["constructor", "valueOf", "toString", "hasOwnProperty"]) {
+      const r = check(`module m @ 0.1\nlet x = 10${suffix}\n`, "mdt");
+      expect(codes(r.diagnostics), suffix).toEqual(["MDT-E0101"]);
+      expect(r.diagnostics[0]!.message).toBe(`Unknown number suffix '${suffix}'. Use k or M for counts and ms, s, m, h or d for durations.`);
+    }
+  });
+
   it("keeps string text exactly and turns interpolation into template parts", () => {
     expect(constOf('"a \\{b\\} c"')).toEqual({ op: "text", value: "a {b} c" });
     expect(constOf('"n = {n}"')).toEqual({
