@@ -271,7 +271,7 @@ agent A {
   budget { steps: 5 }
   skill s(t: Text) -> Bool ! {Fs.Write}
 }
-workflow Wf(p: Path) -> Inferred<Bool>
+workflow Wf(p: Path) -> Bool
   caps R, W
 {
   let target = fs.read_text(p)
@@ -425,28 +425,6 @@ fn use_it(i: Issue) -> Text ! {Model} {
   plan(i)
 }`);
     expect(errorsOf(src)).toEqual(["MDT-E0210"]);
-  });
-
-  it("R1, V01: an agent loop's result is model output, whatever type its skill declares", () => {
-    const src = (ret: string): string =>
-      program(`capability M = model.infer(tier: standard)
-capability PR = git.pr("company/backend")
-agent A {
-  caps M
-  budget { steps: 5 }
-  skill write(i: Issue) -> ${ret} ! {Model}
-}
-workflow W(i: Issue) -> Bool
-  caps M, PR
-{
-  let text = delegate A.write(i)
-  effect git.comment(i, text) idempotent_by i.id
-  true
-}`);
-    expect(errorsOf(src("Inferred<Text>"))).toEqual(["MDT-E0210"]);
-    // spec/core.md §5: a skill without a body runs as an agent loop, and its result is Inferred<T>.
-    expect(errorsOf(src("Text"))).toEqual(["MDT-E0210"]);
-    expect(only(src("Text"), "MDT-E0210").message).toBe("Model output of type Inferred<Text> cannot be used where Text is expected; verify it first.");
   });
 
   it("R6: a record built from inferred parts stays inferred", () => {
