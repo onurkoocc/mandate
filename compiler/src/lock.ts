@@ -53,6 +53,11 @@ export interface Lock {
 
 let validator: ValidateFunction | undefined;
 
+/** `o[k]` when `k` is a key of `o` itself: a lock read with JSON.parse has a prototype, and a model may be named `constructor`. */
+export function own<T>(o: Record<string, T> | undefined, k: string): T | undefined {
+  return o !== undefined && Object.hasOwn(o, k) ? o[k] : undefined;
+}
+
 export function lockSchema(): object {
   return JSON.parse(readFileSync(new URL("../../spec/lock.schema.json", import.meta.url), "utf8")) as object;
 }
@@ -65,7 +70,7 @@ export function validateLock(value: unknown): Diagnostic[] {
     const out: Diagnostic[] = [];
     if (lock.bindings && lock.lock !== LOCK_FORMAT) out.push(diag("E0140", `Executor bindings need lock format ${LOCK_FORMAT}, not ${String(lock.lock)}.`, { path: "/lock" }, { facts: { lock: lock.lock ?? null } }));
     for (const [tier, m] of Object.entries(lock.models ?? {})) {
-      if (!lock.tariffs?.[m.model]) {
+      if (!own(lock.tariffs, m.model)) {
         out.push(diag("E0140", `The lock maps tier ${tier} to ${m.model}, which has no tariff.`, { path: `/models/${tier}/model` }, { facts: { tier, model: m.model } }));
       }
     }
@@ -82,8 +87,8 @@ export function validateLock(value: unknown): Diagnostic[] {
  * input and cache-write prices, K12), rounded up to a whole micro-unit.
  */
 export function perCallBound(lock: Lock, tier: string): { tokens: number; spend: { micros: number; currency: string } } | undefined {
-  const m = lock.models?.[tier];
-  const t = m && lock.tariffs?.[m.model];
+  const m = own(lock.models, tier);
+  const t = m && own(lock.tariffs, m.model);
   if (!m || !t) return undefined;
   const p = t.micros_per_mtok;
   const micros = Math.ceil((m.max_input_tokens * Math.max(p.input, p.cache_write) + m.max_output_tokens * p.output) / 1_000_000);
@@ -118,7 +123,7 @@ export function lockChecks(program: Program, lock: Lock, spans?: Map<string, Spa
   };
   const out: Diagnostic[] = [];
   for (const tier of [...modelTiers(program)].sort()) {
-    if (!lock.models?.[tier]) out.push(diag("E0141", `Model tier ${tier} is not in the lock file.`, at("/defs"), { facts: { tier, locked: Object.keys(lock.models ?? {}).sort() } }));
+    if (!own(lock.models, tier)) out.push(diag("E0141", `Model tier ${tier} is not in the lock file.`, at("/defs"), { facts: { tier, locked: Object.keys(lock.models ?? {}).sort() } }));
   }
   for (const [name, def] of Object.entries(program.defs).sort(([a], [b]) => (a < b ? -1 : 1))) {
     if (def.kind !== "agent" || def.remote) continue;

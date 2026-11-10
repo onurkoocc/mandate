@@ -38,6 +38,21 @@ describe("lock file", () => {
     expect(codes(validateLock(noTariff))).toEqual(["MDT-E0140"]);
   });
 
+  it("finds no tariff and no tier under a name only Object.prototype has, in a lock read by JSON.parse", () => {
+    // LOCK is read with JSON.parse, as `mandate mcp` and the API read a lock: its objects have a prototype.
+    for (const model of ["constructor", "toString", "__proto__"]) {
+      const lock = structuredClone(LOCK);
+      lock.models!["standard"]!.model = model;
+      expect(codes(validateLock(lock)), model).toEqual(["MDT-E0140"]);
+      expect(perCallBound(lock, "standard"), model).toBeUndefined();
+      const r = check(agent("{ tokens: 280k, spend: 1 USD, steps: 2 }"), "mdt", { lock });
+      expect(r.diagnostics.map((d) => [d.code, d.message]), model).toEqual([["MDT-E0140", `The lock maps tier standard to ${model}, which has no tariff.`]]);
+    }
+    const tier = agent("{ tokens: 280k, spend: 1 USD, steps: 2 }").replace("tier: standard", "tier: constructor");
+    expect(check(tier, "mdt", { lock: LOCK }).diagnostics.map((d) => [d.code, d.facts?.["tier"]])).toEqual([["MDT-E0141", "constructor"]]);
+    expect(perCallBound(LOCK, "constructor")).toBeUndefined();
+  });
+
   it("bounds one call by the locked limits, priced with no cache hit (K12)", () => {
     // 128k input at the cache-write price (5 USD/MTok) + 12k output at 20 USD/MTok.
     expect(perCallBound(LOCK, "standard")).toEqual({ tokens: 140_000, spend: { micros: 880_000, currency: "USD" } });

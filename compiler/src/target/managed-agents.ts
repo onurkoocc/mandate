@@ -144,7 +144,7 @@ export function bindingChecks(program: Program, lock: Lock, spans?: Map<string, 
       out.push(diag("E0903", `${name} is bound to tier ${a.tier}, but its capabilities name ${tiers.length ? tiers.join(", ") : "no model tier"}. A bound agent has exactly one tier.`, at(`/defs/${name}/caps`), { facts: { agent: name, bound: a.tier, tiers } }));
       continue;
     }
-    const m = lock.models?.[a.tier];
+    const m = lock.models && Object.hasOwn(lock.models, a.tier) ? lock.models[a.tier] : undefined;
     if (!m || m.model !== a.model || m.effort !== a.effort) {
       out.push(
         diag("E0903", `${name} was deployed with ${a.model} at effort ${a.effort}; the lock maps ${a.tier} to ${m ? `${m.model} at effort ${m.effort}` : "nothing"}. Deploy again.`, lockAt(`/agents/${name}`), {
