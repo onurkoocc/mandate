@@ -139,6 +139,14 @@ pull request was opened, for 0.23 USD.
    Rego, for Microsoft AGT hosts. The Rego fails closed, is bound to the
    package hash, and comes with the profile of what one call cannot show.
 
+11. **0.4, Envelope (specified, not implemented):** a person approves an
+   envelope once (authority, budget, agents, data class, the effects a
+   person authorizes), and a lead agent writes sub-programs that run only
+   when the compiler shows they fit what is left of it. `map` with bounds
+   and disjoint writes, roles bound to people's keys in the lock, and a
+   signed record for every decision. See
+   [`spec/envelope.md`](spec/envelope.md).
+
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
 
