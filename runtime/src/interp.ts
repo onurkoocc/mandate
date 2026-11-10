@@ -14,6 +14,7 @@
 
 import {
   calleePath,
+  capCovers,
   capsOf,
   classRank,
   type DataClass,
@@ -919,13 +920,17 @@ export class Interpreter {
     return this.hashes[name]!;
   }
 
-  /** Capabilities handed to a delegate: A.caps ∩ avail(ctx), with `with caps` narrowing its own kinds (C2, §9.1). */
+  /**
+   * Capabilities handed to a delegate: A.caps ∩ avail(ctx), with `with caps` narrowing its own kinds (C2, §9.1).
+   * An agent capability is in avail(ctx) when one of the workflow's covers it, as the compiler reads it
+   * (capCovers): its scope by segment after `.` and `..`, and no higher data class, other tier or wider arguments.
+   */
   private grants(agentName: string, withCaps: Expr[], path: string): CapVal[] {
     const agent = this.def(agentName) as Extract<Def, { kind: "agent" }>;
     const wfName = path.split("/")[2]!;
     const wf = this.def(wfName);
     const avail = wf?.kind === "workflow" ? wf.caps.flatMap((c) => this.caps(c)) : undefined;
-    const inside = (c: CapVal): boolean => !avail || avail.some((a) => a.ctor === c.ctor && scopeInside(c, a));
+    const inside = (c: CapVal): boolean => !avail || avail.some((a) => capCovers(a, c));
     let out = agent.caps.flatMap((c) => this.caps(c)).filter(inside);
     if (withCaps.length) {
       const given = withCaps.flatMap((c) => this.caps(c));
@@ -1713,19 +1718,6 @@ function bind(p: Pattern, v: Value, into: Map<string, Value>): void {
     const t = tagOf(v);
     (p.args ?? []).forEach((a, i) => bind(a, t?.args[i] ?? null, into));
   }
-}
-
-function scopeInside(inner: CapVal, outer: CapVal): boolean {
-  if (!outer.scope) return true;
-  if (!inner.scope) return false;
-  const seg = (s: string): string[] => s.split("/").filter((x) => x && x !== ".");
-  const within = (a: string, b: string): boolean => {
-    if (!inner.ctor.startsWith("fs.")) return a === b;
-    const x = seg(a);
-    const y = seg(b);
-    return y.length <= x.length && y.every((s, i) => x[i] === s);
-  };
-  return inner.scope.every((i) => outer.scope!.some((o) => within(i, o)));
 }
 
 /** Pure evaluation of a constant or supervision argument. */
