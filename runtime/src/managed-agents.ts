@@ -31,11 +31,11 @@
 // binding's `harness_tokens` allows for it.
 
 import Anthropic from "@anthropic-ai/sdk";
-import { bindingChecks, canonicalize, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, type Json, type Lock, type ManagedAgentsBinding, type ModelLock, type Program, type Tariff, agentModels } from "@mandate/compiler";
+import { bindingChecks, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, type Lock, type ManagedAgentsBinding, type ModelLock, type Program, type Tariff, agentModels } from "@mandate/compiler";
 import type { ChatModel, Cost, Executor, OpenRequest, Outcome, ToolSpec, TurnBound, TurnRequest } from "./adapters.js";
 import { boundOf, failure, priceUsage } from "./anthropic.js";
 import { Violation } from "./signals.js";
-import { digest, isObj, type Value } from "./values.js";
+import { canonical, digest, isObj, type Value } from "./values.js";
 
 // ── the service, as far as this executor uses it ─────────────────────────
 
@@ -402,7 +402,7 @@ export class ManagedAgentsChat implements ChatModel {
   }
 
   async turnBound(req: TurnRequest): Promise<TurnBound> {
-    const key = canonicalize({ system: req.system, tools: req.tools, messages: req.messages } as unknown as Json);
+    const key = canonical({ system: req.system, tools: req.tools, messages: req.messages } as unknown as Value);
     let n = this.counted.get(key);
     if (n === undefined) {
       n = await this.o.api.countTokens({ model: this.model.model, system: req.system, tools: req.tools, messages: req.messages });

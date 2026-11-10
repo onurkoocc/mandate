@@ -9,7 +9,8 @@
 // Types were checked by the compiler; the runtime only keeps what it needs to
 // enforce: which contract a value was verified against, and its evidence.
 
-import { canonicalize, domainHash, type HashDomain, type Json } from "@mandate/compiler";
+import { createHash } from "node:crypto";
+import type { HashDomain } from "@mandate/compiler";
 
 export type Value = null | boolean | number | string | Value[] | { [k: string]: Value };
 
@@ -62,13 +63,27 @@ export function plain(v: Value): Value {
   return u;
 }
 
+/**
+ * A run value's canonical JSON (RFC 8785): object keys sorted by UTF-16 code
+ * units, numbers as ECMAScript prints them. A run value may hold any number a
+ * model or an adapter returned, such as a confidence of 0.5, so this is not
+ * the IR's canonical form, which admits integers only (S11). For a value of
+ * integers it is the same bytes.
+ */
 export function canonical(v: Value): string {
-  return canonicalize(v as Json);
+  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+  if (isObj(v)) {
+    const keys = Object.keys(v)
+      .filter((k) => v[k] !== undefined)
+      .sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonical(v[k]!)}`).join(",")}}`;
+  }
+  return JSON.stringify(v) ?? "null";
 }
 
-/** Domain-separated SHA-256 of a value's canonical JSON. */
+/** Domain-separated SHA-256 of a value's canonical JSON, as `domainHash` in the runtime's 0.1 hash profile. */
 export function digest(domain: HashDomain, v: Value): string {
-  return domainHash(domain, v as Json);
+  return `sha256:${createHash("sha256").update(`mandate/${domain}/0.1\n`, "utf8").update(canonical(v), "utf8").digest("hex")}`;
 }
 
 export function money(micros: number, currency: string): Value {

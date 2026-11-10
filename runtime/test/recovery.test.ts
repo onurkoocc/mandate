@@ -4,7 +4,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { deferred, SimAgents, SimTool } from "../src/sim.js";
 import { Crash } from "../src/signals.js";
 import { closeAll, commandIds, start, until, world } from "./helpers.js";
-import { ASK, FIX, FOLLOW, NOTIFY } from "./programs.js";
+import { ASK, FIX, FOLLOW, ISSUE, NOTIFY } from "./programs.js";
 
 afterAll(closeAll);
 
@@ -133,6 +133,36 @@ describe("R13, R14: replay", () => {
     // The default replay adapters throw on any call.
     expect(await w.rt.replayRun("r13")).toEqual({ status: "complete", value: true });
     expect({ agents: w.agents.count(), executions: tool.executions.length, prepares: tool.prepares.length }).toEqual(before);
+  });
+
+  it("journals and replays values that hold numbers other than integers, such as a model's confidence", async () => {
+    const TWO = `module test.f @ 0.1
+use std.{model}
+use company.domain.{Issue, Finding}
+
+capability ModelStd = model.infer(tier: standard)
+
+agent Worker {
+  caps   ModelStd
+  budget { tokens: 1k, steps: 5 }
+  skill look(issue: Issue) -> Inferred<Finding> ! {Model}
+  skill fix(f: Inferred<Finding>) -> Inferred<Text> ! {Model}
+}
+
+workflow Two(issue: Issue) -> Inferred<Text>
+  caps    ModelStd
+  budget  { tokens: 10k, steps: 20 }
+{
+  let f = delegate Worker.look(issue)
+  delegate Worker.fix(f)
+}
+`;
+    const agents = new SimAgents().on("Worker.look", () => ({ ok: { file: "a.ts", confidence: 0.5 }, cost: { steps: 1 } })).on("Worker.fix", () => ({ ok: "fixed", cost: { steps: 1 } }));
+    const w = await world(TWO, { agents });
+    const run = await start(w, "Two", "r13f");
+    expect(run.state).toBe("succeeded");
+    expect(agents.calls.map((c) => c.args)).toEqual([[ISSUE.issue], [{ file: "a.ts", confidence: 0.5 }]]);
+    expect(await w.rt.replayRun("r13f")).toEqual({ status: "complete", value: "fixed" });
   });
 
   it("a run still waiting replays as partial", async () => {

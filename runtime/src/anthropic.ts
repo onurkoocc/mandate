@@ -17,11 +17,11 @@
 // the lock does not name. A refusal is reported as a fault instead.
 
 import Anthropic from "@anthropic-ai/sdk";
-import { canonicalize, type Json, type Lock, type ModelLock, type Program, type Tariff } from "@mandate/compiler";
+import type { Lock, ModelLock, Program, Tariff } from "@mandate/compiler";
 import type { ChatModel, Cost, InferRequest, ModelAdapter, Outcome, TurnBound, TurnRequest } from "./adapters.js";
 import { typeSchema } from "./schema.js";
 import { Fault, Violation } from "./signals.js";
-import { show, type Value } from "./values.js";
+import { canonical, show, type Value } from "./values.js";
 
 /** The part of the SDK client the adapter uses; tests pass a fake. */
 export interface AnthropicClient {
@@ -105,7 +105,7 @@ export class AnthropicModel implements ModelAdapter, ChatModel {
   }
 
   private async count(params: Anthropic.MessageCreateParamsNonStreaming): Promise<number> {
-    const key = canonicalize(params as unknown as Json);
+    const key = canonical(params as unknown as Value);
     const known = this.counted.get(key);
     if (known !== undefined) return known;
     const { max_tokens: _max, ...rest } = params;
