@@ -133,6 +133,17 @@ describe("the semantic diff (§15.3)", () => {
     expect(semanticDiff(leak, fixbug).governance).toEqual([]);
   });
 
+  it("shows a spend limit in another currency with each side's own currency, as a governance change", () => {
+    const spending = (spend: string): Program => program(`module m @ 0.1\nuse std.{fs}\ncapability R = fs.read("/repo")\nworkflow W(t: Text) -> Bool\n  caps R\n  budget { spend: ${spend} }\n{\n  true\n}\n`);
+    const d = semanticDiff(spending("50 USD"), spending("49 KWD"));
+    expect(d.governance.map((c) => c.text)).toEqual(["~ W.budget.spend: 50 USD → 49 KWD"]);
+    expect(d.behavior).toEqual([]);
+    expect(d.unchanged).not.toContain("no budget raised");
+    // Within one currency nothing changes: lower is behavior, higher is governance.
+    expect(semanticDiff(spending("50 USD"), spending("49 USD")).behavior.map((c) => c.text)).toEqual(["~ W.budget.spend: 50 USD → 49 USD"]);
+    expect(semanticDiff(spending("49 USD"), spending("50 USD")).governance.map((c) => c.text)).toEqual(["~ W.budget.spend: 49 USD → 50 USD"]);
+  });
+
   it("reports a removed or added criterion whatever it is named", () => {
     const criterion = '  accept owner_approved "The code owner approved"\n    by human.approve(role: "code_owner")\n';
     for (const name of ["constructor", "toString", "hasOwnProperty"]) {

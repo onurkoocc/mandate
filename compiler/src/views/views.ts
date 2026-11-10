@@ -634,8 +634,14 @@ function budgetChanges(name: string, before: Budget | undefined, after: Budget |
     else if (y! > x!) up.push(`${name}.budget.${field}: ${fmt(x!)} → ${fmt(y!)}`);
     else if (y! < x!) down.push(`${name}.budget.${field}: ${fmt(x!)} → ${fmt(y!)}`);
   };
-  const cur = after?.spend?.currency ?? before?.spend?.currency ?? "";
-  cmp("spend", before?.spend?.micros, after?.spend?.micros, (n) => `${n / 1_000_000} ${cur}`);
+  const was = before?.spend;
+  const now = after?.spend;
+  // Amounts in two currencies are not comparable: a person approves the change (as apply_patch reports it).
+  if (was && now && was.currency !== now.currency) up.push(`${name}.budget.spend: ${was.micros / 1_000_000} ${was.currency} → ${now.micros / 1_000_000} ${now.currency}`);
+  else {
+    const cur = now?.currency ?? was?.currency ?? "";
+    cmp("spend", was?.micros, now?.micros, (n) => `${n / 1_000_000} ${cur}`);
+  }
   cmp("tokens", before?.tokens, after?.tokens, String);
   cmp("steps", before?.steps, after?.steps, String);
   cmp("time", before?.time?.ms, after?.time?.ms, duration);
