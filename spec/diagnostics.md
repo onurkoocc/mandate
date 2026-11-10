@@ -116,3 +116,23 @@ assigned here.
 | MDT-E1104 | Change set member is not a critical effect | — | assigned |
 | MDT-E1105 | Change set without a verified plan | — | assigned |
 | MDT-E1201 | Read not as declared | — | assigned; data.read of a declared read, its parameters by name, max_class |
+
+## Envelopes and signed decisions (0.4, draft)
+
+Specified in [`envelope.md`](envelope.md) and not implemented yet, so
+`mandate explain` does not know these codes. E15xx (roles and people) and
+E17xx (envelopes) are assigned here.
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E1501 | Role not declared | — | assigned; a role a 0.4 module names is a `role` definition |
+| MDT-E1502 | Role not bound | — | assigned; needs the lock; `unbound_role` at load time |
+| MDT-E1503 | `distinct_from` without an earlier approval | H02 | assigned |
+| MDT-E1701 | Malformed envelope | — | assigned |
+| MDT-E1702 | Unbounded map | N08 | assigned |
+| MDT-E1703 | Map concurrency above the envelope | — | assigned |
+| MDT-E1704 | Envelope approval names a non-critical or uncovered effect | — | assigned |
+| MDT-E1705 | Not allowed in a sub-program | N09 | assigned |
+| MDT-E1706 | Sub-program does not fit the envelope | N01, N02 | assigned; returned to the lead, never to the run |
+| MDT-E1707 | `plan` outside an envelope | — | assigned |
+| MDT-E1708 | Person or critical effect in a map body | — | assigned |
