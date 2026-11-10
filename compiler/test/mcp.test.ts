@@ -61,6 +61,18 @@ describe("the compiler's MCP server (§14)", () => {
     expect(call(new McpServer(), "mandate.check", { source: program, modules: ["not a module"] })).toMatchObject({ isError: true });
   });
 
+  it("applies a patch to a program over a system model: the call's modules, or the server's", () => {
+    const system = readRepo("fixtures/system/acme.system.mdt");
+    const source = readRepo("fixtures/system/audience.mdt");
+    const model = check(system, "mdt").program!;
+    const base = check(source, "mdt", { modules: { "acme.system": model } }).hashes!.program;
+    const ops = [{ op: "replace", path: "/version", value: "0.2" }];
+    expect(call(new McpServer(), "mandate.apply_patch", { source, base, ops, modules: [system] }).structuredContent).toMatchObject({ ok: true, governance: [], requires_approval: false });
+    expect(call(new McpServer({ "acme.system": model }), "mandate.apply_patch", { source, base, ops }).structuredContent).toMatchObject({ ok: true, governance: [] });
+    // Without the module its `use` cannot resolve, as for mandate.check.
+    expect(call(new McpServer(), "mandate.apply_patch", { source, base, ops }).structuredContent).toMatchObject({ ok: false, diagnostics: [{ code: "MDT-E0120" }] });
+  });
+
   it("applies a patch against its base, flags governance changes, and refuses a stale base", () => {
     const s = new McpServer();
     const ir = JSON.stringify(check(FIXBUG, "mdt").program);

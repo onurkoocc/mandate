@@ -137,7 +137,7 @@ export interface PatchCheck {
  * checks a lead's sub-program the same way (spec/envelope.md).
  */
 export function checkPatch(program: Program, base: string, ops: PatchOp[], modules: Modules = {}): PatchCheck {
-  const r = applyPatch(program, base, ops);
+  const r = applyPatch(program, base, ops, modules);
   const checked = r.program ? check(JSON.stringify(r.program), "json", { modules }) : undefined;
   return {
     ok: r.ok && !!checked?.ok,

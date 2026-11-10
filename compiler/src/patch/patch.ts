@@ -11,6 +11,7 @@ import { SYSTEM_KINDS, type Budget, type Def, type Program } from "../ir/types.j
 import { validateIr } from "../ir/validate.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
+import { link, type Modules } from "../modules.js";
 import { resolveNames } from "../resolve/resolve.js";
 
 export interface PatchOp {
@@ -33,7 +34,11 @@ export interface PatchResult {
   governance: GovernanceChange[];
 }
 
-export function applyPatch(program: Program, base: string, ops: PatchOp[]): PatchResult {
+/**
+ * `modules`: what the program imports (a system model), linked in as `check` links it, so the patched
+ * program's names resolve against them (modules.ts).
+ */
+export function applyPatch(program: Program, base: string, ops: PatchOp[], modules: Modules = {}): PatchResult {
   const current = hashProgram(program as unknown as Json).program;
   if (current !== base) {
     return {
@@ -64,7 +69,10 @@ export function applyPatch(program: Program, base: string, ops: PatchOp[]): Patc
     }
   }
   const diagnostics = validateIr(root);
-  if (!hasErrors(diagnostics)) diagnostics.push(...resolveNames(root as unknown as Program));
+  if (!hasErrors(diagnostics)) {
+    const linked = link(root as unknown as Program, modules);
+    diagnostics.push(...linked.diagnostics, ...resolveNames(root as unknown as Program, undefined, linked.defs));
+  }
   const ok = !hasErrors(diagnostics);
   const result: PatchResult = { ok, diagnostics, governance: ok ? governance(program, root as unknown as Program) : [] };
   if (ok) {
