@@ -3,7 +3,8 @@
 Mandate is an agent-native coordination and contract language. Agents write
 and edit programs; people review them through generated views; the compiler
 checks capabilities, effects, budgets, contracts and delegation before
-anything runs. This repository holds the 0.1 reference implementation.
+anything runs. This repository holds the reference implementation of
+versions 0.1 to 0.3.
 
 ## Why
 

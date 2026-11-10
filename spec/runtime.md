@@ -1,4 +1,4 @@
-# Mandate 0.1 runtime
+# Mandate runtime, 0.1 to 0.3
 
 This is the reference runtime in `runtime/`. It runs a checked package
 against adapters and keeps every decision that must survive a crash in
