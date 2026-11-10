@@ -3,6 +3,8 @@ import { check, load } from "../src/check.js";
 import type { Expr } from "../src/ir/types.js";
 import { RESERVED } from "../src/parse/parser.js";
 import { printProgram } from "../src/print/printer.js";
+import { canonicalize } from "../src/json/jcs.js";
+import type { Json } from "../src/json/strict-json.js";
 import { codes } from "./helpers.js";
 
 /** Lowers one expression; names are not resolved here. */
@@ -237,5 +239,45 @@ ${extra}
     expect(codes(check(agent("", "  loop   react"), "mdt").diagnostics)).toEqual(["MDT-E0104"]);
     expect(codes(check(agent("mandate @ 0.2\n", "  progress { window: 3, repeats: 4 }"), "mdt").diagnostics)).toEqual(["MDT-E0104"]);
     expect(codes(check(agent("mandate @ 0.2\n", "  loop   wander"), "mdt").diagnostics)).toEqual(["MDT-E0101"]);
+  });
+});
+
+// spec/core.md: a reader rejects input over the limits (1 MiB of source,
+// nesting 64), and spec/checks.md: a .mdt file and its .ir.json give the
+// same diagnostics.
+describe("the text reader's limits (E0105)", () => {
+  const shape = (r: ReturnType<typeof check>) => r.diagnostics.map((d) => ({ code: d.code, message: d.message, path: d.at.path, facts: d.facts }));
+  const nested = (n: number): { mdt: string; json: string } => {
+    let v: unknown = { op: "int", value: 1 };
+    for (let i = 0; i < n; i++) v = { op: "list", items: [v] };
+    const ir = { language: "mandate/0.1", module: "m", version: "0.1", defs: { x: { kind: "const", value: v } } };
+    return { mdt: `module m @ 0.1\nlet x = ${"[".repeat(n)}1${"]".repeat(n)}\n`, json: canonicalize(ir as Json) };
+  };
+
+  it("refuses text over 1 MiB, as it refuses JSON", () => {
+    const pad = `// ${"x".repeat(1000)}\n`.repeat(1100);
+    const mdt = check(`module m @ 0.1\n${pad}let x = 1\n`, "mdt");
+    expect(shape(mdt)).toEqual([{ code: "MDT-E0105", message: "Input exceeds the 1048576-byte source limit.", path: undefined, facts: { limit: 1048576, actual: Buffer.byteLength(`module m @ 0.1\n${pad}let x = 1\n`) } }]);
+    const json = check(`{"language":"mandate/0.1","module":"m","version":"0.1","defs":{}}${" ".repeat(1048576)}`, "json");
+    expect(shape(json).map((d) => d.code)).toEqual(["MDT-E0105"]);
+    expect(check(`module m @ 0.1\n${`// ${"x".repeat(1000)}\n`.repeat(1000)}let x = 1\n`, "mdt").ok).toBe(true);
+  });
+
+  it("refuses text whose IR nests deeper than 64, with the diagnostic its IR gets", () => {
+    const deep = nested(40);
+    const fromJson = shape(check(deep.json, "json"));
+    expect(fromJson.map((d) => d.code)).toEqual(["MDT-E0105"]);
+    expect(shape(check(deep.mdt, "mdt"))).toEqual(fromJson);
+    const shallow = nested(25);
+    expect(check(shallow.mdt, "mdt").hashes?.program).toBeDefined();
+    expect(check(shallow.mdt, "mdt").hashes?.program).toBe(check(shallow.json, "json").hashes?.program);
+  });
+
+  it("refuses text nested too deep to read, without exhausting the stack", () => {
+    const deep = (open: string, close = ""): string => `module m @ 0.1\nlet x = ${open}1${close}\n`;
+    for (const src of [deep("[".repeat(3000), "]".repeat(3000)), deep("(".repeat(3000), ")".repeat(3000)), deep("-".repeat(100000)), deep("not ".repeat(3000)), deep("escalate ".repeat(3000)), deep("await ".repeat(3000))]) {
+      const r = check(src, "mdt");
+      expect(r.diagnostics.map((d) => [d.code, d.message])).toEqual([["MDT-E0105", "Nesting exceeds the depth limit of 64."]]);
+    }
   });
 });

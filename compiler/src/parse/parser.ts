@@ -14,8 +14,9 @@
 // as keywords only in the position that expects them (`test` stays usable as
 // the std.test module name).
 
-import { diag, DiagnosticError, type Diagnostic, type Span } from "../diag.js";
-import { canonicalize } from "../json/jcs.js";
+import { diag, DiagnosticError, ptrToken, type Diagnostic, type Span } from "../diag.js";
+import { canonicalize, compareUtf16 } from "../json/jcs.js";
+import { LIMITS } from "../limits.js";
 import { DATA_CLASSES, type DataClass } from "../std/std.js";
 import type { Json } from "../json/strict-json.js";
 import {
@@ -73,17 +74,56 @@ export interface ParseResult {
   diagnostics: Diagnostic[];
 }
 
+/**
+ * Reads `.mdt` text into IR within the limits the JSON reader keeps
+ * (strict-json.ts, spec/core.md): 1 MiB of source, and an IR nested at most
+ * 64 deep. Text nested more than 64 levels deep is refused while it is read,
+ * before the parser's stack runs out.
+ */
 export function parseMdt(src: string): ParseResult {
   const spans = new WeakMap<object, Span>();
+  const bytes = Buffer.byteLength(src, "utf8");
+  if (bytes > LIMITS.sourceBytes) {
+    return { spans, diagnostics: [diag("E0105", `Input exceeds the ${LIMITS.sourceBytes}-byte source limit.`, {}, { facts: { limit: LIMITS.sourceBytes, actual: bytes } })] };
+  }
   try {
     const toks = new Lexer(src).tokenize();
     const p = new Parser(toks, spans);
     const program = p.program();
+    const deep = tooDeep(program, spans);
+    if (deep) return { spans, diagnostics: [deep] };
     return { program, spans, diagnostics: p.diagnostics };
   } catch (e) {
     if (e instanceof DiagnosticError) return { spans, diagnostics: e.diagnostics };
     throw e;
   }
+}
+
+/**
+ * The first value of the IR, in canonical order, nested deeper than the IR
+ * may be, reported as the JSON reader reports it for the program's
+ * `.ir.json`: the same code, message, path and facts.
+ */
+function tooDeep(program: Program, spans: WeakMap<object, Span>): Diagnostic | undefined {
+  let found: Diagnostic | undefined;
+  const walk = (v: unknown, path: string, depth: number, near: Span | undefined): boolean => {
+    if (v === undefined) return false;
+    const span = (v !== null && typeof v === "object" ? spans.get(v) : undefined) ?? near;
+    if (depth > LIMITS.jsonDepth) {
+      found = diag("E0105", `JSON nesting exceeds the depth limit of ${LIMITS.jsonDepth}.`, span ? { span, path } : { path }, { facts: { limit: LIMITS.jsonDepth } });
+      return true;
+    }
+    if (Array.isArray(v)) return v.some((x, i) => walk(x, `${path}/${i}`, depth + 1, span));
+    if (v !== null && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      return Object.keys(o)
+        .sort(compareUtf16)
+        .some((k) => walk(o[k], `${path}/${ptrToken(k)}`, depth + 1, span));
+    }
+    return false;
+  };
+  walk(program, "", 1, undefined);
+  return found;
 }
 
 interface ExprCtx {
@@ -95,6 +135,8 @@ class Parser {
   private i = 0;
   readonly diagnostics: Diagnostic[] = [];
   private inTest = false;
+  /** How many expressions, types, blocks, patterns and operators the parser is inside. */
+  private depth = 0;
 
   constructor(
     private readonly toks: Token[],
@@ -175,6 +217,23 @@ class Parser {
     const parts = t.parts ?? [];
     if (parts.some((p) => "src" in p)) this.fail(`Interpolation is not allowed in ${what}.`, t);
     return parts.map((p) => ("text" in p ? p.text : "")).join("");
+  }
+  /**
+   * Parses one level deeper: an expression, a type, a block, a pattern or an
+   * operand of a prefix operator. All but a parenthesis build a level of IR,
+   * so text nested deeper than the IR may be is refused here, before the
+   * stack runs out.
+   */
+  private nest<T>(parse: () => T): T {
+    if (this.depth >= LIMITS.jsonDepth) {
+      throw new DiagnosticError([diag("E0105", `Nesting exceeds the depth limit of ${LIMITS.jsonDepth}.`, { span: tokenSpan(this.t) }, { facts: { limit: LIMITS.jsonDepth } })]);
+    }
+    this.depth++;
+    try {
+      return parse();
+    } finally {
+      this.depth--;
+    }
   }
   /** Records the span from `start` to the previous token on an IR node. */
   private at<T extends object>(node: T, start: Token): T {
@@ -858,6 +917,10 @@ class Parser {
   }
 
   private typeExpr(opts: { allowWhere?: boolean } = {}): TypeExpr {
+    return this.nest(() => this.typeExprAt(opts));
+  }
+
+  private typeExprAt(opts: { allowWhere?: boolean }): TypeExpr {
     const start = this.t;
     let ty: TypeExpr;
     if (this.eatW("enum")) {
@@ -935,6 +998,10 @@ class Parser {
   }
 
   private block(): Stmt[] {
+    return this.nest(() => this.blockAt());
+  }
+
+  private blockAt(): Stmt[] {
     this.expectP("{");
     const out: Stmt[] = [];
     while (!this.isP("}")) {
@@ -1009,6 +1076,10 @@ class Parser {
   }
 
   private ifRest(): Stmt {
+    return this.nest(() => this.ifRestAt());
+  }
+
+  private ifRestAt(): Stmt {
     const cond = this.expr({ noStruct: true });
     const s: Stmt = { op: "if", cond, then: this.block() };
     if (this.eatW("else")) {
@@ -1020,6 +1091,10 @@ class Parser {
   }
 
   private pattern(): Pattern {
+    return this.nest(() => this.patternAt());
+  }
+
+  private patternAt(): Pattern {
     const start = this.t;
     if (this.isW("_")) {
       this.bump();
@@ -1080,11 +1155,11 @@ class Parser {
     const start = this.t;
     if (this.isW("not") && minPrec <= PREC_NOT) {
       this.bump();
-      return this.at({ op: "unary", uop: "not", of: this.binary(PREC_NOT, ctx) }, start);
+      return this.at({ op: "unary", uop: "not", of: this.nest(() => this.binary(PREC_NOT, ctx)) }, start);
     }
     if (this.isP("-")) {
       this.bump();
-      return this.at({ op: "unary", uop: "neg", of: this.unary(PREC_UNARY, ctx) }, start);
+      return this.at({ op: "unary", uop: "neg", of: this.nest(() => this.unary(PREC_UNARY, ctx)) }, start);
     }
     return this.postfix(ctx);
   }
@@ -1132,6 +1207,10 @@ class Parser {
   }
 
   primary(ctx: ExprCtx): Expr {
+    return this.nest(() => this.primaryAt(ctx));
+  }
+
+  private primaryAt(ctx: ExprCtx): Expr {
     const t = this.t;
     switch (t.kind) {
       case "int":

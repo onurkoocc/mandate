@@ -25,6 +25,15 @@ A conforming reader rejects, rather than repairs:
 - input over the 0.1 limits: 1 MiB of source, nesting depth 64, 64
   definitions (E0105).
 
+The `.mdt` reader keeps the same limits, so a text and its IR are refused
+alike. Text over 1 MiB is refused before it is read. Text whose IR nests
+deeper than 64 gets the diagnostic its IR would get, at the first value too
+deep in canonical order. While it reads, the text reader also refuses text
+nested more than 64 levels deep (E0105, "Nesting exceeds the depth limit of
+64"). A level is an operand, a type, a block, an `else if`, a pattern or the
+operand of `-` or `not`. Every one of these but a parenthesis builds a level
+of IR, so the reader stops before its stack runs out.
+
 Schema validity is necessary, not sufficient: names are then resolved
 (E0120), and the static checks (types, effects, capabilities, budgets,
 contracts, delegation) run on the result. See [`checks.md`](checks.md).
