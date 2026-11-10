@@ -5,12 +5,19 @@ on:
     branches: [main]
   pull_request:
 
+# Every job reads the repository and nothing else. Actions are pinned to full
+# commit SHAs (the tag is in the comment) so a moved tag cannot change what
+# runs; Renovate keeps the pins current. Installs run no lifecycle scripts:
+# none of the packages with an install script is needed by these jobs.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16.15@sha256:f9a7b9ebf6f56201f949db745e47bc423c0f0f8294bafe991cc10bf74b029657
         env:
           POSTGRES_USER: mandate
           POSTGRES_PASSWORD: mandate
@@ -23,12 +30,14 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.4
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
@@ -46,10 +55,12 @@ jobs:
   sandbox:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 24
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
           cache: npm
       - name: Install Bubblewrap and allow unprivileged user namespaces
         run: |
@@ -58,7 +69,7 @@ jobs:
           # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           bwrap --version
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - name: Make /work writable for the Gate 3 rehearsal
         run: sudo mkdir -p /work && sudo chown "$(id -u):$(id -g)" /work
       - name: Sandbox enforcement on Bubblewrap (G05, G07), the Gate 3 rehearsal, and two components in two sandboxes (B3)
@@ -70,12 +81,14 @@ jobs:
   sandbox-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 24
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - name: Sandbox enforcement in an AppContainer (G05, G07; P2-27)
         working-directory: runtime
         env:

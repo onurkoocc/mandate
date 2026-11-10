@@ -1,0 +1,26 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests", "docker:pinDigests"],
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+  "rangeStrategy": "pin",
+  "vulnerabilityAlerts": {
+    "minimumReleaseAge": null,
+    "labels": ["security"]
+  },
+  "packageRules": [
+    {
+      "matchPackageNames": ["@temporalio/**"],
+      "groupName": "temporal"
+    },
+    {
+      "matchPackageNames": ["vitest", "@vitest/**", "vite"],
+      "groupName": "vitest"
+    },
+    {
+      "matchDepNames": ["node"],
+      "matchManagers": ["github-actions"],
+      "groupName": "node in CI"
+    }
+  ]
+}
