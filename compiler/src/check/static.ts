@@ -1225,6 +1225,13 @@ class Checker implements TypeEnv {
     this.use(frame, { effect: "Delegate", path });
     let ret = this.ty(skill.returns);
     if (remote && agent.remote!.trust !== "trusted") ret = named("Untrusted", ret);
+    else if (!remote && !skill.body && effective.some((c) => c.ctor === "model.infer")) {
+      // A skill without a body runs as an agent loop, which talks to the model its delegation grants: the result is
+      // that model's answer, whatever type the skill declares (§5.2, spec/core.md §5). Without a model in the grant
+      // the loop never runs (the runtime needs exactly one model tier in it), so it returns nothing to type.
+      const lvl = epistemic(ret).level;
+      if (lvl === "plain" || lvl === "verified") ret = named("Inferred", ret);
+    }
     // Model output inherits the highest class of what went in (§5.5).
     return { ty: ret, cls };
   }
