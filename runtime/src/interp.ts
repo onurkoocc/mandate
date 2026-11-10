@@ -54,6 +54,7 @@ import { schemaErrors, typeSchema } from "./schema.js";
 import type { ActionRow, CommandRow, Journal } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
 import {
+  canonical,
   digest,
   evidenceOf,
   isObj,
@@ -491,9 +492,9 @@ export class Interpreter {
     const r = plain(await this.expr(e.right, ctx, `${path}/right`));
     switch (e.bop) {
       case "==":
-        return JSON.stringify(l) === JSON.stringify(r);
+        return canonical(l) === canonical(r);
       case "!=":
-        return JSON.stringify(l) !== JSON.stringify(r);
+        return canonical(l) !== canonical(r);
       case "<":
         return Number(l) < Number(r);
       case "<=":
@@ -507,9 +508,9 @@ export class Interpreter {
           const [lo, hi] = r["$range"] as number[];
           return Number(l) >= Number(lo) && Number(l) <= Number(hi);
         }
-        return Array.isArray(r) && r.some((x) => JSON.stringify(x) === JSON.stringify(l));
+        return Array.isArray(r) && r.some((x) => canonical(x) === canonical(l));
       case "subseteq":
-        return Array.isArray(l) && Array.isArray(r) && l.every((x) => r.some((y) => JSON.stringify(x) === JSON.stringify(y)));
+        return Array.isArray(l) && Array.isArray(r) && l.every((x) => r.some((y) => canonical(x) === canonical(y)));
       case "+":
         if (isObj(l) && "$money" in l && isObj(r) && "$money" in r) {
           if (l["$currency"] !== r["$currency"]) throw new Violation("currency_mismatch", "Money in different currencies is never converted implicitly.");

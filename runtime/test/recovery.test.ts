@@ -165,6 +165,43 @@ workflow Two(issue: Issue) -> Inferred<Text>
     expect(await w.rt.replayRun("r13f")).toEqual({ status: "complete", value: "fixed" });
   });
 
+  it("compares values by content, not by key order, so a replay decides as the run did", async () => {
+    // The journal keeps results as jsonb, which orders an object's keys its own way; the run saw the adapter's order.
+    const SAME = `module test.eq @ 0.1
+use std.{model}
+use company.domain.{Issue}
+
+capability ModelStd = model.infer(tier: standard)
+
+type Pair = { a: Int, zz: Int }
+
+contract Seen(p: Pair) {
+  accept shown "Shown" by static true
+}
+
+agent Worker {
+  caps   ModelStd
+  budget { tokens: 1k, steps: 5 }
+  skill fix(issue: Issue) -> Inferred<Pair> ! {Model}
+}
+
+workflow Same(issue: Issue) -> Bool
+  caps    ModelStd
+  budget  { tokens: 10k, steps: 20 }
+{
+  let p = delegate Worker.fix(issue)
+  let v = verify p against Seen(p)
+  v == Pair { a: 2, zz: 1 } and [v] == [Pair { zz: 1, a: 2 }] and v in [Pair { a: 2, zz: 1 }]
+}
+`;
+    const agents = new SimAgents().on("Worker.fix", () => ({ ok: { zz: 1, a: 2 }, cost: { steps: 1 } }));
+    const w = await world(SAME, { agents });
+    const run = await start(w, "Same", "r13eq");
+    expect(run.state).toBe("succeeded");
+    expect(run.result).toBe(true);
+    expect(await w.rt.replayRun("r13eq")).toEqual({ status: "complete", value: true });
+  });
+
   it("a run still waiting replays as partial", async () => {
     const w = await world(ASK);
     const run = await start(w, "Ask", "r13b");
