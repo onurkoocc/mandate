@@ -5,11 +5,12 @@
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { PassThrough } from "node:stream";
+import { createInterface } from "node:readline";
+import { PassThrough, Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { check } from "../src/check.js";
-import { McpServer, serveStdio } from "../src/mcp/server.js";
+import { McpServer, MESSAGE_LIMITS, readLines, serveStdio } from "../src/mcp/server.js";
 import { readRepo } from "./helpers.js";
 
 const FIXBUG = readRepo("fixtures/fixbug/fixbug.mdt");
@@ -119,5 +120,127 @@ describe("the compiler's MCP server (§14)", () => {
     const code = await new Promise<number | null>((r) => child.on("close", r));
     expect(code).toBe(0);
     expect(JSON.parse(out.trim())).toMatchObject({ id: 7, result: { isError: false, structuredContent: { ok: true } } });
+  });
+});
+
+// CVE review K1: a message is bounded before it is handled, and its size while it is read.
+describe("the MCP server's message limits (K1)", () => {
+  type Reply = { id: unknown; result?: unknown; error?: { code: number; message: string; data?: { reason?: string; path?: string; limit?: number; bytes?: number } } };
+  const ping = (id: number) => JSON.stringify({ jsonrpc: "2.0", id, method: "ping", params: { _meta: V } });
+  const toolCall = (id: number, name: string, args: Record<string, unknown>) => JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args, _meta: V } });
+
+  /** Every reply the server writes for these input chunks, in order. */
+  async function serve(chunks: Iterable<string | Buffer> | AsyncIterable<string | Buffer>): Promise<Reply[]> {
+    const output = new PassThrough();
+    const out: Buffer[] = [];
+    output.on("data", (c: Buffer) => out.push(c));
+    await serveStdio(Readable.from(chunks), output);
+    return Buffer.concat(out).toString("utf8").trim().split("\n").map((l) => JSON.parse(l) as Reply);
+  }
+  const summary = (r: Reply) => [r.id, r.error ? r.error.code : "ok", r.error?.data?.reason ?? null];
+
+  it("refuses a 2 MB request and a 1 000 000-element array, and answers the next request", async () => {
+    const big = toolCall(1, "mandate.check", { source: "a".repeat(2 * 1024 * 1024) });
+    const million = toolCall(2, "mandate.apply_patch", { source: "{}", base: "sha256:0", ops: new Array(1_000_000).fill(0) });
+    expect(Buffer.byteLength(big)).toBeGreaterThan(2 * 1024 * 1024);
+    const replies = await serve([big + "\n", million + "\n", ping(3) + "\n"]);
+    expect(replies.map(summary)).toEqual([
+      [null, -32600, "E_INPUT_TOO_LARGE"],
+      [null, -32600, "E_INPUT_TOO_LARGE"],
+      [3, "ok", null],
+    ]);
+    expect(replies[0]!.error!.data).toEqual({ reason: "E_INPUT_TOO_LARGE", limit: MESSAGE_LIMITS.bytes, bytes: Buffer.byteLength(big) });
+  });
+
+  it("refuses an array or a nesting over the limit in a message that fits, with the request's id", async () => {
+    const long = toolCall(1, "mandate.check", { source: "x", modules: new Array(MESSAGE_LIMITS.arrayItems + 1).fill("") });
+    let deep: unknown = {};
+    for (let i = 0; i < MESSAGE_LIMITS.depth; i++) deep = { a: deep };
+    const nested = toolCall(2, "mandate.check", { source: "x", lock: deep });
+    const atLimit = toolCall(3, "mandate.explain", { code: "E0130", pad: new Array(MESSAGE_LIMITS.arrayItems).fill(0) });
+    expect(Buffer.byteLength(long)).toBeLessThan(MESSAGE_LIMITS.bytes);
+    const replies = await serve([long + "\n", nested + "\n", atLimit + "\n", ping(4) + "\n"]);
+    expect(replies.map(summary)).toEqual([
+      [1, -32600, "E_ARRAY_TOO_LONG"],
+      [2, -32600, "E_INPUT_TOO_DEEP"],
+      [3, "ok", null],
+      [4, "ok", null],
+    ]);
+    expect(replies[0]!.error!.data).toEqual({ reason: "E_ARRAY_TOO_LONG", limit: MESSAGE_LIMITS.arrayItems, path: "/params/arguments/modules" });
+    expect(replies[1]!.error!.data).toMatchObject({ reason: "E_INPUT_TOO_DEEP", limit: MESSAGE_LIMITS.depth });
+    // A tool's own argument errors are unchanged: the padded explain call is a tool result.
+    expect(replies[2]!.result).toMatchObject({ isError: false });
+  });
+
+  it("serves a line of exactly the byte limit and refuses one byte more", async () => {
+    const padded = (id: number, bytes: number) => {
+      const bare = JSON.stringify({ jsonrpc: "2.0", id, method: "ping", params: { _meta: V, pad: "" } });
+      return bare.replace('"pad":""', `"pad":"${"p".repeat(bytes - Buffer.byteLength(bare))}"`);
+    };
+    const exact = padded(1, MESSAGE_LIMITS.bytes);
+    const over = padded(2, MESSAGE_LIMITS.bytes + 1);
+    expect([Buffer.byteLength(exact), Buffer.byteLength(over)]).toEqual([MESSAGE_LIMITS.bytes, MESSAGE_LIMITS.bytes + 1]);
+    // CRLF line breaks do not count against the limit.
+    const replies = await serve([exact + "\r\n", over + "\r\n", ping(3) + "\r\n"]);
+    expect(replies.map(summary)).toEqual([
+      [1, "ok", null],
+      [null, -32600, "E_INPUT_TOO_LARGE"],
+      [3, "ok", null],
+    ]);
+  });
+
+  it("splits lines exactly as readline did, across chunk boundaries", async () => {
+    // "\r\n" split over two chunks, a lone "\r", a blank line, a two-byte character split over two chunks, no final break.
+    const g = Buffer.from("ğ", "utf8");
+    const chunks = [Buffer.from("one\r"), Buffer.from("\ntwo\rthree\n\n"), Buffer.concat([Buffer.from("f"), g.subarray(0, 1)]), Buffer.concat([g.subarray(1), Buffer.from("our\r\n\r\nfive")])];
+    const viaReadline: string[] = [];
+    for await (const l of createInterface({ input: Readable.from(chunks), crlfDelay: Infinity })) viaReadline.push(l);
+    const viaReader: Array<string | object> = [];
+    for await (const l of readLines(Readable.from(chunks), MESSAGE_LIMITS.bytes)) viaReader.push(l);
+    expect(viaReader).toEqual(viaReadline);
+    expect(viaReader).toEqual(["one", "two", "three", "", "fğour", "", "five"]);
+  });
+
+  it("does not hold an oversized line in memory while it reads it", async () => {
+    // A 64 MiB line, sent as one 64 KiB buffer over and over, then a ping. Halfway through it,
+    // readline would have kept 32 MiB of it; the reader keeps none.
+    const block = Buffer.alloc(64 * 1024, 0x61);
+    let halfway = 0;
+    async function* input() {
+      const before = process.memoryUsage();
+      for (let i = 0; i < 1024; i++) {
+        if (i === 512) {
+          const now = process.memoryUsage();
+          halfway = now.heapUsed + now.arrayBuffers - (before.heapUsed + before.arrayBuffers);
+        }
+        yield block;
+      }
+      yield Buffer.from("\n" + ping(9) + "\n");
+    }
+    const replies = await serve(input());
+    expect(replies.map(summary)).toEqual([
+      [null, -32600, "E_INPUT_TOO_LARGE"],
+      [9, "ok", null],
+    ]);
+    expect(replies[0]!.error!.data!.bytes).toBe(64 * 1024 * 1024);
+    expect(halfway).toBeLessThan(16 * 1024 * 1024);
+  });
+
+  it.runIf(existsSync(fileURLToPath(new URL("../dist/cli.js", import.meta.url))))("keeps `mandate mcp` up after refusing them", async () => {
+    const child = spawn(process.execPath, [fileURLToPath(new URL("../dist/cli.js", import.meta.url)), "mcp"], { stdio: ["pipe", "pipe", "inherit"] });
+    let out = "";
+    child.stdout.on("data", (c: Buffer) => (out += c.toString()));
+    child.stdin.write(toolCall(1, "mandate.check", { source: "a".repeat(2 * 1024 * 1024) }) + "\n");
+    child.stdin.write(toolCall(2, "mandate.apply_patch", { source: "{}", base: "sha256:0", ops: new Array(1_000_000).fill(0) }) + "\n");
+    child.stdin.end(toolCall(3, "mandate.check", { source: FIXBUG }) + "\n");
+    const code = await new Promise<number | null>((r) => child.on("close", r));
+    expect(code).toBe(0);
+    const replies = out.trim().split("\n").map((l) => JSON.parse(l) as Reply);
+    expect(replies.map(summary)).toEqual([
+      [null, -32600, "E_INPUT_TOO_LARGE"],
+      [null, -32600, "E_INPUT_TOO_LARGE"],
+      [3, "ok", null],
+    ]);
+    expect(replies[2]!.result).toMatchObject({ isError: false, structuredContent: { ok: true } });
   });
 });

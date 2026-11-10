@@ -55,3 +55,28 @@ is dual-era:
 - **Legacy (`2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`).** An
   `initialize` request opens a session for the process, served by the
   negotiated revision.
+
+## Message limits
+
+Every message is bounded before it is handled (`MESSAGE_LIMITS` in
+`server.ts`):
+
+| Limit | Value | Refused with |
+|---|---|---|
+| Bytes in one line, its line break not counted | 1 048 576 (1 MiB) | `data.reason: "E_INPUT_TOO_LARGE"`, `id: null` |
+| Elements in any one array | 10 000 | `data.reason: "E_ARRAY_TOO_LONG"`, the request's `id` |
+| Nesting depth | 72: the IR's 64, with room for the request around an IR fragment | `data.reason: "E_INPUT_TOO_DEEP"`, the request's `id` |
+
+- Each refusal is an Invalid Request error (`-32600`) whose `data` carries
+  the reason and the limit. For a line that is too long, `data` also carries
+  the line's length in `bytes`. For the other two, it carries the JSON
+  Pointer of the array or value in `path`.
+- The byte limit applies while a line is read. A longer line is never held
+  in memory: it is read through to its line break and dropped, which is why
+  its `id` is unknown.
+- After a refusal the server reads the next line.
+
+A 1 000 000-element array cannot fit in 1 MiB, so it is refused for its
+size. A program sent as `source` is a JSON string inside the request, so the
+largest program one request can carry is a little smaller than the
+compiler's own 1 MiB source limit.
