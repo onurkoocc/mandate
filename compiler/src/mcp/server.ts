@@ -32,14 +32,14 @@
 
 import { readFileSync } from "node:fs";
 import type { Readable, Writable } from "node:stream";
-import { check, load, loadModules, type SourceKind } from "../check.js";
+import { check, checkPatch, load, loadModules, type SourceKind } from "../check.js";
 import type { Modules } from "../modules.js";
 import { CODES } from "../codes.js";
 import type { Lock } from "../lock.js";
 import { hasErrors, ptrToken } from "../diag.js";
 import type { Program } from "../ir/types.js";
 import { LIMITS } from "../limits.js";
-import { applyPatch, type PatchOp } from "../patch/patch.js";
+import type { PatchOp } from "../patch/patch.js";
 import { architecture, authority, cost, programRef, semanticDiff } from "../views/views.js";
 
 export const MODERN_VERSIONS = ["2026-07-28"];
@@ -186,17 +186,7 @@ export function callTool(name: string, args: Record<string, unknown>, serverModu
       const loaded = load(source, kindFor(source, args["kind"]));
       if (!loaded.program || hasErrors(loaded.diagnostics)) return { ok: false, diagnostics: loaded.diagnostics, governance: [] };
       if (!Array.isArray(args["ops"])) throw new ToolError("ops must be a list of RFC 6902 operations");
-      const r = applyPatch(loaded.program, str(args, "base"), args["ops"] as PatchOp[]);
-      // The patched program's own checks, so the agent sees what it would be asked to fix next.
-      const checked = r.program ? check(JSON.stringify(r.program), "json", { modules }) : undefined;
-      return {
-        ok: r.ok && !!checked?.ok,
-        ...(r.hash ? { hash: r.hash } : {}),
-        diagnostics: [...r.diagnostics, ...(checked?.diagnostics ?? [])],
-        governance: r.governance,
-        requires_approval: r.governance.length > 0,
-        ...(r.program ? { program: r.program } : {}),
-      };
+      return checkPatch(loaded.program, str(args, "base"), args["ops"] as PatchOp[], modules);
     }
     case "mandate.caps_of": {
       const p = program(str(args, "source"), args["kind"], modules);

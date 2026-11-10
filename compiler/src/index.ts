@@ -1,5 +1,5 @@
 // Public API of the Mandate 0.1 reference compiler.
-export { check, load, loadModules, kindOf, type CheckOptions, type CheckResult, type LoadResult, type ModuleSource, type SourceKind } from "./check.js";
+export { check, checkPatch, load, loadModules, kindOf, type CheckOptions, type CheckResult, type LoadResult, type ModuleSource, type PatchCheck, type SourceKind } from "./check.js";
 export { link, linkedProgram, references, type Linked, type Modules } from "./modules.js";
 export { LOCK_FORMAT, LOCK_FORMATS, lockChecks, moduleLockChecks, lockSchema, modelTiers, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
 export { CODES } from "./codes.js";
