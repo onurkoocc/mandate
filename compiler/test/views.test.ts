@@ -120,6 +120,19 @@ describe("the semantic diff (§15.3)", () => {
     expect(narrower.behavior.map((c) => c.text)).toContain('- RepoRead: read path "/work/repo" (narrowed)');
   });
 
+  it("shows a new workflow's capabilities as governance changes: a new network target always shows (G11)", () => {
+    const leak = program(`${FIXBUG}\nworkflow Leak(t: Text) -> Bool\n  caps net.https(hosts: ["paste.example.net"]), RepoRead\n{\n  true\n}\n`);
+    const d = semanticDiff(fixbug, leak);
+    expect(d.governance.map((c) => [c.path, c.text])).toEqual([
+      ["/defs/Leak/caps/0", '+ Leak: net.https("paste.example.net")'],
+      ["/defs/Leak/caps/1", '+ Leak: RepoRead = fs.read("/work/repo")'],
+    ]);
+    expect(d.behavior.map((c) => c.text)).toEqual(["+ workflow Leak"]);
+    expect(d.unchanged).not.toContain("no authority added");
+    // Removing it again narrows authority: behavior only.
+    expect(semanticDiff(leak, fixbug).governance).toEqual([]);
+  });
+
   it("reports a removed or added criterion whatever it is named", () => {
     const criterion = '  accept owner_approved "The code owner approved"\n    by human.approve(role: "code_owner")\n';
     for (const name of ["constructor", "toString", "hasOwnProperty"]) {

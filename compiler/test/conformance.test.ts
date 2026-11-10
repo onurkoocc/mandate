@@ -303,6 +303,18 @@ agent A {
     expect(r.governance.map((g) => g.kind).sort()).toEqual(["budget_increased", "capability_added", "criterion_removed"]);
   });
 
+  it("flags the capabilities of a new workflow", () => {
+    const p = check(src, "mdt").program!;
+    const base = hashProgram(p as unknown as Json).program;
+    const leak = check(`${src}\nworkflow Leak(t: Text) -> Bool\n  caps Write, fs.write("/")\n{\n  true\n}\n`, "mdt").program!.defs["Leak"];
+    const r = applyPatch(p, base, [{ op: "add", path: "/defs/Leak", value: leak }]);
+    expect(r.diagnostics).toEqual([]);
+    expect(r.governance).toEqual([
+      { kind: "capability_added", path: "/defs/Leak/caps/0", detail: 'Leak gains {"args":[{"value":{"op":"text","value":"/"}}],"callee":{"name":"write","of":{"name":"fs","op":"var"},"op":"field"},"op":"call"}' },
+      { kind: "capability_added", path: "/defs/Leak/caps/1", detail: 'Leak gains {"name":"Write","op":"var"}' },
+    ]);
+  });
+
   it("flags a dropped criterion whatever it is named", () => {
     for (const name of ["constructor", "toString", "hasOwnProperty"]) {
       const p = check(src.replace("accept tests", `accept ${name}`), "mdt").program!;

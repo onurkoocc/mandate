@@ -132,11 +132,16 @@ function governance(before: Program, after: Program): GovernanceChange[] {
     if (d.kind === "capability" && (!prev || prev.kind !== "capability" || json(prev.value) !== json(d.value))) {
       out.push({ kind: "capability_added", path: base, detail: `capability '${name}' added or changed` });
     }
-    if ((d.kind === "agent" || d.kind === "workflow") && prev && prev.kind === d.kind) {
-      const had = new Set(prev.caps.map(json));
-      d.caps.forEach((c, i) => {
-        if (!had.has(json(c))) out.push({ kind: "capability_added", path: `${base}/caps/${i}`, detail: `${name} gains ${json(c)}` });
-      });
+    if (d.kind === "agent" || d.kind === "workflow") {
+      // A workflow is where authority starts, so a new one adds every capability it holds (G11). A new
+      // agent holds only what a workflow hands it, and is a behavior change (spec/views.md).
+      const same = prev && prev.kind === d.kind ? prev : undefined;
+      if (same || d.kind === "workflow") {
+        const had = new Set((same?.caps ?? []).map(json));
+        d.caps.forEach((c, i) => {
+          if (!had.has(json(c))) out.push({ kind: "capability_added", path: `${base}/caps/${i}`, detail: `${name} gains ${json(c)}` });
+        });
+      }
     }
     if ((d.kind === "agent" || d.kind === "workflow" || d.kind === "fn") && prev && prev.kind === d.kind) {
       for (const detail of budgetGrowth(prev.budget, d.budget)) out.push({ kind: "budget_increased", path: `${base}/budget`, detail: `${name}: ${detail}` });

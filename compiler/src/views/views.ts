@@ -667,7 +667,11 @@ export function semanticDiff(before: Program, after: Program): DiffView {
       else if (isSystem(a.kind)) governance.push({ path, text: `+ ${a.kind} ${name} (system model)` });
       else if (a.kind === "agent" && a.remote) governance.push({ path, text: `+ remote agent ${name}` });
       else if (a.kind === "effect" && a.irreversible) governance.push({ path, text: `+ irreversible effect ${name}` });
-      else behavior.push({ path, text: `+ ${a.kind} ${name}` });
+      else {
+        behavior.push({ path, text: `+ ${a.kind} ${name}` });
+        // A workflow is where authority starts: every capability a new one holds is authority added (G11).
+        if (a.kind === "workflow") a.caps.forEach((c, i) => governance.push({ path: `${path}/caps/${i}`, text: `+ ${name}: ${shownCaps(after, c)}` }));
+      }
       continue;
     }
     if (a.kind !== b.kind) {
