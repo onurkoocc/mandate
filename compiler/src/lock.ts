@@ -15,13 +15,13 @@
 
 import { readFileSync } from "node:fs";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
-import { capFromCall, type CapVal } from "./check/caps.js";
+import { capFromCall } from "./check/caps.js";
 import { diag, type Diagnostic, type Span } from "./diag.js";
 import { hashProgram } from "./hash.js";
-import type { Budget, Def, Expr, Program } from "./ir/types.js";
+import type { Budget, Expr, Program } from "./ir/types.js";
 import type { Json } from "./json/strict-json.js";
 import type { Modules } from "./modules.js";
-import { bindingChecks, type ManagedAgentsBinding } from "./target/managed-agents.js";
+import { agentModels, bindingChecks, type ManagedAgentsBinding } from "./target/managed-agents.js";
 
 /** The lock format this compiler writes. It reads 0.2 too, which has no bindings. */
 export const LOCK_FORMAT = "mandate/lock/0.3";
@@ -127,7 +127,7 @@ export function lockChecks(program: Program, lock: Lock, spans?: Map<string, Spa
   }
   for (const [name, def] of Object.entries(program.defs).sort(([a], [b]) => (a < b ? -1 : 1))) {
     if (def.kind !== "agent" || def.remote) continue;
-    const tiers = agentTiers(program, def);
+    const tiers = agentModels(program, def).tiers;
     const bounds = tiers.map((t) => perCallBound(lock, t)).filter((b) => b !== undefined);
     if (!bounds.length) continue;
     const worst = { tokens: Math.max(...bounds.map((b) => b.tokens)), micros: Math.max(...bounds.map((b) => b.spend.micros)), currency: bounds[0]!.spend.currency };
@@ -188,15 +188,4 @@ export function moduleLockChecks(program: Program, lock: Lock, modules: Modules 
     if (hash !== pinned) out.push(diag("E0142", `Module ${u.module} hashes to ${hash}, but the lock pins ${pinned}.`, { path: `/uses/${i}` }, { facts: { module: u.module, pinned, hash } }));
   });
   return out;
-}
-
-function agentTiers(program: Program, agent: Extract<Def, { kind: "agent" }>): string[] {
-  const resolve = (e: Expr): CapVal | undefined => {
-    if (e.op === "var") {
-      const d = program.defs[e.name];
-      return d?.kind === "capability" ? resolve(d.value) : undefined;
-    }
-    return capFromCall(e);
-  };
-  return [...new Set(agent.caps.map(resolve).flatMap((c) => (c?.ctor === "model.infer" && c.tier ? [c.tier] : [])))].sort();
 }
