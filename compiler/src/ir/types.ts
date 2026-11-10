@@ -31,6 +31,11 @@ export function isLanguageVersion(v: unknown): v is LanguageVersion {
   return (LANGUAGE_VERSIONS as readonly unknown[]).includes(v);
 }
 
+/** Whether `v` is `since` or a later version: what `since` added, `v` reads too. */
+export function atLeast(v: LanguageVersion, since: LanguageVersion): boolean {
+  return LANGUAGE_VERSIONS.indexOf(v) >= LANGUAGE_VERSIONS.indexOf(since);
+}
+
 export interface Program {
   language: LanguageVersion;
   module: string;
