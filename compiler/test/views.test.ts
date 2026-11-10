@@ -119,6 +119,20 @@ describe("the semantic diff (§15.3)", () => {
     expect(narrower.governance).toEqual([]);
     expect(narrower.behavior.map((c) => c.text)).toContain('- RepoRead: read path "/work/repo" (narrowed)');
   });
+
+  it("reports a removed or added criterion whatever it is named", () => {
+    const criterion = '  accept owner_approved "The code owner approved"\n    by human.approve(role: "code_owner")\n';
+    for (const name of ["constructor", "toString", "hasOwnProperty"]) {
+      const named = mutate(criterion, criterion.replace("owner_approved", name));
+      const without = mutate(criterion, "");
+      expect(semanticDiff(named, without).governance.map((c) => c.text), name).toEqual([`- FixAccepted.${name} (human.approve) removed`]);
+      expect(semanticDiff(without, named).behavior.map((c) => c.text), name).toEqual([`+ FixAccepted.${name} by human.approve`]);
+    }
+    const skill = "  skill locate(issue: Issue) -> Inferred<List<Finding>> ! {Fs.Read, Model}\n";
+    const withSkill = mutate(skill, `${skill}  skill constructor(issue: Issue) -> Inferred<List<Finding>> ! {Fs.Read, Model}\n`);
+    expect(semanticDiff(fixbug, withSkill).behavior.map((c) => c.text)).toEqual(["+ skill Explorer.constructor"]);
+    expect(semanticDiff(withSkill, fixbug).behavior.map((c) => c.text)).toEqual(["- skill Explorer.constructor"]);
+  });
 });
 
 describe("rendering", () => {

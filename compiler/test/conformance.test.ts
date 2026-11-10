@@ -303,6 +303,16 @@ agent A {
     expect(r.governance.map((g) => g.kind).sort()).toEqual(["budget_increased", "capability_added", "criterion_removed"]);
   });
 
+  it("flags a dropped criterion whatever it is named", () => {
+    for (const name of ["constructor", "toString", "hasOwnProperty"]) {
+      const p = check(src.replace("accept tests", `accept ${name}`), "mdt").program!;
+      const base = hashProgram(p as unknown as Json).program;
+      const r = applyPatch(p, base, [{ op: "remove", path: `/defs/Done/accept/${name}` }]);
+      expect(r.ok, name).toBe(true);
+      expect(r.governance, name).toEqual([{ kind: "criterion_removed", path: `/defs/Done/accept/${name}`, detail: `Done drops accept criterion '${name}'` }]);
+    }
+  });
+
   it("reports nothing for a change that narrows authority", () => {
     const p = check(src, "mdt").program!;
     const base = hashProgram(p as unknown as Json).program;

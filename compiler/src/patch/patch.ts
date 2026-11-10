@@ -127,7 +127,7 @@ function child(node: Json, token: string): Json {
 function governance(before: Program, after: Program): GovernanceChange[] {
   const out: GovernanceChange[] = [];
   for (const [name, d] of Object.entries(after.defs)) {
-    const prev: Def | undefined = before.defs[name];
+    const prev: Def | undefined = Object.hasOwn(before.defs, name) ? before.defs[name] : undefined;
     const base = `/defs/${name}`;
     if (d.kind === "capability" && (!prev || prev.kind !== "capability" || json(prev.value) !== json(d.value))) {
       out.push({ kind: "capability_added", path: base, detail: `capability '${name}' added or changed` });
@@ -143,7 +143,7 @@ function governance(before: Program, after: Program): GovernanceChange[] {
     }
     if (d.kind === "agent" && prev && prev.kind === "agent") {
       for (const [sn, s] of Object.entries(d.skills)) {
-        const ps = prev.skills[sn];
+        const ps = Object.hasOwn(prev.skills, sn) ? prev.skills[sn] : undefined;
         if (ps) for (const detail of budgetGrowth(ps.budget, s.budget)) out.push({ kind: "budget_increased", path: `${base}/skills/${sn}/budget`, detail: `${name}.${sn}: ${detail}` });
       }
     }
@@ -164,10 +164,10 @@ function governance(before: Program, after: Program): GovernanceChange[] {
   }
   for (const [name, prev] of Object.entries(before.defs)) {
     if (prev.kind !== "contract") continue;
-    const now = after.defs[name];
+    const now = Object.hasOwn(after.defs, name) ? after.defs[name] : undefined;
     for (const group of ["accept", "invariant"] as const) {
       for (const crit of Object.keys(prev[group] ?? {})) {
-        if (!now || now.kind !== "contract" || !(crit in (now[group] ?? {}))) {
+        if (!now || now.kind !== "contract" || !Object.hasOwn(now[group] ?? {}, crit)) {
           out.push({ kind: "criterion_removed", path: `/defs/${name}/${group}/${crit}`, detail: `${name} drops ${group} criterion '${crit}'` });
         }
       }
