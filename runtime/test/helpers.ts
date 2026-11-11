@@ -5,11 +5,18 @@ import { ISSUE } from "./programs.js";
 import type { Clock, ModelAdapter } from "../src/adapters.js";
 import { openDb, type Db } from "../src/db.js";
 import { Faults } from "../src/faults.js";
-import { buildPackage, Runtime, type Lock, type Package, type StartOptions } from "../src/runtime.js";
+import { buildPackage, Runtime, type Lock, type Package, type RuntimeOptions, type StartOptions } from "../src/runtime.js";
 import { simulate, type Sim, type SimAgents, type SimModel, type SimReads, type SimTool, type SimVerifier } from "../src/sim.js";
 
 /** Imported domain modules are pinned in every test package (S09). */
 export const LOCK = { modules: { "company.domain": "sha256:0f1e" } };
+
+/**
+ * How the programs written before 0.4 take a person's decision: on the caller's word for who made it (`by`). A
+ * runtime takes signed decisions unless it is told this (spec/envelope.md "Unsigned mode"), so every runtime these
+ * tests build for an earlier program says it. Signed decisions have their own tests (decisions.test.ts).
+ */
+export const UNSIGNED = { decisions: { mode: "unsigned" } } as const satisfies RuntimeOptions;
 
 export interface World extends Sim {
   rt: Runtime;
@@ -28,7 +35,7 @@ let shared: Promise<Db> | undefined;
  */
 export async function world(
   src: string,
-  o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; clock?: Clock; lock?: Lock; realModel?: ModelAdapter; modules?: Modules } = {},
+  o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; clock?: Clock; lock?: Lock; realModel?: ModelAdapter; modules?: Modules; decisions?: RuntimeOptions["decisions"] } = {},
 ): Promise<World> {
   const r = check(src, "mdt", o.modules ? { modules: o.modules } : {});
   expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
@@ -39,10 +46,10 @@ export async function world(
   const sim = simulate(o);
   if (o.realModel) sim.adapters.model = o.realModel;
   const faults = new Faults();
-  return { ...sim, rt: new Runtime(db, sim.adapters, faults), db, pkg: buildPackage(r.program!, o.lock ?? LOCK, o.modules), faults };
+  return { ...sim, rt: new Runtime(db, sim.adapters, faults, undefined, { decisions: o.decisions ?? UNSIGNED.decisions }), db, pkg: buildPackage(r.program!, o.lock ?? LOCK, o.modules), faults };
 }
 
-const TABLES = ["changesets", "workspace_claims", "rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];
+const TABLES = ["decisions", "changesets", "workspace_claims", "rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];
 
 export async function closeAll(): Promise<void> {
   const db = shared;

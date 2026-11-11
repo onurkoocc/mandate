@@ -36,7 +36,9 @@ workflow Ship(d: Draft) -> Untrusted<Text>
 `;
 
 writeFileSync(join(dir, "ship.mdt"), PROGRAM);
-writeFileSync(join(dir, "mandate.runtime.json"), JSON.stringify({ database: "pglite:db" }));
+// The program is 0.2 and its people decide by name (--by), so the configuration says so: a runtime takes signed
+// decisions unless it is told otherwise (spec/envelope.md "Unsigned mode"). The signed commands are in cli-decisions.test.ts.
+writeFileSync(join(dir, "mandate.runtime.json"), JSON.stringify({ database: "pglite:db", decisions: { mode: "unsigned" } }));
 
 /** One CLI call, as a person would make it; returns its exit status and output. */
 async function mandate(...args: string[]): Promise<{ code: number; out: string; err: string }> {

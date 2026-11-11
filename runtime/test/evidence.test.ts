@@ -13,7 +13,7 @@ import { Runtime } from "../src/runtime.js";
 import { SimTool, SimVerifier } from "../src/sim.js";
 import { isObj } from "../src/values.js";
 import { BUG, FIXBUG, fixbugAgents, waitOf } from "./fixbug.js";
-import { closeAll, world, type World } from "./helpers.js";
+import { closeAll, world, type World, UNSIGNED } from "./helpers.js";
 
 afterAll(closeAll);
 
@@ -56,9 +56,9 @@ describe("evidence records (§10.3)", () => {
 
     expect((await w.rt.verifyEvidence("ev1")).every((e) => e.valid)).toBe(true);
     // Another runtime with another key does not accept these records, unless it trusts this key.
-    const other = new Runtime(w.db, w.adapters, undefined, undefined, { artifacts: w.rt.artifacts });
+    const other = new Runtime(w.db, w.adapters, undefined, undefined, { ...UNSIGNED, artifacts: w.rt.artifacts });
     expect((await other.verifyEvidence("ev1")).some((e) => e.valid)).toBe(false);
-    const trusting = new Runtime(w.db, w.adapters, undefined, undefined, { artifacts: w.rt.artifacts, trustedKeys: [w.rt.signer.publicKeyPem()] });
+    const trusting = new Runtime(w.db, w.adapters, undefined, undefined, { ...UNSIGNED, artifacts: w.rt.artifacts, trustedKeys: [w.rt.signer.publicKeyPem()] });
     expect((await trusting.verifyEvidence("ev1")).every((e) => e.valid)).toBe(true);
   });
 
@@ -98,10 +98,10 @@ describe("evidence records (§10.3)", () => {
     expect(r.current).not.toBe(r.old);
     // The old private key is gone; only its public half is kept.
     expect(readFileSync(join(dir, "trusted-keys", `${r.old.slice("sha256:".length)}.pem`), "utf8")).toContain("PUBLIC KEY");
-    const rotated = new Runtime(w.db, w.adapters, undefined, undefined, { artifacts: w.rt.artifacts, signer: next, trustedKeys: EvidenceSigner.trustedIn(join(dir, "trusted-keys")) });
+    const rotated = new Runtime(w.db, w.adapters, undefined, undefined, { ...UNSIGNED, artifacts: w.rt.artifacts, signer: next, trustedKeys: EvidenceSigner.trustedIn(join(dir, "trusted-keys")) });
     expect((await rotated.verifyEvidence("ev4")).every((e) => e.valid)).toBe(true);
     // Without the kept public key, the old evidence would not count.
-    const forgetful = new Runtime(w.db, w.adapters, undefined, undefined, { artifacts: w.rt.artifacts, signer: next });
+    const forgetful = new Runtime(w.db, w.adapters, undefined, undefined, { ...UNSIGNED, artifacts: w.rt.artifacts, signer: next });
     expect((await forgetful.verifyEvidence("ev4")).some((e) => e.valid)).toBe(false);
   });
 

@@ -13,6 +13,7 @@
 // the adapter is called.
 
 import {
+  atLeast,
   calleePath,
   capCovers,
   capsOf,
@@ -36,6 +37,7 @@ import {
   type EffectDef,
   type Expr,
   type Json,
+  type Lock,
   type Pattern,
   type Program,
   type Stmt,
@@ -46,6 +48,7 @@ import {
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
+import { approvalProblem, type StoredDecision } from "./decisions.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
 import type { RateLimiter } from "./ratelimit.js";
 import type { Faults } from "./faults.js";
@@ -154,6 +157,11 @@ export interface InterpOptions {
   trusted: TrustedKeys;
   /** Verifier keys whose check attestations count (P2-11). */
   verifiers?: TrustedKeys;
+  /**
+   * What a person's approval is checked against (spec/envelope.md "Signed decisions"): the members' public keys, the
+   * package's lock, and whether an approval must rest on a signed decision (signed mode, and every 0.4 package).
+   */
+  decisions?: { keys: TrustedKeys; lock: Lock; required: boolean };
   /** The components the run works on, at their base commits (B3); verifier calls are told. */
   workspace?: RunComponents;
   /** How the run touches the outside world (B6); `live` when absent. */
@@ -417,8 +425,9 @@ export class Interpreter {
       case "changeset":
         return this.changeset(e, ctx, path);
       case "escalate": {
-        const message = e.to.op === "call" && calleePath(e.to.callee) === "human" && e.to.args[0] ? await this.expr(e.to.args[0].value, ctx, `${path}/to/args/0/value`) : await this.expr(e.to, ctx, `${path}/to`);
-        return this.wait(path, "input", { escalation: message });
+        const person = e.to.op === "call" && calleePath(e.to.callee) === "human" ? e.to : undefined;
+        const message = person?.args[0] ? await this.expr(person.args[0].value, ctx, `${path}/to/args/0/value`) : await this.expr(e.to, ctx, `${path}/to`);
+        return this.wait(path, "input", { escalation: message, ...this.asked(person?.args.find((a) => a.name === "role")?.value) });
       }
       case "pause":
         if (e.then) return this.expr(e.then, ctx, `${path}/then`);
@@ -454,6 +463,8 @@ export class Interpreter {
     if (d?.kind === "type") return tag(name);
     // A component, interface or environment stands for its name, e.g. `test.integration(env: staging, …)`.
     if (d?.kind === "component" || d?.kind === "interface" || d?.kind === "environment") return name;
+    // A role (0.4) is named where a person is asked: `human.approve(role: code_owner)`.
+    if (d?.kind === "role") return name;
     // A bare variant name such as `Uncertain` or `Refund`.
     if (/^[A-Z]/.test(name)) return tag(name);
     throw new Violation("unbound", `Unbound name '${name}'.`);
@@ -569,7 +580,7 @@ export class Interpreter {
     }
     if (p === "human.ask") {
       const { pos } = await this.args(e.args, ctx, path);
-      return this.wait(path, "input", { question: pos[0] ?? null });
+      return this.wait(path, "input", { question: pos[0] ?? null, ...this.asked(e.args.find((a) => a.name === "role")?.value) });
     }
     if (p === "time.now") return this.command(path, "time", {}, undefined, async () => ({ ok: this.o.adapters.clock.now() }));
     if (p === "data.read") return this.dataRead(e, ctx, path);
@@ -696,6 +707,16 @@ export class Interpreter {
     }
   }
 
+  /**
+   * The role a question asks, as the wait's request names it: from 0.4 a role is a definition, and only a member who
+   * holds it may answer (spec/envelope.md "Roles"). An earlier program's question names none, as before.
+   */
+  private asked(role: Expr | undefined): { role: string } | Record<string, never> {
+    if (!role || !atLeast(this.o.program.language, "mandate/0.4")) return {};
+    const name = role.op === "var" ? role.name : role.op === "text" ? role.value : undefined;
+    return name === undefined ? {} : { role: name };
+  }
+
   /** A wait for a person. The journal holds the answer once it arrives. */
   private async wait(id: string, kind: "input" | "decision", request: Value): Promise<Value> {
     const { journal, runId, fence } = this.o;
@@ -807,7 +828,7 @@ export class Interpreter {
             escalation: { delegate: `${e.agent}.${e.skill}`, fault: f.value(), attempt },
             question: `${e.agent}.${e.skill} failed with ${show(f.value())}. Answer "retry" to run it again, or anything else to let the failure stand.`,
             options: ["retry", "fail"],
-            ...(role?.op === "text" ? { role: role.value } : {}),
+            ...(role?.op === "text" ? { role: role.value } : this.asked(role)),
           });
           if (String(unwrap(answer)).trim().toLowerCase() === "retry") continue;
         }
@@ -984,10 +1005,11 @@ export class Interpreter {
     throw new Fault("Rejected", [{ contract: e.contract, unmet }]);
   }
 
-  private async criterion(v: Verifier, contract: string, name: string, ctx: Ctx, path: string, evidence: string[]): Promise<boolean> {
+  /** One criterion of a contract, or one part of it under `and`; `root` is the criterion's own path, whichever part `path` is. */
+  private async criterion(v: Verifier, contract: string, name: string, ctx: Ctx, path: string, evidence: string[], root = path): Promise<boolean> {
     if ("all" in v) {
       let ok = true;
-      for (let i = 0; i < v.all.length; i++) ok = (await this.criterion(v.all[i]!, contract, name, ctx, `${path}/all/${i}`, evidence)) && ok;
+      for (let i = 0; i < v.all.length; i++) ok = (await this.criterion(v.all[i]!, contract, name, ctx, `${path}/all/${i}`, evidence, root)) && ok;
       return ok;
     }
     let passed: boolean;
@@ -1002,10 +1024,12 @@ export class Interpreter {
       passed = truthy(unwrap(await this.expr(v.static, ctx, `${path}/static`)));
     } else if (needsPerson(v)) {
       method = "human.approve";
-      const r = await this.approval((v as { call: Extract<Expr, { op: "call" }> }).call, contract, name, ctx, `${path}/call`);
+      const r = await this.approval((v as { call: Extract<Expr, { op: "call" }> }).call, contract, name, ctx, `${path}/call`, root);
       passed = r["approved"] === true;
-      detail = { by: r["by"] ?? null, role: r["role"] ?? null, ...(r["expired"] === true ? { expired: true } : {}) };
-      producer = { kind: "person", by: r["by"] ?? null, role: r["role"] ?? null, via: "DecideAction" };
+      // A signed decision is named by its digest, with the member and the key that signed it (spec/envelope.md).
+      const signed: Obj = typeof r["decision"] === "string" ? { member: r["member"] ?? null, key: r["key"] ?? null, decision: r["decision"] } : {};
+      detail = { by: r["by"] ?? null, role: r["role"] ?? null, ...(r["expired"] === true ? { expired: true } : {}), ...signed };
+      producer = { kind: "person", by: r["by"] ?? null, role: r["role"] ?? null, via: "DecideAction", ...signed };
     } else {
       const call = v.call;
       method = call.op === "call" ? (calleePath(call.callee) ?? "call") : "call";
@@ -1095,12 +1119,14 @@ export class Interpreter {
    * applies only to the subject the person was shown (G02). An approval here
    * is evidence for the criterion; it authorizes no action.
    */
-  private async approval(call: Extract<Expr, { op: "call" }>, contract: string, criterion: string, ctx: Ctx, id: string): Promise<Obj> {
+  private async approval(call: Extract<Expr, { op: "call" }>, contract: string, criterion: string, ctx: Ctx, id: string, root: string): Promise<Obj> {
     const { named } = await this.args(call.args, ctx, id);
     const c = this.def(contract) as ContractDef;
     const subject = plain(c.params.map((p) => this.variable(p.name, ctx)));
     const role = named["role"] ?? null;
     const within = named["deadline"];
+    // `distinct_from: q` (0.4): the wait says which earlier approval of this criterion its decider must differ from.
+    const other = atLeast(this.o.program.language, "mandate/0.4") ? named["distinct_from"] : undefined;
     let decision: Value;
     try {
       decision = await this.wait(id, "decision", {
@@ -1110,6 +1136,7 @@ export class Interpreter {
         subject,
         subject_digest: digest("request", { contract, criterion, subject }),
         deadline: typeof within === "number" ? this.o.adapters.clock.now() + within : null,
+        ...(typeof other === "string" ? { distinct_from: other, criterion_path: root } : {}),
       });
     } catch (f) {
       // Past its deadline the approval was not given: the criterion is unmet, and `on unmet` decides (§8.8, R15).
@@ -1497,6 +1524,9 @@ export class Interpreter {
     const contract = String(v["$contract"] ?? "");
     const ids = Array.isArray(v["$evidence"]) ? v["$evidence"].map(String) : [];
     const rows = ids.length ? await this.o.journal.evidence(this.o.runId, ids) : [];
+    // A person's approval holds only while the decision it names is the one they signed (H04).
+    const approved = this.o.decisions;
+    const decisions = approved && rows.some((r) => r.method === "human.approve") ? new Map((await this.o.journal.decisions(this.o.runId)).map((d) => [d.decision_id, d])) : new Map<string, StoredDecision>();
     const problems: string[] = [];
     const found = new Set(rows.map((r) => r.evidence_id));
     for (const id of ids) if (!found.has(id)) problems.push(`${id} is not evidence of this run`);
@@ -1507,7 +1537,7 @@ export class Interpreter {
       if (!record || !r.key_id || !r.signature || !this.o.trusted.verify(record, { key_id: r.key_id, signature: r.signature })) problems.push(`${r.evidence_id} is not signed by a trusted key`);
       else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion) problems.push(`${r.evidence_id} does not match its signed record`);
       else {
-        const why = attestationProblem(record, this.o.verifiers);
+        const why = attestationProblem(record, this.o.verifiers) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined);
         if (why) problems.push(`${r.evidence_id}: ${why}`);
       }
     }

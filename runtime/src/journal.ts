@@ -13,6 +13,7 @@
 
 import type { Budget } from "@mandate/compiler";
 import type { Cost, Outcome } from "./adapters.js";
+import { decisionId, type SignedDecision, type StoredDecision } from "./decisions.js";
 import type { EvidenceRecord } from "./evidence.js";
 import { num, type Db, type Row, type Tx } from "./db.js";
 import { Cancelled, Fault, StaleFence, Violation } from "./signals.js";
@@ -631,6 +632,30 @@ export class Journal {
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (evidence_id) do nothing`,
       [r.evidence_id, runId, r.contract, r.criterion, r.method, r.passed, json(r.detail), json(r.subject), json(r as unknown as Value), e.key_id, e.signature],
     );
+  }
+
+  /**
+   * Keeps an accepted decision with its signature, under its record's digest
+   * (spec/envelope.md "Signed decisions"). Returns that digest.
+   */
+  async recordDecision(tx: Tx, d: SignedDecision): Promise<string> {
+    const r = d.record;
+    const id = decisionId(r);
+    await tx.query(
+      `insert into decisions (decision_id, package_hash, run_id, command_id, kind, member, role, key_id, record, signature, accepted_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (decision_id) do nothing`,
+      [id, r.package, r.run ?? null, r.command ?? null, r.kind, r.member, r.role ?? null, r.key, json(r as unknown as Value), d.signature, this.now()],
+    );
+    return id;
+  }
+
+  /**
+   * The accepted decisions of a run, oldest first; with `tx`, read inside that transaction. The order is that of the
+   * revisions they were made on, which is the order they were taken in: a clock may not move between two of them.
+   */
+  async decisions(runId: string, tx?: Tx): Promise<StoredDecision[]> {
+    const rows = await (tx ?? this.db).query<Row>("select decision_id, record, signature from decisions where run_id = $1 order by (record->>'revision')::bigint nulls last, accepted_at, decision_id", [runId]);
+    return rows.map((r) => ({ decision_id: String(r["decision_id"]), record: r["record"] as StoredDecision["record"], signature: String(r["signature"]) }));
   }
 
   /**

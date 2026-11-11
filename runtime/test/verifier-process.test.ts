@@ -19,7 +19,7 @@ import { SimTool } from "../src/sim.js";
 import { ProcessVerifier } from "../src/verifier-service.js";
 import { isObj } from "../src/values.js";
 import { BUG, FIXBUG, fixbugAgents, waitOf } from "./fixbug.js";
-import { closeAll, world, type World } from "./helpers.js";
+import { closeAll, world, type World, UNSIGNED } from "./helpers.js";
 
 const here = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
 const out = here("./.build");
@@ -67,7 +67,7 @@ async function fixbug(o: { verifierKey: string; trusted: string[]; lie?: boolean
   });
   verifiers.push(verifier);
   (w0.adapters as Adapters).verifier = verifier;
-  const rt = new Runtime(w0.db, w0.adapters, w0.faults, undefined, { artifacts: w0.rt.artifacts, signer: w0.rt.signer, trustedVerifiers: new TrustedKeys(o.trusted) });
+  const rt = new Runtime(w0.db, w0.adapters, w0.faults, undefined, { ...UNSIGNED, artifacts: w0.rt.artifacts, signer: w0.rt.signer, trustedVerifiers: new TrustedKeys(o.trusted) });
   return { ...w0, rt, remote: verifier };
 }
 

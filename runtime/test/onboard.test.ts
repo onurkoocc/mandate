@@ -23,7 +23,7 @@ import type { Obj } from "../src/values.js";
 import { runView } from "../src/views.js";
 import { ACME_SOURCE, lockFor } from "./acme.js";
 import { fakeGitHubs } from "./fake-github.js";
-import { closeAll, world } from "./helpers.js";
+import { closeAll, world, UNSIGNED } from "./helpers.js";
 
 const fixture = (f: string): string => readFileSync(new URL(`../../fixtures/system/${f}`, import.meta.url), "utf8");
 const ONBOARD = fixture("onboard.mdt");
@@ -180,7 +180,7 @@ describe("the onboarding program on Acme (B7)", () => {
     remote.commits.set(system.base, { ...remote.commits.get(remote.refs.get("heads/main")!)!, message: "seed" });
     remote.refs.set("heads/main", system.base);
     w.adapters.tools["git.merge"] = new GitHubMerges({ token: "t", repos: ["acme/system"], fetch: gh.fetch });
-    const rt = new Runtime(w.db, w.adapters);
+    const rt = new Runtime(w.db, w.adapters, undefined, undefined, UNSIGNED);
     const program = check(ONBOARD, "mdt", { modules }).program!;
     const run = await rt.startRun({ pkg: buildPackage(program, lockFor(modules), modules), workflow: "Onboard", input: { request: { id, note: "Take Acme into Mandate" } } });
     const evidence = async (runId: string) => Object.fromEntries((await rt.evidence(runId)).filter((e) => e.contract === "ModelAccepted").map((e) => [e.criterion, e]));

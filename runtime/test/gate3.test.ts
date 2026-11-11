@@ -17,7 +17,7 @@ import { MxcAdapter } from "../src/sandbox.js";
 import { SimChat, toolUse, wallClock, type SimTurn } from "../src/sim.js";
 import { SandboxVerifier } from "../src/verifier.js";
 import { FakeGitHub } from "./fake-github.js";
-import { closeAll, world } from "./helpers.js";
+import { closeAll, world, UNSIGNED } from "./helpers.js";
 
 const REAL = process.platform === "linux" && process.env["MANDATE_MXC"] === "1";
 const example = (f: string) => new URL(`../../fixtures/fixbug-target/${f}`, import.meta.url);
@@ -92,7 +92,7 @@ describe.runIf(REAL)("Gate 3 rehearsal: FixBug on the seeded project in Bubblewr
     w.adapters.verifier = new SandboxVerifier({ workdir: WORK, base: "seed", suites: { unit: "test/**/*.test.ts", integration: "acceptance/**/*.test.ts" } }, sandbox, review);
     w.adapters.tools["git.open_pr"] = new GitHubPullRequests({ token: "t", repo: "onurkoocc/mandate-fixbug-target", workdir: WORK, fetch: gh.fetch });
     w.adapters.clock = wallClock;
-    const rt = new Runtime(w.db, w.adapters);
+    const rt = new Runtime(w.db, w.adapters, undefined, undefined, UNSIGNED);
 
     const issue = JSON.parse(readFileSync(example("issue.json"), "utf8")) as { issue: Record<string, unknown> };
     const waiting = await rt.startRun({ pkg: buildPackage(check(src, "mdt").program!, lock), workflow: "FixBug", input: issue as never, runId: "g3" });
