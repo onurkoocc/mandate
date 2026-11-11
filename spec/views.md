@@ -66,6 +66,14 @@ three parts.
 
 A new network target always shows here (G11).
 
+The diff also compares the two versions' locks: a member added or removed,
+a key added to or removed from a member, a member added to or removed from
+a role. Each such change is a governance change, since it changes who can
+decide (spec/envelope.md, "The lock: members and roles"; case H05). The new
+version's lock is read from `--lock`, else `mandate.lock.json` next to the
+new file; the old version's from `--against-lock`, else `mandate.lock.json`
+next to the old file. Without an old lock, the old version binds no one.
+
 **Behavior changes:**
 
 - steps added or removed, a step's grant or supervision changed;

@@ -13,9 +13,10 @@
 //   mandate explain <code>                 explain a diagnostic code
 //   mandate mcp [--module <file>]…         serve check, explain, apply_patch and views to agents
 //                                          over MCP on stdio (§14)
-//   mandate view <file> [--against <old>] [--format md|html|json] [--lock <lock.json>]
+//   mandate view <file> [--against <old>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>]
 //                                          the program's human views (§15): architecture,
-//                                          authority and cost; with --against, what changed
+//                                          authority and cost; with --against, what changed,
+//                                          the two locks' members and roles included
 //
 //   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key
 //                                          control a run (the runtime's CLI, @mandate/runtime/cli)
@@ -25,7 +26,8 @@
 // loads a module the program imports, such as a system model (design doc 9
 // §2.1); `check`, `patch`, `sandbox` and `view` link it in. `check` and `sandbox` read the
 // lock file named by --lock, or else mandate.lock.json next to <file> if there
-// is one. Exit status is 1 when any error diagnostic is reported, 2 on usage
+// is one. `view --against` reads the old version's lock the same way, from
+// --against-lock or else mandate.lock.json next to the old file. Exit status is 1 when any error diagnostic is reported, 2 on usage
 // errors.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -58,7 +60,7 @@ function usage(): never {
       "  sandbox <file> [--agent <name>] [--lock <lock.json>] [--module <file>]…",
       "  target acs <file> [--out <dir>] [--json] [--lock <lock.json>] [--module <file>]…",
       "  explain <code>",
-      "  view <file> [--against <old file>] [--format md|html|json] [--lock <lock.json>] [--module <file>]…",
+      "  view <file> [--against <old file>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>] [--module <file>]…",
       "  mcp [--module <file>]…   (an MCP server on stdio)",
       "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key   (see `mandate status`)",
       "  test <file> [--json]",
@@ -128,6 +130,7 @@ function main(argv: string[]): void {
   const lockFile = option(plain, "--lock");
   const outDir = option(plain, "--out");
   const against = option(plain, "--against");
+  const againstLock = option(plain, "--against-lock");
   const denials = option(plain, "--denials");
   const format = option(plain, "--format") ?? "md";
   const flags = new Set(plain.filter((a) => a.startsWith("--")));
@@ -271,8 +274,11 @@ function main(argv: string[]): void {
       const program = loadChecked(file, lock);
       if (against !== undefined) {
         const before = loadChecked(against);
-        const v = semanticDiff(before, program);
-        process.stdout.write(format === "json" ? JSON.stringify(v, null, 2) + "\n" : format === "html" ? toHtml(diffDoc(before, program)) : toMarkdown(diffDoc(before, program)));
+        // The old version's lock, for who could decide before; none next to the old file is no lock, not an error.
+        const beforeLock = readLock(against, againstLock, false);
+        const locks = { ...(beforeLock ? { before: beforeLock } : {}), ...(lock ? { after: lock } : {}) };
+        const v = semanticDiff(before, program, locks);
+        process.stdout.write(format === "json" ? JSON.stringify(v, null, 2) + "\n" : format === "html" ? toHtml(diffDoc(before, program, locks)) : toMarkdown(diffDoc(before, program, locks)));
       } else if (format === "json") {
         const views = { architecture: architecture(program), authority: authority(program), cost: cost(program, lock) };
         process.stdout.write(JSON.stringify(views, null, 2) + "\n");

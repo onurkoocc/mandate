@@ -15,8 +15,9 @@
 //   cost           what each workflow hands out: budgets per delegation and
 //                  the static upper bound, with the lock's per-call bound
 //   diff           governance changes (authority widened, budgets raised,
-//                  criteria removed or changed, irreversible effects), behavior
-//                  changes, and what stayed the same (§15.3)
+//                  criteria removed or changed, irreversible effects, the
+//                  locks' members and roles), behavior changes, and what
+//                  stayed the same (§15.3)
 
 import { calleePath, capCovers, capsOf, showCap, within, type CapVal } from "../check/caps.js";
 import { hashProgram } from "../hash.js";
@@ -37,6 +38,7 @@ import {
   type WorkflowDef,
 } from "../ir/types.js";
 import { link, linkedProgram, type Modules } from "../modules.js";
+import { ptrToken } from "../diag.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
 import { perCallBound, type Lock } from "../lock.js";
@@ -724,7 +726,46 @@ function steps(program: Program, wf: WorkflowDef): string[] {
   return g.nodes.map((n) => `${n.kind === "delegate" ? "delegate " : n.kind === "effect" ? "effect " : ""}${n.label}${n.kind !== "verify" && n.detail.length ? ` [${n.detail.join(", ")}]` : ""}`);
 }
 
-export function semanticDiff(before: Program, after: Program): DiffView {
+/**
+ * What changed in the people two locks bind: members, their keys and who holds
+ * each role. A binding decides who can approve, so each change is a governance
+ * change (spec/envelope.md, "The lock: members and roles"; case H05).
+ */
+export function lockDiff(before: Lock | undefined, after: Lock | undefined): Change[] {
+  const out: Change[] = [];
+  const at = <T>(r: Record<string, T> | undefined, k: string): T | undefined => (r && Object.hasOwn(r, k) ? r[k] : undefined);
+  const names = (x: Record<string, unknown> | undefined, y: Record<string, unknown> | undefined): string[] => [...new Set([...Object.keys(x ?? {}), ...Object.keys(y ?? {})])].sort();
+  const bm = before?.members;
+  const am = after?.members;
+  for (const m of names(bm, am)) {
+    const b = at(bm, m);
+    const a = at(am, m);
+    const path = `/members/${ptrToken(m)}`;
+    // An added member's keys come with it, and a removed member's keys go with it: one line each.
+    if (!b && a) out.push({ path, text: `+ member ${m} (${a.keys.length} ${a.keys.length === 1 ? "key" : "keys"})` });
+    else if (b && !a) out.push({ path, text: `- member ${m}` });
+    else if (b && a) {
+      for (const k of [...new Set([...b.keys, ...a.keys])].sort()) {
+        const now = a.keys.includes(k);
+        if (b.keys.includes(k) !== now) out.push({ path: `${path}/keys/${ptrToken(k)}`, text: `${now ? "+" : "-"} key ${k} for ${m}` });
+      }
+    }
+  }
+  const br = before?.roles;
+  const ar = after?.roles;
+  for (const r of names(br, ar)) {
+    const b = at(br, r) ?? [];
+    const a = at(ar, r) ?? [];
+    for (const m of [...new Set([...b, ...a])].sort()) {
+      const now = a.includes(m);
+      if (b.includes(m) !== now) out.push({ path: `/roles/${ptrToken(r)}/${ptrToken(m)}`, text: now ? `+ ${m} holds role ${r}` : `- ${m} no longer holds role ${r}` });
+    }
+  }
+  return out;
+}
+
+/** With `locks`, the people the two locks bind are compared too (lockDiff), and listed as governance changes. */
+export function semanticDiff(before: Program, after: Program, locks?: { before?: Lock; after?: Lock }): DiffView {
   const governance: Change[] = [];
   const behavior: Change[] = [];
   const names = [...new Set([...Object.keys(before.defs), ...Object.keys(after.defs)])].sort();
@@ -839,6 +880,8 @@ export function semanticDiff(before: Program, after: Program): DiffView {
         behavior.push({ path, text: `~ ${a.kind} ${name} changed` });
     }
   }
+  // After the program's own changes, so a diff without locks, or with the same people in both, reads as it did.
+  if (locks) governance.push(...lockDiff(locks.before, locks.after));
   const critical = (p: Program): string[] =>
     Object.values(p.defs)
       .filter((d): d is WorkflowDef => d.kind === "workflow")
@@ -1034,8 +1077,8 @@ export function programDoc(program: Program, lock?: Lock, modules: Modules = {})
   };
 }
 
-export function diffDoc(before: Program, after: Program): Doc {
-  const v = semanticDiff(before, after);
+export function diffDoc(before: Program, after: Program, locks?: { before?: Lock; after?: Lock }): Doc {
+  const v = semanticDiff(before, after, locks);
   return {
     title: `${v.to.module}: ${v.from.version} → ${v.to.version}`,
     meta: [
