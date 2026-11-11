@@ -265,7 +265,8 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       return 2;
     }
     if (e instanceof Violation) {
-      process.stderr.write(`mandate: ${e.code}: ${e.message}\n`);
+      // A violation's message starts with its code.
+      process.stderr.write(`mandate: ${e.message}\n`);
       return 1;
     }
     throw e;
