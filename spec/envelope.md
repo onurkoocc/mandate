@@ -8,13 +8,17 @@ same cases.
 |---|---|
 | The language surface: `role`, `envelope`, `map`, `plan`, `agents`, `Outcome` in the IR, the schema, the text form and the views | implemented |
 | Roles: E1501, E1502, E1503; lock format 0.4 with `members` and `roles` | implemented |
+| Signed decisions: the record, the members' keys, acceptance and `decision_refused`, the evidence of `human.approve`, unsigned mode, the CLI, lock changes in `view --against` (H01, H02, H04, H05) | implemented |
 | The envelope's own rules (E1701 to E1708) | not yet; `mandate explain` knows the codes, `mandate check` does not report them |
-| Signed decisions, the envelope's ledger and approval, running `map` and `plan`, amendments, the card | not yet |
+| The envelope's ledger and approval (H03), running `map` and `plan`, amendments, the card | not yet |
+| Run views of 0.4: submissions, the envelope's remainder, map items, each decision's member, role and signature | not yet; `mandate status` lists each decision a run took and whether its signature holds |
 
-Until the runtime runs 0.4, it refuses a 0.4 package when it loads one
-(`unsupported_language`): a version is never run on a best-effort basis.
-So a 0.4 program can be read, checked, hashed, printed and viewed today,
-and not run.
+The runtime runs a 0.4 package that uses roles and signed decisions. It
+refuses one that has an envelope, a `map`, a `plan` or an `agents` budget
+when it loads it (`unsupported_language`, naming what it found). Those are
+not run yet and their static rules are not checked yet, and a version is
+never run on a best-effort basis. Such a program can be read, checked,
+hashed, printed and viewed today, and not run.
 
 0.4 lets an agent plan work while a run is going, without a person approving
 every step. A person approves an **envelope** once: the most authority,
@@ -67,6 +71,13 @@ In IR: `"code_owner": { "kind": "role", "description": "Code owner of company/ba
 - **An older module** names a role with any text and defines none. E1501
   does not apply to it, and it checks as before.
 - **A wait with no role** accepts a decision from any member the lock lists.
+  Its decision record names no role.
+- **A question's role.** From 0.4, a question that names a role
+  (`human.ask`, `escalate human(…)`, `supervise escalate(human, …)`) is
+  answered only by a member who holds it. An earlier program's question
+  records no role, as before, and takes any member.
+- **`owner`.** An irreversible effect that no policy assigns asks the role
+  `owner`, as before. The lock binds it like any other role.
 - **The `role "…"` line of an agent** is a description for its model, as
   before. It is not a role.
 
@@ -91,9 +102,15 @@ The lock format becomes `mandate/lock/0.4`. A `0.3` lock is still read; a
 
 - A key is named by its id: the SHA-256 of its ed25519 public key, as for
   evidence keys ([`runtime.md`](runtime.md#evidence-records-103)). The
-  public keys themselves are files `<key id>.pem` in the directory that
-  `decisions.keys` names in `mandate.runtime.json`. A file whose public key
-  does not hash to its name is refused.
+  public keys themselves are files `<key id>.pem` (the id without
+  `sha256:`) in the directory that `decisions.keys` names in
+  `mandate.runtime.json`, by default `.mandate/decision-keys` next to it.
+  A file whose public key does not hash to its name is refused, and every
+  command with it (`bad_decision_key`): under another key's name it would
+  stand for that key.
+- A lock that lists members or roles is well formed when a package is
+  loaded (`malformed_lock`): a key is under one member, and a role lists
+  only members.
 - Every role a 0.4 package names is bound to at least one member (E1502
   when `mandate check` is given the lock; `unbound_role` at load time).
   The roles a package names are those of its own definitions and of the
@@ -132,11 +149,30 @@ accepted.
 ```
 
 The signature covers `mandate/decision/0.1\n` followed by the record's JCS
-bytes. `kind` is one of `approve`, `decline`, `answer`, `raise_limits`,
-`reconcile`, `envelope`, `amend` and `cancel`. `subject` is the digest the
-wait shows: a contract's `subject_digest`, an action digest, a change set's
-digest S, or a package hash. `payload` is the digest of the answer, the new
-limits or the reconciliation; it is absent for an approval or a decline.
+bytes, and is written `ed25519:<base64>`. The record's digest is the
+SHA-256 of the same bytes. `kind` is one of `approve`, `decline`, `answer`,
+`raise_limits`, `reconcile`, `envelope`, `amend` and `cancel`. `subject`
+is the digest the wait shows: a contract's `subject_digest`, an action
+digest, a change set's digest S, or a package hash. `payload` is the digest
+of the answer, the new limits or the reconciliation; it is absent for an
+approval or a decline. A record has these fields and no others.
+
+What a record names, by kind:
+
+| Decision | `command` | `subject` | `payload` |
+|---|---|---|---|
+| `approve`, `decline` of a criterion | the approval's wait | its `subject_digest` | none |
+| `approve`, `decline` of an action or a change set | the authorization's wait | the action digest, or the set's digest S | none |
+| `answer` | the question's wait | the digest of the question as it was recorded | the answer |
+| `raise_limits` | none | the run's package hash | the new limits by dimension, as `limits_raised` records them |
+| `reconcile` | the action's command | the action digest | `{ "reconcile": "<operation key>" }` |
+| `cancel` | none | the run's package hash | none |
+| `envelope`, `amend` | see "Approving an envelope" and "Amendments" | a package hash | |
+
+A payload is the request digest of its value: the SHA-256 of
+`mandate/request/0.1\n` and the value's JCS bytes. `role` is the role the
+wait asks; a raise, a reconciliation and a cancel ask none, so any member
+may make them.
 
 The runtime accepts a decision only when all of these hold. Otherwise it is
 refused with `invalid_decision` and a reason, nothing is recorded, and the
@@ -146,25 +182,56 @@ wait stays open:
 2. The key belongs to the named member, and the member holds the wait's
    role, in the lock of the run's package.
 3. The package, run, revision, command and subject are the ones the wait
-   shows now. A decision on another revision is `stale_revision`, as before
-   (G10); on another subject it is refused (G02).
+   shows now, the kind is one that answers it, and the payload is the
+   digest of what came with it. A decision on another revision is
+   `stale_revision`, as before (G10); on another subject it is refused
+   (G02).
 4. For `human.approve(role: r, distinct_from: q)`, the member is not the one
    who decided `q` in the same criterion.
 
-An accepted record is stored with its signature. The evidence record of a
-`human.approve` criterion names the member, the role, the key and the
-decision record's digest, and `verifyEvidence` checks the decision's
-signature too. A record changed after signing shows as invalid, as evidence
-does.
+They are checked in the order: who signed (1, and that the lock lists the
+key under the member), what the record is for (3), the role (2), then
+`distinct_from` (4). So a refusal names the person whenever the signature
+holds.
+
+A refused decision leaves one trace, a `decision_refused` event with the
+reason, the member, the key and the role the record names. Everything
+else is as it was: the revision, the wait, and the inbox, so the same
+message id can carry the corrected decision. `invalid_decision` carries the
+reason first in its message; a decision on another revision keeps the code
+it had before 0.4, `stale_revision`.
+
+**A cancel** is taken whether or not it is signed, and on any revision:
+stopping needs nobody's authority. A signature that holds is stored and
+`cancel_requested` names the member. One that does not is recorded as
+`decision_refused`, and the run is cancelled all the same.
+
+An accepted record is stored with its signature, under its digest. The
+events it causes name the member, the role, the key and that digest. The
+evidence record of a `human.approve` criterion names them too (in
+`producer` and `detail`), and `verifyEvidence` checks the decision as well
+as the evidence: the record it names is stored, still hashes to its digest,
+carries a signature by a key the lock binds to its member and role, and is
+the decision of that criterion with that result. A record changed after
+signing shows as invalid, as evidence does, and a `Verified` value that
+rests on it is refused (`forged_evidence`, H04). Where decisions are
+signed, an approval that names no decision record is not evidence.
 
 The first signer is a key per operator, created with `mandate key new`.
 OIDC and passkeys are later signers of the same record; they need no change
 to the format. Mandate does not run an identity provider.
 
+**Signed is the default**, for every package. A program of 0.1 to 0.3 names
+its roles with text, and its lock binds those names like any others.
+
 **Unsigned mode.** A package of 0.1 to 0.3 may run with
 `decisions: { "mode": "unsigned" }` in `mandate.runtime.json`, and then
-`--by NAME` works as before. Its views mark each decision `unsigned`. A 0.4
-package never runs in unsigned mode.
+`--by NAME` works as before. Its views mark each decision `unsigned`. A
+signed record sent in this mode is still held to the rules above, and
+stored when it passes. A 0.4 package never runs in unsigned mode: a
+runtime in that mode does not start it (`signed_decisions_required`), and
+its decisions are signed whatever the mode says. A 0.4 package is one whose
+program, or a module packaged with it, is written in 0.4.
 
 ### `distinct_from`
 
@@ -189,13 +256,44 @@ mandate approve      <run> --revision N --key FILE [--member NAME]
 mandate decline      <run> --revision N --key FILE [--member NAME]
 mandate answer       <run> --revision N --key FILE [--member NAME] <text>
 mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
+mandate reconcile    <run> <operation> --key FILE [--member NAME]
+mandate cancel       <run> [--key FILE]
+mandate decision     <run> <digest>                            # a decision the run took, as its signed record
+mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
 mandate approve-envelope <program> --key FILE [--member NAME]
 mandate amend        <run> --revision N --key FILE [--member NAME] (approve | decline)
 ```
 
+`approve-envelope` and `amend` come with the envelope's approval and its
+amendments.
+
 `--member` is needed only when a key id is listed under more than one
-member, which the lock forbids, so in practice never. A private key file
-must be readable by its owner only; the CLI refuses one that is not.
+member, which the lock forbids, so in practice never. The CLI finds the
+member from the lock of the run's package, by the key's id; a key the lock
+lists under nobody is refused there (`unknown_key`).
+
+- **`key new`** writes the private key to `--out` (default `mandate.key`),
+  never over an existing file, and its public half next to it as
+  `<key id>.pem`, the name the runtime's `decisions.keys` directory
+  expects.
+- **A private key file** must be readable by its owner only; the CLI
+  refuses one that is not (`key_not_private`). This is checked by POSIX
+  mode. Windows has no such modes and the CLI does not read ACLs, so there
+  the file is as private as the directory it is in.
+- **`status`** lists each decision the run took with its member, role and
+  digest, and whether its signature still holds.
+- **`verify-decision`** checks a record without the runtime: it reads the
+  record file (`{ "record": …, "signature": … }`, as `mandate decision`
+  prints it) and a public key, and no configuration or database. It exits
+  0 when the record names that key and the signature verifies, and 1
+  otherwise. With `--lock` it also requires that lock to list the key
+  under the record's member, and the member under the record's role.
+
+An auditor needs nothing of Mandate's for the same check: the bytes are
+`mandate/decision/0.1\n` and the record's JCS (RFC 8785) form, the
+signature is ed25519 over them, the key id is the SHA-256 of the public
+key's SPKI DER encoding, and the record's digest is the SHA-256 of the
+bytes.
 
 ## The envelope
 
@@ -539,7 +637,14 @@ Existing checks extend to the new forms:
 | `program_admitted` | plan node, number, hash, base, reservation |
 | `amendment_requested` | plan node, new package hash, diff digest |
 | `package_amended` | old and new package hashes, diff digest, decision digest |
-| `decision_refused` | command, reason (`invalid_signature`, `unknown_key`, `not_in_role`, `same_member`, `stale_revision`, `subject_mismatch`) |
+| `decision_refused` | command, reason (`invalid_signature`, `unknown_key`, `not_in_role`, `same_member`, `stale_revision`, `subject_mismatch`), and the kind, member, role and key the record names |
+| `reconcile_requested` | operation, member, role, key, decision digest (a signed reconciliation) |
+
+The events of an accepted decision (`criterion_approved`, `criterion_denied`,
+`governance_approved`, `governance_denied`, `action_authorized`,
+`limits_raised`, `input_received`, `decision_received`, `cancel_requested`)
+carry `member`, `role`, `key` and `decision`, the record's digest, when the
+decision was signed. An unsigned one records what it did before 0.4.
 
 `decision_refused` is the one event a refused decision records: who tried,
 with which key, and why. It changes nothing else and raises no revision.

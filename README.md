@@ -140,12 +140,15 @@ pull request was opened, for 0.23 USD.
    Rego, for Microsoft AGT hosts. The Rego fails closed, is bound to the
    package hash, and comes with the profile of what one call cannot show.
 
-11. **0.4, Envelope (specified, not implemented):** a person approves an
+11. **0.4, Envelope (being implemented):** a person approves an
    envelope once (authority, budget, agents, data class, the effects a
    person authorizes), and a lead agent writes sub-programs that run only
    when the compiler shows they fit what is left of it. `map` with bounds
    and disjoint writes, roles bound to people's keys in the lock, and a
-   signed record for every decision. See
+   signed record for every decision. Today the language is read, checked
+   and hashed, and roles and signed decisions run: a decision is a record
+   its member signs with `--key`, and `mandate verify-decision` checks one
+   without the runtime. Envelopes, `map` and `plan` do not run yet. See
    [`spec/envelope.md`](spec/envelope.md).
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
@@ -468,6 +471,10 @@ These cases from §25 are covered:
 | V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |
 | X01 | A package whose executor binding no longer fits its lock is refused at load; a changed agent or environment fails ValidateBinding; a bound agent never runs without its executor | `managed-agents` (and E0903 in the compiler) |
 | X04 | A bound agent's turns run in its delegation's session and its tools in the runtime's sandbox, journaled; replay calls neither | `managed-agents` |
+| H01 | A decision with no valid signature, an unknown key, or a member outside the role is refused and recorded as `decision_refused`; the wait stays open | `decisions`, `cli-decisions` |
+| H02 | `distinct_from` refuses a second approval by the same member, whichever key signs it | `decisions`, `cli-decisions` (and E1503 in the compiler) |
+| H04 | Evidence for `human.approve` whose decision record was changed after signing shows as invalid, and a `Verified` value resting on it is refused | `decisions` |
+| H05 | A changed member, key or role binding in the lock is a new package and shows as a governance change | `lock-diff` (compiler) |
 
 R11 and R12 are about `map`, which the 0.1 IR does not have yet; `budget`
 tests that `par` results are bound by branch name instead.
