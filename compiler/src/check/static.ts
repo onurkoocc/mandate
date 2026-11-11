@@ -17,30 +17,37 @@
 //                                              breaking changes, a verified plan (doc 9 §3)
 //   reads                       E1201         data.read of a declared read, masking (doc 9 §5.1)
 //
+// 0.4 (spec/envelope.md): `map` and `plan` are typed here, and a workflow with an envelope is
+// checked against the envelope's capabilities and budget. The envelope's own rules (E17xx) are
+// not in this file yet.
+//
 // Std calls the checker does not describe have unknown type and no effects,
 // so missing knowledge never produces an error.
 
 import { diag, ptr, type Diagnostic, type Span } from "../diag.js";
-import type {
-  AgentDef,
-  Budget,
-  ChangesetExpr,
-  ComponentDef,
-  ContractDef,
-  Def,
-  EffectDef,
-  EffectRef,
-  EnvironmentDef,
-  Expr,
-  FnDef,
-  Pattern,
-  Program,
-  ReadSource,
-  Skill,
-  Stmt,
-  TypeExpr,
-  Verifier,
-  WorkflowDef,
+import {
+  atLeast,
+  workflowBounds,
+  type AgentDef,
+  type Budget,
+  type ChangesetExpr,
+  type ComponentDef,
+  type ContractDef,
+  type Def,
+  type EffectDef,
+  type EffectRef,
+  type EnvironmentDef,
+  type Expr,
+  type FnDef,
+  type MapExpr,
+  type Pattern,
+  type Program,
+  type ReadSource,
+  type Skill,
+  type Stmt,
+  type TypeExpr,
+  type Verifier,
+  type WorkflowDef,
 } from "../ir/types.js";
 import { nearestSpan } from "../ir/validate.js";
 import { canonicalize } from "../json/jcs.js";
@@ -126,6 +133,8 @@ interface Frame {
   approved: boolean;
   /** Effective capabilities handed to delegates in this body (for W0310 and C5). */
   delegated: Array<{ caps: CapVal[]; path: string; external: boolean }>;
+  /** Inside a map's body: what its `with caps` hands each delegation, in place of the kinds it names. */
+  handed?: CapVal[];
 }
 
 const PUBLIC: DataClass = "public";
@@ -476,7 +485,10 @@ class Checker implements TypeEnv {
   }
 
   private checkWorkflow(name: string, d: WorkflowDef, base: string): void {
-    const caps = this.capList(d.caps, `${base}/caps`);
+    // With an envelope, its capabilities are the workflow's (spec/envelope.md "What it declares").
+    const bounds = workflowBounds(d);
+    const capsAt = `${base}/${bounds.capsAt}`;
+    const caps = this.capList(bounds.caps, capsAt);
     const frame = this.bodyFrame("workflow", name, d.params, caps, this.ty(d.returns));
     if (d.ensures) {
       this.expectBool(this.expr(d.ensures, this.child(frame, new Map([["result", { ty: frame.returns!, cls: PUBLIC }]])), `${base}/ensures`), `${base}/ensures`);
@@ -508,8 +520,13 @@ class Checker implements TypeEnv {
       }
     }
     for (const dl of frame.delegated) for (const c of dl.caps) for (const w of caps) if (capCovers(w, c)) used.add(w);
+    // An envelope whose workflow plans holds capabilities for sub-programs that are not written yet,
+    // so one that no static step uses is not a mistake (spec/envelope.md "What it declares").
+    let plans = false;
+    if (d.envelope) walkExprs(d.body, (x) => void (plans ||= x.op === "plan"));
     caps.forEach((c, i) => {
-      if (!used.has(c)) this.report("W0310", `${name} holds ${showCap(c)} but neither its body nor its delegates use it.`, `${base}/caps/${i}`);
+      if (plans) return;
+      if (!used.has(c)) this.report("W0310", `${name} holds ${showCap(c)} but neither its body nor its delegates use it.`, `${capsAt}/${i}`);
     });
 
     this.checkBudget(name, d, base);
@@ -812,7 +829,7 @@ class Checker implements TypeEnv {
       }
     }
     if (c.name === "escalate") {
-      const ok = args.length >= 1 && args[0]!.name === undefined && args[0]!.value.op === "var" && args[0]!.value.name === "human" && args.slice(1).every((a) => a.name === "role" && a.value.op === "text");
+      const ok = args.length >= 1 && args[0]!.name === undefined && args[0]!.value.op === "var" && args[0]!.value.name === "human" && args.slice(1).every((a) => a.name === "role" && (a.value.op === "text" || (a.value.op === "var" && atLeast(this.program.language, "mandate/0.4"))));
       if (!ok) this.report("E0714", "escalate takes a person: escalate(human) or escalate(human, role: \"…\") (§8.7).", path);
     }
     if (c.name === "degrade" && site.kind === "delegate") {
@@ -945,6 +962,11 @@ class Checker implements TypeEnv {
         return this.infer(e, frame, path);
       case "delegate":
         return this.delegate(e, frame, path);
+      case "plan":
+        // The lead's skill is typed and granted as a delegation of it is (C1, C2; spec/envelope.md "plan").
+        return this.delegate({ op: "delegate", agent: e.agent, skill: e.skill, args: e.args, ...(e.budget ? { budget: e.budget } : {}) }, frame, path);
+      case "map":
+        return this.map(e, frame, path);
       case "spawn": {
         this.report("E0711", "Dynamic spawn is not available in 0.1; use delegate, par, or a bounded map (§9.1, V05).", path);
         e.args.forEach((a, i) => this.expr(a.value, frame, `${path}/args/${i}/value`));
@@ -976,6 +998,48 @@ class Checker implements TypeEnv {
       case "block":
         return this.body(e.body, frame, `${path}/body`);
     }
+  }
+
+  /**
+   * `map x in xs … { body }`: the body is typed once, with `x` an element of `xs`, and the result is
+   * `List<Outcome<T>>` for a body of type `T` (spec/envelope.md "map"). An element is known as the
+   * list is: an item of a model's list is model output.
+   */
+  private map(e: MapExpr, frame: Frame, path: string): Val {
+    const over = this.expr(e.over, frame, `${path}/over`);
+    const ep = epistemic(over.ty);
+    const list = unalias(ep.inner, this);
+    let elem: Ty = UNKNOWN;
+    if (list.k === "named" && list.name === "List") elem = list.args[0] ?? UNKNOWN;
+    else if (list.k !== "unknown") this.report("E0201", `map runs its body over a List but got ${show(over.ty)}.`, `${path}/over`);
+    const item: Val = { ty: withLevel(elem, ep.level === "verified" ? "plain" : ep.level), cls: over.cls };
+    let inner = this.child(frame, new Map([[e.bind, item]]));
+
+    // `with caps K`: inside the body, K takes the place of the capability kinds it names. Each K lies
+    // inside the context (C2); its scope may depend on the element.
+    if (e.caps) {
+      const given: CapVal[] = [];
+      e.caps.forEach((c, i) => {
+        const cp = `${path}/caps/${i}`;
+        for (const v of this.evalCap(c, cp, inner)) {
+          given.push(v);
+          if (frame.avail && !frame.avail.some((a) => capCovers(a, v))) {
+            this.report("E0701", `${showCap(v)} is not available in ${frame.def}, so a map cannot hand it to its body (C2).`, cp, {
+              capability: showCap(v),
+              available: frame.avail.map(showCap),
+            });
+          }
+        }
+      });
+      const narrowed = new Set(given.map((g) => g.ctor));
+      inner = { ...inner, handed: [...(frame.handed ?? []).filter((c) => !narrowed.has(c.ctor)), ...given] };
+      if (frame.avail) inner.avail = [...frame.avail.filter((c) => !narrowed.has(c.ctor)), ...given];
+    }
+    if (e.supervise && e.supervise.name !== "fail_fast") {
+      this.report("E0714", `'${e.supervise.name}' is not a supervision strategy for a map; use fail_fast (spec/envelope.md).`, `${path}/supervise`, { strategy: e.supervise.name, allowed: ["fail_fast"] });
+    }
+    const body = this.body(e.body, inner, `${path}/body`);
+    return { ty: named("List", named("Outcome", body.ty)), cls: this.maxClass(over.cls, body.cls) };
   }
 
   private prompt(e: Extract<Expr, { op: "prompt" }>, frame: Frame, path: string): Val {
@@ -1216,6 +1280,15 @@ class Checker implements TypeEnv {
         const cp = `${path}/caps/${i}`;
         for (const v of this.evalCap(c, cp, frame)) this.given(v, given, cp, inContext, agent, agentCaps, frame, e.agent);
       });
+    }
+    // A map hands its `with caps` to each delegation of its body, as if the delegation named them: an
+    // agent gets one where it holds that kind at least as widely and the delegation names none of its own
+    // (spec/envelope.md "map").
+    const own = new Set(given.map((g) => g.ctor));
+    for (const k of frame.handed ?? []) {
+      if (!own.has(k.ctor) && (agent.remote || agentCaps.some((a) => capCovers(a, k)))) given.push(k);
+    }
+    if (given.length) {
       const narrowed = new Set(given.map((g) => g.ctor));
       effective = [...effective.filter((c) => !narrowed.has(c.ctor)), ...given];
     }
@@ -1491,15 +1564,17 @@ class Checker implements TypeEnv {
   // ── budgets (§8.6) ─────────────────────────────────────────────────────
 
   private checkBudget(name: string, d: WorkflowDef, base: string): void {
-    const limit = d.budget;
+    const bounds = workflowBounds(d);
+    const limit = bounds.budget;
     if (!limit) return;
+    const at = `${base}/${bounds.budgetAt}`;
     const cost = this.costOf(d.body, `${base}/body`);
     const facts: Record<string, unknown> = {};
     if (limit.spend) {
       const currencies = Object.keys(cost.spend);
       const other = currencies.filter((c) => c !== limit.spend!.currency);
       if (other.length) {
-        this.report("E0504", `${name}'s budget is in ${limit.spend.currency} but delegates spend ${other.join(", ")}; currencies are never converted implicitly (§5.3).`, `${base}/budget/spend`, { currencies });
+        this.report("E0504", `${name}'s budget is in ${limit.spend.currency} but delegates spend ${other.join(", ")}; currencies are never converted implicitly (§5.3).`, `${at}/spend`, { currencies });
       }
       const total = cost.spend[limit.spend.currency] ?? 0;
       if (total > limit.spend.micros) {
@@ -1509,7 +1584,7 @@ class Checker implements TypeEnv {
     if (limit.tokens !== undefined && cost.tokens > limit.tokens) facts["tokens"] = { limit: limit.tokens, declared_by_children: cost.tokens };
     if (limit.time && cost.time > limit.time.ms) facts["time_ms"] = { limit: limit.time.ms, declared_by_children: cost.time };
     if (Object.keys(facts).length) {
-      this.report("E0501", `The budgets ${name} hands out exceed its own budget (${Object.keys(facts).join(", ")}).`, `${base}/budget`, { ...facts, breakdown: cost.parts });
+      this.report("E0501", `The budgets ${name} hands out exceed its own budget (${Object.keys(facts).join(", ")}).`, at, { ...facts, breakdown: cost.parts });
     }
   }
 
@@ -1569,6 +1644,27 @@ class Checker implements TypeEnv {
     }
     if (e.op === "block") return this.costOf(e.body, inFns.size ? path : `${path}/body`, inFns);
     for (const k of children(e)) addSeq(c, sub(k));
+    if (e.op === "map") {
+      // `n ×` the map's budget, or its body: money and tokens add up over items, and time is
+      // `⌈n / k⌉ ×` one item's (spec/envelope.md "map"). A map with no `max` is bounded by the
+      // envelope's `agents`, which the envelope's own rules count.
+      const once = e.budget ? budgetCost(e.budget, "map", path) : this.costOf(e.body, inFns.size ? path : `${path}/body`, inFns);
+      if (e.max === undefined) addSeq(c, once);
+      else {
+        const all = scale(once, e.max);
+        all.time = once.time * Math.ceil(e.max / (e.par ?? 1));
+        addSeq(c, all);
+      }
+      return c;
+    }
+    if (e.op === "plan") {
+      const lead = this.def(e.agent);
+      if (lead?.kind !== "agent") return c;
+      const skill = Object.hasOwn(lead.skills, e.skill) ? lead.skills[e.skill] : undefined;
+      const b = e.budget ?? skill?.budget ?? lead.budget;
+      if (b) addSeq(c, budgetCost(b, `${e.agent}.${e.skill}`, path));
+      return c;
+    }
     if (e.op === "delegate") {
       const agent = this.def(e.agent);
       if (agent?.kind !== "agent") return c;
@@ -1604,7 +1700,7 @@ class Checker implements TypeEnv {
       if (s.op === "loop") n += this.countNodes(s.body, seen) * (s.max_iter ?? 1);
       else if (s.op === "if") n += this.countNodes(s.then, seen) + this.countNodes(s.else ?? [], seen);
       walkStmtExprs(s, (x) => {
-        if (x.op === "delegate" || x.op === "effect" || x.op === "infer" || x.op === "verify") n += 1;
+        if (x.op === "delegate" || x.op === "effect" || x.op === "infer" || x.op === "verify" || x.op === "map" || x.op === "plan") n += 1;
         if (x.op === "call" && x.callee.op === "var") {
           const f = this.def(x.callee.name);
           if (f?.kind === "fn" && !seen.has(x.callee.name) && !this.recursive.has(x.callee.name)) {
@@ -1777,11 +1873,11 @@ function walkStmtExprs(s: Stmt, f: (e: Expr) => void, deep = false): void {
 
 export function walkExpr(e: Expr, f: (e: Expr) => void): void {
   f(e);
-  if (e.op === "block") walkExprs(e.body, f);
+  if (e.op === "block" || e.op === "map") walkExprs(e.body, f);
   for (const k of children(e)) walkExpr(k, f);
 }
 
-/** Direct sub-expressions; a block's statements are not included. */
+/** Direct sub-expressions; the statements of a block or of a map's body are not included. */
 function children(e: Expr): Expr[] {
   switch (e.op) {
     case "list":
@@ -1808,7 +1904,10 @@ function children(e: Expr): Expr[] {
     case "delegate":
       return [...e.args.map((a) => a.value), ...(e.timeout ? [e.timeout] : [])];
     case "spawn":
+    case "plan":
       return e.args.map((a) => a.value);
+    case "map":
+      return [e.over, ...(e.caps ?? [])];
     case "verify":
       return [e.value, ...e.args.map((a) => a.value), ...(e.on_unmet ? [e.on_unmet.then] : [])];
     case "effect":

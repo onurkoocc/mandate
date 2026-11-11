@@ -20,6 +20,7 @@ import { LIMITS } from "../limits.js";
 import { DATA_CLASSES, type DataClass } from "../std/std.js";
 import type { Json } from "../json/strict-json.js";
 import {
+  atLeast,
   isLanguageVersion,
   LANGUAGE_VERSIONS,
   type Arg,
@@ -35,9 +36,12 @@ import {
   type Criterion,
   type Def,
   type EffectDef,
+  type Envelope,
   type EnvironmentDef,
   type InterfaceDef,
   INTERFACE_PROTOCOLS,
+  type MapExpr,
+  type PlanExpr,
   type EffectRef,
   type Expr,
   type OnHandler,
@@ -133,6 +137,8 @@ interface ExprCtx {
 
 class Parser {
   private i = 0;
+  /** The version the file declares; a message names the fields that version has. */
+  private language: Program["language"] = "mandate/0.1";
   readonly diagnostics: Diagnostic[] = [];
   private inTest = false;
   /** How many expressions, types, blocks, patterns and operators the parser is inside. */
@@ -256,7 +262,7 @@ class Parser {
       this.bump();
       if (this.t.kind !== "version") this.fail(`Expected a language version after 'mandate @' but found ${this.describe()}.`);
       const v = `mandate/${this.bump().text}`;
-      if (isLanguageVersion(v)) language = v;
+      if (isLanguageVersion(v)) this.language = language = v;
       else {
         this.diagnostics.push(
           diag("E0103", `Unsupported language version '${v}'; this compiler reads ${LANGUAGE_VERSIONS.map((x) => `'${x}'`).join(" or ")}.`, { span: tokenSpan(langTok) }, {
@@ -354,6 +360,13 @@ class Parser {
       if (t.text === "component") return this.componentDecl();
       if (t.text === "interface") return this.interfaceDecl();
       return this.environmentDecl();
+    }
+    // `role name "description"` (0.4). An agent's `role "…"` line has no name and is not a declaration.
+    if (t.text === "role" && this.la(1).kind === "ident" && this.la(2).kind === "string") {
+      this.bump();
+      const nameTok = this.t;
+      const name = this.ident("a role name");
+      return [name, { kind: "role", description: this.string("a role description") }, nameTok];
     }
     switch (t.text) {
       case "type":
@@ -574,13 +587,98 @@ class Parser {
     const params = this.params();
     this.expectP("->");
     const returns = this.typeExpr();
-    this.expectW("caps");
-    const caps = sortCanon(this.exprList());
+    // An envelope takes the place of `caps` and `budget` (0.4). Both are still read after it, so that
+    // a workflow that writes them as well is told so by name (E1701), not with a syntax error.
+    const envelope = this.isW("envelope") && this.isP("{", this.la(1)) ? this.envelope() : undefined;
+    let caps: Expr[] = [];
+    if (!envelope || this.isW("caps")) {
+      this.expectW("caps");
+      caps = sortCanon(this.exprList());
+    }
     const def: Def = { kind: "workflow", params, returns, caps, body: [] };
     if (this.isW("budget")) def.budget = this.budget();
+    if (envelope) def.envelope = envelope;
     if (this.eatW("ensures")) def.ensures = this.expr({ noStruct: true });
     def.body = this.block();
     return [name, def, nameTok];
+  }
+
+  /**
+   * `envelope { owner r  caps K, …  budget { … }  spawn { max_concurrent: n, max_class: c }
+   * approve effect by r … }` (0.4; spec/envelope.md). Fields come in any order, each once;
+   * `approve` once per effect.
+   */
+  private envelope(): Envelope {
+    const start = this.bump();
+    const env: Envelope = {};
+    const seen = new Set<string>();
+    this.expectP("{");
+    while (!this.isP("}")) {
+      const t = this.t;
+      if (t.kind !== "ident") this.fail(`Expected owner, caps, budget, spawn or approve in an envelope but found ${this.describe()}.`);
+      const field = t.text;
+      if (field !== "approve") {
+        if (seen.has(field)) this.dup("envelope field", field, t);
+        seen.add(field);
+      }
+      switch (field) {
+        case "owner":
+          this.bump();
+          env.owner = this.ident("a role");
+          break;
+        case "caps":
+          this.bump();
+          env.caps = sortCanon(this.exprList());
+          break;
+        case "budget":
+          env.budget = this.budget();
+          break;
+        case "spawn": {
+          this.bump();
+          const spawn: NonNullable<Envelope["spawn"]> = {};
+          this.expectP("{");
+          while (!this.isP("}")) {
+            const kt = this.t;
+            const key = this.ident("a spawn field");
+            this.expectP(":");
+            if (key in spawn) this.dup("spawn field", key, kt);
+            if (key === "max_concurrent") {
+              const vt = this.t;
+              if (vt.kind !== "int" || vt.num! < 1) this.fail("'max_concurrent' takes a whole number, at least 1.", vt);
+              this.bump();
+              spawn.max_concurrent = vt.num!;
+            } else if (key === "max_class") {
+              const ct = this.t;
+              const cls = this.ident("a data class");
+              if (!(DATA_CLASSES as string[]).includes(cls)) this.fail(`Unknown data class '${cls}'; expected one of ${DATA_CLASSES.join(", ")}.`, ct);
+              spawn.max_class = cls as DataClass;
+            } else {
+              this.fail(`Unknown spawn field '${key}'; expected max_concurrent or max_class.`, kt);
+            }
+            if (!this.eatP(",")) break;
+          }
+          this.expectP("}");
+          if (!Object.keys(spawn).length) this.fail("'spawn' needs max_concurrent or max_class.", t);
+          env.spawn = spawn;
+          break;
+        }
+        case "approve": {
+          this.bump();
+          const et = this.t;
+          const effect = this.qname();
+          this.expectW("by");
+          const role = this.ident("a role");
+          const approve = (env.approve ??= Object.create(null) as Record<string, string>);
+          if (effect in approve) this.dup("approval", effect, et);
+          approve[effect] = role;
+          break;
+        }
+        default:
+          this.fail(`Expected owner, caps, budget, spawn or approve in an envelope but found '${field}'.`, t);
+      }
+    }
+    this.expectP("}");
+    return this.at(env, start);
   }
 
   // ── system model (0.3; design doc 9 §2) ───────────────────────────────
@@ -896,6 +994,7 @@ class Parser {
       switch (key) {
         case "tokens":
         case "steps":
+        case "agents":
           if (v.op !== "int") bad("an integer");
           b[key] = (v as { value: number }).value;
           break;
@@ -908,7 +1007,7 @@ class Parser {
           b.time = { ms: (v as { ms: number }).ms };
           break;
         default:
-          this.fail(`Unknown budget field '${key}'; expected tokens, spend, time or steps.`, kt);
+          this.fail(`Unknown budget field '${key}'; expected ${atLeast(this.language, "mandate/0.4") ? "tokens, spend, time, steps or agents" : "tokens, spend, time or steps"}.`, kt);
       }
       if (!this.eatP(",")) break;
     }
@@ -1325,6 +1424,11 @@ class Parser {
     }
     // Contextual expression keywords: only when what follows can start an operand.
     if (t.text === "changeset" && this.isP("(", this.la(1))) return this.at(this.changesetExpr(), t);
+    // `map x in xs …` and `plan Agent.skill(…) …` (0.4): two names in a row on one line start nothing else.
+    if (t.text === "map" && this.la(1).kind === "ident" && !this.la(1).nl && this.isW("in", this.la(2)) && !this.la(2).nl) return this.at(this.mapExpr(), t);
+    if (t.text === "plan" && this.la(1).kind === "ident" && !this.la(1).nl && this.isP(".", this.la(2)) && this.la(3).kind === "ident" && this.isP("(", this.la(4))) {
+      return this.at(this.planExpr(), t);
+    }
     if (t.text === "escalate" && startsOperand(this.la(1))) {
       this.bump();
       return this.at({ op: "escalate", to: this.binary(PREC_AND + 1, ctx) }, t);
@@ -1357,6 +1461,51 @@ class Parser {
       else if (this.eatW("supervise")) e.supervise = this.callSpec();
       else return e;
     }
+  }
+
+  /**
+   * `map x in xs [max n] [par k] [with caps K] [budget { … }] [supervise s] { body }`
+   * (0.4; spec/envelope.md "map"). The options come in any order, each once.
+   */
+  private mapExpr(): Expr {
+    this.bump();
+    const bind = this.ident("a name for one element");
+    this.expectW("in");
+    const e: MapExpr = { op: "map", bind, over: this.expr({ noStruct: true }), body: [] };
+    const whole = (what: "max" | "par"): number => {
+      const kt = this.bump();
+      const vt = this.t;
+      if (vt.kind !== "int" || vt.num! < 1) this.fail(`'${what}' takes a whole number, at least 1.`, vt);
+      if (e[what] !== undefined) this.dup("map option", what, kt);
+      this.bump();
+      return vt.num!;
+    };
+    for (;;) {
+      if (this.isW("max") && this.la(1).kind === "int") e.max = whole("max");
+      else if (this.isW("par") && this.la(1).kind === "int") e.par = whole("par");
+      else if (this.isW("with") && this.isW("caps", this.la(1))) {
+        this.bump();
+        this.bump();
+        e.caps = sortCanon(this.exprList());
+      } else if (this.isW("budget") && this.isP("{", this.la(1))) e.budget = this.budget();
+      else if (this.eatW("supervise")) e.supervise = this.callSpec();
+      else break;
+    }
+    e.body = this.block();
+    return e;
+  }
+
+  /** `plan Agent.skill(args) [budget { … }] within envelope` (0.4; spec/envelope.md "plan"). */
+  private planExpr(): Expr {
+    this.bump();
+    const agent = this.ident("an agent name");
+    this.expectP(".");
+    const skill = this.ident("a skill name");
+    const e: PlanExpr = { op: "plan", agent, skill, args: this.args() };
+    if (this.isW("budget") && this.isP("{", this.la(1))) e.budget = this.budget();
+    this.expectW("within");
+    this.expectW("envelope");
+    return e;
   }
 
   /**

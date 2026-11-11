@@ -245,7 +245,16 @@ export function runCompileCase(name: string, c: Case): CheckResult {
 
   const result = check(text, kind, { modules: loaded.modules, ...(lock ? { lock } : {}) });
   if (c.language !== undefined) {
-    const declared = result.program?.language;
+    // A program that does not load still declares a language: a case about an older program that
+    // uses a newer construct says which older version it is.
+    let declared: unknown = result.program?.language;
+    if (declared === undefined && kind === "json") {
+      try {
+        declared = (JSON.parse(text) as { language?: unknown } | null)?.language;
+      } catch {
+        // Not JSON: nothing is declared.
+      }
+    }
     if (declared !== c.language) throw new Error(`the case says language ${c.language}, the program declares ${String(declared)}`);
   }
   return result;

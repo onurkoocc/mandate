@@ -12,7 +12,7 @@
 import { diag, ptr, ptrToken, type Diagnostic, type Repair, type Span } from "../diag.js";
 import { nearestSpan } from "../ir/validate.js";
 import { STD_EFFECTS } from "../std/std.js";
-import type { Arg, Def, Expr, Param, Pattern, Program, Stmt, TypeExpr, Verifier } from "../ir/types.js";
+import { atLeast, type Arg, type Def, type Expr, type Param, type Pattern, type Program, type Stmt, type TypeExpr, type Verifier } from "../ir/types.js";
 
 export const BUILTIN_TYPES = new Set([
   "Bool", "Int", "Dec", "Text", "Bytes", "Path", "Url", "Time", "Duration", "Money", "Id",
@@ -21,6 +21,9 @@ export const BUILTIN_TYPES = new Set([
   "PreparedAction", "Authorization", "Receipt", "Task", "Prompt", "Budget",
   "EvidenceRef", "ArtifactRef", "CapRef", "OperationKey", "Approval", "Question", "Masked",
 ]);
+
+/** Built-in types a 0.4 program has as well: what one item of a `map` came to (spec/envelope.md). */
+export const BUILTIN_TYPES_0_4 = new Set(["Outcome"]);
 
 /** Functions available without an import. */
 export const BUILTIN_FUNCTIONS = new Set(["quote", "peek", "len", "caps_diff", "review", "eval", "evidence"]);
@@ -58,6 +61,8 @@ class Resolver {
   /** Names brought in by `use`: module aliases and imported members. */
   private readonly imported = new Set<string>();
   private readonly importedModules = new Set<string>();
+  /** The built-in type names of the program's language version. */
+  private readonly builtinTypes: Set<string>;
 
   constructor(
     private readonly program: Program,
@@ -66,6 +71,7 @@ class Resolver {
   ) {
     this.defs = program.defs;
     this.all = linked ?? program.defs;
+    this.builtinTypes = atLeast(program.language, "mandate/0.4") ? new Set([...BUILTIN_TYPES, ...BUILTIN_TYPES_0_4]) : BUILTIN_TYPES;
     for (const u of program.uses ?? []) {
       if (u.names) {
         for (const n of u.names) {
@@ -179,6 +185,7 @@ class Resolver {
         const ctx = this.withParams(d.params, `${base}/params`, top);
         this.type(d.returns, `${base}/returns`, new Set(), top);
         this.capList(d.caps, `${base}/caps`, top);
+        if (d.envelope?.caps) this.capList(d.envelope.caps, `${base}/envelope/caps`, top);
         if (d.ensures) this.expr(d.ensures, `${base}/ensures`, { ...ctx, scope: { names: new Set(["result"]), parent: ctx.scope } });
         this.block(d.body, `${base}/body`, ctx);
         (d.on ?? []).forEach((h, i) => this.expr(h.then, `${base}/on/${i}/then`, ctx));
@@ -200,6 +207,7 @@ class Resolver {
         }
         return;
       case "interface":
+      case "role":
         return;
       case "environment":
         for (const [rn, r] of Object.entries(d.reads ?? {})) {
@@ -263,7 +271,7 @@ class Resolver {
   private type(t: TypeExpr, path: string, generics: Set<string>, ctx: Ctx, binder?: string): void {
     if ("ref" in t) {
       if (!this.isType(t.ref, generics)) {
-        const candidates = [...BUILTIN_TYPES, ...this.defsOfKind("type"), ...this.imported, ...generics];
+        const candidates = [...this.builtinTypes, ...this.defsOfKind("type"), ...this.imported, ...generics];
         this.report(`${path}/ref`, `Unknown type '${t.ref}'.`, t.ref, "type", candidates, (n) => n);
       }
       (t.args ?? []).forEach((a, i) => {
@@ -293,7 +301,7 @@ class Resolver {
   }
 
   private isType(name: string, generics: Set<string>): boolean {
-    if (generics.has(name) || BUILTIN_TYPES.has(name) || this.imported.has(name)) return true;
+    if (generics.has(name) || this.builtinTypes.has(name) || this.imported.has(name)) return true;
     const d = this.def_(name);
     if (d && d.kind === "type") return true;
     // Qualified references into an imported module: company.domain.Issue
@@ -460,7 +468,8 @@ class Resolver {
         if (e.using) this.expr(e.using, `${path}/using`, ctx);
         return;
       case "delegate":
-      case "spawn": {
+      case "spawn":
+      case "plan": {
         const agent = this.def_(e.agent);
         if (!agent || agent.kind !== "agent") {
           this.report(`${path}/agent`, `Unknown agent '${e.agent}'.`, e.agent, "agent", this.defsOfKind("agent"), (n) => n);
@@ -509,6 +518,15 @@ class Resolver {
         }
         if (e.idempotent_by) this.expr(e.idempotent_by, `${path}/idempotent_by`, ctx);
         return;
+      case "map": {
+        this.expr(e.over, `${path}/over`, ctx);
+        // The element is in scope in the capabilities the map hands its body and in the body.
+        const inner: Ctx = { ...ctx, scope: { names: new Set([e.bind]), parent: ctx.scope } };
+        if (e.caps) this.capListExprs(e.caps, `${path}/caps`, inner);
+        if (e.supervise) this.args(e.supervise.args ?? [], `${path}/supervise/args`, { ...ctx, symbolic: true });
+        this.block(e.body, `${path}/body`, inner);
+        return;
+      }
       case "escalate":
         this.expr(e.to, `${path}/to`, ctx);
         return;

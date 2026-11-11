@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mandate.dev/spec/ir/0.1/schema.json",
-  "title": "Mandate canonical IR 0.1",
+  "title": "Mandate canonical IR 0.1 to 0.4",
   "description": "Closed schema for the canonical IR (Doc 4 §3.2-§3.5). Unknown fields are errors. Schema validity does not replace type, effect, capability or budget checking.",
   "type": "object",
   "additionalProperties": false,
@@ -16,7 +16,8 @@
       "enum": [
         "mandate/0.1",
         "mandate/0.2",
-        "mandate/0.3"
+        "mandate/0.3",
+        "mandate/0.4"
       ]
     },
     "module": {
@@ -139,6 +140,57 @@
         "steps": {
           "type": "integer",
           "minimum": 0
+        },
+        "agents": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "Envelope": {
+      "type": "object",
+      "properties": {
+        "owner": {
+          "$ref": "#/$defs/Name"
+        },
+        "caps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Expr"
+          }
+        },
+        "budget": {
+          "$ref": "#/$defs/Budget"
+        },
+        "spawn": {
+          "type": "object",
+          "properties": {
+            "max_concurrent": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_class": {
+              "enum": [
+                "public",
+                "internal",
+                "confidential",
+                "restricted"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "minProperties": 1
+        },
+        "approve": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Name"
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/QName"
+          },
+          "minProperties": 1
         }
       },
       "additionalProperties": false
@@ -1088,6 +1140,77 @@
             "order",
             "approver"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "map"
+            },
+            "bind": {
+              "$ref": "#/$defs/Name"
+            },
+            "over": {
+              "$ref": "#/$defs/Expr"
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "par": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "caps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "budget": {
+              "$ref": "#/$defs/Budget"
+            },
+            "supervise": {
+              "$ref": "#/$defs/CallSpec"
+            },
+            "body": {
+              "$ref": "#/$defs/Block"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "bind",
+            "over",
+            "body"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "plan"
+            },
+            "agent": {
+              "$ref": "#/$defs/Name"
+            },
+            "skill": {
+              "$ref": "#/$defs/Name"
+            },
+            "args": {
+              "$ref": "#/$defs/Args"
+            },
+            "budget": {
+              "$ref": "#/$defs/Budget"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "agent",
+            "skill",
+            "args"
+          ]
         }
       ]
     },
@@ -1671,6 +1794,9 @@
             "budget": {
               "$ref": "#/$defs/Budget"
             },
+            "envelope": {
+              "$ref": "#/$defs/Envelope"
+            },
             "ensures": {
               "$ref": "#/$defs/Expr"
             },
@@ -1865,6 +1991,22 @@
           "required": [
             "kind",
             "class"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "role"
+            },
+            "description": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "description"
           ]
         }
       ]

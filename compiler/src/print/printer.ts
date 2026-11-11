@@ -24,7 +24,7 @@ import type {
   Verifier,
 } from "../ir/types.js";
 
-const KIND_ORDER: Def["kind"][] = ["interface", "component", "environment", "capability", "type", "const", "effect", "extern", "fn", "contract", "agent", "workflow"];
+const KIND_ORDER: Def["kind"][] = ["role", "interface", "component", "environment", "capability", "type", "const", "effect", "extern", "fn", "contract", "agent", "workflow"];
 
 export function printProgram(p: Program): string {
   const out: string[] = [];
@@ -66,6 +66,8 @@ export function printProgram(p: Program): string {
 
 function printDef(name: string, d: Def): string {
   switch (d.kind) {
+    case "role":
+      return `role ${name} ${quoteText(d.description)}`;
     case "capability":
       return `capability ${name} = ${expr(d.value, 0, "")}`;
     case "type": {
@@ -141,7 +143,24 @@ function printDef(name: string, d: Def): string {
     }
     case "workflow": {
       let s = `workflow ${name}(${params(d.params)}) -> ${type(d.returns)}`;
-      s += `\n  caps    ${d.caps.map((c) => noStruct(c, "  ")).join(", ")}`;
+      if (d.envelope) {
+        const env = d.envelope;
+        const lines = ["  envelope {"];
+        if (env.owner !== undefined) lines.push(`    owner   ${env.owner}`);
+        if (env.caps) lines.push(`    caps    ${env.caps.map((c) => noStruct(c, "    ")).join(", ")}`);
+        if (env.budget) lines.push(`    ${budget(env.budget).replace("budget ", "budget  ")}`);
+        if (env.spawn) {
+          const parts: string[] = [];
+          if (env.spawn.max_concurrent !== undefined) parts.push(`max_concurrent: ${env.spawn.max_concurrent}`);
+          if (env.spawn.max_class !== undefined) parts.push(`max_class: ${env.spawn.max_class}`);
+          lines.push(`    spawn   { ${parts.join(", ")} }`);
+        }
+        for (const [effect, role] of Object.entries(env.approve ?? {})) lines.push(`    approve ${effect} by ${role}`);
+        lines.push("  }");
+        s += "\n" + lines.join("\n");
+      }
+      // An envelope's caps take the place of the workflow's, which are then empty and not written.
+      if (!d.envelope || d.caps.length) s += `\n  caps    ${d.caps.map((c) => noStruct(c, "  ")).join(", ")}`;
       if (d.budget) s += `\n  ${budget(d.budget)}`;
       if (d.ensures) s += `\n  ensures ${noStruct(d.ensures, "  ")}`;
       return s + "\n" + block(d.body, "");
@@ -196,6 +215,7 @@ function budget(b: Budget): string {
   if (b.time) parts.push(`time: ${duration(b.time.ms)}`);
   if (b.spend) parts.push(`spend: ${money(b.spend.micros, b.spend.currency)}`);
   if (b.steps !== undefined) parts.push(`steps: ${b.steps}`);
+  if (b.agents !== undefined) parts.push(`agents: ${b.agents}`);
   return `budget { ${parts.join(", ")} }`;
 }
 
@@ -314,6 +334,8 @@ function precOf(e: Expr): number {
     case "infer":
     case "effect":
     case "changeset":
+    case "map":
+    case "plan":
     case "switch":
     case "escalate":
     case "pause":
@@ -424,6 +446,17 @@ function exprInner(e: Expr, ind: string): string {
       lines.push(`${ind}}${e.idempotent_by ? ` idempotent_by ${expr(e.idempotent_by, 0, ind)}` : ""}`);
       return lines.join("\n");
     }
+    case "map": {
+      let s = `map ${e.bind} in ${noStruct(e.over, ind)}`;
+      if (e.max !== undefined) s += ` max ${e.max}`;
+      if (e.par !== undefined) s += ` par ${e.par}`;
+      if (e.caps) s += ` with caps ${e.caps.map((c) => noStruct(c, ind)).join(", ")}`;
+      if (e.budget) s += ` ${budget(e.budget)}`;
+      if (e.supervise) s += ` supervise ${callSpec(e.supervise)}`;
+      return `${s} ${block(e.body, ind).trimStart()}`;
+    }
+    case "plan":
+      return `plan ${e.agent}.${e.skill}(${args(e.args, ind)})${e.budget ? ` ${budget(e.budget)}` : ""} within envelope`;
     case "escalate":
       return `escalate ${expr(e.to, PREC_AND + 1, ind)}`;
     case "pause":
