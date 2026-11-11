@@ -72,6 +72,8 @@ These are reported as `MDT-E0140` too.
 - **The compiler.** `mandate check` reads `--lock <file>`, or else
   `mandate.lock.json` next to the program. With a lock it adds two checks:
   - `MDT-E0141`: every model tier the program names is locked.
+  - `MDT-E1502`: every role a 0.4 program names has a member under `roles`
+    ([`envelope.md`](envelope.md)).
   - `MDT-W0504`: every agent loop's declared budget covers its upper bound.
   - `MDT-E0903`–`MDT-E0905`: an executor binding still fits the program
     and the lock ([`executors.md`](executors.md)).

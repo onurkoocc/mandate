@@ -20,9 +20,10 @@
 import { readFileSync } from "node:fs";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import { capFromCall } from "./check/caps.js";
-import { diag, type Diagnostic, type Span } from "./diag.js";
+import { roleSites } from "./check/roles.js";
+import { diag, ptr, type Diagnostic, type Span } from "./diag.js";
 import { hashProgram } from "./hash.js";
-import type { Budget, Expr, Program } from "./ir/types.js";
+import { atLeast as languageAtLeast, type Budget, type Def, type Expr, type Program } from "./ir/types.js";
 import type { Json } from "./json/strict-json.js";
 import type { Modules } from "./modules.js";
 import { agentModels, bindingChecks, type ManagedAgentsBinding } from "./target/managed-agents.js";
@@ -195,6 +196,39 @@ export function lockChecks(program: Program, lock: Lock, spans?: Map<string, Spa
     }
   }
   out.push(...bindingChecks(program, lock, spans));
+  return out;
+}
+
+/**
+ * E1502: a decision in a 0.4 package is signed by a member, so every role the
+ * package names is held by at least one (spec/envelope.md). `linked` is the
+ * program's definitions with its imported modules loaded (modules.ts). A role
+ * named only by an imported definition, such as the owner of an imported
+ * component, counts, and is reported at the import that brings it in.
+ */
+export function roleLockChecks(program: Program, linked: { defs: Record<string, Def>; origin: Record<string, string> }, lock: Lock, spans?: Map<string, Span>): Diagnostic[] {
+  if (!languageAtLeast(program.language, "mandate/0.4")) return [];
+  const out: Diagnostic[] = [];
+  const sites = roleSites(linked.defs).filter((s) => s.role !== undefined);
+  const mine = (def: string): boolean => Object.hasOwn(program.defs, def);
+  const older = atLeast(lock, "mandate/lock/0.4") ? "" : ` A 0.4 package needs a ${LOCK_FORMAT} lock, with members and roles.`;
+  for (const role of new Set(sites.map((s) => s.role!))) {
+    if (own(lock.roles, role)?.length) continue;
+    const named = sites.filter((s) => s.role === role);
+    const site = named.find((s) => mine(s.def)) ?? named[0]!;
+    const facts: Record<string, unknown> = { role, lock: lock.lock ?? null, bound: Object.keys(lock.roles ?? {}).sort() };
+    let path = site.path;
+    if (!mine(site.def)) {
+      const module = own(linked.origin, site.def);
+      const i = (program.uses ?? []).findIndex((u) => u.module === module);
+      path = i < 0 ? "/uses" : ptr("uses", i);
+      facts["named_by"] = site.def;
+      if (module !== undefined) facts["module"] = module;
+    }
+    const span = spans?.get(path);
+    const by = mine(site.def) ? "" : ` (${site.where} of the imported ${site.def} names it)`;
+    out.push(diag("E1502", `Role ${role} has no member in the lock file, so nobody could decide for it${by}.${older}`, span ? { path, span } : { path }, { facts }));
+  }
   return out;
 }
 

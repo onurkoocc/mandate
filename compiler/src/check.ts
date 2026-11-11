@@ -10,8 +10,9 @@ import { validateIr } from "./ir/validate.js";
 import { parseStrictJson, type Json } from "./json/strict-json.js";
 import { parseMdt } from "./parse/parser.js";
 import { resolveNames } from "./resolve/resolve.js";
+import { roleChecks } from "./check/roles.js";
 import { staticCheck } from "./check/static.js";
-import { lockChecks, moduleLockChecks, validateLock, type Lock } from "./lock.js";
+import { lockChecks, moduleLockChecks, roleLockChecks, validateLock, type Lock } from "./lock.js";
 import { link, type Modules } from "./modules.js";
 import { applyPatch, type GovernanceChange, type PatchOp } from "./patch/patch.js";
 
@@ -107,11 +108,13 @@ export function check(text: string, kind: SourceKind, opts: CheckOptions = {}): 
   const linked = link(loaded.program, opts.modules);
   diagnostics.push(...linked.diagnostics.map((d) => (d.at.path !== undefined && loaded.spans.get(d.at.path) ? { ...d, at: { ...d.at, span: loaded.spans.get(d.at.path)! } } : d)));
   diagnostics.push(...resolveNames(loaded.program, loaded.spans, linked.defs));
+  // A role is a name too, from 0.4: where one is named, it is a role definition (E1501, E1503).
+  diagnostics.push(...roleChecks(loaded.program, loaded.spans, linked.defs));
   // Static checks assume every name resolves.
   if (!hasErrors(diagnostics)) diagnostics.push(...staticCheck(loaded.program, loaded.spans, linked.defs));
   if (opts.lock && !hasErrors(diagnostics)) {
     const lockDiags = validateLock(opts.lock);
-    diagnostics.push(...(lockDiags.length ? lockDiags : [...lockChecks({ ...loaded.program, defs: linked.defs }, opts.lock, loaded.spans), ...moduleLockChecks(loaded.program, opts.lock, opts.modules)]));
+    diagnostics.push(...(lockDiags.length ? lockDiags : [...lockChecks({ ...loaded.program, defs: linked.defs }, opts.lock, loaded.spans), ...roleLockChecks(loaded.program, linked, opts.lock, loaded.spans), ...moduleLockChecks(loaded.program, opts.lock, opts.modules)]));
   }
   const ok = !hasErrors(diagnostics);
   const result: CheckResult = { ...loaded, diagnostics, ok };

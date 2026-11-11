@@ -1,0 +1,22 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1501",
+  "kind": "compile",
+  "title": "In a 0.4 module, an envelope's owner that names no role definition is refused, with the nearest role as a suggestion.",
+  "spec": ["spec/envelope.md#roles", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../../fixtures/envelope/migrate-all.mdt", "kind": "mdt" },
+  "modules": ["../../fixtures/envelope/domain.mdt"],
+  "patch": [{ "op": "replace", "path": "/defs/MigrateAll/envelope/owner", "value": "platform_led" }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1501",
+        "path": "/defs/MigrateAll/envelope/owner",
+        "facts": { "role": "platform_led", "did_you_mean": "platform_lead" }
+      }
+    ]
+  }
+}

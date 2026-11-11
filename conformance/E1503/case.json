@@ -1,0 +1,20 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1503",
+  "kind": "compile",
+  "title": "distinct_from that names a role no earlier approval of the same criterion asked is refused.",
+  "spec": ["spec/envelope.md#distinct_from", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "program.mdt", "kind": "mdt" },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1503",
+        "path": "/defs/Approved/accept/two_people/by/all/1/call/args/1/value",
+        "facts": { "distinct_from": "accountant", "approved_earlier": ["finance_lead"] }
+      }
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "lock": "mandate/lock/0.4",
+  "modules": {
+    "company.domain": "sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0"
+  },
+  "models": {
+    "standard": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "effort": "medium",
+      "max_input_tokens": 8000,
+      "max_output_tokens": 2000
+    }
+  },
+  "tariffs": {
+    "claude-sonnet-5-5": {
+      "currency": "USD",
+      "as_of": "2026-10-09",
+      "micros_per_mtok": { "input": 2000000, "output": 10000000, "cache_read": 200000, "cache_write": 2500000 }
+    }
+  },
+  "members": {
+    "alice": { "keys": ["sha256:1111111111111111111111111111111111111111111111111111111111111111"] },
+    "bob": { "keys": ["sha256:2222222222222222222222222222222222222222222222222222222222222222"] }
+  },
+  "roles": {
+    "platform_lead": ["alice"]
+  }
+}
