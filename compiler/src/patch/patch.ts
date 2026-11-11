@@ -11,6 +11,7 @@ import { SYSTEM_KINDS, type Budget, type Def, type Program } from "../ir/types.j
 import { validateIr } from "../ir/validate.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
+import { link, type Modules } from "../modules.js";
 import { resolveNames } from "../resolve/resolve.js";
 
 export interface PatchOp {
@@ -33,7 +34,11 @@ export interface PatchResult {
   governance: GovernanceChange[];
 }
 
-export function applyPatch(program: Program, base: string, ops: PatchOp[]): PatchResult {
+/**
+ * `modules`: what the program imports (a system model), linked in as `check` links it, so the patched
+ * program's names resolve against them (modules.ts).
+ */
+export function applyPatch(program: Program, base: string, ops: PatchOp[], modules: Modules = {}): PatchResult {
   const current = hashProgram(program as unknown as Json).program;
   if (current !== base) {
     return {
@@ -64,7 +69,10 @@ export function applyPatch(program: Program, base: string, ops: PatchOp[]): Patc
     }
   }
   const diagnostics = validateIr(root);
-  if (!hasErrors(diagnostics)) diagnostics.push(...resolveNames(root as unknown as Program));
+  if (!hasErrors(diagnostics)) {
+    const linked = link(root as unknown as Program, modules);
+    diagnostics.push(...linked.diagnostics, ...resolveNames(root as unknown as Program, undefined, linked.defs));
+  }
   const ok = !hasErrors(diagnostics);
   const result: PatchResult = { ok, diagnostics, governance: ok ? governance(program, root as unknown as Program) : [] };
   if (ok) {
@@ -127,23 +135,28 @@ function child(node: Json, token: string): Json {
 function governance(before: Program, after: Program): GovernanceChange[] {
   const out: GovernanceChange[] = [];
   for (const [name, d] of Object.entries(after.defs)) {
-    const prev: Def | undefined = before.defs[name];
+    const prev: Def | undefined = Object.hasOwn(before.defs, name) ? before.defs[name] : undefined;
     const base = `/defs/${name}`;
     if (d.kind === "capability" && (!prev || prev.kind !== "capability" || json(prev.value) !== json(d.value))) {
       out.push({ kind: "capability_added", path: base, detail: `capability '${name}' added or changed` });
     }
-    if ((d.kind === "agent" || d.kind === "workflow") && prev && prev.kind === d.kind) {
-      const had = new Set(prev.caps.map(json));
-      d.caps.forEach((c, i) => {
-        if (!had.has(json(c))) out.push({ kind: "capability_added", path: `${base}/caps/${i}`, detail: `${name} gains ${json(c)}` });
-      });
+    if (d.kind === "agent" || d.kind === "workflow") {
+      // A workflow is where authority starts, so a new one adds every capability it holds (G11). A new
+      // agent holds only what a workflow hands it, and is a behavior change (spec/views.md).
+      const same = prev && prev.kind === d.kind ? prev : undefined;
+      if (same || d.kind === "workflow") {
+        const had = new Set((same?.caps ?? []).map(json));
+        d.caps.forEach((c, i) => {
+          if (!had.has(json(c))) out.push({ kind: "capability_added", path: `${base}/caps/${i}`, detail: `${name} gains ${json(c)}` });
+        });
+      }
     }
     if ((d.kind === "agent" || d.kind === "workflow" || d.kind === "fn") && prev && prev.kind === d.kind) {
       for (const detail of budgetGrowth(prev.budget, d.budget)) out.push({ kind: "budget_increased", path: `${base}/budget`, detail: `${name}: ${detail}` });
     }
     if (d.kind === "agent" && prev && prev.kind === "agent") {
       for (const [sn, s] of Object.entries(d.skills)) {
-        const ps = prev.skills[sn];
+        const ps = Object.hasOwn(prev.skills, sn) ? prev.skills[sn] : undefined;
         if (ps) for (const detail of budgetGrowth(ps.budget, s.budget)) out.push({ kind: "budget_increased", path: `${base}/skills/${sn}/budget`, detail: `${name}.${sn}: ${detail}` });
       }
     }
@@ -164,10 +177,10 @@ function governance(before: Program, after: Program): GovernanceChange[] {
   }
   for (const [name, prev] of Object.entries(before.defs)) {
     if (prev.kind !== "contract") continue;
-    const now = after.defs[name];
+    const now = Object.hasOwn(after.defs, name) ? after.defs[name] : undefined;
     for (const group of ["accept", "invariant"] as const) {
       for (const crit of Object.keys(prev[group] ?? {})) {
-        if (!now || now.kind !== "contract" || !(crit in (now[group] ?? {}))) {
+        if (!now || now.kind !== "contract" || !Object.hasOwn(now[group] ?? {}, crit)) {
           out.push({ kind: "criterion_removed", path: `/defs/${name}/${group}/${crit}`, detail: `${name} drops ${group} criterion '${crit}'` });
         }
       }

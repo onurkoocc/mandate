@@ -102,6 +102,39 @@ workflow Look(task: Text) -> Inferred<Text>
     const refusal = JSON.stringify(chat.calls[1]!.messages);
     expect(refusal).toContain("/work/repo/.env is outside what you may read (/work/repo/src)");
   });
+
+  it("grants only what lies inside the workflow's capabilities as C2 reads it: no `..` path out of them, no wider command", async () => {
+    // The compiler drops Escape and MvnAny from the delegation (spec/checks.md, C2): Escape is /work/secrets, and
+    // MvnAny allows any arguments where the workflow allows `mvn -q` only. The sandbox must not get them either.
+    const w = await world(`mandate @ 0.2
+module g4c @ 0.1
+use std.{fs, model, exec}
+capability RepoRead = fs.read("/work/repo")
+capability Escape   = fs.read("/work/repo/../secrets")
+capability MvnQ     = exec(commands: ["mvn"], args_prefix: [["-q"]])
+capability MvnAny   = exec(commands: ["mvn"])
+capability ModelStd = model.infer(tier: standard)
+agent Reader {
+  caps   RepoRead, Escape, MvnAny, ModelStd
+  budget { tokens: 100k, spend: 1 USD, steps: 6 }
+  skill look(task: Text) -> Inferred<Text> ! {Fs.Read, Model}
+}
+workflow Look(task: Text) -> Inferred<Text>
+  caps   RepoRead, MvnQ, ModelStd
+  budget { spend: 2 USD }
+{
+  delegate Reader.look(task)
+}
+`);
+    const host = new SimSandboxHost();
+    const chat = new SimChat(() => [toolUse("t1", "finish", { result: "done" })]);
+    w.adapters.loop = { chat, sandbox: new MxcAdapter({ host, schemaVersion: "0.8.0", modelEndpoints: {}, modelsInControlPlane: true }) };
+    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Look", input: { task: "look" }, runId: "g4c" });
+    expect(run.state).toBe("succeeded");
+    expect(host.created[0]!.policy.filesystem).toEqual({ readOnly: ["/work/repo"], readWrite: [] });
+    expect(host.created[0]!.policy.process.allowedCommands).toEqual([]);
+    expect(chat.calls[0]!.tools.map((t) => t.name)).not.toContain("run");
+  });
 });
 
 describe("G12: an A2A server without idempotent delivery", () => {

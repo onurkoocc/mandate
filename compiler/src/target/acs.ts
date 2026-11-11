@@ -29,7 +29,7 @@ import { diag, type Diagnostic } from "../diag.js";
 import { domainHash, hashProgram } from "../hash.js";
 import type { AgentDef, Budget, Program } from "../ir/types.js";
 import type { Json } from "../json/strict-json.js";
-import type { Lock } from "../lock.js";
+import { own, type Lock } from "../lock.js";
 import { link, type Modules } from "../modules.js";
 import { DATA_CLASSES } from "../std/std.js";
 import type { ProfileLevel } from "./managed-agents.js";
@@ -136,7 +136,7 @@ export function acsTarget(program: Program, modules: Modules = {}, lock?: Lock):
     let pkg = name.toLowerCase().replace(/[^a-z0-9_]/g, "_");
     while (packages.has(pkg)) pkg += "_";
     packages.add(pkg);
-    const models = [...new Set(req.models.flatMap((m) => (m.tier && lock?.models?.[m.tier] ? [lock.models[m.tier]!.model] : [])))].sort();
+    const models = [...new Set(req.models.flatMap((m) => (m.tier ? (own(lock?.models, m.tier) ?? []) : [])).map((l) => l.model))].sort();
     const maxClass = req.models.map((m) => m.max_class).reduce((a, b) => (DATA_CLASSES.indexOf(b) > DATA_CLASSES.indexOf(a) ? b : a), "public");
     agents[name] = {
       manifest: manifest(name, pkg, req, programHash, binding),

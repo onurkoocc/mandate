@@ -13,6 +13,7 @@ import { resolveNames } from "./resolve/resolve.js";
 import { staticCheck } from "./check/static.js";
 import { lockChecks, moduleLockChecks, validateLock, type Lock } from "./lock.js";
 import { link, type Modules } from "./modules.js";
+import { applyPatch, type GovernanceChange, type PatchOp } from "./patch/patch.js";
 
 export type SourceKind = "mdt" | "json";
 
@@ -116,4 +117,34 @@ export function check(text: string, kind: SourceKind, opts: CheckOptions = {}): 
   const result: CheckResult = { ...loaded, diagnostics, ok };
   if (ok) result.hashes = hashProgram(loaded.program as unknown as Json);
   return result;
+}
+
+/** A patch applied to a program, with the patched program's own checks. */
+export interface PatchCheck {
+  ok: boolean;
+  hash?: string;
+  diagnostics: Diagnostic[];
+  governance: GovernanceChange[];
+  requires_approval: boolean;
+  program?: Program;
+}
+
+/**
+ * Applies `ops` to `program` against the hash they were written for
+ * (patch/patch.ts), then checks the patched program with `modules`, so the
+ * caller sees what it would be asked to fix next. Nothing is saved. The MCP
+ * server's `mandate.apply_patch` answers with it, and 0.4's `check_program`
+ * checks a lead's sub-program the same way (spec/envelope.md).
+ */
+export function checkPatch(program: Program, base: string, ops: PatchOp[], modules: Modules = {}): PatchCheck {
+  const r = applyPatch(program, base, ops, modules);
+  const checked = r.program ? check(JSON.stringify(r.program), "json", { modules }) : undefined;
+  return {
+    ok: r.ok && !!checked?.ok,
+    ...(r.hash ? { hash: r.hash } : {}),
+    diagnostics: [...r.diagnostics, ...(checked?.diagnostics ?? [])],
+    governance: r.governance,
+    requires_approval: r.governance.length > 0,
+    ...(r.program ? { program: r.program } : {}),
+  };
 }

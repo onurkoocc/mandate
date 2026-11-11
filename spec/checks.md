@@ -1,4 +1,4 @@
-# Static checks, 0.1 (Gate 1)
+# Static checks, 0.1 to 0.3
 
 `mandate check` runs these after the IR is valid and every name resolves.
 They follow design doc 4 §5–§10. This page records how the reference

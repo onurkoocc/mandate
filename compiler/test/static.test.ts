@@ -427,6 +427,30 @@ fn use_it(i: Issue) -> Text ! {Model} {
     expect(errorsOf(src)).toEqual(["MDT-E0210"]);
   });
 
+  it("R1, V01: an agent loop granted a model returns model output, whatever type its skill declares", () => {
+    const src = (ret: string, effects = "Model"): string =>
+      program(`capability M = model.infer(tier: standard)
+capability PR = git.pr("company/backend")
+agent A {
+  caps M
+  budget { steps: 5 }
+  skill write(i: Issue) -> ${ret} ! {${effects}}
+}
+workflow W(i: Issue) -> Bool
+  caps M, PR
+{
+  let text = delegate A.write(i)
+  effect git.comment(i, text) idempotent_by i.id
+  true
+}`);
+    expect(errorsOf(src("Inferred<Text>"))).toEqual(["MDT-E0210"]);
+    // spec/core.md §5: a skill without a body runs as an agent loop, and its result is Inferred<T>.
+    expect(errorsOf(src("Text"))).toEqual(["MDT-E0210"]);
+    expect(only(src("Text"), "MDT-E0210").message).toBe("Model output of type Inferred<Text> cannot be used where Text is expected; verify it first.");
+    // The loop talks to the model its delegation grants, whether or not the skill names the Model effect.
+    expect(errorsOf(src("Text", ""))).toEqual(["MDT-E0210"]);
+  });
+
   it("R6: a record built from inferred parts stays inferred", () => {
     const src = program(`type Pair = { a: Text, b: Text }
 fn guess(i: Issue) -> Inferred<Text> ! {Model} {
@@ -463,6 +487,15 @@ fn go(d: PullRequestDraft) -> Bool {
   it("E0202 and E0203: record fields are checked against local types", () => {
     expect(errorsOf(program('type P = { a: Text, b: Int }\nlet x = P { a: "x", c: 1 }'))).toEqual(["MDT-E0202", "MDT-E0203"]);
     expect(errorsOf(program("type P = { a: Text }\nfn f(p: P) -> Text { p.b }"))).toEqual(["MDT-E0202"]);
+  });
+
+  it("E0202 and E0203: a field named like a member of Object.prototype is a field like any other", () => {
+    const messages = (src: string): string[] => check(src, "mdt").diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`);
+    for (const f of ["constructor", "toString", "valueOf", "hasOwnProperty"]) {
+      expect(messages(program(`type P = { a: Text }\nfn f(p: P) -> Text { p.${f} }`)), f).toEqual([`MDT-E0202 P has no field '${f}'.`]);
+      expect(messages(program(`type P = { a: Text }\nlet x = P { a: "x", ${f}: "y" }`)), f).toEqual([`MDT-E0202 P has no field '${f}'.`]);
+      expect(messages(program(`type P = { ${f}: Text, a: Text }\nlet x = P { a: "x" }`)), f).toEqual([`MDT-E0203 P is missing field(s) ${f}.`]);
+    }
   });
 
   it("E0201: wrong argument types and counts", () => {

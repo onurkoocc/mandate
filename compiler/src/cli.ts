@@ -23,7 +23,7 @@
 //
 // <file> is .mdt text or .json canonical IR. `--module <file>` (repeatable)
 // loads a module the program imports, such as a system model (design doc 9
-// §2.1); `check`, `sandbox` and `view` link it in. `check` and `sandbox` read the
+// §2.1); `check`, `patch`, `sandbox` and `view` link it in. `check` and `sandbox` read the
 // lock file named by --lock, or else mandate.lock.json next to <file> if there
 // is one. Exit status is 1 when any error diagnostic is reported, 2 on usage
 // errors.
@@ -200,7 +200,7 @@ function main(argv: string[]): void {
         process.stderr.write("mandate: patch file must be { \"base\": \"sha256:…\", \"ops\": [ … ] }\n");
         process.exit(2);
       }
-      const r = applyPatch(loaded.program, p.base, p.ops as PatchOp[]);
+      const r = applyPatch(loaded.program, p.base, p.ops as PatchOp[], modules);
       if (asJson) {
         report(r.diagnostics, file, true, { hash: r.hash ?? null, governance: r.governance, program: r.program ?? null });
       } else {

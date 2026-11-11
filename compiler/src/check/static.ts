@@ -1006,7 +1006,7 @@ class Checker implements TypeEnv {
     const ep = epistemic(base.ty);
     const fields = fieldsOf(ep.inner, this);
     if (!fields) return { ty: withLevel(UNKNOWN, ep.level === "verified" ? "plain" : ep.level), cls: base.cls };
-    const f = fields[e.name];
+    const f = Object.hasOwn(fields, e.name) ? fields[e.name] : undefined;
     if (!f) {
       this.report("E0202", `${show(ep.inner)} has no field '${e.name}'.`, path, { type: show(ep.inner), fields: Object.keys(fields) });
       return { ty: UNKNOWN, cls: base.cls };
@@ -1090,7 +1090,7 @@ class Checker implements TypeEnv {
     const env = this.def(envName);
     if (env?.kind !== "environment") return fail(`'${envName}' is not an environment.`, `${path}/args/0/value`);
     const readName = first.value.name;
-    const src = env.reads?.[readName];
+    const src = env.reads && Object.hasOwn(env.reads, readName) ? env.reads[readName] : undefined;
     if (!src) return fail(`${envName} declares no read '${readName}'.`, `${path}/args/0/value`);
     let maxClass: DataClass = env.class;
     const given = new Set<string>();
@@ -1136,14 +1136,14 @@ class Checker implements TypeEnv {
       const ep = epistemic(v.ty);
       level = joinLevel(level, ep.level);
       if (fields) {
-        const ft = fields[fname];
+        const ft = Object.hasOwn(fields, fname) ? fields[fname] : undefined;
         if (!ft) this.report("E0202", `${e.type} has no field '${fname}'.`, `${path}/fields/${fname}`, { fields: Object.keys(fields) });
         // R6: the record carries its parts' taint, so compare the parts at the field's own level.
         else this.problem(assignable(withLevel(ep.inner, epistemic(ft).level), ft, this), `${path}/fields/${fname}`);
       }
     }
     if (fields) {
-      const missing = Object.keys(fields).filter((f) => !(f in e.fields));
+      const missing = Object.keys(fields).filter((f) => !Object.hasOwn(e.fields, f));
       if (missing.length) this.report("E0203", `${e.type} is missing field(s) ${missing.join(", ")}.`, path, { missing });
     }
     return { ty: withLevel(target, level), cls };
@@ -1225,6 +1225,13 @@ class Checker implements TypeEnv {
     this.use(frame, { effect: "Delegate", path });
     let ret = this.ty(skill.returns);
     if (remote && agent.remote!.trust !== "trusted") ret = named("Untrusted", ret);
+    else if (!remote && !skill.body && effective.some((c) => c.ctor === "model.infer")) {
+      // A skill without a body runs as an agent loop, which talks to the model its delegation grants: the result is
+      // that model's answer, whatever type the skill declares (§5.2, spec/core.md §5). Without a model in the grant
+      // the loop never runs (the runtime needs exactly one model tier in it), so it returns nothing to type.
+      const lvl = epistemic(ret).level;
+      if (lvl === "plain" || lvl === "verified") ret = named("Inferred", ret);
+    }
     // Model output inherits the highest class of what went in (§5.5).
     return { ty: ret, cls };
   }

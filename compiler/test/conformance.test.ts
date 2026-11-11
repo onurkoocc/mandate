@@ -123,6 +123,30 @@ workflow W(issue: Issue) -> Text
     expect(r.diagnostics.map((d) => d.facts?.["name"]).sort()).toEqual(["A", "x"]);
   });
 
+  it("reports an effect whose name only Object.prototype has, like any unknown effect", () => {
+    const withEffect = (name: string): string => `mandate @ 0.3
+module m @ 0.1
+use std.{fs}
+capability R = fs.read("/repo")
+environment prod {
+  class internal
+  authorize ${name} by policy
+}
+workflow W(t: Text) -> Bool
+  caps R
+{
+  effect ${name}(t)
+  true
+}`;
+    const expected = (name: string) => [
+      { code: "MDT-E0120", path: "/defs/prod/authorize/" + name, name },
+      { code: "MDT-E0120", path: "/defs/W/body/0/value/name", name },
+    ];
+    const shape = (src: string) => check(src, "mdt").diagnostics.map((d) => ({ code: d.code, path: d.at.path, name: d.facts?.["name"] }));
+    expect(shape(withEffect("nope"))).toEqual(expected("nope"));
+    for (const name of ["toString", "constructor", "hasOwnProperty", "valueOf"]) expect(shape(withEffect(name)), name).toEqual(expected(name));
+  });
+
   it("checks the JSON IR the same way as text", () => {
     const p = minimal();
     p["defs"] = { Greeting: { kind: "type", type: { ref: "Txt" } } };
@@ -277,6 +301,28 @@ agent A {
     ]);
     expect(r.ok).toBe(true);
     expect(r.governance.map((g) => g.kind).sort()).toEqual(["budget_increased", "capability_added", "criterion_removed"]);
+  });
+
+  it("flags the capabilities of a new workflow", () => {
+    const p = check(src, "mdt").program!;
+    const base = hashProgram(p as unknown as Json).program;
+    const leak = check(`${src}\nworkflow Leak(t: Text) -> Bool\n  caps Write, fs.write("/")\n{\n  true\n}\n`, "mdt").program!.defs["Leak"];
+    const r = applyPatch(p, base, [{ op: "add", path: "/defs/Leak", value: leak }]);
+    expect(r.diagnostics).toEqual([]);
+    expect(r.governance).toEqual([
+      { kind: "capability_added", path: "/defs/Leak/caps/0", detail: 'Leak gains {"args":[{"value":{"op":"text","value":"/"}}],"callee":{"name":"write","of":{"name":"fs","op":"var"},"op":"field"},"op":"call"}' },
+      { kind: "capability_added", path: "/defs/Leak/caps/1", detail: 'Leak gains {"name":"Write","op":"var"}' },
+    ]);
+  });
+
+  it("flags a dropped criterion whatever it is named", () => {
+    for (const name of ["constructor", "toString", "hasOwnProperty"]) {
+      const p = check(src.replace("accept tests", `accept ${name}`), "mdt").program!;
+      const base = hashProgram(p as unknown as Json).program;
+      const r = applyPatch(p, base, [{ op: "remove", path: `/defs/Done/accept/${name}` }]);
+      expect(r.ok, name).toBe(true);
+      expect(r.governance, name).toEqual([{ kind: "criterion_removed", path: `/defs/Done/accept/${name}`, detail: `Done drops accept criterion '${name}'` }]);
+    }
   });
 
   it("reports nothing for a change that narrows authority", () => {

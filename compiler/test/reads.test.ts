@@ -35,6 +35,13 @@ describe("data.read (B6)", () => {
     expect(errors(mutate("max_class: internal)\n  let warnings", "max_class: secret)\n  let warnings"))).toContain("MDT-E1201");
   });
 
+  it("E1201: a read named like a member of Object.prototype is a read the environment does not declare", () => {
+    for (const r of ["constructor", "toString", "hasOwnProperty"]) {
+      const d = check(mutate("data.read(prod_sim.mcp_errors,", `data.read(prod_sim.${r},`), "mdt", { modules }).diagnostics.filter((x) => x.code === "MDT-E1201");
+      expect(d.map((x) => x.message), r).toEqual([`prod_sim declares no read '${r}'.`]);
+    }
+  });
+
   it("E0301: each read needs data.read authority for it", () => {
     expect(errors(mutate("data.read(prod_sim, mcp_errors, core_warnings, shipment_events, shipment_overview)", "data.read(prod_sim, mcp_errors, core_warnings, shipment_events)"))).toEqual(["MDT-E0301"]);
   });

@@ -8,6 +8,14 @@
 
 import type { TypeExpr } from "../ir/types.js";
 
+/**
+ * A table keyed by names a program writes. It has no prototype, so a name
+ * such as `toString` or `constructor` is not an entry of it.
+ */
+function table<T>(entries: Record<string, T>): Record<string, T> {
+  return Object.assign(Object.create(null) as Record<string, T>, entries);
+}
+
 export type DataClass = "public" | "internal" | "confidential" | "restricted";
 export const DATA_CLASSES: DataClass[] = ["public", "internal", "confidential", "restricted"];
 
@@ -32,7 +40,7 @@ export interface CapCtor {
   scope: "positional" | "hosts" | "commands" | "none";
 }
 
-export const CAP_CTORS: Record<string, CapCtor> = {
+export const CAP_CTORS: Record<string, CapCtor> = table({
   "fs.read": { effect: "Fs.Read", write: false, scope: "positional" },
   "fs.write": { effect: "Fs.Write", write: true, scope: "positional" },
   "net.https": { effect: "Net", write: false, scope: "hosts" },
@@ -45,7 +53,7 @@ export const CAP_CTORS: Record<string, CapCtor> = {
   // Effects on an environment (design doc 9 §5.3, §9 L4), scoped by environment name.
   "env.deploy": { effect: "deploy", write: true, scope: "positional" },
   "env.migrate": { effect: "migrate", write: true, scope: "positional" },
-};
+});
 
 /** Default highest data class a model capability may receive when it does not say (§5.5). */
 export const DEFAULT_MODEL_MAX_CLASS: DataClass = "internal";
@@ -65,7 +73,7 @@ export interface StdEffect {
 }
 
 /** Std effects called with `effect name(…)`. Critical ones expand to prepare → authorize → commit. */
-export const STD_EFFECTS: Record<string, StdEffect> = {
+export const STD_EFFECTS: Record<string, StdEffect> = table({
   "git.open_pr": { params: [t("Verified", UNKNOWN)], returns: UNKNOWN, critical: true, cap: "git.pr" },
   "git.close_pr": { params: [UNKNOWN], returns: UNKNOWN, critical: true, cap: "git.pr" },
   "git.comment": { params: [UNKNOWN, t("Text")], returns: UNKNOWN, critical: true, cap: "git.pr" },
@@ -75,7 +83,7 @@ export const STD_EFFECTS: Record<string, StdEffect> = {
   // A release of a component's verified change into an environment, and a schema migration there (doc 9 §9, L4).
   deploy: { params: [t("Verified", UNKNOWN), UNKNOWN], returns: t("Receipt", UNKNOWN), critical: true, irreversible: true, cap: "env.deploy" },
   migrate: { params: [t("Verified", UNKNOWN), UNKNOWN], returns: t("Receipt", UNKNOWN), critical: true, irreversible: true, cap: "env.migrate" },
-};
+});
 
 export interface StdFn {
   params?: TypeExpr[];
@@ -84,7 +92,7 @@ export interface StdFn {
 }
 
 /** Std functions by dotted path. Reads from the outside world are Untrusted (§5.2, §8.11). */
-export const STD_FNS: Record<string, StdFn> = {
+export const STD_FNS: Record<string, StdFn> = table({
   "fs.read_text": { returns: t("Untrusted", t("Text")), effects: ["Fs.Read"] },
   "fs.list": { returns: t("Untrusted", t("List", t("Path"))), effects: ["Fs.Read"] },
   "fs.write_text": { returns: t("Bool"), effects: ["Fs.Write"] },
@@ -92,7 +100,7 @@ export const STD_FNS: Record<string, StdFn> = {
   "human.ask": { returns: t("Untrusted", t("Text")), effects: ["Human"] },
   "human.approve": { returns: t("Approval"), effects: ["Human"] },
   "time.now": { returns: t("Time"), effects: ["Time"] },
-};
+});
 
 /** std.decision policy functions (§8.10, D2): Inferred<Decision<T>> → DecisionOutcome<T>. */
 export const DECISION_POLICIES = new Set(["threshold", "top_margin", "abstain_if"]);

@@ -634,8 +634,14 @@ function budgetChanges(name: string, before: Budget | undefined, after: Budget |
     else if (y! > x!) up.push(`${name}.budget.${field}: ${fmt(x!)} → ${fmt(y!)}`);
     else if (y! < x!) down.push(`${name}.budget.${field}: ${fmt(x!)} → ${fmt(y!)}`);
   };
-  const cur = after?.spend?.currency ?? before?.spend?.currency ?? "";
-  cmp("spend", before?.spend?.micros, after?.spend?.micros, (n) => `${n / 1_000_000} ${cur}`);
+  const was = before?.spend;
+  const now = after?.spend;
+  // Amounts in two currencies are not comparable: a person approves the change (as apply_patch reports it).
+  if (was && now && was.currency !== now.currency) up.push(`${name}.budget.spend: ${was.micros / 1_000_000} ${was.currency} → ${now.micros / 1_000_000} ${now.currency}`);
+  else {
+    const cur = now?.currency ?? was?.currency ?? "";
+    cmp("spend", was?.micros, now?.micros, (n) => `${n / 1_000_000} ${cur}`);
+  }
   cmp("tokens", before?.tokens, after?.tokens, String);
   cmp("steps", before?.steps, after?.steps, String);
   cmp("time", before?.time?.ms, after?.time?.ms, duration);
@@ -667,7 +673,11 @@ export function semanticDiff(before: Program, after: Program): DiffView {
       else if (isSystem(a.kind)) governance.push({ path, text: `+ ${a.kind} ${name} (system model)` });
       else if (a.kind === "agent" && a.remote) governance.push({ path, text: `+ remote agent ${name}` });
       else if (a.kind === "effect" && a.irreversible) governance.push({ path, text: `+ irreversible effect ${name}` });
-      else behavior.push({ path, text: `+ ${a.kind} ${name}` });
+      else {
+        behavior.push({ path, text: `+ ${a.kind} ${name}` });
+        // A workflow is where authority starts: every capability a new one holds is authority added (G11).
+        if (a.kind === "workflow") a.caps.forEach((c, i) => governance.push({ path: `${path}/caps/${i}`, text: `+ ${name}: ${shownCaps(after, c)}` }));
+      }
       continue;
     }
     if (a.kind !== b.kind) {
@@ -699,8 +709,8 @@ export function semanticDiff(before: Program, after: Program): DiffView {
         if (a.kind === "agent") {
           const ba = bd as AgentDef;
           for (const sn of [...new Set([...Object.keys(ba.skills), ...Object.keys(a.skills)])].sort()) {
-            const bs = ba.skills[sn];
-            const as = a.skills[sn];
+            const bs = Object.hasOwn(ba.skills, sn) ? ba.skills[sn] : undefined;
+            const as = Object.hasOwn(a.skills, sn) ? a.skills[sn] : undefined;
             if (!as) behavior.push({ path: `${path}/skills/${sn}`, text: `- skill ${name}.${sn}` });
             else if (!bs) behavior.push({ path: `${path}/skills/${sn}`, text: `+ skill ${name}.${sn}` });
             else {
@@ -730,10 +740,10 @@ export function semanticDiff(before: Program, after: Program): DiffView {
           const was = bc[group] ?? {};
           const now = a[group] ?? {};
           for (const k of Object.keys(was).sort()) {
-            if (!(k in now)) governance.push({ path: `${path}/${group}/${k}`, text: `- ${name}.${k} (${methodOf(was[k]!.by)}) removed` });
+            if (!Object.hasOwn(now, k)) governance.push({ path: `${path}/${group}/${k}`, text: `- ${name}.${k} (${methodOf(was[k]!.by)}) removed` });
             else if (j(was[k]!.by) !== j(now[k]!.by)) governance.push({ path: `${path}/${group}/${k}`, text: `~ ${name}.${k}: ${methodOf(was[k]!.by)} → ${methodOf(now[k]!.by)}` });
           }
-          for (const k of Object.keys(now).sort()) if (!(k in was)) behavior.push({ path: `${path}/${group}/${k}`, text: `+ ${name}.${k} by ${methodOf(now[k]!.by)}` });
+          for (const k of Object.keys(now).sort()) if (!Object.hasOwn(was, k)) behavior.push({ path: `${path}/${group}/${k}`, text: `+ ${name}.${k} by ${methodOf(now[k]!.by)}` });
         }
         if (j(bc.require ?? null) !== j(a.require ?? null)) governance.push({ path: `${path}/require`, text: `~ ${name}: require changed` });
         break;

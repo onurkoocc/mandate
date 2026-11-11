@@ -174,11 +174,11 @@ export class Lexer {
       if (frac) return this.make("dec", lexeme, line, col);
       return this.make("int", lexeme, line, col, { num: this.safeInt(lexeme, 1, line, col) });
     }
-    if (suffix in DURATION_UNITS) {
+    if (Object.hasOwn(DURATION_UNITS, suffix)) {
       const ms = this.scaled(digits, frac, DURATION_UNITS[suffix]!, line, col, `${lexeme}${suffix}`);
       return this.make("duration", `${lexeme}${suffix}`, line, col, { num: ms });
     }
-    if (suffix in MAGNITUDE) {
+    if (Object.hasOwn(MAGNITUDE, suffix)) {
       const n = this.scaled(digits, frac, MAGNITUDE[suffix]!, line, col, `${lexeme}${suffix}`);
       return this.make("int", `${lexeme}${suffix}`, line, col, { num: n });
     }

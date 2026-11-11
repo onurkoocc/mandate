@@ -24,17 +24,22 @@
 //            UnsupportedProtocolVersionError (-32022) with the supported list
 //   legacy   an `initialize` request (2025-11-25 and earlier) opens a session
 //            for this process, served per the negotiated revision
+//
+// A message is bounded before it is handled (MESSAGE_LIMITS): its size while
+// it is read, so an oversized line is never held in memory, then its arrays
+// and nesting once it is parsed. A message over a limit gets an Invalid
+// Request error, and the server goes on to the next line.
 
 import { readFileSync } from "node:fs";
 import type { Readable, Writable } from "node:stream";
-import { createInterface } from "node:readline";
-import { check, load, loadModules, type SourceKind } from "../check.js";
+import { check, checkPatch, load, loadModules, type SourceKind } from "../check.js";
 import type { Modules } from "../modules.js";
 import { CODES } from "../codes.js";
 import type { Lock } from "../lock.js";
-import { hasErrors } from "../diag.js";
+import { hasErrors, ptrToken } from "../diag.js";
 import type { Program } from "../ir/types.js";
-import { applyPatch, type PatchOp } from "../patch/patch.js";
+import { LIMITS } from "../limits.js";
+import type { PatchOp } from "../patch/patch.js";
 import { architecture, authority, cost, programRef, semanticDiff } from "../views/views.js";
 
 export const MODERN_VERSIONS = ["2026-07-28"];
@@ -181,17 +186,7 @@ export function callTool(name: string, args: Record<string, unknown>, serverModu
       const loaded = load(source, kindFor(source, args["kind"]));
       if (!loaded.program || hasErrors(loaded.diagnostics)) return { ok: false, diagnostics: loaded.diagnostics, governance: [] };
       if (!Array.isArray(args["ops"])) throw new ToolError("ops must be a list of RFC 6902 operations");
-      const r = applyPatch(loaded.program, str(args, "base"), args["ops"] as PatchOp[]);
-      // The patched program's own checks, so the agent sees what it would be asked to fix next.
-      const checked = r.program ? check(JSON.stringify(r.program), "json", { modules }) : undefined;
-      return {
-        ok: r.ok && !!checked?.ok,
-        ...(r.hash ? { hash: r.hash } : {}),
-        diagnostics: [...r.diagnostics, ...(checked?.diagnostics ?? [])],
-        governance: r.governance,
-        requires_approval: r.governance.length > 0,
-        ...(r.program ? { program: r.program } : {}),
-      };
+      return checkPatch(loaded.program, str(args, "base"), args["ops"] as PatchOp[], modules);
     }
     case "mandate.caps_of": {
       const p = program(str(args, "source"), args["kind"], modules);
@@ -287,17 +282,119 @@ export class McpServer {
   }
 }
 
+/** What one JSON-RPC message may hold (CVE review K1). */
+export const MESSAGE_LIMITS = {
+  /** Bytes in one line, its line break not counted: as large as a program may be. */
+  bytes: 1024 * 1024,
+  /** Elements in any one array. */
+  arrayItems: 10_000,
+  /** Nesting depth: the IR's limit, with room for the request around an IR fragment (a patch op's value). */
+  depth: LIMITS.jsonDepth + 8,
+} as const;
+
+/** A line longer than the limit: only its length was kept. */
+export interface OversizedLine {
+  tooLarge: number;
+}
+
+/**
+ * The lines of a stream, decoded as UTF-8 and split where readline splits
+ * them: at "\n", "\r\n" or a lone "\r". A line over `maxBytes` is read
+ * through to its end without being kept, and comes out as its byte count.
+ */
+export async function* readLines(input: Readable, maxBytes: number): AsyncGenerator<string | OversizedLine> {
+  let parts: Buffer[] = [];
+  let size = 0;
+  let afterCR = false;
+  const take = (buf: Buffer, from: number, to: number) => {
+    if (to <= from) return;
+    size += to - from;
+    if (size > maxBytes) parts = [];
+    else parts.push(buf.subarray(from, to));
+  };
+  const finish = (): string | OversizedLine => {
+    const line = size > maxBytes ? { tooLarge: size } : Buffer.concat(parts, size).toString("utf8");
+    parts = [];
+    size = 0;
+    return line;
+  };
+  for await (const chunk of input) {
+    const buf = typeof chunk === "string" ? Buffer.from(chunk, "utf8") : (chunk as Buffer);
+    let from = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const b = buf[i];
+      if (afterCR) {
+        afterCR = false;
+        if (b === 0x0a) {
+          from = i + 1;
+          continue;
+        }
+      }
+      if (b === 0x0a || b === 0x0d) {
+        take(buf, from, i);
+        yield finish();
+        from = i + 1;
+        afterCR = b === 0x0d;
+      }
+    }
+    take(buf, from, buf.length);
+  }
+  if (size > 0) yield finish();
+}
+
+interface LimitBreach {
+  reason: "E_ARRAY_TOO_LONG" | "E_INPUT_TOO_DEEP";
+  message: string;
+  limit: number;
+  path: string;
+}
+
+/** The first array or nesting limit a parsed message breaks, if any. */
+function overLimit(v: unknown, path = "", depth = 1): LimitBreach | undefined {
+  if (depth > MESSAGE_LIMITS.depth) return { reason: "E_INPUT_TOO_DEEP", message: `Request nesting exceeds the depth limit of ${MESSAGE_LIMITS.depth}`, limit: MESSAGE_LIMITS.depth, path };
+  if (v === null || typeof v !== "object") return undefined;
+  if (Array.isArray(v)) {
+    if (v.length > MESSAGE_LIMITS.arrayItems) return { reason: "E_ARRAY_TOO_LONG", message: `Request has an array of ${v.length} elements; the limit is ${MESSAGE_LIMITS.arrayItems}`, limit: MESSAGE_LIMITS.arrayItems, path };
+    for (let i = 0; i < v.length; i++) {
+      const r = overLimit(v[i], `${path}/${i}`, depth + 1);
+      if (r) return r;
+    }
+    return undefined;
+  }
+  for (const [k, x] of Object.entries(v)) {
+    const r = overLimit(x, `${path}/${ptrToken(k)}`, depth + 1);
+    if (r) return r;
+  }
+  return undefined;
+}
+
+/** A parsed message's id, if it has one a response may carry. */
+function idOf(msg: unknown): string | number | null {
+  const id = msg && typeof msg === "object" && !Array.isArray(msg) ? (msg as { id?: unknown }).id : undefined;
+  return typeof id === "string" || typeof id === "number" ? id : null;
+}
+
 /** Serves newline-delimited JSON-RPC on a pair of streams until the input ends. */
 export async function serveStdio(input: Readable = process.stdin, output: Writable = process.stdout, modules: Modules = {}): Promise<void> {
   const server = new McpServer(modules);
-  const lines = createInterface({ input, crlfDelay: Infinity });
-  for await (const line of lines) {
+  for await (const line of readLines(input, MESSAGE_LIMITS.bytes)) {
+    if (typeof line !== "string") {
+      const data = { reason: "E_INPUT_TOO_LARGE", limit: MESSAGE_LIMITS.bytes, bytes: line.tooLarge };
+      output.write(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32600, message: `Request exceeds the ${MESSAGE_LIMITS.bytes}-byte message limit`, data } }) + "\n");
+      continue;
+    }
     if (!line.trim()) continue;
     let msg: unknown;
     try {
       msg = JSON.parse(line);
     } catch {
       output.write(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }) + "\n");
+      continue;
+    }
+    const breach = overLimit(msg);
+    if (breach) {
+      const { message, ...data } = breach;
+      output.write(JSON.stringify({ jsonrpc: "2.0", id: idOf(msg), error: { code: -32600, message, data } }) + "\n");
       continue;
     }
     let res: Response | undefined;

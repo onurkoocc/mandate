@@ -14,6 +14,7 @@
 
 import {
   calleePath,
+  capCovers,
   capsOf,
   classRank,
   type DataClass,
@@ -53,6 +54,7 @@ import { schemaErrors, typeSchema } from "./schema.js";
 import type { ActionRow, CommandRow, Journal } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
 import {
+  canonical,
   digest,
   evidenceOf,
   isObj,
@@ -490,9 +492,9 @@ export class Interpreter {
     const r = plain(await this.expr(e.right, ctx, `${path}/right`));
     switch (e.bop) {
       case "==":
-        return JSON.stringify(l) === JSON.stringify(r);
+        return canonical(l) === canonical(r);
       case "!=":
-        return JSON.stringify(l) !== JSON.stringify(r);
+        return canonical(l) !== canonical(r);
       case "<":
         return Number(l) < Number(r);
       case "<=":
@@ -506,9 +508,9 @@ export class Interpreter {
           const [lo, hi] = r["$range"] as number[];
           return Number(l) >= Number(lo) && Number(l) <= Number(hi);
         }
-        return Array.isArray(r) && r.some((x) => JSON.stringify(x) === JSON.stringify(l));
+        return Array.isArray(r) && r.some((x) => canonical(x) === canonical(l));
       case "subseteq":
-        return Array.isArray(l) && Array.isArray(r) && l.every((x) => r.some((y) => JSON.stringify(x) === JSON.stringify(y)));
+        return Array.isArray(l) && Array.isArray(r) && l.every((x) => r.some((y) => canonical(x) === canonical(y)));
       case "+":
         if (isObj(l) && "$money" in l && isObj(r) && "$money" in r) {
           if (l["$currency"] !== r["$currency"]) throw new Violation("currency_mismatch", "Money in different currencies is never converted implicitly.");
@@ -919,13 +921,17 @@ export class Interpreter {
     return this.hashes[name]!;
   }
 
-  /** Capabilities handed to a delegate: A.caps ∩ avail(ctx), with `with caps` narrowing its own kinds (C2, §9.1). */
+  /**
+   * Capabilities handed to a delegate: A.caps ∩ avail(ctx), with `with caps` narrowing its own kinds (C2, §9.1).
+   * An agent capability is in avail(ctx) when one of the workflow's covers it, as the compiler reads it
+   * (capCovers): its scope by segment after `.` and `..`, and no higher data class, other tier or wider arguments.
+   */
   private grants(agentName: string, withCaps: Expr[], path: string): CapVal[] {
     const agent = this.def(agentName) as Extract<Def, { kind: "agent" }>;
     const wfName = path.split("/")[2]!;
     const wf = this.def(wfName);
     const avail = wf?.kind === "workflow" ? wf.caps.flatMap((c) => this.caps(c)) : undefined;
-    const inside = (c: CapVal): boolean => !avail || avail.some((a) => a.ctor === c.ctor && scopeInside(c, a));
+    const inside = (c: CapVal): boolean => !avail || avail.some((a) => capCovers(a, c));
     let out = agent.caps.flatMap((c) => this.caps(c)).filter(inside);
     if (withCaps.length) {
       const given = withCaps.flatMap((c) => this.caps(c));
@@ -1713,19 +1719,6 @@ function bind(p: Pattern, v: Value, into: Map<string, Value>): void {
     const t = tagOf(v);
     (p.args ?? []).forEach((a, i) => bind(a, t?.args[i] ?? null, into));
   }
-}
-
-function scopeInside(inner: CapVal, outer: CapVal): boolean {
-  if (!outer.scope) return true;
-  if (!inner.scope) return false;
-  const seg = (s: string): string[] => s.split("/").filter((x) => x && x !== ".");
-  const within = (a: string, b: string): boolean => {
-    if (!inner.ctor.startsWith("fs.")) return a === b;
-    const x = seg(a);
-    const y = seg(b);
-    return y.length <= x.length && y.every((s, i) => x[i] === s);
-  };
-  return inner.scope.every((i) => outer.scope!.some((o) => within(i, o)));
 }
 
 /** Pure evaluation of a constant or supervision argument. */
