@@ -437,6 +437,10 @@ export class Interpreter {
       case "spawn":
       case "await":
         throw new Violation("unsupported", `${e.op} is not available in 0.1 (E0711).`);
+      case "map":
+      case "plan":
+        // The runtime refuses a 0.4 package when it loads it (RUNTIME_LANGUAGES), so this is not reached.
+        throw new Violation("unsupported", `${e.op} is language 0.4, which this runtime does not run yet (spec/envelope.md).`);
     }
   }
 
