@@ -1,0 +1,43 @@
+name: supply-chain
+
+# Scans the lockfile against OSV, which also carries malicious-package records
+# that have no CVE, and audits these workflows with zizmor. Runs on every pull
+# request, on main, and daily, so an advisory published after a merge still
+# turns the badge red. Both tools run from images pinned by digest; neither
+# needs an install or a token.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  osv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: OSV scan of package-lock.json (osv-scanner 2.7.0)
+        run: >-
+          docker run --rm -v "$PWD:/src:ro"
+          ghcr.io/google/osv-scanner:v2.7.0@sha256:4f3b7e2c64b9d38a5febc5a7e4a3dfef1d1362f726dea7a2ef4762b46469fcd0
+          scan source --lockfile=/src/package-lock.json
+
+  zizmor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Audit the workflows (zizmor 1.32.0)
+        run: >-
+          docker run --rm -v "$PWD:/src:ro"
+          ghcr.io/zizmorcore/zizmor:1.32.0@sha256:3014cc8f68f663935f69b3c3e0e41f5ce102b268d97db13db0f62208747f860d
+          --offline /src/.github/workflows
