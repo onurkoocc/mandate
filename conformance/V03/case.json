@@ -1,0 +1,17 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V03",
+  "kind": "compile",
+  "title": "Two par branches that keep overlapping write scopes are rejected.",
+  "spec": ["spec/checks.md"],
+  "language": "mandate/0.1",
+  "input": { "file": "../../compiler/test/fixtures/syntax/supervision.mdt", "kind": "mdt" },
+  "patch": [
+    { "op": "replace", "path": "/defs/Split/body/0/branches/patch/caps/0", "value": { "op": "var", "name": "RepoWrite" } }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E0320", "path": "/defs/Split/body/0/branches/tests", "facts": { "branches": ["patch", "tests"] } }]
+  }
+}
