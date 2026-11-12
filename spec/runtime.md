@@ -709,6 +709,9 @@ listed in the run's summary (R09).
 - refuses a language version it does not run, and of 0.4 `agents` in a
   budget that is not an envelope's, which it does not run yet
   (`unsupported_language`; [`envelope.md`](envelope.md));
+- refuses a package whose lock sets `host`, `isolation` or `egress`, each
+  by its name, until it enforces them (`unsupported_lock`;
+  [`boundary.md`](boundary.md#lock-05));
 - when the lock lists members or roles, requires it to be well formed
   (`malformed_lock`), and for a 0.4 package requires every role it names
   to have a member (`unbound_role`, E1502);

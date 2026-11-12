@@ -4,7 +4,7 @@ Mandate is an agent-native coordination and contract language. Agents write
 and edit programs; people review them through generated views; the compiler
 checks capabilities, effects, budgets, contracts and delegation before
 anything runs. This repository holds the reference implementation of
-versions 0.1 to 0.4.
+versions 0.1 to 0.4, and of the first part of 0.5, which is in progress.
 
 ## Why
 
@@ -165,6 +165,22 @@ pull request was opened, for 0.23 USD.
    outcome, and for every decision its member, its role and whether its
    signature holds. See [`spec/envelope.md`](spec/envelope.md).
 
+12. **0.5, Boundary (in progress):** the runtime's border with the outside
+   world. [`spec/boundary.md`](spec/boundary.md) specifies all of it: an
+   egress proxy that is the only way out and puts credentials into
+   requests, so a sandbox sees placeholders; isolation levels and the
+   host's least versions in the lock; a hash-chained journal with signed
+   anchors and an independent verifier; counted violations and a hard
+   halt; views by role; an OpenTelemetry projection. What exists so far is
+   the compile-time surface: language 0.5, whose `net.https` may allow only
+   some methods (E1801), and narrows by them; lock format 0.5 with `host`,
+   `isolation` and `egress` (E1802, E1803), whose changes `view --against`
+   shows; and sandbox requirement 0.2 for a 0.5 program. None of it is
+   enforced yet, so nothing that needs it runs: the runtime refuses a
+   package whose lock sets `host`, `isolation` or `egress`, by name, and the
+   sandbox adapter refuses a requirement that limits methods, asks for more
+   than process isolation, or carries credentials.
+
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
 
@@ -177,7 +193,8 @@ compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
 fixtures/    the tests' programs: fixbug/ is the design document's §20 workflow,
              fixbug-target/ the same workflow bound to a seeded test project,
-             system/ a fictional system's model (Acme) and programs over it
+             system/ a fictional system's model (Acme) and programs over it,
+             envelope/ the 0.4 migration, boundary/ a 0.5 agent that may only GET
 ```
 
 ## Using the compiler
@@ -273,6 +290,12 @@ child budgets inside 50 USD, delegated capabilities inside the workflow's,
 disjoint writes for the two parallel agents, step limits, review never
 counted alone, and a verified, idempotent PR. It also applies one mutation
 per rule to FixBug and checks that the rule fires.
+`compiler/test/surface05.test.ts` checks the compile-time surface of 0.5
+([`spec/boundary.md`](spec/boundary.md)): `methods` read from 0.5 only,
+the 0.1 fixture that writes them included, narrowing by them, E1801 to
+E1803, lock format 0.5 and its changes in `view --against`, sandbox
+requirement 0.2 and its byte-identity below 0.5, and a 0.5 parent's
+sub-programs.
 
 ## Runtime
 
@@ -523,6 +546,13 @@ journal: a map with a failed item, one that still runs and one that
 `fail_fast` failed; a refused and an admitted submission; a declined, an
 approved and an unanswered amendment; and decisions whose stored record
 was changed or removed.
+
+`fail-closed.test.ts` holds what 0.5 asks and this runtime does not
+enforce yet to its refusals: a lock's `host`, `isolation` and `egress`,
+each refused at load by its name; a requirement 0.2 that limits methods,
+asks for more than process isolation, forbids sharing or carries
+credentials, refused by the adapter on a host that enforces all of 0.1;
+and a 0.5 run whose agent may only GET, which is not started.
 
 ## Live runs
 

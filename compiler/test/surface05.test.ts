@@ -1,6 +1,8 @@
 // The compile-time surface of 0.5 (spec/boundary.md): `methods` of
 // `net.https` is read from 0.5 and narrows like a scope; a program of 0.1 to
-// 0.4 that writes it reads it as it always did, as nothing.
+// 0.4 that writes it reads it as it always did, as nothing. Lock format 0.5
+// (host, isolation, egress) and its checks, its changes in `view --against`,
+// sandbox requirement 0.2, and a 0.5 parent's sub-programs.
 
 import { describe, expect, it } from "vitest";
 import { check, checkSubprogram, load, loadModules } from "../src/check.js";
