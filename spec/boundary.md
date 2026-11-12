@@ -133,9 +133,9 @@ and exist only in format 0.5: in a 0.2 to 0.4 lock each is E0140, as
 | Field | Says |
 |---|---|
 | `host` | The least versions of `node` and `bwrap` on the runtime's host, as `major[.minor[.patch]]`, compared by number. When `bwrap` is given, a setuid `bwrap` is unfit too. At least one tool |
-| `isolation.floor` | Per data class, the least isolation level of a sandbox whose models may receive data of that class |
+| `isolation.floor` | Per data class, the least isolation level of a sandbox whose models may receive data of that class or a more sensitive one |
 | `isolation.untrusted_network` | The least isolation level of a sandbox that reaches any host |
-| `isolation.co_tenancy` | Per data class, `forbidden` when such a sandbox may not share its host with other tenants; `allowed` otherwise, and when left out |
+| `isolation.co_tenancy` | Per data class, `forbidden` when a sandbox with data of that class or a more sensitive one may not share its host with other tenants; `allowed`, or no entry, says nothing |
 | `egress` | Per agent, per host, the name of the credential the egress proxy puts into that agent's requests to that host. A name, never a secret: `^[A-Za-z][A-Za-z0-9_-]{0,63}$` |
 
 Isolation levels, weakest first: `process`, `user_kernel`, `microvm`,
@@ -144,8 +144,13 @@ host's versions: every floor comes from the lock. A distribution may carry
 a fix back without raising a version, so a floor written into the runtime
 could refuse a patched host.
 
-- **A floor applies to the data class it names.** A lock that means a
-  floor for every class above one writes it for each.
+- **Floors are monotone.** A floor holds for the data class it names and
+  for every more sensitive class, in the order `public`, `internal`,
+  `confidential`, `restricted`. The floor a class has in effect is the
+  highest among its own and those of the classes below it, so a lock that
+  sets `confidential: user_kernel` and says nothing of `restricted` keeps
+  restricted data at `user_kernel` at least. `co_tenancy: forbidden` holds
+  the same way; `allowed` never lifts a lower class's `forbidden`.
 - **The package.** The lock is part of the package hash. A raised floor, a
   new binding or a new least version is a new package, and a workflow
   with an envelope needs a new approval of it
@@ -168,18 +173,22 @@ With the lock, `mandate check` also reports:
   version.
 
 `mandate view --against` (with `--against-lock`) compares what the two
-locks ask, after their members and roles:
+locks ask, after their members and roles. Floors and sharing are compared
+per data class, as each class has them in effect, so a change that lowers
+what any class gets is a governance change, a class the lock does not name
+included:
 
 | Change | Kind |
 |---|---|
 | A credential bound to an agent's requests to a host, or another credential for it | governance (counts as authority added) |
-| A floor of a data class or of an untrusted network lowered or taken away | governance |
-| A data class whose sandboxes may share their host again (`forbidden` → `allowed`) | governance |
+| The floor a data class has in effect, or the untrusted network's floor, lowered or taken away | governance |
+| A data class whose sandboxes may share their host again, in effect (`forbidden` → `allowed`) | governance |
 | A least version of a host's tool lowered or taken away | governance |
 | A binding taken away, a floor or least version raised or added, sharing forbidden | behavior |
 
 A value written another way with the same meaning (`22.23` and `22.23.0`,
-a floor of `process` and none, `allowed` and no entry) is no change.
+a floor of `process` and none, `allowed` and no entry, a floor that a
+lower class already gives) is no change.
 
 ## Sandbox requirement 0.2
 
@@ -211,8 +220,8 @@ Every field of 0.1 is in its place and means what it meant. The new ones:
 | `network.methods` | Each host of `network.hosts` that only some methods are allowed for, with them, sorted. A host it does not list allows any method. Two grants of one host allow the union of their methods, and any method once one of them has no `methods` |
 | `isolation.data_class` | The highest `max_class` among `models`; `public` with no model |
 | `isolation.untrusted_network` | `network.hosts` is not empty |
-| `isolation.min` | The higher of the lock's `isolation.floor` for `data_class` and, when `untrusted_network`, the lock's `isolation.untrusted_network`. With neither, `process` |
-| `isolation.co_tenancy` | The lock's `isolation.co_tenancy` for `data_class`, else `allowed` |
+| `isolation.min` | The higher of the floor `data_class` has in effect (the highest of the lock's `isolation.floor` for `data_class` and every less sensitive class) and, when `untrusted_network`, the lock's `isolation.untrusted_network`. With neither, `process` |
+| `isolation.co_tenancy` | `forbidden` when the lock's `isolation.co_tenancy` forbids sharing for `data_class` or any less sensitive class, else `allowed` |
 | `egress.credentials` | The lock's `egress` of the subject agent, for the hosts of `network.hosts`: host → credential name. Never a secret |
 
 `mandate sandbox <file> [--lock <lock.json>]` prints it. At run time each

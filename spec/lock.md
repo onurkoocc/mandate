@@ -87,6 +87,8 @@ These are reported as `MDT-E0140` too.
 - A floor is one of `process`, `user_kernel`, `microvm`, `dedicated_host`,
   for a data class (`floor`) or for a sandbox that reaches any host
   (`untrusted_network`). `co_tenancy` is `allowed` or `forbidden`.
+- A floor, and `co_tenancy: forbidden`, hold for the class they name and
+  every more sensitive one.
 - An `egress` binding names an agent, a host and a credential: a name the
   egress proxy's own configuration binds to that host, never a secret.
 - No floor and no least version is built in: all of them come from here.

@@ -55,8 +55,8 @@ import { ptr, ptrToken } from "../diag.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
 import { own, packagedLock, perCallBound, type Lock } from "../lock.js";
-import { STD_EFFECTS, STD_FNS } from "../std/std.js";
-import { ISOLATION_LEVELS, type IsolationLevel } from "../target/sandbox.js";
+import { DATA_CLASSES, STD_EFFECTS, STD_FNS } from "../std/std.js";
+import { coTenancyFor, floorFor, ISOLATION_LEVELS, type IsolationLevel } from "../target/sandbox.js";
 import type { Block, Cell, Doc } from "./doc.js";
 
 export const VIEW_FORMAT = "mandate/view/0.1";
@@ -865,15 +865,16 @@ export function lockLimitsDiff(before: Lock | undefined, after: Lock | undefined
   const level = (x: string, y: string): boolean => ISOLATION_LEVELS.indexOf(x as IsolationLevel) < ISOLATION_LEVELS.indexOf(y as IsolationLevel);
   const bi = before?.isolation;
   const ai = after?.isolation;
-  for (const cls of names(bi?.floor, ai?.floor)) least(`/isolation/floor/${ptrToken(cls)}`, `isolation.floor.${cls}`, at(bi?.floor, cls), at(ai?.floor, cls), level, "no floor", "process");
+  // Floors and sharing are compared as each data class has them in effect: a floor holds for every more sensitive
+  // class, so taking one away, or lowering it, may lower what a class that the lock does not name gets.
+  for (const cls of DATA_CLASSES) least(`/isolation/floor/${ptrToken(cls)}`, `isolation.floor.${cls} in effect`, floorFor(bi, cls), floorFor(ai, cls), level, "process");
   least("/isolation/untrusted_network", "isolation.untrusted_network", bi?.untrusted_network, ai?.untrusted_network, level, "no floor", "process");
-  for (const cls of names(bi?.co_tenancy, ai?.co_tenancy)) {
-    // Without an entry a sandbox may share its host: `allowed` written out or left out is the same.
-    const b = at(bi?.co_tenancy, cls) ?? "allowed";
-    const a = at(ai?.co_tenancy, cls) ?? "allowed";
+  for (const cls of DATA_CLASSES) {
+    const b = coTenancyFor(bi, cls);
+    const a = coTenancyFor(ai, cls);
     if (b === a) continue;
     const relaxed = a === "allowed";
-    (relaxed ? governance : behavior).push({ path: `/isolation/co_tenancy/${ptrToken(cls)}`, text: `~ isolation.co_tenancy.${cls}: ${b} → ${a} (${relaxed ? "relaxed" : "tightened"})` });
+    (relaxed ? governance : behavior).push({ path: `/isolation/co_tenancy/${ptrToken(cls)}`, text: `~ isolation.co_tenancy.${cls} in effect: ${b} → ${a} (${relaxed ? "relaxed" : "tightened"})` });
   }
   for (const agent of names(before?.egress, after?.egress)) {
     const b = at(before?.egress, agent);

@@ -19,7 +19,7 @@ import { diag, type Diagnostic } from "../diag.js";
 import { hashProgram } from "../hash.js";
 import { atLeast, type AgentDef, type Budget, type LanguageVersion, type Program } from "../ir/types.js";
 import type { Json } from "../json/strict-json.js";
-import { classRank, DEFAULT_MODEL_MAX_CLASS, type DataClass } from "../std/std.js";
+import { classRank, DATA_CLASSES, DEFAULT_MODEL_MAX_CLASS, type DataClass } from "../std/std.js";
 import { capsOf, segments, showCap, within, type CapVal } from "../check/caps.js";
 import type { Lock } from "../lock.js";
 import { link, type Modules } from "../modules.js";
@@ -146,8 +146,8 @@ export function requirementFor(subject: SandboxRequirement["subject"], caps: Cap
   const dataClass = req.models.reduce<DataClass>((a, m) => (classRank(m.max_class) > classRank(a) ? m.max_class : a), "public");
   const untrusted = req.network.hosts.length > 0;
   const iso = opts.lock?.isolation;
-  // Floors come from the lock alone. A floor applies to the data class it names; with none, the level is process.
-  const floor = own(iso?.floor, dataClass) ?? "process";
+  // Floors come from the lock alone; with none, the level is process.
+  const floor = floorFor(iso, dataClass);
   const network = untrusted ? (iso?.untrusted_network ?? "process") : "process";
   const bound = own(opts.lock?.egress, subject.agent);
   const credentials: Record<string, string> = {};
@@ -159,9 +159,22 @@ export function requirementFor(subject: SandboxRequirement["subject"], caps: Cap
     ...req,
     format: SANDBOX_REQUIREMENT_FORMAT_0_2,
     network: { hosts: req.network.hosts, methods: limited },
-    isolation: { min: higher(floor, network), co_tenancy: own(iso?.co_tenancy, dataClass) ?? "allowed", data_class: dataClass, untrusted_network: untrusted },
+    isolation: { min: higher(floor, network), co_tenancy: coTenancyFor(iso, dataClass), data_class: dataClass, untrusted_network: untrusted },
     egress: { credentials },
   };
+}
+
+/**
+ * The isolation floor a lock's `isolation` gives data of class `c`: the highest floor it sets for `c` or any less
+ * sensitive class, since a floor holds for every class above the one it names. `process` when it sets none.
+ */
+export function floorFor(iso: Lock["isolation"] | undefined, c: DataClass): IsolationLevel {
+  return DATA_CLASSES.filter((x) => classRank(x) <= classRank(c)).reduce<IsolationLevel>((a, x) => higher(a, own(iso?.floor, x) ?? "process"), "process");
+}
+
+/** Whether a sandbox with data of class `c` may share its host: not when the lock forbids it for `c` or any less sensitive class. */
+export function coTenancyFor(iso: Lock["isolation"] | undefined, c: DataClass): CoTenancy {
+  return DATA_CLASSES.some((x) => classRank(x) <= classRank(c) && own(iso?.co_tenancy, x) === "forbidden") ? "forbidden" : "allowed";
 }
 
 /** The stronger of two isolation levels. */

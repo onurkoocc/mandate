@@ -245,20 +245,40 @@ describe("view --against-lock of lock 0.5", () => {
 
   it("calls a floor lowered or taken away, and sharing allowed again, a governance change; raised or tightened, a behavior change", () => {
     const iso = (o: object): Partial<Lock> => ({ isolation: { ...LOCK05.isolation, ...o } as Lock["isolation"] });
-    expect(diff({}, iso({ floor: { confidential: "process", restricted: "microvm" } })).governance).toEqual([["/isolation/floor/confidential", "~ isolation.floor.confidential: user_kernel → process (lowered)"]]);
-    expect(diff({}, iso({ floor: { restricted: "microvm" } })).governance).toEqual([["/isolation/floor/confidential", "~ isolation.floor.confidential: user_kernel → no floor (lowered)"]]);
+    expect(diff({}, iso({ floor: { confidential: "process", restricted: "microvm" } })).governance).toEqual([["/isolation/floor/confidential", "~ isolation.floor.confidential in effect: user_kernel → process (lowered)"]]);
+    expect(diff({}, iso({ floor: { restricted: "microvm" } })).governance).toEqual([["/isolation/floor/confidential", "~ isolation.floor.confidential in effect: user_kernel → process (lowered)"]]);
     expect(diff({}, iso({ untrusted_network: undefined })).governance).toEqual([]);
     expect(diff(iso({ untrusted_network: "microvm" }), {}).governance).toEqual([["/isolation/untrusted_network", "~ isolation.untrusted_network: microvm → process (lowered)"]]);
-    expect(diff({}, iso({ co_tenancy: {} })).governance).toEqual([["/isolation/co_tenancy/restricted", "~ isolation.co_tenancy.restricted: forbidden → allowed (relaxed)"]]);
+    expect(diff({}, iso({ co_tenancy: {} })).governance).toEqual([["/isolation/co_tenancy/restricted", "~ isolation.co_tenancy.restricted in effect: forbidden → allowed (relaxed)"]]);
     expect(diff({}, iso({ floor: { confidential: "microvm", restricted: "dedicated_host" } }))).toEqual({
       governance: [],
       behavior: [
-        ["/isolation/floor/confidential", "~ isolation.floor.confidential: user_kernel → microvm (raised)"],
-        ["/isolation/floor/restricted", "~ isolation.floor.restricted: microvm → dedicated_host (raised)"],
+        ["/isolation/floor/confidential", "~ isolation.floor.confidential in effect: user_kernel → microvm (raised)"],
+        ["/isolation/floor/restricted", "~ isolation.floor.restricted in effect: microvm → dedicated_host (raised)"],
       ],
       added: false,
     });
-    expect(diff({}, iso({ co_tenancy: { restricted: "forbidden", confidential: "forbidden" } })).behavior).toEqual([["/isolation/co_tenancy/confidential", "~ isolation.co_tenancy.confidential: allowed → forbidden (tightened)"]]);
+    expect(diff({}, iso({ co_tenancy: { restricted: "forbidden", confidential: "forbidden" } })).behavior).toEqual([["/isolation/co_tenancy/confidential", "~ isolation.co_tenancy.confidential in effect: allowed → forbidden (tightened)"]]);
+  });
+
+  it("compares floors and sharing as each class has them in effect, so a change that lowers what a class the lock does not name gets is governance", () => {
+    const only = (floor: object, co_tenancy: object = {}): Partial<Lock> => ({ isolation: { floor, co_tenancy } as Lock["isolation"] });
+    // Taking away the confidential floor lowers restricted data too, which the lock never named.
+    expect(diff(only({ confidential: "user_kernel" }), only({})).governance).toEqual([
+      ["/isolation/floor/confidential", "~ isolation.floor.confidential in effect: user_kernel → process (lowered)"],
+      ["/isolation/floor/restricted", "~ isolation.floor.restricted in effect: user_kernel → process (lowered)"],
+    ]);
+    // Moving a floor up a class lowers the classes between.
+    expect(diff(only({ internal: "microvm" }), only({ restricted: "microvm" }))).toMatchObject({
+      governance: [
+        ["/isolation/floor/internal", "~ isolation.floor.internal in effect: microvm → process (lowered)"],
+        ["/isolation/floor/confidential", "~ isolation.floor.confidential in effect: microvm → process (lowered)"],
+      ],
+      behavior: [],
+    });
+    // Writing out what a lower class already gives is no change.
+    expect(diff(only({ internal: "microvm" }, { internal: "forbidden" }), only({ internal: "microvm", restricted: "microvm" }, { internal: "forbidden", restricted: "forbidden" }))).toMatchObject({ governance: [], behavior: [] });
+    expect(diff(only({}, { internal: "forbidden" }), only({}, { confidential: "forbidden" })).governance).toEqual([["/isolation/co_tenancy/internal", "~ isolation.co_tenancy.internal in effect: forbidden → allowed (relaxed)"]]);
   });
 
   it("calls a least host version lowered or taken away a governance change, and raised a behavior change", () => {
@@ -311,9 +331,13 @@ describe("sandbox requirement 0.2", () => {
     expect(at({ floor: { confidential: "dedicated_host" }, untrusted_network: "microvm" }, [model("confidential"), net()])?.min).toBe("dedicated_host");
     // No host reached: the network's floor does not apply.
     expect(at({ untrusted_network: "microvm" }, [model("confidential")])).toEqual({ min: "process", co_tenancy: "allowed", data_class: "confidential", untrusted_network: false });
-    // A floor applies to the class it names, and to no other.
+    // A floor, and a ban on sharing, hold for the class they name and every more sensitive one, never a less sensitive one.
     expect(at({ floor: { restricted: "microvm" } }, [model("confidential"), net()])?.min).toBe("process");
-    expect(at({ floor: { internal: "microvm" }, co_tenancy: { internal: "forbidden" } }, [model("confidential")])).toMatchObject({ min: "process", co_tenancy: "allowed" });
+    expect(at({ floor: { confidential: "user_kernel" } }, [model("restricted")])?.min).toBe("user_kernel");
+    expect(at({ floor: { internal: "microvm" }, co_tenancy: { internal: "forbidden" } }, [model("confidential")])).toMatchObject({ min: "microvm", co_tenancy: "forbidden" });
+    // The highest of them: a lower class's floor is not lowered by a weaker one above it.
+    expect(at({ floor: { internal: "microvm", confidential: "user_kernel", restricted: "dedicated_host" } }, [model("confidential")])?.min).toBe("microvm");
+    expect(at({ co_tenancy: { internal: "forbidden", confidential: "allowed" } }, [model("confidential")])?.co_tenancy).toBe("forbidden");
     // The highest class among its models; with no model, public.
     expect(at({}, [model("internal"), model("restricted")])?.data_class).toBe("restricted");
     expect(at({ floor: { public: "user_kernel" } }, [])).toEqual({ min: "user_kernel", co_tenancy: "allowed", data_class: "public", untrusted_network: false });
