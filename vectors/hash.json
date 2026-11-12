@@ -56,6 +56,12 @@
       "hash": "sha256:51e1dcffa528f34ee3f742441c809990c00a2d2423276fa22e876853a1e21aaa"
     },
     {
+      "domain": "event",
+      "version": "0.1",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:13fbcac3009eca60a3aece5b8e1356dea2e796adc38ad103de880a41655db95c"
+    },
+    {
       "domain": "program",
       "version": "0.2",
       "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
@@ -90,6 +96,18 @@
       "version": "0.4",
       "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
       "hash": "sha256:b6692a3a6bd9f00985440321d5f60db2e7508b8a64351052a4e4928b981062ad"
+    },
+    {
+      "domain": "program",
+      "version": "0.5",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:c672377bc27f7b54ad1eb4472f0b585ca0ca9ea2d7fb9d723bf4d32d4e31ba44"
+    },
+    {
+      "domain": "def",
+      "version": "0.5",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:59d8c1929d1e0870ed04df39df06f0ab42b78eb4d0f7c1bb6720335f1b17119e"
     },
     {
       "domain": "program",
@@ -136,6 +154,17 @@
         [
           "T",
           "sha256:4f390ae757bba8d09accace63025a97d597754638ce5fe5b0212b9f27eb99edc"
+        ]
+      ]
+    },
+    {
+      "name": "a 0.5 program",
+      "input": "{\"language\":\"mandate/0.5\",\"module\":\"m\",\"version\":\"0.1\",\"defs\":{\"T\":{\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}}}}",
+      "program": "sha256:5df01f16744ed0b1db16e108980e4e3e15858bc4bdd9be4059776e8e2d30cf4e",
+      "defs": [
+        [
+          "T",
+          "sha256:b77a15f156e4e1c52dfe035daef29c103132d1fb7abb0c75a51999ab353aa4c5"
         ]
       ]
     },
