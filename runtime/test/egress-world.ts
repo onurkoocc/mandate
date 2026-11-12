@@ -12,11 +12,7 @@ import { join } from "node:path";
 import { serveAdmin, type AdminServer } from "../src/egress/admin.js";
 import { EgressClient } from "../src/egress/client.js";
 import { egressConfig, type EgressConfig } from "../src/egress/config.js";
-import { EgressProxy } from "../src/egress/proxy.js";
-
-// Until the data path exists, nothing is resolved or dialled; the shapes are the ones it will use.
-type DialRequest = { host: string; address: string; port: number; tls: boolean };
-type Resolver = (host: string) => Promise<{ address: string; family: number }[]>;
+import { EgressProxy, type DialRequest, type Resolver } from "../src/egress/proxy.js";
 
 /** A made-up secret, for tests only. */
 export const SECRET = "test-secret-6f1c2a9e44d0b7";
@@ -95,7 +91,7 @@ export async function world(o: { allow_private?: boolean; lingerMs?: number } = 
   const dials: DialRequest[] = [];
   const resolved: string[] = [];
   const dns = new Map<string, string[] | (() => string[])>();
-  const _resolve: Resolver = async (host) => {
+  const resolve: Resolver = async (host) => {
     resolved.push(host);
     const a = dns.get(host);
     const list = a === undefined ? ["93.184.215.14"] : typeof a === "function" ? a() : a;
@@ -107,6 +103,16 @@ export async function world(o: { allow_private?: boolean; lingerMs?: number } = 
       ["github", Buffer.from(SECRET)],
       ["model", Buffer.from(OTHER_SECRET)],
     ]),
+    resolve,
+    // Whatever address it is asked for, the fake dialer reaches the in-process upstream, and remembers what it was asked.
+    dial: async (r) => {
+      dials.push(r);
+      return new Promise((ok, fail) => {
+        const s = connect({ host: "127.0.0.1", port: up.port });
+        s.once("connect", () => ok(s));
+        s.once("error", fail);
+      });
+    },
     ...(o.lingerMs !== undefined ? { lingerMs: o.lingerMs } : {}),
   });
   const admin = await serveAdmin(proxy, where.path);

@@ -156,14 +156,55 @@ describe("the lines of the admin channel", () => {
 });
 
 describe("revocation, expiry and closing", () => {
+  it("revokes by session: the session's requests are denied as session_revoked, and other sessions go on", async () => {
+    const a = await open();
+    const b = await open();
+    expect(await w.client.revoke({ session: a.id })).toEqual([a.id]);
+    const resolved = w.resolved.length;
+    expect((await send(a.port, get("registry.npmjs.org"))).header("x-mandate-egress-denied")).toBe("session_revoked");
+    // Refused on its state alone: the name is not even resolved.
+    expect(w.resolved.length).toBe(resolved);
+    expect((await w.client.denials(a.id)).denials.map((d) => d.why)).toEqual(["session_revoked"]);
+    expect((await send(b.port, get("registry.npmjs.org"))).status).toBe(200);
+  });
+
   it("revokes by run, by tenant and all", async () => {
     const r1 = await open({ tenant: "t1", run: "run-a" });
     const r2 = await open({ tenant: "t1", run: "run-b" });
     const r3 = await open({ tenant: "t2", run: "run-c" });
     expect(await w.client.revoke({ run: "run-a" })).toEqual([r1.id]);
+    expect((await send(r2.port, get("registry.npmjs.org"))).status).toBe(200);
     expect(await w.client.revoke({ tenant: "t1" })).toEqual([r1.id, r2.id].sort());
+    expect((await send(r2.port, get("registry.npmjs.org"))).header("x-mandate-egress-denied")).toBe("session_revoked");
+    expect((await send(r3.port, get("registry.npmjs.org"))).status).toBe(200);
     const all = await w.client.revoke({ all: true });
     expect(all).toContain(r3.id);
+    expect((await send(r3.port, get("registry.npmjs.org"))).header("x-mandate-egress-denied")).toBe("session_revoked");
+  });
+
+  it("cuts a request in flight when its session is revoked", async () => {
+    const s = await open();
+    let release!: () => void;
+    const held = new Promise<void>((ok) => (release = ok));
+    const before = w.up.handler;
+    w.up.handler = (_req, res) => void held.then(() => res.end("late"));
+    const pending = send(s.port, get("registry.npmjs.org")).then(
+      (r) => r.raw,
+      () => "cut",
+    );
+    await new Promise((ok) => setTimeout(ok, 50));
+    await w.client.revoke({ session: s.id });
+    // Cut, the client's connection closes now, not when the upstream answers.
+    const r = await Promise.race([pending, new Promise((ok) => setTimeout(() => ok("still open"), 1000))]);
+    release();
+    w.up.handler = before;
+    expect(r).toBe("cut");
+  });
+
+  it("expires a session after ttl_ms: its requests are denied as session_expired", async () => {
+    const s = await open({ ttl_ms: 50 });
+    await new Promise((ok) => setTimeout(ok, 120));
+    expect((await send(s.port, get("registry.npmjs.org"))).header("x-mandate-egress-denied")).toBe("session_expired");
   });
 
   it("closes a revoked or expired session once it has lingered: its port stops listening and its denials are gone", async () => {
@@ -178,6 +219,22 @@ describe("revocation, expiry and closing", () => {
     await w.client.closeSession(s.id);
     await expect(send(s.port, get("registry.npmjs.org"))).rejects.toMatchObject({ code: "ECONNREFUSED" });
     await expect(w.client.closeSession(s.id)).rejects.toMatchObject({ code: "unknown_session" });
+  });
+});
+
+describe("denials", () => {
+  it("pages with after and limit; ids increase", async () => {
+    const s = await open();
+    for (const h of ["a.example", "b.example", "c.example", "d.example", "e.example"]) await send(s.port, get(h));
+    const all = (await w.client.denials(s.id)).denials;
+    expect(all.map((d) => d.host)).toEqual(["a.example", "b.example", "c.example", "d.example", "e.example"]);
+    expect(all.map((d) => d.id)).toEqual([...all.map((d) => d.id)].sort((x, y) => x - y));
+    const first = await w.client.denials(s.id, { limit: 2 });
+    expect(first.denials.map((d) => d.host)).toEqual(["a.example", "b.example"]);
+    const next = await w.client.denials(s.id, { after: first.denials.at(-1)!.id, limit: 2 });
+    expect(next.denials.map((d) => d.host)).toEqual(["c.example", "d.example"]);
+    const last = await w.client.denials(s.id, { after: next.denials.at(-1)!.id });
+    expect(last).toEqual({ denials: [all[4]], dropped: 0 });
   });
 });
 
