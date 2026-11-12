@@ -275,6 +275,16 @@ export function storedProblem(d: StoredDecision, keys: TrustedKeys, lock: Lock):
 }
 
 /**
+ * The id of the authorization a person's approval of an action makes. It
+ * names the action's digest, who approved, and the message that carried the
+ * approval, so the journal's `action_authorized` can be told to be that
+ * message's doing.
+ */
+export function authorizationId(actionDigest: string, by: string, messageId: string): string {
+  return digest("operation", { authorize: actionDigest, by, message: messageId });
+}
+
+/**
  * Why the evidence of a `human.approve` criterion does not hold, as far as
  * its decision goes (H04). The evidence record names the decision's digest;
  * the decision must be stored, unchanged, signed by a key the lock binds to
