@@ -7,17 +7,18 @@
 // TEMPORAL_CLI_PATH.
 
 import { randomUUID } from "node:crypto";
+import { check, load, type WorkflowDef } from "@mandate/compiler";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { bundleWorkflowCode, DefaultLogger, Runtime as TemporalRuntime, type WorkflowBundleWithSourceMap } from "@temporalio/worker";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { shownPackage, signDecision } from "../src/decisions.js";
 import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
 import type { ProgramChecker, WorkerChecker } from "../src/plan.js";
-import { Runtime } from "../src/runtime.js";
+import { buildPackage, Runtime } from "../src/runtime.js";
 import { MxcAdapter } from "../src/sandbox.js";
-import { SimAgents, SimSandboxHost, SimTool, wallClock } from "../src/sim.js";
+import { SimAgents, SimSandboxHost, SimTool, toolUse, wallClock } from "../src/sim.js";
 import { createWorker, TemporalDriver, workflowId, workflowsPath, type RunOptions } from "../src/temporal/index.js";
-import { isObj } from "../src/values.js";
+import { isObj, type Value } from "../src/values.js";
 import { closeAll, planChecker, world, type World, UNSIGNED } from "./helpers.js";
 import { commenting, finish, leadChat, program, programAt, submit } from "./planning.js";
 import { BUG, FIXBUG, fixbugAgents, RESULTS, USD, waitOf } from "./fixbug.js";
@@ -305,6 +306,53 @@ describe("Temporal schedules runs", () => {
     expect(events.filter((e) => e.type === "lease_acquired").length).toBeGreaterThanOrEqual(3);
     expect(chat.calls.filter((c) => c.agent === "Worker")).toHaveLength(1);
     expect((await s.control.journal.budget("t11"))["agents"]).toEqual({ limit: 12, settled: 2, reserved: 0 });
+  });
+
+  it("amends an envelope: the lead's request rests the run, the owner's signed decision wakes it, and it goes on under the new package (N04)", async () => {
+    const alice = EvidenceSigner.generate();
+    const lock = { modules: {}, members: { alice: { keys: [alice.keyId] } }, roles: { platform_lead: ["alice"], release_manager: ["alice"] } };
+    const wider = program({ budget: "{ tokens: 400k, steps: 400, agents: 12 }" });
+    const s = await scheduled(program(), { lock, decisions: { keys: new TrustedKeys([alice.publicKey]) }, plan: { checker } });
+    const envelope = (load(wider, "mdt").program!.defs["W"] as WorkflowDef).envelope as unknown as Value;
+    const { chat, told } = leadChat([[toolUse("a1", "request_amendment", { envelope, reason: "the rest needs more" })], finish("amended")]);
+    s.adapters.loop = { chat, sandbox: new MxcAdapter({ host: new SimSandboxHost(), schemaVersion: "0.8.0", modelEndpoints: {}, modelsInControlPlane: true }) };
+    await s.control.approveEnvelope(s.pkg, signDecision(alice, shownPackage(s.pkg.hash, "platform_lead"), { kind: "envelope", member: "alice", at: new Date(s.adapters.clock.now()) }));
+    await s.control.startRun({ pkg: s.pkg, workflow: "W", input: { items: [] }, runId: "t12" });
+    const to = buildPackage(check(wider, "mdt").program!, lock).hash;
+    const done = await s.serve(async () => {
+      await stateOf(s, "t12", "waiting");
+      const shown = await s.control.shown("t12", "wait");
+      expect(shown).toMatchObject({ package: s.pkg.hash, subject: to, role: "platform_lead" });
+      await s.control.decideAmendment("t12", { sender: "alice", messageId: "m1" }, signDecision(alice, shown, { kind: "amend", member: "alice", at: new Date(s.adapters.clock.now()) }));
+      return s.driver.result("t12");
+    });
+    expect(done.state).toBe("succeeded");
+    const run = await s.control.getRun("t12");
+    expect([run.result, run.package_hash]).toEqual(["amended", to]);
+    expect(told).toMatchObject([{ amended: true, package: to }]);
+    // The lead was asked twice in all: the worker that went on found its first turn in the journal.
+    expect(chat.calls.filter((c) => c.agent === "Lead")).toHaveLength(2);
+    expect((await s.control.journal.budget("t12"))["tokens"]).toMatchObject({ limit: 400_000 });
+  });
+
+  it("a durable timer ends an amendment nobody answered, and the envelope stays (N04, R15)", async () => {
+    const alice = EvidenceSigner.generate();
+    const lock = { modules: {}, members: { alice: { keys: [alice.keyId] } }, roles: { platform_lead: ["alice"], release_manager: ["alice"] } };
+    const timed = (tokens: string): string => program({ budget: `{ tokens: ${tokens}, steps: 400, agents: 12, time: 1500ms }` });
+    const s = await scheduled(timed("200k"), { lock, decisions: { keys: new TrustedKeys([alice.publicKey]) }, plan: { checker }, clock: wallClock });
+    const envelope = (load(timed("400k"), "mdt").program!.defs["W"] as WorkflowDef).envelope as unknown as Value;
+    const { chat, told } = leadChat([[toolUse("a1", "request_amendment", { envelope, reason: "the rest needs more" })], finish("nobody answered")]);
+    s.adapters.loop = { chat, sandbox: new MxcAdapter({ host: new SimSandboxHost(), schemaVersion: "0.8.0", modelEndpoints: {}, modelsInControlPlane: true }) };
+    await s.control.approveEnvelope(s.pkg, signDecision(alice, shownPackage(s.pkg.hash, "platform_lead"), { kind: "envelope", member: "alice", at: new Date() }));
+    const t0 = Date.now();
+    await s.control.startRun({ pkg: s.pkg, workflow: "W", input: { items: [] }, runId: "t13" });
+    await s.serve(() => s.driver.result("t13"));
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(1_500);
+    expect(told).toMatchObject([{ amended: false, declined: { reason: "approval_expired", by: null } }]);
+    const run = await s.control.getRun("t13");
+    expect([run.state, run.result]).toEqual(["succeeded", "nobody answered"]);
+    expect(run.package_hash).toBe(s.pkg.hash);
+    expect((await s.control.journal.events("t13")).filter((e) => e.type === "package_amended")).toEqual([]);
   });
 
   it("runs FixBug end to end: the code owner's approval wakes it, and a crash after commit opens one PR", async () => {
