@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { check, checkSubprogram, load, subprogramLinked, type SubprogramCheck } from "../src/check.js";
 import { leadClasses } from "../src/check/static.js";
 import { containment, opened, skeleton, subprogramShape, type Room } from "../src/check/subprogram.js";
-import { capsOf } from "../src/check/caps.js";
+import { capsOf, showCap } from "../src/check/caps.js";
 import type { Diagnostic } from "../src/diag.js";
 import { hashProgram } from "../src/hash.js";
 import type { Program } from "../src/ir/types.js";
@@ -356,6 +356,31 @@ describe("containment: capabilities (E1706, N01)", () => {
     expect(submit(FIX()).ok).toBe(true);
   });
 
+  it("narrows a capability of its parent under any name", () => {
+    // `A` comes before `W` in name order, which is the order the definitions are read in.
+    const named = FIX("M, R, A").replaceAll("Wa", "A");
+    expect(told(submit(named))).toEqual([]);
+    expect(submit(named).ok).toBe(true);
+    // It is still held to what it narrows.
+    const outside = submit(named.replace('W.narrow("/work/a")', 'W.narrow("/etc")'));
+    expect(outside.ok).toBe(false);
+    expect(told(outside)).toContainEqual(["MDT-E0305", "/defs/A/value", { base: 'W = fs.write("/work")', requested: ["/etc"] }]);
+  });
+
+  it("holds nothing through a capability that names itself, and ends", () => {
+    const loop = (def: string): string => `${def}\n\nworkflow Fix() -> Inferred<Text>\n  caps   M, R, Loop\n  budget { tokens: 2000, time: 10m, spend: 2 USD, steps: 10, agents: 2 }\n{\n  delegate Worker.fix(Item { name: "a" }) with caps Loop\n}`;
+    for (const def of [`capability Loop = Loop.narrow("/work/a")`, `capability Loop = Back.narrow("/work/a")\ncapability Back = Loop.narrow("/work")`]) {
+      const r = submit(loop(def));
+      expect(r.ok).toBe(false);
+      // The delegation was handed nothing to write with.
+      expect(pairs(errors(r.diagnostics))).toEqual([["MDT-E0301", "/defs/Fix/body/0/value"]]);
+    }
+    const defs = parsed(`mandate @ 0.4\n\nmodule example.cycle @ 0.1\n\nuse std.{fs}\n\ncapability Loop = Back.narrow("/work/a")\ncapability Back = Loop.narrow("/work")\ncapability Fine = fs.write("/work")\ncapability Under = Fine.narrow("/work/a")\n`).defs;
+    expect(capsOf(defs, { op: "var", name: "Loop" })).toEqual([]);
+    expect(capsOf(defs, { op: "var", name: "Back" })).toEqual([]);
+    expect(capsOf(defs, { op: "var", name: "Under" }).map(showCap)).toEqual(['Under = fs.write("/work/a")']);
+  });
+
   it("refuses a write that overlaps one still in flight, and accepts one beside it", () => {
     const held = capsOf(link(PARENT, MODULES).defs, { op: "call", callee: { op: "field", of: { op: "var", name: "W" }, name: "narrow" }, args: [{ value: { op: "text", value: "/work/a/src" } }] });
     const r = submit(FIX(), { room: { ...ROOM, writes: held } });
@@ -365,6 +390,49 @@ describe("containment: capabilities (E1706, N01)", () => {
     expect(submit(FIX(), { room: { ...ROOM, writes: beside } }).ok).toBe(true);
     // A read is never in the way of a write in flight.
     expect(submit(READS, { room: { ...ROOM, writes: held } }).ok).toBe(true);
+  });
+});
+
+describe("a capability that narrows one named after it", () => {
+  const program = (version: string): string => `mandate @ ${version}
+
+module example.order @ 0.1
+
+use std.{fs, model}
+
+capability M     = model.infer(tier: standard)
+capability Zed   = fs.write("/work")
+capability Alpha = Zed.narrow("/work/a")
+
+agent Worker {
+  role   "Fixes one thing."
+  caps   Alpha, M
+  budget { tokens: 3000, steps: 4 }
+  skill fix(n: Text) -> Inferred<Text> ! {Fs.Write, Model}
+}
+
+workflow W(n: Text) -> Inferred<Text>
+  caps   Alpha, M
+  budget { tokens: 10000, steps: 10 }
+{
+  delegate Worker.fix(n)
+}
+`;
+
+  it("is that narrowing from 0.4 on", () => {
+    expect(pairs(errors(check(program("0.4"), "mdt").diagnostics))).toEqual([]);
+    expect(pairs(errors(check(program("0.4").replace('Zed.narrow("/work/a")', 'Zed.narrow("/etc")'), "mdt").diagnostics))).toEqual([["MDT-E0305", "/defs/Alpha/value"]]);
+  });
+
+  it("is nothing before 0.4, as it always was", () => {
+    const always = [
+      ["MDT-E0301", "/defs/W/body/0/value"],
+      ["MDT-E0301", "/defs/Worker/skills/fix/effects/0"],
+    ];
+    for (const version of ["0.1", "0.2", "0.3"]) {
+      expect(pairs(errors(check(program(version), "mdt").diagnostics))).toEqual(always);
+      expect(pairs(errors(check(program(version).replace('Zed.narrow("/work/a")', 'Zed.narrow("/etc")'), "mdt").diagnostics))).toEqual(always);
+    }
   });
 });
 

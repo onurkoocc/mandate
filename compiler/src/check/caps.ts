@@ -239,13 +239,15 @@ function uniquePrefixes(ps: string[][]): string[][] {
  * scope is not literal leaves the scope unknown, never the base's wider one.
  * The checker reports what cannot be evaluated; here it stands for nothing.
  */
-export function capsOf(defs: Record<string, Def>, e: Expr): CapVal[] {
+export function capsOf(defs: Record<string, Def>, e: Expr, within: ReadonlySet<string> = new Set()): CapVal[] {
   if (e.op === "var") {
     const d = Object.hasOwn(defs, e.name) ? defs[e.name] : undefined;
-    return d?.kind === "capability" ? capsOf(defs, d.value).map((c) => ({ ...c, name: e.name })) : [];
+    // A capability that names itself, directly or through another, is nothing.
+    if (d?.kind !== "capability" || within.has(e.name)) return [];
+    return capsOf(defs, d.value, new Set(within).add(e.name)).map((c) => ({ ...c, name: e.name }));
   }
   if (e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow") {
-    const bases = capsOf(defs, e.callee.of);
+    const bases = capsOf(defs, e.callee.of, within);
     const scope = e.args.flatMap((a) => (a.value.op === "text" ? [a.value.value] : []));
     return bases.map((base) => {
       const { scope: _wide, ...rest } = base;

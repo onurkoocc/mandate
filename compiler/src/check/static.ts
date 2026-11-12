@@ -256,13 +256,7 @@ class Checker implements TypeEnv {
   // ── driver ─────────────────────────────────────────────────────────────
 
   run(): Diagnostic[] {
-    for (const [name, d] of Object.entries(this.defs)) {
-      if (d.kind !== "capability") continue;
-      // An imported capability was checked in its module; here it is only evaluated.
-      const own = Object.hasOwn(this.program.defs, name);
-      const caps = own ? this.evalCap(d.value, ptr("defs", name, "value")) : capsOf(this.defs, d.value);
-      this.capDefs.set(name, caps.map((c) => ({ ...c, name })));
-    }
+    for (const [name, d] of Object.entries(this.defs)) if (d.kind === "capability") this.capDef(name);
     this.findRecursion();
     this.checkSystem();
     // A sub-program has no `plan` at all (E1705, subprogram.ts), so E1707 has nothing to add there.
@@ -304,12 +298,31 @@ class Checker implements TypeEnv {
   // ── capabilities ───────────────────────────────────────────────────────
 
   /**
+   * What a capability definition evaluates to, once. A capability that names itself, directly or through another,
+   * is nothing: while it is evaluated it holds no value, and so neither does what is narrowed from it.
+   */
+  private capDef(name: string): CapVal[] {
+    const known = this.capDefs.get(name);
+    if (known) return known;
+    const d = Object.hasOwn(this.defs, name) ? this.defs[name] : undefined;
+    if (d?.kind !== "capability") return [];
+    this.capDefs.set(name, []);
+    // An imported capability was checked in its module; here it is only evaluated.
+    const own = Object.hasOwn(this.program.defs, name);
+    const caps = (own ? this.evalCap(d.value, ptr("defs", name, "value")) : capsOf(this.defs, d.value)).map((c) => ({ ...c, name }));
+    this.capDefs.set(name, caps);
+    return caps;
+  }
+
+  /**
    * Evaluates a capability expression: a name, a constructor call, or
    * `cap.narrow(…)`. A capability over a component may stand for several
    * values (one per command it may run).
    */
   private evalCap(e: Expr, path: string, frame: Frame = this.constFrame()): CapVal[] {
-    if (e.op === "var") return this.capDefs.get(e.name) ?? [];
+    // Before 0.4 a capability that names one evaluated after it, in name order, comes out empty. That is kept as it
+    // was. From 0.4 the order does not matter, so a sub-program can narrow a capability of its parent under any name.
+    if (e.op === "var") return this.capDefs.get(e.name) ?? (atLeast(this.program.language, "mandate/0.4") ? this.capDef(e.name) : []);
     if (e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow") {
       const bases = this.evalCap(e.callee.of, `${path}/callee/of`, frame);
       if (bases.length > 1) {
