@@ -65,7 +65,8 @@ jobs:
       - name: Install Bubblewrap and allow unprivileged user namespaces
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq bubblewrap
+          # slirp4netns and iptables: Bubblewrap's proxy-only egress mode (MXC checks for them).
+          sudo apt-get install -y -qq bubblewrap slirp4netns iptables iproute2 util-linux
           # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           bwrap --version
@@ -77,6 +78,22 @@ jobs:
         env:
           MANDATE_MXC: "1"
         run: npx vitest run test/mxc.test.ts test/gate3.test.ts test/workspace.test.ts
+      - name: Spike, not for merge, can a Bubblewrap sandbox be held to one loopback proxy
+        if: ${{ !cancelled() }}
+        working-directory: runtime
+        run: node test/spike/mxc-proxy-spike.mjs
+      - name: Spike, not for merge, what the SDK says when a prerequisite is missing
+        if: ${{ !cancelled() }}
+        working-directory: runtime
+        run: |
+          sudo apt-get remove -y -qq slirp4netns
+          SPIKE_VARIANT=no-slirp4netns node test/spike/mxc-proxy-spike.mjs
+          sudo apt-get install -y -qq slirp4netns
+          sudo apt-get remove -y -qq iptables
+          SPIKE_VARIANT=no-iptables node test/spike/mxc-proxy-spike.mjs
+          sudo apt-get install -y -qq iptables
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
+          SPIKE_VARIANT=apparmor-userns-restricted node test/spike/mxc-proxy-spike.mjs
 
   sandbox-windows:
     runs-on: windows-latest
