@@ -13,6 +13,51 @@ ntcp() { # same through node, when node exists
   timeout 8 "$NODE" -e "const s=require('net').connect({host:'$1',port:$2,timeout:4000});s.on('connect',()=>{console.log('reached');process.exit()});s.on('error',e=>{console.log('blocked '+e.code);process.exit()});s.on('timeout',()=>{console.log('blocked timeout');process.exit()})" 2>&1 | head -1
 }
 
+sockets_probe() { # unix sockets on the filesystem are not governed by the network namespace
+  python3 - <<'PY' 2>&1 | sed 's/^/PROBE /'
+import json, os, socket
+roots = ["/run", "/var/run", "/tmp", "/var", "/etc", "/home", "/opt", "/srv", "/mnt", "/dev", "/usr", "/root"]
+found = []
+for r in roots:
+    if not os.path.isdir(r):
+        continue
+    for dp, dn, fn in os.walk(r, followlinks=False):
+        for n in dn + fn:
+            p = os.path.join(dp, n)
+            try:
+                import stat
+                if stat.S_ISSOCK(os.lstat(p).st_mode):
+                    found.append(p)
+            except Exception:
+                pass
+        if len(found) > 60:
+            break
+out = []
+for p in sorted(set(found)):
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(1.5)
+    try:
+        s.connect(p); out.append(p + "=reached")
+    except Exception as e:
+        out.append(p + "=" + type(e).__name__)
+    finally:
+        s.close()
+print("x_unix_sockets_found " + "; ".join(out) if out else "x_unix_sockets_found none")
+# Ask systemd-resolved, over its varlink socket, to resolve a name: a way to the host's DNS that needs no network.
+path = "/run/systemd/resolve/io.systemd.Resolve"
+for name in ("example.com", "spike-dns-leak-probe.example.com"):
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(4)
+    try:
+        s.connect(path)
+        s.sendall(json.dumps({"method": "io.systemd.Resolve.ResolveHostname", "parameters": {"name": name, "family": 2}}).encode() + b"\0")
+        d = s.recv(4096)
+        print("x_resolved_varlink_%s %s" % (name.split(".")[0], "reached " + d.decode("utf8", "replace").strip("\0")[:300]))
+    except Exception as e:
+        print("x_resolved_varlink_%s blocked %s" % (name.split(".")[0], type(e).__name__))
+    finally:
+        s.close()
+PY
+}
+if [ "$MODE" = sockets ]; then sockets_probe; exit 0; fi
 info "tools: $(for t in node curl bash timeout getent nslookup dig python3 ip ss nc wget; do if command -v $t >/dev/null 2>&1; then echo -n "$t=yes "; else echo -n "$t=no "; fi; done) node-at-arg=$([ -x "$NODE" ] && echo yes || echo no)"
 info "id: $(id | tr '\n' ' ')"
 PROXYENV=$(env | grep -i proxy | tr '\n' ' ')
@@ -130,6 +175,7 @@ ts = [threading.Thread(target=probe, args=t) for t in targets]
 [t.start() for t in ts]; [t.join() for t in ts]
 print("x_port_sweep reached=%s blocked=%d" % ([f"{h}:{p}" for (h, p), v in res.items() if v == "reached"], sum(1 for v in res.values() if v == "blocked")))
 PY
+    sockets_probe
   fi
 fi
 if [ "$MODE" = hold ]; then sleep 3; fi

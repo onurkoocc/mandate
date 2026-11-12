@@ -286,6 +286,13 @@ async function main() {
     result.proxyA_requests = proxyA.requests;
   }
 
+  // -- 1b. the same unix-socket probe in a sandbox with no network at all, which is what the runtime creates today
+  if (!VARIANT) {
+    const none = await run(sdk, request(undefined, probeCmd(proxyA, "nonet", "sockets")));
+    console.log("--- no-network sandbox, socket probe ---\n" + none.stdout + (none.spawnError ?? none.waitError ?? "") + none.stderr + "--- end ---");
+    result.sockets_no_network = parseProbes(none.stdout).probes;
+  }
+
   // -- 2. two sandboxes at once, each with its own proxy
   if (ran && !VARIANT) {
     proxyA.requests.length = 0;
