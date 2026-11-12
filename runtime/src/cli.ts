@@ -38,7 +38,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, parseStrictJson, printProgram, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, printProgram, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
 import type { Cost } from "./adapters.js";
 import { adaptersFor, anthropicClient, connect, readConfig, runtimeOptions, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { deployManagedAgents, sdkApi } from "./managed-agents.js";
@@ -411,8 +411,7 @@ function load(file: string, lockFile: string | undefined, moduleFiles: string[] 
   if (problems.length) throw new Violation("load_verification_failed", problems.flatMap((p) => p.diagnostics.filter((d) => d.severity === "error").map((d) => `${p.file}: ${d.code} ${d.message}`)).join("\n"));
   const r = check(readFileSync(file, "utf8"), kindOf(file), { modules, ...(lock ? { lock } : {}) });
   if (!r.ok) throw new Violation("load_verification_failed", r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`).join("\n"));
-  const { lock: _format, ...pinned } = lock ?? { modules: {} };
-  return { program: r.program!, lock: pinned, modules };
+  return { program: r.program!, lock: packagedLock(lock), modules };
 }
 
 /**

@@ -65,6 +65,15 @@ export interface Lock {
   roles?: Record<string, string[]>;
 }
 
+/**
+ * The lock as a package carries it: without its format field. A program with
+ * no lock file is packaged with no pins.
+ */
+export function packagedLock(lock: Lock | undefined): Lock {
+  const { lock: _format, ...pinned } = lock ?? { modules: {} };
+  return pinned;
+}
+
 let validator: ValidateFunction | undefined;
 
 /** `o[k]` when `k` is a key of `o` itself: a lock read with JSON.parse has a prototype, and a model may be named `constructor`. */

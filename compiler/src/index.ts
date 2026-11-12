@@ -1,10 +1,10 @@
 // Public API of the Mandate 0.1 reference compiler.
 export { check, checkPatch, load, loadModules, kindOf, type CheckOptions, type CheckResult, type LoadResult, type ModuleSource, type PatchCheck, type SourceKind } from "./check.js";
 export { link, linkedProgram, references, type Linked, type Modules } from "./modules.js";
-export { LOCK_FORMAT, LOCK_FORMATS, lockChecks, moduleLockChecks, roleLockChecks, lockSchema, modelTiers, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
+export { LOCK_FORMAT, LOCK_FORMATS, lockChecks, moduleLockChecks, roleLockChecks, lockSchema, modelTiers, packagedLock, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
 export { CODES } from "./codes.js";
 export { diag, formatDiagnostic, hasErrors, type Diagnostic, type Repair, type Span } from "./diag.js";
-export { domainHash, hashProgram, type HashDomain, type ProgramHashes } from "./hash.js";
+export { domainHash, hashProgram, packageHash, type HashDomain, type ProgramHashes } from "./hash.js";
 export * from "./ir/types.js";
 export { irSchema, validateIr } from "./ir/validate.js";
 export { canonicalize } from "./json/jcs.js";

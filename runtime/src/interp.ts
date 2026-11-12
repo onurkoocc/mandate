@@ -27,6 +27,7 @@ import {
   requirementFor,
   STD_EFFECTS,
   STD_FNS,
+  workflowBounds,
   type Arg,
   type Tier,
   type Budget,
@@ -774,7 +775,7 @@ export class Interpreter {
     const tierOf = (e: Expr): string | undefined => this.caps(e).find((c) => c.tier)?.tier;
     if (using) return tierOf(using);
     const def = this.def(path.split("/")[2]!);
-    const caps = def?.kind === "workflow" || def?.kind === "agent" ? def.caps : [];
+    const caps = def?.kind === "workflow" ? workflowBounds(def).caps : def?.kind === "agent" ? def.caps : [];
     const own = [...new Set(caps.map(tierOf).filter((t): t is string => !!t))];
     if (own.length === 1) return own[0];
     const all = [...modelTiers(this.o.program)];
@@ -948,14 +949,14 @@ export class Interpreter {
 
   /**
    * Capabilities handed to a delegate: A.caps ∩ avail(ctx), with `with caps` narrowing its own kinds (C2, §9.1).
-   * An agent capability is in avail(ctx) when one of the workflow's covers it, as the compiler reads it
+   * An agent capability is in avail(ctx) when one of the workflow's (its envelope's, when it has one) covers it, as the compiler reads it
    * (capCovers): its scope by segment after `.` and `..`, and no higher data class, other tier or wider arguments.
    */
   private grants(agentName: string, withCaps: Expr[], path: string): CapVal[] {
     const agent = this.def(agentName) as Extract<Def, { kind: "agent" }>;
     const wfName = path.split("/")[2]!;
     const wf = this.def(wfName);
-    const avail = wf?.kind === "workflow" ? wf.caps.flatMap((c) => this.caps(c)) : undefined;
+    const avail = wf?.kind === "workflow" ? workflowBounds(wf).caps.flatMap((c) => this.caps(c)) : undefined;
     const inside = (c: CapVal): boolean => !avail || avail.some((a) => capCovers(a, c));
     let out = agent.caps.flatMap((c) => this.caps(c)).filter(inside);
     if (withCaps.length) {

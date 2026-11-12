@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, bindingChecks, canonicalize, capsOf, check, domainHash, hashProgram, link, linkedProgram, LOCK_FORMAT, modelTiers, references, roleLockChecks, SANDBOX_DENIALS_FORMAT, validateLock, type DenialReport, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { atLeast, bindingChecks, canonicalize, capsOf, check, domainHash, hashProgram, link, linkedProgram, LOCK_FORMAT, modelTiers, packageHash, references, roleLockChecks, SANDBOX_DENIALS_FORMAT, validateLock, workflowBounds, type DenialReport, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
 import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
@@ -67,7 +67,7 @@ export function isSigned04(program: Program, modules: Modules = {}): boolean {
 
 export function buildPackage(program: Program, lock: Lock = { modules: {} }, modules: Modules = {}): Package {
   const programHash = hashProgram(program as unknown as Json).program;
-  return { hash: domainHash("package", { program: programHash, lock } as unknown as Json), programHash, program, lock, ...(Object.keys(modules).length ? { modules } : {}) };
+  return { hash: packageHash(programHash, lock), programHash, program, lock, ...(Object.keys(modules).length ? { modules } : {}) };
 }
 
 /**
@@ -84,7 +84,7 @@ export function verifyPackage(pkg: Package): void {
   }
   const programHash = hashProgram(pkg.program as unknown as Json).program;
   if (programHash !== pkg.programHash) throw new Violation("package_hash_mismatch", `The program hashes to ${programHash}, not the packaged ${pkg.programHash}.`);
-  if (domainHash("package", { program: programHash, lock: pkg.lock } as unknown as Json) !== pkg.hash) {
+  if (packageHash(programHash, pkg.lock) !== pkg.hash) {
     throw new Violation("package_hash_mismatch", "The package hash does not match its program and lock.");
   }
   const unlocked = (pkg.program.uses ?? []).map((u) => u.module).filter((m) => m !== "std" && !m.startsWith("std.") && !Object.hasOwn(pkg.lock.modules, m));
@@ -273,7 +273,7 @@ export class Runtime {
     await this.validateExecutor(o.pkg);
     const lowered = this.remoteGuarantees(o.pkg.program);
     const runId = o.runId ?? randomUUID();
-    const limits = minLimits(costDims(wf.budget), costDims(o.limits));
+    const limits = minLimits(costDims(workflowBounds(wf).budget), costDims(o.limits));
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
     // The components the program works on start from one base commit each, recorded in the run's manifest (B3).
     const components = await this.prepareWorkspace(runId, o.pkg);
@@ -352,7 +352,7 @@ export class Runtime {
       }
     };
     visit(wf);
-    const repos = wf.caps.flatMap((c) => capsOf(program.defs, c)).filter((c) => c.ctor === "git.pr").flatMap((c) => c.scope ?? []);
+    const repos = workflowBounds(wf).caps.flatMap((c) => capsOf(program.defs, c)).filter((c) => c.ctor === "git.pr").flatMap((c) => c.scope ?? []);
     for (const name of [...effects].sort()) {
       const tool = this.adapters.tools[name];
       if (!tool?.validateBinding) continue;
@@ -761,7 +761,7 @@ export class Runtime {
     const seen = await this.journal.run(runId);
     const loaded = await this.loaded(seen.package_hash);
     const wf = loaded.program.defs[seen.workflow];
-    const program = costDims(wf?.kind === "workflow" ? wf.budget : undefined);
+    const program = costDims(wf?.kind === "workflow" ? workflowBounds(wf).budget : undefined);
     const wanted = costDims(r.limits);
     const signed = "signed" in r ? r.signed : undefined;
     await this.deciding(runId, msg, () => this.db.tx(async (tx) => {
