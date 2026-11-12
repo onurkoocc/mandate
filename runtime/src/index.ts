@@ -27,3 +27,7 @@ export { freshness, runDoc, runView, shadowDiff, type AsOf, type Freshness, type
 export { bind, BROKER_ID, DeclaredReads, evaluate, SampleReads, type ReadSourceConfig, type SqlRunner } from "./broker.js";
 export * from "./sim.js";
 export * from "./values.js";
+export { EgressClient, type EgressClientOptions, type ForwardSession, type GatewaySession, type Hello } from "./egress/client.js";
+export { EGRESS_FORMAT, egressConfig, readEgressConfig, readSecrets, type EgressConfig, type EgressCredential } from "./egress/config.js";
+export { DENIAL_REASONS, EgressError, EgressProxy, PLACEHOLDER, type Denial, type DenialReason, type Destination, type EgressProxyOptions, type OpenedSession, type RevokeScope, type SessionRequest } from "./egress/proxy.js";
+export { serveAdmin, type AdminServer } from "./egress/admin.js";
