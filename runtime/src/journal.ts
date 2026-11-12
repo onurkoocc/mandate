@@ -182,9 +182,17 @@ export class Journal {
     return run;
   }
 
-  async event(tx: Tx, runId: string, type: string, data: Value): Promise<void> {
-    const [r] = await tx.query<Row>("select coalesce(max(seq), 0) + 1 as seq from events where run_id = $1", [runId]);
-    await tx.query("insert into events (run_id, seq, type, data, at) values ($1, $2, $3, $4, $5)", [runId, num(r?.["seq"]), type, json(data), this.now()]);
+  /**
+   * Appends an event to the run's journal: one read of the run's last event and one insert. Every caller holds the
+   * run's row lock (`lock`), or writes in the transaction that creates the run, so two appends to one run never
+   * interleave between the read and the insert. Returns what was written.
+   */
+  async event(tx: Tx, runId: string, type: string, data: Value): Promise<{ seq: number; at: number }> {
+    const [last] = await tx.query<Row>("select seq from events where run_id = $1 order by seq desc limit 1", [runId]);
+    const seq = last ? num(last["seq"]) + 1 : 1;
+    const at = this.now();
+    await tx.query("insert into events (run_id, seq, type, data, at) values ($1, $2, $3, $4, $5)", [runId, seq, type, json(data), at]);
+    return { seq, at };
   }
 
   /**

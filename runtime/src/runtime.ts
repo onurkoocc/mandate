@@ -451,7 +451,7 @@ export class Runtime {
     let opened = last !== null;
     try {
       for (;;) {
-        if (!opened) await this.write(runId, fence, (tx) => this.journal.event(tx, runId, "budget_exceeded", { episode, detail: e.value() }));
+        if (!opened) await this.write(runId, fence, async (tx) => void (await this.journal.event(tx, runId, "budget_exceeded", { episode, detail: e.value() })));
         try {
           await interp.onBudgetExceeded(run.workflow, run.input as Obj, episode);
         } catch (s) {
