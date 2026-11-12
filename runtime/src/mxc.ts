@@ -3,13 +3,25 @@
 //
 // - Probe: the SDK's platform check. A host where Bubblewrap cannot run (no
 //   bwrap, user namespaces off) enforces nothing, so MxcAdapter refuses every
-//   agent by name (G05). Windows backends are a later item (P2-27).
+//   agent by name (G05). Windows backends are a later item (P2-27). A
+//   Bubblewrap backend that does not report the capability to mask paths
+//   (`filesystemDeniedPaths`) holds neither the path lists nor the network.
 // - Create: records the policy; Bubblewrap needs no long-lived container.
 // - Execute: one `bwrap` process per tool call, under the policy:
 //     filesystem  the deny-by-default system baseline read-only, plus the
-//                 policy's read-only and read-write paths and nothing else
+//                 policy's read-only and read-write paths and nothing else;
+//                 the host's runtime directories (`/run`, `/var/run`) are
+//                 masked in every sandbox, whatever else is visible
 //     network     egress and ingress denied: `--unshare-net`, no network at all
 //     timeout     the policy's, per process
+//   The runtime directories hold the host's service sockets (the resolver,
+//   the system bus, a container engine). A unix socket is a file, not a
+//   network route, so the network policy does not reach it: a sandbox that
+//   could open one could ask that service to act for it, e.g. resolve a name
+//   upstream. So no sandbox sees them. A policy path at or under one is
+//   refused by name (the probe reports them as `hidden`), never dropped; a
+//   granted path that resolves into one through a symlink is refused before
+//   a process starts. A backend that cannot mask paths enforces nothing.
 //   The command allow-list is not something Bubblewrap can enforce inside the
 //   sandbox, so the host enforces it before it starts a process: a process is
 //   either one of the runtime's own tool helpers (cat, ls, grep, the
@@ -22,18 +34,22 @@
 // name (W0311 feedback needs the Windows backend).
 
 import { randomUUID } from "node:crypto";
-import { makeWritable, type Enforceable, type ExecRequest, type ExecResult, type MxcPolicy, type SandboxHost } from "./sandbox.js";
+import { realpathSync } from "node:fs";
+import { hiddenUnder, makeWritable, type Enforceable, type ExecRequest, type ExecResult, type MxcPolicy, type SandboxHost } from "./sandbox.js";
 import { inside, WRITE_SCRIPT } from "./tools.js";
 
 /** The part of `@microsoft/mxc-sdk/v1` the host uses; tests pass a fake. */
 export interface MxcSdk {
   getPlatformSupport(): { isSupported: boolean; reason?: string; availableMethods: string[]; unavailableReasons?: Record<string, string> };
+  /** The native backends and their optional capabilities. An SDK without it cannot say that it masks paths. */
+  getAvailableBackends?(): Array<{ backend: string; capabilities: string[]; warnings?: string[] }>;
   spawn(request: MxcContainerRequest): Promise<MxcSpawned>;
 }
 
 export interface MxcContainerRequest {
   command: string;
-  filesystem: { readonlyPaths: string[]; readwritePaths: string[] };
+  /** `deniedPaths` are masked inside the sandbox, below any grant (MXC capability `filesystemDeniedPaths`). */
+  filesystem: { readonlyPaths: string[]; readwritePaths: string[]; deniedPaths: string[] };
   network: { egress: { default: "deny" }; ingress: { default: "deny"; hostLoopback: "deny" } };
   containment: { type: "bubblewrap" };
   timeoutMs?: number;
@@ -68,6 +84,14 @@ const DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/b
 
 const NOTHING: Enforceable = { backends: [], modes: [], filesystem: false, network: "none", exec: "none", timeout: false, ui: false };
 
+/**
+ * The host's runtime directories, where its services keep their unix
+ * sockets: masked in every sandbox, and no policy path may lie at or under
+ * one. `/var/run` is a link to `/run` on current distributions; it is listed
+ * so that a host where it is a directory of its own is covered too.
+ */
+export const HOST_RUNTIME_DIRS: readonly string[] = ["/run", "/var/run"];
+
 /** Helpers the runtime's own tools start; the filesystem policy confines them. */
 const HELPERS = new Set(["cat", "ls", "grep"]);
 
@@ -79,6 +103,8 @@ export class MxcHost implements SandboxHost {
   private readonly stopped = new Set<string>();
   /** Why the last probe found nothing enforceable, for the operator. */
   unavailable: string | undefined;
+  /** Why the backend cannot mask paths (null: it can), asked once. */
+  private masking: string | null | undefined;
 
   constructor(private readonly o: MxcHostOptions = {}) {
     this.sdk = o.sdk;
@@ -104,14 +130,27 @@ export class MxcHost implements SandboxHost {
       this.unavailable = p.unavailableReasons?.["bubblewrap"] ?? p.reason ?? `bubblewrap is not among ${p.availableMethods.join(", ") || "no backends"}`;
       return NOTHING;
     }
+    const enforcing: Enforceable = { backends: ["process"], modes: ["enforcement"], filesystem: true, network: "deny_all", exec: "args_prefix", timeout: true, ui: true, hidden: [...HOST_RUNTIME_DIRS] };
+    // Without masking, a sandbox would see the host's service sockets: neither its path lists nor its network could be held.
+    this.masking ??= cannotMask(sdk) ?? null;
+    const shown = (this.o.baseline ?? []).find((b) => exposedBy(b));
+    const why = this.masking ?? (shown && `the baseline path ${shown} leads to ${exposedBy(shown)}, which no sandbox may see`);
+    if (why) {
+      this.unavailable = why;
+      return { ...enforcing, filesystem: false, network: "none" };
+    }
     this.unavailable = undefined;
-    return { backends: ["process"], modes: ["enforcement"], filesystem: true, network: "deny_all", exec: "args_prefix", timeout: true, ui: true };
+    return enforcing;
   }
 
   async create(policy: MxcPolicy): Promise<string> {
     // MxcAdapter only plans what the probe said it can enforce; a policy that asks for more is a bug, not a fallback.
     if (policy.network.allowOutbound || policy.network.allowedHosts.length) throw new Error("MxcHost: Bubblewrap here enforces no outbound network at all; this policy allows some.");
     if (policy.mode !== "enforcement") throw new Error(`MxcHost: Bubblewrap has no ${policy.mode} mode.`);
+    for (const p of [...policy.filesystem.readOnly, ...policy.filesystem.readWrite]) {
+      const root = hiddenUnder(p, HOST_RUNTIME_DIRS);
+      if (root) throw new Error(`MxcHost: ${p} is under ${root}, which no sandbox sees; this policy grants it.`);
+    }
     makeWritable(policy);
     const handle = `mxc-${randomUUID()}`;
     this.policies.set(handle, policy);
@@ -126,10 +165,17 @@ export class MxcHost implements SandboxHost {
     if (why) return refused(why);
     const sdk = await this.load();
     if (!sdk) return refused(this.unavailable ?? "MXC is not available");
+    const readonlyPaths = [...(this.o.baseline ?? []), ...policy.filesystem.readOnly];
+    const readwritePaths = [...policy.filesystem.readWrite];
+    // A granted path checked by name at planning can still lead into a runtime directory through a link.
+    for (const p of [...readonlyPaths, ...readwritePaths]) {
+      const root = exposedBy(p);
+      if (root) return refused(`${p} leads to ${root}, which no sandbox sees`);
+    }
     const timeoutMs = req.timeoutMs ?? (policy.timeoutSeconds !== null ? policy.timeoutSeconds * 1000 : undefined);
     const request: MxcContainerRequest = {
       command: req.argv.map(shellQuote).join(" "),
-      filesystem: { readonlyPaths: [...(this.o.baseline ?? []), ...policy.filesystem.readOnly], readwritePaths: [...policy.filesystem.readWrite] },
+      filesystem: { readonlyPaths, readwritePaths, deniedPaths: [...HOST_RUNTIME_DIRS] },
       network: { egress: { default: "deny" }, ingress: { default: "deny", hostLoopback: "deny" } },
       containment: { type: "bubblewrap" },
       ...(timeoutMs !== undefined ? { timeoutMs } : {}),
@@ -193,6 +239,48 @@ export function disallowed(policy: MxcPolicy, argv: string[]): string | undefine
   if (!allowed.length) return `${cmd} is not an allowed command in this sandbox`;
   if (!allowed.some((c) => !c.argsPrefix || c.argsPrefix.some((p) => p.every((x, i) => args[i] === x)))) return `${argv.join(" ")} does not start with an allowed argument prefix`;
   return undefined;
+}
+
+/** Why this SDK cannot be shown to mask paths in a Bubblewrap sandbox, or undefined when it can. */
+function cannotMask(sdk: MxcSdk): string | undefined {
+  const no = "so a sandbox would see the host's runtime directories and the service sockets in them";
+  if (!sdk.getAvailableBackends) return `this MXC SDK does not report what its backends can enforce, ${no}`;
+  let bwrap: ReturnType<NonNullable<MxcSdk["getAvailableBackends"]>>[number] | undefined;
+  try {
+    bwrap = sdk.getAvailableBackends().find((b) => b.backend === "bubblewrap");
+  } catch (e) {
+    return `MXC's backend discovery failed (${(e as Error).message}), ${no}`;
+  }
+  if (bwrap?.capabilities.includes("filesystemDeniedPaths")) return undefined;
+  const warnings = bwrap?.warnings?.length ? ` (${bwrap.warnings.join("; ")})` : "";
+  return `Bubblewrap here cannot mask paths${warnings}, ${no}`;
+}
+
+/**
+ * The runtime directory a granted path would show, or undefined: the path is
+ * one or lies under one, by its name or by where its links lead; or it is
+ * another name for a directory that holds one, where the mask (which covers
+ * the runtime directory's own path) does not reach.
+ */
+export function exposedBy(p: string): string | undefined {
+  const named = hiddenUnder(p, HOST_RUNTIME_DIRS);
+  if (named) return named;
+  const real = realpath(p);
+  if (real === undefined) return undefined;
+  for (const dir of HOST_RUNTIME_DIRS) {
+    const realDir = realpath(dir);
+    if (realDir === undefined) continue;
+    if (inside(real, [realDir]) || (real !== p && inside(realDir, [real]))) return dir;
+  }
+  return undefined;
+}
+
+function realpath(p: string): string | undefined {
+  try {
+    return realpathSync(p);
+  } catch {
+    return undefined;
+  }
 }
 
 /** POSIX single-quoting: Bubblewrap runs the command line through `sh -c`. */
