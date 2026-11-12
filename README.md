@@ -435,6 +435,17 @@ and learning mode's denials carried from a run to W0311. On Windows with
 blocking tests against a real AppContainer, and also checks the clipboard
 and learning mode.
 
+`mandate egress serve --config mandate.egress.json` runs the reference
+egress proxy of 0.5 ([`spec/egress.md`](spec/egress.md)). The operator
+starts it with the secrets in its own environment; a session gets
+placeholders, and the proxy swaps one for its secret only in the
+configured header, toward the hosts its configuration binds the credential
+to, over TLS. It needs no database and no runtime configuration, and
+nothing in the runtime uses it yet. `egress-*.test.ts` check each of its
+rules against an in-process upstream; on Linux with `openssl`,
+`egress-tls.test.ts` also goes through real TLS with a certificate made
+when it runs.
+
 `github.test.ts` checks the `git.open_pr` adapter for GitHub against an
 in-memory GitHub:
 
