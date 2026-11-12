@@ -46,7 +46,52 @@ It is given as a Mermaid flowchart and as a table.
   `n + 1` times, a `degrade` fallback once;
 - with a lock file, the per-call bound of a model turn and `steps ×` that
   bound (W0504);
-- the static upper bound of everything the workflow hands out.
+- the static upper bound of everything the workflow hands out. For a
+  workflow with an envelope it counts the agents the static part starts
+  too, as the checker counts them.
+
+## The envelope's card
+
+A person approves an envelope once, before any run (spec/envelope.md,
+"Approving an envelope"). The card is what they read first.
+`mandate view <program> --card [--workflow W] [--format md|html|json]
+[--lock <lock.json>] [--module <file>]…` prints it for one workflow with an
+envelope. `--workflow` names the workflow; it is needed only when the
+program has more than one with an envelope, and without it the command
+lists them and stops. A program with none has no card, and the command
+exits with status 1.
+
+The card answers five questions, from the IR and the lock only:
+
+- **What it does:** the steps the architecture view draws; each `map` with
+  what it runs over, its `max` and `par`, the delegations of its body and
+  what its `with caps` hands each item; each `plan` with its lead and the
+  budget the lead's own delegation reserves.
+- **What it can touch:** the envelope's capabilities, opened as the
+  authority view opens them into paths read and written, hosts, commands,
+  model tiers and repositories; `spawn.max_class`, `internal` when the
+  envelope does not say; and `spawn.max_concurrent`.
+- **The most it spends:** per dimension (spend, tokens, time, steps,
+  agents), the envelope's budget, the static part's upper bound and what is
+  left for sub-programs. The upper bound is the one the checker compares for
+  E0501 (`compiler/src/check/cost.ts`), so the card and the check agree.
+- **When it asks whom:** every wait for a person by role that the workflow
+  can reach, in its body, in the functions it calls and in the contracts it
+  verifies against (`human.approve`, `human.ask`, `escalate human(…)`,
+  `supervise escalate(…)`, a change set's approvers); and each effect under
+  the envelope's `approve` with its role. Each role shows the members the
+  lock binds to it.
+- **Who approves it, and who may amend it:** the `owner` role and the
+  members the lock binds to it, with how many keys each has. With no lock,
+  or a lock that binds nobody to the role, the card says that nobody can
+  approve it yet.
+
+The card names the package hash: the program hash and the lock as the
+package carries it, without its format field (`packageHash` in
+`compiler/src/hash.ts`). It is the hash the runtime checks when it loads
+the package and the one `mandate approve-envelope` signs, so a changed
+program, lock or imported module shows a new hash on the card. In JSON
+every number is given as a number and as the text the document shows.
 
 ## What changed between two versions
 

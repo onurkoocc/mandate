@@ -18,9 +18,15 @@
 //                  criteria removed or changed, irreversible effects, the
 //                  locks' members and roles), behavior changes, and what
 //                  stayed the same (§15.3)
+//   card           for a workflow with an envelope, what a person reads
+//                  before approving it: what it does, what it can touch,
+//                  the most it spends, when it asks whom, who approves it,
+//                  and the package hash the approval binds to
 
 import { calleePath, capCovers, capsOf, showCap, within, type CapVal } from "../check/caps.js";
-import { hashProgram } from "../hash.js";
+import { microsText, staticCost } from "../check/cost.js";
+import { roleSites } from "../check/roles.js";
+import { hashProgram, packageHash } from "../hash.js";
 import {
   BUDGET_DIMENSIONS,
   budgetAmount,
@@ -30,6 +36,7 @@ import {
   type BudgetDimension,
   type ComponentDef,
   type ContractDef,
+  type Def,
   type EffectDef,
   type EnvironmentDef,
   type Expr,
@@ -44,7 +51,7 @@ import { link, linkedProgram, type Modules } from "../modules.js";
 import { ptrToken } from "../diag.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
-import { perCallBound, type Lock } from "../lock.js";
+import { own, packagedLock, perCallBound, type Lock } from "../lock.js";
 import { STD_EFFECTS, STD_FNS } from "../std/std.js";
 import type { Block, Cell, Doc } from "./doc.js";
 
@@ -614,8 +621,13 @@ export function cost(program: Program, lock?: Lock): CostView {
       }
       return total;
     };
-    const total = blockCost(d.body, 1);
-    workflows.push({ workflow: name, limit: show(workflowBounds(d).budget), rows, total: showSum(total) });
+    let total = showSum(blockCost(d.body, 1));
+    // An envelope bounds the delegations a run starts too: the checker's count, so the view and E0501 agree.
+    if (d.envelope) {
+      const agents = `${staticCost(program, name)?.agents ?? 0} agents`;
+      total = total === "—" ? agents : `${total} · ${agents}`;
+    }
+    workflows.push({ workflow: name, limit: show(workflowBounds(d).budget), rows, total });
   }
   return { format: VIEW_FORMAT, kind: "cost", program: programRef(program), workflows };
 }
@@ -1013,6 +1025,278 @@ export function systemBlocks(v: SystemView): Block[] {
   return out;
 }
 
+// ── the envelope's card (spec/envelope.md "Views") ────────────────────────
+
+/** What a map runs: its bounds, the delegations of its body, and what it hands each item. */
+export interface CardMap {
+  bind: string;
+  over: string;
+  /** The most items; null when the map has no `max` and the envelope's `agents` bounds it at run time. */
+  max: number | null;
+  par: number;
+  delegates: string[];
+  /** Each capability of its `with caps`: what it is written as, its kinds, a static scope, and whether the item narrows it. */
+  handed: Array<{ cap: string; kinds: string[]; scope: string[] | null; by_item: boolean }>;
+}
+
+/** A `plan`: its lead and the budget the lead's own delegation reserves. */
+export interface CardPlan {
+  lead: string;
+  budget: string;
+  from: "call" | "skill" | "agent" | "none";
+  numbers: { spend: { micros: number; currency: string } | null; tokens: number | null; time_ms: number | null; steps: number | null; agents: number | null };
+}
+
+/** One dimension of the envelope's budget, beside the static part's upper bound. */
+export interface CardBudgetRow {
+  dimension: "spend" | "tokens" | "time" | "steps" | "agents";
+  /** For spend, the currency; amounts are then in micro-units. */
+  currency: string | null;
+  unit: "micros" | "tokens" | "ms" | "steps" | "agents";
+  /** null when the envelope does not bound this dimension. */
+  envelope: number | null;
+  static: number;
+  /** What sub-programs may claim: the envelope less the static part; null without a limit. */
+  left: number | null;
+  text: { envelope: string; static: string; left: string };
+}
+
+export interface CardMember {
+  member: string;
+  keys: number;
+}
+
+export interface CardWait {
+  role: string;
+  /** How it waits: human.approve, human.ask, escalate human(…), supervise escalate(…), a change set's approval. */
+  kind: string;
+  /** The definition it is in: the workflow, a function it calls, a contract it verifies against. */
+  def: string;
+  in: string;
+  path: string;
+  members: string[];
+}
+
+export interface CardView {
+  format: typeof VIEW_FORMAT;
+  kind: "card";
+  program: ProgramRef;
+  workflow: string;
+  /** The package hash an approval of this envelope is signed for (hash.ts packageHash). */
+  package: string;
+  /** What it does. */
+  does: { steps: string[]; maps: CardMap[]; plans: CardPlan[] };
+  /** What it can touch: the envelope's capabilities, opened. */
+  touches: Authority & { caps: string[]; max_class: string; max_concurrent: number | null };
+  /** The most it spends, per dimension. */
+  spends: CardBudgetRow[];
+  /** When it asks whom. */
+  asks: { waits: CardWait[]; approvals: Array<{ effect: string; role: string; members: string[] }> };
+  /** Who approves it, and who may amend it. */
+  approves: { role: string | null; description: string | null; lock: boolean; members: CardMember[]; bound: boolean; text: string };
+}
+
+/** The workflows of a program that have an envelope, sorted: the ones that have a card. */
+export function envelopeWorkflows(program: Program): string[] {
+  return Object.entries(program.defs)
+    .filter(([, d]) => d.kind === "workflow" && !!d.envelope)
+    .map(([n]) => n)
+    .sort();
+}
+
+/** An expression as a person reads it in a card: names, fields, literals and calls; anything else is "…". */
+function exprText(e: Expr): string {
+  switch (e.op) {
+    case "var":
+      return e.name;
+    case "field":
+      return `${exprText(e.of)}.${e.name}`;
+    case "text":
+      return JSON.stringify(e.value);
+    case "int":
+      return String(e.value);
+    case "call":
+      return `${exprText(e.callee)}(${e.args.map((a) => `${a.name ? `${a.name}: ` : ""}${exprText(a.value)}`).join(", ")})`;
+    default:
+      return "…";
+  }
+}
+
+/** Whether an expression reads the variable `name` anywhere inside it. */
+function mentions(v: unknown, name: string): boolean {
+  if (Array.isArray(v)) return v.some((x) => mentions(x, name));
+  if (!v || typeof v !== "object") return false;
+  const o = v as { op?: unknown; name?: unknown };
+  if (o.op === "var" && o.name === name) return true;
+  return Object.values(v).some((x) => mentions(x, name));
+}
+
+/** 80000000 as "80,000,000". */
+function grouped(n: number): string {
+  const s = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return n < 0 ? `-${s}` : s;
+}
+
+/** Milliseconds as hours and minutes: "6 h", "3 h 20 min". */
+function hoursText(ms: number): string {
+  if (ms < 0) return `-${hoursText(-ms)}`;
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  const s = Math.floor((ms % 60_000) / 1000);
+  const rest = ms % 1000;
+  const parts = [h ? `${h} h` : "", m ? `${m} min` : "", s ? `${s} s` : "", rest ? `${rest} ms` : ""].filter(Boolean);
+  return parts.join(" ") || "0 min";
+}
+
+/** The definitions a workflow reaches: itself, the functions it calls (and theirs), the contracts it verifies against. */
+function reachable(defs: Record<string, Def>, start: string): string[] {
+  const found = [start];
+  const kind = (n: string): string | undefined => (Object.hasOwn(defs, n) ? defs[n]!.kind : undefined);
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) return v.forEach(walk);
+    if (!v || typeof v !== "object") return;
+    const o = v as { op?: unknown; callee?: { op?: unknown; name?: unknown }; contract?: unknown };
+    const next = o.op === "call" && o.callee?.op === "var" && typeof o.callee.name === "string" && kind(o.callee.name) === "fn" ? o.callee.name : o.op === "verify" && typeof o.contract === "string" && kind(o.contract) === "contract" ? o.contract : undefined;
+    if (next !== undefined && !found.includes(next)) {
+      found.push(next);
+      walk(defs[next]);
+    }
+    Object.values(v).forEach(walk);
+  };
+  walk(defs[start]);
+  return found;
+}
+
+/** How a role site waits for a person, as the card names it. */
+const WAIT_KIND: Record<string, string> = {
+  "human.approve": "human.approve",
+  "human.ask": "human.ask",
+  "an escalation": "escalate human(…)",
+  "a supervision's escalation": "supervise escalate(…)",
+  "a change set's approver": "change set approval",
+  "a change set member's approver": "change set member approval",
+};
+
+/**
+ * The card of a workflow with an envelope: what a person reads before
+ * approving it. Computed from the IR and the lock; `modules` are the modules
+ * the program imports, so imported functions and capabilities are seen. The
+ * package hash is the one the runtime checks at load and an approval is
+ * signed for. Undefined for a workflow without an envelope, or no workflow.
+ */
+export function card(program: Program, workflow: string, opts: { lock?: Lock; modules?: Modules } = {}): CardView | undefined {
+  const wf = Object.hasOwn(program.defs, workflow) ? program.defs[workflow] : undefined;
+  if (wf?.kind !== "workflow" || !wf.envelope) return undefined;
+  const env = wf.envelope;
+  const modules = opts.modules ?? {};
+  const lock = opts.lock;
+  const linkedDefs = link(program, modules).defs;
+  const lp = Object.keys(modules).length ? linkedProgram(program, modules) : program;
+  const ref = programRef(program);
+  const membersOf = (role: string): string[] => [...(own(lock?.roles, role) ?? [])].sort();
+
+  // What it does: the steps the architecture view draws, then each map and plan with its bounds.
+  const maps: CardMap[] = [];
+  const plans: CardPlan[] = [];
+  const visit = (v: unknown): void => {
+    if (Array.isArray(v)) return v.forEach(visit);
+    if (!v || typeof v !== "object") return;
+    const e = v as Expr;
+    if (e.op === "map") {
+      const delegates: string[] = [];
+      const inside = (x: unknown): void => {
+        if (Array.isArray(x)) return x.forEach(inside);
+        if (!x || typeof x !== "object") return;
+        const d = x as Expr;
+        if (d.op === "delegate" && !delegates.includes(`${d.agent}.${d.skill}`)) delegates.push(`${d.agent}.${d.skill}`);
+        Object.values(x).forEach(inside);
+      };
+      inside(e.body);
+      maps.push({
+        bind: e.bind,
+        over: exprText(e.over),
+        max: e.max ?? null,
+        par: e.par ?? 1,
+        delegates,
+        handed: (e.caps ?? []).map((c) => {
+          const vals = capsOf(lp.defs, c);
+          const scopes = vals.flatMap((x) => x.scope ?? []);
+          return { cap: exprText(c), kinds: [...new Set(vals.map((x) => x.ctor))], scope: vals.length && vals.every((x) => x.scope) ? scopes : null, by_item: mentions(c, e.bind) };
+        }),
+      });
+    }
+    if (e.op === "plan") {
+      const { budget, from } = delegateBudget(lp, { op: "delegate", agent: e.agent, skill: e.skill, args: e.args, ...(e.budget ? { budget: e.budget } : {}) });
+      plans.push({
+        lead: `${e.agent}.${e.skill}`,
+        budget: show(budget),
+        from,
+        numbers: { spend: budget?.spend ? { ...budget.spend } : null, tokens: budget?.tokens ?? null, time_ms: budget?.time?.ms ?? null, steps: budget?.steps ?? null, agents: budget?.agents ?? null },
+      });
+    }
+    Object.values(v).forEach(visit);
+  };
+  visit(wf.body);
+
+  // What it can touch: the envelope's capabilities, opened as the authority view opens them.
+  const caps = capsIn(lp, env.caps ?? []);
+  const touches = { ...authorityOf(caps), caps: caps.map(showCap), max_class: env.spawn?.max_class ?? "internal", max_concurrent: env.spawn?.max_concurrent ?? null };
+
+  // The most it spends: the envelope's budget beside the checker's static upper bound.
+  const sc = staticCost(program, workflow, linkedDefs) ?? { spend: {} as Record<string, number>, tokens: 0, time: 0, steps: 0, agents: 0 };
+  const b = env.budget;
+  const spends: CardBudgetRow[] = [];
+  const row = (dimension: CardBudgetRow["dimension"], unit: CardBudgetRow["unit"], currency: string | null, limit: number | undefined, used: number, fmt: (n: number) => string): void => {
+    const envelope = limit ?? null;
+    const left = envelope === null ? null : envelope - used;
+    spends.push({ dimension, currency, unit, envelope, static: used, left, text: { envelope: envelope === null ? "no limit" : fmt(envelope), static: fmt(used), left: left === null ? "no limit" : fmt(left) } });
+  };
+  const currencies = [...new Set([...(b?.spend ? [b.spend.currency] : []), ...Object.keys(sc.spend).sort()])];
+  if (!currencies.length) row("spend", "micros", null, undefined, 0, (n) => String(n));
+  for (const c of currencies) row("spend", "micros", c, b?.spend?.currency === c ? b.spend.micros : undefined, sc.spend[c] ?? 0, (n) => microsText(n, c));
+  row("tokens", "tokens", null, b?.tokens, sc.tokens, grouped);
+  row("time", "ms", null, b?.time?.ms, sc.time, hoursText);
+  row("steps", "steps", null, b?.steps, sc.steps, grouped);
+  row("agents", "agents", null, b?.agents, sc.agents, grouped);
+
+  // When it asks whom: every place it reaches that waits for a person and names a role, and the envelope's approvals.
+  const names = reachable(linkedDefs, workflow);
+  const sites = roleSites(Object.fromEntries(names.map((n) => [n, linkedDefs[n]!])));
+  const where = (n: string): string => (n === workflow ? "its body" : linkedDefs[n]!.kind === "fn" ? `function ${n}` : `contract ${n}`);
+  const waits: CardWait[] = sites
+    .filter((s) => !s.distinct && s.role !== undefined && Object.hasOwn(WAIT_KIND, s.where))
+    .map((s) => ({ role: s.role!, kind: WAIT_KIND[s.where]!, def: s.def, in: where(s.def), path: s.path, members: membersOf(s.role!) }));
+  const approvals = Object.entries(env.approve ?? {})
+    .sort(([x], [y]) => (x < y ? -1 : 1))
+    .map(([effect, role]) => ({ effect, role, members: membersOf(role) }));
+
+  // Who approves it, and every amendment: the owner role and the members the lock binds to it.
+  const owner = env.owner ?? null;
+  const roleDef = owner !== null && Object.hasOwn(lp.defs, owner) ? lp.defs[owner] : undefined;
+  const members = owner === null ? [] : membersOf(owner).map((m) => ({ member: m, keys: own(lock?.members, m)?.keys.length ?? 0 }));
+  const text =
+    owner === null
+      ? "Nobody can approve it yet: the envelope names no owner role."
+      : !lock
+        ? `Nobody can approve it yet: there is no lock, so no member holds the role ${owner}.`
+        : !members.length
+          ? `Nobody can approve it yet: the lock binds no member to the role ${owner}.`
+          : `A member of ${owner} approves it, and every amendment: ${members.map((m) => `${m.member} (${m.keys} ${m.keys === 1 ? "key" : "keys"})`).join(", ")}.`;
+
+  return {
+    format: VIEW_FORMAT,
+    kind: "card",
+    program: ref,
+    workflow,
+    package: packageHash(ref.hash, packagedLock(lock)),
+    does: { steps: steps(lp, wf), maps, plans },
+    touches,
+    spends,
+    asks: { waits, approvals },
+    approves: { role: owner, description: roleDef?.kind === "role" ? roleDef.description : null, lock: !!lock, members, bound: members.length > 0, text },
+  };
+}
+
 // ── documents ─────────────────────────────────────────────────────────────
 
 const list = (xs: string[]): string => xs.join(", ") || "—";
@@ -1099,5 +1383,75 @@ export function diffDoc(before: Program, after: Program, locks?: { before?: Lock
       ["View", `${VIEW_FORMAT}, generated from the two programs`],
     ],
     blocks: diffBlocks(v),
+  };
+}
+
+export function cardBlocks(v: CardView): Block[] {
+  const t = v.touches;
+  const members = (ms: string[]): string => (ms.length ? ms.join(", ") : "nobody bound");
+  const handed = (m: CardMap): string =>
+    list(m.handed.map((h) => `${h.kinds.join(", ") || h.cap} ${h.scope ? `within ${h.scope.join(", ")}` : h.by_item ? `narrowed by each item (${h.cap})` : `of unknown scope (${h.cap})`}`));
+  const out: Block[] = [
+    { h: "What it does" },
+    { list: v.does.steps.length ? v.does.steps : ["no static steps"] },
+  ];
+  if (v.does.maps.length) {
+    out.push({ table: { head: ["Map", "Over", "At most", "At a time", "Delegates", "Each item gets"], rows: v.does.maps.map((m) => [`map ${m.bind}`, m.over, m.max === null ? "no max (the envelope's agents bound it)" : grouped(m.max), String(m.par), list(m.delegates), handed(m)]) } });
+  }
+  if (v.does.plans.length) {
+    out.push({ p: "Each plan's lead writes sub-programs while the run goes on; each one is checked against what is left of the envelope when it is submitted." });
+    out.push({ table: { head: ["Plan lead", "Lead's budget", "From"], rows: v.does.plans.map((p) => [p.lead, p.budget, p.from]) } });
+  }
+  out.push(
+    { h: "What it can touch" },
+    {
+      table: {
+        head: ["What", "Scope"],
+        rows: [
+          ["Read paths", list(t.read)],
+          ["Write paths", list(t.write)],
+          ["Network hosts", list(t.network)],
+          ["Commands", list(t.exec)],
+          ["Model tiers", list(t.model)],
+          ["Pull requests in", list(t.repos)],
+          ["Money", list(t.money)],
+          ["Unbounded", list(t.unbounded)],
+          ["Highest data class a delegation receives", t.max_class],
+          ["Delegations in flight at once", t.max_concurrent === null ? "no limit" : String(t.max_concurrent)],
+        ],
+      },
+    },
+    { list: t.caps.map((c) => ({ text: c, mono: true })) },
+    { h: "The most it spends" },
+    { table: { head: ["Dimension", "Envelope", "Static part (upper bound)", "Left for sub-programs"], rows: v.spends.map((r) => [r.currency ? `${r.dimension} (${r.currency})` : r.dimension, r.text.envelope, r.text.static, r.text.left]) } },
+    { h: "When it asks whom" },
+  );
+  if (v.asks.waits.length) out.push({ table: { head: ["Wait", "Role", "In", "Members"], rows: v.asks.waits.map((w) => [w.kind, w.role, w.in, members(w.members)]) } });
+  else out.push({ p: "No step it reaches waits for a person by role." });
+  if (v.asks.approvals.length) out.push({ table: { head: ["Effect", "Authorized only by a decision of", "Members"], rows: v.asks.approvals.map((a) => [a.effect, a.role, members(a.members)]) } });
+  const a = v.approves;
+  out.push(
+    { h: "Who approves it, and who may amend it" },
+    { p: a.role === null ? a.text : `The role ${a.role}${a.description ? ` (${a.description})` : ""} approves the envelope before any run, and every amendment.` },
+  );
+  if (a.members.length) out.push({ table: { head: ["Member", "Keys"], rows: a.members.map((m) => [m.member, String(m.keys)]) } });
+  else out.push({ note: a.text });
+  out.push({ p: `An approval is signed for package ${v.package}: a changed program, lock or imported module is a new package and needs a new approval.` });
+  return out;
+}
+
+/** The card as a document, headed by the package hash an approval binds to. Undefined as `card` is. */
+export function cardDoc(program: Program, workflow: string, opts: { lock?: Lock; modules?: Modules } = {}): Doc | undefined {
+  const v = card(program, workflow, opts);
+  if (!v) return undefined;
+  return {
+    title: `${v.program.module} ${v.program.version}: ${v.workflow}`,
+    meta: [
+      ["Package", v.package],
+      ["Program", v.program.hash],
+      ["Language", v.program.language],
+      ["View", `${VIEW_FORMAT} card, generated from the program${opts.modules && Object.keys(opts.modules).length ? ", the modules it imports" : ""} and ${opts.lock ? "its lock" : "no lock"}`],
+    ],
+    blocks: cardBlocks(v),
   };
 }

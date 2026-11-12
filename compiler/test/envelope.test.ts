@@ -365,7 +365,7 @@ describe("views of a workflow with an envelope", () => {
       ["Migrator.migrate", 150],
       ["Lead.finish", 1],
     ]);
-    expect(wf!.total).toBe("85 USD · 62000000 tokens · 1840 steps");
+    expect(wf!.total).toBe("85 USD · 62000000 tokens · 1840 steps · 151 agents");
     expect(wf!.limit).toContain("200 agents");
     expect(wf!.limit).toContain("120 USD");
   });
