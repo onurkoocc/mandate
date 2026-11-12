@@ -8,6 +8,7 @@ export { RateLimiter, type BucketConfig, type Priority } from "./ratelimit.js";
 export { openDb, SCHEMA, type Db, type Tx } from "./db.js";
 export { Faults, type FaultPoint } from "./faults.js";
 export { Interpreter, ReplayEnd, type AuthorizePolicy, type Policy } from "./interp.js";
+export { ANCHOR_FORMAT, anchorStatement, eventHash, EXPORT_LIMITS, exportJournal, JOURNAL_EXPORT_FORMAT, JOURNAL_REPORT_FORMAT, parseExportJson, publicKeysIn, readExport, STATE_EVENTS, verifyExport, type ExportedAnchor, type ExportedEvent, type FindingCode, type JournalExport, type JournalFinding, type JournalReport } from "./journal-chain.js";
 export { Journal, TERMINAL, type ActionRow, type BudgetReport, type ChangesetRow, type CommandRow, type EvidenceRow, type RunRow, type RunState } from "./journal.js";
 export { GitHubMerges, type GitHubMergeOptions } from "./github-merge.js";
 export { ContainerHost } from "./container.js";

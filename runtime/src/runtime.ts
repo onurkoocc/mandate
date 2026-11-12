@@ -17,6 +17,7 @@ import { Faults } from "./faults.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
 import { costDims, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type Limits, type RunRow } from "./journal.js";
+import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
 import { buildPackage, isSigned04, verifyPackage, type Package } from "./package.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
@@ -696,6 +697,21 @@ export class Runtime {
   async artifactList(runId: string): Promise<ArtifactRef[]> {
     const run = await this.journal.run(runId);
     return this.artifacts.list({ tenant: run.tenant, runId });
+  }
+
+  // ── the chained journal (spec/journal.md) ─────────────────────────────
+
+  /** The run's journal as an outsider checks it: events, anchors, the manifest and the package (`mandate journal export`). */
+  exportJournal(runId: string): Promise<JournalExport> {
+    return exportJournal(this.db, runId);
+  }
+
+  /**
+   * Verifies the run's journal as an outsider would: its export, as the bytes `mandate journal export` writes, under
+   * the keys this runtime trusts, its own and those rotated out. Nothing here is read from the database but the export.
+   */
+  async verifyJournal(runId: string): Promise<JournalReport> {
+    return verifyExport(JSON.stringify(await this.exportJournal(runId)), this.trusted.publicKeys());
   }
 
   // ── SubmitInput / DecideAction ────────────────────────────────────────

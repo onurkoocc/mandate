@@ -17,6 +17,10 @@
 //   mandate decision <run> <digest>                       a decision the run took, as its signed record
 //   mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
 //                                                         check a decision's signature; no configuration, no database
+//   mandate journal export <run> [--out FILE]            the run's journal as an outsider checks it (spec/journal.md)
+//   mandate journal key [--out FILE]                      the public keys its anchors are signed with
+//   mandate journal verify <export.json> --key <public key.pem> [--key …] [--json]
+//                                                         check a journal's chain and anchors; no configuration, no database
 //   mandate replay <run>
 //   mandate artifact <run> <blob:sha256:…>
 //   mandate show <run> [--format md|html|json]           the run's views (§15): status, evidence, cost, actions
@@ -39,16 +43,17 @@
 // a package of 0.1 to 0.3 takes `--by NAME` instead, as before 0.4.
 
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomUUID, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, printProgram, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
 import { adaptersFor, anthropicClient, connect, readConfig, runtimeOptions, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { deployManagedAgents, sdkApi } from "./managed-agents.js";
 import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type SignedDecision } from "./decisions.js";
-import { EvidenceSigner, TrustedKeys } from "./evidence.js";
+import { EvidenceSigner, keyIdOf, TrustedKeys } from "./evidence.js";
 import { openDb, type Db } from "./db.js";
 import { costDims, type Limits, type RunRow } from "./journal.js";
+import { exportJournal, publicKeysIn, readExport, verifyExport, type FindingCode } from "./journal-chain.js";
 import { draft, drift, scan, type RepoFacts } from "./onboard.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
@@ -63,6 +68,8 @@ interface Args {
   modules: string[];
   /** Repeatable `name=value` flags: `--component`, `--host`, `--repo`. */
   pairs: Record<string, Record<string, string>>;
+  /** Every value a valued flag was given, in order: `--key` may be given more than once. `flags` holds the last. */
+  all: Record<string, string[]>;
 }
 
 const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out"]);
@@ -73,6 +80,7 @@ function parse(argv: string[]): Args {
   const flags: Record<string, string | true> = {};
   const modules: string[] = [];
   const pairs: Record<string, Record<string, string>> = {};
+  const all: Record<string, string[]> = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--module") {
@@ -89,9 +97,10 @@ function parse(argv: string[]): Args {
       const v = argv[++i];
       if (v === undefined) throw new Usage(`${a} needs a value`);
       flags[a] = v;
+      (all[a] ??= []).push(v);
     } else flags[a] = true;
   }
-  return { positional, flags, modules, pairs };
+  return { positional, flags, modules, pairs, all };
 }
 
 class Usage extends Error {}
@@ -111,6 +120,9 @@ const USAGE = `usage:
   mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
   mandate decision <run> <digest>
   mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
+  mandate journal export <run> [--out FILE]
+  mandate journal key [--out FILE]
+  mandate journal verify <export.json> --key <public key.pem> [--key FILE]… [--json]
   mandate replay <run>
   mandate artifact <run> <blob:sha256:…>
   mandate show <run> [--format md|html|json]
@@ -123,7 +135,7 @@ const USAGE = `usage:
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -139,6 +151,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     if (cmd === "deploy") return await deploy(a, out, env);
     if (cmd === "key") return keyNew(a, out);
     if (cmd === "verify-decision") return verifyDecision(a, out);
+    if (cmd === "journal" && a.positional[0] === "verify") return journalVerify(a, out);
     if (!existsSync(configFile)) throw new Usage(`no runtime configuration at ${configFile} (see spec/runtime.md, "Control CLI")`);
     const config = readConfig(configFile);
     db = await connect(config);
@@ -168,6 +181,8 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       out(await report(rt, run, json, config));
       return 0;
     }
+
+    if (cmd === "journal") return await journal(a, config, db, out);
 
     if (cmd === "approve-envelope") {
       // A member of the envelope's owner role signs for the package hash its card shows (`mandate view --card`).
@@ -574,6 +589,91 @@ function verifyDecision(a: Args, out: (s: string) => void): number {
     ].join("\n") + "\n",
   );
   return 0;
+}
+
+/**
+ * `mandate journal export <run>` and `mandate journal key` (spec/journal.md). The export is read from the database
+ * as it is, and checked by nobody here. The keys are the evidence key's public half and those of the keys rotated
+ * out or named in the configuration: the keys an anchor of this runtime may be signed with.
+ */
+async function journal(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => void): Promise<number> {
+  const [what, runId, ...rest] = a.positional;
+  const file = typeof a.flags["--out"] === "string" ? resolve(a.flags["--out"]) : undefined;
+  if (what === "export") {
+    if (!runId || rest.length) throw new Usage("journal export takes one run: mandate journal export <run> [--out FILE]");
+    const x = await exportJournal(db, runId);
+    const text = JSON.stringify(x, null, 2) + "\n";
+    if (!file) out(text);
+    else {
+      writeFileSync(file, text);
+      out(`run ${runId}: ${x.events.length} events, ${x.anchors.length} anchors, written to ${file}\n`);
+    }
+    return 0;
+  }
+  if (what === "key") {
+    if (runId !== undefined) throw new Usage("journal key takes no run: mandate journal key [--out FILE]");
+    const current = EvidenceSigner.loadOrCreate(config.evidence.key);
+    const others = [...EvidenceSigner.trustedIn(trustedKeysDir(config)), ...(config.evidence.trusted ?? []).map((f) => readFileSync(f, "utf8"))].flatMap((pem) => publicKeysIn(pem));
+    const keys = new Map([[current.keyId, current.publicKey], ...others.map((k) => [keyIdOf(k), k] as const).sort(([x], [y]) => (x < y ? -1 : 1))]);
+    const text = [...keys.values()].map((k) => k.export({ type: "spki", format: "pem" }) as string).join("");
+    if (!file) out(text);
+    else {
+      writeFileSync(file, text);
+      out(`${keys.size === 1 ? "1 key" : `${keys.size} keys`} written to ${file}: ${[...keys.keys()].join(", ")} (${current.keyId} signs now)\n`);
+    }
+    return 0;
+  }
+  throw new Usage("journal takes export, key or verify");
+}
+
+/** What each finding means, as `journal verify` prints it. */
+const FINDINGS: Record<FindingCode, string> = {
+  malformed_export: "the export is not a journal export",
+  seq_gap: "the events are not numbered 1, 2, 3, … from here: one was removed or moved",
+  hash_missing: "the event of a chained run has no hash",
+  chain_broken: "the event's hash is not the hash of its contents and of the hash before it",
+  manifest_mismatch: "the manifest is not the one the first event names",
+  package_mismatch: "the package is not the one the first event names",
+  anchor_unknown_key: "the anchor is signed by a key not given",
+  anchor_signature_invalid: "the anchor's signature does not verify",
+  anchor_beyond_end: "the anchor names an event past the last one: the tail was cut",
+  anchor_mismatch: "the anchor's hash or time is not the event's",
+  anchor_missing: "the state event has no anchor",
+  unanchored_tail: "no signature covers the events from here on",
+};
+
+/**
+ * `mandate journal verify`: whether a journal export holds under the public keys given (spec/journal.md
+ * "Verification"). It reads the export and the key files and nothing else: no configuration, no database, no
+ * runtime. Exit 0 when verified, 1 when broken or unchained.
+ */
+function journalVerify(a: Args, out: (s: string) => void): number {
+  const [, file, ...rest] = a.positional;
+  if (!file || rest.length) throw new Usage("journal verify takes one export file: mandate journal verify <export.json> --key <public key.pem>");
+  const keyFiles = a.all["--key"] ?? [];
+  if (!keyFiles.length) throw new Usage("journal verify needs the public keys the anchors are verified against: --key <public key.pem> (mandate journal key writes them)");
+  const keys = keyFiles.flatMap((k) => {
+    let found: KeyObject[];
+    try {
+      found = publicKeysIn(readFileSync(k, "utf8"));
+    } catch (e) {
+      throw new Violation("bad_journal_key", `${k} is not an ed25519 public key: ${(e as Error).message}`);
+    }
+    if (!found.length) throw new Violation("bad_journal_key", `${k} holds no public key (PEM)`);
+    return found;
+  });
+  const bytes = readFileSync(file);
+  const r = verifyExport(bytes, keys);
+  if (a.flags["--json"] === true) out(JSON.stringify(r, null, 2) + "\n");
+  else {
+    const read = r.findings.some((f) => f.code === "malformed_export") ? readExport(bytes) : undefined;
+    const lines = [`${r.status}: ${r.run !== null ? `run ${r.run}, ${r.events} events` : file}`];
+    if (r.status === "unchained") lines.push("  the run began before its journal was chained: no event has a hash and nothing is anchored, so nothing can be verified");
+    for (const f of r.findings) lines.push(`  ${f.code}${f.seq !== undefined ? ` at seq ${f.seq}` : ""}: ${FINDINGS[f.code]}${read && !read.ok ? ` (${read.problem})` : ""}`);
+    if (r.anchored_through !== null) lines.push(`  signed through seq ${r.anchored_through} by ${r.signed_by.join(", ")}; ${r.unanchored === 1 ? "1 event" : `${r.unanchored} events`} after it covered by no signature`);
+    out(lines.join("\n") + "\n");
+  }
+  return r.status === "verified" ? 0 : 1;
 }
 
 function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {
