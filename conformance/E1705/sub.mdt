@@ -1,0 +1,14 @@
+mandate @ 0.4
+
+module example.parent.plan_1 @ 0.1
+
+use example.parent
+
+capability Wa = W.narrow("/work/a")
+
+workflow Fix(n: Text) -> Inferred<Text>
+  caps   M, R, Wa
+  budget { tokens: 2000, time: 10m, spend: 2 USD, steps: 10, agents: 2 }
+{
+  delegate Worker.fix(Item { name: "a" }) with caps Wa
+}

@@ -1,0 +1,5 @@
+mandate @ 0.4
+
+module example.domain @ 0.1
+
+type Ticket = { id: Text, title: Text }

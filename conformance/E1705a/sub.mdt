@@ -1,0 +1,12 @@
+mandate @ 0.4
+
+module example.parent.plan_1 @ 0.1
+
+use example.parent
+
+workflow Fix() -> Inferred<Text>
+  caps   M, R
+  budget { tokens: 2000, time: 10m, spend: 2 USD, steps: 10, agents: 2 }
+{
+  plan Lead.finish([Item { name: "a" }]) within envelope
+}

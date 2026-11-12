@@ -1,0 +1,20 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "N01a",
+  "kind": "compile",
+  "title": "A sub-program that asks for more tokens than the envelope has left is not admitted.",
+  "spec": ["spec/envelope.md#the-sub-program", "spec/envelope.md#conformance-cases"],
+  "language": "mandate/0.4",
+  "input": { "file": "../N01/parent.mdt", "kind": "mdt" },
+  "modules": ["../N01/domain.mdt"],
+  "subprogram": {
+    "workflow": "Run",
+    "defs": { "file": "sub.mdt", "kind": "mdt" },
+    "room": { "left": { "tokens": 50000, "steps": 100, "agents": 10, "spend:USD": 10000000 }, "time_left_ms": 1800000 }
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E1706", "path": "/defs/Fix/budget/tokens", "facts": { "dimension": "tokens", "asked": 50001, "left": 50000 } }]
+  }
+}

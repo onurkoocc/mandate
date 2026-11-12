@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "N09",
+  "kind": "compile",
+  "title": "A sub-program that defines a contract, an effect and a role is refused at each of them.",
+  "spec": ["spec/envelope.md#the-sub-program", "spec/envelope.md#conformance-cases"],
+  "language": "mandate/0.4",
+  "input": { "file": "../N01/parent.mdt", "kind": "mdt" },
+  "modules": ["../N01/domain.mdt"],
+  "subprogram": {
+    "workflow": "Run",
+    "defs": { "file": "sub.mdt", "kind": "mdt" },
+    "room": { "left": { "tokens": 50000, "steps": 100, "agents": 10, "spend:USD": 10000000 }, "time_left_ms": 1800000 }
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E1705", "path": "/defs/Fine", "facts": { "def": "Fine", "kind": "contract" } },
+      { "code": "MDT-E1705", "path": "/defs/Publish", "facts": { "def": "Publish", "kind": "effect" } },
+      { "code": "MDT-E1705", "path": "/defs/helper", "facts": { "def": "helper", "kind": "role" } }
+    ]
+  }
+}
