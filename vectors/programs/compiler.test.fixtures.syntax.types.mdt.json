@@ -1,0 +1,285 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "compiler/test/fixtures/syntax/types.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.1",
+  "canonical": "{\"defs\":{\"CustomerRecord\":{\"class\":\"restricted\",\"kind\":\"type\",\"type\":{\"record\":{\"iban\":{\"ref\":\"Text\"},\"name\":{\"ref\":\"Text\"}}}},\"DelegateError\":{\"kind\":\"type\",\"type\":{\"union\":[{\"tag\":\"Timeout\"},{\"tag\":\"BudgetExceeded\"},{\"fields\":[{\"name\":\"retry_after\",\"type\":{\"ref\":\"Duration\"}}],\"tag\":\"Throttled\"},{\"fields\":[{\"name\":\"kind\",\"type\":{\"ref\":\"FailureKind\"}},{\"name\":\"detail\",\"type\":{\"ref\":\"Text\"}},{\"name\":\"partial\",\"type\":{\"args\":[{\"ref\":\"ArtifactRef\"}],\"ref\":\"Option\"}}],\"tag\":\"SkillFailed\"},{\"fields\":[{\"name\":\"reason\",\"type\":{\"ref\":\"Text\"}}],\"tag\":\"Rejected\"},{\"fields\":[{\"name\":\"cap\",\"type\":{\"ref\":\"CapRef\"}}],\"tag\":\"PolicyDenied\"},{\"fields\":[{\"name\":\"op\",\"type\":{\"ref\":\"OperationKey\"}}],\"tag\":\"UnknownOutcome\"}]}},\"FailureKind\":{\"kind\":\"type\",\"type\":{\"union\":[{\"tag\":\"InvalidTool\"},{\"tag\":\"InvalidArguments\"},{\"tag\":\"SchemaMismatch\"},{\"tag\":\"Stuck\"},{\"tag\":\"StepLimit\"},{\"tag\":\"GoalNotMet\"},{\"tag\":\"DependencyFailed\"}]}},\"Finding\":{\"kind\":\"type\",\"type\":{\"record\":{\"claim\":{\"ref\":\"Text\"},\"evidence\":{\"ref\":\"EvidenceRef\"},\"file\":{\"ref\":\"Path\"},\"line\":{\"refine\":{\"ref\":\"Int\"},\"where\":{\"bop\":\">=\",\"left\":{\"name\":\"line\",\"op\":\"var\"},\"op\":\"binary\",\"right\":{\"op\":\"int\",\"value\":1}}}}}},\"FixPlan\":{\"kind\":\"type\",\"type\":{\"record\":{\"risks\":{\"args\":[{\"ref\":\"Text\"}],\"ref\":\"List\"},\"steps\":{\"refine\":{\"args\":[{\"ref\":\"Text\"}],\"ref\":\"List\"},\"where\":{\"bop\":\"in\",\"left\":{\"args\":[{\"value\":{\"name\":\"steps\",\"op\":\"var\"}}],\"callee\":{\"name\":\"len\",\"op\":\"var\"},\"op\":\"call\"},\"op\":\"binary\",\"right\":{\"from\":{\"op\":\"int\",\"value\":1},\"op\":\"range\",\"to\":{\"op\":\"int\",\"value\":12}}}},\"touches\":{\"args\":[{\"ref\":\"Path\"}],\"ref\":\"Set\"}}}},\"Severity\":{\"kind\":\"type\",\"type\":{\"enum\":[\"low\",\"medium\",\"high\",\"critical\"]}}},\"language\":\"mandate/0.1\",\"module\":\"company.devflow\",\"uses\":[{\"module\":\"company.domain\",\"names\":[\"OperationKey\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:918a3d489c3ba2fd6964a00117c703df39d757ebf83087d585029b133d1677f8",
+    "defs": [
+      [
+        "CustomerRecord",
+        "sha256:8cf37d6c2cb1b11e51aea5991d8d0a224bd6b17f28c5612082e1e697665e30a1"
+      ],
+      [
+        "DelegateError",
+        "sha256:f471ad664307c72ad8f4a177385b183069cf3707956fb9e48ddeaf854f387ca4"
+      ],
+      [
+        "FailureKind",
+        "sha256:c4c9579c124778b4aee26ceb085bdeac838f0b1d5549b3257477e06e939c1156"
+      ],
+      [
+        "Finding",
+        "sha256:8e4ec2eb0cbbf94bbba72ef3ed327747baaf846698947e7ade3ab0354d6b6266"
+      ],
+      [
+        "FixPlan",
+        "sha256:ae76942d8648efd242305a8fd26902dd39207af54d72c2ab189167bcd11f001d"
+      ],
+      [
+        "Severity",
+        "sha256:4d21259c86e0ef1bdadad380c03e3edb581f4d3def266efc6507688a4da930c9"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.1",
+    "module": "company.devflow",
+    "version": "0.1",
+    "defs": {
+      "Severity": {
+        "kind": "type",
+        "type": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        }
+      },
+      "Finding": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "file": {
+              "ref": "Path"
+            },
+            "line": {
+              "refine": {
+                "ref": "Int"
+              },
+              "where": {
+                "op": "binary",
+                "bop": ">=",
+                "left": {
+                  "op": "var",
+                  "name": "line"
+                },
+                "right": {
+                  "op": "int",
+                  "value": 1
+                }
+              }
+            },
+            "claim": {
+              "ref": "Text"
+            },
+            "evidence": {
+              "ref": "EvidenceRef"
+            }
+          }
+        }
+      },
+      "FixPlan": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "steps": {
+              "refine": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Text"
+                  }
+                ]
+              },
+              "where": {
+                "op": "binary",
+                "bop": "in",
+                "left": {
+                  "op": "call",
+                  "callee": {
+                    "op": "var",
+                    "name": "len"
+                  },
+                  "args": [
+                    {
+                      "value": {
+                        "op": "var",
+                        "name": "steps"
+                      }
+                    }
+                  ]
+                },
+                "right": {
+                  "op": "range",
+                  "from": {
+                    "op": "int",
+                    "value": 1
+                  },
+                  "to": {
+                    "op": "int",
+                    "value": 12
+                  }
+                }
+              }
+            },
+            "touches": {
+              "ref": "Set",
+              "args": [
+                {
+                  "ref": "Path"
+                }
+              ]
+            },
+            "risks": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "DelegateError": {
+        "kind": "type",
+        "type": {
+          "union": [
+            {
+              "tag": "Timeout"
+            },
+            {
+              "tag": "BudgetExceeded"
+            },
+            {
+              "tag": "Throttled",
+              "fields": [
+                {
+                  "name": "retry_after",
+                  "type": {
+                    "ref": "Duration"
+                  }
+                }
+              ]
+            },
+            {
+              "tag": "SkillFailed",
+              "fields": [
+                {
+                  "name": "kind",
+                  "type": {
+                    "ref": "FailureKind"
+                  }
+                },
+                {
+                  "name": "detail",
+                  "type": {
+                    "ref": "Text"
+                  }
+                },
+                {
+                  "name": "partial",
+                  "type": {
+                    "ref": "Option",
+                    "args": [
+                      {
+                        "ref": "ArtifactRef"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "tag": "Rejected",
+              "fields": [
+                {
+                  "name": "reason",
+                  "type": {
+                    "ref": "Text"
+                  }
+                }
+              ]
+            },
+            {
+              "tag": "PolicyDenied",
+              "fields": [
+                {
+                  "name": "cap",
+                  "type": {
+                    "ref": "CapRef"
+                  }
+                }
+              ]
+            },
+            {
+              "tag": "UnknownOutcome",
+              "fields": [
+                {
+                  "name": "op",
+                  "type": {
+                    "ref": "OperationKey"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "FailureKind": {
+        "kind": "type",
+        "type": {
+          "union": [
+            {
+              "tag": "InvalidTool"
+            },
+            {
+              "tag": "InvalidArguments"
+            },
+            {
+              "tag": "SchemaMismatch"
+            },
+            {
+              "tag": "Stuck"
+            },
+            {
+              "tag": "StepLimit"
+            },
+            {
+              "tag": "GoalNotMet"
+            },
+            {
+              "tag": "DependencyFailed"
+            }
+          ]
+        }
+      },
+      "CustomerRecord": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "name": {
+              "ref": "Text"
+            },
+            "iban": {
+              "ref": "Text"
+            }
+          }
+        },
+        "class": "restricted"
+      }
+    },
+    "uses": [
+      {
+        "module": "company.domain",
+        "names": [
+          "OperationKey"
+        ]
+      }
+    ]
+  }
+}

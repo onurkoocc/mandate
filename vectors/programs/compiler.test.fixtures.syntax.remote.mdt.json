@@ -1,0 +1,121 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "compiler/test/fixtures/syntax/remote.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.1",
+  "canonical": "{\"defs\":{\"BillingAgent\":{\"caps\":[{\"args\":[{\"name\":\"hosts\",\"value\":{\"items\":[{\"op\":\"text\",\"value\":\"billing.partner.example\"}],\"op\":\"list\"}}],\"callee\":{\"name\":\"https\",\"of\":{\"name\":\"net\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}],\"kind\":\"agent\",\"remote\":{\"bind\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"https://billing.partner.example/.well-known/agent-card.json\"}}],\"callee\":{\"name\":\"a2a\",\"op\":\"var\"},\"op\":\"call\"},\"require\":[{\"args\":[{\"name\":\"issuer\",\"value\":{\"op\":\"text\",\"value\":\"partner.example\"}}],\"callee\":{\"name\":\"signed_card\",\"op\":\"var\"},\"op\":\"call\"}],\"trust\":\"untrusted\",\"version\":\"1.0\"},\"skills\":{\"quote_refund\":{\"effects\":[],\"params\":[{\"name\":\"order\",\"type\":{\"ref\":\"OrderRef\"}}],\"returns\":{\"ref\":\"RefundQuote\"}}}}},\"language\":\"mandate/0.1\",\"module\":\"company.billing\",\"uses\":[{\"module\":\"company.domain\",\"names\":[\"OrderRef\",\"RefundQuote\"]},{\"module\":\"std\",\"names\":[\"net\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:0ebff703d2df4102e4feef5e657dbfb3f7b0c654d9d51aea76b5c46387510b2a",
+    "defs": [
+      [
+        "BillingAgent",
+        "sha256:d391dcab681f495cd5f1fb11698aff5faaf72e0b294f3a482ac434e97dce6d03"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.1",
+    "module": "company.billing",
+    "version": "0.1",
+    "defs": {
+      "BillingAgent": {
+        "kind": "agent",
+        "caps": [
+          {
+            "op": "call",
+            "callee": {
+              "op": "field",
+              "of": {
+                "op": "var",
+                "name": "net"
+              },
+              "name": "https"
+            },
+            "args": [
+              {
+                "name": "hosts",
+                "value": {
+                  "op": "list",
+                  "items": [
+                    {
+                      "op": "text",
+                      "value": "billing.partner.example"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "skills": {
+          "quote_refund": {
+            "params": [
+              {
+                "name": "order",
+                "type": {
+                  "ref": "OrderRef"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "RefundQuote"
+            },
+            "effects": []
+          }
+        },
+        "remote": {
+          "bind": {
+            "op": "call",
+            "callee": {
+              "op": "var",
+              "name": "a2a"
+            },
+            "args": [
+              {
+                "value": {
+                  "op": "text",
+                  "value": "https://billing.partner.example/.well-known/agent-card.json"
+                }
+              }
+            ]
+          },
+          "version": "1.0",
+          "require": [
+            {
+              "op": "call",
+              "callee": {
+                "op": "var",
+                "name": "signed_card"
+              },
+              "args": [
+                {
+                  "name": "issuer",
+                  "value": {
+                    "op": "text",
+                    "value": "partner.example"
+                  }
+                }
+              ]
+            }
+          ],
+          "trust": "untrusted"
+        }
+      }
+    },
+    "uses": [
+      {
+        "module": "company.domain",
+        "names": [
+          "OrderRef",
+          "RefundQuote"
+        ]
+      },
+      {
+        "module": "std",
+        "names": [
+          "net"
+        ]
+      }
+    ]
+  }
+}

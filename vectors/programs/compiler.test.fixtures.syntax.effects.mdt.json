@@ -1,0 +1,195 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "compiler/test/fixtures/syntax/effects.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.1",
+  "canonical": "{\"defs\":{\"FixAccepted\":{\"accept\":{\"owner_approved\":{\"by\":{\"call\":{\"args\":[{\"name\":\"role\",\"value\":{\"op\":\"text\",\"value\":\"code_owner\"}}],\"callee\":{\"name\":\"approve\",\"of\":{\"name\":\"human\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"The code owner approved\"}},\"kind\":\"contract\",\"params\":[{\"name\":\"pr\",\"type\":{\"ref\":\"PullRequestDraft\"}}]},\"git.open_pr\":{\"compensation\":\"git.close_pr\",\"critical\":true,\"idempotency_required\":true,\"kind\":\"effect\",\"params\":[{\"name\":\"pr\",\"type\":{\"args\":[{\"ref\":\"PullRequestDraft\"},{\"ref\":\"FixAccepted\"}],\"ref\":\"Verified\"}}],\"requires_caps\":[{\"args\":[{\"value\":{\"name\":\"repo\",\"op\":\"var\"}}],\"callee\":{\"name\":\"pr\",\"of\":{\"name\":\"git\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}],\"retry_class\":\"reconcilable\",\"returns\":{\"ref\":\"PullRequest\"}},\"parse_junit\":{\"effects\":[],\"file\":\"tools/log_parser.py\",\"kind\":\"extern\",\"lang\":\"py\",\"params\":[{\"name\":\"xml\",\"type\":{\"ref\":\"Text\"}}],\"returns\":{\"ref\":\"TestReport\"},\"symbol\":\"parse_junit\"},\"trigger_build\":{\"effects\":[{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"ci.internal.example\"}}],\"effect\":\"Net\"}],\"file\":\"tools/ci.ts\",\"idempotent_by\":{\"name\":\"sha\",\"of\":{\"name\":\"ref\",\"op\":\"var\"},\"op\":\"field\"},\"kind\":\"extern\",\"lang\":\"ts\",\"params\":[{\"name\":\"ref\",\"type\":{\"ref\":\"GitRef\"}}],\"returns\":{\"ref\":\"BuildId\"},\"symbol\":\"trigger_build\"}},\"language\":\"mandate/0.1\",\"module\":\"company.devflow\",\"uses\":[{\"module\":\"company.domain\",\"names\":[\"BuildId\",\"GitRef\",\"PullRequest\",\"PullRequestDraft\",\"TestReport\"]},{\"module\":\"std\",\"names\":[\"git\",\"human\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:39334365008f5360453689bcfe3cd675e6f1712c95188b5e4d88ed24748499e5",
+    "defs": [
+      [
+        "FixAccepted",
+        "sha256:b7f69278a2b2e292cccaa57710973c4810e6bc32a6cdccacd1dd3212de634de8"
+      ],
+      [
+        "git.open_pr",
+        "sha256:2f9390afe8ee92eadd0e63f47ebfc744ffaf2728ffe9360447d1b4f84e8506ee"
+      ],
+      [
+        "parse_junit",
+        "sha256:db2754ee922cd1bfe95663df6f8aceccd93e530b1a28d8eb500e640d0cbd9270"
+      ],
+      [
+        "trigger_build",
+        "sha256:299a27dae0f2205755c0cbcad015bde1bc5ebe2c4418e94e917aded0ee97bb7c"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.1",
+    "module": "company.devflow",
+    "version": "0.1",
+    "defs": {
+      "FixAccepted": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "pr",
+            "type": {
+              "ref": "PullRequestDraft"
+            }
+          }
+        ],
+        "accept": {
+          "owner_approved": {
+            "description": "The code owner approved",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "human"
+                  },
+                  "name": "approve"
+                },
+                "args": [
+                  {
+                    "name": "role",
+                    "value": {
+                      "op": "text",
+                      "value": "code_owner"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "git.open_pr": {
+        "kind": "effect",
+        "params": [
+          {
+            "name": "pr",
+            "type": {
+              "ref": "Verified",
+              "args": [
+                {
+                  "ref": "PullRequestDraft"
+                },
+                {
+                  "ref": "FixAccepted"
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "PullRequest"
+        },
+        "requires_caps": [
+          {
+            "op": "call",
+            "callee": {
+              "op": "field",
+              "of": {
+                "op": "var",
+                "name": "git"
+              },
+              "name": "pr"
+            },
+            "args": [
+              {
+                "value": {
+                  "op": "var",
+                  "name": "repo"
+                }
+              }
+            ]
+          }
+        ],
+        "critical": true,
+        "idempotency_required": true,
+        "retry_class": "reconcilable",
+        "compensation": "git.close_pr"
+      },
+      "parse_junit": {
+        "kind": "extern",
+        "lang": "py",
+        "file": "tools/log_parser.py",
+        "symbol": "parse_junit",
+        "params": [
+          {
+            "name": "xml",
+            "type": {
+              "ref": "Text"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "TestReport"
+        },
+        "effects": []
+      },
+      "trigger_build": {
+        "kind": "extern",
+        "lang": "ts",
+        "file": "tools/ci.ts",
+        "symbol": "trigger_build",
+        "params": [
+          {
+            "name": "ref",
+            "type": {
+              "ref": "GitRef"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "BuildId"
+        },
+        "effects": [
+          {
+            "effect": "Net",
+            "args": [
+              {
+                "value": {
+                  "op": "text",
+                  "value": "ci.internal.example"
+                }
+              }
+            ]
+          }
+        ],
+        "idempotent_by": {
+          "op": "field",
+          "of": {
+            "op": "var",
+            "name": "ref"
+          },
+          "name": "sha"
+        }
+      }
+    },
+    "uses": [
+      {
+        "module": "company.domain",
+        "names": [
+          "BuildId",
+          "GitRef",
+          "PullRequest",
+          "PullRequestDraft",
+          "TestReport"
+        ]
+      },
+      {
+        "module": "std",
+        "names": [
+          "git",
+          "human"
+        ]
+      }
+    ]
+  }
+}
