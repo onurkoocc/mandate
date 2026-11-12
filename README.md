@@ -419,8 +419,13 @@ runtime's key signed again after its content was changed, after its
 attestation was taken out, or after its method was changed to `static` or
 to one the runtime checks itself, is invalid, and the effect resting on it
 is refused (`forged_evidence`); so is a criterion `a and b` whose verifier
-part has no record of its own. Evidence made before the verifier had a
-process of its own shows as invalid once it has. The verifier process
+part has no record of its own. An attestation names the run, contract,
+criterion, method and part it was made for: one copied onto a record of
+another criterion, of the other part of `m(a) and m(b)`, or of a later
+run is invalid, and so is one in the format before 0.2; a verifier that
+signs for another part, or in the old format, does not meet the
+criterion. Evidence made before the verifier had a process of its own, or
+attested before 0.2, shows as invalid once it has. The verifier process
 gets none of the runtime's secrets, and the model's key only when the
 configuration has a model. `audience.test.ts` lands a change set on
 boundary checks the runtime makes itself with a verifier key trusted, and
@@ -513,7 +518,7 @@ These cases from §25 are covered:
 | G03 | An agent that says "approved" creates no authorization; a Verified value whose evidence does not verify is refused | `gate4`, `evidence` |
 | G04 | A sub-agent gets no more than it is handed: its sandbox and tools are narrowed to the grant | `gate4` (and E0701 statically) |
 | G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop`, `mxc`, `mxc-windows` |
-| G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed; a check its verifier did not sign is not met, and with a verifier process configured, a record of a verifier check without that verifier's attestation, or with a method its criterion does not declare, is invalid, whatever key signed it | `verifier`, `verifier-process`, `audience` |
+| G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed; a check its verifier did not sign is not met, and with a verifier process configured, a record of a verifier check without that verifier's attestation for that run, criterion and part, or with a method its criterion does not declare, is invalid, whatever key signed it | `verifier`, `verifier-process`, `audience` |
 | G07 | A sandboxed process reaches no host (on Linux, not through a service socket of the host either), and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`), `mxc-windows` (AppContainer, CI job `sandbox-windows`) |
 | G08 | Another tenant's or run's artifact is refused like a missing one | `artifacts` |
 | G09 | A model's markup is shown as plain text in every view, never as a control: an agent's output, a name somebody typed, a lead's sub-program and its reason for an amendment | `views`, `views-envelope`, `cli-amend` |

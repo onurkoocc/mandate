@@ -4,6 +4,16 @@
 // program says, never one the record says.
 
 import { calleePath, type Def, type Verifier } from "@mandate/compiler";
+import { digest } from "./values.js";
+
+/**
+ * The id of the evidence record of one part of a criterion: from the run, the part's path in the program, its
+ * method and its result. A verifier's attestation names the run and the part, so the checks of evidence compute
+ * the id it stands for here, as the interpreter does.
+ */
+export function evidenceIdOf(run: string, part: string, method: string, passed: boolean): string {
+  return digest("request", { run, criterion: part, method, passed });
+}
 
 /** A criterion satisfied by a person: `human.approve(…)` (§10). */
 export function needsPerson(v: Verifier): boolean {

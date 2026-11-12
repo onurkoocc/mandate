@@ -634,7 +634,7 @@ export class Runtime {
         this.trusted.verify(e.record as unknown as EvidenceRecord, { key_id: e.key_id, signature: e.signature }) &&
         (e.record as unknown as EvidenceRecord).evidence_id === e.evidence_id &&
         (e.record as unknown as EvidenceRecord).passed === e.passed &&
-        !recordProblem(e.record as unknown as EvidenceRecord, e, declared(e.record as unknown as EvidenceRecord), rule) &&
+        !recordProblem(e.record as unknown as EvidenceRecord, { ...e, run: runId }, declared(e.record as unknown as EvidenceRecord), rule) &&
         !approvalProblem(e.record as unknown as EvidenceRecord, decisions, this.decisionKeys, lock, signed),
     }));
   }
