@@ -12,6 +12,8 @@
 //   mandate cancel <run> [--key FILE]
 //   mandate reconcile <run> <operation> [--key FILE]      ask the system of record what an unknown outcome was
 //   mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
+//   mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
+//                                                         decide an amendment of the envelope a lead asked for
 //   mandate decision <run> <digest>                       a decision the run took, as its signed record
 //   mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
 //                                                         check a decision's signature; no configuration, no database
@@ -106,6 +108,7 @@ const USAGE = `usage:
   mandate cancel <run> [--key FILE]
   mandate reconcile <run> <operation> [--key FILE]
   mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
+  mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
   mandate decision <run> <digest>
   mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
   mandate replay <run>
@@ -120,7 +123,7 @@ const USAGE = `usage:
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -209,6 +212,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       case "decline": {
         const [rev, who] = [revision(a), key ? "" : by()];
         const w = waitOf(await rt.getRun(runId));
+        if (w.kind === "amendment") throw new Violation("no_wait", `Run ${runId} is waiting for a decision on an amendment of its envelope: mandate amend ${runId} --revision ${rev} --key FILE ${cmd}`);
         if (w.kind !== "decision") throw new Violation("no_wait", `Run ${runId} is not waiting for a decision.`);
         const digest = String(w.request["subject_digest"] ?? w.request["action_digest"] ?? "");
         run = await rt.decideAction(runId, msg, key ? { signed: await sign("wait", cmd) } : { commandId: w.command, revision: rev, digest, approve: cmd === "approve", by: who });
@@ -235,6 +239,18 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       case "raise-limits": {
         const [rev, wanted] = [revision(a), limits(str(a, "--limit"))];
         run = await rt.raiseLimits(runId, msg, key ? { limits: wanted, signed: await sign("run", "raise_limits", payloadOf.limits(costDims(wanted))) } : { revision: rev, limits: wanted, by: by() });
+        break;
+      }
+      case "amend": {
+        // The owner's decision on an amendment a lead asked for (spec/envelope.md "Amendments"): a signed record
+        // whose subject is the hash of the package with the new envelope, as `status` showed it.
+        const what = a.positional[1];
+        if (what !== "approve" && what !== "decline") throw new Usage("amend takes approve or decline");
+        revision(a);
+        if (!key) throw new Usage("--key FILE is required: an amendment is decided with a signed decision");
+        const w = waitOf(await rt.getRun(runId));
+        if (w.kind !== "amendment") throw new Violation("no_wait", `Run ${runId} is not waiting for a decision on an amendment.`);
+        run = await rt.decideAmendment(runId, msg, await sign("wait", what === "approve" ? "amend" : "decline"));
         break;
       }
       case "decision": {
@@ -587,6 +603,15 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
       lines.push(...subjectLines(req["subject"] ?? null));
       if (config.verifier) lines.push(`  the change in ${config.verifier.workdir}: git -C ${config.verifier.workdir} diff ${config.verifier.base}`);
       lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} ${as}`, `  decline: mandate decline ${run.run_id} --revision ${run.revision} ${as}`);
+    } else if (w["kind"] === "amendment") {
+      // What the owner signs for is the new package's hash. The reason is the lead's own text: a model wrote it.
+      lines.push(`waiting for: ${req["role"] ?? "the owner"} to decide an amendment of ${req["workflow"]}'s envelope, asked by ${req["lead"]}`);
+      lines.push(`  package ${req["from"]} → ${req["package"]}${typeof req["deadline"] === "number" ? `, deadline ${new Date(req["deadline"]).toISOString()}` : ""}`);
+      const changes = Array.isArray(req["changes"]) ? req["changes"] : [];
+      for (const c of changes) if (isObj(c)) lines.push(`  ${String(c["text"])}`);
+      if (!changes.length) lines.push("  the envelope's amounts and capabilities are as they were");
+      lines.push(`  the lead's reason (model output): ${JSON.stringify(String(req["reason"] ?? ""))}`);
+      lines.push(`  approve: mandate amend ${run.run_id} --revision ${run.revision} ${as} approve`, `  decline: mandate amend ${run.run_id} --revision ${run.revision} ${as} decline`);
     } else if (w["kind"] === "timer") {
       lines.push(`waiting for: a timer until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "")}); the scheduler resumes the run then`);
     } else if (w["kind"] === "decision") {

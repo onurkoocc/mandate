@@ -2,11 +2,11 @@
 // replayed from separate CLI calls over a PGlite database in a directory, and
 // every decision names the revision the person saw.
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { main } from "../src/cli.js";
+import { CONTROL_COMMANDS, main } from "../src/cli.js";
 
 const dir = mkdtempSync(join(tmpdir(), "mandate-cli-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -116,5 +116,13 @@ describe("the control CLI (K19)", () => {
     const r = await mandate("approve", "c1");
     expect(r.code).toBe(2);
     expect(r.err).toContain("usage:");
+  });
+
+  it("is reached through the mandate binary: the compiler's CLI hands it every command it has, and no other", () => {
+    // The compiler cannot import the runtime, so its CLI keeps the names. A command missing there is one nobody can call.
+    const binary = readFileSync(new URL("../../compiler/src/cli.ts", import.meta.url), "utf8");
+    const handed = binary.match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m);
+    expect(handed).not.toBeNull();
+    expect((JSON.parse(handed![1]!) as string[]).sort()).toEqual([...CONTROL_COMMANDS].sort());
   });
 });

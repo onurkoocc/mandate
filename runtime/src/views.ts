@@ -345,6 +345,15 @@ function statusBlocks(v: RunView): Block[] {
       out.push({ p: `Waiting for ${String(req["role"] ?? "a person")} to authorize ${String(req["effect"] ?? "an action")}, exactly these parameters:` });
       out.push({ table: { head: ["Action digest"], rows: [[mono(String(req["action_digest"]))]] } });
       out.push({ code: JSON.stringify(req["params"] ?? null, null, 2), untrusted: true });
+    } else if (w["kind"] === "amendment") {
+      // The owner's decision is for the hash of the package with the new envelope. The reason is the lead's own
+      // text, and a model wrote it (G09).
+      out.push({ p: `Waiting for ${String(req["role"] ?? "the owner")} to decide an amendment of ${String(req["workflow"])}'s envelope, which ${String(req["lead"])} asked for. The decision applies only to this package:` });
+      out.push({ table: { head: ["Package now", "Package asked for", "Deadline"], rows: [[mono(String(req["from"])), mono(String(req["package"])), typeof req["deadline"] === "number" ? new Date(req["deadline"]).toISOString() : "—"]] } });
+      const changes = (Array.isArray(req["changes"]) ? req["changes"] : []).flatMap((c) => (isObj(c) ? [String(c["text"])] : []));
+      if (changes.length) out.push({ p: "What it changes in the envelope:" }, { list: changes });
+      out.push({ p: "The lead's reason:" }, { code: String(req["reason"] ?? ""), untrusted: true });
+      out.push({ note: `Approve or decline at revision ${v.as_of.revision}: mandate amend ${v.run.id} --revision ${v.as_of.revision} --key <your key file> approve. A decision on an older revision is refused.` });
     } else if (w["kind"] === "timer") {
       out.push({ p: `Waiting until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "a timer")}); the scheduler resumes it then.` });
     } else {
