@@ -97,6 +97,19 @@ export class EvidenceSigner {
     return signer;
   }
 
+  /** Creates a new key in `file`, readable by its owner only. An existing file is never replaced. */
+  static createIn(file: string): EvidenceSigner {
+    const signer = EvidenceSigner.generate();
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, signer.privateKey.export({ type: "pkcs8", format: "pem" }) as string, { mode: 0o600, flag: "wx" });
+    try {
+      chmodSync(file, 0o600);
+    } catch {
+      // Windows has no POSIX modes; the file is in the operator's own directory.
+    }
+    return signer;
+  }
+
   /**
    * Replaces the key in `file` with a new one. The old key's public half is
    * kept in `trustedDir` as `<key id>.pem`, so evidence it signed still
@@ -163,6 +176,10 @@ export class TrustedKeys {
     } catch {
       return false;
     }
+  }
+
+  has(keyId: string): boolean {
+    return this.keys.has(keyId);
   }
 
   ids(): string[] {

@@ -605,6 +605,14 @@ handlers, on an in-process database of its own:
 | `git = fake_git()` | Every `git.*` effect, applied in memory |
 | `Human = auto_approve(role: r)`, `auto_decline(role: r)`, `answer("<text>")` | A person who decides every wait for role `r` (any role without it), or answers every question |
 
+A 0.4 program takes signed decisions only
+([`envelope.md`](envelope.md#signed-decisions)), so for one the runner
+makes up the people as well: two members with keys of their own for every
+role the program names and for `owner`, bound in the test's lock. The
+first decides for the role; the second decides an approval that must be
+`distinct_from` an earlier one. An earlier program's test decides by name,
+as before.
+
 - **Arguments.** `run W(args) expect e` runs `W`. `fixtures.<name>` is the
   JSON file `fixtures/<name>.json` next to the program.
 - **Expectations.** `expect ok` means the run succeeded. `failed`,
@@ -688,6 +696,14 @@ listed in the run's summary (R09).
   (`no_executor`, `unsupported_binding`;
   [`executors.md`](executors.md));
 - runs the compiler's checks on the canonical IR again;
+- refuses a language version it does not run, and of 0.4 an envelope, a
+  `map`, a `plan` and an `agents` budget, which it does not run yet
+  (`unsupported_language`; [`envelope.md`](envelope.md));
+- when the lock lists members or roles, requires it to be well formed
+  (`malformed_lock`), and for a 0.4 package requires every role it names
+  to have a member (`unbound_role`, E1502);
+- does not start a 0.4 package when it is in unsigned mode
+  (`signed_decisions_required`);
 - checks the input against the workflow's parameter types, with the same
   schemas a model's answer is checked against (`input_mismatch`). A `Path`
   in it keeps the Path rule (G14). A type the program imports but does not
@@ -701,6 +717,14 @@ listed in the run's summary (R09).
 | `GetRun` | `getRun`, with `budgetReport` and `evidence` |
 | `SubmitInput` | `submitInput` |
 | `DecideAction` | `decideAction`: an action's approval, or a contract's `human.approve` |
+
+Every message by which a person changes a run is a decision record the
+person signs ([`envelope.md`](envelope.md#signed-decisions)):
+`submitInput`, `decideAction`, `raiseLimits`, `reconcileAction` and
+`cancelRun` take one. `shown` returns what a record must name now, and
+`verifyDecisions` checks again each record a run took. In unsigned mode
+(`RuntimeOptions.decisions.mode`), a package of 0.1 to 0.3 takes the
+caller's word for who decided, as before 0.4.
 
 `SubmitInput` and `DecideAction` carry the run revision the person saw, as
 `GetRun` returned it. Every state change and every cancel request raises
@@ -739,12 +763,15 @@ through the compiler's `mandate` command:
 ```sh
 mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD] [--module FILE]…
 mandate status <run> [--json]
-mandate approve <run> --revision N --by NAME
-mandate decline <run> --revision N --by NAME
-mandate answer <run> --revision N --by NAME <text>
-mandate cancel <run>
-mandate reconcile <run> <operation>
-mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
+mandate key new [--out FILE]
+mandate approve <run> --revision N --key FILE [--member NAME]
+mandate decline <run> --revision N --key FILE [--member NAME]
+mandate answer <run> --revision N --key FILE [--member NAME] <text>
+mandate cancel <run> [--key FILE]
+mandate reconcile <run> <operation> --key FILE [--member NAME]
+mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
+mandate decision <run> <digest>
+mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
 mandate replay <run>
 mandate artifact <run> <blob:sha256:…>
 mandate show <run> [--format md|html|json]
@@ -764,6 +791,7 @@ mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [-
   "database": "pglite:.mandate/db",
   "artifacts": ".mandate/artifacts",
   "evidence": { "key": ".mandate/evidence.key" },
+  "decisions": { "keys": ".mandate/decision-keys" },
   "rateLimits": { "model": { "capacity": 50, "perSecond": 1 } },
   "model": { "provider": "anthropic" },
   "executor": { "managed-agents": { "pollMs": 1000, "maxTurnMs": 3600000 } },
@@ -785,6 +813,12 @@ mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [-
   next to the key, where every later call loads it, so evidence it signed
   still verifies. Its private half is gone. To stop trusting an old key,
   remove its file: what it signed then shows `SIGNATURE INVALID`.
+- **Decisions.** `decisions.keys` is the directory of the members' public
+  keys, `<key id>.pem` each, `.mandate/decision-keys` by default. The lock
+  says whose each key is. `"mode": "unsigned"` lets a package of 0.1 to 0.3
+  take `--by NAME` in place of `--key FILE`, as before 0.4; without it
+  every decision is signed. See
+  [`envelope.md`](envelope.md#signed-decisions).
 - **Executor.** `executor.managed-agents` runs the agents the lock binds
   to Claude Managed Agents there, each delegation in a session of its own.
   Their tools still run in `sandbox`. See [`executors.md`](executors.md).
@@ -810,8 +844,11 @@ holds, and the actions. `mandate show` prints the run's views
 
 **Decisions and revisions.** A decision names the revision the person saw.
 If the run has moved since, the decision is refused (`stale_revision`) and
-nothing is recorded. What a person approves is bound to the digest that
-`status` showed.
+nothing is recorded but, for a signed one, that it was refused. What a
+person approves is bound to the digest that `status` showed. The person
+signs the decision with their own key (`--key`): the record names the
+package, the run, the revision, the wait and that digest, and the lock of
+the run's package says which member the key belongs to.
 
 `fixtures/fixbug-target/` holds FixBug bound to a seeded test project,
 with its lock and input. `runtime/test/gate3.test.ts`

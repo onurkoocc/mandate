@@ -4,14 +4,15 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { bindingChecks, canonicalize, capsOf, check, domainHash, hashProgram, link, linkedProgram, LOCK_FORMAT, modelTiers, references, SANDBOX_DENIALS_FORMAT, validateLock, type DenialReport, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { atLeast, bindingChecks, canonicalize, capsOf, check, domainHash, hashProgram, link, linkedProgram, LOCK_FORMAT, modelTiers, references, roleLockChecks, SANDBOX_DENIALS_FORMAT, validateLock, type DenialReport, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
 import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
+import { approvalProblem, InvalidDecision, isSignedDecision, payloadOf, roleRefusal, shownRefusal, signerRefusal, storedProblem, type DecisionKind, type Refusal, type Shown, type SignedDecision, type StoredDecision } from "./decisions.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
 import { RateLimiter, type BucketConfig } from "./ratelimit.js";
-import type { Db, Row } from "./db.js";
+import type { Db, Row, Tx } from "./db.js";
 import { Faults } from "./faults.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Policy } from "./interp.js";
@@ -35,12 +36,34 @@ export interface Package {
   modules?: Modules;
 }
 
+/** The language versions this runtime runs. Of 0.4 it runs roles and signed decisions; see `notRunYet`. */
+export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4"];
+
 /**
- * The language versions this runtime runs. The compiler reads 0.4, but what 0.4 asks of a run
- * (signed decisions, the envelope's ledger, `map`, `plan`; spec/envelope.md) is not in this
- * runtime yet, and a version is never run on a best-effort basis (§3.5).
+ * What a program uses of 0.4 that this runtime does not run yet: an envelope, `map`, `plan`, and the `agents`
+ * budget dimension (spec/envelope.md). The compiler does not check the envelope's own rules (E1701 to E1708) yet
+ * either, so a package that uses one of them is refused at load: a version is never run on a best-effort basis (§3.5).
+ * A 0.4 program without them is checked in full, and runs.
  */
-export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3"];
+export function notRunYet(program: Program): string[] {
+  const found = new Set<string>();
+  const walk = (v: unknown, key: string): void => {
+    if (Array.isArray(v)) return v.forEach((x) => walk(x, key));
+    if (!v || typeof v !== "object") return;
+    const o = v as Record<string, unknown>;
+    if (o["op"] === "map" || o["op"] === "plan") found.add(String(o["op"]));
+    if (o["kind"] === "workflow" && o["envelope"] !== undefined) found.add("envelope");
+    if (key === "budget" && o["agents"] !== undefined) found.add("agents");
+    for (const [k, x] of Object.entries(o)) walk(x, k);
+  };
+  walk(program.defs, "defs");
+  return [...found].sort();
+}
+
+/** A 0.4 package: its program, or a module it was packaged with, is written in 0.4. Its decisions are always signed. */
+export function isSigned04(program: Program, modules: Modules = {}): boolean {
+  return [program, ...Object.values(modules)].some((p) => atLeast(p.language, "mandate/0.4"));
+}
 
 export function buildPackage(program: Program, lock: Lock = { modules: {} }, modules: Modules = {}): Package {
   const programHash = hashProgram(program as unknown as Json).program;
@@ -54,8 +77,10 @@ export function buildPackage(program: Program, lock: Lock = { modules: {} }, mod
  */
 export function verifyPackage(pkg: Package): void {
   // The program and every module it was packaged with: a module's definitions run as the program's do.
-  for (const language of [pkg.program.language, ...Object.values(pkg.modules ?? {}).map((m) => m?.language)]) {
-    if (!RUNTIME_LANGUAGES.includes(language)) throw new Violation("unsupported_language", `Package language ${String(language)} is not one of ${RUNTIME_LANGUAGES.join(", ")}.`);
+  for (const p of [pkg.program, ...Object.values(pkg.modules ?? {})]) {
+    if (!RUNTIME_LANGUAGES.includes(p?.language)) throw new Violation("unsupported_language", `Package language ${String(p?.language)} is not one of ${RUNTIME_LANGUAGES.join(", ")}.`);
+    const later = notRunYet(p);
+    if (later.length) throw new Violation("unsupported_language", `The package uses ${later.join(", ")} of mandate/0.4, which this runtime does not run yet (spec/envelope.md).`);
   }
   const programHash = hashProgram(pkg.program as unknown as Json).program;
   if (programHash !== pkg.programHash) throw new Violation("package_hash_mismatch", `The program hashes to ${programHash}, not the packaged ${pkg.programHash}.`);
@@ -75,9 +100,12 @@ export function verifyPackage(pkg: Package): void {
   }
   // A lock that pins models (spec/lock.md) must be well formed and pin every tier the program names.
   // A lock without models is for simulated models only; the Anthropic adapter refuses to run without one.
-  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings) {
+  // So must a lock that names members and roles: a key under two members, or a role held by nobody the lock lists, binds nothing.
+  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings || pkg.lock.members || pkg.lock.roles) {
     const bad = validateLock({ lock: LOCK_FORMAT, ...pkg.lock });
     if (bad.length) throw new Violation("malformed_lock", `The package's lock is malformed: ${bad.map((d) => d.message).join(" ")}`);
+  }
+  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings) {
     const missing = [...modelTiers(pkg.program)].filter((t) => !Object.hasOwn(pkg.lock.models ?? {}, t)).sort();
     if (missing.length) throw new Violation("unlocked_model_tier", `Model tiers are not locked: ${missing.join(", ")} (MDT-E0141).`);
     // An executor binding that no longer fits the program and the lock is not run with (E0903–E0905, K45).
@@ -87,6 +115,12 @@ export function verifyPackage(pkg: Package): void {
   const r = check(canonicalize(pkg.program as unknown as Json), "json", { modules });
   if (!r.ok) {
     throw new Violation("load_verification_failed", `The program does not pass the compiler's checks: ${r.diagnostics.filter((d) => d.severity === "error").map((d) => d.code).join(", ")}.`);
+  }
+  // Every role a 0.4 package names has a member in its lock (E1502): a wait for a role nobody holds could never end.
+  const unbound = roleLockChecks(pkg.program, link(pkg.program, modules), { lock: LOCK_FORMAT, ...pkg.lock });
+  if (unbound.length) {
+    const roles = [...new Set(unbound.map((d) => String((d.facts as { role?: unknown } | undefined)?.role)))].sort();
+    throw new Violation("unbound_role", `The package's lock binds no member to ${roles.length === 1 ? "role" : "roles"} ${roles.join(", ")} (MDT-E1502).`);
   }
 }
 
@@ -151,6 +185,38 @@ export interface RuntimeOptions {
   durableTimers?: boolean;
   /** Rate limits shared by every run on this database (§8.6), by bucket: `model`, `model:<tier>`, `tool`. */
   rateLimits?: Record<string, BucketConfig>;
+  /**
+   * How a person's decisions are taken (spec/envelope.md "Signed decisions"). `signed`, the default: every decision
+   * is a record signed with a key the package's lock lists under a member; `keys` holds the members' public keys.
+   * `unsigned`: a package of 0.1 to 0.3 takes a decision on the caller's word for who made it (`by`), as before
+   * 0.4. A 0.4 package's decisions are signed in either mode, and it does not start in `unsigned`.
+   */
+  decisions?: { mode?: "signed" | "unsigned"; keys?: TrustedKeys };
+}
+
+/** Who made a decision the runtime took: a member with a signed record, or in unsigned mode the name the caller gave. */
+interface Decider {
+  by: string;
+  /** The fields a signed decision adds to what is recorded; empty in unsigned mode. */
+  signed: { member: string; role: string | null; key: string; decision: string } | Record<string, never>;
+}
+
+/** A decision that is refused, on its way out of the transaction that would have applied it. */
+class Refused extends Error {
+  constructor(
+    readonly refusal: Refusal,
+    readonly signed: unknown,
+    readonly command: string | undefined,
+  ) {
+    super(refusal.message);
+  }
+}
+
+/** A package as a run uses it: the linked program, the lock, and whether its decisions must be signed. */
+interface Loaded {
+  program: Program;
+  lock: Lock;
+  signed: boolean;
 }
 
 export class Runtime {
@@ -162,6 +228,9 @@ export class Runtime {
   readonly verifiers: TrustedKeys;
   readonly durableTimers: boolean;
   readonly limiter: RateLimiter | undefined;
+  readonly decisionMode: "signed" | "unsigned";
+  /** The members' public keys, by key id. The lock says whose each one is. */
+  readonly decisionKeys: TrustedKeys;
   private readonly packages = new Map<string, Package>();
 
   constructor(
@@ -179,12 +248,17 @@ export class Runtime {
     this.verifiers = options.trustedVerifiers ?? new TrustedKeys();
     this.durableTimers = options.durableTimers ?? false;
     this.limiter = options.rateLimits && Object.keys(options.rateLimits).length ? new RateLimiter(db, options.rateLimits, () => adapters.clock.now()) : undefined;
+    this.decisionMode = options.decisions?.mode ?? "signed";
+    this.decisionKeys = options.decisions?.keys ?? new TrustedKeys();
   }
 
   // ── StartRun / resume ─────────────────────────────────────────────────
 
   async startRun(o: StartOptions): Promise<RunRow> {
     verifyPackage(o.pkg);
+    if (this.decisionMode === "unsigned" && isSigned04(o.pkg.program, o.pkg.modules)) {
+      throw new Violation("signed_decisions_required", "A mandate/0.4 package does not run in unsigned mode: its decisions are signed records (spec/envelope.md). Take decisions.mode out of the runtime configuration.");
+    }
     const wf = o.pkg.program.defs[o.workflow];
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
     const linked = linkedProgram(o.pkg.program, o.pkg.modules);
@@ -333,9 +407,9 @@ export class Runtime {
   async resume(runId: string): Promise<RunRow> {
     const { run, fence } = await this.journal.acquire(runId);
     if (TERMINAL.has(run.state)) return run;
-    const program = await this.program(run.package_hash);
+    const loaded = await this.loaded(run.package_hash);
     await this.write(runId, fence, async (tx) => this.journal.setState(tx, runId, "running"));
-    const interp = this.interpreter(run, program, fence, false, this.adapters);
+    const interp = this.interpreter(run, loaded, fence, false, this.adapters);
     try {
       const result = await interp.runWorkflow(run.workflow, run.input as Obj);
       await this.finish(runId, fence, { state: "succeeded", result });
@@ -452,11 +526,12 @@ export class Runtime {
     } else await this.finish(runId, fence, target);
   }
 
-  private interpreter(run: RunRow, program: Program, fence: number, replay: boolean, adapters: Adapters): Interpreter {
+  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters): Interpreter {
     return new Interpreter({
       journal: this.journal,
       adapters,
-      program,
+      program: loaded.program,
+      decisions: { keys: this.decisionKeys, lock: loaded.lock, required: loaded.signed },
       packageHash: run.package_hash,
       runId: run.run_id,
       fence,
@@ -474,13 +549,19 @@ export class Runtime {
     });
   }
 
-  /** The program and modules of a package, as packaged. */
-  private async packaged(packageHash: string): Promise<{ program: Program; modules: Modules }> {
+  /** The program, modules and lock of a package, as packaged. */
+  private async packaged(packageHash: string): Promise<{ program: Program; modules: Modules; lock: Lock }> {
     const cached = this.packages.get(packageHash);
-    if (cached) return { program: cached.program, modules: cached.modules ?? {} };
-    const [row] = await this.db.query<Row>("select program, modules from packages where package_hash = $1", [packageHash]);
+    if (cached) return { program: cached.program, modules: cached.modules ?? {}, lock: cached.lock };
+    const [row] = await this.db.query<Row>("select program, modules, lock from packages where package_hash = $1", [packageHash]);
     if (!row) throw new Violation("unknown_package", `No package ${packageHash}.`);
-    return { program: row["program"] as Program, modules: (row["modules"] ?? {}) as Modules };
+    return { program: row["program"] as Program, modules: (row["modules"] ?? {}) as Modules, lock: row["lock"] as Lock };
+  }
+
+  /** A package as a run uses it. Its decisions are signed in signed mode, and always when it is a 0.4 package. */
+  private async loaded(packageHash: string): Promise<Loaded> {
+    const p = await this.packaged(packageHash);
+    return { program: linkedProgram(p.program, p.modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules) };
   }
 
   /** The package's program with its imported modules linked in: what the interpreter runs. Never hashed. */
@@ -512,12 +593,62 @@ export class Runtime {
    * result (P2-11). Views show the result.
    */
   async verifyEvidence(runId: string): Promise<Array<{ evidence_id: string; criterion: string; valid: boolean; key_id: string | null }>> {
+    const run = await this.journal.run(runId);
+    const { lock, signed } = await this.loaded(run.package_hash);
+    // A person's approval rests on their signed decision (H04): the record it names must still be the one they signed.
+    const decisions = new Map((await this.journal.decisions(runId)).map((d) => [d.decision_id, d]));
     return (await this.journal.evidence(runId)).map((e) => ({
       evidence_id: e.evidence_id,
       criterion: e.criterion,
       key_id: e.key_id,
-      valid: !!e.record && !!e.key_id && !!e.signature && this.trusted.verify(e.record as unknown as EvidenceRecord, { key_id: e.key_id, signature: e.signature }) && (e.record as unknown as EvidenceRecord).evidence_id === e.evidence_id && (e.record as unknown as EvidenceRecord).passed === e.passed && !attestationProblem(e.record as unknown as EvidenceRecord, this.verifiers),
+      valid:
+        !!e.record &&
+        !!e.key_id &&
+        !!e.signature &&
+        this.trusted.verify(e.record as unknown as EvidenceRecord, { key_id: e.key_id, signature: e.signature }) &&
+        (e.record as unknown as EvidenceRecord).evidence_id === e.evidence_id &&
+        (e.record as unknown as EvidenceRecord).passed === e.passed &&
+        !attestationProblem(e.record as unknown as EvidenceRecord, this.verifiers) &&
+        !approvalProblem(e.record as unknown as EvidenceRecord, decisions, this.decisionKeys, lock, signed),
     }));
+  }
+
+  /**
+   * The decisions a run took as signed records, oldest first, each checked again: its record still hashes to its
+   * digest, its signature verifies, and the package's lock binds its key to its member and role (INV-16).
+   */
+  async verifyDecisions(runId: string): Promise<Array<StoredDecision & { valid: boolean; problem?: string }>> {
+    const run = await this.journal.run(runId);
+    const { lock } = await this.loaded(run.package_hash);
+    return (await this.journal.decisions(runId)).map((d) => {
+      const problem = storedProblem(d, this.decisionKeys, lock);
+      return { ...d, valid: !problem, ...(problem ? { problem } : {}) };
+    });
+  }
+
+  /**
+   * What a decision on the run must name now (`Shown`): the package, the run and its revision, and
+   *
+   * - `"wait"`: the wait the run is in, the digest it shows and the role it asks;
+   * - `"run"`: the run itself, for a raise of its limits or a cancel;
+   * - `{ reconcile }`: the action whose outcome is asked.
+   *
+   * A person signs a record of these (`signDecision`); the runtime compares the record with them again when it arrives.
+   */
+  async shown(runId: string, about: "wait" | "run" | { reconcile: string }): Promise<Shown> {
+    const run = await this.journal.run(runId);
+    const base = { package: run.package_hash, run: runId, revision: run.revision };
+    if (about === "run") return { ...base, subject: run.package_hash };
+    if (about !== "wait") {
+      const action = await this.journal.action(about.reconcile);
+      if (!action || action.run_id !== runId) throw new Violation("unknown_action", `No action ${about.reconcile} in run ${runId}.`);
+      return { ...base, command: action.command_id, subject: action.action_digest };
+    }
+    const w = run.waiting;
+    const commandId = run.state === "waiting" && isObj(w) && typeof w["command"] === "string" ? w["command"] : undefined;
+    const [row] = commandId === undefined ? [] : await this.db.query<Row>("select kind, state, result, request_digest from commands where run_id = $1 and command_id = $2", [runId, commandId]);
+    if (!row || row["state"] !== "waiting" || (row["kind"] !== "input" && row["kind"] !== "decision")) throw new Violation("no_wait", `Run ${runId} is not waiting for a person.`);
+    return shownBy(run, commandId!, row);
   }
 
   /**
@@ -557,8 +688,10 @@ export class Runtime {
    * Answers a wait opened by human.ask, escalate or pause; then resumes the
    * run. `revision` is the run revision the answer was given on (GetRun).
    */
-  async submitInput(runId: string, msg: Message, i: { commandId: string; revision: number; value: Value }): Promise<RunRow> {
-    const fresh = await this.resolveWait(runId, msg, i.commandId, i.revision, "input", i as unknown as Value, async () => ({ state: "succeeded", result: i.value }));
+  async submitInput(runId: string, msg: Message, i: { commandId: string; revision: number; value: Value } | { value: Value; signed: SignedDecision }): Promise<RunRow> {
+    const signed = "signed" in i ? i.signed : undefined;
+    const at = "signed" in i ? named(i.signed) : i;
+    const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, "input", i as unknown as Value, { signed, kinds: ["answer"], payload: payloadOf.answer(i.value) }, async () => ({ state: "succeeded", result: i.value }));
     return fresh ? this.drive(runId) : this.journal.run(runId);
   }
 
@@ -573,10 +706,16 @@ export class Runtime {
    *
    * `revision` is the run revision the person decided on (GetRun). A
    * decision made on an older view is refused with `stale_revision`.
+   *
+   * A signed decision says all of this in its record: the wait, the
+   * revision, the digest, and whether it approves. In unsigned mode the
+   * caller says them, and who decided (`by`).
    */
-  async decideAction(runId: string, msg: Message, d: { commandId: string; revision: number; digest: string; approve: boolean; by: string }): Promise<RunRow> {
+  async decideAction(runId: string, msg: Message, given: { commandId: string; revision: number; digest: string; approve: boolean; by: string } | { signed: SignedDecision }): Promise<RunRow> {
     type Resolution = { state: "succeeded"; result: Value } | { state: "failed"; error: Value };
-    const fresh = await this.resolveWait(runId, msg, d.commandId, d.revision, "decision", d as unknown as Value, async (tx, request, run): Promise<Resolution> => {
+    const signed = "signed" in given ? given.signed : undefined;
+    const d = "signed" in given ? { ...named(given.signed), digest: subjectOf(given.signed), approve: kindOf(given.signed) === "approve", by: "" } : given;
+    const fresh = await this.resolveWait(runId, msg, d.commandId, d.revision, "decision", given as unknown as Value, { signed, by: d.by, kinds: ["approve", "decline"] }, async (tx, request, run, who): Promise<Resolution> => {
       const criterion = isObj(request) && typeof request["subject_digest"] === "string";
       // The code owner's own decision on a governance-class file (K70): a gate before the action's authorization, not one.
       const gate = isObj(request) && request["gate"] === "governance";
@@ -588,22 +727,23 @@ export class Runtime {
       if (typeof deadline === "number" && this.adapters.clock.now() >= deadline) {
         return { state: "failed", error: { tag: "Rejected", args: ["approval_expired"] } };
       }
+      const by = who.by;
       if (!d.approve || criterion || gate) {
-        if (criterion) await this.journal.event(tx, runId, d.approve ? "criterion_approved" : "criterion_denied", { command: d.commandId, by: d.by });
-        if (gate) await this.journal.event(tx, runId, d.approve ? "governance_approved" : "governance_denied", { command: d.commandId, digest: d.digest, by: d.by });
-        return { state: "succeeded", result: { approved: d.approve, by: d.by } };
+        if (criterion) await this.journal.event(tx, runId, d.approve ? "criterion_approved" : "criterion_denied", { command: d.commandId, by, ...who.signed });
+        if (gate) await this.journal.event(tx, runId, d.approve ? "governance_approved" : "governance_denied", { command: d.commandId, digest: d.digest, by, ...who.signed });
+        return { state: "succeeded", result: { approved: d.approve, by, ...who.signed } };
       }
-      const id = digest("operation", { authorize: d.digest, by: d.by, message: msg.messageId });
+      const id = digest("operation", { authorize: d.digest, by, message: msg.messageId });
       const ttl = (run.policy as unknown as Policy).authorizationTtlMs ?? 15 * 60_000;
       await tx.query("insert into authorizations (authorization_id, run_id, action_digest, decided_by, expires_at) values ($1, $2, $3, $4, $5) on conflict do nothing", [
         id,
         runId,
         d.digest,
-        d.by,
+        by,
         this.adapters.clock.now() + ttl,
       ]);
-      await this.journal.event(tx, runId, "action_authorized", { authorization: id, digest: d.digest, by: d.by });
-      return { state: "succeeded", result: { approved: true, by: d.by, authorization_id: id } };
+      await this.journal.event(tx, runId, "action_authorized", { authorization: id, digest: d.digest, by, ...who.signed });
+      return { state: "succeeded", result: { approved: true, by, authorization_id: id, ...who.signed } };
     });
     return fresh ? this.drive(runId) : this.journal.run(runId);
   }
@@ -617,16 +757,21 @@ export class Runtime {
    * message. The run itself goes on when its `budget_exceeded` question is
    * answered.
    */
-  async raiseLimits(runId: string, msg: Message, r: { revision: number; limits: Cost; by: string }): Promise<RunRow> {
+  async raiseLimits(runId: string, msg: Message, r: { revision: number; limits: Cost; by: string } | { limits: Cost; signed: SignedDecision }): Promise<RunRow> {
     const seen = await this.journal.run(runId);
-    const wf = (await this.program(seen.package_hash)).defs[seen.workflow];
+    const loaded = await this.loaded(seen.package_hash);
+    const wf = loaded.program.defs[seen.workflow];
     const program = costDims(wf?.kind === "workflow" ? wf.budget : undefined);
     const wanted = costDims(r.limits);
-    await this.db.tx(async (tx) => {
+    const signed = "signed" in r ? r.signed : undefined;
+    await this.deciding(runId, msg, () => this.db.tx(async (tx) => {
       const run = await this.journal.lock(tx, runId);
       const fresh = await this.journal.inbox(tx, { tenant: run.tenant, sender: msg.sender, messageId: msg.messageId, payloadDigest: digest("request", r as unknown as Value) });
       if (!fresh) return;
-      if (run.revision !== r.revision) throw new Violation("stale_revision", `The raise was made on revision ${r.revision}; run ${runId} is at revision ${run.revision}.`);
+      // A raise is about the run, not a wait: it names the run's package, and any member may make it.
+      this.identify(loaded, signed, undefined);
+      const who = await this.admit(tx, loaded, { signed, by: "by" in r ? r.by : "" }, { package: run.package_hash, run: runId, revision: run.revision, subject: run.package_hash }, ["raise_limits"], payloadOf.limits(wanted));
+      if (!("signed" in r) && run.revision !== r.revision) throw new Violation("stale_revision", `The raise was made on revision ${r.revision}; run ${runId} is at revision ${run.revision}.`);
       if (TERMINAL.has(run.state)) throw new Violation("run_ended", `Run ${runId} has ended (${run.state}).`);
       for (const [dim, limit] of Object.entries(wanted)) {
         if (dim in program && limit > program[dim]!) {
@@ -634,8 +779,8 @@ export class Runtime {
         }
       }
       const before = await this.journal.raiseLimits(tx, runId, wanted);
-      await this.journal.event(tx, runId, "limits_raised", { by: r.by, sender: msg.sender, message: msg.messageId, from: before, to: wanted });
-    });
+      await this.journal.event(tx, runId, "limits_raised", { by: who.by, sender: msg.sender, message: msg.messageId, from: before, to: wanted, ...who.signed });
+    }));
     return this.journal.run(runId);
   }
 
@@ -671,20 +816,30 @@ export class Runtime {
     revision: number,
     kind: "input" | "decision",
     payload: Value,
-    resolve: (tx: Parameters<Parameters<Db["tx"]>[0]>[0], request: Value, run: RunRow) => Promise<{ state: "succeeded"; result: Value } | { state: "failed"; error: Value }>,
+    from: { signed: SignedDecision | undefined; by?: string; kinds: DecisionKind[]; payload?: string },
+    resolve: (tx: Tx, request: Value, run: RunRow, who: Decider) => Promise<{ state: "succeeded"; result: Value } | { state: "failed"; error: Value }>,
   ): Promise<boolean> {
-    return this.db.tx(async (tx) => {
+    const loaded = await this.loaded((await this.journal.run(runId)).package_hash);
+    return this.deciding(runId, msg, () => this.db.tx(async (tx) => {
       const run = await this.journal.lock(tx, runId);
       const fresh = await this.journal.inbox(tx, { tenant: run.tenant, sender: msg.sender, messageId: msg.messageId, payloadDigest: digest("request", payload) });
       if (!fresh) return false;
+      // Who decides comes first: a refusal names them, whatever else is wrong with the decision.
+      this.identify(loaded, from.signed, commandId);
       // The answer was given on what the caller last saw; if the run moved on since, it must look again (§16.1).
       if (run.revision !== revision) {
-        throw new Violation("stale_revision", `The ${kind} was given on revision ${revision}; run ${runId} is at revision ${run.revision}.`);
+        const stale = `The ${kind} was given on revision ${revision}; run ${runId} is at revision ${run.revision}.`;
+        throw from.signed ? new Refused({ reason: "stale_revision", message: stale }, from.signed, commandId) : new Violation("stale_revision", stale);
       }
-      const [row] = await tx.query<Row>("select kind, state, result from commands where run_id = $1 and command_id = $2", [runId, commandId]);
-      if (!row || row["kind"] !== kind || row["state"] !== "waiting") throw new Violation("no_wait", `Run ${runId} is not waiting for ${kind} at ${commandId}.`);
+      const [row] = await tx.query<Row>("select kind, state, result, request_digest from commands where run_id = $1 and command_id = $2", [runId, commandId]);
+      if (!row || row["kind"] !== kind || row["state"] !== "waiting") {
+        const none = `Run ${runId} is not waiting for ${kind} at ${commandId}.`;
+        throw from.signed ? new Refused({ reason: "subject_mismatch", message: none }, from.signed, commandId) : new Violation("no_wait", none);
+      }
+      const request = row["result"] as Value;
+      const who = await this.admit(tx, loaded, from, shownBy(run, commandId, row), from.kinds, from.payload, isObj(request) ? request : {});
       // Everything inside goes through `tx`: an in-process database has one connection.
-      const r = await resolve(tx, row["result"] as Value, run);
+      const r = await resolve(tx, request, run, who);
       await tx.query("update commands set state = $3, result = $4, error = $5 where run_id = $1 and command_id = $2", [
         runId,
         commandId,
@@ -692,9 +847,63 @@ export class Runtime {
         JSON.stringify("result" in r ? r.result : null),
         JSON.stringify("error" in r ? r.error : null),
       ]);
-      await this.journal.event(tx, runId, kind === "input" ? "input_received" : "decision_received", { command: commandId, sender: msg.sender, message: msg.messageId });
+      await this.journal.event(tx, runId, kind === "input" ? "input_received" : "decision_received", { command: commandId, sender: msg.sender, message: msg.messageId, ...who.signed });
       return true;
-    });
+    }));
+  }
+
+  // ── signed decisions (spec/envelope.md) ───────────────────────────────
+
+  /**
+   * Runs a control call that takes a decision. A refused decision changes nothing: its transaction is rolled back,
+   * and `decision_refused` is the one thing recorded, with who tried, with which key, and why. It raises no
+   * revision, and the wait stays open (INV-16).
+   */
+  private async deciding<T>(runId: string, msg: Message | undefined, fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!(e instanceof Refused)) throw e;
+      await this.db.tx(async (tx) => {
+        await this.journal.lock(tx, runId);
+        await this.journal.event(tx, runId, "decision_refused", refusedEvent(e, msg));
+      });
+      throw new InvalidDecision(e.refusal.reason, e.refusal.message);
+    }
+  }
+
+  /** Rules 1 and 2a: a signed record is one, by a key the lock lists under its member. Signed mode takes nothing else. */
+  private identify(loaded: Loaded, signed: unknown, command: string | undefined): void {
+    if (signed === undefined) {
+      if (loaded.signed) throw new Refused({ reason: "invalid_signature", message: "This run takes signed decisions, and the decision carries no signature." }, undefined, command);
+      return;
+    }
+    const why = signerRefusal(signed, this.decisionKeys, loaded.lock);
+    if (why) throw new Refused(why, signed, command);
+  }
+
+  /**
+   * Who makes a decision, inside the transaction that applies it, once `identify` has passed. A signed record is held to what the run shows now
+   * (`shown`), to the role it asks and, for `distinct_from`, to the earlier approval of the same criterion; then it
+   * is stored. Without a record, unsigned mode takes the caller's word (`by`).
+   */
+  private async admit(tx: Tx, loaded: Loaded, from: { signed: SignedDecision | undefined; by?: string }, shown: Shown, kinds: readonly DecisionKind[], payload: string | undefined, request: Obj = {}): Promise<Decider> {
+    if (!from.signed) return { by: from.by ?? "", signed: {} };
+    const record = from.signed.record;
+    const why = shownRefusal(record, shown, kinds, payload) ?? roleRefusal(record, loaded.lock, shown.role);
+    if (why) throw new Refused(why, from.signed, shown.command);
+    // `human.approve(role: r, distinct_from: q)`: not the member who decided `q` in the same criterion (H02). Members
+    // are compared, not keys: one person is one member, however many keys they hold.
+    const other = request["distinct_from"];
+    const within = request["criterion_path"];
+    if (typeof other === "string" && typeof within === "string") {
+      const earlier = (await this.journal.decisions(shown.run, tx)).filter((d) => d.record.role === other && (d.record.kind === "approve" || d.record.kind === "decline") && (d.record.command ?? "").startsWith(`${within}/`));
+      if (earlier.some((d) => d.record.member === record.member)) {
+        throw new Refused({ reason: "same_member", message: `Member ${record.member} decided as ${other} in this criterion; ${shown.role ?? "this approval"} must come from someone else.` }, from.signed, shown.command);
+      }
+    }
+    const decision = await this.journal.recordDecision(tx, from.signed);
+    return { by: record.member, signed: { member: record.member, role: record.role ?? null, key: record.key, decision } };
   }
 
   // ── CancelRun ─────────────────────────────────────────────────────────
@@ -704,12 +913,21 @@ export class Runtime {
    * dispatch on the run's row: a dispatch after it is refused (R08); one
    * before it is followed to its real result (R09).
    */
-  async cancelRun(runId: string): Promise<RunRow> {
+  async cancelRun(runId: string, signed?: SignedDecision): Promise<RunRow> {
+    const loaded = signed === undefined ? undefined : await this.loaded((await this.journal.run(runId)).package_hash);
     const idle = await this.db.tx(async (tx) => {
       const run = await this.journal.lock(tx, runId);
       if (TERMINAL.has(run.state)) return false;
+      // A cancel is always taken: stopping needs nobody's authority. A signature that holds says who asked; one that
+      // does not is recorded as refused, and the run is cancelled all the same.
+      let who: Decider["signed"] = {};
+      if (signed !== undefined) {
+        const why = signerRefusal(signed, this.decisionKeys, loaded!.lock) ?? shownRefusal(signed.record, { package: run.package_hash, run: runId, subject: run.package_hash }, ["cancel"]) ?? roleRefusal(signed.record, loaded!.lock, undefined);
+        if (why) await this.journal.event(tx, runId, "decision_refused", refusedEvent(new Refused(why, signed, undefined), undefined));
+        else who = { member: signed.record.member, role: null, key: signed.record.key, decision: await this.journal.recordDecision(tx, signed) };
+      }
       await tx.query("update runs set cancel_requested = true, revision = revision + 1 where run_id = $1", [runId]);
-      await this.journal.event(tx, runId, "cancel_requested", {});
+      await this.journal.event(tx, runId, "cancel_requested", who);
       return run.state === "waiting" || run.state === "accepted" || run.state === "attention_required";
     });
     // An action whose outcome is unknown is asked to stop: an adapter that can prove it never took effect resolves it.
@@ -747,11 +965,21 @@ export class Runtime {
    * the action may be sent again under the same operation key. Unknown: it
    * stays open.
    */
-  async reconcileAction(runId: string, operationKey: string): Promise<RunRow> {
+  async reconcileAction(runId: string, operationKey: string, signed?: SignedDecision): Promise<RunRow> {
     const action = await this.journal.action(operationKey);
     if (!action || action.run_id !== runId) throw new Violation("unknown_action", `No action ${operationKey} in run ${runId}.`);
     const tool = this.adapters.tools[action.effect];
     if (!tool) throw new Violation("no_adapter", `No adapter for effect ${action.effect}.`);
+    // A reconciliation is a person's message too: signed, it names the action and the revision it was asked on.
+    const loaded = await this.loaded((await this.journal.run(runId)).package_hash);
+    if (signed !== undefined || loaded.signed) {
+      await this.deciding(runId, undefined, () => this.db.tx(async (tx) => {
+        const run = await this.journal.lock(tx, runId);
+        this.identify(loaded, signed, action.command_id);
+        const who = await this.admit(tx, loaded, { signed }, { package: run.package_hash, run: runId, revision: run.revision, command: action.command_id, subject: action.action_digest }, ["reconcile"], payloadOf.reconcile(operationKey));
+        await this.journal.event(tx, runId, "reconcile_requested", { operation: operationKey, ...who.signed });
+      }));
+    }
     const r = await tool.reconcile(operationKey);
     if ("applied" in r) await this.journal.finishAction(runId, undefined, operationKey, "confirmed", { receipt: r.applied });
     else if ("notApplied" in r) await this.journal.finishAction(runId, undefined, operationKey, "prepared", { detail: { not_applied: r.notApplied } });
@@ -769,8 +997,7 @@ export class Runtime {
   /** Rebuilds the run from its journal without calling any adapter (INV-09, R13). */
   async replayRun(runId: string, adapters: Adapters = refusingAdapters(this.adapters)): Promise<ReplayResult> {
     const run = await this.journal.run(runId);
-    const program = await this.program(run.package_hash);
-    const interp = this.interpreter(run, program, run.fence, true, adapters);
+    const interp = this.interpreter(run, await this.loaded(run.package_hash), run.fence, true, adapters);
     try {
       return { status: "complete", value: await interp.runWorkflow(run.workflow, run.input as Obj) };
     } catch (e) {
@@ -785,6 +1012,43 @@ export class Runtime {
   purgePayloads(runId: string): Promise<void> {
     return this.journal.purgePayloads(runId);
   }
+}
+
+/** What a waiting command shows to whoever decides on it: its digest and the role it asks (`Shown`). */
+function shownBy(run: RunRow, commandId: string, row: Row): Shown {
+  const request = isObj((row["result"] ?? null) as Value) ? (row["result"] as Obj) : {};
+  // A decision wait shows the digest it is bound to; a question shows the digest of the question as recorded.
+  const subject = row["kind"] === "decision" ? String(request["subject_digest"] ?? request["action_digest"] ?? "") : String(row["request_digest"]);
+  const role = typeof request["role"] === "string" && request["role"] !== "" ? request["role"] : undefined;
+  return { package: run.package_hash, run: run.run_id, revision: run.revision, command: commandId, subject, ...(role !== undefined ? { role } : {}) };
+}
+
+/** The wait and the revision a signed decision names; a record that is none names nothing, and is refused before these are used. */
+function named(signed: unknown): { commandId: string; revision: number } {
+  const r = isSignedDecision(signed) ? signed.record : undefined;
+  return { commandId: r?.command ?? "", revision: r?.revision ?? -1 };
+}
+
+function subjectOf(signed: unknown): string {
+  return isSignedDecision(signed) ? signed.record.subject : "";
+}
+
+function kindOf(signed: unknown): DecisionKind | undefined {
+  return isSignedDecision(signed) ? signed.record.kind : undefined;
+}
+
+/** The data of a `decision_refused` event: who tried, with which key, on what, and why. */
+function refusedEvent(e: Refused, msg: Message | undefined): Value {
+  const r = isSignedDecision(e.signed) ? e.signed.record : undefined;
+  return {
+    command: e.command ?? r?.command ?? null,
+    reason: e.refusal.reason,
+    kind: r?.kind ?? null,
+    member: r?.member ?? null,
+    role: r?.role ?? null,
+    key: r?.key ?? null,
+    ...(msg ? { sender: msg.sender, message: msg.messageId } : {}),
+  };
 }
 
 function minLimits(a: Record<string, number>, b: Record<string, number>): Record<string, number> {

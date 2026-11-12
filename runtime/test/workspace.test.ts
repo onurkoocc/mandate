@@ -20,7 +20,7 @@ import { SimChat, toolUse, type SimTurn } from "../src/sim.js";
 import { WRITE_SCRIPT } from "../src/tools.js";
 import { runView } from "../src/views.js";
 import { GitWorkspace } from "../src/workspace.js";
-import { closeAll, world } from "./helpers.js";
+import { closeAll, world, UNSIGNED } from "./helpers.js";
 import { ACME_SOURCE, acmeModules, lockFor, TWO_COMPONENTS } from "./acme.js";
 
 afterAll(closeAll);
@@ -78,7 +78,7 @@ describe("a run's components and their base commits (B3)", () => {
     const modules = acmeModules();
     const w = await world(TWO_COMPONENTS, { modules, lock: lockFor(modules) });
     delete w.adapters.workspace;
-    await expect(new Runtime(w.db, w.adapters).startRun({ pkg: w.pkg, workflow: "Change", input: { task: "t" } })).rejects.toThrow(/no workspace adapter/);
+    await expect(new Runtime(w.db, w.adapters, undefined, undefined, UNSIGNED).startRun({ pkg: w.pkg, workflow: "Change", input: { task: "t" } })).rejects.toThrow(/no workspace adapter/);
   });
 });
 
@@ -175,7 +175,7 @@ describe.runIf(REAL)("two agents on two components in real sandboxes (B3)", () =
 
       const w = await world(TWO_COMPONENTS, { modules, lock: lockFor(modules) });
       w.adapters.loop = { chat, sandbox };
-      const rt = new Runtime(w.db, w.adapters);
+      const rt = new Runtime(w.db, w.adapters, undefined, undefined, UNSIGNED);
       const program = check(TWO_COMPONENTS, "mdt", { modules }).program!;
       const run = await rt.startRun({ pkg: buildPackage(program, lockFor(modules), modules), workflow: "Change", input: { task: "add get_shipment" }, runId: "b3real" });
       expect(run.state, JSON.stringify(run.error ?? run.attention)).toBe("succeeded");

@@ -18,7 +18,7 @@ import { SimTool } from "../src/sim.js";
 import { isObj, type Obj } from "../src/values.js";
 import type { WorkspaceAdapter } from "../src/workspace.js";
 import { fakeGitHubs } from "./fake-github.js";
-import { closeAll, world, type World } from "./helpers.js";
+import { closeAll, world, type World, UNSIGNED } from "./helpers.js";
 import { ACME_SOURCE, acmeModules, lockFor } from "./acme.js";
 import { LAND } from "./acme-changeset.js";
 
@@ -163,7 +163,7 @@ describe("git.merge on GitHub (B4)", () => {
       const w = await world(LAND, { modules, lock: lockFor(modules) });
       w.adapters.tools["git.merge"] = merges;
       w.adapters.workspace = workspace;
-      const rt = new Runtime(w.db, w.adapters);
+      const rt = new Runtime(w.db, w.adapters, undefined, undefined, UNSIGNED);
       const program = check(LAND, "mdt", { modules }).program!;
       const { run } = await approveAll({ ...w, rt }, await rt.startRun({ pkg: buildPackage(program, lockFor(modules), modules), workflow: "Land", input: { task: "scope" }, runId: "gm1" }));
       expect(run.state).toBe("attention_required");

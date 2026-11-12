@@ -13,19 +13,23 @@
 //   mandate explain <code>                 explain a diagnostic code
 //   mandate mcp [--module <file>]…         serve check, explain, apply_patch and views to agents
 //                                          over MCP on stdio (§14)
-//   mandate view <file> [--against <old>] [--format md|html|json] [--lock <lock.json>]
+//   mandate view <file> [--against <old>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>]
 //                                          the program's human views (§15): architecture,
-//                                          authority and cost; with --against, what changed
+//                                          authority and cost; with --against, what changed,
+//                                          the two locks' members and roles included
 //
 //   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key
 //                                          control a run (the runtime's CLI, @mandate/runtime/cli)
+//   mandate key new | decision | verify-decision
+//                                          a member's key, and a decision as its signed record (the runtime's CLI)
 //   mandate test <file>                    run the program's tests with their effect handlers (§6.4)
 //
 // <file> is .mdt text or .json canonical IR. `--module <file>` (repeatable)
 // loads a module the program imports, such as a system model (design doc 9
 // §2.1); `check`, `patch`, `sandbox` and `view` link it in. `check` and `sandbox` read the
 // lock file named by --lock, or else mandate.lock.json next to <file> if there
-// is one. Exit status is 1 when any error diagnostic is reported, 2 on usage
+// is one. `view --against` reads the old version's lock the same way, from
+// --against-lock or else mandate.lock.json next to the old file. Exit status is 1 when any error diagnostic is reported, 2 on usage
 // errors.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -58,9 +62,10 @@ function usage(): never {
       "  sandbox <file> [--agent <name>] [--lock <lock.json>] [--module <file>]…",
       "  target acs <file> [--out <dir>] [--json] [--lock <lock.json>] [--module <file>]…",
       "  explain <code>",
-      "  view <file> [--against <old file>] [--format md|html|json] [--lock <lock.json>] [--module <file>]…",
+      "  view <file> [--against <old file>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>] [--module <file>]…",
       "  mcp [--module <file>]…   (an MCP server on stdio)",
       "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key   (see `mandate status`)",
+      "  key new [--out FILE] | decision <run> <digest> | verify-decision <record.json> --key <public key.pem> [--lock FILE]",
       "  test <file> [--json]",
       "",
     ].join("\n"),
@@ -128,6 +133,7 @@ function main(argv: string[]): void {
   const lockFile = option(plain, "--lock");
   const outDir = option(plain, "--out");
   const against = option(plain, "--against");
+  const againstLock = option(plain, "--against-lock");
   const denials = option(plain, "--denials");
   const format = option(plain, "--format") ?? "md";
   const flags = new Set(plain.filter((a) => a.startsWith("--")));
@@ -271,8 +277,11 @@ function main(argv: string[]): void {
       const program = loadChecked(file, lock);
       if (against !== undefined) {
         const before = loadChecked(against);
-        const v = semanticDiff(before, program);
-        process.stdout.write(format === "json" ? JSON.stringify(v, null, 2) + "\n" : format === "html" ? toHtml(diffDoc(before, program)) : toMarkdown(diffDoc(before, program)));
+        // The old version's lock, for who could decide before; none next to the old file is no lock, not an error.
+        const beforeLock = readLock(against, againstLock, false);
+        const locks = { ...(beforeLock ? { before: beforeLock } : {}), ...(lock ? { after: lock } : {}) };
+        const v = semanticDiff(before, program, locks);
+        process.stdout.write(format === "json" ? JSON.stringify(v, null, 2) + "\n" : format === "html" ? toHtml(diffDoc(before, program, locks)) : toMarkdown(diffDoc(before, program, locks)));
       } else if (format === "json") {
         const views = { architecture: architecture(program), authority: authority(program), cost: cost(program, lock) };
         process.stdout.write(JSON.stringify(views, null, 2) + "\n");
@@ -303,7 +312,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {

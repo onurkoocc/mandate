@@ -9,6 +9,9 @@
 //     "artifacts": ".mandate/artifacts",                         // default
 //     "evidence": { "key": ".mandate/evidence.key", "trusted": ["keys/old.pem"] },   // default key; created if missing
 //     "rateLimits": { "model": { "capacity": 50, "perSecond": 1, "queue": 100 } },     // shared token buckets (§8.6)
+//     "decisions": { "keys": ".mandate/decision-keys", "mode": "signed" | "unsigned" }
+//                 // the members' public keys, <key id>.pem each (spec/envelope.md "Signed decisions"); default directory and mode.
+//                 // "unsigned" takes --by NAME on a decision, as before 0.4; a 0.4 package does not start in it
 
 //     "model":    { "provider": "anthropic" },                  // CLAUDE_API_KEY, CLAUDE_WORKSPACE_ID
 //     "executor": { "managed-agents": { "pollMs": 1000, "maxTurnMs": 3600000 } }
@@ -41,6 +44,7 @@ import type { Adapters, Executor, ToolAdapter, VerifierAdapter } from "./adapter
 import { managedAgentsExecutor, sdkApi } from "./managed-agents.js";
 import { AnthropicModel } from "./anthropic.js";
 import { ArtifactStore, DirBlobs } from "./artifacts.js";
+import { decisionKeysIn } from "./decisions.js";
 import { EvidenceSigner, TrustedKeys } from "./evidence.js";
 import type { BucketConfig } from "./ratelimit.js";
 import type { RuntimeOptions } from "./runtime.js";
@@ -72,6 +76,12 @@ export interface RuntimeConfig {
   evidence: { key: string; trusted?: string[] };
   /** Token buckets every run on this database draws from (§8.6): `model`, `model:<tier>`, `tool`. */
   rateLimits?: Record<string, BucketConfig>;
+  /**
+   * How decisions are taken (spec/envelope.md "Signed decisions"): `keys` is the directory of the members' public
+   * keys, `<key id>.pem` each (default `.mandate/decision-keys`); `mode` is `signed` unless the configuration
+   * says `unsigned`, which a package of 0.1 to 0.3 may run in.
+   */
+  decisions: { keys: string; mode: "signed" | "unsigned" };
   model?: { provider: "anthropic" };
   /** Executors the lock may bind agents to (K45): Claude Managed Agents. Their agents' tools still run in `sandbox` (K79). */
   executor?: { "managed-agents"?: { pollMs?: number; maxTurnMs?: number } };
@@ -101,7 +111,7 @@ export interface RuntimeConfig {
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "evidence", "rateLimits", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard"],
+  "": ["database", "artifacts", "evidence", "rateLimits", "decisions", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard"],
   executor: ["managed-agents"],
   "executor.managed-agents": ["pollMs", "maxTurnMs"],
   boundary: ["integration", "ci", "pinned", "extraRead", "timeoutMs"],
@@ -110,6 +120,7 @@ const KEYS: Record<string, string[]> = {
   "boundary.ci": ["mode", "workflow"],
   workspace: ["components"],
   evidence: ["key", "trusted"],
+  decisions: ["keys", "mode"],
   model: ["provider"],
   sandbox: ["host", "baseline", "path", "toolchain", "isolation", "mode"],
   github: ["repo", "base", "workdir", "repos"],
@@ -138,6 +149,10 @@ export function readConfig(file: string): RuntimeConfig {
   if (ev.key !== undefined && typeof ev.key !== "string") throw new Violation("bad_config", `${file}: "evidence.key" is a file`);
   if (ev.trusted !== undefined && (!Array.isArray(ev.trusted) || !ev.trusted.every((t) => typeof t === "string"))) throw new Violation("bad_config", `${file}: "evidence.trusted" is a list of files`);
   config.evidence = { key: at((ev.key as string | undefined) ?? ".mandate/evidence.key"), ...(ev.trusted ? { trusted: (ev.trusted as string[]).map(at) } : {}) };
+  const dc = (c["decisions"] ?? {}) as { keys?: unknown; mode?: unknown };
+  if (dc.keys !== undefined && typeof dc.keys !== "string") throw new Violation("bad_config", `${file}: "decisions.keys" is a directory`);
+  if (dc.mode !== undefined && dc.mode !== "signed" && dc.mode !== "unsigned") throw new Violation("bad_config", `${file}: "decisions.mode" is "signed" or "unsigned"`);
+  config.decisions = { keys: at((dc.keys as string | undefined) ?? ".mandate/decision-keys"), mode: dc.mode ?? "signed" };
   for (const [k, b] of Object.entries((c["rateLimits"] ?? {}) as Record<string, Record<string, unknown>>)) {
     const keys = Object.keys(b ?? {});
     if (!/^(model|model:[a-z0-9_]+|tool)$/.test(k) || keys.some((x) => !["capacity", "perSecond", "queue", "reserve"].includes(x)) || typeof b["capacity"] !== "number" || typeof b["perSecond"] !== "number") {
@@ -194,6 +209,8 @@ export function runtimeOptions(config: RuntimeConfig, db: Db): RuntimeOptions {
     trustedKeys: [...EvidenceSigner.trustedIn(trustedKeysDir(config)), ...(config.evidence.trusted ?? []).map((f) => readFileSync(f, "utf8"))],
     ...(config.rateLimits ? { rateLimits: config.rateLimits } : {}),
     ...(config.verifier?.process ? { trustedVerifiers: verifierKeys(config) } : {}),
+    // The members' public keys; a file that is not the key its name says stops every command (bad_decision_key).
+    decisions: { mode: config.decisions.mode, keys: decisionKeysIn(config.decisions.keys) },
   };
 }
 

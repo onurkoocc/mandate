@@ -3,7 +3,7 @@
 
 import { afterAll, describe, expect, it } from "vitest";
 import { deferred, SimAgents } from "../src/sim.js";
-import { closeAll, commandIds, start, until, world } from "./helpers.js";
+import { closeAll, commandIds, start, until, world, UNSIGNED } from "./helpers.js";
 import { BOTH, FIX, ISSUE, RETRY } from "./programs.js";
 import { Runtime } from "../src/runtime.js";
 
@@ -109,7 +109,7 @@ describe("Supervision: restart with backoff and journaled jitter (§8.7)", () =>
   it("with durable timers, waits out the backoff as a run state, and the scheduler's tick resumes it (P2-16)", async () => {
     const agents = new SimAgents().on("Worker.fix", (_req, n) => (n === 1 ? { error: { tag: "Timeout" }, cost: { steps: 1 } } : { ok: "fixed", cost: { steps: 1 } }));
     const w = await world(RETRY, { agents });
-    const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { durableTimers: true, signer: w.rt.signer });
+    const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { ...UNSIGNED, durableTimers: true, signer: w.rt.signer });
     const waiting = await rt.startRun({ pkg: w.pkg, workflow: "Retry", runId: "s4", input: ISSUE });
     // No worker sleeps through the backoff: the run waits, with the backoff's end as its deadline.
     expect(waiting.state).toBe("waiting");

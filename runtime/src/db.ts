@@ -167,6 +167,19 @@ create table if not exists workspace_claims (
   run_id text not null,
   claimed_at bigint not null
 );
+create table if not exists decisions (
+  decision_id text primary key,
+  package_hash text not null,
+  run_id text,
+  command_id text,
+  kind text not null,
+  member text not null,
+  role text,
+  key_id text not null,
+  record jsonb not null,
+  signature text not null,
+  accepted_at bigint not null
+);
 `;
 
 /** Opens PostgreSQL at `url`, or an in-process PGlite database when `url` is absent. */

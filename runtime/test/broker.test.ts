@@ -16,7 +16,7 @@ import { Runtime } from "../src/runtime.js";
 import { SimAgents, SimTool } from "../src/sim.js";
 import { isObj, type Obj } from "../src/values.js";
 import { shadowDiff } from "../src/views.js";
-import { closeAll, world } from "./helpers.js";
+import { closeAll, world, UNSIGNED } from "./helpers.js";
 import { acmeModules, lockFor } from "./acme.js";
 import { LAND } from "./acme-changeset.js";
 
@@ -112,7 +112,7 @@ async function incident(mode: "read_only" | "live") {
   const agents = new SimAgents().on("Investigator.analyze", () => ({ ok: { root_cause: "a batch marked Izmir deliveries out for delivery early", evidence: ["t1"], affected_cities: ["Izmir"] }, cost: { steps: 3 } }));
   const w = await world(INCIDENT, { modules, lock: lockFor(modules), agents });
   w.adapters.broker = broker();
-  const rt = new Runtime(w.db, w.adapters);
+  const rt = new Runtime(w.db, w.adapters, undefined, undefined, UNSIGNED);
   const run = await rt.startRun({ pkg: w.pkg, workflow: "Investigate", input: { incident: { since: "2026-10-08T00:00:00Z", tracking_no: "KRV20000001" } }, mode });
   return { w, rt, run, agents };
 }
@@ -201,7 +201,7 @@ describe("read_only and design runs commit nothing (doc 9 §5.2, V19)", () => {
     expect(failed.state).toBe("failed");
     expect(JSON.stringify(failed.error)).toContain("no_samples");
     w.adapters.samples = new SampleReads({ "prod_sim.mcp_errors": [], "prod_sim.core_warnings": [], "prod_sim.shipment_events": [], "prod_sim.shipment_overview": [{ tracking_no: "KRV1", status: "IN_TRANSIT", full_name: "Sample Person" }] });
-    const ok = await new Runtime(w.db, w.adapters).startRun({ pkg: w.pkg, workflow: "Investigate", input: { incident: { since: "x", tracking_no: "KRV1" } }, mode: "design" });
+    const ok = await new Runtime(w.db, w.adapters, undefined, undefined, UNSIGNED).startRun({ pkg: w.pkg, workflow: "Investigate", input: { incident: { since: "x", tracking_no: "KRV1" } }, mode: "design" });
     expect(ok.state).toBe("succeeded");
     expect(((agents.calls.at(-1)!.args[3] as Obj[])[0]!)["full_name"]).toEqual({ $masked: "confidential" });
   });

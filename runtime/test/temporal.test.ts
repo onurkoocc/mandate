@@ -14,7 +14,7 @@ import { Runtime } from "../src/runtime.js";
 import { SimAgents, SimTool, wallClock } from "../src/sim.js";
 import { createWorker, TemporalDriver, workflowId, workflowsPath, type RunOptions } from "../src/temporal/index.js";
 import { isObj } from "../src/values.js";
-import { closeAll, world, type World } from "./helpers.js";
+import { closeAll, world, type World, UNSIGNED } from "./helpers.js";
 import { BUG, FIXBUG, fixbugAgents, RESULTS, USD, waitOf } from "./fixbug.js";
 import { ASK, FIX, ISSUE, NOTIFY } from "./programs.js";
 
@@ -44,10 +44,10 @@ async function scheduled(src: string, o: Parameters<typeof world>[1] & { runOpti
   const w = await world(src, o);
   const taskQueue = `mandate-${randomUUID()}`;
   // The worker's runtime keeps timers durable; control calls share its key, so either can check the evidence.
-  const runtime = new Runtime(w.db, w.adapters, w.faults, undefined, { durableTimers: true, signer: w.rt.signer, artifacts: w.rt.artifacts });
+  const runtime = new Runtime(w.db, w.adapters, w.faults, undefined, { ...UNSIGNED, durableTimers: true, signer: w.rt.signer, artifacts: w.rt.artifacts });
   const worker = await createWorker({ connection: env.nativeConnection, taskQueue, runtime, workflowBundle: bundle });
   const driver = new TemporalDriver(env.client, taskQueue, o.runOptions);
-  return { ...w, rt: runtime, driver, control: new Runtime(w.db, w.adapters, w.faults, driver, { signer: w.rt.signer, artifacts: w.rt.artifacts }), serve: (body) => worker.runUntil(body()) };
+  return { ...w, rt: runtime, driver, control: new Runtime(w.db, w.adapters, w.faults, driver, { ...UNSIGNED, signer: w.rt.signer, artifacts: w.rt.artifacts }), serve: (body) => worker.runUntil(body()) };
 }
 
 async function stateOf(s: Scheduled, runId: string, state: string): Promise<void> {
