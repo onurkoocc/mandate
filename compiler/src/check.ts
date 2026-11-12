@@ -2,7 +2,7 @@
 // against the closed schema, resolve names, run the static checks (Gate 1)
 // and hash it.
 
-import { diag, hasErrors, type Diagnostic, type Span } from "./diag.js";
+import { diag, hasErrors, ptr, type Diagnostic, type Span } from "./diag.js";
 import { hashProgram, type ProgramHashes } from "./hash.js";
 import type { Program } from "./ir/types.js";
 import { sourceMap } from "./ir/sourcemap.js";
@@ -10,11 +10,14 @@ import { validateIr } from "./ir/validate.js";
 import { parseStrictJson, type Json } from "./json/strict-json.js";
 import { parseMdt } from "./parse/parser.js";
 import { resolveNames } from "./resolve/resolve.js";
+import { capsOf } from "./check/caps.js";
 import { roleChecks } from "./check/roles.js";
-import { staticCheck } from "./check/static.js";
+import { staticCheck, type Claim } from "./check/static.js";
+import { containment, opened, skeleton, subprogramShape, subprogramWorkflow, type Room } from "./check/subprogram.js";
 import { lockChecks, moduleLockChecks, roleLockChecks, validateLock, type Lock } from "./lock.js";
 import { link, type Modules } from "./modules.js";
-import { applyPatch, type GovernanceChange, type PatchOp } from "./patch/patch.js";
+import { applyOps, applyPatch, type GovernanceChange, type PatchOp } from "./patch/patch.js";
+import type { DataClass } from "./std/std.js";
 
 export type SourceKind = "mdt" | "json";
 
@@ -62,6 +65,8 @@ export interface CheckOptions {
    * stays opaque. Each module should pass `check` on its own.
    */
   modules?: Modules;
+  /** For a lead's sub-program: the envelope its workflow stands under and its lead's data class (`checkSubprogram`). */
+  claim?: Claim;
 }
 
 export interface ModuleSource {
@@ -111,7 +116,7 @@ export function check(text: string, kind: SourceKind, opts: CheckOptions = {}): 
   // A role is a name too, from 0.4: where one is named, it is a role definition (E1501, E1503).
   diagnostics.push(...roleChecks(loaded.program, loaded.spans, linked.defs));
   // Static checks assume every name resolves.
-  if (!hasErrors(diagnostics)) diagnostics.push(...staticCheck(loaded.program, loaded.spans, linked.defs));
+  if (!hasErrors(diagnostics)) diagnostics.push(...staticCheck(loaded.program, loaded.spans, linked.defs, opts.claim));
   if (opts.lock && !hasErrors(diagnostics)) {
     const lockDiags = validateLock(opts.lock);
     diagnostics.push(...(lockDiags.length ? lockDiags : [...lockChecks({ ...loaded.program, defs: linked.defs }, opts.lock, loaded.spans), ...roleLockChecks(loaded.program, linked, opts.lock, loaded.spans), ...moduleLockChecks(loaded.program, opts.lock, opts.modules)]));
@@ -150,4 +155,79 @@ export function checkPatch(program: Program, base: string, ops: PatchOp[], modul
     requires_approval: r.governance.length > 0,
     ...(r.program ? { program: r.program } : {}),
   };
+}
+
+/** A lead's sub-program, as `check_program` and `submit_program` receive it (spec/envelope.md "plan"). */
+export interface SubprogramInput {
+  /** The program whose `plan` runs the lead, and the modules it imports. */
+  parent: Program;
+  modules?: Modules;
+  /** The workflow of `parent` whose envelope bounds the run. */
+  workflow: string;
+  /** The sub-program's number under its `plan`, which names the skeleton it is a patch to. */
+  number: number;
+  /** The hash of that skeleton. */
+  base: string;
+  ops: PatchOp[];
+  /** The data class of what the lead received (`leadClasses`). */
+  lead: DataClass;
+  /** What is left of the envelope now. */
+  room: Room;
+}
+
+export interface SubprogramCheck {
+  /** The sub-program passed every check and fits what is left of the envelope. */
+  ok: boolean;
+  diagnostics: Diagnostic[];
+  /** When `ok`: the sub-program as the lead wrote it, its hash, and the name of its one workflow. */
+  program?: Program;
+  hash?: string;
+  workflow?: string;
+}
+
+/**
+ * Checks a lead's sub-program and whether it fits what is left of the
+ * envelope (spec/envelope.md "The sub-program", INV-15). In order: the patch
+ * applies to the skeleton of its number; it defines only what a sub-program
+ * may (E1705); all of `check` passes, with every definition of the parent in
+ * sight and its workflow under the parent's envelope; its claim fits `room`
+ * (E1706). Nothing is saved and nothing runs.
+ */
+export function checkSubprogram(i: SubprogramInput): SubprogramCheck {
+  const wf = Object.hasOwn(i.parent.defs, i.workflow) ? i.parent.defs[i.workflow] : undefined;
+  if (wf?.kind !== "workflow" || !wf.envelope) throw new Error(`${i.workflow} is not a workflow with an envelope, so it has no sub-programs`);
+  const patched = applyOps(skeleton(i.parent.module, i.number), i.base, i.ops);
+  if (!patched.program) return { ok: false, diagnostics: patched.diagnostics };
+  const sub = patched.program;
+  const diagnostics = [...patched.diagnostics, ...subprogramShape(sub, i.parent.module, i.number)];
+  if (hasErrors(diagnostics)) return { ok: false, diagnostics };
+  const view = opened(sub, i.parent);
+  const modules = { ...(i.modules ?? {}), [i.parent.module]: i.parent };
+  const checked = check(JSON.stringify(view), "json", { modules, claim: { envelope: wf.envelope, lead: i.lead } });
+  // A name the sub-program defines and its parent already has is reported once, at the definition the lead wrote.
+  const collided = new Set<string>();
+  for (const d of checked.diagnostics) {
+    const name = d.code === "MDT-E0121" ? d.facts?.["name"] : undefined;
+    if (typeof name !== "string") diagnostics.push(d);
+    else if (!collided.has(name)) {
+      collided.add(name);
+      diagnostics.push({ ...d, at: { path: ptr("defs", name) } });
+    }
+  }
+  const workflow = subprogramWorkflow(sub)!;
+  if (!hasErrors(diagnostics)) {
+    const envelope = (wf.envelope.caps ?? []).flatMap((c) => capsOf(link(i.parent, i.modules).defs, c));
+    diagnostics.push(...containment(link(view, modules).defs, workflow, envelope, i.room));
+  }
+  if (hasErrors(diagnostics)) return { ok: false, diagnostics };
+  return { ok: true, diagnostics, program: sub, hash: hashProgram(sub as unknown as Json).program, workflow };
+}
+
+/**
+ * An admitted sub-program as the interpreter runs it: its own definitions
+ * and all its parent sees. Never hashed.
+ */
+export function subprogramLinked(sub: Program, parent: Program, modules: Modules = {}): Program {
+  const view = opened(sub, parent);
+  return { ...sub, defs: link(view, { ...modules, [parent.module]: parent }).defs };
 }

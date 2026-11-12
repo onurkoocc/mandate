@@ -41,47 +41,15 @@ export interface PatchResult {
  * program's names resolve against them (modules.ts).
  */
 export function applyPatch(program: Program, base: string, ops: PatchOp[], modules: Modules = {}): PatchResult {
-  const current = hashProgram(program as unknown as Json).program;
-  if (current !== base) {
-    return {
-      ok: false,
-      governance: [],
-      diagnostics: [
-        diag("E0130", "stale_base: the patch was written against an older version of the program.", { path: "" }, {
-          facts: { base, current },
-        }),
-      ],
-    };
+  const patched = applyOps(program, base, ops);
+  const diagnostics = patched.diagnostics;
+  const next = patched.program;
+  if (next) {
+    const linked = link(next, modules);
+    diagnostics.push(...linked.diagnostics, ...resolveNames(next, undefined, linked.defs));
   }
-  const next = structuredClone(program) as unknown as Json;
-  let root: Json = next;
-  for (const [i, op] of ops.entries()) {
-    try {
-      root = applyOp(root, op);
-    } catch (e) {
-      return {
-        ok: false,
-        governance: [],
-        diagnostics: [
-          diag("E0131", `Patch operation ${i} (${op.op} ${op.path}) failed: ${(e as Error).message}`, { path: op.path }, {
-            facts: { index: i },
-          }),
-        ],
-      };
-    }
-  }
-  const diagnostics = validateIr(root);
-  if (!hasErrors(diagnostics)) {
-    const linked = link(root as unknown as Program, modules);
-    diagnostics.push(...linked.diagnostics, ...resolveNames(root as unknown as Program, undefined, linked.defs));
-  }
-  const ok = !hasErrors(diagnostics);
-  const result: PatchResult = { ok, diagnostics, governance: ok ? governance(program, root as unknown as Program, modules) : [] };
-  if (ok) {
-    result.program = root as unknown as Program;
-    result.hash = hashProgram(root).program;
-  }
-  return result;
+  if (!next || hasErrors(diagnostics)) return { ok: false, diagnostics, governance: [] };
+  return { ok: true, diagnostics, governance: governance(program, next, modules), program: next, hash: hashProgram(next as unknown as Json).program };
 }
 
 function parsePointer(path: string): string[] {
@@ -120,6 +88,29 @@ function applyOp(root: Json, op: PatchOp): Json {
   if (op.op === "remove") delete parent[last];
   else parent[last] = op.value as Json;
   return root;
+}
+
+/**
+ * `program` with `ops` applied, when they were written against its hash and
+ * what they make is valid IR. Names are not resolved: the caller says what
+ * the patched program sees. A lead's sub-program is made this way from its
+ * skeleton (check.ts `checkSubprogram`).
+ */
+export function applyOps(program: Program, base: string, ops: PatchOp[]): { program?: Program; diagnostics: Diagnostic[] } {
+  const current = hashProgram(program as unknown as Json).program;
+  if (current !== base) {
+    return { diagnostics: [diag("E0130", "stale_base: the patch was written against an older version of the program.", { path: "" }, { facts: { base, current } })] };
+  }
+  let root = structuredClone(program) as unknown as Json;
+  for (const [i, op] of ops.entries()) {
+    try {
+      root = applyOp(root, op);
+    } catch (e) {
+      return { diagnostics: [diag("E0131", `Patch operation ${i} (${op.op} ${op.path}) failed: ${(e as Error).message}`, { path: op.path }, { facts: { index: i } })] };
+    }
+  }
+  const diagnostics = validateIr(root);
+  return hasErrors(diagnostics) ? { diagnostics } : { program: root as unknown as Program, diagnostics };
 }
 
 function child(node: Json, token: string): Json {
