@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V02b",
+  "kind": "compile",
+  "title": "The same text goes into a prompt as quoted data.",
+  "spec": [
+    "spec/checks.md#epistemic-types-52"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "../V02a/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/summarize/body/1/value/from/parts/1/expr",
+      "value": {
+        "op": "call",
+        "callee": {
+          "op": "var",
+          "name": "quote"
+        },
+        "args": [
+          {
+            "value": {
+              "op": "var",
+              "name": "log"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V03b",
+  "kind": "compile",
+  "title": "Two par branches that narrow the write capability to disjoint scopes are accepted.",
+  "spec": [
+    "spec/checks.md#capabilities-7"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "../../compiler/test/fixtures/syntax/supervision.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

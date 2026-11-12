@@ -1,0 +1,7 @@
+module m @ 0.1
+fn spin(n: Int) -> Int {
+  loop max_iter 3 {
+    n
+  }
+  n
+}

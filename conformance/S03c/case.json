@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S03c",
+  "kind": "compile",
+  "title": "The branches of a par do not see each other's bindings.",
+  "spec": [
+    "spec/diagnostics.md"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/W/caps/0",
+        "facts": {
+          "name": "A",
+          "expected": "capability"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/W/body/0/branches/y/args/0/value",
+        "facts": {
+          "name": "x",
+          "expected": "value"
+        }
+      }
+    ]
+  }
+}

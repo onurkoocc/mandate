@@ -1,0 +1,14 @@
+module m @ 0.1
+use company.domain.{Issue}
+agent A {
+  skill go(i: Issue) -> Inferred<Text> ! {Model}
+}
+workflow W(issue: Issue) -> Text
+  caps A
+{
+  par {
+    x = delegate A.go(issue)
+    y = delegate A.go(x)
+  }
+  y
+}

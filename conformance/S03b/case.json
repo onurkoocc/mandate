@@ -1,0 +1,71 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S03b",
+  "kind": "compile",
+  "title": "A capability, an agent, a skill, a contract and a variable that do not exist are each refused, at their place.",
+  "spec": [
+    "spec/diagnostics.md"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/Read/value/callee/of",
+        "facts": {
+          "name": "fs",
+          "expected": "value"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/A/caps/1",
+        "facts": {
+          "name": "Writ",
+          "expected": "capability"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/W/body/0/value/skill",
+        "facts": {
+          "name": "goo",
+          "expected": "skill",
+          "did_you_mean": "go"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/W/body/1/value/agent",
+        "facts": {
+          "name": "B",
+          "expected": "agent",
+          "did_you_mean": "A"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/W/body/2/value/contract",
+        "facts": {
+          "name": "Missing",
+          "expected": "contract"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/W/body/3/value",
+        "facts": {
+          "name": "isue",
+          "expected": "value",
+          "did_you_mean": "issue"
+        }
+      }
+    ]
+  }
+}

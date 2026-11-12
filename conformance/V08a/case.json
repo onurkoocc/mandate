@@ -1,0 +1,25 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V08a",
+  "kind": "compile",
+  "title": "A decision cannot be bound to a critical effect directly.",
+  "spec": [
+    "spec/checks.md#decisions-810",
+    "spec/checks.md#effects-6"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0210",
+        "path": "/defs/W/body/1/value/args/1/value"
+      }
+    ]
+  }
+}

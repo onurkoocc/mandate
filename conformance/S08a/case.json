@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S08a",
+  "kind": "compile",
+  "title": "A skill that returns Evidence is refused: programs do not produce Evidence.",
+  "spec": [
+    "spec/checks.md#epistemic-types-52"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0213",
+        "path": "/defs/A/skills/prove/returns"
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S10a",
+  "kind": "compile",
+  "title": "Two definitions in one order give the program hash that S10b gives with the keys in another.",
+  "spec": [
+    "spec/ir.md#hashing",
+    "spec/core.md#1-programs"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "text": "{\"language\":\"mandate/0.1\",\"module\":\"m\",\"version\":\"0.1\",\"defs\":{\"A\":{\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}},\"B\":{\"kind\":\"type\",\"type\":{\"ref\":\"Int\"}}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "hashes": {
+      "program": "sha256:11b50a8b87aa05d94d937b1d90addf941d840778a416dbf29c1a4480b19c5a90",
+      "defs": {
+        "A": "sha256:6a949c33eea8dae5ec8d708b23e3341664216c04419b1df4f533364c4f434f0a",
+        "B": "sha256:d7894df280e35a730c249427607f6f48f0357f8d38cdadcb6392710892ff8a93"
+      }
+    }
+  }
+}

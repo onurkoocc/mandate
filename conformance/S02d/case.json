@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S02d",
+  "kind": "compile",
+  "title": "An unknown field deep inside a definition is refused, at the field.",
+  "spec": [
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "text": "{\"language\":\"mandate/0.1\",\"module\":\"example.minimal\",\"version\":\"0.1\",\"defs\":{\"G\":{\"kind\":\"const\",\"value\":{\"op\":\"text\",\"value\":\"x\",\"extra\":1}}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/G/value/extra"
+      }
+    ]
+  }
+}

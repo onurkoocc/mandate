@@ -1,0 +1,11 @@
+module m @ 0.1
+use std.{git}
+use company.domain.{Issue}
+capability PR = git.pr("company/backend")
+workflow W(i: Issue) -> Bool
+  caps PR
+{
+  effect git.comment(i, "hello") idempotent_by i.id
+  on error(UnknownOutcome) => restart
+  true
+}

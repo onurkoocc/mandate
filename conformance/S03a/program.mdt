@@ -1,0 +1,3 @@
+module m @ 0.1
+use company.domain.{Issue}
+type Finding = { file: Pathh }

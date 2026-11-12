@@ -1,0 +1,7 @@
+module m @ 0.1
+use std.{git}
+use company.domain.{Issue}
+fn note(issue: Issue) -> Bool {
+  effect git.comment(issue, "seen") idempotent_by issue.id
+  true
+}

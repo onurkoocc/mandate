@@ -1,0 +1,35 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S12c",
+  "kind": "compile",
+  "title": "A patch against the current base is validated as any program is: a name that no longer resolves is refused.",
+  "spec": [
+    "spec/ir.md#patches"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "../S12a/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/T/type/ref",
+      "value": "Txt"
+    }
+  ],
+  "base": "sha256:de7fd275a70b581fb60d4486cad1c4f16857b61daa4a7024fed523ee1dc05a25",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/T/type/ref",
+        "facts": {
+          "name": "Txt"
+        }
+      }
+    ]
+  }
+}
