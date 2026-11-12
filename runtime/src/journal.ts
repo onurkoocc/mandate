@@ -134,6 +134,12 @@ export function costDims(c: Cost | Budget | undefined): Record<string, number> {
   return out;
 }
 
+/**
+ * A run's limits as a caller gives them: a cost by dimension, and under an
+ * envelope the delegation attempts the run may start (`agents`).
+ */
+export type Limits = Cost & { agents?: number };
+
 export class Journal {
   constructor(
     readonly db: Db,
@@ -366,7 +372,11 @@ export class Journal {
     return out;
   }
 
-  private async settle(tx: Tx, runId: string, commandId: string, dims: Record<string, number>): Promise<void> {
+  private async settle(tx: Tx, runId: string, commandId: string, cost: Record<string, number>): Promise<void> {
+    // A delegation attempt is spent once it is sent, whatever came of it (spec/envelope.md "The ledger"): what the
+    // command reserved of `agents` is what it settles. No adapter reports it as a cost.
+    const [attempt] = await tx.query<Row>("select amount from reservations where run_id = $1 and command_id = $2 and dimension = 'agents' and state = 'active'", [runId, commandId]);
+    const dims = attempt ? { ...cost, agents: num(attempt["amount"]) } : cost;
     for (const [dim, amount] of Object.entries(dims)) {
       await tx.query("update budgets set settled = settled + $3 where run_id = $1 and dimension = $2", [runId, dim, amount]);
     }
@@ -652,6 +662,22 @@ export class Journal {
       [id, r.package, r.run ?? null, r.command ?? null, r.kind, r.member, r.role ?? null, r.key, json(r as unknown as Value), d.signature, this.now()],
     );
     return id;
+  }
+
+  /**
+   * The stored approvals of a package's envelope, oldest first (spec/envelope.md "Approving an envelope"). They are
+   * about the package and name no run. Whoever reads them checks each one again: a row is not a decision until its
+   * record and signature say so.
+   */
+  async envelopeApprovals(packageHash: string): Promise<StoredDecision[]> {
+    const rows = await this.db.query<Row>("select decision_id, record, signature from decisions where package_hash = $1 and kind = 'envelope' and run_id is null order by accepted_at, decision_id", [packageHash]);
+    return rows.map((r) => ({ decision_id: String(r["decision_id"]), record: r["record"] as StoredDecision["record"], signature: String(r["signature"]) }));
+  }
+
+  /** A stored decision by its digest, whatever it is about. */
+  async decision(decisionId: string): Promise<StoredDecision | undefined> {
+    const [r] = await this.db.query<Row>("select decision_id, record, signature from decisions where decision_id = $1", [decisionId]);
+    return r ? { decision_id: String(r["decision_id"]), record: r["record"] as StoredDecision["record"], signature: String(r["signature"]) } : undefined;
   }
 
   /**

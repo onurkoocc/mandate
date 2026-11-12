@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, bindingChecks, canonicalize, capsOf, check, domainHash, hashProgram, link, linkedProgram, LOCK_FORMAT, modelTiers, packageHash, references, roleLockChecks, SANDBOX_DENIALS_FORMAT, validateLock, workflowBounds, type DenialReport, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { atLeast, bindingChecks, canonicalize, capsOf, check, domainHash, hashProgram, link, linkedProgram, LOCK_FORMAT, modelTiers, packageHash, references, roleLockChecks, SANDBOX_DENIALS_FORMAT, validateLock, workflowBounds, type DenialReport, type Envelope, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
 import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
@@ -16,7 +16,7 @@ import type { Db, Row, Tx } from "./db.js";
 import { Faults } from "./faults.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Policy } from "./interp.js";
-import { costDims, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type RunRow } from "./journal.js";
+import { costDims, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type Limits, type RunRow } from "./journal.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { digest, isObj, type Obj, type Value } from "./values.js";
 
@@ -36,28 +36,33 @@ export interface Package {
   modules?: Modules;
 }
 
-/** The language versions this runtime runs. Of 0.4 it runs roles and signed decisions; see `notRunYet`. */
+/** The language versions this runtime runs. Of 0.4 it runs roles, signed decisions and envelopes; see `notRunYet`. */
 export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4"];
 
 /**
- * What a program uses of 0.4 that this runtime does not run yet: an envelope, `map`, `plan`, and the `agents`
- * budget dimension (spec/envelope.md). The compiler does not check the envelope's own rules (E1701 to E1708) yet
- * either, so a package that uses one of them is refused at load: a version is never run on a best-effort basis (§3.5).
- * A 0.4 program without them is checked in full, and runs.
+ * What a program uses of 0.4 that this runtime does not run yet: `map`, `plan`, and the `agents` dimension in a
+ * budget other than an envelope's (spec/envelope.md). A package that uses one of them is refused at load: a version
+ * is never run on a best-effort basis (§3.5). An envelope runs: its approval, its `agents` ledger, `max_concurrent`
+ * and `approve`. A 0.4 program without the rest is checked in full, and runs.
  */
 export function notRunYet(program: Program): string[] {
   const found = new Set<string>();
-  const walk = (v: unknown, key: string): void => {
-    if (Array.isArray(v)) return v.forEach((x) => walk(x, key));
+  const walk = (v: unknown, key: string, kept: unknown): void => {
+    if (Array.isArray(v)) return v.forEach((x) => walk(x, key, kept));
     if (!v || typeof v !== "object") return;
     const o = v as Record<string, unknown>;
     if (o["op"] === "map" || o["op"] === "plan") found.add(String(o["op"]));
-    if (o["kind"] === "workflow" && o["envelope"] !== undefined) found.add("envelope");
-    if (key === "budget" && o["agents"] !== undefined) found.add("agents");
-    for (const [k, x] of Object.entries(o)) walk(x, k);
+    if (key === "budget" && o["agents"] !== undefined && v !== kept) found.add("agents");
+    for (const [k, x] of Object.entries(o)) walk(x, k, kept);
   };
-  walk(program.defs, "defs");
+  // An envelope's own budget is the one the ledger keeps `agents` for; nothing reserves it anywhere else yet.
+  for (const d of Object.values(program.defs)) walk(d, "", d.kind === "workflow" ? d.envelope?.budget : undefined);
   return [...found].sort();
+}
+
+/** The roles that own an envelope in a program: who may approve its package. */
+function envelopeOwners(program: Program): Set<string> {
+  return new Set(Object.values(program.defs).flatMap((d) => (d.kind === "workflow" && d.envelope?.owner !== undefined ? [d.envelope.owner] : [])));
 }
 
 /** A 0.4 package: its program, or a module it was packaged with, is written in 0.4. Its decisions are always signed. */
@@ -130,8 +135,8 @@ export interface StartOptions {
   input: Obj;
   tenant?: string;
   runId?: string;
-  /** Caller limits; the run gets the minimum of these and the workflow's budget. */
-  limits?: Cost;
+  /** Caller limits; the run gets the minimum of these and the workflow's budget (its envelope's, when it has one). */
+  limits?: Limits;
   authorize?: Policy["authorize"];
   authorizationTtlMs?: number;
   /** Priority class in shared rate limits (§8.6). */
@@ -271,26 +276,100 @@ export class Runtime {
     }
     await this.validateBindings(linked, o.workflow);
     await this.validateExecutor(o.pkg);
+    // A workflow with an envelope starts only once a member of its owner role approved this package (H03).
+    const approval = wf.envelope ? await this.envelopeApproval(o.pkg, o.workflow, wf.envelope) : undefined;
+    const approved = approval ? { package: o.pkg.hash, member: approval.record.member, role: approval.record.role ?? null, key: approval.record.key, decision: approval.decision_id } : undefined;
     const lowered = this.remoteGuarantees(o.pkg.program);
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(workflowBounds(wf).budget), costDims(o.limits));
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
     // The components the program works on start from one base commit each, recorded in the run's manifest (B3).
     const components = await this.prepareWorkspace(runId, o.pkg);
-    const manifest = { format: RUN_MANIFEST_FORMAT, package: o.pkg.hash, workflow: o.workflow, tenant: policy.tenant, input: digest("request", o.input), mode: o.mode ?? "live", components } as unknown as Value;
+    // The manifest of a run under an envelope lists the approval it starts under; another run's manifest is as it was.
+    const manifest = {
+      format: RUN_MANIFEST_FORMAT,
+      package: o.pkg.hash,
+      workflow: o.workflow,
+      tenant: policy.tenant,
+      input: digest("request", o.input),
+      mode: o.mode ?? "live",
+      components,
+      ...(approved ? { envelope_approval: { decision: approved.decision, member: approved.member, role: approved.role, key: approved.key } } : {}),
+    } as unknown as Value;
     const manifestHash = digest("run", manifest);
     await this.db.tx(async (tx) => {
-      await tx.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict (package_hash) do nothing", [
-        o.pkg.hash,
-        JSON.stringify(o.pkg.program),
-        JSON.stringify(o.pkg.lock),
-        JSON.stringify(o.pkg.modules ?? {}),
-      ]);
+      await this.keep(tx, o.pkg);
       await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash });
+      if (approved) await this.journal.event(tx, runId, "envelope_approved", approved);
       for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
     });
     this.packages.set(o.pkg.hash, o.pkg);
     return this.drive(runId, true);
+  }
+
+  /** Stores a package under its hash; one that is already there is left as it is. */
+  private async keep(tx: Tx, pkg: Package): Promise<void> {
+    await tx.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict (package_hash) do nothing", [
+      pkg.hash,
+      JSON.stringify(pkg.program),
+      JSON.stringify(pkg.lock),
+      JSON.stringify(pkg.modules ?? {}),
+    ]);
+  }
+
+  // ── ApproveEnvelope ───────────────────────────────────────────────────
+
+  /**
+   * Takes a member's approval of a package's envelope (spec/envelope.md "Approving an envelope"): a signed decision
+   * of kind `envelope` whose subject is the package hash, made in the `owner` role of an envelope the package has.
+   * It is about the package and no run, so it names no run, revision or command, and one approval serves every run
+   * of that package. Returns the decision's digest.
+   *
+   * It is held to the rules of every decision (INV-16), in their order: who signed, what the record is for, then
+   * the role. A refused approval is `invalid_decision` and nothing is stored; there is no run whose log could
+   * record it.
+   */
+  async approveEnvelope(pkg: Package, signed: SignedDecision): Promise<string> {
+    verifyPackage(pkg);
+    const owners = envelopeOwners(pkg.program);
+    if (!owners.size) throw new Violation("no_envelope", "The package has no workflow with an envelope, so there is nothing to approve.");
+    const refusal = (): Refusal | undefined => {
+      const who = signerRefusal(signed, this.decisionKeys, pkg.lock);
+      if (who) return who;
+      const r = signed.record;
+      const what = shownRefusal(r, { package: pkg.hash, subject: pkg.hash }, ["envelope"]);
+      if (what) return what;
+      if (r.role === undefined || !owners.has(r.role)) {
+        return { reason: "not_in_role", message: `An envelope is approved by its owner role (${[...owners].sort().join(", ")}); the decision is made as ${r.role ?? "no role"}.` };
+      }
+      return roleRefusal(r, pkg.lock, r.role);
+    };
+    const why = refusal();
+    if (why) throw new InvalidDecision(why.reason, why.message);
+    return this.db.tx(async (tx) => {
+      await this.keep(tx, pkg);
+      return this.journal.recordDecision(tx, signed);
+    });
+  }
+
+  /**
+   * The approval a run of an envelope workflow starts under: the oldest stored `envelope` decision for this package
+   * hash, made in the envelope's owner role, that still holds. It is checked again here, as when it arrived: its
+   * record is unchanged, names this package and nothing else, and is signed by a key the package's lock lists under
+   * a member of that role. Without one the run does not start (`unapproved_envelope`, H03). An approval of another
+   * package, however alike, is none: a changed program, lock or module is a new hash (N04).
+   */
+  private async envelopeApproval(pkg: Package, workflow: string, envelope: Envelope): Promise<StoredDecision> {
+    const holds = (d: StoredDecision): boolean =>
+      d.record.role === envelope.owner && !shownRefusal(d.record, { package: pkg.hash, subject: pkg.hash }, ["envelope"]) && !storedProblem(d, this.decisionKeys, pkg.lock);
+    const found = (await this.journal.envelopeApprovals(pkg.hash)).find(holds);
+    if (!found) {
+      throw new Violation(
+        "unapproved_envelope",
+        `No member of ${envelope.owner ?? "its owner role"} has approved package ${pkg.hash}, so ${workflow} does not start. Read its card (mandate view --card) and sign it (mandate approve-envelope).`,
+      );
+    }
+    return found;
   }
 
   /**
@@ -527,11 +606,13 @@ export class Runtime {
   }
 
   private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters): Interpreter {
+    const wf = Object.hasOwn(loaded.program.defs, run.workflow) ? loaded.program.defs[run.workflow] : undefined;
     return new Interpreter({
       journal: this.journal,
       adapters,
       program: loaded.program,
       decisions: { keys: this.decisionKeys, lock: loaded.lock, required: loaded.signed },
+      ...(wf?.kind === "workflow" && wf.envelope ? { envelope: wf.envelope } : {}),
       packageHash: run.package_hash,
       runId: run.run_id,
       fence,
@@ -620,7 +701,10 @@ export class Runtime {
   async verifyDecisions(runId: string): Promise<Array<StoredDecision & { valid: boolean; problem?: string }>> {
     const run = await this.journal.run(runId);
     const { lock } = await this.loaded(run.package_hash);
-    return (await this.journal.decisions(runId)).map((d) => {
+    // A run under an envelope started on its owner's approval of the package: the decision its manifest lists comes first.
+    const listed = isObj(run.manifest) && isObj(run.manifest["envelope_approval"] ?? null) ? (run.manifest["envelope_approval"] as Obj)["decision"] : undefined;
+    const approval = typeof listed === "string" ? await this.journal.decision(listed) : undefined;
+    return [...(approval ? [approval] : []), ...(await this.journal.decisions(runId))].map((d) => {
       const problem = storedProblem(d, this.decisionKeys, lock);
       return { ...d, valid: !problem, ...(problem ? { problem } : {}) };
     });
@@ -757,7 +841,7 @@ export class Runtime {
    * message. The run itself goes on when its `budget_exceeded` question is
    * answered.
    */
-  async raiseLimits(runId: string, msg: Message, r: { revision: number; limits: Cost; by: string } | { limits: Cost; signed: SignedDecision }): Promise<RunRow> {
+  async raiseLimits(runId: string, msg: Message, r: { revision: number; limits: Limits; by: string } | { limits: Limits; signed: SignedDecision }): Promise<RunRow> {
     const seen = await this.journal.run(runId);
     const loaded = await this.loaded(seen.package_hash);
     const wf = loaded.program.defs[seen.workflow];
@@ -775,7 +859,13 @@ export class Runtime {
       if (TERMINAL.has(run.state)) throw new Violation("run_ended", `Run ${runId} has ended (${run.state}).`);
       for (const [dim, limit] of Object.entries(wanted)) {
         if (dim in program && limit > program[dim]!) {
-          throw new Violation("above_program_budget", `${run.workflow} declares a ${dim} budget of ${program[dim]}; raising the run to ${limit} needs a new program version (§13.2).`);
+          const enveloped = wf?.kind === "workflow" && !!wf.envelope;
+          throw new Violation(
+            "above_program_budget",
+            enveloped
+              ? `${run.workflow}'s envelope gives a ${dim} budget of ${program[dim]}; raising the run to ${limit} needs an amendment of the envelope, which its owner approves (spec/envelope.md).`
+              : `${run.workflow} declares a ${dim} budget of ${program[dim]}; raising the run to ${limit} needs a new program version (§13.2).`,
+          );
         }
       }
       const before = await this.journal.raiseLimits(tx, runId, wanted);

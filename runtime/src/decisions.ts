@@ -88,15 +88,34 @@ export interface Shown {
   role?: string;
 }
 
-/** The record for a decision of `kind` on what `shown` shows, signed with a member's key. */
-export function signDecision(key: EvidenceSigner, shown: Shown, d: { kind: DecisionKind; member: string; payload?: string; at: Date | string }): SignedDecision {
+/**
+ * What a package shows to whoever approves its envelope (spec/envelope.md
+ * "Approving an envelope"): the package hash, as the package and as the
+ * subject, and the envelope's `owner` role. The approval is about no run,
+ * so it names no run, revision or command.
+ */
+export interface ShownPackage {
+  package: string;
+  subject: string;
+  role: string;
+}
+
+/** What the approval of package `hash`'s envelope must name, for a workflow owned by `owner`. */
+export function shownPackage(hash: string, owner: string): ShownPackage {
+  return { package: hash, subject: hash, role: owner };
+}
+
+/**
+ * The record for a decision of `kind` on what `shown` shows, signed with a
+ * member's key. An envelope's approval is signed on a `ShownPackage`.
+ */
+export function signDecision(key: EvidenceSigner, shown: Shown | ShownPackage, d: { kind: DecisionKind; member: string; payload?: string; at: Date | string }): SignedDecision {
   const record: DecisionRecord = {
     format: DECISION_FORMAT,
     kind: d.kind,
     package: shown.package,
-    run: shown.run,
-    revision: shown.revision,
-    ...(shown.command !== undefined ? { command: shown.command } : {}),
+    ...("run" in shown ? { run: shown.run, revision: shown.revision } : {}),
+    ...("command" in shown && shown.command !== undefined ? { command: shown.command } : {}),
     subject: shown.subject,
     ...(shown.role !== undefined ? { role: shown.role } : {}),
     member: d.member,
@@ -216,16 +235,20 @@ export function roleRefusal(record: DecisionRecord, lock: Lock, role: string | u
  * the digest of what comes with it (`payload`: the answer, the new limits,
  * the reconciliation; none for an approval, a decline or a cancel). A
  * decision on another revision is `stale_revision`; a cancel is taken on any
- * revision, so `shown.revision` is absent for it.
+ * revision, so `shown.revision` is absent for it. An envelope's approval is
+ * about a package and no run: `shown` has no run, and the record must name
+ * none, nor a revision or a command.
  */
-export function shownRefusal(record: DecisionRecord, shown: Omit<Shown, "revision" | "role"> & { revision?: number }, kinds: readonly DecisionKind[], payload?: string): Refusal | undefined {
+export function shownRefusal(record: DecisionRecord, shown: Omit<Shown, "run" | "revision" | "role"> & { run?: string; revision?: number }, kinds: readonly DecisionKind[], payload?: string): Refusal | undefined {
   if (record.package !== shown.package || record.run !== shown.run) {
-    return { reason: "subject_mismatch", message: `The decision is for run ${record.run ?? "(none)"} of package ${record.package}, not for run ${shown.run} of package ${shown.package}.` };
+    const of = (run: string | undefined, pkg: string): string => `${run === undefined ? "" : `run ${run} of `}package ${pkg}`;
+    return { reason: "subject_mismatch", message: `The decision is for ${of(record.run, record.package)}, not for ${of(shown.run, shown.package)}.` };
   }
   if (!kinds.includes(record.kind)) return { reason: "subject_mismatch", message: `A decision of kind ${record.kind} does not answer this; it takes ${kinds.join(" or ")}.` };
   if (shown.revision !== undefined && record.revision !== shown.revision) {
     return { reason: "stale_revision", message: `The decision was made on revision ${record.revision ?? "(none)"}; run ${shown.run} is at revision ${shown.revision}.` };
   }
+  if (shown.run === undefined && record.revision !== undefined) return { reason: "subject_mismatch", message: "The decision names a revision, and it is about a package, not a run." };
   if (record.command !== shown.command) return { reason: "subject_mismatch", message: `The decision names ${record.command ?? "no command"}; the run shows ${shown.command ?? "none"}.` };
   if (record.subject !== shown.subject) return { reason: "subject_mismatch", message: "The decision names something other than what is waiting for it." };
   if (record.payload !== payload) return { reason: "subject_mismatch", message: payload === undefined ? `A decision of kind ${record.kind} carries no payload.` : "The decision's payload is not the digest of what was sent with it." };
