@@ -65,7 +65,7 @@ import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type Trusted
 import type { RateLimiter } from "./ratelimit.js";
 import type { Faults } from "./faults.js";
 import { runAgentLoop, type LoopTask } from "./loop.js";
-import { PLAN_TOOLS, planBrief, Planner, RunFault, Shared, type PlanHost, type ProgramChecker } from "./plan.js";
+import { PLAN_TOOLS, planBrief, Planner, Shared, type PlanHost, type ProgramChecker } from "./plan.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import type { ActionRow, Admission, CommandRow, Journal } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
@@ -572,16 +572,17 @@ export class Interpreter {
     const ends: Array<ItemEnd | undefined> = new Array<ItemEnd | undefined>(over.length).fill(undefined);
     let stopped = false;
     let next = 0;
+    // What an item may write is held from here until the item has ended, also by an item that has not started
+    // yet: a sub-program admitted meanwhile is kept clear of every place the map still writes (C5 across the run).
+    const holder = (i: number): string => `${path}[${i}]`;
+    writes.forEach((held, i) => void (held.length && this.shared.writes.set(holder(i), held)));
     const worker = async (): Promise<void> => {
       // A failed branch of a `par` around the map stops an item at its next command, like any command of that
       // branch, and that stop ends the map here.
       while (!stopped && next < over.length) {
         const i = next++;
-        // What the item may write is held while it runs: a sub-program admitted meanwhile is kept clear of it (C5).
-        const holder = `${path}[${i}]`;
-        if (writes[i]!.length) this.shared.writes.set(holder, writes[i]!);
         try {
-          ends[i] = { ok: await this.block(e.body, items[i]!, `${holder}/body`) };
+          ends[i] = { ok: await this.block(e.body, items[i]!, `${holder(i)}/body`) };
         } catch (x) {
           if (x instanceof Fault && x.tag !== "BudgetExceeded") {
             ends[i] = { fault: x };
@@ -591,7 +592,7 @@ export class Interpreter {
             stopped = true;
           }
         } finally {
-          this.shared.writes.delete(holder);
+          this.shared.writes.delete(holder(i));
         }
       }
     };
@@ -603,7 +604,11 @@ export class Interpreter {
       // has decided by now.
       if (!end) throw new Error(`map ${path}: item ${i} did not run, and no earlier item stopped the map`);
       if ("stop" in end) throw end.stop;
-      if ("fault" in end && failFast) throw end.fault;
+      if ("fault" in end && failFast) {
+        // The map has failed: the items it did not start will not run, and hold nothing.
+        for (let j = next; j < over.length; j++) this.shared.writes.delete(holder(j));
+        throw end.fault;
+      }
       out.push("ok" in end ? tag("Ok", end.ok) : tag("Failed", end.fault.value()));
     }
     return out;
@@ -1124,13 +1129,7 @@ export class Interpreter {
       return replayed(await this.o.journal.command(this.o.runId, path), path);
     }
     if (!this.o.adapters.loop) throw new Violation("no_agent_loop", `The plan at ${path} runs ${e.agent}.${e.skill} as an agent loop, and this runtime has none (adapters.loop).`);
-    try {
-      return await this.attempt(e.agent, e, pos, [], ctx, path, 0, undefined, planner);
-    } catch (x) {
-      // The run's own budget ran out below a sub-program: the fault is the run's, and the lead stays in flight.
-      if (x instanceof RunFault) throw x.fault;
-      throw x;
-    }
+    return this.attempt(e.agent, e, pos, [], ctx, path, 0, undefined, planner);
   }
 
   /**

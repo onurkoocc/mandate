@@ -8,6 +8,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import type { Cost } from "../src/adapters.js";
 import type { Admission, Journal } from "../src/journal.js";
+import { Cancelled } from "../src/signals.js";
 import { closeAll, world } from "./helpers.js";
 import { FIX } from "./programs.js";
 
@@ -29,6 +30,10 @@ interface Ledger {
   send(id: string, reserve: Cost | undefined, o?: { within?: string; inside?: string }): Promise<unknown>;
   done(id: string, cost: Cost | "unknown", within?: string): Promise<void>;
   events(type: string): Promise<unknown[]>;
+  /** What the budget report says each command reserved, whatever became of the reservation. */
+  reported(id: string): Promise<Record<string, number> | undefined>;
+  /** Somebody asks for the run to be cancelled. */
+  cancel(): Promise<void>;
 }
 
 /** A run with these limits and nothing dispatched, and the worker that holds its lease. */
@@ -54,6 +59,8 @@ async function ledger(limits: Record<string, number>): Promise<Ledger> {
     // Only a call that failed may not know what it cost yet: a timeout, or a cancellation (R16).
     done: (id, cost, within) => j.complete(RUN, l.fence, id, cost === "unknown" ? { error: { tag: "Timeout", args: [] }, cost } : { ok: null, cost }, within),
     events: async (type) => (await j.events(RUN)).filter((e) => e.type === type).map((e) => e.data),
+    reported: async (id) => (await j.budgetReport(RUN)).commands.find((c) => c.command === id)?.reserved,
+    cancel: async () => void (await w.db.query("update runs set cancel_requested = true where run_id = $1", [RUN])),
   };
   return l;
 }
@@ -92,6 +99,29 @@ describe("admission", () => {
     expect(await l.run()).toEqual({ tokens: [0, 1000], steps: [0, 10], agents: [0, 2] });
     expect(await l.events("program_admitted")).toHaveLength(1);
   });
+
+  it("admits nothing into a run that somebody asked to cancel", async () => {
+    const l = await ledger(LIMITS);
+    await l.cancel();
+    let stored = 0;
+    await expect(l.j.admitProgram(RUN, l.fence, { plan: PLAN, number: 1, step: `${PLAN}/step/1/tool/0`, command: P(), hash: "sha256:h", base: "sha256:b", artifact: "sha256:a", workflow: "Fix" }, BUDGET, "digest:1", async () => void stored++)).rejects.toBeInstanceOf(Cancelled);
+    expect(stored).toBe(0);
+    expect(await l.held()).toEqual({});
+    expect(await l.j.command(RUN, P())).toBeUndefined();
+    expect(await l.events("program_admitted")).toEqual([]);
+  });
+
+  it("records what a lead did at a step once, however often the run comes to the step again", async () => {
+    const l = await ledger(LIMITS);
+    const step = `${PLAN}/step/1/tool/0`;
+    await l.j.programEvent(RUN, l.fence, "program_submitted", { step, ok: false });
+    await l.j.programEvent(RUN, l.fence, "program_submitted", { step, ok: false });
+    await l.j.programEvent(RUN, l.fence, "program_refused", { step, codes: ["MDT-E1706"] });
+    await l.j.programEvent(RUN, l.fence, "program_refused", { step, codes: ["MDT-E1706"] });
+    await l.j.programEvent(RUN, l.fence, "program_submitted", { step: `${PLAN}/step/2/tool/0`, ok: true });
+    expect(await l.events("program_submitted")).toEqual([{ step, ok: false }, { step: `${PLAN}/step/2/tool/0`, ok: true }]);
+    expect(await l.events("program_refused")).toEqual([{ step, codes: ["MDT-E1706"] }]);
+  });
 });
 
 describe("a command inside a sub-program", () => {
@@ -124,16 +154,29 @@ describe("a command inside a sub-program", () => {
     await expect(l.send(D(3), { tokens: 100, steps: 1, agents: 1 } as Cost, { inside: P() })).rejects.toMatchObject({ tag: "BudgetExceeded", args: [{ dimension: "agents", requested: 1, available: 0, program: P() }] });
   });
 
-  it("takes a dimension the program does not hold from the run", async () => {
+  it("takes nothing from the run: a dimension the run is limited in and the program holds none of is refused", async () => {
     const l = await ledger(LIMITS);
-    await l.admit(1, { tokens: 1000 });
-    await l.send(D(0), { tokens: 400, steps: 4 }, { inside: P() });
-    expect(await l.held()).toEqual({ [P()]: { tokens: 600 }, [D(0)]: { tokens: 400, steps: 4 } });
-    expect(await l.run()).toMatchObject({ tokens: [0, 1000], steps: [0, 4] });
-    await expect(l.send(D(1), { tokens: 100, steps: 47 }, { inside: P() })).rejects.toMatchObject({ tag: "BudgetExceeded", args: [{ dimension: "steps", requested: 47, available: 46 }] });
-    await l.done(D(0), { tokens: 100, steps: 3 });
-    expect(await l.held()).toEqual({ [P()]: { tokens: 900 } });
-    expect(await l.run()).toMatchObject({ tokens: [100, 900], steps: [3, 0] });
+    // The program was admitted with tokens, with no steps at all, and with agents named as nothing.
+    await l.admit(1, { tokens: 1000, agents: 0 } as Cost);
+    expect(await l.held()).toEqual({ [P()]: { tokens: 1000 } });
+    await expect(l.send(D(0), { tokens: 400, steps: 4 }, { inside: P() })).rejects.toMatchObject({ tag: "BudgetExceeded", args: [{ dimension: "steps", requested: 4, available: 0, program: P() }] });
+    await expect(l.send(D(0), { tokens: 400, agents: 1 } as Cost, { inside: P() })).rejects.toMatchObject({ tag: "BudgetExceeded", args: [{ dimension: "agents", requested: 1, available: 0, program: P() }] });
+    // Neither took anything, of the program or of the run, though the run has 50 steps and 10 agents.
+    expect(await l.held()).toEqual({ [P()]: { tokens: 1000 } });
+    expect(await l.run()).toEqual({ tokens: [0, 1000], steps: [0, 0], agents: [0, 0] });
+    expect(await l.j.command(RUN, D(0))).toBeUndefined();
+  });
+
+  it("holds a command to what the program claimed of a dimension the run has no limit in, and to nothing in one neither names", async () => {
+    const l = await ledger(LIMITS);
+    const usd = (micros: number): Cost => ({ spend: { micros, currency: "USD" } });
+    await l.admit(1, { ...BUDGET, ...usd(500_000) });
+    await l.send(D(0), { ...SHARE, ...usd(300_000) }, { inside: P() });
+    expect((await l.held())[P()]).toMatchObject({ "spend:USD": 200_000 });
+    await expect(l.send(D(1), { tokens: 100, ...usd(300_000) }, { inside: P() })).rejects.toMatchObject({ tag: "BudgetExceeded", args: [{ dimension: "spend:USD", requested: 300_000, available: 200_000, program: P() }] });
+    // Nobody limits euros here: not the run, and not the program.
+    await l.send(D(2), { tokens: 100, spend: { micros: 900_000, currency: "EUR" } }, { inside: P() });
+    expect((await l.held())[D(2)]).toEqual({ tokens: 100, "spend:EUR": 900_000 });
   });
 
   it("gives its share back when it is throttled, and takes one again when it is sent again", async () => {
@@ -254,9 +297,13 @@ describe("a sub-program's end", () => {
     await l.send(D(0), SHARE, { inside: P() });
     await l.done(D(0), "unknown");
     await l.j.closeProgram(RUN, l.fence, P(), { ok: null });
+    const closed = await l.reported(P());
+    expect(closed).toEqual({ tokens: 600, steps: 6, agents: 1 });
     await l.j.settleCharge(RUN, D(0), { tokens: 250, steps: 1 });
     expect(await l.held()).toEqual({});
     expect(await l.run()).toEqual({ tokens: [250, 0], steps: [1, 0], agents: [1, 0] });
+    // The program's row stays as it was released: nothing goes back into a program that has ended.
+    expect(await l.reported(P())).toEqual(closed);
   });
 
   it("is refused for what is no sub-program", async () => {

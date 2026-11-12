@@ -297,10 +297,12 @@ export class Journal {
    *
    * `inside` names the sub-program the command belongs to (`admitProgram`).
    * What it reserves is then a share of what the program reserved when it
-   * was admitted, in every dimension the program holds: the share must fit
-   * in what is left of the program's reservation and comes out of it, so the
-   * run as a whole holds no more than it did (N02, INV-15). One that does not
-   * fit is `BudgetExceeded` naming the program.
+   * was admitted: the share must fit in what is left of the program's
+   * reservation and comes out of it, so the run as a whole holds no more
+   * than it did (N02, INV-15). One that does not fit is `BudgetExceeded`
+   * naming the program. That holds in every dimension the run is limited
+   * in, also one the program reserved nothing of: nothing inside a
+   * sub-program is taken from the run.
    */
   async dispatch(
     runId: string,
@@ -345,15 +347,17 @@ export class Journal {
 
   /**
    * available = limit − settled − active reservations; reserve only if it fits (§8.6). Inside a sub-program, a
-   * dimension the program holds is taken from the program's reservation and not from the run.
+   * dimension the run is limited in, or the program holds, is taken from the program's reservation and never
+   * from the run: a program that holds none of it has none to give.
    */
   private async reserve(tx: Tx, runId: string, commandId: string, dims: Record<string, number>, inside?: string): Promise<void> {
     const held = inside ? await this.activeReservations(tx, runId, inside) : {};
     for (const [dim, amount] of Object.entries(dims)) {
       if (amount <= 0) continue;
       const [b] = await tx.query<Row>("select limit_value, settled from budgets where run_id = $1 and dimension = $2", [runId, dim]);
-      if (inside && Object.hasOwn(held, dim)) {
-        if (amount > held[dim]!) throw new Fault("BudgetExceeded", [{ dimension: dim, requested: amount, available: held[dim]!, program: inside }]);
+      if (inside && (b || Object.hasOwn(held, dim))) {
+        const left = held[dim] ?? 0;
+        if (amount > left) throw new Fault("BudgetExceeded", [{ dimension: dim, requested: amount, available: left, program: inside }]);
         await this.giveBack(tx, runId, inside, dim, -amount);
       } else if (b) {
         const [r] = await tx.query<Row>("select coalesce(sum(amount), 0) as active from reservations where run_id = $1 and dimension = $2 and state = 'active'", [runId, dim]);
@@ -538,6 +542,19 @@ export class Journal {
   /** The sub-programs admitted at a `plan` node, in the order of their numbers. */
   async admissions(runId: string, plan: string): Promise<Admission[]> {
     const rows = await this.db.query<Row>("select data from events where run_id = $1 and type = 'program_admitted' and data->>'plan' = $2 order by seq", [runId, plan]);
+    return rows.map((r) => r["data"] as unknown as Admission);
+  }
+
+  /**
+   * The sub-programs of a run that were admitted and have not ended, in the order they were admitted. One that
+   * waits, for a person or for the run to be resumed, is among them.
+   */
+  async inFlight(runId: string): Promise<Admission[]> {
+    const rows = await this.db.query<Row>(
+      `select e.data from events e join commands c on c.run_id = e.run_id and c.command_id = e.data->>'command'
+       where e.run_id = $1 and e.type = 'program_admitted' and c.state = 'dispatched' order by e.seq`,
+      [runId],
+    );
     return rows.map((r) => r["data"] as unknown as Admission);
   }
 

@@ -228,7 +228,6 @@ export function overLimit(ops: unknown): OverLimit | undefined {
       for (const [k, x] of Object.entries(v)) {
         bytes += Buffer.byteLength(k, "utf8") + 4;
         walk(x, depth + 1);
-        if (over) return;
       }
     } else bytes += 8;
     if (bytes > LIMITS.sourceBytes) over = { limit: "size", max: LIMITS.sourceBytes };
@@ -265,7 +264,10 @@ export class Shared {
   /** Delegations in flight in the run, and those waiting for a place among them (`spawn.max_concurrent`). */
   inFlight = 0;
   readonly waiting: Array<() => void> = [];
-  /** The write capabilities that map items and sub-programs in flight hold, by the path they run under (C5 across the run). */
+  /**
+   * The write capabilities that the items of a map in flight hold, by the path each runs under (C5 across the
+   * run). Those of a sub-program in flight are read from the journal (`Journal.inFlight`).
+   */
   readonly writes = new Map<string, CapVal[]>();
   private last: Promise<unknown> = Promise.resolve();
 
@@ -282,15 +284,6 @@ export class Shared {
   }
 }
 
-/**
- * A fault that is the run's and not the sub-program's: the run's own budget ran out below a sub-program. It
- * leaves the lead's loop as it is, in flight, and the interpreter hands the fault inside to the run.
- */
-export class RunFault extends Error {
-  constructor(readonly fault: Fault) {
-    super(fault.message);
-  }
-}
 
 // ── a lead's tools ──────────────────────────────────────────────────────
 
@@ -396,7 +389,6 @@ export class Planner {
         const admitted = await h.journal.admitProgram(h.runId, h.fence, a, wf?.kind === "workflow" ? wf.budget : undefined, digest("request", { kind: "program", request: { plan: a.plan, number, hash: a.hash } }), async (tx) => {
           await h.artifacts.put(h.scope, bytes, PROGRAM_MEDIA_TYPE, tx);
         });
-        h.shared.writes.set(admitted.command, this.writes(sub, admitted.workflow));
         return { admitted, sub };
       } catch (e) {
         // Something reserved what the check saw as left, between the check and the admission.
@@ -420,7 +412,11 @@ export class Planner {
   private async room(): Promise<Room> {
     const h = this.h;
     const left = Object.fromEntries(Object.entries(await h.journal.budget(h.runId)).map(([dim, b]) => [dim, b.limit - b.settled - b.reserved]));
-    return { left, ...(h.deadline !== undefined ? { time_left_ms: h.deadline - h.now() } : {}), writes: h.shared.writesBeside(h.plan) };
+    // A sub-program that was admitted and has not ended holds its writes, whether it runs now or waits, for a
+    // person or for the run to be resumed. The journal says which those are, so no order of events hides one.
+    const programs: CapVal[] = [];
+    for (const a of await h.journal.inFlight(h.runId)) programs.push(...this.writes(await this.load(a), a.workflow));
+    return { left, ...(h.deadline !== undefined ? { time_left_ms: h.deadline - h.now() } : {}), writes: [...h.shared.writesBeside(h.plan), ...programs] };
   }
 
   /** The write capabilities a sub-program's workflow holds while it runs. */
@@ -452,18 +448,14 @@ export class Planner {
     // A replay runs it against the journal even when the journal says how it ended, and holds the two to each other.
     if (ended && !h.replay) return told(ended);
     sub ??= await this.load(a);
-    if (!h.shared.writes.has(a.command)) h.shared.writes.set(a.command, this.writes(sub, a.workflow));
     let outcome: { ok: Value } | { error: { tag: string; args: Value[] } };
     try {
       outcome = { ok: await h.run(a, sub) };
     } catch (e) {
+      // A fault is how the sub-program ended, a budget that ran out among them: what runs inside it is paid from
+      // its own reservation and never from the run's (N02). Anything else stops the lead's step where it is.
       if (!(e instanceof Fault)) throw e;
-      // The run's own budget is the run's to handle; a budget that ran out inside this program is the program's.
-      const program = isObj(e.args[0] ?? null) ? (e.args[0] as { program?: Value }).program : undefined;
-      if (e.tag === "BudgetExceeded" && program !== a.command) throw new RunFault(e);
       outcome = { error: { tag: e.tag, args: e.args } };
-    } finally {
-      h.shared.writes.delete(a.command);
     }
     const now = "ok" in outcome ? { ok: outcome.ok } : { error: new Fault(outcome.error.tag, outcome.error.args).value() };
     if (h.replay) {

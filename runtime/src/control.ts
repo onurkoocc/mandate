@@ -158,7 +158,7 @@ export function readConfig(file: string): RuntimeConfig {
   if (dc.mode !== undefined && dc.mode !== "signed" && dc.mode !== "unsigned") throw new Violation("bad_config", `${file}: "decisions.mode" is "signed" or "unsigned"`);
   config.decisions = { keys: at((dc.keys as string | undefined) ?? ".mandate/decision-keys"), mode: dc.mode ?? "signed" };
   const checkMs = (c["plan"] as { checkMs?: unknown } | undefined)?.checkMs;
-  if (checkMs !== undefined && (typeof checkMs !== "number" || !Number.isInteger(checkMs) || checkMs < 1)) throw new Violation("bad_config", `${file}: "plan.checkMs" is a whole number of milliseconds, at least 1`);
+  if (checkMs !== undefined && (!Number.isInteger(checkMs) || (checkMs as number) < 1)) throw new Violation("bad_config", `${file}: "plan.checkMs" is a whole number of milliseconds, at least 1`);
   for (const [k, b] of Object.entries((c["rateLimits"] ?? {}) as Record<string, Record<string, unknown>>)) {
     const keys = Object.keys(b ?? {});
     if (!/^(model|model:[a-z0-9_]+|tool)$/.test(k) || keys.some((x) => !["capacity", "perSecond", "queue", "reserve"].includes(x)) || typeof b["capacity"] !== "number" || typeof b["perSecond"] !== "number") {

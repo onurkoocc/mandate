@@ -388,6 +388,16 @@ agent A {
     ]);
   });
 
+  it("flags an effect that becomes irreversible, and a new one that is", () => {
+    const wipe = `effect ops.wipe(i: Issue) -> Bool\n  requires caps Write\n  critical\n  idempotency required\n  retry_class reconcilable\n`;
+    const p = check(`${src}\n${wipe}`, "mdt").program!;
+    const q = check(`${src}\n${wipe}  irreversible\n`, "mdt").program!;
+    expect(q.defs["ops.wipe"]).toMatchObject({ kind: "effect", irreversible: true });
+    expect(changes(p, [{ op: "add", path: "/defs/ops.wipe/irreversible", value: true }])).toEqual([{ kind: "irreversible_added", path: "/defs/ops.wipe", detail: "~ effect ops.wipe became irreversible" }]);
+    expect(changes(q, [{ op: "remove", path: "/defs/ops.wipe/irreversible" }])).toEqual([]);
+    expect(changes(check(src, "mdt").program!, [{ op: "add", path: "/defs/ops.wipe", value: q.defs["ops.wipe"] }])).toEqual([{ kind: "irreversible_added", path: "/defs/ops.wipe", detail: "+ irreversible effect ops.wipe" }]);
+  });
+
   it("flags a removed contract once, as its criteria removed", () => {
     const p = check(src, "mdt").program!;
     expect(changes(p, [{ op: "remove", path: "/defs/Done" }])).toEqual([{ kind: "criterion_removed", path: "/defs/Done", detail: "- contract Done removed" }]);

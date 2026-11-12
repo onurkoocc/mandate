@@ -187,6 +187,16 @@ describe("plan: a lead's sub-program", () => {
     expect(await events(w, "n09", "program_refused")).toMatchObject([{ codes: ["MDT-E1705"] }]);
   });
 
+  it("is shown at most 40 diagnostics of a refusal, and told how many more there are", async () => {
+    const roles = Array.from({ length: 45 }, (_, i) => `role extra_${i} "One more role"`).join("\n");
+    const w = await planned([submit(1, `${roles}\n\n${fixes(["a"])}`), finish()]);
+    const r = await run(w, "many");
+    expect(state(r)).toBe("succeeded null");
+    expect(w.told[0]).toMatchObject({ admitted: false, number: 1, more: 5 });
+    expect(refusals(w.told[0])).toHaveLength(40);
+    expect(new Set(refusals(w.told[0]).map((d) => (d as unknown[])[0]))).toEqual(new Set(["MDT-E1705"]));
+  });
+
   it("is numbered by what was admitted: a refused submission does not advance the number, and an old base is stale", async () => {
     const w = await planned([
       submit(1, fixes(["a"], "{ tokens: 500k, steps: 40, agents: 4 }")),
@@ -221,6 +231,39 @@ describe("plan: a lead's sub-program", () => {
 });
 
 // ── the ledger ──────────────────────────────────────────────────────────
+
+// ── more leads than one ─────────────────────────────────────────────────
+
+/** A workflow whose two branches each run a lead. */
+const BRANCHES = `  par {\n    one = plan Lead.finish(items) within envelope\n    two = plan Lead.finish(items) within envelope\n  }\n  one`;
+const ONE = "/defs/W/body/0/branches/one";
+const TWO = "/defs/W/body/0/branches/two";
+
+/** A sub-program that hands one item to a worker, which may write below `dir` and nowhere else. */
+const narrowed = (dir: string, item: string): string => `capability Mine = SrcWrite.narrow("${dir}")\n\n${sub(`  delegate Worker.fix(Item { name: "${item}" }) with caps Mine`, BUDGET, "RepoRead, Mine, ModelStd")}`;
+
+/** What refuses a sub-program of `narrowed` that asks to write below `asks` while `held` is held. */
+const heldBy = (asks: string, held: string): unknown[] => [["MDT-E1706", "/defs/Fix/caps/0", { dimension: "write_scope", capability: `Mine = fs.write("${asks}")`, in_flight: held }]];
+
+/** What a map item holds when the map hands it `SrcWrite.narrow(i.name)`. */
+const ITEM = (name: string): string => `SrcWrite.narrow = fs.write("/work/repos/${name}")`;
+
+/**
+ * Plays the leads of a run by where each one runs: `turns` gives each lead's turns in order, under a prefix of
+ * its command. Returns what each lead's tool calls answered. Any other agent is a worker.
+ */
+function leads(w: Planned, turns: Record<string, Turn[]>, worker: (req: TurnRequest) => SimTurn | Promise<SimTurn> = fixed): Record<string, Obj[]> {
+  const told: Record<string, Obj[]> = Object.fromEntries(Object.keys(turns).map((at) => [at, []]));
+  w.chat["script" as never] = (async (req: TurnRequest) => {
+    if (req.agent !== "Lead") return worker(req);
+    const at = Object.keys(turns).find((prefix) => req.commandId.startsWith(prefix))!;
+    const answer = answered(req);
+    if (answer) told[at]!.push(answer);
+    const turn = turns[at]!.shift()!;
+    return typeof turn === "function" ? turn(req) : turn;
+  }) as never;
+  return told;
+}
 
 describe("the ledger under a sub-program (N02, INV-15)", () => {
   it("reserves the sub-program's whole budget at admission, and gives back what it did not use when it ends", async () => {
@@ -289,6 +332,19 @@ describe("the ledger under a sub-program (N02, INV-15)", () => {
     expect((await w.rt.journal.budget("n02"))["tokens"]!.reserved).toBe(0);
   });
 
+  it("N02: a sub-program that asks for nothing of a dimension gets nothing of it, and takes none from the run", async () => {
+    // An `infer` reserves 1000 tokens when it is sent. This sub-program asked for none, and the run has 200,000.
+    const model = new SimModel(async () => ({ ok: "said", cost: { tokens: 100 } }));
+    const none = sub(`  infer Text from quote("one")`, "{ tokens: 0, steps: 10, agents: 1 }", "ModelStd");
+    const w = await planned([submit(1, none), finish("told")], { model });
+    const r = await run(w, "nothing");
+    expect(state(r)).toBe("succeeded null");
+    expect(refusals(w.told[0])).toEqual([]);
+    expect(w.told[0]).toMatchObject({ admitted: true, number: 1, error: { $tag: "BudgetExceeded", $args: [{ dimension: "tokens", requested: 1000, available: 0, program: programAt(1) }] } });
+    expect(w.model.calls).toHaveLength(0);
+    expect(await events(w, "nothing", "budget_exceeded")).toEqual([]);
+  });
+
   it("N02: a sub-program that no longer fits when it is admitted is refused, as if the check had seen it", async () => {
     // Between the check and the admission something else takes what was left: here, a reservation made behind the checker's back.
     let taken = false;
@@ -314,9 +370,6 @@ describe("the ledger under a sub-program (N02, INV-15)", () => {
 
   it("keeps a sub-program clear of what another one in flight may write (C5 across the run)", async () => {
     // Two leads in two branches. The first one's sub-program writes below /work/repos/a and is held in flight.
-    const body = `  par {\n    one = plan Lead.finish(items) within envelope\n    two = plan Lead.finish(items) within envelope\n  }\n  one`;
-    const ONE = "/defs/W/body/0/branches/one";
-    const TWO = "/defs/W/body/0/branches/two";
     const gate = deferred<void>();
     let inFlight = 0;
     const worker = async (req: TurnRequest): Promise<SimTurn> => {
@@ -324,31 +377,25 @@ describe("the ledger under a sub-program (N02, INV-15)", () => {
       if (itemOf(req) === "a") await gate.promise;
       return fixed(req);
     };
-    const narrow = (dir: string, item: string): string => `capability Mine = SrcWrite.narrow("${dir}")\n\n${sub(`  delegate Worker.fix(Item { name: "${item}" }) with caps Mine`, BUDGET, "RepoRead, Mine, ModelStd")}`;
-    const turns: Record<string, Turn[]> = {
-      [ONE]: [submit(1, narrow("/work/repos/a", "a")), finish("one")],
-      [TWO]: [
-        async () => {
-          await until(() => inFlight === 1, "the first lead's worker in flight");
-          return submit(1, narrow("/work/repos/a/src", "b"));
-        },
-        submit(1, narrow("/work/repos/b", "b")),
-        () => {
-          gate.resolve();
-          return finish("two");
-        },
-      ],
-    };
-    const told: Record<string, Obj[]> = { [ONE]: [], [TWO]: [] };
-    const w = await planned([], { src: program({ body }) });
-    w.chat["script" as never] = (async (req: TurnRequest) => {
-      if (req.agent !== "Lead") return worker(req);
-      const branch = req.commandId.startsWith(ONE) ? ONE : TWO;
-      const answer = answered(req);
-      if (answer) told[branch]!.push(answer);
-      const turn = turns[branch]!.shift()!;
-      return typeof turn === "function" ? turn(req) : turn;
-    }) as never;
+    const w = await planned([], { src: program({ body: BRANCHES }) });
+    const told = leads(
+      w,
+      {
+        [ONE]: [submit(1, narrowed("/work/repos/a", "a")), finish("one")],
+        [TWO]: [
+          async () => {
+            await until(() => inFlight === 1, "the first lead's worker in flight");
+            return submit(1, narrowed("/work/repos/a/src", "b"));
+          },
+          submit(1, narrowed("/work/repos/b", "b")),
+          () => {
+            gate.resolve();
+            return finish("two");
+          },
+        ],
+      },
+      worker,
+    );
     const r = await run(w, "writes");
     expect(state(r)).toBe("succeeded null");
     expect(told[TWO]![0]).toMatchObject({ admitted: false, room: { writes_in_flight: ['Mine = fs.write("/work/repos/a")'] } });
@@ -357,6 +404,159 @@ describe("the ledger under a sub-program (N02, INV-15)", () => {
     expect(told[ONE]![0]).toMatchObject({ admitted: true, number: 1, result: "fixed a" });
     // Each lead numbers its own sub-programs.
     expect(await commandIds(w, "writes", "program")).toEqual([programAt(1, `${ONE}`), programAt(1, `${TWO}`)]);
+  });
+
+  it("keeps a sub-program clear of one that waits for a person: it has not ended, and still holds its writes", async () => {
+    const tool = new SimTool("git.comment", "reconcilable");
+    // The first lead's sub-program writes below /work/repos/a and then comments, which waits for the release manager.
+    const waits = `capability Mine = SrcWrite.narrow("/work/repos/a")\n\n${sub(`  let note = delegate Worker.fix(Item { name: "a" }) with caps Mine\n  effect git.comment(Item { name: "a" }, "fixed")\n    idempotent_by "a"\n  note`, BUDGET, "RepoRead, Mine, ModelStd, Merge")}`;
+    const w = await planned([], { src: program({ body: BRANCHES, approve: "git.comment by release_manager" }), tools: [tool] });
+    const commentWaits = async (): Promise<void> => {
+      for (let i = 0; i < 2500 && !(await w.rt.journal.actions("held")).length; i++) await new Promise((r) => setTimeout(r, 2));
+    };
+    const told = leads(w, {
+      [ONE]: [submit(1, waits), finish("one")],
+      [TWO]: [
+        async () => {
+          await commentWaits();
+          return submit(1, narrowed("/work/repos/a/src", "b"));
+        },
+        finish("two"),
+      ],
+    });
+    const stopped = await run(w, "held");
+    expect(state(stopped)).toContain("waiting");
+    expect(stopped.waiting).toMatchObject({ kind: "decision", request: { effect: "git.comment", role: "release_manager" } });
+    // The other lead asked while the first one's sub-program waited: nothing of that one runs now, and it holds its place.
+    expect(told[TWO]![0]).toMatchObject({ admitted: false, room: { writes_in_flight: ['Merge = git.pr("company/backend")', 'Mine = fs.write("/work/repos/a")'] } });
+    expect(refusals(told[TWO]![0])).toEqual(heldBy("/work/repos/a/src", 'Mine = fs.write("/work/repos/a")'));
+    expect(await commandIds(w, "held", "program")).toEqual([programAt(1, ONE)]);
+
+    const done = await w.rt.decideAction("held", msg(), { signed: await sign(w, "held", "bob", "approve") });
+    expect(state(done)).toBe("succeeded null");
+    expect(told[ONE]![0]).toMatchObject({ admitted: true, number: 1, result: "fixed a" });
+    expect(tool.executions).toHaveLength(1);
+  });
+
+  it("decides admissions one after the other: of two leads that ask at once for the same place, one is admitted and the other is told it is held", async () => {
+    const gate = deferred<void>();
+    let asking = 0;
+    let checking = 0;
+    let peak = 0;
+    // A check that does not end before both leads have asked.
+    const slow: ProgramChecker = {
+      check: async (input, ms) => {
+        peak = Math.max(peak, ++checking);
+        // Two checks at once would both see the place free. The run is let go on, so that the test can say so.
+        if (checking > 1) gate.resolve();
+        try {
+          await until(() => asking === 2, "both leads asking");
+          await new Promise((r) => setTimeout(r, 25));
+          return await checker.check(input, ms);
+        } finally {
+          checking--;
+        }
+      },
+    };
+    const worker = async (req: TurnRequest): Promise<SimTurn> => {
+      await gate.promise;
+      return fixed(req);
+    };
+    const lead = (name: string): Turn[] => [
+      () => {
+        asking++;
+        return submit(1, narrowed("/work/repos/a", name));
+      },
+      () => {
+        gate.resolve();
+        return finish(name);
+      },
+    ];
+    const w = await planned([], { src: program({ body: BRANCHES }), plan: { checker: slow } });
+    const told = leads(w, { [ONE]: lead("one"), [TWO]: lead("two") }, worker);
+    const r = await run(w, "at-once");
+    expect(state(r)).toBe("succeeded null");
+    expect(peak).toBe(1);
+    const first = [told[ONE]![0]!, told[TWO]![0]!];
+    expect(first.map((t) => t["admitted"]).sort()).toEqual([false, true]);
+    expect(refusals(first.find((t) => t["admitted"] === false))).toEqual(heldBy("/work/repos/a", 'Mine = fs.write("/work/repos/a")'));
+    expect(await events(w, "at-once", "program_admitted")).toHaveLength(1);
+  });
+
+  it("keeps a sub-program clear of what a map still writes: the item in flight, and the items that have not started", async () => {
+    const body = `  par {\n    moved = map i in items max 4 with caps SrcWrite.narrow(i.name) {\n      delegate Worker.fix(i)\n    }\n    planned = plan Lead.finish(items) within envelope\n  }\n  planned`;
+    const LEAD = "/defs/W/body/0/branches/planned";
+    const first = deferred<void>();
+    const second = deferred<void>();
+    const started: string[] = [];
+    const worker = async (req: TurnRequest): Promise<SimTurn> => {
+      const item = itemOf(req);
+      started.push(item);
+      if (item === "a") await first.promise;
+      if (item === "b") await second.promise;
+      return fixed(req);
+    };
+    const w = await planned([], { src: program({ body }) });
+    const told = leads(
+      w,
+      {
+        [LEAD]: [
+          async () => {
+            await until(() => started.includes("a"), "the first item in flight");
+            return submit(1, narrowed("/work/repos/a/src", "s1"));
+          },
+          submit(1, narrowed("/work/repos/b", "s2")),
+          submit(1, narrowed("/work/repos/c", "s3")),
+          async () => {
+            first.resolve();
+            await until(() => started.includes("b"), "the second item in flight");
+            return submit(2, narrowed("/work/repos/a", "s4"));
+          },
+          () => {
+            second.resolve();
+            return finish("planned");
+          },
+        ],
+      },
+      worker,
+    );
+    const r = await run(w, "map-writes");
+    expect(state(r)).toBe("succeeded null");
+    const [inFlight, notStarted, beside, ended] = told[LEAD]!;
+    // The item in flight holds its place, and so does the item the map has not started yet.
+    expect(refusals(inFlight)).toEqual(heldBy("/work/repos/a/src", ITEM("a")));
+    expect(refusals(notStarted)).toEqual(heldBy("/work/repos/b", ITEM("b")));
+    expect(beside).toMatchObject({ admitted: true, number: 1, result: "fixed s3" });
+    // An item that has ended holds nothing.
+    expect(ended).toMatchObject({ admitted: true, number: 2, result: "fixed s4" });
+  });
+
+  it("holds nothing for the items a map did not start before it failed", async () => {
+    const body = `  let moved = map i in items max 4 supervise fail_fast with caps SrcWrite.narrow(i.name) {\n    delegate Worker.fix(i)\n  }\n  on error(SkillFailed(why)) => map i in items max 4 {\n    "left"\n  }\n  plan Lead.finish(items) within envelope`;
+    const worker = (req: TurnRequest): SimTurn => (itemOf(req) === "a" ? { error: { tag: "SkillFailed", args: ["no luck"] }, cost: { steps: 1 } } : fixed(req));
+    const w = await planned([], { src: program({ body }) });
+    const LEAD = "/defs/W/body/2/value";
+    const told = leads(w, { [LEAD]: [submit(1, narrowed("/work/repos/b", "s1")), finish("planned")] }, worker);
+    const r = await run(w, "map-failed");
+    expect(state(r)).toBe("succeeded null");
+    // The first item failed and the map with it: the second never started, and its place is free.
+    expect(w.chat.calls.filter((c) => c.agent === "Worker").map(itemOf)).toEqual(["a", "s1"]);
+    expect(told[LEAD]![0]).toMatchObject({ admitted: true, number: 1, result: "fixed s1" });
+  });
+
+  it("does not hold a map item's own place against the sub-program its lead plans inside it, and holds the other items'", async () => {
+    const body = `  let outs = map i in items max 2 with caps SrcWrite.narrow(i.name) {\n    plan Lead.finish([i]) within envelope\n  }\n  plan Lead.finish(items) within envelope`;
+    const item = (n: number): string => `/defs/W/body/0/value[${n}]`;
+    const w = await planned([], { src: program({ body }) });
+    const told = leads(w, {
+      [item(0)]: [submit(1, narrowed("/work/repos/a/src", "s1")), submit(2, narrowed("/work/repos/b", "s2")), finish("a")],
+      [item(1)]: [finish("b")],
+      "/defs/W/body/1/value": [finish("planned")],
+    });
+    const r = await run(w, "inside");
+    expect(state(r)).toBe("succeeded null");
+    expect(told[item(0)]![0]).toMatchObject({ admitted: true, number: 1, result: "fixed s1" });
+    expect(refusals(told[item(0)]![1])).toEqual(heldBy("/work/repos/b", ITEM("b")));
   });
 });
 
@@ -368,6 +568,43 @@ describe("spawn.max_concurrent under a sub-program", () => {
     const r = await run(w, "one-place");
     expect(state(r)).toBe("succeeded null");
     expect(w.told[0]).toMatchObject({ admitted: true, result: "fixed b" });
+  });
+
+  it("gives a lead a place again only when there is one: two leads and their sub-programs never run two at once", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const counted = async (fn: () => SimTurn | Promise<SimTurn>): Promise<SimTurn> => {
+      peak = Math.max(peak, ++inFlight);
+      try {
+        return await fn();
+      } finally {
+        inFlight--;
+      }
+    };
+    // The second lead's worker and the first lead's next turn each wait a while for the other to be asked. They
+    // meet only if the first lead goes on without a place.
+    const worked = deferred<void>();
+    const again = deferred<void>();
+    const meet = (mine: { resolve: () => void }, other: { promise: Promise<void> }): Promise<unknown> => (mine.resolve(), Promise.race([other.promise, new Promise((r) => setTimeout(r, 300))]));
+    const worker = (req: TurnRequest): Promise<SimTurn> =>
+      counted(async () => {
+        if (itemOf(req) === "b") await meet(worked, again);
+        return fixed(req);
+      });
+    const w = await planned([], { src: program({ body: BRANCHES, spawn: "{ max_concurrent: 1 }" }) });
+    const told = leads(
+      w,
+      {
+        [ONE]: [() => counted(() => submit(1, narrowed("/work/repos/a", "a"))), () => counted(async () => (await meet(again, worked), finish("one")))],
+        [TWO]: [() => counted(() => submit(1, narrowed("/work/repos/b", "b"))), () => counted(() => finish("two"))],
+      },
+      worker,
+    );
+    const r = await run(w, "places");
+    expect(state(r)).toBe("succeeded null");
+    expect(told[ONE]![0]).toMatchObject({ admitted: true, result: "fixed a" });
+    expect(told[TWO]![0]).toMatchObject({ admitted: true, result: "fixed b" });
+    expect(peak).toBe(1);
   });
 
   it("holds a sub-program's map to the envelope's concurrency, and bounds a map without max by the sub-program's own agents", async () => {
@@ -472,6 +709,88 @@ describe("N07: an effect's business key across the sub-programs of one plan", ()
     expect(state(r)).toBe("succeeded null");
     expect(tool.executions).toHaveLength(2);
     expect(new Set((await w.rt.journal.actions("n07b")).map((a) => a.operation_key)).size).toBe(2);
+  });
+
+  it("leaves the members of a change set their own actions: each is keyed by its place, under the set's one key", async () => {
+    // Two components the release manager owns. A sub-program lands a change to each, as one set with one key.
+    const src = `mandate @ 0.4
+
+module ${MODULE} @ 0.1
+
+use std.{component, fs, git, model}
+
+role platform_lead   "Platform lead"
+role release_manager "Release manager"
+
+type Item = { name: Text }
+type Change = { files: List<Text> }
+
+contract ChangeAccepted(change: Change) {
+  accept listed "The change names its files" by static len(change.files) >= 1
+}
+
+component left {
+  repo  "acme/left"
+  root  "/work/left"
+  lang  ts
+  owner role "release_manager"
+}
+
+component right {
+  repo  "acme/right"
+  root  "/work/right"
+  lang  ts
+  owner role "release_manager"
+}
+
+capability Repos    = component.repo(left, right)
+capability RepoRead = fs.read("/work")
+capability ModelStd = model.infer(tier: standard)
+
+agent Lead {
+  role   "Plans what is left."
+  caps   RepoRead, ModelStd
+  budget { tokens: 60k, steps: 30 }
+  skill finish(items: List<Item>) -> Inferred<Text> ! {Fs.Read, Model}
+}
+
+workflow W(items: List<Item>) -> Inferred<Text>
+  envelope {
+    owner   platform_lead
+    caps    RepoRead, ModelStd, Repos
+    budget  { tokens: 200k, steps: 400, agents: 12 }
+  }
+{
+  plan Lead.finish(items) within envelope
+}
+`;
+    const land = `workflow Land() -> Text
+  caps   Repos
+  budget { tokens: 1k, steps: 10, agents: 1 }
+{
+  let a = verify Change { files: ["a.ts"] } against ChangeAccepted(Change { files: ["a.ts"] })
+  let b = verify Change { files: ["b.ts"] } against ChangeAccepted(Change { files: ["b.ts"] })
+  let landed = changeset(a) {
+    member left = git.merge(a)
+    member right = git.merge(b)
+    order left, right
+    approve role "release_manager"
+  } idempotent_by "k"
+  "landed"
+}`;
+    const merge = new SimTool("git.merge", "reconcilable");
+    const w = await planned([submit(1, land), finish("planned")], { src, tools: [merge] });
+    let r = await run(w, "set");
+    expect(refusals(w.told[0])).toEqual([]);
+    // Each member's owner, and then the set's approver: the release manager, three times.
+    for (let i = 0; i < 3; i++) {
+      expect(state(r)).toContain("waiting");
+      r = await w.rt.decideAction("set", msg(), { signed: await sign(w, "set", "bob", "approve") });
+    }
+    expect(state(r)).toBe("succeeded null");
+    expect(w.told[0]).toMatchObject({ admitted: true, number: 1, result: "landed" });
+    expect(merge.executions).toHaveLength(2);
+    expect(new Set(merge.executions.map((e) => e.operationKey)).size).toBe(2);
   });
 
   it("refuses the same key over other parameters: it is not that action, and not a new one", async () => {
@@ -600,6 +919,12 @@ describe("a checker that fails on what it was given", () => {
     expect(await checker.check(input, 5000)).toMatchObject({ ok: true, workflow: "Fix" });
   });
 
+  it("is what the checker's own worker answers when the check throws, and the worker is kept", async () => {
+    const input = await asked();
+    expect(await checker.check({ ...input, workflow: "Nobody" }, 5000)).toEqual({ failed: "Nobody is not a workflow with an envelope, so it has no sub-programs" });
+    expect(await checker.check(input, 5000)).toMatchObject({ ok: true, workflow: "Fix" });
+  });
+
   it("is not what a capability that names itself does: the check ends, and refuses what is handed nothing", async () => {
     const looping = (def: string): string => `${def}\n\n${sub(`  delegate Worker.fix(Item { name: "a" }) with caps Loop`, BUDGET, "RepoRead, Loop, ModelStd")}`;
     const w = await planned([
@@ -639,6 +964,13 @@ describe("N10: the limits on a patch", () => {
     });
     expect(overLimit(counted)).toEqual({ limit: "size", max: 1024 * 1024 });
     expect(read).toBeLessThan(20);
+    // What comes after the limit in an object is not walked into either.
+    let inner = 0;
+    const after = new Proxy(["a", "b", "c"], {
+      get: (t, k, r) => (typeof k === "string" && /^\d+$/.test(k) && inner++, Reflect.get(t, k, r)),
+    });
+    expect(overLimit([{ first: "x".repeat(1024 * 1024), then: after }])).toEqual({ limit: "size", max: 1024 * 1024 });
+    expect(inner).toBe(0);
   });
 });
 
