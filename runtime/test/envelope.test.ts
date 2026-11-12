@@ -406,12 +406,22 @@ describe("spawn.max_concurrent", () => {
     let w!: Enveloped;
     let inFlight = 0;
     let peak = 0;
+    let arrived = 0;
+    // A delegation stays in flight until as many are as the bound lets in, or until the last one has come, so the
+    // peak does not depend on how fast the machine is. The pause after that is what lets one too many show.
+    const full: Array<() => void> = [];
+    const gather = async (): Promise<void> => {
+      if (inFlight < most && arrived < 3) await new Promise<void>((r) => full.push(r));
+      for (const r of full.splice(0)) r();
+      await new Promise((r) => setTimeout(r, 15));
+    };
     // What the journal holds while a delegation runs: the delegations sent and not yet settled, and the agents reserved.
     const seen: Array<{ dispatched: number; reserved: number }> = [];
     const slow = (s: string) => async () => {
       inFlight++;
+      arrived++;
       peak = Math.max(peak, inFlight);
-      await new Promise((r) => setTimeout(r, 15));
+      await gather();
       const [c] = await w.db.query<{ n: number }>("select count(*) as n from commands where kind = 'delegate' and state = 'dispatched'");
       const [r] = await w.db.query<{ n: number }>("select coalesce(sum(amount), 0) as n from reservations where dimension = 'agents' and state = 'active'");
       seen.push({ dispatched: Number(c!.n), reserved: Number(r!.n) });
