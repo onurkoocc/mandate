@@ -12,6 +12,7 @@
 //     "decisions": { "keys": ".mandate/decision-keys", "mode": "signed" | "unsigned" }
 //                 // the members' public keys, <key id>.pem each (spec/envelope.md "Signed decisions"); default directory and mode.
 //                 // "unsigned" takes --by NAME on a decision, as before 0.4; a 0.4 package does not start in it
+//     "plan":     { "checkMs": 2000 }      // the longest a lead's sub-program may take to check (spec/envelope.md "Limits"); default
 
 //     "model":    { "provider": "anthropic" },                  // CLAUDE_API_KEY, CLAUDE_WORKSPACE_ID
 //     "executor": { "managed-agents": { "pollMs": 1000, "maxTurnMs": 3600000 } }
@@ -82,6 +83,8 @@ export interface RuntimeConfig {
    * says `unsigned`, which a package of 0.1 to 0.3 may run in.
    */
   decisions: { keys: string; mode: "signed" | "unsigned" };
+  /** How long the check of a lead's sub-program may take, in milliseconds (spec/envelope.md "Limits"); 2000 unless it says. */
+  plan?: { checkMs?: number };
   model?: { provider: "anthropic" };
   /** Executors the lock may bind agents to (K45): Claude Managed Agents. Their agents' tools still run in `sandbox` (K79). */
   executor?: { "managed-agents"?: { pollMs?: number; maxTurnMs?: number } };
@@ -111,7 +114,8 @@ export interface RuntimeConfig {
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "evidence", "rateLimits", "decisions", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard"],
+  "": ["database", "artifacts", "evidence", "rateLimits", "decisions", "plan", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard"],
+  plan: ["checkMs"],
   executor: ["managed-agents"],
   "executor.managed-agents": ["pollMs", "maxTurnMs"],
   boundary: ["integration", "ci", "pinned", "extraRead", "timeoutMs"],
@@ -153,6 +157,8 @@ export function readConfig(file: string): RuntimeConfig {
   if (dc.keys !== undefined && typeof dc.keys !== "string") throw new Violation("bad_config", `${file}: "decisions.keys" is a directory`);
   if (dc.mode !== undefined && dc.mode !== "signed" && dc.mode !== "unsigned") throw new Violation("bad_config", `${file}: "decisions.mode" is "signed" or "unsigned"`);
   config.decisions = { keys: at((dc.keys as string | undefined) ?? ".mandate/decision-keys"), mode: dc.mode ?? "signed" };
+  const checkMs = (c["plan"] as { checkMs?: unknown } | undefined)?.checkMs;
+  if (checkMs !== undefined && (typeof checkMs !== "number" || !Number.isInteger(checkMs) || checkMs < 1)) throw new Violation("bad_config", `${file}: "plan.checkMs" is a whole number of milliseconds, at least 1`);
   for (const [k, b] of Object.entries((c["rateLimits"] ?? {}) as Record<string, Record<string, unknown>>)) {
     const keys = Object.keys(b ?? {});
     if (!/^(model|model:[a-z0-9_]+|tool)$/.test(k) || keys.some((x) => !["capacity", "perSecond", "queue", "reserve"].includes(x)) || typeof b["capacity"] !== "number" || typeof b["perSecond"] !== "number") {
@@ -211,6 +217,7 @@ export function runtimeOptions(config: RuntimeConfig, db: Db): RuntimeOptions {
     ...(config.verifier?.process ? { trustedVerifiers: verifierKeys(config) } : {}),
     // The members' public keys; a file that is not the key its name says stops every command (bad_decision_key).
     decisions: { mode: config.decisions.mode, keys: decisionKeysIn(config.decisions.keys) },
+    ...(config.plan?.checkMs !== undefined ? { plan: { checkMs: config.plan.checkMs } } : {}),
   };
 }
 

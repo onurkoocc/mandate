@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { check, type Modules } from "@mandate/compiler";
+import { build } from "esbuild";
 import { expect } from "vitest";
 import { ISSUE } from "./programs.js";
 import type { Clock, ModelAdapter } from "../src/adapters.js";
@@ -7,6 +11,32 @@ import { openDb, type Db } from "../src/db.js";
 import { Faults } from "../src/faults.js";
 import { buildPackage, Runtime, type Lock, type Package, type RuntimeOptions, type StartOptions } from "../src/runtime.js";
 import { simulate, type Sim, type SimAgents, type SimModel, type SimReads, type SimTool, type SimVerifier } from "../src/sim.js";
+import { WorkerChecker } from "../src/plan.js";
+
+const here = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
+
+/**
+ * The checker of a lead's sub-programs, as the runtime uses it: the compiler in a worker thread. A worker thread
+ * runs JavaScript, so its entry point is bundled first, once for a test file; `entry` names another worker, for a
+ * test of a check that never ends.
+ */
+export async function planChecker(entry = "../src/plan-worker.ts", maxMb?: number): Promise<WorkerChecker> {
+  const out = here("./.build");
+  mkdirSync(out, { recursive: true });
+  const outfile = join(out, `plan-worker-${process.pid}-${randomUUID().slice(0, 8)}.mjs`);
+  await build({
+    entryPoints: [here(entry)],
+    outfile,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    alias: { "@mandate/compiler": here("../../compiler/src/index.ts") },
+    external: ["ajv", "ajv/*", "ajv-formats"],
+    logLevel: "error",
+  });
+  return new WorkerChecker(outfile, maxMb);
+}
 
 /** Imported domain modules are pinned in every test package (S09). */
 export const LOCK = { modules: { "company.domain": "sha256:0f1e" } };
@@ -35,7 +65,7 @@ let shared: Promise<Db> | undefined;
  */
 export async function world(
   src: string,
-  o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; clock?: Clock; lock?: Lock; realModel?: ModelAdapter; modules?: Modules; decisions?: RuntimeOptions["decisions"] } = {},
+  o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; clock?: Clock; lock?: Lock; realModel?: ModelAdapter; modules?: Modules; decisions?: RuntimeOptions["decisions"]; plan?: RuntimeOptions["plan"] } = {},
 ): Promise<World> {
   const r = check(src, "mdt", o.modules ? { modules: o.modules } : {});
   expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
@@ -46,7 +76,7 @@ export async function world(
   const sim = simulate(o);
   if (o.realModel) sim.adapters.model = o.realModel;
   const faults = new Faults();
-  return { ...sim, rt: new Runtime(db, sim.adapters, faults, undefined, { decisions: o.decisions ?? UNSIGNED.decisions }), db, pkg: buildPackage(r.program!, o.lock ?? LOCK, o.modules), faults };
+  return { ...sim, rt: new Runtime(db, sim.adapters, faults, undefined, { decisions: o.decisions ?? UNSIGNED.decisions, ...(o.plan ? { plan: o.plan } : {}) }), db, pkg: buildPackage(r.program!, o.lock ?? LOCK, o.modules), faults };
 }
 
 const TABLES = ["decisions", "changesets", "workspace_claims", "rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];

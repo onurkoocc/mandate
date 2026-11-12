@@ -15,6 +15,7 @@ export { BOUNDARY_HANDLER, BoundaryVerifier, GitHubCi, leaks, measure, realDocke
 export { covers, diffEvent, diffMcpTools, diffMigrations, diffOauth, diffOpenApi, diffSpec, type ChangeKind, type SpecChange } from "./specdiff.js";
 export { GitWorkspace, type ComponentSource, type WorkspaceAdapter, type WorkspaceComponent } from "./workspace.js";
 export { buildPackage, componentsOf, refusingAdapters, Runtime, RUN_MANIFEST_FORMAT, verifyPackage, type Lock, type Message, type Package, type ReplayResult, type RuntimeOptions, type StartOptions } from "./runtime.js";
+export { baseOf, CHECK_MB, CHECK_MS, CHECK_PROGRAM, MAX_OPS, overLimit, PLAN_TOOLS, PROGRAM_MEDIA_TYPE, SUBMIT_PROGRAM, WorkerChecker, type CheckFailed, type OverLimit, type ProgramChecker } from "./plan.js";
 export * from "./sandbox.js";
 export { MxcHost, disallowed } from "./mxc.js";
 export { denialsIn, MIN_BUILD, WindowsMxcHost, windowsBuild, winQuote, type WindowsMxcHostOptions } from "./mxc-windows.js";

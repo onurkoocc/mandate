@@ -17,6 +17,7 @@ import { Faults } from "./faults.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Policy } from "./interp.js";
 import { costDims, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type Limits, type RunRow } from "./journal.js";
+import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { digest, isObj, type Obj, type Value } from "./values.js";
 
@@ -36,14 +37,15 @@ export interface Package {
   modules?: Modules;
 }
 
-/** The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes and `map`; see `notRunYet`. */
+/** The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes, `map` and `plan`; see `notRunYet`. */
 export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4"];
 
 /**
- * What a program uses of 0.4 that this runtime does not run yet: `plan`, and the `agents` dimension in a budget
- * other than an envelope's (spec/envelope.md). A package that uses one of them is refused at load: a version is
- * never run on a best-effort basis (§3.5). An envelope runs: its approval, its `agents` ledger, `max_concurrent`
- * and `approve`. So does a `map`. A 0.4 program without the rest is checked in full, and runs.
+ * What a program uses of 0.4 that this runtime does not run: the `agents` dimension in a budget other than an
+ * envelope's (spec/envelope.md). A package that uses it is refused at load: a version is never run on a
+ * best-effort basis (§3.5). An envelope runs: its approval, its `agents` ledger, `max_concurrent` and `approve`.
+ * So do a `map` and a `plan`, whose sub-programs name `agents` in their own budgets, as their claim on the
+ * envelope's.
  */
 export function notRunYet(program: Program): string[] {
   const found = new Set<string>();
@@ -51,7 +53,6 @@ export function notRunYet(program: Program): string[] {
     if (Array.isArray(v)) return v.forEach((x) => walk(x, key, kept));
     if (!v || typeof v !== "object") return;
     const o = v as Record<string, unknown>;
-    if (o["op"] === "plan") found.add("plan");
     if (key === "budget" && o["agents"] !== undefined && v !== kept) found.add("agents");
     for (const [k, x] of Object.entries(o)) walk(x, k, kept);
   };
@@ -197,6 +198,11 @@ export interface RuntimeOptions {
    * 0.4. A 0.4 package's decisions are signed in either mode, and it does not start in `unsigned`.
    */
   decisions?: { mode?: "signed" | "unsigned"; keys?: TrustedKeys };
+  /**
+   * How a lead's sub-programs are checked (spec/envelope.md "Limits"): `checkMs`, the longest a check may take
+   * (2 s by default), and the checker, which by default runs the compiler in a worker thread of its own.
+   */
+  plan?: { checkMs?: number; checker?: ProgramChecker };
 }
 
 /** Who made a decision the runtime took: a member with a signed record, or in unsigned mode the name the caller gave. */
@@ -222,6 +228,9 @@ interface Loaded {
   program: Program;
   lock: Lock;
   signed: boolean;
+  /** The program and its modules as they were packaged: what a sub-program is checked and linked against. */
+  source: Program;
+  modules: Modules;
 }
 
 export class Runtime {
@@ -236,6 +245,9 @@ export class Runtime {
   readonly decisionMode: "signed" | "unsigned";
   /** The members' public keys, by key id. The lock says whose each one is. */
   readonly decisionKeys: TrustedKeys;
+  /** Checks a lead's sub-programs, and how long one check may take. */
+  readonly checker: ProgramChecker;
+  readonly checkMs: number;
   private readonly packages = new Map<string, Package>();
 
   constructor(
@@ -255,6 +267,8 @@ export class Runtime {
     this.limiter = options.rateLimits && Object.keys(options.rateLimits).length ? new RateLimiter(db, options.rateLimits, () => adapters.clock.now()) : undefined;
     this.decisionMode = options.decisions?.mode ?? "signed";
     this.decisionKeys = options.decisions?.keys ?? new TrustedKeys();
+    this.checker = options.plan?.checker ?? new WorkerChecker();
+    this.checkMs = options.plan?.checkMs ?? CHECK_MS;
   }
 
   // ── StartRun / resume ─────────────────────────────────────────────────
@@ -488,7 +502,7 @@ export class Runtime {
     if (TERMINAL.has(run.state)) return run;
     const loaded = await this.loaded(run.package_hash);
     await this.write(runId, fence, async (tx) => this.journal.setState(tx, runId, "running"));
-    const interp = this.interpreter(run, loaded, fence, false, this.adapters);
+    const interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId));
     try {
       const result = await interp.runWorkflow(run.workflow, run.input as Obj);
       await this.finish(runId, fence, { state: "succeeded", result });
@@ -605,12 +619,13 @@ export class Runtime {
     } else await this.finish(runId, fence, target);
   }
 
-  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters): Interpreter {
+  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number): Interpreter {
     const wf = Object.hasOwn(loaded.program.defs, run.workflow) ? loaded.program.defs[run.workflow] : undefined;
     return new Interpreter({
       journal: this.journal,
       adapters,
       program: loaded.program,
+      plan: { parent: loaded.source, modules: loaded.modules, checker: this.checker, checkMs: this.checkMs, startedAt },
       decisions: { keys: this.decisionKeys, lock: loaded.lock, required: loaded.signed },
       ...(wf?.kind === "workflow" && wf.envelope ? { envelope: wf.envelope } : {}),
       packageHash: run.package_hash,
@@ -642,7 +657,7 @@ export class Runtime {
   /** A package as a run uses it. Its decisions are signed in signed mode, and always when it is a 0.4 package. */
   private async loaded(packageHash: string): Promise<Loaded> {
     const p = await this.packaged(packageHash);
-    return { program: linkedProgram(p.program, p.modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules) };
+    return { program: linkedProgram(p.program, p.modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules), source: p.program, modules: p.modules };
   }
 
   /** The package's program with its imported modules linked in: what the interpreter runs. Never hashed. */
@@ -1087,7 +1102,7 @@ export class Runtime {
   /** Rebuilds the run from its journal without calling any adapter (INV-09, R13). */
   async replayRun(runId: string, adapters: Adapters = refusingAdapters(this.adapters)): Promise<ReplayResult> {
     const run = await this.journal.run(runId);
-    const interp = this.interpreter(run, await this.loaded(run.package_hash), run.fence, true, adapters);
+    const interp = this.interpreter(run, await this.loaded(run.package_hash), run.fence, true, adapters, await this.journal.startedAt(runId));
     try {
       return { status: "complete", value: await interp.runWorkflow(run.workflow, run.input as Obj) };
     } catch (e) {

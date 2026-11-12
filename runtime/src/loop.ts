@@ -65,6 +65,13 @@ export interface LoopTask {
   spend?: { micros: number; currency: string };
   sandbox: SandboxRequirement;
   program: Program;
+  /**
+   * Tools the runtime answers itself, beside those the grant gives: a lead's `check_program` and `submit_program`
+   * (spec/envelope.md "plan"). They are offered with the others and answered by `LoopIO.extra`.
+   */
+  extra?: ToolSpec[];
+  /** What the task's first message says after the inputs: how a lead writes a sub-program. The same on every run of the loop. */
+  brief?: string;
 }
 
 /** What the loop needs from the interpreter and the outside world. */
@@ -81,6 +88,11 @@ export interface LoopIO {
   pollMs?: number;
   /** Records that the sandbox was stopped, and how surely. */
   sandboxStopped?(handle: string, result: "stopped" | "uncertain"): Promise<void>;
+  /**
+   * Answers a call of one of the task's `extra` tools, as the journaled step `id` of the delegation. The answer is
+   * what the model is shown. It runs in the runtime, not in the sandbox.
+   */
+  extra?(id: string, name: string, input: Record<string, unknown>, label: string): Promise<{ content: string; is_error?: boolean }>;
 }
 
 type Block = { [k: string]: Value };
@@ -100,7 +112,7 @@ export async function runAgentLoop(task: LoopTask, io: LoopIO): Promise<Outcome>
     return { error: { tag: "PolicyDenied", args: [{ reason: "unsupported_sandbox_profile", code: "MDT-E0902", agent: task.agent, unsupported: planned.unsupported }] }, cost: {} };
   }
   const resultSchema = typeSchema(task.program, task.returns);
-  const tools = toolsFor(task.grants, resultSchema);
+  const tools = withExtra(toolsFor(task.grants, resultSchema), task.extra ?? []);
   const host = io.sandbox.o.host;
   const loop = new Loop(task, io, tools, resultSchema);
   let handle: string | undefined;
@@ -321,7 +333,7 @@ class Loop {
       const spec = this.tools.specs.find((t) => t.name === name)!;
       const errs = schemaErrors(spec.input_schema as JsonSchema, input as Value);
       if (errs.length) problems.push({ kind: "InvalidArguments", text: `step ${i} (${name}): ${errs.join(", ")}` });
-      else {
+      else if (!this.task.extra?.some((t) => t.name === name)) {
         const cmd = commandFor(this.tools, name, input);
         if (cmd instanceof Denied) problems.push({ kind: "InvalidArguments", text: `step ${i} (${name}): ${cmd.reason}` });
       }
@@ -390,12 +402,21 @@ class Loop {
       this.repair("InvalidArguments", `${u.name}: ${errs.join(", ")}`);
       return { block: error(u.id, `Invalid arguments: ${errs.join(", ")}`), observedNew: false };
     }
+    const t = this.task;
+    if (t.extra?.some((s) => s.name === u.name)) {
+      // One of the runtime's own tools: it is answered here, in the control plane, as a step of this delegation.
+      const r = await this.io.extra!(`${t.id}/${where}`, u.name, u.input, `${t.agent}.${t.skill} ${u.name}`);
+      this.toolCalls++;
+      const seen = digest("request", { tool: u.name, input: u.input as Value, content: r.content });
+      const fresh = !this.observed.has(seen);
+      this.observed.add(seen);
+      return { block: { type: "tool_result", tool_use_id: u.id, content: r.content, ...(r.is_error ? { is_error: true } : {}) }, observedNew: fresh };
+    }
     const cmd = commandFor(this.tools, u.name, u.input);
     if (cmd instanceof Denied) {
       this.repair("InvalidArguments", `${u.name}: ${cmd.reason}`);
       return { block: error(u.id, `Refused: ${cmd.reason}`), observedNew: false };
     }
-    const t = this.task;
     const exec = await this.io.step(
       `${t.id}/${where}`,
       "tool",
@@ -496,7 +517,14 @@ function systemPrompt(task: LoopTask, tools: AgentTools): string {
 
 function taskText(task: LoopTask): string {
   const inputs = task.params.map((p, i) => `<data name="${p.name}">\n${canonical(task.args[i] ?? null)}\n</data>`);
-  return [`Skill: ${task.skill}`, inputs.length ? "Inputs:" : "This skill takes no inputs.", ...inputs].join("\n");
+  return [`Skill: ${task.skill}`, inputs.length ? "Inputs:" : "This skill takes no inputs.", ...inputs, ...(task.brief ? [task.brief] : [])].join("\n");
+}
+
+/** The agent's tools with the runtime's own beside them, before `finish`. */
+function withExtra(tools: AgentTools, extra: ToolSpec[]): AgentTools {
+  if (!extra.length) return tools;
+  const finish = tools.specs.filter((s) => s.name === FINISH);
+  return { ...tools, specs: [...tools.specs.filter((s) => s.name !== FINISH), ...extra, ...finish], names: new Set([...tools.names, ...extra.map((s) => s.name)]) };
 }
 
 function showType(t: TypeExpr): string {
