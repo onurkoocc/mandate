@@ -390,7 +390,9 @@ ed25519 key, which the runtime process never reads. What it signs, its
 
 ```json
 {
-  "format": "mandate/check-attestation/0.1",
+  "format": "mandate/check-attestation/0.2",
+  "run": "run-1", "contract": "FixAccepted", "criterion": "suite_green", "method": "test.suite",
+  "part": "/defs/FixBug/body/…/contract/accept/suite_green",
   "request": "sha256:…",
   "passed": true, "detail": { … },
   "subject": { "src/a.ts": "sha256:…" },
@@ -400,13 +402,23 @@ ed25519 key, which the runtime process never reads. What it signs, its
 }
 ```
 
-The signature covers `mandate/check-attestation/0.1
-` followed by the
+`run`, `contract`, `criterion`, `method` and `part` say which check the
+attestation is for. `part` is the path in the program of the criterion's
+part that was checked, for a part of `and` ending in `/all/<i>`. With the
+run, the method and the result it gives the evidence id of the check's
+record. The runtime sends the run and the part with each `check`, beside
+the request (`check { request, binding: { run, part } }`). The request is
+unchanged, so its digest, which is the check's command identity in the
+journal, and every evidence id stay as they were.
+
+The signature covers the format name and a newline, followed by the
 statement's JCS bytes. `ProcessVerifier`, on the runtime's side, computes
-the same statement from the request and the result it received, and
-accepts the result only when the signature verifies against a pinned
-verifier key. Otherwise the criterion is not met, with the detail
-`unattested_check`: a result the verifier did not sign never passes.
+the same statement from the request, the run and part it sent, and the
+result it received. It accepts the result only when the signature
+verifies against a pinned verifier key. Otherwise the criterion is not
+met, with the detail `unattested_check`: a result the verifier did not
+sign for this check never passes, and neither does one signed in the
+format before 0.2 or for another run or part.
 
 An accepted result's `producer` carries `process: "separate"` and the
 attestation (statement, key id, signature) into the evidence record.
@@ -419,22 +431,33 @@ checks (`test.suite_each`, `test.contract`, `test.integration`, `test.ci`,
 `test.planned`) when `boundary` and `sandbox` are set, and the onboarding
 checks (`test.system_specs`, `test.consumes`, `test.commands`) when
 `onboard` is set. These need the run's working copies, so they run in
-front of the verifier process. `verifyEvidence` and the `Verified` check (G03) then
-require of each record:
+front of the verifier process. `verifyEvidence` and the `Verified` check
+(G03) then require of each record:
 
-- its stored row names the contract, criterion and method its signed
-  record names;
+- it is a record of the run it is stored under, and its stored row names
+  the contract, criterion and method its signed record names;
 - its method is one the program declares for its criterion;
-- if its method is attested, an attestation that verifies under a trusted
-  verifier key and says what the record says: passed, detail, the files
-  checked, and each output's digest.
+- if its method is attested, a `mandate/check-attestation/0.2`
+  attestation that verifies under a trusted verifier key, says what the
+  record says (passed, detail, the files checked, and each output's
+  digest), and was made for this record: its `run`, `contract`,
+  `criterion` and `method` are the record's, and the evidence id its
+  `run`, `part` and `method` give with the record's result is the
+  record's own.
 
 A record that carries an attestation must hold it, whether or not one is
-required. So the runtime's key alone cannot make a check pass: a record
-whose attestation was taken out, or whose method was changed, does not
-hold. Evidence made while no verifier process was configured carries no
-attestation, and shows as invalid once one is. Without trusted verifier
-keys, only an attestation a record carries is checked.
+required, and a 0.2 attestation must name the record's check. So the
+runtime's key alone cannot make a check pass: a record whose attestation
+was taken out, whose method was changed, or whose attestation was made
+for another criterion, another part of its criterion, or another run,
+does not hold. A `mandate/check-attestation/0.1` attestation names none of
+these, and never stands for a check that requires one.
+
+Two kinds of evidence therefore show as invalid once the runtime has
+trusted verifier keys: evidence made while no verifier process was
+configured, which carries no attestation, and evidence attested before
+0.2, whose attestations are 0.1. Without trusted verifier keys, only an
+attestation a record carries is checked, as before.
 
 The verifier creates its key on first use (`.mandate/verifier.key` by
 default) and writes its public half to `<key>.pub`, which the runtime
