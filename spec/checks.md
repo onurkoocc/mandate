@@ -113,7 +113,9 @@ arrive with the runtime.
   reported at the delegation.
 - Write capabilities (`fs.write`, `git.pr`) of different `par` branches
   must not overlap (E0320, C5). A branch's write scope is what it delegates
-  plus the write capabilities its own effects use.
+  plus the write capabilities its own effects use. The items of a 0.4 `map`
+  with `par > 1` are held to the same rule
+  ([`envelope.md`](envelope.md#map)).
 - A capability that nothing uses is W0310.
 
 ## Budgets (§8.6)
@@ -130,6 +132,7 @@ out.
 | `par` | sum | longest branch |
 | `if` / `switch` | larger branch | larger branch |
 | `loop max_iter n` | n × body | n × body |
+| `map max n par k` (0.4) | n × one item | ⌈n / k⌉ × one item |
 
 The diagnostic's facts list each contribution. Currencies are never
 converted (E0504). Loops need `max_iter` or `until`, and functions and

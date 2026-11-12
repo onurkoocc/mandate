@@ -26,6 +26,7 @@
 import { calleePath, capCovers, capsOf, showCap, within, type CapVal } from "../check/caps.js";
 import { microsText, staticCost } from "../check/cost.js";
 import { roleSites } from "../check/roles.js";
+import { readsVar } from "../check/static.js";
 import { hashProgram, packageHash } from "../hash.js";
 import {
   BUDGET_DIMENSIONS,
@@ -591,11 +592,12 @@ export function cost(program: Program, lock?: Lock): CostView {
       }
       if (e.op === "block") return blockCost(e.body, times);
       for (const c of children(e)) add(total, exprCost(c, times));
-      // A map runs its body once per item, `max` items at most (spec/envelope.md "map").
+      // A map runs its body once per item: `max` items at most, or as many as the envelope has `agents`
+      // (spec/envelope.md "map").
       if (e.op === "map") {
         const outer = handed;
         handed = handedBy(program, outer, e);
-        add(total, blockCost(e.body, times * (e.max ?? 1)));
+        add(total, blockCost(e.body, times * (e.max ?? d.envelope?.budget?.agents ?? 1)));
         handed = outer;
         return total;
       }
@@ -1122,14 +1124,6 @@ function exprText(e: Expr): string {
   }
 }
 
-/** Whether an expression reads the variable `name` anywhere inside it. */
-function mentions(v: unknown, name: string): boolean {
-  if (Array.isArray(v)) return v.some((x) => mentions(x, name));
-  if (!v || typeof v !== "object") return false;
-  const o = v as { op?: unknown; name?: unknown };
-  if (o.op === "var" && o.name === name) return true;
-  return Object.values(v).some((x) => mentions(x, name));
-}
 
 /** 80000000 as "80,000,000". */
 function grouped(n: number): string {
@@ -1221,7 +1215,7 @@ export function card(program: Program, workflow: string, opts: { lock?: Lock; mo
         handed: (e.caps ?? []).map((c) => {
           const vals = capsOf(lp.defs, c);
           const scopes = vals.flatMap((x) => x.scope ?? []);
-          return { cap: exprText(c), kinds: [...new Set(vals.map((x) => x.ctor))], scope: vals.length && vals.every((x) => x.scope) ? scopes : null, by_item: mentions(c, e.bind) };
+          return { cap: exprText(c), kinds: [...new Set(vals.map((x) => x.ctor))], scope: vals.length && vals.every((x) => x.scope) ? scopes : null, by_item: readsVar(c, e.bind) };
         }),
       });
     }

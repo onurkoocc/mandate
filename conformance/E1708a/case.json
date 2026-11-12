@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708a",
+  "kind": "compile",
+  "title": "A critical effect in a map's body is refused at the effect: each item's would be authorized on its own.",
+  "spec": ["spec/envelope.md#map", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../E1702/program.mdt", "kind": "mdt" },
+  "patch": [
+    { "op": "add", "path": "/defs/Run/envelope/caps/-", "value": { "op": "var", "name": "PR" } },
+    {
+      "op": "add",
+      "path": "/defs/Run/body/0/value/body/0",
+      "value": {
+        "op": "expr",
+        "value": {
+          "op": "effect",
+          "name": "git.comment",
+          "args": [{ "value": { "op": "field", "of": { "op": "var", "name": "x" }, "name": "name" } }, { "value": { "op": "text", "value": "seen" } }],
+          "idempotent_by": { "op": "field", "of": { "op": "var", "name": "x" }, "name": "name" }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/Run/body/0/value/body/0/value",
+        "facts": { "map": "/defs/Run/body/0/value", "kind": "critical_effect", "what": "git.comment" }
+      }
+    ]
+  }
+}

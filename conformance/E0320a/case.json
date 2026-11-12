@@ -1,0 +1,21 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0320a",
+  "kind": "compile",
+  "title": "A map with par above 1 whose items are all granted the same write scope is refused at the map.",
+  "spec": ["spec/envelope.md#map", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../E1702/program.mdt", "kind": "mdt" },
+  "patch": [{ "op": "remove", "path": "/defs/Run/body/0/value/caps" }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0320",
+        "path": "/defs/Run/body/0/value",
+        "facts": { "par": 2, "capability": "W = fs.write(\"/work\")", "by_item": [] }
+      }
+    ]
+  }
+}

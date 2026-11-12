@@ -15,7 +15,7 @@ export { parseMdt, RESERVED } from "./parse/parser.js";
 export { applyPatch, type GovernanceChange, type PatchOp, type PatchResult } from "./patch/patch.js";
 export { printProgram } from "./print/printer.js";
 export { resolveNames } from "./resolve/resolve.js";
-export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, within, type CapResult, type CapVal } from "./check/caps.js";
+export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, scopeWithin, showCap, within, writesOverlap, type CapResult, type CapVal } from "./check/caps.js";
 export { roleChecks, roleSites, rolesNamed, type RoleSite } from "./check/roles.js";
 export { staticCost, type CostPart, type StaticCost } from "./check/cost.js";
 export { GOVERNANCE_FILES, GOVERNANCE_KINDS, globRegExp, governanceFiles, governanceKind, type GovernanceKind } from "./std/governance.js";

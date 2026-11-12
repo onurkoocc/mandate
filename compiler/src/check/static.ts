@@ -37,6 +37,7 @@ import {
   type Def,
   type EffectDef,
   type EffectRef,
+  type Envelope,
   type EnvironmentDef,
   type Expr,
   type FnDef,
@@ -51,7 +52,7 @@ import {
   type WorkflowDef,
 } from "../ir/types.js";
 import { nearestSpan } from "../ir/validate.js";
-import { blockCost, microsText } from "./cost.js";
+import { blockCost, microsText, type StaticCost } from "./cost.js";
 import { checkEnvelope, plansOutside } from "./envelope.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
@@ -144,6 +145,10 @@ interface Frame {
   handed?: CapVal[];
   /** In a workflow with an envelope: the highest data class a delegation or a model may receive (`spawn.max_class`). */
   maxClass?: DataClass;
+  /** In the body of a workflow with an envelope: the envelope, which bounds a map there (E1702, E1703). */
+  envelope?: Envelope;
+  /** Inside a map's body: the map, where nothing waits for a person and no critical effect runs (E1708). */
+  inMap?: string;
 }
 
 const PUBLIC: DataClass = "public";
@@ -170,6 +175,8 @@ class Checker implements TypeEnv {
   private readonly fnUsage = new Map<string, Usage[] | "pending">();
   /** What the body of each of the program's own skills uses, by `Agent.skill`. */
   private readonly skillUsage = new Map<string, Usage[]>();
+  /** The `human.*` steps already reported as standing in a map's body (E1708), so that each is reported for the innermost map only. */
+  private readonly askedInMap = new Set<string>();
   /** The program's workflows with an envelope: its data class and what the body uses, for `reach`. */
   private readonly enveloped: Array<{ name: string; max: DataClass; usages: Usage[] }> = [];
   private readonly constVals = new Map<string, Val | "pending">();
@@ -514,6 +521,7 @@ class Checker implements TypeEnv {
       });
       // `internal` when the envelope does not say (spec/envelope.md "What it declares").
       frame.maxClass = d.envelope.spawn?.max_class ?? "internal";
+      frame.envelope = d.envelope;
       this.enveloped.push({ name, max: frame.maxClass, usages: frame.usages });
     }
     if (d.ensures) {
@@ -563,6 +571,14 @@ class Checker implements TypeEnv {
       }
     }
     for (const dl of frame.delegated) for (const c of dl.caps) for (const w of caps) if (capCovers(w, c)) used.add(w);
+    // A delegation inside a function the body calls is granted from these capabilities too. An envelope's count
+    // as used by it; a workflow's own are reported as they were before 0.4.
+    if (d.envelope) {
+      for (const u of frame.usages) {
+        if (u.effect !== "Delegate" || !u.via || !u.to) continue;
+        for (const c of this.grantedThrough(u.to, frame)) for (const w of caps) if (capCovers(w, c)) used.add(w);
+      }
+    }
     // An envelope whose workflow plans holds capabilities for sub-programs that are not written yet,
     // so one that no static step uses is not a mistake (spec/envelope.md "What it declares").
     let plans = false;
@@ -1054,10 +1070,12 @@ class Checker implements TypeEnv {
       case "changeset":
         return this.changeset(e, frame, path);
       case "escalate":
+        this.person(frame, path, "escalate");
         this.expr(e.to, frame, `${path}/to`);
         return lit(UNKNOWN);
       case "pause":
         if (e.then) this.expr(e.then, frame, `${path}/then`);
+        else this.person(frame, path, "pause");
         return lit(UNKNOWN);
       case "switch":
         return this.switchExpr(e, frame, path);
@@ -1086,15 +1104,20 @@ class Checker implements TypeEnv {
     else if (list.k !== "unknown") this.report("E0201", `map runs its body over a List but got ${show(over.ty)}.`, `${path}/over`);
     const item: Val = { ty: withLevel(elem, ep.level === "verified" ? "plain" : ep.level), cls: over.cls };
     let inner = this.child(frame, new Map([[e.bind, item]]));
+    inner.inMap = path;
 
     // `with caps K`: inside the body, K takes the place of the capability kinds it names. Each K lies
     // inside the context (C2); its scope may depend on the element.
+    // `byItem` is the kinds whose scope the element chooses: each item is handed its own, and the runtime compares them (C5).
+    const byItem = new Set<string>();
     if (e.caps) {
       const given: CapVal[] = [];
       e.caps.forEach((c, i) => {
         const cp = `${path}/caps/${i}`;
+        const chosen = c.op === "call" && c.callee.op === "field" && c.callee.name === "narrow" && c.args.some((a) => a.value.op !== "text" && readsVar(a.value, e.bind));
         for (const v of this.evalCap(c, cp, inner)) {
           given.push(v);
+          if (chosen) byItem.add(v.ctor);
           if (frame.avail && !frame.avail.some((a) => capCovers(a, v))) {
             this.report("E0701", `${showCap(v)} is not available in ${frame.def}, so a map cannot hand it to its body (C2).`, cp, {
               capability: showCap(v),
@@ -1110,8 +1133,144 @@ class Checker implements TypeEnv {
     if (e.supervise && e.supervise.name !== "fail_fast") {
       this.report("E0714", `'${e.supervise.name}' is not a supervision strategy for a map; use fail_fast (spec/envelope.md).`, `${path}/supervise`, { strategy: e.supervise.name, allowed: ["fail_fast"] });
     }
+    const delegatedBefore = frame.delegated.length;
+    const usagesBefore = frame.usages.length;
     const body = this.body(e.body, inner, `${path}/body`);
+    const usages = frame.usages.slice(usagesBefore);
+    const delegated = frame.delegated.slice(delegatedBefore);
+
+    // The bound: `max`, or inside an envelope its `agents` when the body starts a delegation (E1702).
+    if (e.max === undefined) {
+      if (!frame.envelope) {
+        this.report("E1702", `A map says how many elements it accepts at most: add 'max n'. Only in the body of a workflow with an envelope may it be left out (spec/envelope.md "map").`, path, { envelope: false });
+      } else if (!usages.some((u) => u.effect === "Delegate")) {
+        this.report("E1702", `This map has no 'max', and its body starts no delegation, so the envelope's agents do not bound it: add 'max n' (spec/envelope.md "map").`, path, { envelope: true, delegates: false });
+      }
+    }
+    const most = frame.envelope?.spawn?.max_concurrent;
+    if (e.par !== undefined && most !== undefined && e.par > most) {
+      this.report("E1703", `par ${e.par} runs more items at once than the envelope lets delegations be in flight (spawn.max_concurrent: ${most}) (spec/envelope.md "map").`, `${path}/par`, { par: e.par, max_concurrent: most });
+    }
+    // A person is asked once about the list, after the map: nothing in an item waits for one (E1708). A step in a
+    // map inside this one was reported there, for that map.
+    for (const u of usages) {
+      if (u.effect !== "Human" || this.askedInMap.has(u.path)) continue;
+      this.askedInMap.add(u.path);
+      this.person(inner, u.path, "human step");
+    }
+    // C5: with `par k > 1` the items run side by side. What an item may write is the same for every item, unless
+    // the map hands each one a scope the element chooses; those the runtime compares before it dispatches any.
+    if ((e.par ?? 1) > 1) {
+      const direct = inner.avail ? usages.filter((u) => !this.isCriticalEffect(u.effect)).flatMap((u) => this.capsFor(u, inner.avail!)) : [];
+      // A delegation inside a function the body calls is granted here too, with what the map hands it.
+      const through = usages.flatMap((u) => (u.effect === "Delegate" && u.via && u.to ? this.grantedThrough(u.to, inner) : []));
+      const shared = new Map<string, CapVal>();
+      for (const c of [...delegated.flatMap((d) => d.caps), ...direct, ...through]) if (c.write && !byItem.has(c.ctor)) shared.set(showCap(c), c);
+      for (const [shown, c] of shared) {
+        this.report(
+          "E0320",
+          `Every item of this map can write ${c.scope ? c.scope.join(", ") : "an unknown scope"} (${shown}), and par ${e.par} runs them side by side. Hand each item its own scope with the map's 'with caps', narrowed by '${e.bind}' (C5).`,
+          path,
+          { par: e.par, capability: shown, by_item: [...byItem].sort() },
+        );
+      }
+    }
+    if (e.budget) this.mapBudget(e, path, frame.envelope);
     return { ty: named("List", named("Outcome", body.ty)), cls: this.maxClass(over.cls, body.cls) };
+  }
+
+  /**
+   * What a delegation to `who` (`Agent.skill`) inside a function is granted at most when the function is called
+   * in `frame`: what the agent holds inside the context, with a map's `with caps` in place of the kinds it hands.
+   */
+  private grantedThrough(who: string, frame: Frame): CapVal[] {
+    const agent = this.def(who.slice(0, who.indexOf(".")));
+    if (agent?.kind !== "agent") return [];
+    const held = agent.caps.flatMap((c) => capsOf(this.defs, c));
+    const handed = (frame.handed ?? []).filter((k) => agent.remote || held.some((a) => capCovers(a, k)));
+    const kinds = new Set(handed.map((k) => k.ctor));
+    return [...held.filter((c) => !kinds.has(c.ctor) && (!frame.avail || frame.avail.some((a) => capCovers(a, c)))), ...handed];
+  }
+
+  /** `budget b` on a map stands in for one item, so what the body hands out fits in it (E0501, at the map). */
+  private mapBudget(e: MapExpr, path: string, envelope: Envelope | undefined): void {
+    const b = e.budget!;
+    const at = `${path}/budget`;
+    // A map with no `max` in the body counts as many items as the envelope has agents, as it does for the envelope.
+    const agents = envelope?.budget?.agents;
+    const cost = blockCost({ def: (n) => this.def(n), recursive: this.recursive, envelope: !!envelope, ...(agents !== undefined ? { agents } : {}) }, e.body, `${path}/body`);
+    const facts = this.overBudget(b, cost, at, "This map's budget", true);
+    if (Object.keys(facts).length) {
+      this.report("E0501", `One item of this map hands out more than the map's budget for an item (${Object.keys(facts).join(", ")}).`, at, { ...facts, breakdown: cost.parts });
+    }
+  }
+
+  /** The dimensions in which `cost` is above `limit`, as the facts of E0501. `all` compares steps and agents too. */
+  private overBudget(limit: Budget, cost: StaticCost, at: string, whose: string, all: boolean): Record<string, unknown> {
+    const facts: Record<string, unknown> = {};
+    if (limit.spend) {
+      const currencies = Object.keys(cost.spend);
+      const other = currencies.filter((c) => c !== limit.spend!.currency);
+      if (other.length) {
+        this.report("E0504", `${whose} is in ${limit.spend.currency} but delegates spend ${other.join(", ")}; currencies are never converted implicitly (§5.3).`, `${at}/spend`, { currencies });
+      }
+      const total = cost.spend[limit.spend.currency] ?? 0;
+      if (total > limit.spend.micros) {
+        facts["spend"] = { limit: microsText(limit.spend.micros, limit.spend.currency), declared_by_children: microsText(total, limit.spend.currency) };
+      }
+    }
+    if (limit.tokens !== undefined && cost.tokens > limit.tokens) facts["tokens"] = { limit: limit.tokens, declared_by_children: cost.tokens };
+    if (limit.time && cost.time > limit.time.ms) facts["time_ms"] = { limit: limit.time.ms, declared_by_children: cost.time };
+    if (all) {
+      if (limit.steps !== undefined && cost.steps > limit.steps) facts["steps"] = { limit: limit.steps, declared_by_children: cost.steps };
+      if (limit.agents !== undefined && cost.agents > limit.agents) facts["agents"] = { limit: limit.agents, declared_by_children: cost.agents };
+    }
+    return facts;
+  }
+
+  /**
+   * A step that waits for a person, inside a map's body (E1708): each item would wait on its own. `what` names
+   * the step, and `via` the function that holds it. Outside a map there is nothing to report.
+   */
+  private person(frame: Frame, path: string, what: string, via?: string): void {
+    if (!frame.inMap) return;
+    this.report("E1708", `${via ? `${via} holds '${what}', which` : `'${what}'`} waits for a person inside a map's body, once for each item. Ask once about the list, after the map (spec/envelope.md "map").`, path, {
+      map: frame.inMap,
+      kind: "person",
+      what,
+      ...(via ? { via } : {}),
+    });
+  }
+
+  /** What in `e` itself waits for a person without being a `human.*` call, which is found as the effect it uses. */
+  private waits(e: Expr): string | undefined {
+    if (e.op === "escalate") return "escalate";
+    if (e.op === "pause" && !e.then) return "pause";
+    if (e.op === "delegate" && e.supervise?.name === "escalate") return "supervise escalate";
+    if (e.op === "verify" && this.asksApproval(e.contract)) return `verify against ${e.contract}`;
+    return undefined;
+  }
+
+  /** A contract with a criterion that a person approves. */
+  private asksApproval(contract: string): boolean {
+    const c = this.def(contract);
+    if (!c || c.kind !== "contract") return false;
+    const hasHuman = (v: Verifier): boolean =>
+      "all" in v ? v.all.some(hasHuman) : "call" in v && v.call.op === "call" && calleePath(v.call.callee) === "human.approve";
+    return Object.values(c.accept).some((cr) => hasHuman(cr.by));
+  }
+
+  /** What a function holds that waits for a person, in its body or in a function it calls. */
+  private fnWaits(name: string, seen = new Set<string>()): string | undefined {
+    const f = this.def(name);
+    if (f?.kind !== "fn" || seen.has(name)) return undefined;
+    seen.add(name);
+    let found: string | undefined;
+    walkExprs(f.body, (x) => {
+      found ??= this.waits(x);
+      if (!found && x.op === "call" && x.callee.op === "var") found = this.fnWaits(x.callee.name, seen);
+    });
+    return found;
   }
 
   private prompt(e: Extract<Expr, { op: "prompt" }>, frame: Frame, path: string): Val {
@@ -1173,6 +1332,10 @@ class Checker implements TypeEnv {
         const a = args[i];
         if (a) this.problem(assignable(a.ty, this.ty(param.type), this), `${path}/args/${i}/value`);
       });
+      if (frame.inMap) {
+        const what = this.fnWaits(p!);
+        if (what) this.person(frame, path, what, p!);
+      }
       // What the function does is done here, with what the call hands it: a model call or a delegation in it may
       // receive the arguments, so it has at least their class.
       for (const u of this.fnUsages(p!)) {
@@ -1444,6 +1607,7 @@ class Checker implements TypeEnv {
     // A delegation's timeout is a Duration (§8.7, §9.1); the runtime enforces it.
     if (e.timeout) this.problem(assignable(this.expr(e.timeout, frame, `${path}/timeout`).ty, named("Duration"), this), `${path}/timeout`);
     if (e.supervise) this.supervise(e.supervise, `${path}/supervise`, { kind: "delegate", agent: e.agent, skill: e.skill, given });
+    if (e.supervise?.name === "escalate") this.person(frame, `${path}/supervise`, "supervise escalate");
   }
 
   private verify(e: Extract<Expr, { op: "verify" }>, frame: Frame, path: string): Val {
@@ -1460,6 +1624,7 @@ class Checker implements TypeEnv {
         if (a) this.problem(assignable(withLevel(epistemic(a.ty).inner, "plain"), this.ty(param.type), this), `${path}/args/${i}/value`);
       });
     }
+    if (this.asksApproval(e.contract)) this.person(frame, path, `verify against ${e.contract}`);
     if (e.on_unmet) {
       this.expr(e.on_unmet.then, this.child(frame, new Map([[e.on_unmet.bind, { ty: named("List", TEXT), cls: PUBLIC }]])), `${path}/on_unmet/then`);
     }
@@ -1485,6 +1650,7 @@ class Checker implements TypeEnv {
         if (a) this.problem(assignable(a.ty, t, this), `${path}/args/${i}/value`);
       });
     }
+    if (critical && frame.inMap) this.critical(frame, path, `The critical effect ${e.name} runs`, e.name);
     if (critical) {
       if (frame.where === "fn" || frame.where === "skill" || frame.where === "contract") {
         this.report("E0408", `The critical effect ${e.name} runs inside a ${frame.where}. External writes happen only in a workflow, through prepare → authorize → commit (§8.8, S07).`, path);
@@ -1507,6 +1673,15 @@ class Checker implements TypeEnv {
     return { ty: ret, cls };
   }
 
+  /** A critical effect inside a map's body (E1708): each item's would be an action of its own, authorized one by one. */
+  private critical(frame: Frame, path: string, what: string, name: string): void {
+    this.report("E1708", `${what} inside a map's body, where each item's would be authorized on its own. Run it after the map, or land a batch with a change set (spec/envelope.md "map").`, path, {
+      map: frame.inMap,
+      kind: "critical_effect",
+      what: name,
+    });
+  }
+
   /**
    * A change set (design doc 9 §3): a verified plan; members that are
    * critical effects on their component's repository, held by the workflow;
@@ -1516,6 +1691,7 @@ class Checker implements TypeEnv {
    * set (expand → migrate → contract instead).
    */
   private changeset(e: ChangesetExpr, frame: Frame, path: string): Val {
+    if (frame.inMap) this.critical(frame, path, "A change set commits critical effects, and this one stands", "changeset");
     const plan = this.expr(e.plan, frame, `${path}/plan`);
     if (epistemic(plan.ty).level !== "verified") {
       this.report("E1105", `A change set lands an approved plan: its plan must be verified against a contract, not ${show(plan.ty)} (doc 9 §3.4).`, `${path}/plan`);
@@ -1654,27 +1830,11 @@ class Checker implements TypeEnv {
     const limit = bounds.budget;
     if (!limit) return;
     const at = `${base}/${bounds.budgetAt}`;
-    const cost = blockCost({ def: (n) => this.def(n), recursive: this.recursive, envelope: !!d.envelope }, d.body, `${base}/body`);
-    const facts: Record<string, unknown> = {};
-    if (limit.spend) {
-      const currencies = Object.keys(cost.spend);
-      const other = currencies.filter((c) => c !== limit.spend!.currency);
-      if (other.length) {
-        this.report("E0504", `${name}'s budget is in ${limit.spend.currency} but delegates spend ${other.join(", ")}; currencies are never converted implicitly (§5.3).`, `${at}/spend`, { currencies });
-      }
-      const total = cost.spend[limit.spend.currency] ?? 0;
-      if (total > limit.spend.micros) {
-        facts["spend"] = { limit: microsText(limit.spend.micros, limit.spend.currency), declared_by_children: microsText(total, limit.spend.currency) };
-      }
-    }
-    if (limit.tokens !== undefined && cost.tokens > limit.tokens) facts["tokens"] = { limit: limit.tokens, declared_by_children: cost.tokens };
-    if (limit.time && cost.time > limit.time.ms) facts["time_ms"] = { limit: limit.time.ms, declared_by_children: cost.time };
+    const agents = d.envelope?.budget?.agents;
+    const cost = blockCost({ def: (n) => this.def(n), recursive: this.recursive, envelope: !!d.envelope, ...(agents !== undefined ? { agents } : {}) }, d.body, `${base}/body`);
     // An envelope bounds the whole run, so its static part is held to steps and agents too
     // (spec/envelope.md "Static checks"). A workflow's own budget is compared as it always was.
-    if (d.envelope) {
-      if (limit.steps !== undefined && cost.steps > limit.steps) facts["steps"] = { limit: limit.steps, declared_by_children: cost.steps };
-      if (limit.agents !== undefined && cost.agents > limit.agents) facts["agents"] = { limit: limit.agents, declared_by_children: cost.agents };
-    }
+    const facts = this.overBudget(limit, cost, at, `${name}'s budget`, !!d.envelope);
     if (Object.keys(facts).length) {
       this.report("E0501", `The budgets ${name} hands out exceed its own budget (${Object.keys(facts).join(", ")}).`, at, { ...facts, breakdown: cost.parts });
     }
@@ -1786,6 +1946,15 @@ function walkStmtExprs(s: Stmt, f: (e: Expr) => void, deep = false): void {
       ex(s.target);
       break;
   }
+}
+
+/** Whether an expression reads the variable `name` anywhere inside it. */
+export function readsVar(v: unknown, name: string): boolean {
+  if (Array.isArray(v)) return v.some((x) => readsVar(x, name));
+  if (!v || typeof v !== "object") return false;
+  const o = v as { op?: unknown; name?: unknown };
+  if (o.op === "var" && o.name === name) return true;
+  return Object.values(v).some((x) => readsVar(x, name));
 }
 
 export function walkExpr(e: Expr, f: (e: Expr) => void): void {

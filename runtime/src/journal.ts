@@ -162,6 +162,18 @@ export class Journal {
     await tx.query("insert into events (run_id, seq, type, data, at) values ($1, $2, $3, $4, $5)", [runId, num(r?.["seq"]), type, json(data), this.now()]);
   }
 
+  /**
+   * Records that a map began to run its items (spec/envelope.md "map"): once for a map node, however often the run
+   * is resumed and comes to it again. Only the lease holder may write (R06).
+   */
+  async mapStarted(runId: string, fence: number, data: { map: string; items: number; par: number }): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [seen] = await tx.query<Row>("select 1 as seen from events where run_id = $1 and type = 'map_started' and data->>'map' = $2 limit 1", [runId, data.map]);
+      if (!seen) await this.event(tx, runId, "map_started", data);
+    });
+  }
+
   async run(runId: string): Promise<RunRow> {
     const [row] = await this.db.query<Row>("select * from runs where run_id = $1", [runId]);
     if (!row) throw new Violation("unknown_run", `No run '${runId}'.`);

@@ -11,11 +11,12 @@ same cases.
 | Signed decisions: the record, the members' keys, acceptance and `decision_refused`, the evidence of `human.approve`, unsigned mode, the CLI, lock changes in `view --against` (H01, H02, H04, H05) | implemented |
 | The envelope's own rules: E1701, E1704 and E1707; E0501 with `steps` and `agents`; E0220 with `spawn.max_class` | implemented |
 | The envelope at run time: its approval (H03), the `agents` ledger for delegations (N02), `spawn.max_concurrent`, `approve E by r`; the card | implemented |
-| `map` and its rules (E1702, E1703, E1708); `plan`, sub-programs and their rules (E1705, E1706); amendments | not yet; `mandate explain` knows the codes, `mandate check` does not report them |
+| `map`: its rules (E1702, E1703, E1708, E0320 and E0501 at the map) and its run (R11, R12, N03, N08) | implemented |
+| `plan`, sub-programs and their rules (E1705, E1706); amendments | not yet; `mandate explain` knows the codes, `mandate check` does not report them |
 | Run views of 0.4: submissions, the envelope's remainder, map items, each decision's member, role and signature | not yet; `mandate status` lists each decision a run took and whether its signature holds |
 
-The runtime runs a 0.4 package that uses roles, signed decisions and
-envelopes. It refuses one that has a `map`, a `plan`, or `agents` in a
+The runtime runs a 0.4 package that uses roles, signed decisions,
+envelopes and `map`. It refuses one that has a `plan`, or `agents` in a
 budget that is not an envelope's, when it loads it (`unsupported_language`,
 naming what it found). Those are not run yet, and a version is never run on
 a best-effort basis. Such a program can be read, checked, hashed, printed
@@ -496,16 +497,29 @@ In IR: `{ "op": "map", "bind": "x", "over": <expr>, "max": n, "par": k,
 - **Elements.** `x` is known as the list is: an element of a model's list
   is model output.
 - **Faults.** By default a fault in one item is that item's outcome, and the
-  other items go on (R12). With `supervise fail_fast` the first fault stops
-  items not yet dispatched, waits for those in flight, and fails the map
-  with that fault. `restart_all` is not allowed on a map (E0714).
+  other items go on (R12). With `supervise fail_fast` a fault stops the
+  items not yet started, the map waits for those in flight, and it fails
+  with the fault of the first failed item in the order of `xs`.
+  `restart_all` is not allowed on a map (E0714).
+- **What is not an item's outcome.** A `BudgetExceeded` goes to the run's
+  budget handler, as it does outside a map: the run waits for a raise, and
+  after one the map goes on with the items that have no result yet. A
+  wait, a stop for attention and a crash of the worker are not an item's
+  to keep either. No further item starts, and the map is left once the
+  items in flight have settled.
+- **Decided in input order.** What a map does is decided by its items in
+  the order of `xs`, never by which one ended first: the first item that
+  did not end with a value decides. So a resumed run and a replay decide
+  as the first run did.
 - **Bound.** `max n` is the most elements the map accepts. A list longer
-  than `n` is `Rejected(over_limit)` before any item is dispatched. Outside
-  an envelope, `max` is required (E1702). Inside one it may be left out
-  when the body starts at least one delegation; the bound is then the
-  envelope's `agents` (E1702 otherwise).
+  than `n` is `Rejected(over_limit)` before any item is dispatched (N08).
+  Outside an envelope, `max` is required (E1702). Inside one it may be left
+  out when the body starts at least one delegation, itself or in a function
+  it calls; the bound is then the envelope's `agents` (E1702 otherwise).
 - **Concurrency.** At most `k` items run at once; `par` absent means one at
-  a time. Inside an envelope, `k ≤ max_concurrent` (E1703).
+  a time. Inside an envelope, `k ≤ max_concurrent` (E1703), and each
+  delegation of an item still takes one of the run's `max_concurrent`
+  places.
 - **Authority.** `with caps K` applies to each item's body: inside it, K
   replaces the capability kinds it names in what delegations can be
   granted. A delegation in the body is granted K as if it had written
@@ -513,27 +527,61 @@ In IR: `{ "op": "map", "bind": "x", "over": <expr>, "max": n, "par": k,
   and for which it names no capability of its own; what it names itself
   lies inside K. Each capability in K lies inside the context (E0701), and
   its scope may depend on `x`. A value that chooses a scope is never
-  `Inferred` or `Untrusted` (E0215, R5).
-- **Disjoint writes (C5).** When `k > 1` and the body writes:
-  - if the write scopes do not depend on `x`, every item writes the same
-    scope, which is E0320;
-  - if they do, the runtime evaluates every item's write scopes before it
-    dispatches any item and refuses the map with
-    `Rejected(overlapping_scopes)` when two items' scopes overlap (N03).
-- **People.** No `human.*` step and no `escalate` inside a map body (E1708).
-  A batch asks a person once, after the map, about the list (0.6 adds
-  `human.review` for that).
+  `Inferred` or `Untrusted` (E0215, R5). A map inside a map item starts
+  from what that item was handed.
+- **Scopes chosen at run time.** `C.narrow(v)` over a value is evaluated
+  when the capability is needed: for a map's `with caps`, for every item
+  before any item is dispatched; for a delegation's own, when it is
+  dispatched, in a map or outside one. The value is a text or a list of
+  texts. A `Path` is relative, so over an `fs.*` capability a relative
+  value names that path below each path of C:
+  `fs.write("/work/repos").narrow("billing")` is
+  `fs.write("/work/repos/billing")`. The result lies inside C, or it is
+  `PolicyDenied(outside_capability)`: an absolute path elsewhere, or a
+  relative one that climbs out with `..`. A file scope with `\`, `:` or
+  NUL is inside nothing, since a host may read it another way (K68). A
+  capability of K outside what the map's context holds, and a
+  delegation's own outside what its item was handed, are
+  `PolicyDenied(outside_authority)`. Either one in a map's `with caps`
+  refuses the map before any item is dispatched.
+- **Disjoint writes (C5).** When `k > 1` the items run side by side, and
+  what an item may write is the same for every item unless the map hands
+  each one a scope its element chooses. So every write capability the
+  body can use is of a kind that `with caps` hands narrowed by `x`, as in
+  `with caps W.narrow(x.root)`. That holds for what a delegation is
+  granted, in the body or in a function the body calls, and for what an
+  effect of the body uses itself. Any other is E0320, at the map. The
+  runtime then compares the write scopes the items are handed, two by
+  two, before it dispatches any item, and refuses the map with
+  `Rejected(overlapping_scopes)` when two overlap (N03).
+- **People.** Nothing in a map body waits for a person (E1708): no
+  `human.*` step, no `escalate`, no `pause` (a `pause and S` is judged by
+  `S`), no `supervise escalate` on a delegation, no `verify` against a
+  contract with a criterion a person approves, and no call of a function
+  that holds one of these, through any number of calls. Each item would
+  wait on its own. A batch asks a person once, after the map, about the
+  list (0.6 adds `human.review` for that).
 - **No critical effect inside a map body.** Each item's critical effect
-  would be its own action, authorized one by one. 0.4 refuses it (E1708);
-  a change set or a later version handles a batch of effects.
-- **Budget.** If `budget b` is given, the body's static cost fits in `b`
-  (E0501, at the map) and the map counts `n × b`; otherwise it counts
-  `n × body`. Money, tokens, steps and agents add up over items; time is
-  `⌈n / k⌉ ×` the body's time. Without `max`, `n` is the envelope's
-  `agents`.
+  would be its own action, authorized one by one. 0.4 refuses it, and a
+  change set in a map body with it (E1708); a change set after the map or
+  a later version handles a batch of effects.
+- **Budget.** With `budget b`, the body's static cost fits in `b` in every
+  dimension `b` names, steps and agents among them, in an envelope and
+  outside one (E0501 at the map's budget, E0504 for a spend in another
+  currency). One item then counts `b` in the dimensions it names and the
+  body in the others; without `budget` one item counts the body. The map
+  counts `n ×` one item in money, tokens, steps and agents, and
+  `⌈n / k⌉ ×` one item's time. Without `max`, `n` is the envelope's
+  `agents`. The runtime reserves nothing for an item: each delegation of
+  the body reserves its own budget, which the check has added up.
 - **Commands.** Item `i` runs under `<map>[i]`: its commands are
   `<map>[i]/body/…`. The list itself is a value of the workflow, so a
-  replay sees the same items in the same order.
+  replay sees the same items in the same order. `map_started` is written
+  once for a map, after the checks above and before its first item, and
+  not again when the run is resumed.
+- **A failed sibling.** A failed branch of a `par` around the map stops an
+  item at its next command, like any other command of that branch, and
+  the map starts no further item.
 - **Nodes.** The body counts once toward the 1000-node limit (E0105); the
   map is not unrolled.
 
@@ -670,13 +718,13 @@ here (Appendix B has none for envelopes), E15xx for roles and people.
 | MDT-E1502 | Role not bound | With a lock: every role the package names has a member (`unbound_role` at load) |
 | MDT-E1503 | `distinct_from` without an earlier approval | It names a role approved earlier in the same criterion |
 | MDT-E1701 | Malformed envelope | `owner`, `caps` and `budget` with `agents` are given; the workflow has no `caps` or `budget` of its own |
-| MDT-E1702 | Unbounded map | `max` is given, or the map is inside an envelope and its body starts a delegation |
+| MDT-E1702 | Unbounded map | `max` is given, or the map is inside an envelope and its body starts a delegation, itself or in a function it calls |
 | MDT-E1703 | Map concurrency above the envelope | `par k` is at most `spawn.max_concurrent` |
 | MDT-E1704 | Envelope approval names a non-critical or uncovered effect | Every effect under `approve` is critical and covered by the envelope's `caps` |
 | MDT-E1705 | Not allowed in a sub-program | A sub-program defines only types, constants, capabilities, functions, local agents and one workflow |
 | MDT-E1706 | Sub-program does not fit the envelope | Capabilities inside the envelope and clear of writes in flight; budget within what is left; data class; approvals kept. Facts name the dimension |
 | MDT-E1707 | `plan` outside an envelope | `plan` is only in the body of a workflow with an envelope |
-| MDT-E1708 | Person or critical effect in a map body | A map body has no `human.*`, `escalate` or critical effect |
+| MDT-E1708 | Person or critical effect in a map body | Nothing in a map body waits for a person (`human.*`, `escalate`, `pause`, `supervise escalate`, a `verify` a person approves, a function that holds one), and it has no critical effect and no change set. Facts name the map, the kind and the step |
 
 Existing checks extend to the new forms:
 
@@ -688,7 +736,8 @@ Existing checks extend to the new forms:
   runtime proves that each sub-program fits what is left. For an envelope
   it compares `steps` as well. A workflow's own budget is compared as
   before 0.4, in money, tokens and time, so an earlier program's
-  diagnostics do not change.
+  diagnostics do not change. A map's `budget` is compared with its body
+  in every dimension it names, at the map's budget.
 - **E0220** applies `spawn.max_class` to every delegation and `infer` in
   the run, and `internal` when the envelope names no class. One in the
   workflow's body is reported where it stands. One inside a function the
@@ -699,7 +748,12 @@ Existing checks extend to the new forms:
   delegated, so this finds data that first has a higher class inside it.
   The skills are the program's own. An imported agent's body was checked
   in its module, without this envelope.
-- **E0320** applies to map items as above.
+- **E0320** is reported at a map with `par > 1` for each write capability
+  its body can use that the map does not hand per item, as above. Facts
+  name `par`, the capability and the kinds handed by item.
+- **W0310** counts a capability of an envelope as used when a delegation
+  inside a function the body calls is granted it. A workflow's own
+  capabilities are reported as before 0.4.
 - **E0711** stays: there is no `spawn`. Its message names `plan … within
   envelope` as the dynamic form (V05).
 
@@ -736,7 +790,17 @@ with which key, and why. It changes nothing else and raises no revision.
 | `no_envelope` | An envelope approval of a package that has no envelope |
 | `approval_conflict` | An effect under `approve` whose environment or change set member names another role. The run is `attention_required` |
 | `above_program_budget` | A raise above the envelope's budget; it needs an amendment |
-| `unsupported_language` | At load: a package with a `map`, a `plan`, or `agents` in a budget that is not an envelope's |
+| `unsupported_language` | At load: a package with a `plan`, or `agents` in a budget that is not an envelope's |
+
+A map is refused with a fault, before any of its items is dispatched. Like
+any fault it can be an outer map item's outcome.
+
+| Fault | When |
+|---|---|
+| `Rejected(over_limit)` | The list is longer than the map's bound: `max`, or without it the envelope's `agents` (N08). Names the map, the number of items and the bound |
+| `Rejected(overlapping_scopes)` | With `par > 1`, two items are handed write scopes that overlap (N03). Names the map, the two items and the two capabilities |
+| `PolicyDenied(outside_capability)` | A scope chosen at run time does not lie inside the capability it narrows. Names the capability and the scope asked for. Also for a delegation outside a map |
+| `PolicyDenied(outside_authority)` | A map's `with caps` outside what its context holds (names the map and the item), or a delegation's own outside what it can be granted (names the delegate) |
 
 ### Executors
 

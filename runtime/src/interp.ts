@@ -27,9 +27,12 @@ import {
   modelTiers,
   PROGRESS_DEFAULTS,
   requirementFor,
+  scopeWithin,
+  showCap,
   STD_EFFECTS,
   STD_FNS,
   workflowBounds,
+  writesOverlap,
   type Arg,
   type Tier,
   type Budget,
@@ -42,6 +45,7 @@ import {
   type Expr,
   type Json,
   type Lock,
+  type MapExpr,
   type Pattern,
   type Program,
   type Stmt,
@@ -143,7 +147,21 @@ interface Ctx {
   siblings?: Siblings;
   /** Path prefix for the contract or function being evaluated. */
   where: "workflow" | "contract";
+  /**
+   * The workflow whose body this is, through any function it calls and any contract it verifies against. Its
+   * capabilities are the context a delegation is granted from (C2), and its model tiers are a model call's. It is
+   * read from here and never from a command's path, which names where a command stands and not whose authority it has.
+   */
+  workflow: string;
+  /**
+   * Inside a map's body, for one item (spec/envelope.md "map"): `avail` is the context with the map's `with caps`
+   * in place of the kinds it names, and `handed` is what the map hands each delegation of the body.
+   */
+  item?: { avail: CapVal[]; handed: CapVal[] };
 }
+
+/** How one item of a map ended: with its value, with a fault, or with something that is not the item's to keep. */
+type ItemEnd = { ok: Value } | { fault: Fault } | { stop: unknown };
 
 export interface InterpOptions {
   journal: Journal;
@@ -216,7 +234,7 @@ export class Interpreter {
       if (!Object.hasOwn(input, p.name)) throw new Violation("missing_input", `Workflow ${name} needs input '${p.name}'.`);
       vars.set(p.name, input[p.name]!);
     }
-    const ctx: Ctx = { scope: { vars }, where: "workflow" };
+    const ctx: Ctx = { scope: { vars }, where: "workflow", workflow: name };
     let result: Value;
     try {
       result = await this.block(wf.body, ctx, `/defs/${name}/body`);
@@ -226,7 +244,7 @@ export class Interpreter {
     }
     // `ensures e` (§4.6): the workflow's postcondition over its result. A run whose result breaks it does not succeed.
     if (wf.ensures) {
-      const held = truthy(unwrap(await this.expr(wf.ensures, { scope: { vars: new Map([["result", result]]), parent: ctx.scope }, where: "workflow" }, `/defs/${name}/ensures`)));
+      const held = truthy(unwrap(await this.expr(wf.ensures, { ...ctx, scope: { vars: new Map([["result", result]]), parent: ctx.scope } }, `/defs/${name}/ensures`)));
       if (!held) throw new Fault("Rejected", [{ reason: "ensures", workflow: name }]);
     }
     return result;
@@ -247,7 +265,7 @@ export class Interpreter {
     const i = (wf.on ?? []).findIndex((h) => h.event === "budget_exceeded");
     if (i < 0) return this.wait(`/defs/${name}/on/budget_exceeded@${episode}`, "input", { pause: true });
     const vars = new Map<string, Value>(wf.params.map((p) => [p.name, input[p.name] ?? null]));
-    return this.expr(wf.on![i]!.then, { scope: { vars }, where: "workflow" }, `/defs/${name}/on/${i}@${episode}/then`);
+    return this.expr(wf.on![i]!.then, { scope: { vars }, where: "workflow", workflow: name }, `/defs/${name}/on/${i}@${episode}/then`);
   }
 
   // ── statements ────────────────────────────────────────────────────────
@@ -457,10 +475,134 @@ export class Interpreter {
       case "await":
         throw new Violation("unsupported", `${e.op} is not available in 0.1 (E0711).`);
       case "map":
+        return this.map(e, ctx, path);
       case "plan":
-        // The runtime refuses a 0.4 package when it loads it (RUNTIME_LANGUAGES), so this is not reached.
+        // The runtime refuses a package with a `plan` when it loads it (notRunYet), so this is not reached.
         throw new Violation("unsupported", `${e.op} is language 0.4, which this runtime does not run yet (spec/envelope.md).`);
     }
+  }
+
+  /**
+   * `map x in xs … { body }` (spec/envelope.md "map"): the body once for each element, at most `par` at a time,
+   * with the results in the order of `xs` (R11).
+   *
+   * Before any item is dispatched: a list longer than the bound is `Rejected(over_limit)` (N08); each item's
+   * `with caps` is evaluated, and must lie inside the context; and with `par > 1` no two items may write
+   * overlapping scopes, or the map is `Rejected(overlapping_scopes)` (N03, C5).
+   *
+   * A fault in an item is that item's `Failed` outcome, and the others go on (R12). Under `fail_fast` it stops the
+   * items not yet started, those in flight are waited for, and the map fails with it. Anything else that ends an
+   * item is not the item's to keep: a wait, a stop for a person, a crash, and the run's own `BudgetExceeded`, which
+   * goes to the run's budget handler as it does anywhere. No further item starts, and it leaves the map once the
+   * items in flight have settled.
+   *
+   * What the map does is decided by the items in input order, never by which one ended first, so a resumed run and
+   * a replay decide as the first run did: the first item that did not end with a value decides.
+   */
+  private async map(e: MapExpr, ctx: Ctx, path: string): Promise<Value> {
+    const over = unwrap(await this.expr(e.over, ctx, `${path}/over`));
+    if (!Array.isArray(over)) throw new Violation("not_a_list", `map runs its body over a list, and ${path}/over is not one.`);
+    // Without `max` the bound is the envelope's `agents`: every item starts a delegation, so no more could run (E1702).
+    const bound = e.max ?? this.o.envelope?.budget?.agents;
+    if (bound === undefined) throw new Violation("unbounded_map", `The map at ${path} has no 'max' and the run has no envelope (MDT-E1702).`);
+    if (over.length > bound) throw new Fault("Rejected", ["over_limit", { map: path, items: over.length, max: bound }]);
+    const par = Math.max(1, e.par ?? 1);
+
+    const outer = this.available(ctx);
+    const items: Ctx[] = [];
+    const writes: CapVal[][] = [];
+    for (let i = 0; i < over.length; i++) {
+      let item: Ctx = { ...ctx, scope: { vars: new Map([[e.bind, over[i]!]]), parent: ctx.scope } };
+      const given: CapVal[] = [];
+      for (let j = 0; j < (e.caps ?? []).length; j++) given.push(...(await this.capsAt(e.caps![j]!, item, `${path}[${i}]/caps/${j}`)));
+      for (const g of given) {
+        if (!outer.some((a) => capCovers(a, g))) throw new Fault("PolicyDenied", [{ reason: "outside_authority", map: path, item: i, capability: showCap(g) }]);
+      }
+      if (given.length) {
+        const kinds = new Set(given.map((g) => g.ctor));
+        item = { ...item, item: { avail: [...outer.filter((c) => !kinds.has(c.ctor)), ...given], handed: [...(ctx.item?.handed ?? []).filter((c) => !kinds.has(c.ctor)), ...given] } };
+      }
+      items.push(item);
+      writes.push(given.filter((c) => c.write));
+    }
+    if (par > 1) {
+      for (let i = 0; i < writes.length; i++) {
+        for (let j = i + 1; j < writes.length; j++) {
+          for (const a of writes[i]!) {
+            const b = writes[j]!.find((c) => writesOverlap(a, c));
+            if (b) throw new Fault("Rejected", ["overlapping_scopes", { map: path, items: [i, j], left: showCap(a), right: showCap(b) }]);
+          }
+        }
+      }
+    }
+    if (!this.o.replay) await this.o.journal.mapStarted(this.o.runId, this.o.fence, { map: path, items: over.length, par });
+
+    const failFast = e.supervise?.name === "fail_fast";
+    const ends: Array<ItemEnd | undefined> = new Array<ItemEnd | undefined>(over.length).fill(undefined);
+    let stopped = false;
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      // A failed branch of a `par` around the map stops an item at its next command, like any command of that
+      // branch, and that stop ends the map here.
+      while (!stopped && next < over.length) {
+        const i = next++;
+        try {
+          ends[i] = { ok: await this.block(e.body, items[i]!, `${path}[${i}]/body`) };
+        } catch (x) {
+          if (x instanceof Fault && x.tag !== "BudgetExceeded") {
+            ends[i] = { fault: x };
+            if (failFast) stopped = true;
+          } else {
+            ends[i] = { stop: x };
+            stopped = true;
+          }
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(par, over.length) }, () => worker()));
+
+    const out: Value[] = [];
+    for (const [i, end] of ends.entries()) {
+      // Items start in input order, so one that never started comes after the one that stopped the map, which
+      // has decided by now.
+      if (!end) throw new Error(`map ${path}: item ${i} did not run, and no earlier item stopped the map`);
+      if ("stop" in end) throw end.stop;
+      if ("fault" in end && failFast) throw end.fault;
+      out.push("ok" in end ? tag("Ok", end.ok) : tag("Failed", end.fault.value()));
+    }
+    return out;
+  }
+
+  /**
+   * What a capability expression stands for at run time. `c.narrow(v)` over a value is c with the scope the value
+   * names. A `Path` is relative, and so may a text be: over files it names that path below each path of c. The
+   * checker bounded the result by c without knowing the value (C3); what the value turns out to be is held to c
+   * here, and a scope outside c is `PolicyDenied`. So is a file scope with `\`, `:` or NUL: a host may read it
+   * another way than this comparison does, so it is not known to lie inside anything (K68). Anything else is what
+   * it is statically (capsOf).
+   */
+  private async capsAt(e: Expr, ctx: Ctx, path: string): Promise<CapVal[]> {
+    if (!(e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow") || e.args.every((a) => a.value.op === "text")) return this.caps(e);
+    const bases = await this.capsAt(e.callee.of, ctx, `${path}/callee/of`);
+    const base = bases[0];
+    // A capability that stands for several cannot be narrowed as one (MDT-E1002): it stays without a scope, which no sandbox accepts.
+    if (!base || bases.length !== 1) return this.caps(e);
+    const scope: string[] = [];
+    for (let i = 0; i < e.args.length; i++) {
+      const v = unwrap(await this.expr(e.args[i]!.value, ctx, `${path}/args/${i}/value`));
+      const named = Array.isArray(v) ? v.map(unwrap) : [v];
+      for (const s of named) {
+        if (typeof s !== "string") throw new Violation("bad_scope", `narrow takes text or a path, and ${path}/args/${i}/value is ${show(v)}.`);
+        const files = base.ctor.startsWith("fs.");
+        if (files && /[\\:\0]/.test(s)) throw new Fault("PolicyDenied", [{ reason: "outside_capability", capability: showCap(base), requested: [s] }]);
+        if (files && !s.startsWith("/") && base.scope) scope.push(...base.scope.map((b) => `${b.replace(/\/+$/, "")}/${s}`));
+        else scope.push(s);
+      }
+    }
+    if (!scopeWithin(base.ctor, scope, base.scope)) {
+      throw new Fault("PolicyDenied", [{ reason: "outside_capability", capability: showCap(base), requested: scope }]);
+    }
+    return [{ ...base, scope, name: `${base.name ?? base.ctor}.narrow` }];
   }
 
   private variable(name: string, ctx: Ctx): Value {
@@ -761,7 +903,7 @@ export class Interpreter {
   private async infer(e: Extract<Expr, { op: "infer" }>, ctx: Ctx, path: string): Promise<Value> {
     const input = await this.expr(e.from, ctx, `${path}/from`);
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
-    const tier = this.tierFor(e.using, path);
+    const tier = this.tierFor(e.using, ctx);
     const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
     return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.checkedInfer(req), { siblings: ctx.siblings, label: "infer", ...this.limits("infer", tier) });
   }
@@ -777,15 +919,13 @@ export class Interpreter {
 
   /**
    * The model tier a model call runs under: the capability named by `using`,
-   * else the only tier among the enclosing definition's model capabilities,
+   * else the only tier among the workflow's model capabilities,
    * else the only tier the program names. The lock file maps it to a model.
    */
-  private tierFor(using: Expr | undefined, path: string): string | undefined {
+  private tierFor(using: Expr | undefined, ctx: Ctx): string | undefined {
     const tierOf = (e: Expr): string | undefined => this.caps(e).find((c) => c.tier)?.tier;
     if (using) return tierOf(using);
-    const def = this.def(path.split("/")[2]!);
-    const caps = def?.kind === "workflow" ? workflowBounds(def).caps : def?.kind === "agent" ? def.caps : [];
-    const own = [...new Set(caps.map(tierOf).filter((t): t is string => !!t))];
+    const own = [...new Set(this.available(ctx).flatMap((c) => (c.tier ? [c.tier] : [])))];
     if (own.length === 1) return own[0];
     const all = [...modelTiers(this.o.program)];
     return all.length === 1 ? all[0] : undefined;
@@ -815,10 +955,13 @@ export class Interpreter {
     // `timeout d` (§8.7, §9.1): each attempt must finish within d of its start. The start is journaled, so a resumed
     // worker keeps the deadline; a step not sent by then is refused, and a result that comes later is discarded.
     const timeoutMs = e.timeout ? Number(unwrap(await this.expr(e.timeout, ctx, `${path}/timeout`))) : undefined;
+    // `with caps`, with a scope a value names evaluated now: the same for every attempt.
+    const given: CapVal[] = [];
+    for (let i = 0; i < (e.caps ?? []).length; i++) given.push(...(await this.capsAt(e.caps![i]!, ctx, `${path}/caps/${i}`)));
     for (let attempt = 0; ; attempt++) {
       const id = attempt ? `${path}#${attempt}` : path;
       try {
-        return await this.attempt(e.agent, e, pos, ctx, id, attempt, timeoutMs);
+        return await this.attempt(e.agent, e, pos, given, ctx, id, attempt, timeoutMs);
       } catch (f) {
         if (!(f instanceof Fault)) throw f;
         if (sup?.name === "restart" && RESTARTABLE.has(f.tag) && attempt < max) {
@@ -830,7 +973,7 @@ export class Interpreter {
         }
         if (fallback && RESTARTABLE.has(f.tag)) {
           // degrade (§8.7): the fallback, once, with the same arguments; its own fault is the delegation's.
-          return await this.attempt(fallback, e, pos, ctx, `${path}~${fallback}`, 0, timeoutMs);
+          return await this.attempt(fallback, e, pos, given, ctx, `${path}~${fallback}`, 0, timeoutMs);
         }
         if (sup?.name === "escalate" && ESCALATABLE.has(f.tag) && attempt < MAX_ESCALATIONS) {
           const role = arg("role");
@@ -876,22 +1019,22 @@ export class Interpreter {
   }
 
   /** One attempt of a delegation, once the run has a place for it (`spawn.max_concurrent`). */
-  private async attempt(agentName: string, e: Extract<Expr, { op: "delegate" }>, pos: Value[], ctx: Ctx, id: string, attempt: number, timeoutMs: number | undefined): Promise<Value> {
+  private async attempt(agentName: string, e: Extract<Expr, { op: "delegate" }>, pos: Value[], given: CapVal[], ctx: Ctx, id: string, attempt: number, timeoutMs: number | undefined): Promise<Value> {
     const leave = await this.place();
     try {
-      return await this.send(agentName, e, pos, ctx, id, attempt, timeoutMs);
+      return await this.send(agentName, e, pos, given, ctx, id, attempt, timeoutMs);
     } finally {
       leave();
     }
   }
 
   /** One attempt of a delegation, by `agentName` (the called agent, or a degrade fallback), as command `id`. */
-  private async send(agentName: string, e: Extract<Expr, { op: "delegate" }>, pos: Value[], ctx: Ctx, id: string, attempt: number, timeoutMs: number | undefined): Promise<Value> {
+  private async send(agentName: string, e: Extract<Expr, { op: "delegate" }>, pos: Value[], given: CapVal[], ctx: Ctx, id: string, attempt: number, timeoutMs: number | undefined): Promise<Value> {
     const agent = this.def(agentName);
     if (!agent || agent.kind !== "agent") throw new Violation("unknown_agent", `No agent '${agentName}'.`);
     const skill = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill]! : undefined;
     if (!skill) throw new Violation("unknown_skill", `No skill '${agentName}.${e.skill}'.`);
-    const granted = this.grants(agentName, e.caps ?? [], id);
+    const granted = this.grants(agentName, given, ctx);
     const caps = granted.map((c) => (c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor }));
     const budget = e.budget ?? skill.budget ?? agent.budget;
     // Under an envelope every attempt is one of its `agents`: a first attempt, each restart and a degrade fallback
@@ -1004,21 +1147,38 @@ export class Interpreter {
    * Capabilities handed to a delegate: A.caps ∩ avail(ctx), with `with caps` narrowing its own kinds (C2, §9.1).
    * An agent capability is in avail(ctx) when one of the workflow's (its envelope's, when it has one) covers it, as the compiler reads it
    * (capCovers): its scope by segment after `.` and `..`, and no higher data class, other tier or wider arguments.
+   *
+   * `own` is the delegation's `with caps`. Inside a map's body the map's `with caps` is handed to the delegation as
+   * if it had named it: for each kind the agent holds at least as widely and the delegation names none of its own
+   * (spec/envelope.md "map"). What the delegation names itself lies inside the context, which for a map item is what
+   * the map handed that item; a scope chosen at run time is held to that here, since the checker could only hold it
+   * to the capability it narrows.
    */
-  private grants(agentName: string, withCaps: Expr[], path: string): CapVal[] {
+  private grants(agentName: string, own: CapVal[], ctx: Ctx): CapVal[] {
     const agent = this.def(agentName) as Extract<Def, { kind: "agent" }>;
-    const wfName = path.split("/")[2]!;
-    const wf = this.def(wfName);
-    const avail = wf?.kind === "workflow" ? workflowBounds(wf).caps.flatMap((c) => this.caps(c)) : undefined;
-    const inside = (c: CapVal): boolean => !avail || avail.some((a) => capCovers(a, c));
-    let out = agent.caps.flatMap((c) => this.caps(c)).filter(inside);
-    if (withCaps.length) {
-      const given = withCaps.flatMap((c) => this.caps(c));
+    const avail = this.available(ctx);
+    const inside = (c: CapVal): boolean => avail.some((a) => capCovers(a, c));
+    const held = agent.caps.flatMap((c) => this.caps(c));
+    let out = held.filter(inside);
+    for (const g of own) {
+      if (!inside(g)) throw new Fault("PolicyDenied", [{ reason: "outside_authority", delegate: agentName, capability: showCap(g) }]);
+    }
+    const named = new Set(own.map((g) => g.ctor));
+    const given = [...own, ...(ctx.item?.handed ?? []).filter((k) => !named.has(k.ctor) && (!!agent.remote || held.some((a) => capCovers(a, k))))];
+    if (given.length) {
       const kinds = new Set(given.map((g) => g.ctor));
       out = [...out.filter((c) => !kinds.has(c.ctor)), ...given];
     }
     const key = (c: CapVal): string => JSON.stringify(c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor });
     return out.sort((a, b) => (key(a) < key(b) ? -1 : 1));
+  }
+
+  /**
+   * avail(ctx): the capabilities of the workflow whose body is running, its envelope's when it has one (C2). Inside
+   * a map's body, what the map left of them for the item.
+   */
+  private available(ctx: Ctx): CapVal[] {
+    return ctx.item?.avail ?? workflowBounds(this.workflowDef(ctx.workflow)).caps.flatMap((c) => this.caps(c));
   }
 
   /** What a capability expression stands for, over the program's definitions and its linked system model. */
@@ -1035,7 +1195,7 @@ export class Interpreter {
     if (!c || c.kind !== "contract") throw new Violation("unknown_contract", `No contract '${e.contract}'.`);
     const vars = new Map<string, Value>();
     c.params.forEach((p, i) => vars.set(p.name, pos[i] ?? null));
-    const cctx: Ctx = { scope: { vars }, where: "contract" };
+    const cctx: Ctx = { scope: { vars }, where: "contract", workflow: ctx.workflow };
     const unmet: string[] = [];
     const evidence: string[] = [];
     for (let i = 0; i < (c.require ?? []).length; i++) {

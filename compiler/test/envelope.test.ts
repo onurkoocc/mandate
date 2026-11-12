@@ -250,26 +250,29 @@ describe("typing of map", () => {
     expect(said(src)).toEqual([["MDT-E0201", "/defs/MigrateAll/body/0/value/over"]]);
   });
 
+  // In the next three the map runs a dozen items one at a time: side by side, a write scope every item shares is E0320.
+  const IN_TURN = mutate(" max 150 par 16", " max 12");
+
   it("hands its body only capabilities the context holds (E0701)", () => {
-    const wide = mutate('capability SrcWrite = fs.write("/work/repos")', 'capability SrcWrite = fs.write("/work/repos")\ncapability Wide     = fs.write("/work")');
+    const wide = mutate('capability SrcWrite = fs.write("/work/repos")', 'capability SrcWrite = fs.write("/work/repos")\ncapability Wide     = fs.write("/work")', IN_TURN);
     expect(said(wide)).toEqual([]);
     expect(said(mutate("with caps SrcWrite.narrow(repo.root)", "with caps Wide", wide))).toEqual([["MDT-E0701", "/defs/MigrateAll/body/0/value/caps/0"]]);
   });
 
   it("hands its capabilities to the delegations of its body, as if each named them", () => {
     // A scope that is known statically narrows what the item's agent is granted; the delegation needs no `with caps`.
-    const narrow = mutate("with caps SrcWrite.narrow(repo.root)", 'with caps SrcWrite.narrow("/work/repos/a")');
+    const narrow = mutate("with caps SrcWrite.narrow(repo.root)", 'with caps SrcWrite.narrow("/work/repos/a")', IN_TURN);
     expect(said(narrow)).toEqual([]);
     const row = authority(check(narrow, "mdt", { modules: modules() }).program!).rows.find((r) => r.kind === "delegation" && r.who.includes("Migrator.migrate"))!;
     expect(row.write).toEqual(["/work/repos/a"]);
     expect(row.read).toEqual(["/work/repos"]);
     // Without the map's `with caps` the agent is granted what it holds inside the envelope.
-    const whole = authority(check(mutate(" with caps SrcWrite.narrow(repo.root)", ""), "mdt", { modules: modules() }).program!).rows.find((r) => r.kind === "delegation" && r.who.includes("Migrator.migrate"))!;
+    const whole = authority(check(mutate(" with caps SrcWrite.narrow(repo.root)", "", IN_TURN), "mdt", { modules: modules() }).program!).rows.find((r) => r.kind === "delegation" && r.who.includes("Migrator.migrate"))!;
     expect(whole.write).toEqual(["/work/repos"]);
   });
 
   it("lets a delegation of its body narrow further, and only inside what the map hands it (E0701)", () => {
-    const inside = mutate("delegate Migrator.migrate(repo)", 'delegate Migrator.migrate(repo) with caps SrcWrite.narrow("/work/repos/a/src")', mutate("with caps SrcWrite.narrow(repo.root)", 'with caps SrcWrite.narrow("/work/repos/a")'));
+    const inside = mutate("delegate Migrator.migrate(repo)", 'delegate Migrator.migrate(repo) with caps SrcWrite.narrow("/work/repos/a/src")', mutate("with caps SrcWrite.narrow(repo.root)", 'with caps SrcWrite.narrow("/work/repos/a")', IN_TURN));
     expect(said(inside)).toEqual([]);
     expect(said(mutate('SrcWrite.narrow("/work/repos/a/src")', 'SrcWrite.narrow("/work/repos/b")', inside))).toEqual([["MDT-E0701", "/defs/MigrateAll/body/0/value/body/0/value/caps/0"]]);
   });

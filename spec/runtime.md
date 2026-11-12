@@ -701,9 +701,9 @@ listed in the run's summary (R09).
   (`no_executor`, `unsupported_binding`;
   [`executors.md`](executors.md));
 - runs the compiler's checks on the canonical IR again;
-- refuses a language version it does not run, and of 0.4 a `map`, a
-  `plan` and `agents` in a budget that is not an envelope's, which it does
-  not run yet (`unsupported_language`; [`envelope.md`](envelope.md));
+- refuses a language version it does not run, and of 0.4 a `plan` and
+  `agents` in a budget that is not an envelope's, which it does not run
+  yet (`unsupported_language`; [`envelope.md`](envelope.md));
 - when the lock lists members or roles, requires it to be well formed
   (`malformed_lock`), and for a 0.4 package requires every role it names
   to have a member (`unbound_role`, E1502);
@@ -923,8 +923,9 @@ The same mechanisms are tested under Temporal against a local dev server:
 
 ## Not in this runtime yet
 
-- **`map`, and so R11 by input index and R12.** The 0.1 IR has no `map`.
-  `par` results are bound by name, and that binding is tested in its place.
+- **`plan` and sub-programs.** A 0.4 package with a `plan` is refused at
+  load. `map` runs ([`envelope.md`](envelope.md#map)): R11 by input index
+  and R12 are tested in `map.test.ts`.
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.
 
 ## Workspace and run manifest (design doc 9 §12, B3)
