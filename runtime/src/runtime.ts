@@ -36,14 +36,14 @@ export interface Package {
   modules?: Modules;
 }
 
-/** The language versions this runtime runs. Of 0.4 it runs roles, signed decisions and envelopes; see `notRunYet`. */
+/** The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes and `map`; see `notRunYet`. */
 export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4"];
 
 /**
- * What a program uses of 0.4 that this runtime does not run yet: `map`, `plan`, and the `agents` dimension in a
- * budget other than an envelope's (spec/envelope.md). A package that uses one of them is refused at load: a version
- * is never run on a best-effort basis (§3.5). An envelope runs: its approval, its `agents` ledger, `max_concurrent`
- * and `approve`. A 0.4 program without the rest is checked in full, and runs.
+ * What a program uses of 0.4 that this runtime does not run yet: `plan`, and the `agents` dimension in a budget
+ * other than an envelope's (spec/envelope.md). A package that uses one of them is refused at load: a version is
+ * never run on a best-effort basis (§3.5). An envelope runs: its approval, its `agents` ledger, `max_concurrent`
+ * and `approve`. So does a `map`. A 0.4 program without the rest is checked in full, and runs.
  */
 export function notRunYet(program: Program): string[] {
   const found = new Set<string>();
@@ -51,7 +51,7 @@ export function notRunYet(program: Program): string[] {
     if (Array.isArray(v)) return v.forEach((x) => walk(x, key, kept));
     if (!v || typeof v !== "object") return;
     const o = v as Record<string, unknown>;
-    if (o["op"] === "map" || o["op"] === "plan") found.add(String(o["op"]));
+    if (o["op"] === "plan") found.add("plan");
     if (key === "budget" && o["agents"] !== undefined && v !== kept) found.add("agents");
     for (const [k, x] of Object.entries(o)) walk(x, k, kept);
   };

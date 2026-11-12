@@ -1,5 +1,5 @@
 // The language versions this runtime runs (§3.5; spec/envelope.md). Of 0.4 it
-// runs roles, signed decisions and envelopes. `map`, `plan` and the `agents`
+// runs roles, signed decisions, envelopes and `map`. `plan` and the `agents`
 // dimension of a budget that is not an envelope's are read by the compiler and
 // not run here yet, so a package that uses one of them is refused at load, by
 // name. A 0.4 package also needs every role it names bound to a member in its
@@ -102,15 +102,15 @@ describe("the language versions the runtime runs", () => {
     expect(refusal(buildPackage(program, BOUND))).toBeUndefined();
   });
 
-  it("refuse the migration example, which has a map and a plan (unsupported_language)", () => {
+  it("refuse the migration example, which has a plan (unsupported_language)", () => {
     const modules = domain("0.4");
     const program = checked(read("fixtures/envelope/migrate-all.mdt"), modules);
-    // Its envelope, with the agents of the envelope's budget, is run; the map and the plan are not yet.
-    expect(notRunYet(program)).toEqual(["map", "plan"]);
+    // Its envelope, with the agents of the envelope's budget, and its map are run; the plan is not yet.
+    expect(notRunYet(program)).toEqual(["plan"]);
     const e = refusal(buildPackage(program, pinned(modules), modules));
     expect(e).toBeInstanceOf(Violation);
     expect(e).toMatchObject({ code: "unsupported_language" });
-    expect((e as Violation).message).toContain("map, plan of mandate/0.4");
+    expect((e as Violation).message).toContain("plan of mandate/0.4");
   });
 
   const ENVELOPE = "  envelope {\n    owner  reviewer\n    caps   M\n    budget { steps: 20, agents: 3 }\n  }\n{";
@@ -121,8 +121,15 @@ describe("the language versions the runtime runs", () => {
     expect(refusal(buildPackage(program, BOUND))).toBeUndefined();
   });
 
+  const MAP = [`  "done"`, `  let rs = map x in xs max 3 { delegate A.s(x) }\n  "done"`] as const;
+
+  it("accept a 0.4 program with a map", () => {
+    const program = changed(...MAP);
+    expect(notRunYet(program)).toEqual([]);
+    expect(refusal(buildPackage(program, BOUND))).toBeUndefined();
+  });
+
   it.each([
-    ["a map", `  "done"`, `  let rs = map x in xs max 3 { delegate A.s(x) }\n  "done"`, ["map"]],
     // A plan stands only in a workflow with an envelope (E1707), so it comes with one.
     [
       "a plan",
@@ -140,12 +147,20 @@ describe("the language versions the runtime runs", () => {
     expect((e as Violation).message).toContain(`${names.join(", ")} of mandate/0.4`);
   });
 
-  it("refuse a 0.3 program packaged with a module that has a map", () => {
-    const withMap = ASK.replace("module example.ask @ 0.1", "module example.lib @ 0.1").replace(`  "done"`, `  let rs = map x in xs max 3 { delegate A.s(x) }\n  "done"`);
-    const { modules, problems } = loadModules([{ file: "lib.mdt", text: withMap, kind: "mdt" }]);
-    expect(problems).toEqual([]);
-    const program = checked(`mandate @ 0.3\n\nmodule example.user @ 0.1\n\nuse example.lib.{A}\n\nfn one() -> Int {\n  1\n}\n`, modules);
-    expect(refusal(buildPackage(program, pinned(modules), modules))).toMatchObject({ code: "unsupported_language" });
+  it("refuse a 0.3 program packaged with a module that has an agents budget of its own, and accept one that has a map", () => {
+    const lib = (from: string, to: string): Modules => {
+      const text = ASK.replace("module example.ask @ 0.1", "module example.lib @ 0.1").replace(from, to);
+      expect(text).toContain(to);
+      const { modules, problems } = loadModules([{ file: "lib.mdt", text, kind: "mdt" }]);
+      expect(problems).toEqual([]);
+      return modules;
+    };
+    const user = (modules: Modules): Package => {
+      const program = checked(`mandate @ 0.3\n\nmodule example.user @ 0.1\n\nuse example.lib.{A}\n\nfn one() -> Int {\n  1\n}\n`, modules);
+      return buildPackage(program, pinned(modules), modules);
+    };
+    expect(refusal(user(lib("budget { steps: 2 }", "budget { steps: 2, agents: 3 }")))).toMatchObject({ code: "unsupported_language" });
+    expect(refusal(user(lib(...MAP)))).toBeUndefined();
   });
 
   it("accept a 0.3 program packaged with a 0.4 module of types, and with the module declared 0.3", () => {

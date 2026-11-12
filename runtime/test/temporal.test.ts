@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { bundleWorkflowCode, DefaultLogger, Runtime as TemporalRuntime, type WorkflowBundleWithSourceMap } from "@temporalio/worker";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { TrustedKeys } from "../src/evidence.js";
 import { Runtime } from "../src/runtime.js";
 import { SimAgents, SimTool, wallClock } from "../src/sim.js";
 import { createWorker, TemporalDriver, workflowId, workflowsPath, type RunOptions } from "../src/temporal/index.js";
@@ -43,12 +44,39 @@ interface Scheduled extends World {
 async function scheduled(src: string, o: Parameters<typeof world>[1] & { runOptions?: RunOptions } = {}): Promise<Scheduled> {
   const w = await world(src, o);
   const taskQueue = `mandate-${randomUUID()}`;
+  // The earlier programs take a decision on the caller's word; a 0.4 program gives the keys it takes signed ones with.
+  const decisions = o.decisions ?? UNSIGNED.decisions;
   // The worker's runtime keeps timers durable; control calls share its key, so either can check the evidence.
-  const runtime = new Runtime(w.db, w.adapters, w.faults, undefined, { ...UNSIGNED, durableTimers: true, signer: w.rt.signer, artifacts: w.rt.artifacts });
+  const runtime = new Runtime(w.db, w.adapters, w.faults, undefined, { decisions, durableTimers: true, signer: w.rt.signer, artifacts: w.rt.artifacts });
   const worker = await createWorker({ connection: env.nativeConnection, taskQueue, runtime, workflowBundle: bundle });
   const driver = new TemporalDriver(env.client, taskQueue, o.runOptions);
-  return { ...w, rt: runtime, driver, control: new Runtime(w.db, w.adapters, w.faults, driver, { ...UNSIGNED, signer: w.rt.signer, artifacts: w.rt.artifacts }), serve: (body) => worker.runUntil(body()) };
+  return { ...w, rt: runtime, driver, control: new Runtime(w.db, w.adapters, w.faults, driver, { decisions, signer: w.rt.signer, artifacts: w.rt.artifacts }), serve: (body) => worker.runUntil(body()) };
 }
+
+/** A 0.4 workflow that maps a list, with no envelope and no role: it asks no person, so it needs no member's key. */
+const EACH = `mandate @ 0.4
+
+module test.each @ 0.1
+
+use std.{model}
+
+capability ModelStd = model.infer(tier: standard)
+
+agent Worker {
+  caps   ModelStd
+  budget { tokens: 1k, steps: 5 }
+  skill say(t: Text) -> Inferred<Text> ! {Model}
+}
+
+workflow Each(items: List<Text>) -> List<Outcome<Inferred<Text>>>
+  caps    ModelStd
+  budget  { tokens: 10k, steps: 40 }
+{
+  map x in items max 4 par 2 {
+    delegate Worker.say(x)
+  }
+}
+`;
 
 async function stateOf(s: Scheduled, runId: string, state: string): Promise<void> {
   for (let i = 0; i < 400; i++) {
@@ -216,6 +244,23 @@ describe("Temporal schedules runs", () => {
     });
     expect(done.state).toBe("succeeded");
     expect(tool.executions).toHaveLength(1);
+  });
+
+  it("runs a map: a worker that dies between items is replaced, no item is sent twice, and the outcomes are in input order (R11, R01)", async () => {
+    const agents = new SimAgents().on("Worker.say", (req) => (req.args[0] === "b" ? { error: { tag: "SkillFailed", args: ["no luck"] }, cost: { steps: 1 } } : { ok: `said ${String(req.args[0])}`, cost: { steps: 1 } }));
+    const s = await scheduled(EACH, { agents, decisions: { keys: new TrustedKeys([]) } });
+    // The worker dies once, after the first result it records.
+    s.faults.arm("after_record", (i) => i.kind === "delegate");
+    await s.control.startRun({ pkg: s.pkg, workflow: "Each", input: { items: ["a", "b", "c"] }, runId: "t10" });
+    const done = await s.serve(() => s.driver.result("t10"));
+    expect(done.state).toBe("succeeded");
+    const ok = (t: string) => ({ $tag: "Ok", $args: [`said ${t}`] });
+    expect((await s.control.getRun("t10")).result).toEqual([ok("a"), { $tag: "Failed", $args: [{ $tag: "SkillFailed", $args: ["no luck"] }] }, ok("c")]);
+    expect(s.agents.count()).toBe(3);
+    const events = await s.control.journal.events("t10");
+    expect(events.filter((e) => e.type === "lease_acquired")).toHaveLength(2);
+    // The resumed run does not start the map a second time.
+    expect(events.filter((e) => e.type === "map_started").map((e) => e.data)).toEqual([{ map: "/defs/Each/body/0/value", items: 3, par: 2 }]);
   });
 
   it("runs FixBug end to end: the code owner's approval wakes it, and a crash after commit opens one PR", async () => {
