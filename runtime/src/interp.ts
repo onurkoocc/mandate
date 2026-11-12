@@ -60,7 +60,7 @@ import {
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationsRequired, recordProblem, type AttestationRule } from "./attestation.js";
-import { criterionMethods, needsPerson, partMethod, uncovered } from "./criteria.js";
+import { criterionMethods, evidenceIdOf, needsPerson, partMethod, uncovered } from "./criteria.js";
 import { approvalProblem, type StoredDecision } from "./decisions.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
 import type { RateLimiter } from "./ratelimit.js";
@@ -1476,7 +1476,8 @@ export class Interpreter {
         req as unknown as Value,
         verifier.upperBound ? () => verifier.upperBound!(req) : undefined,
         async () => {
-          const res = await verifier.check(req);
+          // Beside the request, not in it: which run and which part of the criterion this check is for (CheckBinding).
+          const res = await verifier.check(req, { run: this.o.runId, part: path });
           // The check's outputs (test logs, a review) are artifacts of the run; the journal keeps their references.
           const logs: Value[] = [];
           for (const l of res.logs ?? []) {
@@ -1506,7 +1507,7 @@ export class Interpreter {
     // What the check was about: the contract's arguments, and for a check of the working copy, its files (§10.3).
     const subject: Obj = { contract_args: this.subjectDigest(contract, ctx), ...(files ? { files } : {}) };
     if (files && !this.o.replay) subject["tree"] = (await this.o.artifacts.putTree(this.scope(), { format: "mandate/tree/0.1", files: files as Record<string, string> })).ref;
-    const id = digest("request", { run: this.o.runId, criterion: path, method, passed });
+    const id = evidenceIdOf(this.o.runId, path, method, passed);
     if (!this.o.replay) {
       // The control plane signs what was checked, against what, by whom and when (§10.3).
       const record: EvidenceRecord = {
@@ -1988,7 +1989,7 @@ export class Interpreter {
       if (!record || !r.key_id || !r.signature || !this.o.trusted.verify(record, { key_id: r.key_id, signature: r.signature })) problems.push(`${r.evidence_id} is not signed by a trusted key`);
       else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion) problems.push(`${r.evidence_id} does not match its signed record`);
       else {
-        const why = recordProblem(record, r, criterionMethods(c, record.criterion), rule) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined);
+        const why = recordProblem(record, { ...r, run: this.o.runId }, criterionMethods(c, record.criterion), rule) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined);
         if (why) problems.push(`${r.evidence_id}: ${why}`);
       }
     }

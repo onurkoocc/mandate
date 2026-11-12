@@ -5,20 +5,24 @@
 //   open        { program, lock }        the package the checks belong to
 //   key         {}                       → { key_id, public_key }
 //   upperBound  { request }              → Cost | null
-//   check       { request }              → { result: CheckResult, attestation: { key_id, signature } }
+//   check       { request, binding }     → { result: CheckResult, attestation: { key_id, signature } }
 //
-// The service signs each check's statement (attestation.ts) with its own
-// key, which only it reads. `ProcessVerifier`, on the runtime's side,
-// recomputes the statement from the request and the result it got, and
-// accepts the result only when the signature verifies against a pinned
-// verifier key. Otherwise the check is not met (`unattested_check`): a
-// result the verifier did not sign never passes.
+// `binding` is the run and the part of the criterion the check is for
+// (CheckBinding); it travels beside the request, so the request and its
+// digest, the check's identity in the journal, stay as they are. The
+// service signs each check's statement (attestation.ts), which names the
+// binding, with its own key, which only it reads. `ProcessVerifier`, on the
+// runtime's side, recomputes the statement from the request, the binding it
+// sent and the result it got, and accepts the result only when the
+// signature verifies against a pinned verifier key. Otherwise the check is
+// not met (`unattested_check`): a result the verifier did not sign for this
+// check never passes.
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { Lock, Program } from "@mandate/compiler";
-import type { CheckResult, Cost, VerifierAdapter, VerifyRequest } from "./adapters.js";
-import { ATTESTATION_FORMAT, statementOf, type Attestation } from "./attestation.js";
+import type { CheckBinding, CheckResult, Cost, VerifierAdapter, VerifyRequest } from "./adapters.js";
+import { statementOf, type Attestation } from "./attestation.js";
 import { childEnv } from "./env.js";
 import type { EvidenceSigner, Signature, TrustedKeys } from "./evidence.js";
 import { isObj, type Value } from "./values.js";
@@ -49,8 +53,12 @@ export function serveVerifier(make: (pkg: VerifierPackage) => VerifierAdapter, s
       case "check": {
         if (!verifier) throw new Error("no package is open");
         const req = params["request"] as unknown as VerifyRequest;
-        const result = await verifier.check(req);
-        return { result: result as unknown as Value, attestation: signer.signStatement(ATTESTATION_FORMAT, statementOf(req, result) as unknown as Value) as unknown as Value };
+        const b = params["binding"];
+        if (b !== undefined && !(isObj(b) && typeof b["run"] === "string" && typeof b["part"] === "string")) throw new Error("a check's binding names its run and part");
+        const binding = b === undefined ? undefined : { run: b["run"] as string, part: b["part"] as string };
+        const result = await verifier.check(req, binding);
+        const statement = statementOf(req, result, binding);
+        return { result: result as unknown as Value, attestation: signer.signStatement(statement.format, statement as unknown as Value) as unknown as Value };
       }
       default:
         throw new Error(`unknown method ${String(msg["method"])}`);
@@ -102,12 +110,18 @@ export class ProcessVerifier implements VerifierAdapter {
     return ((await this.call("upperBound", { request: req as unknown as Value })) ?? undefined) as Cost | undefined;
   }
 
-  async check(req: VerifyRequest): Promise<CheckResult> {
-    const r = (await this.call("check", { request: req as unknown as Value })) as { result?: CheckResult; attestation?: Signature };
+  /**
+   * With a binding (the interpreter always sends one), the result counts only under a 0.2 attestation that names
+   * exactly that run and part, and the request's contract, criterion and method: the statement is computed here
+   * from what was sent, and the signature must verify over it. A 0.1 attestation, or one made for another
+   * binding, is not met. Without a binding, a 0.1 attestation is expected, as before.
+   */
+  async check(req: VerifyRequest, binding?: CheckBinding): Promise<CheckResult> {
+    const r = (await this.call("check", { request: req as unknown as Value, ...(binding ? { binding: { run: binding.run, part: binding.part } } : {}) })) as { result?: CheckResult; attestation?: Signature };
     const result = r.result;
     const sig = r.attestation;
-    const statement = result ? statementOf(req, result) : undefined;
-    if (!result || !sig || !statement || !this.o.trusted.verifyStatement(ATTESTATION_FORMAT, statement as unknown as Value, sig)) {
+    const statement = result ? statementOf(req, result, binding) : undefined;
+    if (!result || !sig || !statement || !this.o.trusted.verifyStatement(statement.format, statement as unknown as Value, sig)) {
       // Not signed by a verifier this runtime trusts: whatever it says, the criterion is not met.
       return { passed: false, detail: { reason: "unattested_check", key_id: sig?.key_id ?? null }, producer: { kind: "verifier", process: "separate", attestation: null } };
     }

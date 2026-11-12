@@ -18,7 +18,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { check, requirementFor, type CapVal, type Command, type Def, type Program } from "@mandate/compiler";
-import type { CheckLog, CheckResult, SystemFacts, VerifierAdapter, VerifyRequest } from "./adapters.js";
+import type { CheckBinding, CheckLog, CheckResult, SystemFacts, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { checkout, git, LINKED, snapshot, tail } from "./boundary.js";
 import type { MxcAdapter } from "./sandbox.js";
 import type { Value } from "./values.js";
@@ -279,8 +279,8 @@ export class OnboardVerifier implements VerifierAdapter {
     return this.inner?.upperBound?.(req);
   }
 
-  async check(req: VerifyRequest): Promise<CheckResult> {
-    if (!OnboardVerifier.METHODS.includes(req.method)) return this.inner ? this.inner.check(req) : { passed: false, detail: { unsupported: `the verifier has no method ${req.method}` } };
+  async check(req: VerifyRequest, binding?: CheckBinding): Promise<CheckResult> {
+    if (!OnboardVerifier.METHODS.includes(req.method)) return this.inner ? this.inner.check(req, binding) : { passed: false, detail: { unsupported: `the verifier has no method ${req.method}` } };
     const producer: Value = { kind: "runtime", handler: ONBOARD_HANDLER, ...(this.sandbox ? { sandbox: `mxc:${this.sandbox.o.isolation ?? "process"}` } : {}) };
     const sys = req.system;
     if (!sys) return { passed: false, detail: { reason: `${req.method} needs the run's repositories (design doc 9 §7)` }, producer };
