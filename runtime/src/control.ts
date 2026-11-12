@@ -46,6 +46,7 @@ import { managedAgentsExecutor, sdkApi } from "./managed-agents.js";
 import { AnthropicModel } from "./anthropic.js";
 import { ArtifactStore, DirBlobs } from "./artifacts.js";
 import { decisionKeysIn } from "./decisions.js";
+import { childEnv, verifierEnv } from "./env.js";
 import { EvidenceSigner, TrustedKeys } from "./evidence.js";
 import type { BucketConfig } from "./ratelimit.js";
 import type { RuntimeOptions } from "./runtime.js";
@@ -252,7 +253,8 @@ export function verifierKeys(config: RuntimeConfig, main: string[] = [process.ex
   const vp = config.verifier?.process;
   if (!vp) return new TrustedKeys();
   const files = vp.trusted ?? [`${vp.key}.pub`];
-  if (!vp.trusted && !existsSync(files[0]!)) execFileSync(main[0]!, [...main.slice(1), "--init-key", vp.key], { stdio: ["ignore", "ignore", "inherit"] });
+  // Creating a key needs nothing of the runtime's environment (env.ts).
+  if (!vp.trusted && !existsSync(files[0]!)) execFileSync(main[0]!, [...main.slice(1), "--init-key", vp.key], { stdio: ["ignore", "ignore", "inherit"], env: childEnv() });
   return new TrustedKeys(files.map((f) => readFileSync(f, "utf8")));
 }
 
@@ -335,8 +337,10 @@ function missing(what: string): never {
 /**
  * The adapters for a package. The model adapter needs the program and its
  * lock; secrets are read from the environment here and nowhere else (K7, K18).
+ * A verifier process is started with `main` (the program and its arguments)
+ * and gets only the variables env.ts `verifierEnv` lets through.
  */
-export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv = process.env): Adapters {
+export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv = process.env, main: string[] = [process.execPath, VERIFIER_MAIN]): Adapters {
   const model = modelFor(config, program, lock, env);
   const tools: Record<string, ToolAdapter> = {};
   if (config.github) {
@@ -349,7 +353,7 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
   const sandbox = sandboxFor(config);
   const executor = executorFor(config, lock, env);
   const own = config.verifier?.process
-    ? new ProcessVerifier({ command: [process.execPath, VERIFIER_MAIN, "--config", config.file!], trusted: verifierKeys(config), package: { program, lock }, env })
+    ? new ProcessVerifier({ command: [...main, "--config", config.file!], trusted: verifierKeys(config, main), package: { program, lock }, env: verifierEnv({ model: !!config.model }, env) })
     : config.verifier && sandbox
       ? new SandboxVerifier(config.verifier, sandbox, model)
       : undefined;

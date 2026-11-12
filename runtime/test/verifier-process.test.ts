@@ -8,12 +8,13 @@ import { mkdirSync, mkdtempSync, writeFileSync, existsSync, readFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { check, type Lock } from "@mandate/compiler";
 import { build } from "esbuild";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Adapters } from "../src/adapters.js";
 import { attestationProblem } from "../src/attestation.js";
 import { BOUNDARY_METHODS } from "../src/boundary.js";
-import { inProcessMethods, readConfig, verifierKeys } from "../src/control.js";
+import { adaptersFor, inProcessMethods, readConfig, verifierKeys } from "../src/control.js";
 import { uncovered } from "../src/criteria.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "../src/evidence.js";
 import type { EvidenceRow, RunRow } from "../src/journal.js";
@@ -157,6 +158,76 @@ describe("a verifier process of its own (P2-11)", () => {
     expect(trusted.ids()).toEqual([EvidenceSigner.loadOrCreate(join(dir, ".mandate", "verifier.key")).keyId]);
     writeFileSync(join(dir, "bad.json"), JSON.stringify({ database: "pglite:db", verifier: { workdir: ".", base: "seed", suites: {}, process: { secret: 1 } } }));
     expect(() => readConfig(join(dir, "bad.json"))).toThrow(/unknown field verifier\.process\.secret/);
+  });
+});
+
+// ── The verifier process's environment ────────────────────────────────
+
+describe("the verifier process's environment", () => {
+  let envMain: string;
+  beforeAll(async () => {
+    envMain = await bundle(here("./fixtures/env-verifier-process.ts"), "env-verifier-process");
+  }, 60_000);
+
+  /** What the runtime holds in its environment: none of it is the verifier's, but the model's key when it runs model-backed checks. */
+  const SECRETS = { MANDATE_CANARY_KEY: "sk-canary", MANDATE_GITHUB_TOKEN: "ghp_not_a_token", MANDATE_PROD_SIM_CORE_URL: "postgresql://reader:not-a-password@db/core", CLAUDE_API_KEY: "sk-ant-not-a-key" };
+  const FIXBUG_LOCK = JSON.parse(readFileSync(here("../../fixtures/fixbug/mandate.lock.json"), "utf8")) as Lock;
+
+  /** With these secrets in the runtime's environment, what the verifier process sees: when it creates its key, and when it checks. */
+  async function seen(o: { model: boolean }): Promise<{ init: Record<string, string>; check: Record<string, string> }> {
+    const dir = mkdtempSync(join(tmpdir(), "mandate-venv-"));
+    const file = join(dir, "mandate.runtime.json");
+    writeFileSync(file, JSON.stringify({ database: "pglite:db", verifier: { workdir: ".", base: "seed", suites: {}, process: {} }, broker: { "prod_sim/core": { url_env: "MANDATE_PROD_SIM_CORE_URL" } }, ...(o.model ? { model: { provider: "anthropic" } } : {}) }));
+    const saved = Object.fromEntries(Object.keys(SECRETS).map((k) => [k, process.env[k]]));
+    Object.assign(process.env, SECRETS);
+    try {
+      const adapters = adaptersFor(readConfig(file), check(FIXBUG, "mdt").program!, FIXBUG_LOCK, process.env, [process.execPath, envMain]);
+      const verifier = adapters.verifier as ProcessVerifier;
+      verifiers.push(verifier);
+      const r = await verifier.check({ method: "test.suite", args: [], named: {}, contract: "C", criterion: "k" });
+      expect(r.passed, JSON.stringify(r.detail)).toBe(true);
+      return { init: JSON.parse(readFileSync(join(dir, ".mandate", "verifier.key.env.json"), "utf8")) as Record<string, string>, check: (r.detail as { env: Record<string, string> }).env };
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  }
+
+  const names = (env: Record<string, string>): string[] => Object.keys(env).map((k) => k.toUpperCase());
+
+  it("gets what a program needs and none of the runtime's secrets; the model's key only when the configuration has a model", async () => {
+    const without = await seen({ model: false });
+    const withModel = await seen({ model: true });
+    for (const env of [without.init, without.check, withModel.init, withModel.check]) {
+      expect(names(env)).toContain("PATH");
+      for (const secret of ["MANDATE_CANARY_KEY", "MANDATE_GITHUB_TOKEN", "MANDATE_PROD_SIM_CORE_URL"]) expect(names(env)).not.toContain(secret);
+    }
+    // Creating its key needs no model; checking does when the configuration has one, and only then.
+    expect(names(without.init)).not.toContain("CLAUDE_API_KEY");
+    expect(names(withModel.init)).not.toContain("CLAUDE_API_KEY");
+    expect(names(without.check)).not.toContain("CLAUDE_API_KEY");
+    expect(withModel.check["CLAUDE_API_KEY"]).toBe(SECRETS.CLAUDE_API_KEY);
+  });
+
+  it("started without an environment of its own, gets only what a program needs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mandate-venv-"));
+    const file = join(dir, "mandate.runtime.json");
+    writeFileSync(file, JSON.stringify({ database: "pglite:db", verifier: { workdir: ".", base: "seed", suites: {}, process: { key: "v.key" } } }));
+    const key = EvidenceSigner.loadOrCreate(join(dir, "v.key"));
+    process.env["MANDATE_CANARY_KEY"] = "sk-canary";
+    try {
+      const verifier = new ProcessVerifier({ command: [process.execPath, envMain, "--config", file], trusted: new TrustedKeys([key.publicKeyPem()]), package: { program: check(FIXBUG, "mdt").program!, lock: FIXBUG_LOCK } });
+      verifiers.push(verifier);
+      const r = await verifier.check({ method: "test.suite", args: [], named: {}, contract: "C", criterion: "k" });
+      expect(r.passed, JSON.stringify(r.detail)).toBe(true);
+      const env = (r.detail as { env: Record<string, string> }).env;
+      expect(names(env)).toContain("PATH");
+      expect(names(env)).not.toContain("MANDATE_CANARY_KEY");
+    } finally {
+      delete process.env["MANDATE_CANARY_KEY"];
+    }
   });
 });
 

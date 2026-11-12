@@ -68,6 +68,16 @@ export const MODEL_ENV: readonly string[] = [
 export const DOCKER_ENV: readonly string[] = ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY", "XDG_RUNTIME_DIR"];
 
 /**
+ * The verifier process's environment (verifier-main.ts): what a program needs, the sandbox SDK's settings, and,
+ * when the configuration has a model and so the verifier runs model-backed checks (a review), what those need.
+ * Never the GitHub token or the read broker's database logins: the verifier reads neither.
+ */
+export function verifierEnv(o: { model: boolean }, from: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const model = o.model;
+  return childEnv({ pass: [...SANDBOX_ENV, ...(model ? MODEL_ENV : [])] }, from);
+}
+
+/**
  * The environment for a process the runtime starts: from `from` (the runtime's own), the base variables and the
  * ones `pass` names, and then what `set` gives. On Windows names are matched without regard to case, as Windows
  * does, and kept with the casing they are stored under (`Path`).
