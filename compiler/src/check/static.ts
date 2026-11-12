@@ -1,4 +1,4 @@
-// Static checks for Mandate 0.1 (Doc 4 §5–§10; Gate 1).
+// Static checks for Mandate 0.1 to 0.4 (Doc 4 §5–§10; Gate 1; spec/envelope.md for 0.4).
 //
 // Runs after name resolution on a program whose names all resolve. One pass
 // per definition types every expression, tracking for each value its type,

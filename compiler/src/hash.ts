@@ -3,7 +3,7 @@
 //   P = SHA256("mandate/program/<v>\n" || JCS(program))
 //   D = SHA256("mandate/def/<v>\n"     || JCS(definition))
 //
-// <v> is the program's language version (0.1 or 0.2), so two versions can
+// <v> is the program's language version (0.1 to 0.4), so two versions can
 // never read the same bytes with different meaning (§3.5): a definition that
 // means something else in 0.2 hashes differently there. The runtime's own
 // domains (package, run, action, operation, request, decision) use the 0.1 hash

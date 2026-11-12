@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// mandate — command-line front end for the 0.1 reference compiler.
+// mandate — command-line front end for the reference compiler (language 0.1 to 0.4).
 //
 //   mandate check <file> [--json] [--lock <lock.json>] [--denials <report.json>] [--module <file>]…
 //                                          validate, resolve names, print hashes

@@ -4,7 +4,7 @@ Mandate is an agent-native coordination and contract language. Agents write
 and edit programs; people review them through generated views; the compiler
 checks capabilities, effects, budgets, contracts and delegation before
 anything runs. This repository holds the reference implementation of
-versions 0.1 to 0.3.
+versions 0.1 to 0.4.
 
 ## Why
 
@@ -140,14 +140,12 @@ pull request was opened, for 0.23 USD.
    Rego, for Microsoft AGT hosts. The Rego fails closed, is bound to the
    package hash, and comes with the profile of what one call cannot show.
 
-11. **0.4, Envelope (being implemented):** a person approves an
+11. **0.4, Envelope:** a person approves an
    envelope once (authority, budget, agents, data class, the effects a
    person authorizes), and a lead agent writes sub-programs that run only
    when the compiler shows they fit what is left of it. `map` with bounds
    and disjoint writes, roles bound to people's keys in the lock, and a
-   signed record for every decision. Today the language is read, checked
-   and hashed, and roles, signed decisions, envelopes, `map` and `plan`
-   run: a decision
+   signed record for every decision. A decision
    is a record its member signs with `--key`, and `mandate
    verify-decision` checks one without the runtime. A workflow with an
    envelope starts only once a member of its owner role has signed the
@@ -162,7 +160,10 @@ pull request was opened, for 0.23 USD.
    them from the artifact store. A lead may ask for a wider envelope:
    the run waits for the owner's signed decision (`mandate amend`), goes
    on under the new package, and what ran before stands as it was
-   recorded. See [`spec/envelope.md`](spec/envelope.md).
+   recorded. `mandate show` shows what is left of the envelope, what each
+   lead submitted with every admitted sub-program as text, each map item's
+   outcome, and for every decision its member, its role and whether its
+   signature holds. See [`spec/envelope.md`](spec/envelope.md).
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
@@ -473,7 +474,7 @@ These cases from §25 are covered:
 | G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed; a check its verifier did not sign is not met | `verifier`, `verifier-process` |
 | G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`), `mxc-windows` (AppContainer, CI job `sandbox-windows`) |
 | G08 | Another tenant's or run's artifact is refused like a missing one | `artifacts` |
-| G09 | A model's markup is shown as plain text in every view, never as a control | `views` |
+| G09 | A model's markup is shown as plain text in every view, never as a control: an agent's output, a name somebody typed, a lead's sub-program and its reason for an amendment | `views`, `views-envelope`, `cli-amend` |
 | G10 | A view the run has moved past says so, and a decision taken on it is refused | `views` |
 | G11 | A new network target shows in the semantic diff as a governance change | `views` (compiler) |
 | G12 | A remote agent without idempotent delivery: refused if required, else sent at most once | `gate4` |
@@ -489,6 +490,7 @@ These cases from §25 are covered:
 | N01 | A sub-program whose capabilities or budget exceed what is left of the envelope is not admitted, and nothing of it runs | `plan`, `demo` (and E1706 in the compiler, `subprogram`, and the cases `N01`, `N01a`, `N01b`) |
 | N02 | A delegation or a sub-program that does not fit what is left is refused at reservation, and two siblings cannot both reserve what only one fits: the envelope's last agent, or what is left of a sub-program's own reservation | `envelope`, `plan`, `ledger` |
 | N03 | Map items with `par > 1` cannot write overlapping scopes: scopes the map does not hand per item are refused by the compiler, and scopes the elements choose are compared before any item is dispatched | `map` (and E0320 in the compiler, `map-rules`) |
+| N04 | An amendment is a new package and only widens the envelope; the owner's signed decision moves the run to it, and an envelope approval, a decision or an authorization given for the old package authorizes nothing under the new one | `amend`, `cli-amend`, `temporal` (and E1709 in the compiler, `amendment`, and the cases `N04`, `E1709`, `E1709a`, `E1709b`, `E1709c`) |
 | N05 | A critical effect in a sub-program needs its own authorization, and one under `approve` needs that role's signed decision; admission authorizes nothing | `plan`, `demo`, `temporal` |
 | N06 | Replay reads an admitted sub-program from the artifact store, holds it to the hash it was admitted with, runs it against the journal, and calls no model, adapter or checker | `plan`, `demo` |
 | N07 | Two sub-programs of one plan with the same effect and business key are one action, and the same key over other parameters is refused | `plan` |
@@ -512,7 +514,15 @@ for asking more agents than are left and whose second is admitted, a
 merge the release manager signs as evidence and as authorization, 26
 agents in the ledger, and the replay. The example has no contract, so the
 test adds one: a sub-program can define none, and a merge needs a value a
-contract verified.
+contract verified. The test also reads the run's view: the envelope's
+remainder, the two submissions, the 24 items and the three signed
+decisions.
+
+`views-envelope.test.ts` holds the 0.4 parts of a run's view to the
+journal: a map with a failed item, one that still runs and one that
+`fail_fast` failed; a refused and an admitted submission; a declined, an
+approved and an unanswered amendment; and decisions whose stored record
+was changed or removed.
 
 ## Live runs
 
@@ -523,6 +533,15 @@ the environment or from `.env` (gitignored):
 
 ```sh
 MANDATE_LIVE=1 npx vitest run test/live.test.ts     # from runtime/
+```
+
+The migration example runs with a real model as its lead when
+`MANDATE_ENVELOPE=1` is set as well. Its migrators stay scripted. The lead
+may spend up to its budget of 10 USD. The test holds the run to the
+envelope whatever the lead writes, and prints what it did:
+
+```sh
+MANDATE_LIVE=1 MANDATE_ENVELOPE=1 npx vitest run test/demo.test.ts
 ```
 
 Models, efforts, token limits and prices come from the lock file

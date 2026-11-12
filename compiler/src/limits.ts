@@ -1,5 +1,6 @@
-// 0.1 reference-profile resource limits (Doc 4 §3.4). These bound what the
-// checker accepts; they are not scale claims.
+// Reference-profile resource limits (Doc 4 §3.4), the same in every language
+// version from 0.1 to 0.4. These bound what the checker accepts; they are
+// not scale claims.
 export const LIMITS = {
   /** Source size in bytes (UTF-8). */
   sourceBytes: 1024 * 1024,

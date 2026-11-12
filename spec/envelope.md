@@ -1,8 +1,8 @@
 # Envelopes and signed decisions (0.4)
 
-**Status: being implemented.** The page specifies language version 0.4 so
-that the TypeScript implementation and, later, the Rust one are held to the
-same cases.
+**Status: implemented in the TypeScript implementation.** The page
+specifies language version 0.4 so that this implementation and, later, the
+Rust one are held to the same cases.
 
 | Part | State |
 |---|---|
@@ -14,7 +14,7 @@ same cases.
 | `map`: its rules (E1702, E1703, E1708, E0320 and E0501 at the map) and its run (R11, R12, N03, N08) | implemented |
 | `plan` and sub-programs: their rules (E1705, E1706) and their run, with the ledger under a sub-program, the bounded check and replay (N01, N02, N05, N06, N07, N09, N10) | implemented |
 | Amendments: `request_amendment`, E1709, the owner's signed decision, `mandate amend`, and what ran before the amendment (N04) | implemented |
-| Run views of 0.4: submissions, the envelope's remainder, map items, each decision's member, role and signature | not yet; `mandate status` lists each decision a run took and whether its signature holds |
+| Run views of 0.4: the envelope's remainder and amendments, submissions with each admitted sub-program's text, map items and their outcomes, each decision's member, role and signature | implemented |
 
 The runtime runs a 0.4 package that uses roles, signed decisions,
 envelopes, `map`, `plan` and amendments. It refuses one that has `agents`
@@ -996,11 +996,15 @@ would be None, and a program with an envelope needs both (INV-11).
   a person approved for the run. `mandate patch` reports it as
   `envelope_changed` and `mandate view --against` lists it under
   governance.
-- **Run views** add, per `plan`: each submission with its number, whether it
-  was admitted, its hash, its reservation against the envelope, and for a
-  refused one the codes; and the envelope's remainder per dimension. A
-  `map` shows its items by index with their outcome. Every decision shows
-  its member, role and whether its signature holds, or `unsigned`.
+- **Run views** (`mandate show`; [`views.md`](views.md#views-of-a-run))
+  add, per `plan`: each submission with its number, whether it was
+  admitted, its hash, its reservation against the envelope, and for a
+  refused one the codes; each admitted sub-program as text, shown as a
+  model's writing; and the amendments its lead asked for, with how each
+  ended. They add the envelope's remainder per dimension, the run's
+  deadline and the amendments its owner approved. A `map` shows its items
+  by index with their outcome. Every decision shows its member, role and
+  whether its signature holds, or `unsigned`.
 
 ## Invariants
 
