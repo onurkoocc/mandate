@@ -801,6 +801,7 @@ here (Appendix B has none for envelopes), E15xx for roles and people.
 | MDT-E1706 | Sub-program does not fit the envelope | Capabilities inside the envelope and clear of writes in flight; budget within what is left; data class; approvals kept. Facts name the dimension |
 | MDT-E1707 | `plan` outside an envelope | `plan` is only in the body of a workflow with an envelope |
 | MDT-E1708 | Person or critical effect in a map body | Nothing in a map body waits for a person (`human.*`, `escalate`, `pause`, `supervise escalate`, a `verify` a person approves, a function that holds one), and it has no critical effect and no change set. Facts name the map, the kind and the step |
+| MDT-E1709 | Amendment narrows the envelope | An amendment's envelope holds every capability of the old one, gives each budget dimension at least what it gave and names no other, and bounds delegations no more tightly. Facts name the dimension. Returned to the lead, never by `mandate check` |
 
 Existing checks extend to the new forms:
 
