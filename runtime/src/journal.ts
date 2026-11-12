@@ -11,7 +11,7 @@
 // worker that re-runs the workflow body finds earlier results instead of
 // calling the outside world again (R01, R13).
 
-import type { Budget } from "@mandate/compiler";
+import { BUDGET_DIMENSIONS, budgetAmount, type Budget } from "@mandate/compiler";
 import type { Cost, Outcome } from "./adapters.js";
 import { decisionId, type SignedDecision, type StoredDecision } from "./decisions.js";
 import type { EvidenceRecord } from "./evidence.js";
@@ -119,13 +119,18 @@ export interface AuthorizationRow {
   consumed_by: string | null;
 }
 
-/** Budget dimensions: `tokens`, `steps`, and `spend:<currency>` in micro-units. */
+/**
+ * The ledger's dimensions of a cost or a budget: `tokens`, `steps`,
+ * `spend:<currency>` in micro-units, and `agents`. `time` is not one: it is
+ * held by deadlines, not by reservation.
+ */
 export function costDims(c: Cost | Budget | undefined): Record<string, number> {
   const out: Record<string, number> = {};
-  if (!c) return out;
-  if (c.tokens !== undefined) out["tokens"] = c.tokens;
-  if (c.steps !== undefined) out["steps"] = c.steps;
-  if (c.spend) out[`spend:${c.spend.currency}`] = c.spend.micros;
+  for (const dim of BUDGET_DIMENSIONS) {
+    const amount = budgetAmount(c, dim);
+    if (amount === undefined || dim === "time") continue;
+    out[dim === "spend" ? `spend:${c!.spend!.currency}` : dim] = amount;
+  }
   return out;
 }
 

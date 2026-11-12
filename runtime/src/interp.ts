@@ -14,6 +14,8 @@
 
 import {
   atLeast,
+  BUDGET_DIMENSIONS,
+  budgetAmount,
   calleePath,
   capCovers,
   capsOf,
@@ -1672,14 +1674,18 @@ export class Interpreter {
 }
 
 /** A delegation's budget less what its finished steps spent; dimensions never go below zero. */
-function subtractCost(budget: Budget | undefined, spent: Record<string, number>): Cost | undefined {
+function subtractCost(budget: Budget | undefined, spent: Record<string, number>): Budget | undefined {
   if (!budget) return undefined;
-  const left = (dim: string, v: number): number => Math.max(v - (spent[dim] ?? 0), 0);
-  return {
-    ...(budget.tokens !== undefined ? { tokens: left("tokens", budget.tokens) } : {}),
-    ...(budget.steps !== undefined ? { steps: left("steps", budget.steps) } : {}),
-    ...(budget.spend ? { spend: { micros: left(`spend:${budget.spend.currency}`, budget.spend.micros), currency: budget.spend.currency } } : {}),
-  };
+  const out: Budget = {};
+  for (const dim of BUDGET_DIMENSIONS) {
+    const amount = budgetAmount(budget, dim);
+    // `time` is not reserved: a deadline holds it.
+    if (amount === undefined || dim === "time") continue;
+    const left = Math.max(amount - (spent[dim === "spend" ? `spend:${budget.spend!.currency}` : dim] ?? 0), 0);
+    if (dim === "spend") out.spend = { micros: left, currency: budget.spend!.currency };
+    else out[dim] = left;
+  }
+  return out;
 }
 
 /** The result type a loop asks the model for: a skill returns `Inferred<T>`, and the model is asked for a `T`. */

@@ -341,6 +341,32 @@ export interface Budget {
   agents?: number;
 }
 
+/**
+ * The dimensions of a budget. Whatever adds budgets up, compares two of them
+ * or reserves one walks this list, so a dimension is added in one place.
+ */
+export const BUDGET_DIMENSIONS = ["tokens", "steps", "time", "spend", "agents"] as const;
+export type BudgetDimension = (typeof BUDGET_DIMENSIONS)[number];
+
+/**
+ * What a budget gives one dimension, as a number: tokens, steps and agents
+ * as counts, time in milliseconds, spend in micro-units of its currency.
+ */
+export function budgetAmount(b: Budget | undefined, dim: BudgetDimension): number | undefined {
+  switch (dim) {
+    case "tokens":
+      return b?.tokens;
+    case "steps":
+      return b?.steps;
+    case "time":
+      return b?.time?.ms;
+    case "spend":
+      return b?.spend?.micros;
+    case "agents":
+      return b?.agents;
+  }
+}
+
 export interface EffectRef {
   effect: string;
   args?: Arg[];

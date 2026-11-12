@@ -22,9 +22,12 @@
 import { calleePath, capCovers, capsOf, showCap, within, type CapVal } from "../check/caps.js";
 import { hashProgram } from "../hash.js";
 import {
+  BUDGET_DIMENSIONS,
+  budgetAmount,
   workflowBounds,
   type AgentDef,
   type Budget,
+  type BudgetDimension,
   type ComponentDef,
   type ContractDef,
   type EffectDef,
@@ -707,17 +710,26 @@ function budgetChanges(name: string, before: Budget | undefined, after: Budget |
   };
   const was = before?.spend;
   const now = after?.spend;
-  // Amounts in two currencies are not comparable: a person approves the change (as apply_patch reports it).
-  if (was && now && was.currency !== now.currency) up.push(`${name}.budget.spend: ${was.micros / 1_000_000} ${was.currency} → ${now.micros / 1_000_000} ${now.currency}`);
-  else {
-    const cur = now?.currency ?? was?.currency ?? "";
-    cmp("spend", was?.micros, now?.micros, (n) => `${n / 1_000_000} ${cur}`);
+  const cur = now?.currency ?? was?.currency ?? "";
+  for (const dim of SHOWN_DIMENSIONS) {
+    // Amounts in two currencies are not comparable: a person approves the change (as apply_patch reports it).
+    if (dim === "spend" && was && now && was.currency !== now.currency) up.push(`${name}.budget.spend: ${was.micros / 1_000_000} ${was.currency} → ${now.micros / 1_000_000} ${now.currency}`);
+    else cmp(dim, budgetAmount(before, dim), budgetAmount(after, dim), (n) => AMOUNT_TEXT[dim](n, cur));
   }
-  cmp("tokens", before?.tokens, after?.tokens, String);
-  cmp("steps", before?.steps, after?.steps, String);
-  cmp("time", before?.time?.ms, after?.time?.ms, duration);
   return { up, down };
 }
+
+/** A budget's dimensions in the order a person reads them: what it costs first. */
+const SHOWN_DIMENSIONS: readonly BudgetDimension[] = ["spend", ...BUDGET_DIMENSIONS.filter((d) => d !== "spend")];
+
+/** An amount of each dimension, as a change between two budgets shows it. */
+const AMOUNT_TEXT: Record<BudgetDimension, (n: number, currency: string) => string> = {
+  tokens: String,
+  steps: String,
+  time: duration,
+  spend: (n, currency) => `${n / 1_000_000} ${currency}`,
+  agents: String,
+};
 
 function steps(program: Program, wf: WorkflowDef): string[] {
   const g = new Graph(program, wf);
