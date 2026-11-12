@@ -1,0 +1,15 @@
+module m @ 0.1
+use company.domain.{Issue}
+capability Read = fs.read("/repo")
+agent A {
+  caps Read, Writ
+  skill go(i: Issue) -> Inferred<Text> ! {Model}
+}
+workflow W(issue: Issue) -> Text
+  caps Read
+{
+  let a = delegate A.goo(issue)
+  let b = delegate B.go(issue)
+  let c = verify a against Missing(issue)
+  isue
+}

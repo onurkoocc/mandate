@@ -1,0 +1,28 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S07b",
+  "kind": "compile",
+  "title": "A skill that declares a critical effect is refused.",
+  "spec": [
+    "spec/checks.md#effects-6"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0408",
+        "path": "/defs/Bot/skills/ship/effects/0"
+      },
+      {
+        "code": "MDT-W0310",
+        "path": "/defs/Bot/caps/0"
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+module m @ 0.1
+type Kind = Bug | Feature | Question
+fn label(k: Kind) -> Text {
+  switch k {
+    Bug => "bug"
+    _ => "other"
+  }
+}

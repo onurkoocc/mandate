@@ -1,0 +1,30 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S04a",
+  "kind": "compile",
+  "title": "Two functions that call each other are a call cycle.",
+  "spec": [
+    "spec/checks.md#budgets-86"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0502",
+        "path": "/defs/even",
+        "facts": {
+          "cycle": [
+            "even",
+            "odd"
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S11b",
+  "kind": "compile",
+  "title": "The same text in NFD is not normalized to NFC: it has another hash than S11a.",
+  "spec": [
+    "spec/ir.md#hashing",
+    "spec/core.md#1-programs",
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.ir.json",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "hashes": {
+      "program": "sha256:f7fb5a0572391d61a485f5ac3dacc1b6732044799b375241b4b7d6c303e0b0ab",
+      "defs": {
+        "G": "sha256:af2fdd48b987139f27fa76cb1dfc8d5f0ff6145ecde733366dbf9efbab04594a"
+      }
+    }
+  }
+}

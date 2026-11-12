@@ -65,7 +65,8 @@ jobs:
       - name: Install Bubblewrap and allow unprivileged user namespaces
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq bubblewrap
+          # slirp4netns and iptables: Bubblewrap's proxy-only egress mode (MXC checks for them).
+          sudo apt-get install -y -qq bubblewrap slirp4netns iptables iproute2 util-linux
           # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           bwrap --version
@@ -94,3 +95,19 @@ jobs:
         env:
           MANDATE_MXC: "1"
         run: npx vitest run test/mxc-windows.test.ts test/workspace.test.ts
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # rustup is on the runner; with no argument it installs the toolchain
+      # rust-toolchain.toml pins, with rustfmt and clippy.
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      # --nocapture so that the log shows how many conformance cases the crate ran and skipped.
+      - name: Rust tests, against the vectors the TypeScript compiler writes and the conformance cases
+        run: cargo test --locked -- --nocapture

@@ -1,0 +1,14 @@
+mandate @ 0.3
+module m @ 0.1
+use std.{fs}
+capability R = fs.read("/repo")
+environment prod {
+  class internal
+  authorize hasOwnProperty by policy
+}
+workflow W(t: Text) -> Bool
+  caps R
+{
+  effect hasOwnProperty(t)
+  true
+}

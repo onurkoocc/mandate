@@ -1,0 +1,746 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "compiler/test/fixtures/syntax/supervision.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.1",
+  "canonical": "{\"defs\":{\"Implementer\":{\"budget\":{\"steps\":80},\"caps\":[{\"name\":\"Model\",\"op\":\"var\"},{\"name\":\"RepoWrite\",\"op\":\"var\"}],\"kind\":\"agent\",\"skills\":{\"apply\":{\"effects\":[{\"effect\":\"Fs.Write\"},{\"effect\":\"Model\"}],\"params\":[{\"name\":\"issue\",\"type\":{\"ref\":\"Issue\"}}],\"returns\":{\"args\":[{\"ref\":\"Patch\"}],\"ref\":\"Inferred\"}}}},\"Model\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"tier\",\"value\":{\"name\":\"standard\",\"op\":\"var\"}}],\"callee\":{\"name\":\"infer\",\"of\":{\"name\":\"model\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"PR\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"company/backend\"}}],\"callee\":{\"name\":\"pr\",\"of\":{\"name\":\"git\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"Ready\":{\"accept\":{\"owner_approved\":{\"by\":{\"call\":{\"args\":[{\"name\":\"role\",\"value\":{\"op\":\"text\",\"value\":\"code_owner\"}}],\"callee\":{\"name\":\"approve\",\"of\":{\"name\":\"human\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"The code owner approved\"}},\"invariant\":{\"tenant_isolation\":{\"by\":{\"call\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"tenant_isolation_*\"}}],\"callee\":{\"name\":\"property\",\"of\":{\"name\":\"test\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"Tenant isolation holds\"}},\"kind\":\"contract\",\"params\":[{\"name\":\"issue\",\"type\":{\"ref\":\"Issue\"}},{\"name\":\"pr\",\"type\":{\"ref\":\"PullRequestDraft\"}}],\"require\":[{\"name\":\"reproducible\",\"of\":{\"name\":\"issue\",\"op\":\"var\"},\"op\":\"field\"}]},\"RepoWrite\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"/work/repo/src\"}},{\"value\":{\"op\":\"text\",\"value\":\"/work/repo/test\"}}],\"callee\":{\"name\":\"write\",\"of\":{\"name\":\"fs\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"Split\":{\"body\":[{\"branches\":{\"patch\":{\"agent\":\"Implementer\",\"args\":[{\"value\":{\"name\":\"issue\",\"op\":\"var\"}}],\"caps\":[{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"/work/repo/src\"}}],\"callee\":{\"name\":\"narrow\",\"of\":{\"name\":\"RepoWrite\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}],\"op\":\"delegate\",\"skill\":\"apply\",\"supervise\":{\"args\":[{\"name\":\"max\",\"value\":{\"op\":\"int\",\"value\":2}},{\"name\":\"backoff\",\"value\":{\"ms\":30000,\"op\":\"duration\"}}],\"name\":\"restart\"}},\"tests\":{\"agent\":\"TestWriter\",\"args\":[{\"value\":{\"name\":\"issue\",\"op\":\"var\"}}],\"caps\":[{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"/work/repo/test\"}}],\"callee\":{\"name\":\"narrow\",\"of\":{\"name\":\"RepoWrite\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}],\"op\":\"delegate\",\"skill\":\"regression\",\"supervise\":{\"args\":[{\"name\":\"max\",\"value\":{\"op\":\"int\",\"value\":1}}],\"name\":\"restart\"}}},\"op\":\"par\",\"supervise\":{\"name\":\"fail_fast\"}},{\"op\":\"on_error\",\"pattern\":{\"args\":[{\"name\":\"c\",\"p\":\"bind\"}],\"p\":\"tag\",\"tag\":\"PolicyDenied\"},\"then\":{\"op\":\"escalate\",\"to\":{\"args\":[{\"value\":{\"op\":\"template\",\"parts\":[{\"text\":\"Permission needed: \"},{\"expr\":{\"name\":\"c\",\"op\":\"var\"}}]}}],\"callee\":{\"name\":\"human\",\"op\":\"var\"},\"op\":\"call\"}}},{\"name\":\"draft\",\"op\":\"let\",\"value\":{\"fields\":{\"issue\":{\"name\":\"issue\",\"op\":\"var\"},\"patch\":{\"name\":\"patch\",\"op\":\"var\"},\"tests\":{\"name\":\"tests\",\"op\":\"var\"}},\"op\":\"record\",\"type\":\"PullRequestDraft\"}},{\"name\":\"pr\",\"op\":\"let\",\"type\":{\"args\":[{\"ref\":\"PullRequestDraft\"},{\"ref\":\"Ready\"}],\"ref\":\"Verified\"},\"value\":{\"args\":[{\"value\":{\"name\":\"issue\",\"op\":\"var\"}},{\"value\":{\"name\":\"draft\",\"op\":\"var\"}}],\"contract\":\"Ready\",\"on_unmet\":{\"bind\":\"criteria\",\"then\":{\"op\":\"escalate\",\"to\":{\"args\":[{\"value\":{\"op\":\"template\",\"parts\":[{\"text\":\"Open acceptance criteria: \"},{\"expr\":{\"name\":\"criteria\",\"op\":\"var\"}}]}}],\"callee\":{\"name\":\"human\",\"op\":\"var\"},\"op\":\"call\"}}},\"op\":\"verify\",\"value\":{\"name\":\"draft\",\"op\":\"var\"}}},{\"body\":[{\"cond\":{\"of\":{\"name\":\"reproducible\",\"of\":{\"name\":\"issue\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"unary\",\"uop\":\"not\"},\"else\":[{\"op\":\"expr\",\"value\":{\"args\":[{\"value\":{\"name\":\"issue\",\"op\":\"var\"}},{\"value\":{\"op\":\"text\",\"value\":\"retrying\"}}],\"idempotent_by\":{\"name\":\"id\",\"of\":{\"name\":\"issue\",\"op\":\"var\"},\"op\":\"field\"},\"name\":\"git.comment\",\"op\":\"effect\"}}],\"op\":\"if\",\"then\":[{\"op\":\"return\",\"value\":{\"op\":\"bool\",\"value\":false}}]}],\"max_iter\":3,\"op\":\"loop\"},{\"op\":\"expr\",\"value\":{\"op\":\"bool\",\"value\":true}}],\"budget\":{\"spend\":{\"currency\":\"USD\",\"micros\":12000000},\"time\":{\"ms\":3600000}},\"caps\":[{\"name\":\"Model\",\"op\":\"var\"},{\"name\":\"PR\",\"op\":\"var\"},{\"name\":\"RepoWrite\",\"op\":\"var\"}],\"kind\":\"workflow\",\"params\":[{\"name\":\"issue\",\"type\":{\"ref\":\"Issue\"}}],\"returns\":{\"ref\":\"Bool\"}},\"TestWriter\":{\"budget\":{\"steps\":40},\"caps\":[{\"name\":\"Model\",\"op\":\"var\"},{\"name\":\"RepoWrite\",\"op\":\"var\"}],\"kind\":\"agent\",\"skills\":{\"regression\":{\"effects\":[{\"effect\":\"Fs.Write\"},{\"effect\":\"Model\"}],\"params\":[{\"name\":\"issue\",\"type\":{\"ref\":\"Issue\"}}],\"returns\":{\"args\":[{\"ref\":\"TestSet\"}],\"ref\":\"Inferred\"}}}}},\"language\":\"mandate/0.1\",\"module\":\"company.devflow\",\"tests\":{\"Split happy path\":{\"body\":[{\"expect\":\"ok\",\"op\":\"run\",\"target\":{\"args\":[{\"value\":{\"name\":\"issue_42\",\"of\":{\"name\":\"fixtures\",\"op\":\"var\"},\"op\":\"field\"}}],\"callee\":{\"name\":\"Split\",\"op\":\"var\"},\"op\":\"call\"}}],\"handlers\":{\"Fs\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"fixtures/repo-snapshot\"}}],\"callee\":{\"name\":\"memfs\",\"op\":\"var\"},\"op\":\"call\"},\"Human\":{\"args\":[{\"name\":\"role\",\"value\":{\"op\":\"text\",\"value\":\"owner\"}}],\"callee\":{\"name\":\"auto_approve\",\"op\":\"var\"},\"op\":\"call\"},\"Model\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"fixtures/split-01.jsonl\"}}],\"callee\":{\"name\":\"replay\",\"op\":\"var\"},\"op\":\"call\"},\"Time\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"2026-10-07T21:00:00Z\"}}],\"callee\":{\"name\":\"fixed_clock\",\"op\":\"var\"},\"op\":\"call\"}}}},\"uses\":[{\"module\":\"company.domain\",\"names\":[\"Issue\",\"Patch\",\"PullRequestDraft\",\"TestSet\"]},{\"module\":\"std\",\"names\":[\"fs\",\"git\",\"human\",\"model\",\"test\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:fe1597fd6b4279c7382a3d494a63c57a1c80d596fc96b77331adcc58381803bc",
+    "defs": [
+      [
+        "Implementer",
+        "sha256:136bcd1dc71983d9e0cc6ebad5f401b0c46a38012ff7ab44895f33497ff64f51"
+      ],
+      [
+        "Model",
+        "sha256:226f2d7856eeb5b4e6717ec71baec503c5a6a5ba9ea3ac2c41564b31382f78e2"
+      ],
+      [
+        "PR",
+        "sha256:6350191de26e50e57b0bdd8ca43dcb66da795eacf1b9fcd4207bce62c4bce842"
+      ],
+      [
+        "Ready",
+        "sha256:43514537e10eb1e55082ec5dd78f46a6c72cafde580328ee57780f27446ebca4"
+      ],
+      [
+        "RepoWrite",
+        "sha256:8e4d0693565380c80263c01dd998e69736f5b0924f7a2c8c11015561db0864dd"
+      ],
+      [
+        "Split",
+        "sha256:0573f7478c8588e7a6cf6552a855065fe70e979b21b65aa7f7ffe2d19cf2abbd"
+      ],
+      [
+        "TestWriter",
+        "sha256:fcf2c18e5847049129f847d99245c0eb939174c9a0257f71345d69e2752c55cd"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.1",
+    "module": "company.devflow",
+    "version": "0.1",
+    "defs": {
+      "RepoWrite": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "fs"
+            },
+            "name": "write"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "/work/repo/src"
+              }
+            },
+            {
+              "value": {
+                "op": "text",
+                "value": "/work/repo/test"
+              }
+            }
+          ]
+        }
+      },
+      "Model": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "model"
+            },
+            "name": "infer"
+          },
+          "args": [
+            {
+              "name": "tier",
+              "value": {
+                "op": "var",
+                "name": "standard"
+              }
+            }
+          ]
+        }
+      },
+      "PR": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "git"
+            },
+            "name": "pr"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "company/backend"
+              }
+            }
+          ]
+        }
+      },
+      "Implementer": {
+        "kind": "agent",
+        "caps": [
+          {
+            "op": "var",
+            "name": "Model"
+          },
+          {
+            "op": "var",
+            "name": "RepoWrite"
+          }
+        ],
+        "skills": {
+          "apply": {
+            "params": [
+              {
+                "name": "issue",
+                "type": {
+                  "ref": "Issue"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "Inferred",
+              "args": [
+                {
+                  "ref": "Patch"
+                }
+              ]
+            },
+            "effects": [
+              {
+                "effect": "Fs.Write"
+              },
+              {
+                "effect": "Model"
+              }
+            ]
+          }
+        },
+        "budget": {
+          "steps": 80
+        }
+      },
+      "TestWriter": {
+        "kind": "agent",
+        "caps": [
+          {
+            "op": "var",
+            "name": "Model"
+          },
+          {
+            "op": "var",
+            "name": "RepoWrite"
+          }
+        ],
+        "skills": {
+          "regression": {
+            "params": [
+              {
+                "name": "issue",
+                "type": {
+                  "ref": "Issue"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "Inferred",
+              "args": [
+                {
+                  "ref": "TestSet"
+                }
+              ]
+            },
+            "effects": [
+              {
+                "effect": "Fs.Write"
+              },
+              {
+                "effect": "Model"
+              }
+            ]
+          }
+        },
+        "budget": {
+          "steps": 40
+        }
+      },
+      "Ready": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "issue",
+            "type": {
+              "ref": "Issue"
+            }
+          },
+          {
+            "name": "pr",
+            "type": {
+              "ref": "PullRequestDraft"
+            }
+          }
+        ],
+        "accept": {
+          "owner_approved": {
+            "description": "The code owner approved",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "human"
+                  },
+                  "name": "approve"
+                },
+                "args": [
+                  {
+                    "name": "role",
+                    "value": {
+                      "op": "text",
+                      "value": "code_owner"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "require": [
+          {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "issue"
+            },
+            "name": "reproducible"
+          }
+        ],
+        "invariant": {
+          "tenant_isolation": {
+            "description": "Tenant isolation holds",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "test"
+                  },
+                  "name": "property"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "tenant_isolation_*"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "Split": {
+        "kind": "workflow",
+        "params": [
+          {
+            "name": "issue",
+            "type": {
+              "ref": "Issue"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Bool"
+        },
+        "caps": [
+          {
+            "op": "var",
+            "name": "Model"
+          },
+          {
+            "op": "var",
+            "name": "PR"
+          },
+          {
+            "op": "var",
+            "name": "RepoWrite"
+          }
+        ],
+        "body": [
+          {
+            "op": "par",
+            "branches": {
+              "patch": {
+                "op": "delegate",
+                "agent": "Implementer",
+                "skill": "apply",
+                "args": [
+                  {
+                    "value": {
+                      "op": "var",
+                      "name": "issue"
+                    }
+                  }
+                ],
+                "caps": [
+                  {
+                    "op": "call",
+                    "callee": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "RepoWrite"
+                      },
+                      "name": "narrow"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "text",
+                          "value": "/work/repo/src"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "supervise": {
+                  "name": "restart",
+                  "args": [
+                    {
+                      "name": "max",
+                      "value": {
+                        "op": "int",
+                        "value": 2
+                      }
+                    },
+                    {
+                      "name": "backoff",
+                      "value": {
+                        "op": "duration",
+                        "ms": 30000
+                      }
+                    }
+                  ]
+                }
+              },
+              "tests": {
+                "op": "delegate",
+                "agent": "TestWriter",
+                "skill": "regression",
+                "args": [
+                  {
+                    "value": {
+                      "op": "var",
+                      "name": "issue"
+                    }
+                  }
+                ],
+                "caps": [
+                  {
+                    "op": "call",
+                    "callee": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "RepoWrite"
+                      },
+                      "name": "narrow"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "text",
+                          "value": "/work/repo/test"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "supervise": {
+                  "name": "restart",
+                  "args": [
+                    {
+                      "name": "max",
+                      "value": {
+                        "op": "int",
+                        "value": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "supervise": {
+              "name": "fail_fast"
+            }
+          },
+          {
+            "op": "on_error",
+            "pattern": {
+              "p": "tag",
+              "tag": "PolicyDenied",
+              "args": [
+                {
+                  "p": "bind",
+                  "name": "c"
+                }
+              ]
+            },
+            "then": {
+              "op": "escalate",
+              "to": {
+                "op": "call",
+                "callee": {
+                  "op": "var",
+                  "name": "human"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "template",
+                      "parts": [
+                        {
+                          "text": "Permission needed: "
+                        },
+                        {
+                          "expr": {
+                            "op": "var",
+                            "name": "c"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "op": "let",
+            "name": "draft",
+            "value": {
+              "op": "record",
+              "type": "PullRequestDraft",
+              "fields": {
+                "issue": {
+                  "op": "var",
+                  "name": "issue"
+                },
+                "patch": {
+                  "op": "var",
+                  "name": "patch"
+                },
+                "tests": {
+                  "op": "var",
+                  "name": "tests"
+                }
+              }
+            }
+          },
+          {
+            "op": "let",
+            "name": "pr",
+            "value": {
+              "op": "verify",
+              "value": {
+                "op": "var",
+                "name": "draft"
+              },
+              "contract": "Ready",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "issue"
+                  }
+                },
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "draft"
+                  }
+                }
+              ],
+              "on_unmet": {
+                "bind": "criteria",
+                "then": {
+                  "op": "escalate",
+                  "to": {
+                    "op": "call",
+                    "callee": {
+                      "op": "var",
+                      "name": "human"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "template",
+                          "parts": [
+                            {
+                              "text": "Open acceptance criteria: "
+                            },
+                            {
+                              "expr": {
+                                "op": "var",
+                                "name": "criteria"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "type": {
+              "ref": "Verified",
+              "args": [
+                {
+                  "ref": "PullRequestDraft"
+                },
+                {
+                  "ref": "Ready"
+                }
+              ]
+            }
+          },
+          {
+            "op": "loop",
+            "body": [
+              {
+                "op": "if",
+                "cond": {
+                  "op": "unary",
+                  "uop": "not",
+                  "of": {
+                    "op": "field",
+                    "of": {
+                      "op": "var",
+                      "name": "issue"
+                    },
+                    "name": "reproducible"
+                  }
+                },
+                "then": [
+                  {
+                    "op": "return",
+                    "value": {
+                      "op": "bool",
+                      "value": false
+                    }
+                  }
+                ],
+                "else": [
+                  {
+                    "op": "expr",
+                    "value": {
+                      "op": "effect",
+                      "name": "git.comment",
+                      "args": [
+                        {
+                          "value": {
+                            "op": "var",
+                            "name": "issue"
+                          }
+                        },
+                        {
+                          "value": {
+                            "op": "text",
+                            "value": "retrying"
+                          }
+                        }
+                      ],
+                      "idempotent_by": {
+                        "op": "field",
+                        "of": {
+                          "op": "var",
+                          "name": "issue"
+                        },
+                        "name": "id"
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "max_iter": 3
+          },
+          {
+            "op": "expr",
+            "value": {
+              "op": "bool",
+              "value": true
+            }
+          }
+        ],
+        "budget": {
+          "spend": {
+            "micros": 12000000,
+            "currency": "USD"
+          },
+          "time": {
+            "ms": 3600000
+          }
+        }
+      }
+    },
+    "uses": [
+      {
+        "module": "company.domain",
+        "names": [
+          "Issue",
+          "Patch",
+          "PullRequestDraft",
+          "TestSet"
+        ]
+      },
+      {
+        "module": "std",
+        "names": [
+          "fs",
+          "git",
+          "human",
+          "model",
+          "test"
+        ]
+      }
+    ],
+    "tests": {
+      "Split happy path": {
+        "body": [
+          {
+            "op": "run",
+            "target": {
+              "op": "call",
+              "callee": {
+                "op": "var",
+                "name": "Split"
+              },
+              "args": [
+                {
+                  "value": {
+                    "op": "field",
+                    "of": {
+                      "op": "var",
+                      "name": "fixtures"
+                    },
+                    "name": "issue_42"
+                  }
+                }
+              ]
+            },
+            "expect": "ok"
+          }
+        ],
+        "handlers": {
+          "Model": {
+            "op": "call",
+            "callee": {
+              "op": "var",
+              "name": "replay"
+            },
+            "args": [
+              {
+                "value": {
+                  "op": "text",
+                  "value": "fixtures/split-01.jsonl"
+                }
+              }
+            ]
+          },
+          "Fs": {
+            "op": "call",
+            "callee": {
+              "op": "var",
+              "name": "memfs"
+            },
+            "args": [
+              {
+                "value": {
+                  "op": "text",
+                  "value": "fixtures/repo-snapshot"
+                }
+              }
+            ]
+          },
+          "Human": {
+            "op": "call",
+            "callee": {
+              "op": "var",
+              "name": "auto_approve"
+            },
+            "args": [
+              {
+                "name": "role",
+                "value": {
+                  "op": "text",
+                  "value": "owner"
+                }
+              }
+            ]
+          },
+          "Time": {
+            "op": "call",
+            "callee": {
+              "op": "var",
+              "name": "fixed_clock"
+            },
+            "args": [
+              {
+                "value": {
+                  "op": "text",
+                  "value": "2026-10-07T21:00:00Z"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

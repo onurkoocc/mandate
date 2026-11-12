@@ -1,0 +1,4 @@
+module m @ 0.1
+fn fake(t: Text) -> Inferred<Receipt<Text>> ! {Model} {
+  infer Receipt<Text> from quote(t)
+}

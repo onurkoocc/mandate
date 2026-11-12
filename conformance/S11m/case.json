@@ -1,0 +1,25 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S11m",
+  "kind": "compile",
+  "title": "The IR of S11l: a decimal is the object { op: dec } with the string \"0.850\".",
+  "spec": [
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "text": "{\"language\":\"mandate/0.1\",\"module\":\"m\",\"version\":\"0.1\",\"defs\":{\"x\":{\"kind\":\"const\",\"value\":{\"op\":\"dec\",\"value\":\"0.850\"}}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "hashes": {
+      "program": "sha256:e545604837e5c8262fa3bc3cf241d51e027c47355a9afc277c01d8254a374fda",
+      "defs": {
+        "x": "sha256:9457a80f2b322e77057d8082699d23c7051c39732f60d6f9c64b23cd79958efc"
+      }
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S12d",
+  "kind": "compile",
+  "title": "A patch operation that names a member that does not exist is refused at that path, and is not mistaken for a stale base.",
+  "spec": [
+    "spec/ir.md#patches"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "../S12a/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/Nope"
+    }
+  ],
+  "base": "sha256:de7fd275a70b581fb60d4486cad1c4f16857b61daa4a7024fed523ee1dc05a25",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0131",
+        "path": "/defs/Nope",
+        "facts": {
+          "index": 0
+        }
+      }
+    ]
+  }
+}

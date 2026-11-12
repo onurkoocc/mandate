@@ -1,0 +1,1 @@
+{"language":"mandate/0.1","module":"example.minimal","version":"0.1","defs":{"G":{"kind":"const","value":{"op":"text","value":"\ud800"}}}}
