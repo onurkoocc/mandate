@@ -12,7 +12,7 @@
 //   component.repo(c…)           git.pr(c.repo…)
 
 import { posix } from "node:path";
-import type { Arg, ComponentDef, Def, Expr, LanguageVersion } from "../ir/types.js";
+import { atLeast, type Arg, type ComponentDef, type Def, type Expr, type LanguageVersion } from "../ir/types.js";
 import { CAP_CTORS, DEFAULT_MODEL_MAX_CLASS, DATA_CLASSES, type DataClass } from "../std/std.js";
 
 export interface CapVal {
@@ -37,6 +37,45 @@ export interface CapVal {
   tier?: string;
   /** For exec: the argument prefixes a command may start with. */
   argsPrefix?: string[][];
+  /**
+   * For net.https from 0.5: the HTTP methods it allows, sorted, without duplicates. Undefined means any method.
+   * Before 0.5 `methods` is not read, and a capability that writes it allows any method, as it always did.
+   */
+  methods?: string[];
+}
+
+/** The methods `net.https(methods: […])` may name, from 0.5 (spec/boundary.md). */
+export const HTTP_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] as const;
+
+/** Whether a capability read in `language` reads `methods`: from 0.5. */
+export function readsMethods(language: LanguageVersion | undefined): boolean {
+  return language !== undefined && atLeast(language, "mandate/0.5");
+}
+
+/** One problem with a `methods:` argument (E1801): where it is, below the argument's value, and what is there. */
+export interface MethodProblem {
+  /** JSON Pointer below the argument's value: "" for the value itself, "/items/<i>" for an item. */
+  at: string;
+  /** The name written, or null where no bare name is written. */
+  found: string | null;
+  problem: "not_a_list" | "empty" | "not_a_name" | "unknown";
+}
+
+/**
+ * The methods a `methods:` value names, and what is wrong with it: it is a non-empty list of bare names from
+ * HTTP_METHODS. Only names it knows are in `methods`; a value with a problem does not check (E1801).
+ */
+export function readMethods(v: Expr): { methods: string[]; problems: MethodProblem[] } {
+  if (v.op !== "list") return { methods: [], problems: [{ at: "", found: null, problem: "not_a_list" }] };
+  if (!v.items.length) return { methods: [], problems: [{ at: "", found: null, problem: "empty" }] };
+  const methods = new Set<string>();
+  const problems: MethodProblem[] = [];
+  v.items.forEach((item, i) => {
+    if (item.op !== "var") problems.push({ at: `/items/${i}`, found: item.op === "text" ? item.value : null, problem: "not_a_name" });
+    else if (!(HTTP_METHODS as readonly string[]).includes(item.name)) problems.push({ at: `/items/${i}`, found: item.name, problem: "unknown" });
+    else methods.add(item.name);
+  });
+  return { methods: [...methods].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)), problems };
 }
 
 /**
@@ -81,7 +120,7 @@ function symbol(e: Expr): string | undefined {
  * Evaluates a capability constructor call such as `fs.write("/work/repo/src")`.
  * Returns undefined when the expression is not a known constructor.
  */
-export function capFromCall(e: Expr, _opts: CapOptions = {}): CapVal | undefined {
+export function capFromCall(e: Expr, opts: CapOptions = {}): CapVal | undefined {
   if (e.op !== "call") return undefined;
   const ctor = calleePath(e.callee);
   if (!ctor) return undefined;
@@ -100,6 +139,9 @@ export function capFromCall(e: Expr, _opts: CapOptions = {}): CapVal | undefined
       const h = named("hosts");
       const v = h && literalStrings(h.value);
       if (v) cap.scope = v;
+      // From 0.5 a capability may allow only some methods. Before, `methods` is written and means nothing.
+      const m = readsMethods(opts.language) ? named("methods") : undefined;
+      if (m) cap.methods = readMethods(m.value).methods;
       break;
     }
     case "commands": {
@@ -315,6 +357,8 @@ export function capCovers(cap: CapVal, need: CapVal): boolean {
   // Tiers are not ordered: a capability without a tier allows any, one with a tier allows only that one.
   if (cap.tier !== undefined && need.tier !== cap.tier) return false;
   if (!prefixesWithin(need.argsPrefix, cap.argsPrefix)) return false;
+  // Methods (0.5): a capability without them allows any method, so only one without them covers one without them.
+  if (cap.methods !== undefined && (need.methods === undefined || !need.methods.every((m) => cap.methods!.includes(m)))) return false;
   return true;
 }
 
@@ -337,6 +381,7 @@ export function writesOverlap(a: CapVal, b: CapVal): boolean {
 }
 
 export function showCap(c: CapVal): string {
-  const scope = c.scope ? `(${c.scope.map((s) => JSON.stringify(s)).join(", ")})` : "";
+  const args = [...(c.scope ?? []).map((s) => JSON.stringify(s)), ...(c.methods ? [`methods: [${c.methods.join(", ")}]`] : [])];
+  const scope = c.scope || c.methods ? `(${args.join(", ")})` : "";
   return `${c.name ? `${c.name} = ` : ""}${c.via ? `${c.via} → ` : ""}${c.ctor}${scope}`;
 }

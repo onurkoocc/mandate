@@ -321,6 +321,10 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Amendment narrows the envelope",
     explain: "An amendment of an envelope only widens it. The new envelope holds every capability the old one held; its budget names the same dimensions, each with at least the old amount; `spawn.max_concurrent` and `spawn.max_class` are no lower, and no bound is added where there was none. What ran under the old envelope then still lies inside the new one, and nothing that was allowed before is refused after. The owner and the `approve` rules may change (spec/envelope.md \"Amendments\").",
   },
+  "MDT-E1801": {
+    title: "Unknown method",
+    explain: "From 0.5, net.https(hosts: […], methods: […]) may allow only some HTTP methods. `methods` is a non-empty list of bare names from GET, HEAD, POST, PUT, PATCH and DELETE; without it the capability allows any method. A capability with methods covers another only when its hosts do and every method of the other is one of its own. Before 0.5 `methods` is read and means nothing, as it always did (spec/boundary.md \"Language 0.5\").",
+  },
   "MDT-E0902": {
     title: "Sandbox requirement cannot be enforced",
     explain: "The sandbox adapter probed the host and it cannot enforce part of an agent's sandbox requirement: a backend, a path, host or command allow-list, a timeout, or a scope that is not statically known. The run refuses to start the agent (unsupported_sandbox_profile) instead of running it with less isolation (INV-11, G05).",

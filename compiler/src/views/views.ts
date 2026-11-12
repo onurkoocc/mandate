@@ -142,7 +142,8 @@ export function authorityOf(caps: CapVal[]): Authority {
     if (c.scope === undefined && ["fs.read", "fs.write", "net.https", "exec", "git.pr"].includes(c.ctor)) a.unbounded.push(showCap(c));
     if (c.ctor === "fs.read") a.read.push(...scope);
     else if (c.ctor === "fs.write") a.write.push(...scope);
-    else if (c.ctor === "net.https") a.network.push(...scope);
+    // A host a 0.5 capability allows only some methods of is shown with them.
+    else if (c.ctor === "net.https") a.network.push(...scope.map((h) => (c.methods ? `${h} (${c.methods.join(", ")})` : h)));
     else if (c.ctor === "model.infer") a.model.push(`${c.tier ?? "any tier"} (up to ${c.maxClass ?? "internal"})`);
     else if (c.ctor === "exec") a.exec.push(...scope.map((cmd) => (c.argsPrefix?.length ? c.argsPrefix.map((p) => [cmd, ...p].join(" ")).join("; ") : `${cmd} …`)));
     else if (c.ctor === "git.pr") a.repos.push(...scope);
@@ -700,6 +701,12 @@ function scopeDiff(before: CapVal | undefined, after: CapVal | undefined): { add
   if (before.tier !== after.tier) other.push(`model tier ${before.tier ?? "any"} → ${after.tier ?? "any"}`);
   if ((before.maxClass ?? "internal") !== (after.maxClass ?? "internal")) other.push(`data class up to ${before.maxClass ?? "internal"} → ${after.maxClass ?? "internal"}`);
   if (j(before.argsPrefix ?? null) !== j(after.argsPrefix ?? null)) other.push(`argument prefixes ${j(before.argsPrefix ?? "any")} → ${j(after.argsPrefix ?? "any")}`);
+  // Methods (0.5): one more method, or none named where some were, widens; fewer narrows.
+  const methods = (m: string[] | undefined): string => (m ? m.join(", ") : "any");
+  if (j(before.methods ?? null) !== j(after.methods ?? null)) {
+    const widened = after.methods === undefined || (before.methods !== undefined && after.methods.some((m) => !before.methods!.includes(m)));
+    (widened ? other : removed).push(`methods ${methods(before.methods)} → ${methods(after.methods)}`);
+  }
   return { added, removed, other };
 }
 
@@ -1057,7 +1064,7 @@ export function semanticDiff(before: Program, after: Program, locks?: { before?:
   if (j(cb) === j(ca)) unchanged.push(cb.length ? `external effects unchanged: ${cb.join(", ")}` : "no external effects, before or after");
   const contracts = (p: Program) => Object.entries(p.defs).filter(([, d]) => d.kind === "contract");
   if (j(contracts(before)) === j(contracts(after))) unchanged.push("contracts and their criteria unchanged");
-  if (!governance.some((g) => g.text.startsWith("+") || g.text.includes("tier") || g.text.includes("data class"))) unchanged.push("no authority added");
+  if (!governance.some((g) => g.text.startsWith("+") || g.text.includes("tier") || g.text.includes("data class") || g.text.includes(": methods "))) unchanged.push("no authority added");
   if (!governance.some((g) => g.text.includes(".budget."))) unchanged.push("no budget raised");
   return { format: VIEW_FORMAT, kind: "diff", from: programRef(before), to: programRef(after), governance, behavior, unchanged };
 }

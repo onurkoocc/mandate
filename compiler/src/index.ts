@@ -18,7 +18,7 @@ export { parseMdt, RESERVED } from "./parse/parser.js";
 export { applyPatch, type GovernanceChange, type PatchOp, type PatchResult } from "./patch/patch.js";
 export { printProgram } from "./print/printer.js";
 export { resolveNames } from "./resolve/resolve.js";
-export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, scopeWithin, showCap, within, writesOverlap, type CapOptions, type CapResult, type CapVal } from "./check/caps.js";
+export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, HTTP_METHODS, pathsOverlap, readMethods, readsMethods, scopeWithin, showCap, within, writesOverlap, type CapOptions, type MethodProblem, type CapResult, type CapVal } from "./check/caps.js";
 export { roleChecks, roleSites, rolesNamed, type RoleSite } from "./check/roles.js";
 export { staticCost, type CostPart, type StaticCost } from "./check/cost.js";
 export { leadClasses, type Claim } from "./check/static.js";

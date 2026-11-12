@@ -80,7 +80,10 @@ import {
   capCovers,
   capsFromCall,
   capsOf,
+  HTTP_METHODS,
   pathsOverlap,
+  readMethods,
+  readsMethods,
   scopeWithin,
   showCap,
   writesOverlap,
@@ -362,9 +365,29 @@ class Checker implements TypeEnv {
       e.args.forEach((a, i) => this.untrustedInCapArg(a.value, `${path}/args/${i}/value`, frame));
       const r = capsFromCall(e, this.defs, this.capOpts);
       if (r?.problem) this.report("E1002", `${r.problem} (doc 9 §2.2).`, path, { problem: r.problem });
+      if (readsMethods(this.program.language) && calleePath(e.callee) === "net.https") this.methodsCheck(e, path);
       return r?.caps ?? [];
     }
     return [];
+  }
+
+  /** E1801: a 0.5 `net.https(…, methods: […])` names a non-empty list of methods it knows, as bare names. */
+  private methodsCheck(e: Extract<Expr, { op: "call" }>, path: string): void {
+    const i = e.args.findIndex((a) => a.name === "methods");
+    if (i < 0) return;
+    const expected = [...HTTP_METHODS];
+    const known = `${expected.slice(0, -1).join(", ")} or ${expected.at(-1)}`;
+    for (const p of readMethods(e.args[i]!.value).problems) {
+      const message =
+        p.problem === "unknown"
+          ? `Unknown method ${p.found}; net.https allows ${known}.`
+          : p.problem === "not_a_name"
+            ? `A method is written as a bare name, such as GET, not ${p.found === null ? "an expression" : JSON.stringify(p.found)}; net.https allows ${known}.`
+            : p.problem === "empty"
+              ? "methods lists at least one method; without methods, net.https allows any method."
+              : `methods takes a list of bare method names, such as methods: [GET]; net.https allows ${known}.`;
+      this.report("E1801", message, `${path}/args/${i}/value${p.at}`, { found: p.found, expected });
+    }
   }
 
   /** R5: untrusted content cannot pick a capability's scope. */

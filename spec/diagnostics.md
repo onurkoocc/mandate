@@ -140,3 +140,13 @@ to the lead, and the Notes column says so.
 | MDT-E1707 | `plan` outside an envelope | E1707 | assigned; a `plan` anywhere but the body of a workflow with an envelope |
 | MDT-E1708 | Person or critical effect in a map body | E1708, E1708a | assigned; a wait for a person in a map body or in a function it calls, a critical effect, a change set |
 | MDT-E1709 | Amendment narrows the envelope | N04, E1709, E1709a, E1709b, E1709c | assigned; a capability left out, a budget dimension lowered, dropped or added, fewer delegations at once or a lower data class; facts name the dimension (`capability`, a budget dimension, `max_concurrent`, `max_class`) with what the envelope gave and what was asked; returned to the lead, never to the run |
+
+## The boundary (0.5)
+
+Specified in [`boundary.md`](boundary.md). E18xx is assigned here.
+`mandate check` reports E1801, and E1802 and E1803 when it is given the
+lock.
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E1801 | Unknown method | E1801, E1801a, E1801b | assigned; 0.5 only; `methods` of `net.https` is a non-empty list of bare names from GET, HEAD, POST, PUT, PATCH, DELETE. Facts: `found` (the name written, or null) and `expected` |

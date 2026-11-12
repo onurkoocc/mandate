@@ -1,0 +1,25 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1801d",
+  "kind": "compile",
+  "title": "A 0.5 net.https capability without methods checks, and allows any method.",
+  "spec": [
+    "spec/boundary.md#language-05"
+  ],
+  "language": "mandate/0.5",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/GitHubRead/value/args/1"
+    }
+  ],
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}
