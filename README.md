@@ -152,8 +152,10 @@ pull request was opened, for 0.23 USD.
    envelope starts only once a member of its owner role has signed the
    package hash its card shows (`mandate view --card`, `mandate
    approve-envelope`), and every delegation attempt is one of the
-   envelope's agents. `map` and `plan` do not run yet. See
-   [`spec/envelope.md`](spec/envelope.md).
+   envelope's agents. A `map` runs its body once for each element of a
+   list, at most `par` at a time, each item with the write scope its
+   element chooses, and gives the outcomes in input order. `plan` does
+   not run yet. See [`spec/envelope.md`](spec/envelope.md).
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
@@ -475,15 +477,21 @@ These cases from §25 are covered:
 | V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |
 | X01 | A package whose executor binding no longer fits its lock is refused at load; a changed agent or environment fails ValidateBinding; a bound agent never runs without its executor | `managed-agents` (and E0903 in the compiler) |
 | X04 | A bound agent's turns run in its delegation's session and its tools in the runtime's sandbox, journaled; replay calls neither | `managed-agents` |
+| R11 | A map's results are in input order, whatever order its items finish in | `map` |
+| R12 | A failed map item is that item's outcome, and the others go on | `map` |
 | N02 | A delegation that does not fit what is left of the envelope's `agents` is refused at reservation, and two siblings cannot both reserve the last one. Sub-programs come with `plan` | `envelope` |
+| N03 | Map items with `par > 1` cannot write overlapping scopes: scopes the map does not hand per item are refused by the compiler, and scopes the elements choose are compared before any item is dispatched | `map` (and E0320 in the compiler, `map-rules`) |
+| N08 | A list longer than a map's bound is refused before any item is dispatched | `map` (and E1702 in the compiler, `map-rules`) |
 | H01 | A decision with no valid signature, an unknown key, or a member outside the role is refused and recorded as `decision_refused`; the wait stays open | `decisions`, `cli-decisions` |
 | H02 | `distinct_from` refuses a second approval by the same member, whichever key signs it | `decisions`, `cli-decisions` (and E1503 in the compiler) |
 | H03 | A run of an envelope workflow does not start without an approval of its package hash by a member of the envelope's owner role | `envelope`, `cli-envelope` |
 | H04 | Evidence for `human.approve` whose decision record was changed after signing shows as invalid, and a `Verified` value resting on it is refused | `decisions` |
 | H05 | A changed member, key or role binding in the lock is a new package and shows as a governance change | `lock-diff` (compiler) |
 
-R11 and R12 are about `map`, which the 0.1 IR does not have yet; `budget`
-tests that `par` results are bound by branch name instead.
+`map.test.ts` also runs the map of the migration example
+(`fixtures/envelope/migrate-all.mdt`) over 24 repositories: 24 migrators,
+at most 16 at once, each with its own repository as its write scope, the
+outcomes in input order, and a replay that gives the same result.
 
 ## Live runs
 
