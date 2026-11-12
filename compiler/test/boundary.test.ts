@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import { check } from "../src/check.js";
 import { capCovers, capFromCall, capsOf, readMethods, showCap, type CapVal } from "../src/check/caps.js";
 import type { Expr, LanguageVersion, Program } from "../src/ir/types.js";
+import type { Lock } from "../src/lock.js";
+import { requirementFor, sandboxRequirements } from "../src/target/sandbox.js";
 import { authority, semanticDiff } from "../src/views/views.js";
 import { readRepo } from "./helpers.js";
 
@@ -128,5 +130,75 @@ describe("views of methods", () => {
   it("read a 0.4 program's methods as nothing, so a change to them is a change the diff cannot read", () => {
     const old = (methods: string): Program => program(fetch("mandate @ 0.5", "mandate @ 0.4").replace("methods: [GET]", methods));
     expect(semanticDiff(old("methods: [GET]"), old("methods: [GET, POST]")).governance.map((c) => c.text)).toEqual(["~ capability GitHubRead changed"]);
+  });
+});
+
+describe("sandbox requirement 0.2", () => {
+  const LOCK = {
+    lock: "mandate/lock/0.5",
+    modules: {},
+    isolation: { floor: { confidential: "user_kernel" }, untrusted_network: "process", co_tenancy: { confidential: "forbidden" } },
+    egress: { Reader: { "api.github.com": "github", "uploads.github.com": "github" }, Other: { "api.github.com": "other" } },
+  } as unknown as Lock;
+  const subject = { agent: "Reader", def: "sha256:0" };
+  const model = (max: "public" | "internal" | "confidential" | "restricted"): CapVal => ({ ctor: "model.infer", effect: "Model", write: false, tier: "standard", maxClass: max });
+  const v05 = { language: "mandate/0.5" } as const;
+
+  it("is what a 0.5 program's agent gets: methods by host, the isolation it needs, and the credentials by name", () => {
+    const r = sandboxRequirements(program(FETCH), {}, LOCK)["Reader"]!;
+    expect(r).toEqual({
+      format: "mandate/sandbox-requirement/0.2",
+      subject: { agent: "Reader", def: check(FETCH, "mdt").hashes!.defs["Reader"] },
+      filesystem: { read: [], write: [] },
+      exec: [],
+      network: { hosts: ["api.github.com"], methods: { "api.github.com": ["GET"] } },
+      models: [{ tier: "standard", max_class: "confidential" }],
+      ui: { desktop: false, clipboard: false },
+      limits: { timeout_ms: 600000 },
+      unbounded: [],
+      isolation: { min: "user_kernel", co_tenancy: "forbidden", data_class: "confidential", untrusted_network: true },
+      // Only the hosts the grant reaches: uploads.github.com is bound but not held.
+      egress: { credentials: { "api.github.com": "github" } },
+    });
+    // Printed in the order the spec shows: the fields of 0.1 in their places, then isolation and egress.
+    expect(Object.keys(r)).toEqual(["format", "subject", "filesystem", "exec", "network", "models", "ui", "limits", "unbounded", "isolation", "egress"]);
+  });
+
+  it("without a lock has no floor anywhere: process, sharing allowed, no credentials", () => {
+    const r = sandboxRequirements(program(FETCH))["Reader"]!;
+    expect([r.format, r.isolation, r.egress]).toEqual(["mandate/sandbox-requirement/0.2", { min: "process", co_tenancy: "allowed", data_class: "confidential", untrusted_network: true }, { credentials: {} }]);
+  });
+
+  it("takes the higher of the floor for its data class and, when it reaches a host, the floor for an untrusted network", () => {
+    const at = (iso: object, caps: CapVal[]) => requirementFor(subject, caps, null, { ...v05, lock: { modules: {}, isolation: iso } as Lock }).isolation;
+    expect(at({ floor: { confidential: "user_kernel" }, untrusted_network: "microvm" }, [model("confidential"), net()])?.min).toBe("microvm");
+    expect(at({ floor: { confidential: "dedicated_host" }, untrusted_network: "microvm" }, [model("confidential"), net()])?.min).toBe("dedicated_host");
+    // No host reached: the network's floor does not apply.
+    expect(at({ untrusted_network: "microvm" }, [model("confidential")])).toEqual({ min: "process", co_tenancy: "allowed", data_class: "confidential", untrusted_network: false });
+    // A floor applies to the class it names, and to no other.
+    expect(at({ floor: { restricted: "microvm" } }, [model("confidential"), net()])?.min).toBe("process");
+    expect(at({ floor: { internal: "microvm" }, co_tenancy: { internal: "forbidden" } }, [model("confidential")])).toMatchObject({ min: "process", co_tenancy: "allowed" });
+    // The highest class among its models; with no model, public.
+    expect(at({}, [model("internal"), model("restricted")])?.data_class).toBe("restricted");
+    expect(at({ floor: { public: "user_kernel" } }, [])).toEqual({ min: "user_kernel", co_tenancy: "allowed", data_class: "public", untrusted_network: false });
+  });
+
+  it("merges grants of one host: the union of their methods, and any method once one has none", () => {
+    const other: CapVal = { ...net(["POST"]), scope: ["api.github.com", "uploads.github.com"] };
+    expect(requirementFor(subject, [net(["GET"]), other], null, v05).network).toEqual({ hosts: ["api.github.com", "uploads.github.com"], methods: { "api.github.com": ["GET", "POST"], "uploads.github.com": ["POST"] } });
+    expect(requirementFor(subject, [net(["GET"]), net()], null, v05).network).toEqual({ hosts: ["api.github.com"], methods: {} });
+  });
+
+  it("is format 0.1, byte for byte, below 0.5 or without options, whatever the lock says", () => {
+    const caps = [net(["GET"]), model("restricted")];
+    const plain = JSON.stringify(requirementFor(subject, caps, 1000));
+    expect(JSON.parse(plain).format).toBe("mandate/sandbox-requirement/0.1");
+    for (const language of ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4"] as LanguageVersion[]) {
+      expect(JSON.stringify(requirementFor(subject, caps, 1000, { language, lock: LOCK }))).toBe(plain);
+    }
+    expect(JSON.stringify(requirementFor(subject, caps, 1000, { lock: LOCK }))).toBe(plain);
+    // A program of 0.2 in the repository: the same requirements with the lock as without.
+    const old = program(readRepo("fixtures/fixbug-target/fixbug.mdt"));
+    expect(JSON.stringify(sandboxRequirements(old, {}, LOCK))).toBe(JSON.stringify(sandboxRequirements(old)));
   });
 });

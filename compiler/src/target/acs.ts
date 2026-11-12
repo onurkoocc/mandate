@@ -116,7 +116,7 @@ export interface AcsTarget {
 export function acsTarget(program: Program, modules: Modules = {}, lock?: Lock): AcsTarget {
   const programHash = hashProgram(program as unknown as Json).program;
   const binding = lock ? packageHash(programHash, packagedLock(lock)) : programHash;
-  const requirements = sandboxRequirements(program, modules);
+  const requirements = sandboxRequirements(program, modules, lock);
   const defs = link(program, modules).defs;
   const diagnostics: Diagnostic[] = [];
   const agents: Record<string, AcsAgent> = {};

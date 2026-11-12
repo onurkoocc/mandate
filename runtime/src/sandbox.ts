@@ -148,6 +148,14 @@ export class MxcAdapter {
     else if (req.exec.some((x) => x.args_prefix) && can.exec !== "args_prefix") unsupported.push("argument-prefix limits on commands");
     if (timeoutMs !== null && !can.timeout) unsupported.push("a timeout");
     if (!can.ui) unsupported.push("turning off desktop and clipboard access");
+    // What a 0.2 requirement asks beyond 0.1 is not enforced by any host yet (spec/boundary.md): it is refused by
+    // name, never dropped. A requirement without it (process, sharing allowed, no limits, no credentials) passes.
+    const limited = Object.keys(req.network.methods ?? {});
+    if (limited.length) unsupported.push(`method limits on outbound hosts: ${limited.join(", ")}`);
+    if (req.isolation && req.isolation.min !== "process") unsupported.push(`isolation ${req.isolation.min} (this host gives process)`);
+    if (req.isolation?.co_tenancy === "forbidden") unsupported.push("co_tenancy forbidden (this host may share)");
+    const credentials = Object.keys(req.egress?.credentials ?? {});
+    if (credentials.length) unsupported.push(`credentials for outbound hosts: ${credentials.join(", ")}`);
     if (unsupported.length) return { unsupported };
     return {
       policy: {

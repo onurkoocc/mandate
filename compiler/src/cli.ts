@@ -236,7 +236,7 @@ function main(argv: string[]): void {
         report(r.diagnostics, file, asJson);
         process.exit(1);
       }
-      const all = sandboxRequirements(r.program!, modules);
+      const all = sandboxRequirements(r.program!, modules, lock);
       if (agent !== undefined && !Object.hasOwn(all, agent)) {
         process.stderr.write(`mandate: no local agent ${agent} in ${file}\n`);
         process.exit(2);

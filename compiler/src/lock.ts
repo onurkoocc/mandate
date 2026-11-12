@@ -26,7 +26,9 @@ import { hashProgram } from "./hash.js";
 import { atLeast as languageAtLeast, type Budget, type Def, type Expr, type Program } from "./ir/types.js";
 import type { Json } from "./json/strict-json.js";
 import type { Modules } from "./modules.js";
+import type { DataClass } from "./std/std.js";
 import { agentModels, bindingChecks, type ManagedAgentsBinding } from "./target/managed-agents.js";
+import type { CoTenancy, IsolationLevel } from "./target/sandbox.js";
 
 /** The lock format this compiler writes. It reads 0.2, which has no bindings, and 0.3, which has no members or roles. */
 export const LOCK_FORMAT = "mandate/lock/0.4";
@@ -63,6 +65,16 @@ export interface Lock {
   members?: Record<string, { keys: string[] }>;
   /** Each role's members. */
   roles?: Record<string, string[]>;
+  /** 0.5: the least versions of the tools the runtime's host runs (spec/boundary.md "Lock 0.5"). */
+  host?: { node?: string; bwrap?: string };
+  /** 0.5: isolation floors by data class and for an untrusted network, and where a sandbox may not share its host. */
+  isolation?: {
+    floor?: Partial<Record<DataClass, IsolationLevel>>;
+    untrusted_network?: IsolationLevel;
+    co_tenancy?: Partial<Record<DataClass, CoTenancy>>;
+  };
+  /** 0.5: per agent, the credential each host's requests carry, by name. Never a secret. */
+  egress?: Record<string, Record<string, string>>;
 }
 
 /**

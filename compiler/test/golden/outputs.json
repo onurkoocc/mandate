@@ -229,6 +229,6 @@
     "view --format md": "sha256:3ab67ce06ece0ef668e6e1fb307e5d05ad0a2bc9ca3fc23cddf7e7c0b4732c71",
     "view --format html": "sha256:723c6872de6f1d501e81350a815b113e0b495c4a4922a2b9b91c17c360363a42",
     "view --against itself": "sha256:5e0fefc03de85f3626f812cc4133a0b7c1b662c1fd0863f631b25e802db79466",
-    "sandbox": "sha256:afbb226586f5c61eda608c0c7787e1ea479a9ddd0d425625b0b6279c1846fa86"
+    "sandbox": "sha256:70ee1d6a989b0e0a63045563a51f88830179d8c4ec1c9b929aec5c2885834b2f"
   }
 }

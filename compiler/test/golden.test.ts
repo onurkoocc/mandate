@@ -91,7 +91,7 @@ function outputs(file: string, mods: Modules): Record<string, string> {
     out["view --format md"] = toMarkdown(doc);
     out["view --format html"] = toHtml(doc);
     out["view --against itself"] = json(semanticDiff(p, p));
-    out["sandbox"] = json({ program: checked.hashes!.program, requirements: sandboxRequirements(p, mods) });
+    out["sandbox"] = json({ program: checked.hashes!.program, requirements: sandboxRequirements(p, mods, lock) });
   }
   return out;
 }

@@ -209,6 +209,8 @@ export interface InterpOptions {
    * package's lock, and whether an approval must rest on a signed decision (signed mode, and every 0.4 package).
    */
   decisions?: { keys: TrustedKeys; lock: Lock; required: boolean };
+  /** The package's lock. A 0.5 package's sandbox requirements read their isolation floors and credentials from it. */
+  lock?: Lock;
   /**
    * The envelope of the run's workflow, when it has one (spec/envelope.md): every delegation attempt reserves one of
    * its `agents`, at most `spawn.max_concurrent` delegations are in flight, and an effect under `approve` is
@@ -1240,7 +1242,7 @@ export class Interpreter {
     // Under an envelope every attempt is one of its `agents`: a first attempt, each restart and a degrade fallback
     // each reserve one when they are dispatched, with their budget, in one transaction (spec/envelope.md "The ledger").
     const one = this.o.envelope ? { agents: 1 } : undefined;
-    const sandbox = agent.remote ? undefined : requirementFor({ agent: agentName, def: this.defHash(agentName) }, granted, budget?.time?.ms ?? null);
+    const sandbox = agent.remote ? undefined : requirementFor({ agent: agentName, def: this.defHash(agentName) }, granted, budget?.time?.ms ?? null, { language: this.o.program.language, ...(this.o.lock ? { lock: this.o.lock } : {}) });
     const request = { agent: agentName, skill: e.skill, args: pos, caps: caps as unknown as Value, isolated: !!e.isolated };
     const loop = this.o.adapters.loop;
     const deadline = timeoutMs === undefined ? undefined : Number(await this.command(`${id}/started`, "time", {}, undefined, async () => ({ ok: this.o.adapters.clock.now() }))) + timeoutMs;
