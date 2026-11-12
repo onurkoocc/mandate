@@ -9,16 +9,17 @@ same cases.
 | The language surface: `role`, `envelope`, `map`, `plan`, `agents`, `Outcome` in the IR, the schema, the text form and the views | implemented |
 | Roles: E1501, E1502, E1503; lock format 0.4 with `members` and `roles` | implemented |
 | Signed decisions: the record, the members' keys, acceptance and `decision_refused`, the evidence of `human.approve`, unsigned mode, the CLI, lock changes in `view --against` (H01, H02, H04, H05) | implemented |
-| The envelope's own rules (E1701 to E1708) | not yet; `mandate explain` knows the codes, `mandate check` does not report them |
-| The envelope's ledger and approval (H03), running `map` and `plan`, amendments, the card | not yet |
+| The envelope's own rules: E1701, E1704 and E1707; E0501 with `steps` and `agents`; E0220 with `spawn.max_class` | implemented |
+| The envelope at run time: its approval (H03), the `agents` ledger for delegations (N02), `spawn.max_concurrent`, `approve E by r`; the card | implemented |
+| `map` and its rules (E1702, E1703, E1708); `plan`, sub-programs and their rules (E1705, E1706); amendments | not yet; `mandate explain` knows the codes, `mandate check` does not report them |
 | Run views of 0.4: submissions, the envelope's remainder, map items, each decision's member, role and signature | not yet; `mandate status` lists each decision a run took and whether its signature holds |
 
-The runtime runs a 0.4 package that uses roles and signed decisions. It
-refuses one that has an envelope, a `map`, a `plan` or an `agents` budget
-when it loads it (`unsupported_language`, naming what it found). Those are
-not run yet and their static rules are not checked yet, and a version is
-never run on a best-effort basis. Such a program can be read, checked,
-hashed, printed and viewed today, and not run.
+The runtime runs a 0.4 package that uses roles, signed decisions and
+envelopes. It refuses one that has a `map`, a `plan`, or `agents` in a
+budget that is not an envelope's, when it loads it (`unsupported_language`,
+naming what it found). Those are not run yet, and a version is never run on
+a best-effort basis. Such a program can be read, checked, hashed, printed
+and viewed today, and not run.
 
 0.4 lets an agent plan work while a run is going, without a person approving
 every step. A person approves an **envelope** once: the most authority,
@@ -167,12 +168,13 @@ What a record names, by kind:
 | `raise_limits` | none | the run's package hash | the new limits by dimension, as `limits_raised` records them |
 | `reconcile` | the action's command | the action digest | `{ "reconcile": "<operation key>" }` |
 | `cancel` | none | the run's package hash | none |
-| `envelope`, `amend` | see "Approving an envelope" and "Amendments" | a package hash | |
+| `envelope` | none, and no run or revision | the package hash | none |
+| `amend` | see "Amendments" | a package hash | |
 
 A payload is the request digest of its value: the SHA-256 of
 `mandate/request/0.1\n` and the value's JCS bytes. `role` is the role the
 wait asks; a raise, a reconciliation and a cancel ask none, so any member
-may make them.
+may make them. An envelope approval names the envelope's `owner`.
 
 The runtime accepts a decision only when all of these hold. Otherwise it is
 refused with `invalid_decision` and a reason, nothing is recorded, and the
@@ -260,12 +262,11 @@ mandate reconcile    <run> <operation> --key FILE [--member NAME]
 mandate cancel       <run> [--key FILE]
 mandate decision     <run> <digest>                            # a decision the run took, as its signed record
 mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
-mandate approve-envelope <program> --key FILE [--member NAME]
+mandate approve-envelope <program> --key FILE [--member NAME] [--workflow W]
 mandate amend        <run> --revision N --key FILE [--member NAME] (approve | decline)
 ```
 
-`approve-envelope` and `amend` come with the envelope's approval and its
-amendments.
+`amend` comes with amendments.
 
 `--member` is needed only when a key id is listed under more than one
 member, which the lock forbids, so in practice never. The CLI finds the
@@ -280,8 +281,16 @@ lists under nobody is refused there (`unknown_key`).
   refuses one that is not (`key_not_private`). This is checked by POSIX
   mode. Windows has no such modes and the CLI does not read ACLs, so there
   the file is as private as the directory it is in.
+- **`approve-envelope`** signs for the package hash the card shows, in the
+  `owner` role of the program's envelope, and hands the approval to the
+  runtime ([below](#approving-an-envelope)). It reads the program, its
+  lock and its modules as `mandate run` does. `--workflow` names the
+  workflow whose envelope is meant; it is needed only when the program's
+  envelopes have different owners. `--json` prints the package hash and
+  the decision's digest with the record and its signature.
 - **`status`** lists each decision the run took with its member, role and
-  digest, and whether its signature still holds.
+  digest, and whether its signature still holds. For a run under an
+  envelope, the approval it started under comes first.
 - **`verify-decision`** checks a record without the runtime: it reads the
   record file (`{ "record": …, "signature": … }`, as `mandate decision`
   prints it) and a public key, and no configuration or database. It exits
@@ -367,6 +376,19 @@ An envelope needs `owner`, `caps` and `budget` with `agents` (E1701). Every
 effect under `approve` is critical, and a capability in `caps` covers it
 (E1704).
 
+`approve E by r` says who authorizes `E`, and it holds against what is
+configured outside the program: the runtime's policy for the effect can
+neither hand it to policy nor name another role. A deadline the runtime
+sets for that approval still applies, since a deadline only takes
+authority away. Where the program itself names another role for the same
+action, two rules contradict each other and neither gives way. That is an
+environment whose tier asks a person of another role, or a change set
+member whose approver (its `approved_by`, or else its component's owner)
+is another role. The run then stops as `attention_required` with
+`approval_conflict`, before anyone is asked and before anything is sent.
+Name the same role in both. A governance-class file still asks its owner
+first, as before (K70).
+
 In IR the envelope is a field of the workflow. The workflow's own `caps`
 stays in the IR, as the empty list, and the text form does not write it:
 the field is required of every workflow since 0.1, and an older reader's
@@ -396,6 +418,32 @@ A person approves the envelope from its card, `mandate view <program>
 --card` ([below](#views)), and signs it with `mandate approve-envelope`. One
 approval serves every run of that package.
 
+- **The record.** Its `kind` is `envelope`, its `package` and its
+  `subject` are the package hash, and its `role` is the envelope's
+  `owner`. It is about the package and no run, so it names no run,
+  revision, command or payload. It names no workflow either: it approves
+  every envelope in the package that the role owns. A package whose
+  envelopes have two owners needs an approval in each role before the
+  workflows of both start.
+- **Acceptance.** The approval is held to the rules of every decision, in
+  their order: who signed, what the record is for, then the role. The role
+  must own an envelope in the package, and the member must hold it in the
+  package's lock. A refused approval is `invalid_decision` with its
+  reason. Nothing is stored and no event is written, since there is no run
+  whose log could record it. A package without an envelope has nothing to
+  approve (`no_envelope`).
+- **At the start of a run.** The approval is stored with the package.
+  `StartRun` takes the oldest stored one in the envelope's owner role that
+  still holds, and checks it again as when it arrived: the record is
+  unchanged, names this package, and is signed by a key the lock lists
+  under a member of the role. The run's manifest lists it as
+  `envelope_approval` (`decision`, `member`, `role`, `key`), and the run's
+  log records `envelope_approved`. `mandate status` and `verifyDecisions`
+  show it first among the run's decisions.
+- **Tests.** `mandate test` makes up the people of a 0.4 program
+  ([`runtime.md`](runtime.md#tests-64)), and its member of the owner role
+  approves the test's package before the run starts.
+
 ### The ledger
 
 `agents` is a ledger dimension like `steps`. Every delegation attempt
@@ -404,9 +452,29 @@ degrade fallback. A delegation that does not fit is `BudgetExceeded` and
 goes to the run's budget handler, as today. Two siblings cannot both
 reserve the last one (R07, N02).
 
+- **Spent when sent.** An attempt's agent is settled when the attempt
+  ends, whatever came of it: a result, a failure or a timeout. No adapter
+  reports it as a cost.
+- **Only under an envelope.** A run of a workflow without an envelope
+  reserves no agents, and its events and budget table are as they were.
+- **The run's limit** is the envelope's `agents`, or less when the caller
+  gives the run less (`mandate run --limit agents=N`), as in every
+  dimension.
+- **A raise** (`raise-limits`) may bring a run's limit up to the
+  envelope's budget and no further, in any dimension
+  (`above_program_budget`). More than the envelope gives needs an
+  amendment. A raise asks no role, as before.
+- **`time`** is a deadline, not a ledger dimension, so nothing reserves
+  it. E0501 holds the static part to the envelope's `time`. The runtime
+  does not stop a run at it today. With `plan`, a sub-program's `time` is
+  held to what is left of it, counted from the run's start.
+
 `max_concurrent` is not a ledger. A delegation that would exceed it waits
 until another one in the run settles. The wait is not an attempt, holds no
-reservation and is not a fault.
+reservation and is not a fault, and nothing of it is journaled. Delegations
+that wait go on in the order they came. A place is held for one attempt and
+given back when the attempt ends, however it ends. Replay sends nothing, so
+it never waits.
 
 ## `map`
 
@@ -617,9 +685,20 @@ Existing checks extend to the new forms:
   map `n ×` its body, and a `plan` its lead's own delegation. What
   sub-programs use is bounded at run time by reservation, not statically.
   So for an envelope, the check proves that the static part fits; the
-  runtime proves that each sub-program fits what is left.
+  runtime proves that each sub-program fits what is left. For an envelope
+  it compares `steps` as well. A workflow's own budget is compared as
+  before 0.4, in money, tokens and time, so an earlier program's
+  diagnostics do not change.
 - **E0220** applies `spawn.max_class` to every delegation and `infer` in
-  the run.
+  the run, and `internal` when the envelope names no class. One in the
+  workflow's body is reported where it stands. One inside a function the
+  body calls is reported at the call, with at least the class of what the
+  call hands the function. One in the body of a skill the workflow
+  reaches, through any number of delegations, is reported where it stands
+  in the skill: what enters a skill was held to the class where it was
+  delegated, so this finds data that first has a higher class inside it.
+  The skills are the program's own. An imported agent's body was checked
+  in its module, without this envelope.
 - **E0320** applies to map items as above.
 - **E0711** stays: there is no `spawn`. Its message names `plan … within
   envelope` as the dynamic form (V05).
@@ -630,7 +709,7 @@ Existing checks extend to the new forms:
 
 | Event | Data |
 |---|---|
-| `envelope_approved` | package, member, role, decision digest (recorded on the package, listed in each run's manifest) |
+| `envelope_approved` | package, member, role, key, decision digest. Written to a run's log when it starts, naming the approval it starts under; the approval itself is stored with the package and listed in the run's manifest |
 | `map_started` | map node, number of items, `par` |
 | `program_submitted` | plan node, number, base, patch digest |
 | `program_refused` | plan node, number, diagnostics digest |
@@ -648,6 +727,16 @@ decision was signed. An unsigned one records what it did before 0.4.
 
 `decision_refused` is the one event a refused decision records: who tried,
 with which key, and why. It changes nothing else and raises no revision.
+
+### Refusals
+
+| Code | When |
+|---|---|
+| `unapproved_envelope` | `StartRun` of a workflow with an envelope, when no stored approval of the package in the envelope's owner role holds (H03) |
+| `no_envelope` | An envelope approval of a package that has no envelope |
+| `approval_conflict` | An effect under `approve` whose environment or change set member names another role. The run is `attention_required` |
+| `above_program_budget` | A raise above the envelope's budget; it needs an amendment |
+| `unsupported_language` | At load: a package with a `map`, a `plan`, or `agents` in a budget that is not an envelope's |
 
 ### Executors
 

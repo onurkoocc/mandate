@@ -104,7 +104,10 @@ If the reservation does not fit, the command is refused with
 `BudgetExceeded`. A known cost settles and closes the reservation. If the
 cost is `"unknown"`, the reservation stays active until `settleCharge`
 reports the real charge (R16). Run limits are the minimum of the
-workflow's budget and the caller's limits.
+workflow's budget and the caller's limits. For a workflow with an
+envelope that budget is the envelope's, and it has one more dimension,
+`agents`: the delegation attempts the run may start
+([`envelope.md`](envelope.md#the-ledger)).
 
 A delegate reserves the budget written at the call, else the skill's, else
 the agent's: the same budget the compiler adds up for E0501. `time` is a
@@ -123,8 +126,9 @@ happens is a numbered episode, recorded as a `budget_exceeded` event:
    (§13.2), recorded as `limits_raised` with who made it and the limits
    before and after. It can only raise a limit that exists (`not_a_raise`),
    never above the workflow's own budget (`above_program_budget`; that
-   needs a new program version). Like a decision, it names the revision it
-   was made on and is deduplicated by message.
+   needs a new program version, or an amendment of the envelope). Like a
+   decision, it names the revision it was made on and is deduplicated by
+   message.
 4. Answering the question resumes the run. The body runs again against the
    journal, so finished commands are not called again. The command that
    did not fit is dispatched again. If it still does not fit, the next
@@ -610,8 +614,9 @@ A 0.4 program takes signed decisions only
 makes up the people as well: two members with keys of their own for every
 role the program names and for `owner`, bound in the test's lock. The
 first decides for the role; the second decides an approval that must be
-`distinct_from` an earlier one. An earlier program's test decides by name,
-as before.
+`distinct_from` an earlier one. When the workflow has an envelope, the
+first member of its owner role approves the test's package before the run
+starts. An earlier program's test decides by name, as before.
 
 - **Arguments.** `run W(args) expect e` runs `W`. `fixtures.<name>` is the
   JSON file `fixtures/<name>.json` next to the program.
@@ -696,14 +701,18 @@ listed in the run's summary (R09).
   (`no_executor`, `unsupported_binding`;
   [`executors.md`](executors.md));
 - runs the compiler's checks on the canonical IR again;
-- refuses a language version it does not run, and of 0.4 an envelope, a
-  `map`, a `plan` and an `agents` budget, which it does not run yet
-  (`unsupported_language`; [`envelope.md`](envelope.md));
+- refuses a language version it does not run, and of 0.4 a `map`, a
+  `plan` and `agents` in a budget that is not an envelope's, which it does
+  not run yet (`unsupported_language`; [`envelope.md`](envelope.md));
 - when the lock lists members or roles, requires it to be well formed
   (`malformed_lock`), and for a 0.4 package requires every role it names
   to have a member (`unbound_role`, E1502);
 - does not start a 0.4 package when it is in unsigned mode
   (`signed_decisions_required`);
+- starts a workflow with an envelope only on a stored approval of the
+  package by a member of the envelope's owner role, which it checks again
+  (`unapproved_envelope`, H03;
+  [`envelope.md`](envelope.md#approving-an-envelope));
 - checks the input against the workflow's parameter types, with the same
   schemas a model's answer is checked against (`input_mismatch`). A `Path`
   in it keeps the Path rule (G14). A type the program imports but does not
@@ -717,11 +726,13 @@ listed in the run's summary (R09).
 | `GetRun` | `getRun`, with `budgetReport` and `evidence` |
 | `SubmitInput` | `submitInput` |
 | `DecideAction` | `decideAction`: an action's approval, or a contract's `human.approve` |
+| (governance) | `approveEnvelope`: an owner's approval of a package's envelope, before any run of it |
 
 Every message by which a person changes a run is a decision record the
 person signs ([`envelope.md`](envelope.md#signed-decisions)):
 `submitInput`, `decideAction`, `raiseLimits`, `reconcileAction` and
-`cancelRun` take one. `shown` returns what a record must name now, and
+`cancelRun` take one, and `approveEnvelope` one about a package. `shown`
+returns what a record must name now, and
 `verifyDecisions` checks again each record a run took. In unsigned mode
 (`RuntimeOptions.decisions.mode`), a package of 0.1 to 0.3 takes the
 caller's word for who decided, as before 0.4.
@@ -764,6 +775,7 @@ through the compiler's `mandate` command:
 mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD] [--module FILE]…
 mandate status <run> [--json]
 mandate key new [--out FILE]
+mandate approve-envelope <program> --key FILE [--member NAME] [--workflow W] [--lock FILE] [--module FILE]… [--json]
 mandate approve <run> --revision N --key FILE [--member NAME]
 mandate decline <run> --revision N --key FILE [--member NAME]
 mandate answer <run> --revision N --key FILE [--member NAME] <text>
@@ -782,6 +794,11 @@ mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [-
 
 `deploy` writes an executor binding into the lock; it needs
 `CLAUDE_API_KEY` and no configuration ([`executors.md`](executors.md)).
+
+`--limit` takes `spend`, `tokens`, `steps` and, for a workflow with an
+envelope, `agents`, separated by commas. `approve-envelope` signs a
+package's envelope so that its runs may start
+([`envelope.md`](envelope.md#approving-an-envelope)).
 
 **Configuration.** Each call reads `mandate.runtime.json`, or the file
 `--config` names. It holds the database and the adapters:
@@ -924,7 +941,9 @@ commit per component.
   workspace adapter do not start (`no_workspace`, INV-11).
 - **The manifest.** The run records what it started from:
   `{ format: "mandate/run-manifest/0.1", package, workflow, tenant, input:
-  <digest>, components: { name: { repo, root, base } } }`. Its hash, R, is
+  <digest>, components: { name: { repo, root, base } } }`. A run under an
+  envelope also lists the approval it started under, `envelope_approval:
+  { decision, member, role, key }`. The manifest's hash, R, is
   `digest("run", manifest)`. The same program from another base commit is
   another R. `mandate show` lists R and each component at its commit;
   verifier calls are told the components (`VerifyRequest.workspace`).
