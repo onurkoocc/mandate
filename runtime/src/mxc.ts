@@ -3,9 +3,11 @@
 //
 // - Probe: the SDK's platform check. A host where Bubblewrap cannot run (no
 //   bwrap, user namespaces off) enforces nothing, so MxcAdapter refuses every
-//   agent by name (G05). Windows backends are a later item (P2-27). A
-//   Bubblewrap backend that does not report the capability to mask paths
-//   (`filesystemDeniedPaths`) holds neither the path lists nor the network.
+//   agent by name (G05). Windows backends are a later item (P2-27). Then one
+//   sandbox with the masks below, to see that they hold: Bubblewrap does not
+//   report the capability (`filesystemDeniedPaths`), so it is checked, once
+//   per host. Where the runtime directories still show, the host holds
+//   neither the path lists nor the network.
 // - Create: records the policy; Bubblewrap needs no long-lived container.
 // - Execute: one `bwrap` process per tool call, under the policy:
 //     filesystem  the deny-by-default system baseline read-only, plus the
@@ -18,10 +20,12 @@
 //   the system bus, a container engine). A unix socket is a file, not a
 //   network route, so the network policy does not reach it: a sandbox that
 //   could open one could ask that service to act for it, e.g. resolve a name
-//   upstream. So no sandbox sees them. A policy path at or under one is
-//   refused by name (the probe reports them as `hidden`), never dropped; a
-//   granted path that resolves into one through a symlink is refused before
-//   a process starts. A backend that cannot mask paths enforces nothing.
+//   upstream. So no sandbox sees them: MXC mounts an empty directory over
+//   each (`deniedPaths`), which also covers what the baseline shows there (the
+//   resolver's directory, for /etc/resolv.conf). A path granted under a mask
+//   would be mounted over it, so a policy path at or under one is refused by
+//   name (the probe reports them as `hidden`), never dropped; a granted path
+//   that leads into one through a link is refused before a process starts.
 //   The command allow-list is not something Bubblewrap can enforce inside the
 //   sandbox, so the host enforces it before it starts a process: a process is
 //   either one of the runtime's own tool helpers (cat, ls, grep, the
@@ -41,14 +45,12 @@ import { inside, WRITE_SCRIPT } from "./tools.js";
 /** The part of `@microsoft/mxc-sdk/v1` the host uses; tests pass a fake. */
 export interface MxcSdk {
   getPlatformSupport(): { isSupported: boolean; reason?: string; availableMethods: string[]; unavailableReasons?: Record<string, string> };
-  /** The native backends and their optional capabilities. An SDK without it cannot say that it masks paths. */
-  getAvailableBackends?(): Array<{ backend: string; capabilities: string[]; warnings?: string[] }>;
   spawn(request: MxcContainerRequest): Promise<MxcSpawned>;
 }
 
 export interface MxcContainerRequest {
   command: string;
-  /** `deniedPaths` are masked inside the sandbox, below any grant (MXC capability `filesystemDeniedPaths`). */
+  /** Each of `deniedPaths` is an empty directory inside the sandbox; a grant under one is mounted over it. */
   filesystem: { readonlyPaths: string[]; readwritePaths: string[]; deniedPaths: string[] };
   network: { egress: { default: "deny" }; ingress: { default: "deny"; hostLoopback: "deny" } };
   containment: { type: "bubblewrap" };
@@ -92,6 +94,9 @@ const NOTHING: Enforceable = { backends: [], modes: [], filesystem: false, netwo
  */
 export const HOST_RUNTIME_DIRS: readonly string[] = ["/run", "/var/run"];
 
+/** Run by the probe in a sandbox with the masks: prints each entry it still finds in a runtime directory, then `end`. */
+export const MASK_CHECK = `find ${HOST_RUNTIME_DIRS.map((d) => `${d}/`).join(" ")} -mindepth 1 -maxdepth 1 2>/dev/null; echo end`;
+
 /** Helpers the runtime's own tools start; the filesystem policy confines them. */
 const HELPERS = new Set(["cat", "ls", "grep"]);
 
@@ -103,8 +108,8 @@ export class MxcHost implements SandboxHost {
   private readonly stopped = new Set<string>();
   /** Why the last probe found nothing enforceable, for the operator. */
   unavailable: string | undefined;
-  /** Why the backend cannot mask paths (null: it can), asked once. */
-  private masking: string | null | undefined;
+  /** Why the masks do not hold on this host (undefined: they do), checked once. */
+  private masking: Promise<string | undefined> | undefined;
 
   constructor(private readonly o: MxcHostOptions = {}) {
     this.sdk = o.sdk;
@@ -131,10 +136,9 @@ export class MxcHost implements SandboxHost {
       return NOTHING;
     }
     const enforcing: Enforceable = { backends: ["process"], modes: ["enforcement"], filesystem: true, network: "deny_all", exec: "args_prefix", timeout: true, ui: true, hidden: [...HOST_RUNTIME_DIRS] };
-    // Without masking, a sandbox would see the host's service sockets: neither its path lists nor its network could be held.
-    this.masking ??= cannotMask(sdk) ?? null;
+    // Without the masks, a sandbox would see the host's service sockets: neither its path lists nor its network would hold.
     const shown = (this.o.baseline ?? []).find((b) => exposedBy(b));
-    const why = this.masking ?? (shown && `the baseline path ${shown} leads to ${exposedBy(shown)}, which no sandbox may see`);
+    const why = shown ? `the baseline path ${shown} leads to ${exposedBy(shown)}, which no sandbox may see` : await (this.masking ??= this.checkMasks(sdk));
     if (why) {
       this.unavailable = why;
       return { ...enforcing, filesystem: false, network: "none" };
@@ -173,16 +177,7 @@ export class MxcHost implements SandboxHost {
       if (root) return refused(`${p} leads to ${root}, which no sandbox sees`);
     }
     const timeoutMs = req.timeoutMs ?? (policy.timeoutSeconds !== null ? policy.timeoutSeconds * 1000 : undefined);
-    const request: MxcContainerRequest = {
-      command: req.argv.map(shellQuote).join(" "),
-      filesystem: { readonlyPaths, readwritePaths, deniedPaths: [...HOST_RUNTIME_DIRS] },
-      network: { egress: { default: "deny" }, ingress: { default: "deny", hostLoopback: "deny" } },
-      containment: { type: "bubblewrap" },
-      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-      ...(req.cwd ? { workingDirectory: req.cwd } : {}),
-      // Only PATH: nothing of the runtime's own environment reaches the process.
-      ...(this.o.path?.length ? { environment: { PATH: [...this.o.path, DEFAULT_PATH].join(":") } } : {}),
-    };
+    const request = this.request(req.argv.map(shellQuote).join(" "), readonlyPaths, readwritePaths, timeoutMs, req.cwd);
     let proc: MxcSpawned;
     try {
       proc = await sdk.spawn(request);
@@ -192,15 +187,50 @@ export class MxcHost implements SandboxHost {
     const running = this.running.get(handle) ?? new Set<MxcSpawned>();
     this.running.set(handle, running.add(proc));
     try {
-      const out = collect(proc.standardOutput, this.o.maxOutput ?? 1 << 20);
-      const err = collect(proc.standardError, this.o.maxOutput ?? 1 << 20);
-      proc.standardInput?.end(req.stdin ?? "");
-      const [status, stdout, stderr] = await Promise.all([proc.wait(), out, err]);
-      return { stdout, stderr, exitCode: status.exitCode, timedOut: status.timedOut, ...(this.stopped.has(handle) ? { stopped: true } : {}) };
+      const r = await drain(proc, req.stdin ?? "", this.o.maxOutput ?? 1 << 20);
+      return { ...r, ...(this.stopped.has(handle) ? { stopped: true } : {}) };
     } finally {
       running.delete(proc);
       proc.dispose();
     }
+  }
+
+  /** What MXC gets for one process: every request masks the host's runtime directories. */
+  private request(command: string, readonlyPaths: string[], readwritePaths: string[], timeoutMs?: number, cwd?: string): MxcContainerRequest {
+    return {
+      command,
+      filesystem: { readonlyPaths, readwritePaths, deniedPaths: [...HOST_RUNTIME_DIRS] },
+      network: { egress: { default: "deny" }, ingress: { default: "deny", hostLoopback: "deny" } },
+      containment: { type: "bubblewrap" },
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+      ...(cwd ? { workingDirectory: cwd } : {}),
+      // Only PATH: nothing of the runtime's own environment reaches the process.
+      ...(this.o.path?.length ? { environment: { PATH: [...this.o.path, DEFAULT_PATH].join(":") } } : {}),
+    };
+  }
+
+  /**
+   * Starts one sandbox the way `execute` does, with nothing granted, and
+   * lists what it sees in the runtime directories: nothing, where the masks
+   * hold. Why they do not, or undefined.
+   */
+  private async checkMasks(sdk: MxcSdk): Promise<string | undefined> {
+    const no = "so a sandbox would see the host's runtime directories and the service sockets in them";
+    let r: Omit<ExecResult, "stopped">;
+    try {
+      const proc = await sdk.spawn(this.request(MASK_CHECK, [...(this.o.baseline ?? [])], [], 30_000));
+      try {
+        r = await drain(proc, "", 1 << 16);
+      } finally {
+        proc.dispose();
+      }
+    } catch (e) {
+      return `MXC could not start a sandbox that masks paths (${(e as Error).message}), ${no}`;
+    }
+    const seen = r.stdout.split("\n").filter((l) => l && l !== "end");
+    if (r.exitCode === 0 && r.stdout.endsWith("end\n") && !seen.length) return undefined;
+    const what = seen.length ? `a sandbox still sees ${seen.join(", ")}` : `the check exited ${r.exitCode}${r.timedOut ? " (timed out)" : ""}: ${r.stderr.trim() || r.stdout.trim()}`;
+    return `Bubblewrap here does not mask the host's runtime directories (${what}), ${no}`;
   }
 
   /** Kills every process running in the sandbox (Bubblewrap's whole process tree goes with it) and starts no more. */
@@ -241,21 +271,6 @@ export function disallowed(policy: MxcPolicy, argv: string[]): string | undefine
   return undefined;
 }
 
-/** Why this SDK cannot be shown to mask paths in a Bubblewrap sandbox, or undefined when it can. */
-function cannotMask(sdk: MxcSdk): string | undefined {
-  const no = "so a sandbox would see the host's runtime directories and the service sockets in them";
-  if (!sdk.getAvailableBackends) return `this MXC SDK does not report what its backends can enforce, ${no}`;
-  let bwrap: ReturnType<NonNullable<MxcSdk["getAvailableBackends"]>>[number] | undefined;
-  try {
-    bwrap = sdk.getAvailableBackends().find((b) => b.backend === "bubblewrap");
-  } catch (e) {
-    return `MXC's backend discovery failed (${(e as Error).message}), ${no}`;
-  }
-  if (bwrap?.capabilities.includes("filesystemDeniedPaths")) return undefined;
-  const warnings = bwrap?.warnings?.length ? ` (${bwrap.warnings.join("; ")})` : "";
-  return `Bubblewrap here cannot mask paths${warnings}, ${no}`;
-}
-
 /**
  * The runtime directory a granted path would show, or undefined: the path is
  * one or lies under one, by its name or by where its links lead; or it is
@@ -290,6 +305,15 @@ export function shellQuote(s: string): string {
 
 function refused(stderr: string): ExecResult {
   return { stdout: "", stderr: `${stderr}\n`, exitCode: 126, timedOut: false };
+}
+
+/** Feeds `stdin` to a started process and waits for it, with its output (each stream cut at `max`). */
+async function drain(proc: MxcSpawned, stdin: string, max: number): Promise<Omit<ExecResult, "stopped">> {
+  const out = collect(proc.standardOutput, max);
+  const err = collect(proc.standardError, max);
+  proc.standardInput?.end(stdin);
+  const [status, stdout, stderr] = await Promise.all([proc.wait(), out, err]);
+  return { stdout, stderr, exitCode: status.exitCode, timedOut: status.timedOut };
 }
 
 async function collect(stream: NodeJS.ReadableStream | null, max: number): Promise<string> {

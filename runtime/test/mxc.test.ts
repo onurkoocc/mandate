@@ -19,7 +19,7 @@ import { dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
 import { requirementFor, type SandboxRequirement } from "@mandate/compiler";
 import { afterAll, describe, expect, it } from "vitest";
-import { HOST_RUNTIME_DIRS, MxcHost, shellQuote, type MxcContainerRequest, type MxcSdk } from "../src/mxc.js";
+import { HOST_RUNTIME_DIRS, MASK_CHECK, MxcHost, shellQuote, type MxcContainerRequest, type MxcSdk } from "../src/mxc.js";
 import { MxcAdapter, type MxcPolicy } from "../src/sandbox.js";
 import { SimChat, toolUse } from "../src/sim.js";
 import { WRITE_SCRIPT } from "../src/tools.js";
@@ -38,21 +38,25 @@ function requirement(o: { read?: string[]; write?: string[]; exec?: Array<{ comm
 
 class FakeSdk implements MxcSdk {
   readonly spawned: MxcContainerRequest[] = [];
+  /** The probe's mask checks, kept apart from the processes a sandbox runs. */
+  readonly checks: MxcContainerRequest[] = [];
   readonly stdin: string[] = [];
   /** A process that runs until it is killed, like a hung test run. */
   hang = false;
   killed = 0;
-  constructor(
-    private readonly support: ReturnType<MxcSdk["getPlatformSupport"]> = { isSupported: true, availableMethods: ["bubblewrap", "lxc"] },
-    private readonly backends: Array<{ backend: string; capabilities: string[]; warnings?: string[] }> = [{ backend: "bubblewrap", capabilities: ["filesystemDeniedPaths", "proxyEnforcement"], warnings: [] }],
-  ) {}
+  /** Like a backend that ignores `deniedPaths`: the host's runtime directory stays in view. */
+  ignoresMasks = false;
+  constructor(private readonly support: ReturnType<MxcSdk["getPlatformSupport"]> = { isSupported: true, availableMethods: ["bubblewrap", "lxc"] }) {}
   getPlatformSupport() {
     return this.support;
   }
-  getAvailableBackends() {
-    return this.backends;
-  }
   async spawn(request: MxcContainerRequest) {
+    if (request.command === MASK_CHECK) {
+      this.checks.push(request);
+      // What a sandbox sees in /run: the resolver's directory the baseline shows, unless /run is masked.
+      const masked = !this.ignoresMasks && request.filesystem.deniedPaths.includes("/run");
+      return finished(masked ? "end\n" : "/run/systemd\nend\n");
+    }
     this.spawned.push(request);
     const input = new PassThrough();
     const out = new PassThrough();
@@ -76,6 +80,15 @@ class FakeSdk implements MxcSdk {
     };
     return { standardInput: input, standardOutput: out, standardError: err, wait: async () => ({ exitCode: await exited, timedOut: false }), kill, dispose: () => {} };
   }
+}
+
+/** A process that has already printed `stdout` and exited 0. */
+function finished(stdout: string) {
+  const out = new PassThrough();
+  const err = new PassThrough();
+  out.end(stdout);
+  err.end();
+  return { standardInput: new PassThrough(), standardOutput: out, standardError: err, wait: async () => ({ exitCode: 0, timedOut: false }), kill: () => {}, dispose: () => {} };
 }
 
 const adapter = (host: MxcHost) => new MxcAdapter({ host, schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true });
@@ -147,12 +160,15 @@ describe("MxcHost against a fake SDK", () => {
 
   it("keeps the host's runtime directories out of every sandbox: each process's request masks them", async () => {
     const sdk = new FakeSdk();
-    const host = new MxcHost({ sdk });
-    expect((await host.probe()).hidden).toEqual(["/run", "/var/run"]);
+    const host = new MxcHost({ sdk, baseline: ["/opt/node"] });
+    expect(await host.probe()).toMatchObject({ filesystem: true, network: "deny_all", hidden: ["/run", "/var/run"] });
     const { handle } = await sandbox(host, requirement({ read: ["/work/repo"], exec: [{ command: "npm" }] }));
     await host.execute(handle, { argv: ["npm", "test"] });
     await host.execute(handle, { argv: ["cat", "/work/repo/a.ts"] });
     expect(sdk.spawned.map((r) => r.filesystem.deniedPaths)).toEqual([HOST_RUNTIME_DIRS, HOST_RUNTIME_DIRS]);
+    // The probe saw the masks hold once, in a sandbox like these, and asks no more.
+    expect(sdk.checks).toHaveLength(1);
+    expect(sdk.checks[0]!.filesystem).toEqual({ readonlyPaths: ["/opt/node"], readwritePaths: [], deniedPaths: HOST_RUNTIME_DIRS });
   });
 
   it("refuses by name a policy path at or under a runtime directory, rather than dropping it or showing it", async () => {
@@ -170,15 +186,22 @@ describe("MxcHost against a fake SDK", () => {
     const { policy } = await sandbox(host, requirement({ read: ["/work/repo"] }));
     await expect(host.create({ ...policy, filesystem: { readOnly: ["/run/dbus"], readWrite: [] } })).rejects.toThrow("/run/dbus is under /run");
     expect(sdk.spawned).toHaveLength(0);
+    // Nor does the operator's baseline open one: such a host enforces neither paths nor network.
+    const opened = new MxcHost({ sdk, baseline: ["/run/user/1000/tools"] });
+    expect(await adapter(opened).plan(requirement({ read: ["/work/repo"] }))).toEqual({ unsupported: ["filesystem path lists", "blocking outbound network"] });
+    expect(opened.unavailable).toBe("the baseline path /run/user/1000/tools leads to /run, which no sandbox may see");
   });
 
-  it("enforces neither paths nor network where the backend cannot mask paths, so every agent is refused by name", async () => {
-    const support = { isSupported: true, availableMethods: ["bubblewrap"] };
+  it("enforces neither paths nor network where the masks do not hold, so every agent is refused by name", async () => {
+    const ignores = new FakeSdk();
+    ignores.ignoresMasks = true;
+    const fails = new FakeSdk();
+    fails.spawn = async () => {
+      throw new Error("unknown field deniedPaths");
+    };
     for (const [sdk, why] of [
-      [new FakeSdk(support, [{ backend: "bubblewrap", capabilities: ["proxyEnforcement"], warnings: ["no mount namespace"] }]), "Bubblewrap here cannot mask paths (no mount namespace)"],
-      [new FakeSdk(support, []), "Bubblewrap here cannot mask paths"],
-      [Object.assign(new FakeSdk(support), { getAvailableBackends: undefined }), "does not report what its backends can enforce"],
-      [Object.assign(new FakeSdk(support), { getAvailableBackends: () => { throw new Error("ffi failed"); } }), "backend discovery failed (ffi failed)"],
+      [ignores, "Bubblewrap here does not mask the host's runtime directories (a sandbox still sees /run/systemd)"],
+      [fails, "MXC could not start a sandbox that masks paths (unknown field deniedPaths)"],
     ] as const) {
       const host = new MxcHost({ sdk });
       const planned = await adapter(host).plan(requirement({ read: ["/work/repo"] }));
@@ -186,6 +209,7 @@ describe("MxcHost against a fake SDK", () => {
       expect(host.unavailable).toContain(why);
       expect(host.unavailable).toContain("service sockets");
     }
+    expect(ignores.spawned).toHaveLength(0);
   });
 });
 
@@ -357,6 +381,8 @@ async function decoy(path: string): Promise<{ hits: () => number; close: () => P
   let hits = 0;
   const server = createServer((s) => {
     hits++;
+    // The host's own check hangs up at once.
+    s.on("error", () => {});
     s.end("DECOY\n");
   });
   await new Promise<void>((resolve, reject) => {
@@ -364,6 +390,38 @@ async function decoy(path: string): Promise<{ hits: () => number; close: () => P
     server.listen(path, resolve);
   });
   return { hits: () => hits, close: () => new Promise((r) => server.close(() => r())) };
+}
+
+/**
+ * Runs `argv` in a Bubblewrap sandbox through the SDK directly, as `MxcHost`
+ * would but without the masks (nothing granted, no network): the control
+ * that shows what the masks block on this host. Returns its stdout.
+ */
+async function unmasked(argv: string[], timeoutMs = 30_000): Promise<string> {
+  const specifier: string = "@microsoft/mxc-sdk/v1";
+  const sdk = (await import(specifier)) as MxcSdk;
+  const proc = await sdk.spawn({
+    command: argv.map(shellQuote).join(" "),
+    filesystem: { readonlyPaths: [], readwritePaths: [], deniedPaths: [] },
+    network: { egress: { default: "deny" }, ingress: { default: "deny", hostLoopback: "deny" } },
+    containment: { type: "bubblewrap" },
+    timeoutMs,
+  });
+  try {
+    const text = async (s: NodeJS.ReadableStream | null) => {
+      let t = "";
+      for await (const c of (s ?? []) as AsyncIterable<Buffer | string>) t += String(c);
+      return t;
+    };
+    const out = text(proc.standardOutput);
+    const err = text(proc.standardError);
+    proc.standardInput?.end();
+    const [status, stdout, stderr] = await Promise.all([proc.wait(), out, err]);
+    expect(status.exitCode, stderr).toBe(0);
+    return stdout;
+  } finally {
+    proc.dispose();
+  }
 }
 
 /** Connects from the host itself, so a blocked connection inside proves something. */
@@ -391,6 +449,10 @@ describe.runIf(REAL)("no service socket of the host reaches a Bubblewrap sandbox
     const onHost = JSON.parse(execFileSync("python3", ["-c", CONNECT, RESOLVER[0]!], { encoding: "utf8" })) as Record<string, unknown>;
     console.log(`[sockets] resolver from the host: ${RESOLVER[0]} ${String(onHost[RESOLVER[0]!])}, ResolveHostname ${String(onHost[`${RESOLVER[0]} ResolveHostname`])}`);
     expect(onHost[RESOLVER[0]!], "the CI host has no systemd-resolved socket, so blocking it proves less").toBe("reached");
+    // The control: the same sandbox without the masks reaches it on this host, so the masks are what blocks it.
+    const control = JSON.parse(await unmasked(["python3", "-c", CONNECT, RESOLVER[0]!])) as Record<string, unknown>;
+    console.log(`[sockets] resolver from a sandbox without the masks: ${JSON.stringify(control)}`);
+    expect(control[RESOLVER[0]!]).toBe("reached");
     const { handle } = await open();
     const inside = await python(handle, CONNECT, RESOLVER);
     console.log(`[sockets] resolver from a sandbox: ${JSON.stringify(inside)}`);
@@ -398,7 +460,10 @@ describe.runIf(REAL)("no service socket of the host reaches a Bubblewrap sandbox
     expect(Object.keys(inside).filter((k) => k.endsWith("ResolveHostname"))).toEqual([]);
   });
 
-  it("finds no unix socket anywhere it can see", { timeout: 120_000 }, async () => {
+  it("finds no unix socket anywhere it can see", { timeout: 240_000 }, async () => {
+    const control = JSON.parse(await unmasked(["python3", "-c", WALK], 100_000)) as Record<string, unknown>;
+    console.log(`[sockets] walk of a sandbox without the masks: ${JSON.stringify(control)}`);
+    expect(control["sockets"]).toContain(RESOLVER[0]);
     const { handle } = await open();
     const walk = await python(handle, WALK, [], 100_000);
     console.log(`[sockets] walk of a sandbox: ${JSON.stringify(walk)}`);
@@ -465,55 +530,6 @@ describe.runIf(REAL)("no service socket of the host reaches a Bubblewrap sandbox
     const inside = await python(handle, CONNECT, RESOLVER);
     console.log(`[sockets] resolver from a sandbox that reads /var: ${JSON.stringify(inside)}`);
     expect(reached(inside)).toEqual([]);
-  });
-});
-
-// TEMPORARY: what the Bubblewrap baseline shows and what MXC does with deniedPaths, for the first CI run.
-describe.runIf(REAL)("diagnostics (temporary)", () => {
-  it("prints what a sandbox sees", { timeout: 120_000 }, async () => {
-    const sh = (c: string) => {
-      try {
-        return execFileSync("sh", ["-c", c], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-      } catch (e) {
-        return `(failed: ${String((e as { stderr?: string }).stderr ?? e)})`;
-      }
-    };
-    const specifier: string = "@microsoft/mxc-sdk/v1";
-    const sdk = (await import(specifier)) as MxcSdk & { getAvailableBackends(): unknown };
-    console.log(`DIAG backends: ${JSON.stringify(sdk.getAvailableBackends())}`);
-    console.log(`DIAG host: uid=${process.getuid?.()} XDG_RUNTIME_DIR=${process.env["XDG_RUNTIME_DIR"]}\n${sh("ls -la / /run /run/user /tmp /var /dev/shm 2>&1; readlink -f /var/run /etc/resolv.conf; find /tmp /var/tmp /dev/shm /var/lib /home -type s 2>/dev/null | head -20; sudo -n true && echo SUDO-OK")}`);
-    const look = "cat /proc/self/mountinfo; echo ---; ls -la / /run /var /var/run/ /tmp /dev 2>&1; echo ---; readlink /etc/resolv.conf; ls /proc | head -30";
-    const dir = mkdtempSync(join(tmpdir(), "mandate-diag-"));
-    const variants: Array<[string, MxcContainerRequest["filesystem"], string]> = [
-      ["no denied", { readonlyPaths: [], readwritePaths: [], deniedPaths: [] }, look],
-      ["denied /run /var/run", { readonlyPaths: [], readwritePaths: [], deniedPaths: ["/run", "/var/run"] }, look],
-      ["denied nonexistent", { readonlyPaths: [], readwritePaths: [], deniedPaths: ["/run", "/nonexistent-mandate-diag"] }, "ls -la /run /nonexistent-mandate-diag 2>&1"],
-      ["ro /run/systemd/resolve under denied /run", { readonlyPaths: ["/run/systemd/resolve"], readwritePaths: [], deniedPaths: ["/run"] }, "grep -E ' /run' /proc/self/mountinfo; ls -la /run /run/systemd/resolve 2>&1"],
-      ["ro /var with denied /var/run", { readonlyPaths: ["/var"], readwritePaths: [], deniedPaths: ["/run", "/var/run"] }, "grep -E ' /(var|run)' /proc/self/mountinfo; ls -la /var/run/ /run 2>&1; find /var /run -type s 2>&1 | head"],
-      ["rw tmp grant under denied /tmp", { readonlyPaths: [], readwritePaths: [dir], deniedPaths: ["/run", "/tmp"] }, `grep -E ' /(tmp|run)' /proc/self/mountinfo; ls -la /tmp ${dir} 2>&1; touch ${dir}/w && echo WROTE`],
-    ];
-    for (const [label, filesystem, command] of variants) {
-      try {
-        const proc = await sdk.spawn({ command, filesystem, network: { egress: { default: "deny" }, ingress: { default: "deny", hostLoopback: "deny" } }, containment: { type: "bubblewrap" }, timeoutMs: 30_000 });
-        const read = (s: NodeJS.ReadableStream | null) =>
-          new Promise<string>((r) => {
-            if (!s) return r("");
-            let t = "";
-            s.on("data", (c) => (t += String(c)));
-            s.on("end", () => r(t));
-            s.on("error", () => r(t));
-          });
-        const out = read(proc.standardOutput);
-        const err = read(proc.standardError);
-        proc.standardInput?.end();
-        const [status, o, e] = await Promise.all([proc.wait(), out, err]);
-        console.log(`DIAG [${label}] exit ${status.exitCode} warnings=${JSON.stringify((proc as { warnings?: unknown }).warnings ?? null)}\n${o}\n${e}`);
-        proc.dispose();
-      } catch (e) {
-        console.log(`DIAG [${label}] spawn failed: ${(e as Error).message}`);
-      }
-    }
-    rmSync(dir, { recursive: true, force: true });
   });
 });
 
