@@ -4,7 +4,7 @@ export { checkSubprogram, subprogramLinked, type SubprogramCheck, type Subprogra
 export { checkAmendment, type AmendmentCheck, type AmendmentInput } from "./check.js";
 export { narrowings } from "./check/amendment.js";
 export { link, linkedProgram, references, type Linked, type Modules } from "./modules.js";
-export { LOCK_FORMAT, LOCK_FORMATS, lockChecks, moduleLockChecks, roleLockChecks, lockSchema, modelTiers, packagedLock, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
+export { LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, lockChecks, moduleLockChecks, roleLockChecks, sandboxLockChecks, lockSchema, modelTiers, packagedLock, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
 export { CODES } from "./codes.js";
 export { diag, formatDiagnostic, hasErrors, type Diagnostic, type Repair, type Span } from "./diag.js";
 export { domainHash, hashProgram, packageHash, type HashDomain, type ProgramHashes } from "./hash.js";

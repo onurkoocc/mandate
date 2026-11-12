@@ -1,0 +1,104 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1802b",
+  "kind": "compile",
+  "title": "A credential bound to a remote agent's requests is refused: a remote agent does not run in the runtime's sandbox.",
+  "spec": [
+    "spec/boundary.md#lock-05",
+    "spec/lock.md"
+  ],
+  "language": "mandate/0.5",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Partner",
+      "value": {
+        "kind": "agent",
+        "caps": [
+          {
+            "op": "call",
+            "callee": {
+              "op": "field",
+              "of": {
+                "op": "var",
+                "name": "net"
+              },
+              "name": "https"
+            },
+            "args": [
+              {
+                "name": "hosts",
+                "value": {
+                  "op": "list",
+                  "items": [
+                    {
+                      "op": "text",
+                      "value": "api.github.com"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "remote": {
+          "bind": {
+            "op": "call",
+            "callee": {
+              "op": "var",
+              "name": "a2a"
+            },
+            "args": [
+              {
+                "value": {
+                  "op": "text",
+                  "value": "https://partner.example/.well-known/agent-card.json"
+                }
+              }
+            ]
+          },
+          "trust": "untrusted",
+          "version": "1.0"
+        },
+        "skills": {
+          "look": {
+            "effects": [],
+            "params": [
+              {
+                "name": "q",
+                "type": {
+                  "ref": "Text"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "Text"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1802",
+        "path": "/egress/Partner",
+        "facts": {
+          "agent": "Partner",
+          "reason": "remote",
+          "hosts": [
+            "api.github.com"
+          ]
+        }
+      }
+    ]
+  }
+}

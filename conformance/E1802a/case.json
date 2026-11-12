@@ -1,0 +1,33 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1802a",
+  "kind": "compile",
+  "title": "A credential bound to the requests of something that is not an agent of the program is refused.",
+  "spec": [
+    "spec/boundary.md#lock-05",
+    "spec/lock.md"
+  ],
+  "language": "mandate/0.5",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1802",
+        "path": "/egress/Summarize",
+        "facts": {
+          "agent": "Summarize",
+          "reason": "not_an_agent",
+          "hosts": [
+            "api.github.com"
+          ]
+        }
+      }
+    ]
+  }
+}

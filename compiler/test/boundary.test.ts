@@ -6,9 +6,9 @@ import { describe, expect, it } from "vitest";
 import { check } from "../src/check.js";
 import { capCovers, capFromCall, capsOf, readMethods, showCap, type CapVal } from "../src/check/caps.js";
 import type { Expr, LanguageVersion, Program } from "../src/ir/types.js";
-import type { Lock } from "../src/lock.js";
+import { LOCK_FORMATS, validateLock, type Lock } from "../src/lock.js";
 import { requirementFor, sandboxRequirements } from "../src/target/sandbox.js";
-import { authority, semanticDiff } from "../src/views/views.js";
+import { authority, lockLimitsDiff, semanticDiff } from "../src/views/views.js";
 import { readRepo } from "./helpers.js";
 
 const FETCH = readRepo("fixtures/boundary/fetch.mdt");
@@ -130,6 +130,100 @@ describe("views of methods", () => {
   it("read a 0.4 program's methods as nothing, so a change to them is a change the diff cannot read", () => {
     const old = (methods: string): Program => program(fetch("mandate @ 0.5", "mandate @ 0.4").replace("methods: [GET]", methods));
     expect(semanticDiff(old("methods: [GET]"), old("methods: [GET, POST]")).governance.map((c) => c.text)).toEqual(["~ capability GitHubRead changed"]);
+  });
+});
+
+describe("lock 0.5", () => {
+  const LOCK05 = JSON.parse(readRepo("fixtures/boundary/mandate.lock.json")) as Lock;
+  const with_ = (o: Partial<Lock>): Lock => ({ ...structuredClone(LOCK05), ...o });
+  const said = (lock: unknown): Array<[string, string]> => validateLock(lock).map((d) => [d.code, d.at.path ?? ""]);
+
+  it("is read and written: host, isolation and egress", () => {
+    expect(LOCK_FORMATS).toEqual(["mandate/lock/0.2", "mandate/lock/0.3", "mandate/lock/0.4", "mandate/lock/0.5"]);
+    expect(validateLock(LOCK05)).toEqual([]);
+    expect(check(FETCH, "mdt", { lock: LOCK05 }).diagnostics).toEqual([]);
+  });
+
+  it.each(["mandate/lock/0.4", "mandate/lock/0.3", "mandate/lock/0.2"])("refuses host, isolation and egress in a %s lock (E0140)", (format) => {
+    const d = validateLock({ ...LOCK05, lock: format });
+    expect(d.map((x) => [x.code, x.message, x.at.path])).toEqual(
+      ["host", "isolation", "egress"].map((f) => ["MDT-E0140", `Lock field ${f} needs lock format mandate/lock/0.5, not ${format}.`, `/${f}`]),
+    );
+  });
+
+  it("is closed: an unknown tool, level, data class or field, a version that is not one, an empty table, a credential name that is not one (E0140)", () => {
+    expect(said(with_({ host: { node: "22.23.4", docker: "27" } as never }))).toEqual([["MDT-E0140", "/host"]]);
+    expect(said(with_({ host: { node: "v22" } }))).toEqual([["MDT-E0140", "/host/node"]]);
+    expect(said(with_({ host: {} }))).toEqual([["MDT-E0140", "/host"]]);
+    expect(said(with_({ isolation: { floor: { restricted: "vm" } } as never }))).toEqual([["MDT-E0140", "/isolation/floor/restricted"]]);
+    expect(said(with_({ isolation: { floor: { secret: "microvm" } } as never }))).toEqual([["MDT-E0140", "/isolation/floor"], ["MDT-E0140", "/isolation/floor"]]);
+    expect(said(with_({ isolation: { co_tenancy: { restricted: "never" } } as never }))).toEqual([["MDT-E0140", "/isolation/co_tenancy/restricted"]]);
+    expect(said(with_({ isolation: { min: "process" } as never }))).toEqual([["MDT-E0140", "/isolation"]]);
+    expect(said(with_({ egress: { Reader: {} } }))).toEqual([["MDT-E0140", "/egress/Reader"]]);
+    expect(said(with_({ egress: { Reader: { "api.github.com": "Bearer ghp_x" } } }))).toEqual([["MDT-E0140", "/egress/Reader/api.github.com"]]);
+  });
+
+  it("binds a credential only to a local agent's own hosts (E1802), and is refused with an earlier program where it would not apply (E1803)", () => {
+    const r = check(FETCH, "mdt", { lock: with_({ egress: { Reader: { "api.github.com": "github", "uploads.github.com": "github" }, Nobody: { "api.github.com": "github" } } }) });
+    expect(r.diagnostics.map((d) => [d.code, d.at.path, d.message])).toEqual([
+      ["MDT-E1802", "/egress/Nobody", "The lock binds credentials to the requests of Nobody, which is not an agent of the program. A credential is bound only to an agent that runs in the runtime's sandbox, whose requests go through the egress proxy."],
+      ["MDT-E1802", "/egress/Reader/uploads.github.com", "The lock binds credential github to Reader's requests to uploads.github.com, a host none of Reader's net.https capabilities holds."],
+    ]);
+    const old = check(fetch("mandate @ 0.5", "mandate @ 0.4"), "mdt", { lock: LOCK05 });
+    expect(old.diagnostics.map((d) => [d.code, d.at.path, d.message])).toEqual([
+      ["MDT-E1803", "/isolation", "Lock field isolation applies to a program of mandate/0.5 or later. This program is mandate/0.4: its sandbox requirements have no isolation level, so isolation would not apply. Write the program in mandate/0.5, or take isolation out of the lock."],
+      ["MDT-E1803", "/egress", "Lock field egress applies to a program of mandate/0.5 or later. This program is mandate/0.4: its sandbox requirements have no credentials, so egress would not apply. Write the program in mandate/0.5, or take egress out of the lock."],
+    ]);
+    // host applies to a program of any version.
+    expect(check(fetch("mandate @ 0.5", "mandate @ 0.4"), "mdt", { lock: { ...LOCK05, isolation: undefined, egress: undefined } as Lock }).diagnostics).toEqual([]);
+  });
+});
+
+describe("view --against-lock of lock 0.5", () => {
+  const LOCK05 = JSON.parse(readRepo("fixtures/boundary/mandate.lock.json")) as Lock;
+  const p = (): Program => program(FETCH);
+  const diff = (before: Partial<Lock>, after: Partial<Lock>) => {
+    const v = semanticDiff(p(), p(), { before: { ...structuredClone(LOCK05), ...before }, after: { ...structuredClone(LOCK05), ...after } });
+    return { governance: v.governance.map((c) => [c.path, c.text]), behavior: v.behavior.map((c) => [c.path, c.text]), added: !v.unchanged.includes("no authority added") };
+  };
+
+  it("adds nothing when the locks ask the same, or with locks that have none of it", () => {
+    expect(diff({}, {})).toEqual({ governance: [], behavior: [], added: false });
+    expect(lockLimitsDiff({ modules: {} }, { modules: {} })).toEqual({ governance: [], behavior: [] });
+    // The same version written two ways, and sharing allowed written out or left out, are no change.
+    expect(diff({ host: { node: "22.23" } }, { host: { node: "22.23.0" } })).toMatchObject({ governance: [], behavior: [] });
+    expect(diff({ isolation: { co_tenancy: { internal: "allowed" } } }, { isolation: {} as never })).toMatchObject({ governance: [], behavior: [] });
+  });
+
+  it("calls a credential bound, added or changed, authority added; one taken away a behavior change", () => {
+    expect(diff({ egress: undefined }, {})).toEqual({ governance: [["/egress/Reader/api.github.com", "+ egress: Reader's requests to api.github.com carry credential github"]], behavior: [], added: true });
+    expect(diff({}, { egress: { Reader: { "api.github.com": "github_admin" } } }).governance).toEqual([["/egress/Reader/api.github.com", "~ egress: Reader's requests to api.github.com carry credential github → github_admin"]]);
+    expect(diff({}, { egress: undefined })).toEqual({ governance: [], behavior: [["/egress/Reader/api.github.com", "- egress: Reader's requests to api.github.com carry credential github no more"]], added: false });
+  });
+
+  it("calls a floor lowered or taken away, and sharing allowed again, a governance change; raised or tightened, a behavior change", () => {
+    const iso = (o: object): Partial<Lock> => ({ isolation: { ...LOCK05.isolation, ...o } as Lock["isolation"] });
+    expect(diff({}, iso({ floor: { confidential: "process", restricted: "microvm" } })).governance).toEqual([["/isolation/floor/confidential", "~ isolation.floor.confidential: user_kernel → process (lowered)"]]);
+    expect(diff({}, iso({ floor: { restricted: "microvm" } })).governance).toEqual([["/isolation/floor/confidential", "~ isolation.floor.confidential: user_kernel → no floor (lowered)"]]);
+    expect(diff({}, iso({ untrusted_network: undefined })).governance).toEqual([]);
+    expect(diff(iso({ untrusted_network: "microvm" }), {}).governance).toEqual([["/isolation/untrusted_network", "~ isolation.untrusted_network: microvm → process (lowered)"]]);
+    expect(diff({}, iso({ co_tenancy: {} })).governance).toEqual([["/isolation/co_tenancy/restricted", "~ isolation.co_tenancy.restricted: forbidden → allowed (relaxed)"]]);
+    expect(diff({}, iso({ floor: { confidential: "microvm", restricted: "dedicated_host" } }))).toEqual({
+      governance: [],
+      behavior: [
+        ["/isolation/floor/confidential", "~ isolation.floor.confidential: user_kernel → microvm (raised)"],
+        ["/isolation/floor/restricted", "~ isolation.floor.restricted: microvm → dedicated_host (raised)"],
+      ],
+      added: false,
+    });
+    expect(diff({}, iso({ co_tenancy: { restricted: "forbidden", confidential: "forbidden" } })).behavior).toEqual([["/isolation/co_tenancy/confidential", "~ isolation.co_tenancy.confidential: allowed → forbidden (tightened)"]]);
+  });
+
+  it("calls a least host version lowered or taken away a governance change, and raised a behavior change", () => {
+    expect(diff({}, { host: { node: "22.9.0", bwrap: "0.11.0" } }).governance).toEqual([["/host/node", "~ host.node: 22.23.4 → 22.9.0 (lowered)"]]);
+    expect(diff({}, { host: { node: "22.23.4" } }).governance).toEqual([["/host/bwrap", "~ host.bwrap: 0.11.0 → no minimum (lowered)"]]);
+    expect(diff({}, { host: { node: "24.0.0", bwrap: "0.11.0" } })).toEqual({ governance: [], behavior: [["/host/node", "~ host.node: 22.23.4 → 24.0.0 (raised)"]], added: false });
+    expect(diff({ host: { node: "22.23.4" } }, {}).behavior).toEqual([["/host/bwrap", "~ host.bwrap: no minimum → 0.11.0 (raised)"]]);
   });
 });
 

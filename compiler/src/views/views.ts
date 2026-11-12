@@ -56,6 +56,7 @@ import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
 import { own, packagedLock, perCallBound, type Lock } from "../lock.js";
 import { STD_EFFECTS, STD_FNS } from "../std/std.js";
+import { ISOLATION_LEVELS, type IsolationLevel } from "../target/sandbox.js";
 import type { Block, Cell, Doc } from "./doc.js";
 
 export const VIEW_FORMAT = "mandate/view/0.1";
@@ -829,6 +830,68 @@ export function lockDiff(before: Lock | undefined, after: Lock | undefined): Cha
 }
 
 /**
+ * What changed in what two locks of format 0.5 ask of the runtime's host and of a sandbox (spec/boundary.md
+ * "Lock 0.5"). What lets a sandbox do more, or run on less, is a governance change: a credential bound to an
+ * agent's requests, added or changed; an isolation floor lowered or taken away; a sandbox that may now share
+ * its host; a least host version lowered or taken away. The opposite of each is a behavior change.
+ */
+export function lockLimitsDiff(before: Lock | undefined, after: Lock | undefined): { governance: Change[]; behavior: Change[] } {
+  const governance: Change[] = [];
+  const behavior: Change[] = [];
+  const names = (x: object | undefined, y: object | undefined): string[] => [...new Set([...Object.keys(x ?? {}), ...Object.keys(y ?? {})])].sort();
+  const at = <T>(r: Partial<Record<string, T>> | undefined, k: string): T | undefined => (r && Object.hasOwn(r, k) ? r[k] : undefined);
+  /**
+   * One least value: `below` orders values, and none is below all, or is `bottom` when one value means the same
+   * as none (a floor of process is no floor). Lowered or taken away is governance; raised or added, behavior.
+   */
+  const least = (path: string, label: string, b: string | undefined, a: string | undefined, below: (x: string, y: string) => boolean, none: string, bottom?: string): void => {
+    const was = b ?? bottom;
+    const now = a ?? bottom;
+    if (was === now || (was !== undefined && now !== undefined && !below(was, now) && !below(now, was))) return;
+    const shown = (v: string | undefined): string => v ?? none;
+    const lowered = now === undefined || (was !== undefined && below(now, was));
+    (lowered ? governance : behavior).push({ path, text: `~ ${label}: ${shown(b)} → ${shown(a)} (${lowered ? "lowered" : "raised"})` });
+  };
+  // Versions by number, segment by segment; a missing segment is 0, so 22.23 and 22.23.0 are the same.
+  const version = (x: string, y: string): boolean => {
+    const xs = x.split(".").map(Number);
+    const ys = y.split(".").map(Number);
+    for (let i = 0; i < Math.max(xs.length, ys.length); i++) if ((xs[i] ?? 0) !== (ys[i] ?? 0)) return (xs[i] ?? 0) < (ys[i] ?? 0);
+    return false;
+  };
+  for (const tool of names(before?.host, after?.host)) {
+    least(`/host/${ptrToken(tool)}`, `host.${tool}`, at(before?.host, tool), at(after?.host, tool), version, "no minimum");
+  }
+  const level = (x: string, y: string): boolean => ISOLATION_LEVELS.indexOf(x as IsolationLevel) < ISOLATION_LEVELS.indexOf(y as IsolationLevel);
+  const bi = before?.isolation;
+  const ai = after?.isolation;
+  for (const cls of names(bi?.floor, ai?.floor)) least(`/isolation/floor/${ptrToken(cls)}`, `isolation.floor.${cls}`, at(bi?.floor, cls), at(ai?.floor, cls), level, "no floor", "process");
+  least("/isolation/untrusted_network", "isolation.untrusted_network", bi?.untrusted_network, ai?.untrusted_network, level, "no floor", "process");
+  for (const cls of names(bi?.co_tenancy, ai?.co_tenancy)) {
+    // Without an entry a sandbox may share its host: `allowed` written out or left out is the same.
+    const b = at(bi?.co_tenancy, cls) ?? "allowed";
+    const a = at(ai?.co_tenancy, cls) ?? "allowed";
+    if (b === a) continue;
+    const relaxed = a === "allowed";
+    (relaxed ? governance : behavior).push({ path: `/isolation/co_tenancy/${ptrToken(cls)}`, text: `~ isolation.co_tenancy.${cls}: ${b} → ${a} (${relaxed ? "relaxed" : "tightened"})` });
+  }
+  for (const agent of names(before?.egress, after?.egress)) {
+    const b = at(before?.egress, agent);
+    const a = at(after?.egress, agent);
+    for (const host of names(b, a)) {
+      const was = at(b, host);
+      const now = at(a, host);
+      if (was === now) continue;
+      const path = `/egress/${ptrToken(agent)}/${ptrToken(host)}`;
+      if (was === undefined) governance.push({ path, text: `+ egress: ${agent}'s requests to ${host} carry credential ${now}` });
+      else if (now === undefined) behavior.push({ path, text: `- egress: ${agent}'s requests to ${host} carry credential ${was} no more` });
+      else governance.push({ path, text: `~ egress: ${agent}'s requests to ${host} carry credential ${was} → ${now}` });
+    }
+  }
+  return { governance, behavior };
+}
+
+/**
  * What changed in a workflow's envelope, line by line: what the one `envelope_changed` of a diff stands for. The
  * owner who decides an amendment is shown these lines beside the hash they sign for (spec/envelope.md
  * "Amendments"). Nothing, when the workflow has no envelope on one side: then the envelope came or went whole.
@@ -1052,7 +1115,13 @@ export function semanticDiff(before: Program, after: Program, locks?: { before?:
   const governance: Change[] = changes.governance.map(({ path, text }) => ({ path, text }));
   const behavior = changes.behavior;
   // After the program's own changes, so a diff without locks, or with the same people in both, reads as it did.
-  if (locks) governance.push(...lockDiff(locks.before, locks.after));
+  if (locks) {
+    governance.push(...lockDiff(locks.before, locks.after));
+    // Then what the locks ask of the host and the sandboxes (0.5); a lock without it adds nothing.
+    const limits = lockLimitsDiff(locks.before, locks.after);
+    governance.push(...limits.governance);
+    behavior.push(...limits.behavior);
+  }
   const critical = (p: Program): string[] =>
     Object.values(p.defs)
       .filter((d): d is WorkflowDef => d.kind === "workflow")

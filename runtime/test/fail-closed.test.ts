@@ -3,9 +3,11 @@
 // asks nothing beyond 0.1 gives the policy a 0.1 requirement gives.
 
 import { readFileSync } from "node:fs";
-import { requirementFor, type CapVal, type Lock } from "@mandate/compiler";
+import { check, requirementFor, type CapVal, type Lock, type Program } from "@mandate/compiler";
 import { afterAll, describe, expect, it } from "vitest";
 import { TrustedKeys } from "../src/evidence.js";
+import { buildPackage, notRunYet, verifyPackage } from "../src/runtime.js";
+import { Violation } from "../src/signals.js";
 import { MxcAdapter, SandboxedAgents } from "../src/sandbox.js";
 import { FULL_SANDBOX, SimAgents, SimSandboxHost } from "../src/sim.js";
 import { closeAll, world } from "./helpers.js";
@@ -58,6 +60,45 @@ describe("a 0.5 package", () => {
     expect(inner.calls.map((c) => c.sandbox?.format)).toEqual(["mandate/sandbox-requirement/0.2"]);
     expect(inner.calls[0]!.sandbox).toMatchObject({ network: { hosts: ["api.github.com"], methods: {} }, isolation: { min: "process", co_tenancy: "allowed" }, egress: { credentials: {} } });
     expect(agents.sandboxes.map((s) => s.policy.network)).toEqual([{ allowOutbound: true, allowedHosts: ["api.github.com"] }]);
+  });
+
+  const LOCK05 = JSON.parse(readFileSync(new URL("../../fixtures/boundary/mandate.lock.json", import.meta.url), "utf8")) as Lock;
+  const { lock: _format, ...packaged } = LOCK05;
+  const refusal = (program: Program, lock: Lock): unknown => {
+    try {
+      verifyPackage(buildPackage(program, lock));
+      return undefined;
+    } catch (e) {
+      return e;
+    }
+  };
+  const fetchProgram = (): Program => check(FETCH, "mdt", { lock: LOCK05 }).program!;
+
+  it.each([
+    ["host", { host: packaged.host }, "host (the least versions of the host's tools, which this runtime does not check yet)"],
+    ["isolation", { isolation: packaged.isolation }, "isolation (isolation floors, which no sandbox host here reports a level for yet)"],
+    ["egress", { egress: packaged.egress }, "egress (credentials for agents' requests, which go only through an egress proxy, and this runtime has none yet)"],
+  ])("whose lock sets %s is refused at load, by that name, until the runtime enforces it", (name, field, said) => {
+    const lock = { modules: {}, models: packaged.models, tariffs: packaged.tariffs, ...field } as Lock;
+    expect(notRunYet(fetchProgram(), lock)).toEqual([`lock.${name}`]);
+    const e = refusal(fetchProgram(), lock);
+    expect(e).toBeInstanceOf(Violation);
+    expect(e).toMatchObject({ code: "unsupported_lock" });
+    expect((e as Violation).message).toBe(`unsupported_lock: The package's lock sets ${said}, which this runtime does not enforce yet (spec/boundary.md).`);
+  });
+
+  it("whose lock sets all three is refused naming each; without them it is accepted", () => {
+    expect(notRunYet(fetchProgram(), packaged)).toEqual(["lock.egress", "lock.host", "lock.isolation"]);
+    expect((refusal(fetchProgram(), packaged) as Violation).message).toMatch(/^unsupported_lock: The package's lock sets egress \(.*\), host \(.*\), isolation \(.*\), which/);
+    expect(refusal(fetchProgram(), { modules: {}, models: packaged.models, tariffs: packaged.tariffs } as Lock)).toBeUndefined();
+    expect(notRunYet(fetchProgram())).toEqual([]);
+  });
+
+  it("is not the only one: a package of any language whose lock sets host is refused too", () => {
+    const old = check(FETCH.replace("mandate @ 0.5", "mandate @ 0.2"), "mdt").program!;
+    expect(old.language).toBe("mandate/0.2");
+    expect(refusal(old, { modules: {}, host: { node: "22.23.4" } })).toMatchObject({ code: "unsupported_lock" });
+    expect(refusal(old, { modules: {} })).toBeUndefined();
   });
 
   it("whose agent may only GET a host is not started on a host that cannot hold it to GET", async () => {

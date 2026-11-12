@@ -325,6 +325,14 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Unknown method",
     explain: "From 0.5, net.https(hosts: […], methods: […]) may allow only some HTTP methods. `methods` is a non-empty list of bare names from GET, HEAD, POST, PUT, PATCH and DELETE; without it the capability allows any method. A capability with methods covers another only when its hosts do and every method of the other is one of its own. Before 0.5 `methods` is read and means nothing, as it always did (spec/boundary.md \"Language 0.5\").",
   },
+  "MDT-E1802": {
+    title: "Credential bound outside the sandbox",
+    explain: "A lock of format 0.5 binds, under `egress`, a credential name to an agent's requests to a host; the egress proxy puts the credential into those requests, and the sandbox sees only a placeholder. Only an agent that runs in the runtime's sandbox reaches a host through the proxy, so the agent is a local agent of the program that no executor such as Managed Agents runs, and the host is one its own net.https capabilities hold. The fact `reason` says which does not hold: `not_an_agent`, `remote`, `executor` or `host_not_held` (spec/boundary.md \"Lock 0.5\").",
+  },
+  "MDT-E1803": {
+    title: "Lock field does not apply to the program's language",
+    explain: "`isolation` and `egress` in a lock of format 0.5 are read into an agent's sandbox requirement 0.2, which only a program of mandate/0.5 or later has. In a lock packaged with an earlier program they would not apply, and a floor or a credential that silently does not apply misleads whoever reads the lock, so it is refused. Write the program in mandate/0.5, or take the field out. `host` applies to a program of any version (spec/boundary.md \"Lock 0.5\").",
+  },
   "MDT-E0902": {
     title: "Sandbox requirement cannot be enforced",
     explain: "The sandbox adapter probed the host and it cannot enforce part of an agent's sandbox requirement: a backend, a path, host or command allow-list, a timeout, or a scope that is not statically known. The run refuses to start the agent (unsupported_sandbox_profile) instead of running it with less isolation (INV-11, G05).",
