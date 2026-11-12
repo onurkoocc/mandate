@@ -78,9 +78,28 @@ export function capsIn(program: Program, list: Expr[]): CapVal[] {
   return list.flatMap((e) => capsOf(program.defs, e));
 }
 
+/** `c.narrow(v)` whose scope is a value of the run: where it lies is known only then. */
+function chosenAtRunTime(e: Expr): boolean {
+  return e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow" && e.args.some((a) => a.value.op !== "text");
+}
+
+/**
+ * What a list of `with caps` stands for in a view of the program. A narrowing whose scope the run chooses is
+ * shown as the capability it narrows: the scope must lie inside that one (`outside_capability`), so it is the
+ * most the narrowing can be. Read by itself it has no scope, and a view would call it unbounded.
+ */
+function widest(program: Program, list: Expr[]): CapVal[] {
+  return list.flatMap((e) => capsOf(program.defs, chosenAtRunTime(e) && e.op === "call" && e.callee.op === "field" ? e.callee.of : e));
+}
+
+/** The kinds of capability in a list of `with caps` whose scope the run chooses. */
+function lateKinds(program: Program, list: Expr[]): string[] {
+  return widest(program, list.filter(chosenAtRunTime)).map((c) => c.ctor);
+}
+
 /** What a map hands the delegations of its body: its `with caps`, and what a map around it hands of other kinds. */
 function handedBy(program: Program, outer: CapVal[], map: Extract<Expr, { op: "map" }>): CapVal[] {
-  const given = capsIn(program, map.caps ?? []);
+  const given = widest(program, map.caps ?? []);
   const kinds = new Set(given.map((g) => g.ctor));
   return [...outer.filter((c) => !kinds.has(c.ctor)), ...given];
 }
@@ -94,7 +113,7 @@ export function grantOf(program: Program, wf: WorkflowDef, agent: AgentDef, with
   const avail = capsIn(program, workflowBounds(wf).caps);
   const held = capsIn(program, agent.caps);
   let out = held.filter((c) => avail.some((a) => capCovers(a, c)));
-  const given = capsIn(program, withCaps);
+  const given = widest(program, withCaps);
   const own = new Set(given.map((g) => g.ctor));
   for (const k of handed) if (!own.has(k.ctor) && (agent.remote || held.some((a) => capCovers(a, k)))) given.push(k);
   if (given.length) {
@@ -481,27 +500,37 @@ export function authority(program: Program): AuthorityView {
   for (const [name, d] of defs) {
     if (d.kind !== "workflow") continue;
     rows.push({ who: name, kind: "workflow", effects: workflowEffects(program, d.body), ...authorityOf(capsIn(program, workflowBounds(d).caps)) });
-    const visit = (v: unknown, handed: CapVal[]): void => {
-      if (Array.isArray(v)) v.forEach((x) => visit(x, handed));
+    // `late` is the kinds the maps around a step hand with a scope the run chooses.
+    const visit = (v: unknown, handed: CapVal[], late: string[]): void => {
+      if (Array.isArray(v)) v.forEach((x) => visit(x, handed, late));
       else if (v && typeof v === "object") {
         const e = v as Expr;
         if (e.op === "delegate") {
           const agent = program.defs[e.agent];
-          const narrowed = e.caps?.length || handed.length;
-          if (agent?.kind === "agent") rows.push({ who: `${name} → ${e.agent}.${e.skill}${narrowed ? " (with caps)" : ""}`, kind: "delegation", effects: [], ...authorityOf(grantOf(program, d, agent, e.caps ?? [], handed)) });
+          if (agent?.kind === "agent") {
+            const grant = grantOf(program, d, agent, e.caps ?? [], handed);
+            // A kind the delegation names is its own to narrow. Any other kind comes from the maps around it.
+            const own = new Set(widest(program, e.caps ?? []).map((c) => c.ctor));
+            const atRun = new Set([...lateKinds(program, e.caps ?? []), ...late.filter((k) => !own.has(k))]);
+            // The row then shows the capability that is narrowed: the most the grant can be, not what one run gets.
+            const how = !(e.caps?.length || handed.length) ? "" : grant.some((c) => atRun.has(c.ctor)) ? " (with caps, scope chosen at run time)" : " (with caps)";
+            rows.push({ who: `${name} → ${e.agent}.${e.skill}${how}`, kind: "delegation", effects: [], ...authorityOf(grant) });
+          }
         }
         if (e.op === "map") {
-          for (const [k, x] of Object.entries(e)) visit(x, k === "body" ? handedBy(program, handed, e) : handed);
+          const kinds = new Set(widest(program, e.caps ?? []).map((c) => c.ctor));
+          const inside = [...late.filter((k) => !kinds.has(k)), ...lateKinds(program, e.caps ?? [])];
+          for (const [k, x] of Object.entries(e)) visit(x, k === "body" ? handedBy(program, handed, e) : handed, k === "body" ? inside : late);
           return;
         }
         if (e.op === "plan") {
           const lead = program.defs[e.agent];
           if (lead?.kind === "agent") rows.push({ who: `${name} → plan ${e.agent}.${e.skill}`, kind: "delegation", effects: [], ...authorityOf(grantOf(program, d, lead)) });
         }
-        Object.values(v).forEach((x) => visit(x, handed));
+        Object.values(v).forEach((x) => visit(x, handed, late));
       }
     };
-    visit(d.body, []);
+    visit(d.body, [], []);
   }
   return { format: VIEW_FORMAT, kind: "authority", program: programRef(program), rows };
 }

@@ -37,6 +37,14 @@ It is given as a Mermaid flowchart and as a table.
   default;
 - any capability whose scope is not statically known.
 
+From 0.4 a delegation's `with caps`, or a map's, may narrow a capability
+by a value of the run (`c.narrow(v)`; [`envelope.md`](envelope.md), "map").
+The view cannot know that scope. It shows the capability that is narrowed:
+the scope must lie inside it (`outside_capability`), so it is the most the
+grant can be. The delegation's row says `scope chosen at run time`. Such a
+grant is not listed as a capability of unknown scope, and the architecture
+view shows the same grant.
+
 **Cost.** For every workflow:
 
 - its limit;
