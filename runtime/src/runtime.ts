@@ -8,7 +8,8 @@ import { capsOf, check, domainHash, hashProgram, link, linkedProgram, packageHas
 import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
-import { attestationProblem } from "./attestation.js";
+import { recordProblem, type AttestationRule } from "./attestation.js";
+import { criterionMethods } from "./criteria.js";
 import { approvalProblem, authorizationId, InvalidDecision, isSignedDecision, payloadOf, roleRefusal, shownRefusal, signerRefusal, storedProblem, type DecisionKind, type Refusal, type Shown, type SignedDecision, type StoredDecision } from "./decisions.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
 import { RateLimiter, type BucketConfig } from "./ratelimit.js";
@@ -611,13 +612,17 @@ export class Runtime {
    * Checks every evidence record of a run against its signature: whether a
    * trusted key signed exactly this record (§10.3), and, for a check made by
    * a verifier of its own, whether a trusted verifier key attested the same
-   * result (P2-11). Views show the result.
+   * result (P2-11). With a verifier of its own configured, which checks need
+   * that attestation is read from the program and the configuration, never
+   * from the record (attestation.ts `recordProblem`). Views show the result.
    */
   async verifyEvidence(runId: string): Promise<Array<{ evidence_id: string; criterion: string; valid: boolean; key_id: string | null }>> {
     const run = await this.journal.run(runId);
-    const { lock, signed } = await this.loaded(run.package_hash);
+    const { lock, signed, program } = await this.loaded(run.package_hash);
     // A person's approval rests on their signed decision (H04): the record it names must still be the one they signed.
     const decisions = new Map((await this.journal.decisions(runId)).map((d) => [d.decision_id, d]));
+    const rule: AttestationRule = { keys: this.verifiers, inProcess: this.inProcess };
+    const declared = (record: EvidenceRecord): string[] | undefined => criterionMethods(Object.hasOwn(program.defs, record.contract) ? program.defs[record.contract] : undefined, record.criterion);
     return (await this.journal.evidence(runId)).map((e) => ({
       evidence_id: e.evidence_id,
       criterion: e.criterion,
@@ -629,7 +634,7 @@ export class Runtime {
         this.trusted.verify(e.record as unknown as EvidenceRecord, { key_id: e.key_id, signature: e.signature }) &&
         (e.record as unknown as EvidenceRecord).evidence_id === e.evidence_id &&
         (e.record as unknown as EvidenceRecord).passed === e.passed &&
-        !attestationProblem(e.record as unknown as EvidenceRecord, this.verifiers) &&
+        !recordProblem(e.record as unknown as EvidenceRecord, e, declared(e.record as unknown as EvidenceRecord), rule) &&
         !approvalProblem(e.record as unknown as EvidenceRecord, decisions, this.decisionKeys, lock, signed),
     }));
   }

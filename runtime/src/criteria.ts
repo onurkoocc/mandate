@@ -3,7 +3,7 @@
 // criterion declares, so the two cannot differ: a record's method is one the
 // program says, never one the record says.
 
-import { calleePath, type ContractDef, type Verifier } from "@mandate/compiler";
+import { calleePath, type Def, type Verifier } from "@mandate/compiler";
 
 /** A criterion satisfied by a person: `human.approve(…)` (§10). */
 export function needsPerson(v: Verifier): boolean {
@@ -25,8 +25,25 @@ export function declaredMethods(v: Verifier): string[] {
   return "all" in v ? v.all.flatMap(declaredMethods) : [partMethod(v)];
 }
 
-/** The methods a contract's criterion declares, once per part; undefined when the contract has no such criterion. */
-export function criterionMethods(c: ContractDef, criterion: string): string[] | undefined {
+/** The methods a contract's criterion declares, once per part; undefined when `c` is not a contract with that criterion. */
+export function criterionMethods(c: Def | undefined, criterion: string): string[] | undefined {
+  if (c?.kind !== "contract") return undefined;
   const k = Object.hasOwn(c.accept, criterion) ? c.accept[criterion] : c.invariant && Object.hasOwn(c.invariant, criterion) ? c.invariant[criterion] : undefined;
   return k ? declaredMethods(k.by) : undefined;
+}
+
+/**
+ * The declared methods that `passed`, the methods of a criterion's passing records, leave without a record: each
+ * method as many times as the criterion's parts use it, so one part's record never stands for another's.
+ */
+export function uncovered(declared: readonly string[], passed: readonly string[]): string[] {
+  const have = new Map<string, number>();
+  for (const m of passed) have.set(m, (have.get(m) ?? 0) + 1);
+  const out: string[] = [];
+  for (const m of declared) {
+    const n = have.get(m) ?? 0;
+    if (n > 0) have.set(m, n - 1);
+    else out.push(m);
+  }
+  return out;
 }
