@@ -13,6 +13,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { SandboxRequirement } from "@mandate/compiler";
 import type { AgentAdapter, DelegateRequest, Outcome } from "./adapters.js";
+import { inside } from "./tools.js";
 
 export type SandboxMode = "enforcement" | "learning" | "permissive";
 
@@ -30,6 +31,12 @@ export interface Enforceable {
   timeout: boolean;
   /** Desktop and clipboard access can be turned off. */
   ui: boolean;
+  /**
+   * Host paths no sandbox sees, whatever its policy grants: the host's
+   * runtime directories, where its services keep their sockets. A policy
+   * path at or under one is refused by name, not dropped.
+   */
+  hidden?: string[];
 }
 
 /** One process run inside a sandbox (§16.1 `Execute`): an argument vector, never a shell line. */
@@ -139,6 +146,10 @@ export class MxcAdapter {
     }
     const hosts = [...new Set([...req.network.hosts, ...modelHosts])].sort();
     for (const u of req.unbounded) unsupported.push(`capability without a static scope: ${u}`);
+    for (const p of [...req.filesystem.read, ...req.filesystem.write]) {
+      const root = hiddenUnder(p, can.hidden ?? []);
+      if (root) unsupported.push(`a path under ${root}, which this host keeps out of every sandbox: ${p}`);
+    }
     if (!can.backends.includes(isolation)) unsupported.push(`isolation backend ${isolation}`);
     if ((mode as SandboxMode) === "permissive" || !can.modes.includes(mode)) unsupported.push(`mode ${mode}`);
     if (!can.filesystem) unsupported.push("filesystem path lists");
@@ -172,6 +183,11 @@ export class MxcAdapter {
       },
     };
   }
+}
+
+/** The first of `hidden` that `p` is or lies under, compared by path segment. */
+export function hiddenUnder(p: string, hidden: readonly string[]): string | undefined {
+  return hidden.find((h) => inside(p, [h]));
 }
 
 /**

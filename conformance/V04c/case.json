@@ -1,0 +1,28 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V04c",
+  "kind": "compile",
+  "title": "The class of restricted data stays with a value built from one of its fields.",
+  "spec": [
+    "spec/checks.md#data-classes-55"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0220",
+        "path": "/defs/Greet/body/1/value",
+        "facts": {
+          "data_class": "restricted",
+          "allowed": "internal"
+        }
+      }
+    ]
+  }
+}

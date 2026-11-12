@@ -1,0 +1,25 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S11l",
+  "kind": "compile",
+  "title": "A decimal in text is kept as the string it was written as, with its trailing zero: it has the hash S11m gives.",
+  "spec": [
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "hashes": {
+      "program": "sha256:e545604837e5c8262fa3bc3cf241d51e027c47355a9afc277c01d8254a374fda",
+      "defs": {
+        "x": "sha256:9457a80f2b322e77057d8082699d23c7051c39732f60d6f9c64b23cd79958efc"
+      }
+    }
+  }
+}

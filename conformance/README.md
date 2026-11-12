@@ -30,14 +30,37 @@ own input files (`program.mdt` or `program.ir.json`, module files,
 - `lock`: optional path to a lock file, or `null`.
 - `patch`: optional RFC 6902 patch, only `add`, `replace` and `remove`. It is
   applied to the IR of the input, and the patched IR is checked as JSON IR. No
-  base hash is involved. Use it to say "this program, with this change" without
-  copying the program. The unpatched input must load without errors.
+  base hash is involved, unless the case gives `base`. Use it to say "this
+  program, with this change" without copying the program. The unpatched input
+  must load without errors.
+- `base`: optional, only with `patch`: `sha256:` and 64 lower-case hex digits.
+  The program hash the patch was written against; see below.
 - `subprogram`: optional; see below. A case with it has no top-level `patch`
   or `lock`.
 - `amendment`: optional; see below. A case with it has no top-level `patch`
   or `lock`, and no `subprogram`.
 - `expect`: `{ "ok": boolean, "diagnostics": [ { "code", "path", "facts"? } ],
   "hashes"?: { "program"?, "defs"? } }`.
+
+## A patch against a base
+
+A patch is written against one version of a program, named by its program hash
+(spec/ir.md "Patches"; the compiler's `mandate.apply_patch`). A `compile` case
+with `base` says which version the patch of the case was written against, and
+the patch is applied the way `apply_patch` applies it:
+
+- If `base` is not the program hash of the input's IR (before the patch), the
+  patch is stale: the result is exactly one diagnostic, `MDT-E0130` at path `""`,
+  with the facts `base` (the case's) and `current` (the input's hash). Nothing
+  else is checked.
+- If an operation cannot be applied (a missing member, an index out of range),
+  the result is one `MDT-E0131` at that operation's path, with the fact `index`,
+  the operation's place in the patch.
+- Otherwise the patched IR is checked as JSON IR, as in a case without `base`,
+  and `expect.hashes`, when given, are the hashes of the patched program.
+
+`base` needs `patch`, and so excludes `subprogram` and `amendment`, which have
+a base of their own.
 
 ## A sub-program case
 
@@ -98,12 +121,66 @@ repository. A path may go up into the repository to share a fixture, as V03 does
 - `ok` must match.
 - The compiler's diagnostics and `expect.diagnostics` are compared in order, one
   to one: same count, and for each pair the same `code` and the same `path` (the
-  diagnostic's `at.path`).
+  diagnostic's `at.path`). A diagnostic that has no path, such as a text
+  reader's error that has only a position, is at the path `""`.
 - `facts`, when a case gives them, are a subset: every key the case names must
   be deeply equal in the diagnostic. Extra keys in the diagnostic are allowed.
 - `message` and `span` are never compared. Messages may change, and columns
   depend on how a compiler counts characters.
 - `hashes`, when given, must equal the result's hashes exactly.
+
+## The S and V cases
+
+The conformance claims of the design document's §25 are cases here. An id is
+the claim's number and a letter for each distinct thing the claim says; the
+vitest tests (`compiler/test/conformance.test.ts` and `static.test.ts`) stay as
+they are and say more where a claim is about a message, a position or an API.
+
+| Claim | Cases |
+|---|---|
+| S01 duplicate JSON keys | `S01` |
+| S02 unknown fields and language versions | `S02a`–`S02e` |
+| S03 references to missing nodes | `S03a`–`S03i` |
+| S04 call cycles | `S04a` |
+| S05 a switch handles every variant | `S05a`, `S05b` |
+| S06 unbounded iteration | `S06a`, `S06b` |
+| S07 no external write inside a function or skill | `S07a`, `S07b` |
+| S08 programs cannot produce Evidence, Authorization, Receipt or Verified | `S08a`–`S08d` |
+| S10 key order does not change the hash | `S10a`–`S10d`, in pairs: a with b, c with d |
+| S11 no silent Unicode or number normalization | `S11a`–`S11m`; `S11a` and `S11b` differ, `S11l` and `S11m` agree |
+| S12 a patch against a stale base | `S12a`–`S12d`, with `base` |
+| V01 `Inferred<T>` cannot reach a critical effect | `V01a`–`V01e` |
+| V02 `Untrusted<T>` in the instruction part of a prompt | `V02a`, `V02b` |
+| V03 `par` branches with overlapping writes | `V03`, `V03b`–`V03d` |
+| V04 restricted data to a model | `V04a`–`V04c` |
+| V05 dynamic `spawn` | `V05a` |
+| V06 `UnknownOutcome` | `V06a`, `V06b` |
+| V07 a decision switch handles `Uncertain` | `V07a` |
+| V08 a decision to a critical effect | `V08a` |
+| V20 a text literal as a `Path` | `V20a`–`V20e` |
+
+S09 (load-time verification) is a claim about the runtime, not about a
+compile, and has no case here.
+
+Paired cases say a claim that is about two inputs. `S10a` and `S10b` are one
+program with its keys in two orders, and both expect the same hashes. `S11a`
+and `S11b` are the same text in two Unicode forms, and expect different ones.
+`S11l` is a decimal in text and `S11m` the IR it must become; they expect the
+same hashes.
+
+Some of what the vitest tests assert is not an input and diagnostics, and stays
+there: a diagnostic's message (V01, V20), its source position (S01, S02, S03),
+the `repair` patch it offers (S03), and that applying a patch leaves the program
+it was given as it was (S12).
+
+## What the Rust crate runs
+
+`crates/mandate-ir/tests/conformance.rs` runs, with the Rust crate alone, the
+cases that need only the strict JSON reader and the hashes, and counts the rest
+as skipped, with the reason. It runs a `compile` case with a JSON input and none
+of `patch`, `modules`, `lock`, `subprogram`, `amendment` and `base`, when either
+every diagnostic it expects has a reader code (E0102, E0105, E0106, E0107,
+E0108), or it expects `ok` with `hashes` and no diagnostics.
 
 ## Adding a case
 

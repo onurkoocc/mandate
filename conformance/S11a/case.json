@@ -1,0 +1,27 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S11a",
+  "kind": "compile",
+  "title": "Text in Unicode NFC is kept as written: it has its own hash, and S11b has another.",
+  "spec": [
+    "spec/ir.md#hashing",
+    "spec/core.md#1-programs",
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.ir.json",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "hashes": {
+      "program": "sha256:4d68acfb5ce6c273986b1f5af3c0f05b07167f6302212d8aa1a06e452c6d52ac",
+      "defs": {
+        "G": "sha256:e3689f6ba47e96cd4135be31816ac19347d59542e0023766885562081892796e"
+      }
+    }
+  }
+}

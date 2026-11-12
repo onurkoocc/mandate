@@ -1,0 +1,19 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S05b",
+  "kind": "compile",
+  "title": "A switch with a catch-all arm handles every variant.",
+  "spec": [
+    "spec/checks.md#decisions-810"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

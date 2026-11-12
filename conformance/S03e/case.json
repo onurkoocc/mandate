@@ -1,0 +1,34 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S03e",
+  "kind": "compile",
+  "title": "An effect named \"toString\" that nothing defines is refused like any unknown effect, whatever the name.",
+  "spec": [
+    "spec/diagnostics.md"
+  ],
+  "language": "mandate/0.3",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/prod/authorize/toString",
+        "facts": {
+          "name": "toString"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/W/body/0/value/name",
+        "facts": {
+          "name": "toString"
+        }
+      }
+    ]
+  }
+}

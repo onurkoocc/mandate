@@ -1,0 +1,2 @@
+module m @ 0.1
+type T = Text

@@ -1,0 +1,6 @@
+module m @ 0.1
+use company.domain.{Issue}
+fn forge(i: Issue) -> Bool {
+  let a = Authorization { by: "me" }
+  true
+}

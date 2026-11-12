@@ -211,7 +211,9 @@ strict JSON reader (same limits, diagnostic codes, messages, JSON Pointers
 and UTF-16 columns), writes its canonical text (RFC 8785) and computes the
 program, definition and package hashes, byte for byte as the TypeScript
 compiler does. It is not a compiler: there is no `.mdt` parser, no schema
-validation and no checks in Rust yet.
+validation and no checks in Rust yet. It runs the conformance cases that need
+only the reader and the hashes (`crates/mandate-ir/tests/conformance.rs`) and
+counts the rest as skipped.
 
 The two are held together by the files in [`vectors/`](vectors/README.md).
 `compiler/test/vectors.test.ts` writes them and fails when the committed
@@ -259,30 +261,33 @@ warnings: two of its `static` acceptance criteria become run-time checks.
 ## Conformance
 
 Tests live in `compiler/test`. These conformance cases from the design
-document's §25 are covered:
+document's §25 are covered. The last column names the case files in
+[`conformance/`](conformance/README.md) that say the claim for any
+implementation. The vitest tests stay, and say more where a claim is about a
+message, a position or an API:
 
-| Case | Rule | Code |
-|---|---|---|
-| S01 | Duplicate JSON keys are rejected before schema validation | E0102 |
-| S02 | Unknown fields and language versions are rejected | E0103, E0104 |
-| S03 | References to missing nodes are rejected | E0120 |
-| S04 | Call cycles are rejected | E0502 |
-| S05 | A switch must handle every variant | E0230 |
-| S06 | Unbounded iteration is rejected | E0502 |
-| S07 | No external write inside a function or skill | E0408 |
-| S08 | Programs cannot produce Evidence, Authorization, Receipt or Verified | E0213 |
-| S10 | Key order does not change the hash | — |
-| S11 | No silent Unicode or number normalization | E0106, E0107 |
-| S12 | A patch against a stale base is rejected | E0130 |
-| V01 | `Inferred<T>` cannot reach a critical effect | E0210 |
-| V02 | `Untrusted<T>` cannot reach the instruction part of a prompt | E0215 |
-| V03 | `par` branches cannot write overlapping scopes | E0320 |
-| V04 | Restricted data cannot reach a model that may not receive it | E0220 |
-| V05 | No dynamic `spawn` in 0.1 | E0711 |
-| V06 | `UnknownOutcome` is reconciled, never restarted | E0712 |
-| V07 | A switch on a decision handles `Uncertain` | E0230 |
-| V08 | A decision cannot reach a critical effect directly | E0210 |
-| V20 | A text literal stands for a `Path` only if it is relative and normalized (K68) | E0204 |
+| Case | Rule | Code | Case files |
+|---|---|---|---|
+| S01 | Duplicate JSON keys are rejected before schema validation | E0102 | `S01` |
+| S02 | Unknown fields and language versions are rejected | E0103, E0104 | `S02a`–`S02e` |
+| S03 | References to missing nodes are rejected | E0120 | `S03a`–`S03i` |
+| S04 | Call cycles are rejected | E0502 | `S04a` |
+| S05 | A switch must handle every variant | E0230 | `S05a`, `S05b` |
+| S06 | Unbounded iteration is rejected | E0502 | `S06a`, `S06b` |
+| S07 | No external write inside a function or skill | E0408 | `S07a`, `S07b` |
+| S08 | Programs cannot produce Evidence, Authorization, Receipt or Verified | E0213 | `S08a`–`S08d` |
+| S10 | Key order does not change the hash | — | `S10a`–`S10d` |
+| S11 | No silent Unicode or number normalization | E0106, E0107 | `S11a`–`S11m` |
+| S12 | A patch against a stale base is rejected | E0130 | `S12a`–`S12d` |
+| V01 | `Inferred<T>` cannot reach a critical effect | E0210 | `V01a`–`V01e` |
+| V02 | `Untrusted<T>` cannot reach the instruction part of a prompt | E0215 | `V02a`, `V02b` |
+| V03 | `par` branches cannot write overlapping scopes | E0320 | `V03`, `V03b`–`V03d` |
+| V04 | Restricted data cannot reach a model that may not receive it | E0220 | `V04a`–`V04c` |
+| V05 | No dynamic `spawn` in 0.1 | E0711 | `V05a` |
+| V06 | `UnknownOutcome` is reconciled, never restarted | E0712 | `V06a`, `V06b` |
+| V07 | A switch on a decision handles `Uncertain` | E0230 | `V07a` |
+| V08 | A decision cannot reach a critical effect directly | E0210 | `V08a` |
+| V20 | A text literal stands for a `Path` only if it is relative and normalized (K68) | E0204 | `V20a`–`V20e` |
 
 S09 (load-time verification) is covered by the runtime, below.
 `compiler/test/mcp.test.ts` checks the compiler's MCP server (§14): its
@@ -533,7 +538,7 @@ These cases from §25 are covered:
 | G04 | A sub-agent gets no more than it is handed: its sandbox and tools are narrowed to the grant | `gate4` (and E0701 statically) |
 | G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop`, `mxc`, `mxc-windows` |
 | G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed; a check its verifier did not sign is not met, and with a verifier process configured, a record of a verifier check without that verifier's attestation, or with a method its criterion does not declare, is invalid, whatever key signed it | `verifier`, `verifier-process`, `audience` |
-| G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`), `mxc-windows` (AppContainer, CI job `sandbox-windows`) |
+| G07 | A sandboxed process reaches no host (on Linux, not through a service socket of the host either), and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`), `mxc-windows` (AppContainer, CI job `sandbox-windows`) |
 | G08 | Another tenant's or run's artifact is refused like a missing one | `artifacts` |
 | G09 | A model's markup is shown as plain text in every view, never as a control: an agent's output, a name somebody typed, a lead's sub-program and its reason for an amendment | `views`, `views-envelope`, `cli-amend` |
 | G10 | A view the run has moved past says so, and a decision taken on it is refused | `views` |

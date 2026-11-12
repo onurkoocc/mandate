@@ -1,0 +1,35 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V03d",
+  "kind": "compile",
+  "title": "A branch cannot widen the capability it narrows: narrowing to /work, outside the scopes of the capability, is refused.",
+  "spec": [
+    "spec/checks.md#capabilities-7"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "../../compiler/test/fixtures/syntax/supervision.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Split/body/0/branches/patch/caps/0/args/0/value/value",
+      "value": "/work"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0305",
+        "path": "/defs/Split/body/0/branches/patch/caps/0"
+      },
+      {
+        "code": "MDT-E0320",
+        "path": "/defs/Split/body/0/branches/tests"
+      }
+    ]
+  }
+}

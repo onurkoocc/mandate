@@ -108,5 +108,6 @@ jobs:
         run: rustup toolchain install
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
-      - name: Rust tests, against the vectors the TypeScript compiler writes
-        run: cargo test --locked
+      # --nocapture so that the log shows how many conformance cases the crate ran and skipped.
+      - name: Rust tests, against the vectors the TypeScript compiler writes and the conformance cases
+        run: cargo test --locked -- --nocapture

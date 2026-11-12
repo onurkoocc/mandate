@@ -1,0 +1,28 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V04a",
+  "kind": "compile",
+  "title": "Restricted data cannot go to a model capability that does not say it may receive it: the default is internal.",
+  "spec": [
+    "spec/checks.md#data-classes-55"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0220",
+        "path": "/defs/Summarize/body/0/value",
+        "facts": {
+          "data_class": "restricted",
+          "allowed": "internal"
+        }
+      }
+    ]
+  }
+}

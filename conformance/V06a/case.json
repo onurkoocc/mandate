@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V06a",
+  "kind": "compile",
+  "title": "An UnknownOutcome cannot be handled by restarting: the effect may have happened.",
+  "spec": [
+    "spec/checks.md#supervision-87"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0712",
+        "path": "/defs/W/body/1/then"
+      }
+    ]
+  }
+}

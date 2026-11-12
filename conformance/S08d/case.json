@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S08d",
+  "kind": "compile",
+  "title": "Host code that claims to produce Verified is refused.",
+  "spec": [
+    "spec/checks.md#epistemic-types-52"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0213",
+        "path": "/defs/check/returns"
+      }
+    ]
+  }
+}

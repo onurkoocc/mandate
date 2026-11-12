@@ -1,0 +1,17 @@
+module m @ 0.1
+use std.{git, model}
+use company.domain.{Issue}
+capability M = model.infer(tier: standard)
+capability PR = git.pr("company/backend")
+agent A {
+  caps M
+  budget { steps: 5 }
+  skill write(i: Issue) -> Text ! {}
+}
+workflow W(i: Issue) -> Bool
+  caps M, PR
+{
+  let text = delegate A.write(i)
+  effect git.comment(i, text) idempotent_by i.id
+  true
+}

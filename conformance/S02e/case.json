@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S02e",
+  "kind": "compile",
+  "title": "A definition of an unknown kind is refused.",
+  "spec": [
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "text": "{\"language\":\"mandate/0.1\",\"module\":\"example.minimal\",\"version\":\"0.1\",\"defs\":{\"X\":{\"kind\":\"macro\"}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/X"
+      }
+    ]
+  }
+}

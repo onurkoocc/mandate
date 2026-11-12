@@ -1,0 +1,41 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S12a",
+  "kind": "compile",
+  "title": "A patch written against another program hash is refused as stale, and the diagnostic says what the program's hash is.",
+  "spec": [
+    "spec/ir.md#patches"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/U",
+      "value": {
+        "kind": "type",
+        "type": {
+          "ref": "Int"
+        }
+      }
+    }
+  ],
+  "base": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0130",
+        "path": "",
+        "facts": {
+          "base": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "current": "sha256:de7fd275a70b581fb60d4486cad1c4f16857b61daa4a7024fed523ee1dc05a25"
+        }
+      }
+    ]
+  }
+}

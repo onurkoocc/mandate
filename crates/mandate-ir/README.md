@@ -11,4 +11,7 @@ compiler does. It ports three modules, which remain the specification:
 
 Its one dependency is `sha2`. `cargo test` checks it against the vectors in
 [`../../vectors`](../../vectors/README.md), which the TypeScript compiler
-writes.
+writes. It also runs the conformance cases in
+[`../../conformance`](../../conformance/README.md) that need only the reader and the
+hashes (`tests/conformance.rs`); the others need a compiler, and the test prints
+how many it ran and how many it skipped.

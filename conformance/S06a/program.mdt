@@ -1,0 +1,7 @@
+module m @ 0.1
+fn spin(n: Int) -> Int {
+  loop {
+    n
+  }
+  n
+}

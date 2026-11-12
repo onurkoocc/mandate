@@ -1,0 +1,30 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V01e",
+  "kind": "compile",
+  "title": "The agent loop talks to the model its delegation grants, whether or not the skill names the Model effect.",
+  "spec": [
+    "spec/checks.md#effects-6",
+    "spec/checks.md#epistemic-types-52",
+    "spec/core.md#5-agents-skills-and-workflows"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0310",
+        "path": "/defs/A/caps/0"
+      },
+      {
+        "code": "MDT-E0210",
+        "path": "/defs/W/body/1/value/args/1/value"
+      }
+    ]
+  }
+}
