@@ -1,4 +1,4 @@
-// Public API of the Mandate reference compiler, for language 0.1 to 0.4.
+// Public API of the Mandate reference compiler, for language 0.1 to 0.5.
 export { check, checkPatch, load, loadModules, kindOf, type CheckOptions, type CheckResult, type LoadResult, type ModuleSource, type PatchCheck, type SourceKind } from "./check.js";
 export { checkSubprogram, subprogramLinked, type SubprogramCheck, type SubprogramInput } from "./check.js";
 export { checkAmendment, type AmendmentCheck, type AmendmentInput } from "./check.js";
@@ -18,7 +18,7 @@ export { parseMdt, RESERVED } from "./parse/parser.js";
 export { applyPatch, type GovernanceChange, type PatchOp, type PatchResult } from "./patch/patch.js";
 export { printProgram } from "./print/printer.js";
 export { resolveNames } from "./resolve/resolve.js";
-export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, scopeWithin, showCap, within, writesOverlap, type CapResult, type CapVal } from "./check/caps.js";
+export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, scopeWithin, showCap, within, writesOverlap, type CapOptions, type CapResult, type CapVal } from "./check/caps.js";
 export { roleChecks, roleSites, rolesNamed, type RoleSite } from "./check/roles.js";
 export { staticCost, type CostPart, type StaticCost } from "./check/cost.js";
 export { leadClasses, type Claim } from "./check/static.js";

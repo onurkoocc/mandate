@@ -22,7 +22,7 @@ import { diag, ptr, ptrToken, type Diagnostic } from "../diag.js";
 import { BUDGET_DIMENSIONS, budgetAmount, type Budget, type BudgetDimension, type Def, type Program } from "../ir/types.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
-import { capCovers, capsOf, showCap, writesOverlap, type CapVal } from "./caps.js";
+import { capCovers, capsOf, showCap, writesOverlap, type CapOptions, type CapVal } from "./caps.js";
 
 /** The module the runtime starts for sub-program `n` of a lead in module `parent`. Its hash is the `base` of the lead's patch. */
 export function skeleton(parent: string, n: number): Program {
@@ -136,10 +136,11 @@ function claimed(b: Budget | undefined): Array<{ dimension: string; field: Budge
  * E1706: whether a sub-program's claim fits what is left of the envelope
  * (N01, INV-15). `defs` is every definition the sub-program sees, its own and
  * its parent's; `workflow` is its one workflow; `envelope` holds the
- * envelope's capabilities, evaluated. Each diagnostic names the dimension
+ * envelope's capabilities, evaluated; `opts` says how the sub-program's own are
+ * read (its language). Each diagnostic names the dimension
  * that does not fit, with the numbers, so that the lead can ask for less.
  */
-export function containment(defs: Record<string, Def>, workflow: string, envelope: CapVal[], room: Room): Diagnostic[] {
+export function containment(defs: Record<string, Def>, workflow: string, envelope: CapVal[], room: Room, opts: CapOptions = {}): Diagnostic[] {
   const out: Diagnostic[] = [];
   const wf = Object.hasOwn(defs, workflow) ? defs[workflow] : undefined;
   if (wf?.kind !== "workflow") return out;
@@ -149,7 +150,7 @@ export function containment(defs: Record<string, Def>, workflow: string, envelop
   // C2: every capability lies inside one the envelope holds. C5 across the run: none may write where
   // something still in flight writes.
   wf.caps.forEach((e, i) => {
-    for (const c of capsOf(defs, e)) {
+    for (const c of capsOf(defs, e, opts)) {
       const shown = showCap(c);
       if (!envelope.some((w) => capCovers(w, c))) {
         no(`${workflow} asks for ${shown}, which lies inside no capability of the envelope. A sub-program holds only what the envelope's owner approved (C2).`, `${at}/caps/${i}`, {

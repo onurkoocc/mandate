@@ -92,7 +92,7 @@ function agentCaps(program: Program, agent: AgentDef): CapVal[] {
       const d = program.defs[e.name];
       return d?.kind === "capability" ? resolve(d.value) : undefined;
     }
-    return capFromCall(e);
+    return capFromCall(e, { language: program.language });
   };
   return agent.caps.map(resolve).filter((c): c is CapVal => c !== undefined);
 }

@@ -52,8 +52,11 @@ export interface Package {
   modules?: Modules;
 }
 
-/** The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes, `map` and `plan`; see `notRunYet`. */
-export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4"];
+/**
+ * The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes, `map` and `plan`; of
+ * 0.5 the program as far as its lock asks nothing the runtime does not enforce yet; see `notRunYet`.
+ */
+export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4", "mandate/0.5"];
 
 /**
  * What a program uses of 0.4 that this runtime does not run: the `agents` dimension in a budget other than an

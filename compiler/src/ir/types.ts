@@ -1,4 +1,4 @@
-// Canonical IR for Mandate 0.1 to 0.4 (Doc 4 §3.2; spec/envelope.md for 0.4).
+// Canonical IR for Mandate 0.1 to 0.5 (Doc 4 §3.2; spec/envelope.md for 0.4, spec/boundary.md for 0.5).
 //
 // The IR is the source of truth (§3.3, v0.2 decision): the `.mdt` text
 // form is a projection that lowers into these shapes and is printed back from
@@ -17,15 +17,16 @@
 //   - optional fields are omitted rather than written as null or false.
 
 /** The newest language version; what new programs are written in. */
-export const LANGUAGE_VERSION = "mandate/0.4";
+export const LANGUAGE_VERSION = "mandate/0.5";
 /**
  * Every language version this compiler reads. 0.2 adds the agent loop
  * strategy and its progress thresholds (`loop`, `progress`). 0.3 adds the
  * system model (`component`, `interface`, `environment`) and change sets
  * (design doc 9). 0.4 adds roles, the envelope, `map` and `plan`
- * (spec/envelope.md). An older program reads and hashes exactly as before.
+ * (spec/envelope.md). 0.5 reads `methods` in `net.https` (spec/boundary.md);
+ * its IR has no new shape. An older program reads and hashes exactly as before.
  */
-export const LANGUAGE_VERSIONS = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4"] as const;
+export const LANGUAGE_VERSIONS = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4", "mandate/0.5"] as const;
 export type LanguageVersion = (typeof LANGUAGE_VERSIONS)[number];
 
 export function isLanguageVersion(v: unknown): v is LanguageVersion {

@@ -12,7 +12,7 @@
 //   component.repo(c…)           git.pr(c.repo…)
 
 import { posix } from "node:path";
-import type { Arg, ComponentDef, Def, Expr } from "../ir/types.js";
+import type { Arg, ComponentDef, Def, Expr, LanguageVersion } from "../ir/types.js";
 import { CAP_CTORS, DEFAULT_MODEL_MAX_CLASS, DATA_CLASSES, type DataClass } from "../std/std.js";
 
 export interface CapVal {
@@ -37,6 +37,16 @@ export interface CapVal {
   tier?: string;
   /** For exec: the argument prefixes a command may start with. */
   argsPrefix?: string[][];
+}
+
+/**
+ * How a capability expression is read. What it means can depend on the language of the program it is read in, as
+ * a definition imported from a module is read in the program that imports it. Without a language it is read as
+ * in 0.1 to 0.4.
+ */
+export interface CapOptions {
+  /** The language of the program the capability is read in. */
+  language?: LanguageVersion;
 }
 
 /** Dotted path of a callee such as `fs.read` or `git.pr`, if it is one. */
@@ -71,7 +81,7 @@ function symbol(e: Expr): string | undefined {
  * Evaluates a capability constructor call such as `fs.write("/work/repo/src")`.
  * Returns undefined when the expression is not a known constructor.
  */
-export function capFromCall(e: Expr): CapVal | undefined {
+export function capFromCall(e: Expr, _opts: CapOptions = {}): CapVal | undefined {
   if (e.op !== "call") return undefined;
   const ctor = calleePath(e.callee);
   if (!ctor) return undefined;
@@ -129,13 +139,13 @@ const COMPONENT_CTORS = new Set(["component.read", "component.write", "component
  * constructor that cannot be opened (an argument that is not a component, a
  * command kind it does not declare) has a `problem` and no capabilities.
  */
-export function capsFromCall(e: Expr, defs: Record<string, Def> = {}): CapResult | undefined {
+export function capsFromCall(e: Expr, defs: Record<string, Def> = {}, opts: CapOptions = {}): CapResult | undefined {
   if (e.op !== "call") return undefined;
   const ctor = calleePath(e.callee);
   if (ctor && COMPONENT_CTORS.has(ctor)) return componentCaps(ctor, e.args, defs);
   if (ctor === "data.read") return readCaps(e.args, defs);
   if (ctor === "env.deploy" || ctor === "env.migrate") return envCaps(ctor, e.args, defs);
-  const c = capFromCall(e);
+  const c = capFromCall(e, opts);
   return c ? { caps: [c] } : undefined;
 }
 
@@ -239,22 +249,22 @@ function uniquePrefixes(ps: string[][]): string[][] {
  * scope is not literal leaves the scope unknown, never the base's wider one.
  * The checker reports what cannot be evaluated; here it stands for nothing.
  */
-export function capsOf(defs: Record<string, Def>, e: Expr, within: ReadonlySet<string> = new Set()): CapVal[] {
+export function capsOf(defs: Record<string, Def>, e: Expr, opts: CapOptions = {}, within: ReadonlySet<string> = new Set()): CapVal[] {
   if (e.op === "var") {
     const d = Object.hasOwn(defs, e.name) ? defs[e.name] : undefined;
     // A capability that names itself, directly or through another, is nothing.
     if (d?.kind !== "capability" || within.has(e.name)) return [];
-    return capsOf(defs, d.value, new Set(within).add(e.name)).map((c) => ({ ...c, name: e.name }));
+    return capsOf(defs, d.value, opts, new Set(within).add(e.name)).map((c) => ({ ...c, name: e.name }));
   }
   if (e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow") {
-    const bases = capsOf(defs, e.callee.of, within);
+    const bases = capsOf(defs, e.callee.of, opts, within);
     const scope = e.args.flatMap((a) => (a.value.op === "text" ? [a.value.value] : []));
     return bases.map((base) => {
       const { scope: _wide, ...rest } = base;
       return bases.length === 1 && scope.length === e.args.length ? { ...rest, scope, name: `${base.name ?? base.ctor}.narrow` } : rest;
     });
   }
-  return capsFromCall(e, defs)?.caps ?? [];
+  return capsFromCall(e, defs, opts)?.caps ?? [];
 }
 
 /** Normalizes an absolute path into segments; `..` and `.` are resolved, trailing slashes dropped. */

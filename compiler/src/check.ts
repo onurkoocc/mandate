@@ -217,8 +217,9 @@ export function checkSubprogram(i: SubprogramInput): SubprogramCheck {
   }
   const workflow = subprogramWorkflow(sub)!;
   if (!hasErrors(diagnostics)) {
-    const envelope = (wf.envelope.caps ?? []).flatMap((c) => capsOf(link(i.parent, i.modules).defs, c));
-    diagnostics.push(...containment(link(view, modules).defs, workflow, envelope, i.room));
+    // The envelope is read in its parent's language, the sub-program in its own.
+    const envelope = (wf.envelope.caps ?? []).flatMap((c) => capsOf(link(i.parent, i.modules).defs, c, { language: i.parent.language }));
+    diagnostics.push(...containment(link(view, modules).defs, workflow, envelope, i.room, { language: view.language }));
   }
   if (hasErrors(diagnostics)) return { ok: false, diagnostics };
   return { ok: true, diagnostics, program: sub, hash: hashProgram(sub as unknown as Json).program, workflow };
@@ -261,7 +262,7 @@ export function checkAmendment(i: AmendmentInput): AmendmentCheck {
   const checked = check(JSON.stringify(amended), "json", i.modules ? { modules: i.modules } : {});
   const diagnostics = [...checked.diagnostics];
   const now = checked.program?.defs[i.workflow];
-  if (checked.ok && now?.kind === "workflow" && now.envelope) diagnostics.push(...narrowings(link(checked.program!, i.modules).defs, i.workflow, wf.envelope, now.envelope));
+  if (checked.ok && now?.kind === "workflow" && now.envelope) diagnostics.push(...narrowings(link(checked.program!, i.modules).defs, i.workflow, wf.envelope, now.envelope, { language: checked.program!.language }));
   if (hasErrors(diagnostics) || !checked.program || !checked.hashes) return { ok: false, diagnostics };
   return { ok: true, diagnostics, program: checked.program, hash: checked.hashes.program };
 }

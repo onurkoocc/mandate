@@ -75,7 +75,7 @@ export function programRef(p: Program): ProgramRef {
 
 /** The capabilities a list of capability expressions stands for (component capabilities may stand for several). */
 export function capsIn(program: Program, list: Expr[]): CapVal[] {
-  return list.flatMap((e) => capsOf(program.defs, e));
+  return list.flatMap((e) => capsOf(program.defs, e, { language: program.language }));
 }
 
 /** `c.narrow(v)` whose scope is a value of the run: where it lies is known only then. */
@@ -89,7 +89,7 @@ function chosenAtRunTime(e: Expr): boolean {
  * most the narrowing can be. Read by itself it has no scope, and a view would call it unbounded.
  */
 function widest(program: Program, list: Expr[]): CapVal[] {
-  return list.flatMap((e) => capsOf(program.defs, chosenAtRunTime(e) && e.op === "call" && e.callee.op === "field" ? e.callee.of : e));
+  return list.flatMap((e) => capsOf(program.defs, chosenAtRunTime(e) && e.op === "call" && e.callee.op === "field" ? e.callee.of : e, { language: program.language }));
 }
 
 /** The kinds of capability in a list of `with caps` whose scope the run chooses. */
@@ -741,7 +741,7 @@ function scopeDiffs(before: CapVal[], after: CapVal[]): { added: string[]; remov
   return out;
 }
 
-const shownCaps = (p: Program, e: Expr): string => capsOf(p.defs, e).map(showCap).join(", ") || j(e);
+const shownCaps = (p: Program, e: Expr): string => capsIn(p, [e]).map(showCap).join(", ") || j(e);
 
 function budgetChanges(name: string, before: Budget | undefined, after: Budget | undefined): { up: string[]; down: string[] } {
   const up: string[] = [];
@@ -939,7 +939,7 @@ function classify(before: Program, after: Program, modules: Modules = {}): { gov
     }
     switch (a.kind) {
       case "capability": {
-        const d = scopeDiffs(capsOf(lb.defs, { op: "var", name }), capsOf(la.defs, { op: "var", name }));
+        const d = scopeDiffs(capsIn(lb, [{ op: "var", name }]), capsIn(la, [{ op: "var", name }]));
         for (const x of d.added) governance.push({ kind: "capability_added", path, text: `+ ${name}: ${x}` });
         for (const x of d.other) governance.push({ kind: "capability_added", path, text: `~ ${name}: ${x}` });
         for (const x of d.removed) behavior.push({ path, text: `- ${name}: ${x} (narrowed)` });
@@ -1351,7 +1351,7 @@ export function card(program: Program, workflow: string, opts: { lock?: Lock; mo
         par: e.par ?? 1,
         delegates,
         handed: (e.caps ?? []).map((c) => {
-          const vals = capsOf(lp.defs, c);
+          const vals = capsIn(lp, [c]);
           const scopes = vals.flatMap((x) => x.scope ?? []);
           return { cap: exprText(c), kinds: [...new Set(vals.map((x) => x.ctor))], scope: vals.length && vals.every((x) => x.scope) ? scopes : null, by_item: readsVar(c, e.bind) };
         }),

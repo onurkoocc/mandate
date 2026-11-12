@@ -1398,7 +1398,7 @@ export class Interpreter {
 
   /** What a capability expression stands for, over the program's definitions and its linked system model. */
   private caps(e: Expr): CapVal[] {
-    return capsOf(this.defs, e);
+    return capsOf(this.defs, e, { language: this.o.program.language });
   }
 
   // ── contracts (§10) ───────────────────────────────────────────────────

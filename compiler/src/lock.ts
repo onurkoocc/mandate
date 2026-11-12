@@ -142,7 +142,7 @@ export function modelTiers(program: Program): Set<string> {
   const visit = (v: unknown): void => {
     if (Array.isArray(v)) v.forEach(visit);
     else if (v && typeof v === "object") {
-      const c = capFromCall(v as Expr);
+      const c = capFromCall(v as Expr, { language: program.language });
       if (c?.ctor === "model.infer" && c.tier) tiers.add(c.tier);
       Object.values(v).forEach(visit);
     }

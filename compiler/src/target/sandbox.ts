@@ -106,7 +106,7 @@ export function sandboxRequirements(program: Program, modules: Modules = {}): Re
   for (const name of Object.keys(program.defs).sort()) {
     const d = program.defs[name]!;
     if (d.kind !== "agent" || d.remote) continue;
-    const held = d.caps.flatMap((c) => capsOf(defs, c));
+    const held = d.caps.flatMap((c) => capsOf(defs, c, { language: program.language }));
     out[name] = requirementFor({ agent: name, def: hashes[name]! }, held, agentTimeout(d));
   }
   return out;
