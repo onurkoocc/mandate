@@ -17,11 +17,16 @@
 //                                          the program's human views (§15): architecture,
 //                                          authority and cost; with --against, what changed,
 //                                          the two locks' members and roles included
+//   mandate view <file> --card [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]…
+//                                          the card a person reads before approving a
+//                                          workflow's envelope, with the package hash
+//                                          the approval binds to (spec/views.md)
 //
 //   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key
 //                                          control a run (the runtime's CLI, @mandate/runtime/cli)
-//   mandate key new | decision | verify-decision
-//                                          a member's key, and a decision as its signed record (the runtime's CLI)
+//   mandate key new | decision | verify-decision | approve-envelope
+//                                          a member's key, a decision as its signed record, and the
+//                                          approval of an envelope (the runtime's CLI)
 //   mandate test <file>                    run the program's tests with their effect handlers (§6.4)
 //
 // <file> is .mdt text or .json canonical IR. `--module <file>` (repeatable)
@@ -48,7 +53,7 @@ import { serveStdio } from "./mcp/server.js";
 import { denialDiagnostics, sandboxRequirements, type DenialReport } from "./target/sandbox.js";
 import { acsTarget } from "./target/acs.js";
 import { toHtml, toMarkdown } from "./views/doc.js";
-import { architecture, authority, cost, diffDoc, hasSystem, programDoc, semanticDiff, system } from "./views/views.js";
+import { architecture, authority, card, cardDoc, cost, diffDoc, envelopeWorkflows, hasSystem, programDoc, semanticDiff, system } from "./views/views.js";
 
 function usage(): never {
   process.stderr.write(
@@ -63,9 +68,11 @@ function usage(): never {
       "  target acs <file> [--out <dir>] [--json] [--lock <lock.json>] [--module <file>]…",
       "  explain <code>",
       "  view <file> [--against <old file>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>] [--module <file>]…",
+      "  view <file> --card [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]…",
       "  mcp [--module <file>]…   (an MCP server on stdio)",
       "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key   (see `mandate status`)",
       "  key new [--out FILE] | decision <run> <digest> | verify-decision <record.json> --key <public key.pem> [--lock FILE]",
+      "  approve-envelope <file> --key FILE [--member NAME] [--workflow W] [--lock <lock.json>] [--module <file>]…",
       "  test <file> [--json]",
       "",
     ].join("\n"),
@@ -135,6 +142,7 @@ function main(argv: string[]): void {
   const against = option(plain, "--against");
   const againstLock = option(plain, "--against-lock");
   const denials = option(plain, "--denials");
+  const workflow = option(plain, "--workflow");
   const format = option(plain, "--format") ?? "md";
   const flags = new Set(plain.filter((a) => a.startsWith("--")));
   const args = plain.filter((a) => !a.startsWith("--"));
@@ -275,7 +283,23 @@ function main(argv: string[]): void {
       };
       const lock = readLock(file, lockFile, false);
       const program = loadChecked(file, lock);
-      if (against !== undefined) {
+      if (flags.has("--card")) {
+        if (against !== undefined) usage();
+        // The card is of one workflow with an envelope: the only one, or the one --workflow names.
+        const all = envelopeWorkflows(program);
+        if (!all.length) {
+          process.stderr.write(`mandate: ${file} has no workflow with an envelope, so it has no card\n`);
+          process.exit(1);
+        }
+        if (workflow !== undefined ? !all.includes(workflow) : all.length > 1) {
+          const why = workflow !== undefined ? `no workflow ${workflow} with an envelope in ${file}` : `${file} has several workflows with an envelope`;
+          process.stderr.write(`mandate: ${why}; name one with --workflow: ${all.join(", ")}\n`);
+          process.exit(2);
+        }
+        const name = workflow ?? all[0]!;
+        const opts = { modules, ...(lock ? { lock } : {}) };
+        process.stdout.write(format === "json" ? JSON.stringify(card(program, name, opts), null, 2) + "\n" : format === "html" ? toHtml(cardDoc(program, name, opts)!) : toMarkdown(cardDoc(program, name, opts)!));
+      } else if (against !== undefined) {
         const before = loadChecked(against);
         // The old version's lock, for who could decide before; none next to the old file is no lock, not an error.
         const beforeLock = readLock(against, againstLock, false);
@@ -312,7 +336,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {

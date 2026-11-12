@@ -1,0 +1,27 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0220b",
+  "kind": "compile",
+  "title": "A delegation in the body of a skill the workflow delegates to is held to the envelope's data class, where the data first has the higher class.",
+  "spec": ["spec/envelope.md#what-it-declares", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../E0220/program.mdt", "kind": "mdt" },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/W/body/1",
+      "value": { "op": "expr", "value": { "op": "delegate", "agent": "Outer", "skill": "wrap", "args": [{ "value": { "op": "var", "name": "t" } }] } }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0220",
+        "path": "/defs/Outer/skills/wrap/body/0/value",
+        "facts": { "data_class": "confidential", "allowed": "internal", "by": "envelope", "workflow": "W", "skill": "Outer.wrap" }
+      }
+    ]
+  }
+}

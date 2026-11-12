@@ -1,0 +1,23 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0220a",
+  "kind": "compile",
+  "title": "A delegation inside a function is held to the envelope's data class where the workflow's body calls the function.",
+  "spec": ["spec/envelope.md#what-it-declares", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../E0220/program.mdt", "kind": "mdt" },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/W/body/1",
+      "value": { "op": "expr", "value": { "op": "call", "callee": { "op": "var", "name": "via" }, "args": [{ "value": { "op": "var", "name": "d" } }] } }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E0220", "path": "/defs/W/body/1/value", "facts": { "data_class": "confidential", "allowed": "internal", "by": "envelope", "via": "via" } }
+    ]
+  }
+}

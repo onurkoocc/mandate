@@ -14,6 +14,8 @@
 
 import {
   atLeast,
+  BUDGET_DIMENSIONS,
+  budgetAmount,
   calleePath,
   capCovers,
   capsOf,
@@ -27,6 +29,7 @@ import {
   requirementFor,
   STD_EFFECTS,
   STD_FNS,
+  workflowBounds,
   type Arg,
   type Tier,
   type Budget,
@@ -35,6 +38,7 @@ import {
   type ContractDef,
   type Def,
   type EffectDef,
+  type Envelope,
   type Expr,
   type Json,
   type Lock,
@@ -162,6 +166,12 @@ export interface InterpOptions {
    * package's lock, and whether an approval must rest on a signed decision (signed mode, and every 0.4 package).
    */
   decisions?: { keys: TrustedKeys; lock: Lock; required: boolean };
+  /**
+   * The envelope of the run's workflow, when it has one (spec/envelope.md): every delegation attempt reserves one of
+   * its `agents`, at most `spawn.max_concurrent` delegations are in flight, and an effect under `approve` is
+   * authorized only by that role's decision.
+   */
+  envelope?: Envelope;
   /** The components the run works on, at their base commits (B3); verifier calls are told. */
   workspace?: RunComponents;
   /** How the run touches the outside world (B6); `live` when absent. */
@@ -774,7 +784,7 @@ export class Interpreter {
     const tierOf = (e: Expr): string | undefined => this.caps(e).find((c) => c.tier)?.tier;
     if (using) return tierOf(using);
     const def = this.def(path.split("/")[2]!);
-    const caps = def?.kind === "workflow" || def?.kind === "agent" ? def.caps : [];
+    const caps = def?.kind === "workflow" ? workflowBounds(def).caps : def?.kind === "agent" ? def.caps : [];
     const own = [...new Set(caps.map(tierOf).filter((t): t is string => !!t))];
     if (own.length === 1) return own[0];
     const all = [...modelTiers(this.o.program)];
@@ -837,8 +847,46 @@ export class Interpreter {
     }
   }
 
-  /** One attempt of a delegation, by `agentName` (the called agent, or a degrade fallback), as command `id`. */
+  /** Delegations in flight in this run, and those waiting for a place among them, in the order they came. */
+  private inFlight = 0;
+  private readonly waiting: Array<() => void> = [];
+
+  /**
+   * A place among the run's delegations in flight (spec/envelope.md "The ledger"). `spawn.max_concurrent` is not a
+   * ledger: a delegation that would exceed it waits here until another one settles. The wait is not an attempt,
+   * holds no reservation and is not a fault. Nothing of it is journaled, and replay, which sends nothing, never
+   * waits. One worker drives a run at a time (R06), so the count is this interpreter's.
+   *
+   * Returns what gives the place back; it goes to whoever waited longest.
+   */
+  private async place(): Promise<() => void> {
+    const max = this.o.envelope?.spawn?.max_concurrent;
+    if (max === undefined || this.o.replay) return () => {};
+    if (this.inFlight < max) this.inFlight++;
+    else await new Promise<void>((go) => this.waiting.push(go));
+    let held = true;
+    return () => {
+      if (!held) return;
+      held = false;
+      const next = this.waiting.shift();
+      // Handed on, the place stays taken; otherwise it is free again.
+      if (next) next();
+      else this.inFlight--;
+    };
+  }
+
+  /** One attempt of a delegation, once the run has a place for it (`spawn.max_concurrent`). */
   private async attempt(agentName: string, e: Extract<Expr, { op: "delegate" }>, pos: Value[], ctx: Ctx, id: string, attempt: number, timeoutMs: number | undefined): Promise<Value> {
+    const leave = await this.place();
+    try {
+      return await this.send(agentName, e, pos, ctx, id, attempt, timeoutMs);
+    } finally {
+      leave();
+    }
+  }
+
+  /** One attempt of a delegation, by `agentName` (the called agent, or a degrade fallback), as command `id`. */
+  private async send(agentName: string, e: Extract<Expr, { op: "delegate" }>, pos: Value[], ctx: Ctx, id: string, attempt: number, timeoutMs: number | undefined): Promise<Value> {
     const agent = this.def(agentName);
     if (!agent || agent.kind !== "agent") throw new Violation("unknown_agent", `No agent '${agentName}'.`);
     const skill = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill]! : undefined;
@@ -846,6 +894,9 @@ export class Interpreter {
     const granted = this.grants(agentName, e.caps ?? [], id);
     const caps = granted.map((c) => (c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor }));
     const budget = e.budget ?? skill.budget ?? agent.budget;
+    // Under an envelope every attempt is one of its `agents`: a first attempt, each restart and a degrade fallback
+    // each reserve one when they are dispatched, with their budget, in one transaction (spec/envelope.md "The ledger").
+    const one = this.o.envelope ? { agents: 1 } : undefined;
     const sandbox = agent.remote ? undefined : requirementFor({ agent: agentName, def: this.defHash(agentName) }, granted, budget?.time?.ms ?? null);
     const request = { agent: agentName, skill: e.skill, args: pos, caps: caps as unknown as Value, isolated: !!e.isolated };
     const loop = this.o.adapters.loop;
@@ -880,7 +931,10 @@ export class Interpreter {
         id,
         "delegate",
         request,
-        async () => subtractCost(budget, await this.o.journal.childCost(this.o.runId, id)),
+        async () => {
+          const left = subtractCost(budget, await this.o.journal.childCost(this.o.runId, id));
+          return one ? { ...left, ...one } : left;
+        },
         async () => {
           if (tiers.length !== 1) {
             return { error: { tag: "PolicyDenied", args: [{ reason: "model_tier", detail: `the agent loop needs exactly one model tier in its grant, not ${tiers.length}` }] }, cost: {} };
@@ -910,7 +964,7 @@ export class Interpreter {
       id,
       "delegate",
       request,
-      budget,
+      one ? { ...budget, ...one } : budget,
       async (): Promise<Outcome> => {
         const out = await this.o.adapters.agents.run({
           agent: agentName,
@@ -948,14 +1002,14 @@ export class Interpreter {
 
   /**
    * Capabilities handed to a delegate: A.caps ∩ avail(ctx), with `with caps` narrowing its own kinds (C2, §9.1).
-   * An agent capability is in avail(ctx) when one of the workflow's covers it, as the compiler reads it
+   * An agent capability is in avail(ctx) when one of the workflow's (its envelope's, when it has one) covers it, as the compiler reads it
    * (capCovers): its scope by segment after `.` and `..`, and no higher data class, other tier or wider arguments.
    */
   private grants(agentName: string, withCaps: Expr[], path: string): CapVal[] {
     const agent = this.def(agentName) as Extract<Def, { kind: "agent" }>;
     const wfName = path.split("/")[2]!;
     const wf = this.def(wfName);
-    const avail = wf?.kind === "workflow" ? wf.caps.flatMap((c) => this.caps(c)) : undefined;
+    const avail = wf?.kind === "workflow" ? workflowBounds(wf).caps.flatMap((c) => this.caps(c)) : undefined;
     const inside = (c: CapVal): boolean => !avail || avail.some((a) => capCovers(a, c));
     let out = agent.caps.flatMap((c) => this.caps(c)).filter(inside);
     if (withCaps.length) {
@@ -1628,7 +1682,26 @@ export class Interpreter {
     env?: { environment: string; tier: Tier },
     gov?: { files: Array<{ file: string; kind: string }>; owner: string },
   ): Promise<string> {
-    const base = this.o.policy.authorize?.[effect] ?? (member ? { by: "human" as const, role: member.role } : info.irreversible ? { by: "human" as const, role: "owner" } : { by: "policy" as const });
+    const configured = this.o.policy.authorize?.[effect];
+    // `approve E by r` in the run's envelope (spec/envelope.md): E is authorized only by a decision of role r, never by
+    // policy, wherever in the run it happens. The runtime's configuration cannot name another role or hand it to
+    // policy; a deadline it sets for the effect still applies, since a deadline only takes authority away.
+    const approve = this.o.envelope?.approve;
+    const owed = approve && Object.hasOwn(approve, effect) ? approve[effect] : undefined;
+    // Who else the program names for this action: an environment's tier, and the approver of a change set's member.
+    const named = [
+      ...(env?.tier.by === "human" ? [{ role: env.tier.role, who: `environment ${env.environment}` }] : []),
+      ...(member ? [{ role: member.role, who: `the change set's member ${member.component}` }] : []),
+    ];
+    const other = owed === undefined ? undefined : named.find((x) => x.role !== owed);
+    if (other) {
+      // Two rules name who decides, and neither gives way: the run stops for a person rather than pick one.
+      throw new Violation("approval_conflict", `The envelope asks ${owed} to approve ${effect}, and ${other.who} asks ${other.role}. Name the same role in both.`);
+    }
+    const base: AuthorizePolicy =
+      owed !== undefined
+        ? { by: "human", role: owed, ...(configured?.by === "human" && configured.deadlineMs !== undefined ? { deadlineMs: configured.deadlineMs } : {}) }
+        : (configured ?? (member ? { by: "human" as const, role: member.role } : info.irreversible ? { by: "human" as const, role: "owner" } : { by: "policy" as const }));
     // The environment's tier is the least that applies: a person's tier names who decides, and a policy tier never lowers the runtime's.
     let pol: AuthorizePolicy = env?.tier.by === "human" ? { ...base, by: "human" as const, role: env.tier.role } : base;
     // A governance-class file needs its owner (K70), and is never lowered: a policy becomes the owner's decision, and
@@ -1671,14 +1744,18 @@ export class Interpreter {
 }
 
 /** A delegation's budget less what its finished steps spent; dimensions never go below zero. */
-function subtractCost(budget: Budget | undefined, spent: Record<string, number>): Cost | undefined {
+function subtractCost(budget: Budget | undefined, spent: Record<string, number>): Budget | undefined {
   if (!budget) return undefined;
-  const left = (dim: string, v: number): number => Math.max(v - (spent[dim] ?? 0), 0);
-  return {
-    ...(budget.tokens !== undefined ? { tokens: left("tokens", budget.tokens) } : {}),
-    ...(budget.steps !== undefined ? { steps: left("steps", budget.steps) } : {}),
-    ...(budget.spend ? { spend: { micros: left(`spend:${budget.spend.currency}`, budget.spend.micros), currency: budget.spend.currency } } : {}),
-  };
+  const out: Budget = {};
+  for (const dim of BUDGET_DIMENSIONS) {
+    const amount = budgetAmount(budget, dim);
+    // `time` is not reserved: a deadline holds it.
+    if (amount === undefined || dim === "time") continue;
+    const left = Math.max(amount - (spent[dim === "spend" ? `spend:${budget.spend!.currency}` : dim] ?? 0), 0);
+    if (dim === "spend") out.spend = { micros: left, currency: budget.spend!.currency };
+    else out[dim] = left;
+  }
+  return out;
 }
 
 /** The result type a loop asks the model for: a skill returns `Inferred<T>`, and the model is asked for a `T`. */

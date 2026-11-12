@@ -22,6 +22,17 @@ export function domainHash(domain: HashDomain, value: Json, version = "0.1"): st
   return "sha256:" + h.digest("hex");
 }
 
+/**
+ * A package's hash (§3.5): the program's hash and the lock it is packaged
+ * with (`packagedLock` in lock.ts). The runtime recomputes it at load, and
+ * an envelope's approval is bound to it (spec/envelope.md "Approving an
+ * envelope"). It is computed here and nowhere else, so the hash a card shows
+ * a person is the hash the runtime runs.
+ */
+export function packageHash(programHash: string, lock: object): string {
+  return domainHash("package", { program: programHash, lock } as unknown as Json);
+}
+
 export interface ProgramHashes {
   program: string;
   defs: Record<string, string>;

@@ -1,0 +1,16 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1701a",
+  "kind": "compile",
+  "title": "A workflow with an envelope that also has caps of its own is refused at its caps.",
+  "spec": ["spec/envelope.md#what-it-declares", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../../fixtures/envelope/migrate-all.mdt", "kind": "mdt" },
+  "modules": ["../../fixtures/envelope/domain.mdt"],
+  "patch": [{ "op": "replace", "path": "/defs/MigrateAll/caps", "value": [{ "op": "var", "name": "RepoRead" }] }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E1701", "path": "/defs/MigrateAll/caps", "facts": { "field": "caps" } }]
+  }
+}

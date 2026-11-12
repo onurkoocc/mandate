@@ -7,7 +7,7 @@
 
 import { diag, hasErrors, type Diagnostic } from "../diag.js";
 import { hashProgram } from "../hash.js";
-import { SYSTEM_KINDS, type Budget, type Def, type Program } from "../ir/types.js";
+import { BUDGET_DIMENSIONS, budgetAmount, SYSTEM_KINDS, type Budget, type BudgetDimension, type Def, type Program } from "../ir/types.js";
 import { validateIr } from "../ir/validate.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
@@ -199,18 +199,18 @@ function budgetGrowth(a: Budget | undefined, b: Budget | undefined): string[] {
   if (!a) return [];
   if (!b) return ["budget removed"];
   const out: string[] = [];
-  const cmp = (field: string, x: number | undefined, y: number | undefined): void => {
-    if (x === undefined) return;
-    if (y === undefined) out.push(`${field} limit removed`);
-    else if (y > x) out.push(`${field} ${x} → ${y}`);
-  };
-  cmp("tokens", a.tokens, b.tokens);
-  cmp("steps", a.steps, b.steps);
-  cmp("time_ms", a.time?.ms, b.time?.ms);
-  if (a.spend && b.spend && a.spend.currency !== b.spend.currency) out.push("spend currency changed");
-  else cmp("spend_micros", a.spend?.micros, b.spend?.micros);
+  for (const dim of BUDGET_DIMENSIONS) {
+    const [x, y] = [budgetAmount(a, dim), budgetAmount(b, dim)];
+    if (dim === "spend" && a.spend && b.spend && a.spend.currency !== b.spend.currency) out.push("spend currency changed");
+    else if (x === undefined) continue;
+    else if (y === undefined) out.push(`${GROWTH_FIELD[dim]} limit removed`);
+    else if (y > x) out.push(`${GROWTH_FIELD[dim]} ${x} → ${y}`);
+  }
   return out;
 }
+
+/** How a governance change names each budget dimension: with its unit where the number alone does not say it. */
+const GROWTH_FIELD: Record<BudgetDimension, string> = { tokens: "tokens", steps: "steps", time: "time_ms", spend: "spend_micros", agents: "agents" };
 
 function json(v: unknown): string {
   return canonicalize(v as Json);

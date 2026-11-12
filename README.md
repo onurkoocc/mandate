@@ -146,9 +146,13 @@ pull request was opened, for 0.23 USD.
    when the compiler shows they fit what is left of it. `map` with bounds
    and disjoint writes, roles bound to people's keys in the lock, and a
    signed record for every decision. Today the language is read, checked
-   and hashed, and roles and signed decisions run: a decision is a record
-   its member signs with `--key`, and `mandate verify-decision` checks one
-   without the runtime. Envelopes, `map` and `plan` do not run yet. See
+   and hashed, and roles, signed decisions and envelopes run: a decision
+   is a record its member signs with `--key`, and `mandate
+   verify-decision` checks one without the runtime. A workflow with an
+   envelope starts only once a member of its owner role has signed the
+   package hash its card shows (`mandate view --card`, `mandate
+   approve-envelope`), and every delegation attempt is one of the
+   envelope's agents. `map` and `plan` do not run yet. See
    [`spec/envelope.md`](spec/envelope.md).
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
@@ -471,8 +475,10 @@ These cases from §25 are covered:
 | V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |
 | X01 | A package whose executor binding no longer fits its lock is refused at load; a changed agent or environment fails ValidateBinding; a bound agent never runs without its executor | `managed-agents` (and E0903 in the compiler) |
 | X04 | A bound agent's turns run in its delegation's session and its tools in the runtime's sandbox, journaled; replay calls neither | `managed-agents` |
+| N02 | A delegation that does not fit what is left of the envelope's `agents` is refused at reservation, and two siblings cannot both reserve the last one. Sub-programs come with `plan` | `envelope` |
 | H01 | A decision with no valid signature, an unknown key, or a member outside the role is refused and recorded as `decision_refused`; the wait stays open | `decisions`, `cli-decisions` |
 | H02 | `distinct_from` refuses a second approval by the same member, whichever key signs it | `decisions`, `cli-decisions` (and E1503 in the compiler) |
+| H03 | A run of an envelope workflow does not start without an approval of its package hash by a member of the envelope's owner role | `envelope`, `cli-envelope` |
 | H04 | Evidence for `human.approve` whose decision record was changed after signing shows as invalid, and a `Verified` value resting on it is refused | `decisions` |
 | H05 | A changed member, key or role binding in the lock is a new package and shows as a governance change | `lock-diff` (compiler) |
 

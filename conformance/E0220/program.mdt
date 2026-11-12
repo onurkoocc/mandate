@@ -1,0 +1,55 @@
+// An envelope's data class (spec/envelope.md "What it declares"): no
+// delegation and no model call in the run receives data above
+// `spawn.max_class`, which is `internal` when the envelope does not say. Doc
+// is confidential. As written, nothing here hands a Doc to anyone, and the
+// program checks. The cases E0220, E0220a and E0220b each change the last
+// step of W.
+
+mandate @ 0.4
+
+module example.classes @ 0.1
+
+use std.{model}
+
+role owner_role "Owner"
+
+type Doc = { body: Text } classified confidential
+
+capability M = model.infer(tier: standard, max_class: confidential)
+
+agent A {
+  role   "Summarizes."
+  caps   M
+  budget { steps: 3 }
+  skill s(d: Doc) -> Inferred<Text> ! {Model}
+  skill echo(t: Text) -> Inferred<Text> ! {Model}
+}
+
+agent Outer {
+  role   "Makes a document of a text, and has it summarized."
+  caps   M
+  budget { steps: 3 }
+  skill title(t: Text) -> Inferred<Text> ! {Model}
+  skill wrap(t: Text) -> Inferred<Text> ! {Delegate} {
+    delegate A.s(Doc { body: t })
+  }
+}
+
+fn via(d: Doc) -> Inferred<Text> {
+  delegate A.s(d)
+}
+
+fn calm(t: Text) -> Inferred<Text> {
+  delegate A.echo(t)
+}
+
+workflow W(d: Doc, t: Text) -> Inferred<Text>
+  envelope {
+    owner  owner_role
+    caps   M
+    budget { steps: 30, agents: 6 }
+  }
+{
+  let first = delegate A.echo(t)
+  calm(t)
+}

@@ -18,8 +18,9 @@
 //   reads                       E1201         data.read of a declared read, masking (doc 9 §5.1)
 //
 // 0.4 (spec/envelope.md): `map` and `plan` are typed here, and a workflow with an envelope is
-// checked against the envelope's capabilities and budget. The envelope's own rules (E17xx) are
-// not in this file yet.
+// checked against the envelope's capabilities, budget (with `steps` and `agents`) and
+// `spawn.max_class`. The envelope's own rules, E1701, E1704 and E1707, are in envelope.ts,
+// and the static cost model in cost.ts.
 //
 // Std calls the checker does not describe have unknown type and no effects,
 // so missing knowledge never produces an error.
@@ -50,6 +51,8 @@ import {
   type WorkflowDef,
 } from "../ir/types.js";
 import { nearestSpan } from "../ir/validate.js";
+import { blockCost, microsText } from "./cost.js";
+import { checkEnvelope, plansOutside } from "./envelope.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
 import { LIMITS } from "../limits.js";
@@ -108,8 +111,12 @@ interface Val {
 interface Usage {
   effect: string;
   scope?: string[];
-  /** For Model: the data class sent to the model. */
+  /** For Model: the data class sent to the model. For Delegate: the data class handed to the agent. */
   cls?: DataClass;
+  /** For Delegate: the `Agent.skill` it runs. */
+  to?: string;
+  /** The function this usage came through, when the body calls a function that does it. */
+  via?: string;
   path: string;
 }
 
@@ -135,6 +142,8 @@ interface Frame {
   delegated: Array<{ caps: CapVal[]; path: string; external: boolean }>;
   /** Inside a map's body: what its `with caps` hands each delegation, in place of the kinds it names. */
   handed?: CapVal[];
+  /** In a workflow with an envelope: the highest data class a delegation or a model may receive (`spawn.max_class`). */
+  maxClass?: DataClass;
 }
 
 const PUBLIC: DataClass = "public";
@@ -159,6 +168,10 @@ class Checker implements TypeEnv {
   private readonly out: Diagnostic[] = [];
   private readonly capDefs = new Map<string, CapVal[]>();
   private readonly fnUsage = new Map<string, Usage[] | "pending">();
+  /** What the body of each of the program's own skills uses, by `Agent.skill`. */
+  private readonly skillUsage = new Map<string, Usage[]>();
+  /** The program's workflows with an envelope: its data class and what the body uses, for `reach`. */
+  private readonly enveloped: Array<{ name: string; max: DataClass; usages: Usage[] }> = [];
   private readonly constVals = new Map<string, Val | "pending">();
   private readonly recursive = new Set<string>();
 
@@ -208,6 +221,7 @@ class Checker implements TypeEnv {
     }
     this.findRecursion();
     this.checkSystem();
+    plansOutside(this.program.defs, (code, message, path, facts) => this.report(code, message, path, facts));
     for (const [name, d] of Object.entries(this.program.defs)) {
       const base = ptr("defs", name);
       switch (d.kind) {
@@ -238,6 +252,7 @@ class Checker implements TypeEnv {
           break;
       }
     }
+    for (const w of this.enveloped) this.reach(w.name, w.max, w.usages);
     return this.out;
   }
 
@@ -410,6 +425,7 @@ class Checker implements TypeEnv {
       } else {
         const frame = this.bodyFrame("skill", `${name}.${sn}`, s.params, caps, ret);
         this.body(s.body, frame, `${sb}/body`, true);
+        this.skillUsage.set(`${name}.${sn}`, frame.usages);
         this.checkUsagesDeclared(frame.usages, s.effects, `${name}.${sn}`);
         frame.usages.forEach((u) => this.capsFor(u, caps).forEach((c) => used.add(c)));
       }
@@ -490,6 +506,16 @@ class Checker implements TypeEnv {
     const capsAt = `${base}/${bounds.capsAt}`;
     const caps = this.capList(bounds.caps, capsAt);
     const frame = this.bodyFrame("workflow", name, d.params, caps, this.ty(d.returns));
+    if (d.envelope) {
+      checkEnvelope(name, d, base, caps, {
+        report: (code, message, path, facts) => this.report(code, message, path, facts),
+        isCritical: (effect) => this.isCriticalEffect(effect),
+        covering: (effect, among) => this.capsFor({ effect, path: base }, among),
+      });
+      // `internal` when the envelope does not say (spec/envelope.md "What it declares").
+      frame.maxClass = d.envelope.spawn?.max_class ?? "internal";
+      this.enveloped.push({ name, max: frame.maxClass, usages: frame.usages });
+    }
     if (d.ensures) {
       this.expectBool(this.expr(d.ensures, this.child(frame, new Map([["result", { ty: frame.returns!, cls: PUBLIC }]])), `${base}/ensures`), `${base}/ensures`);
     }
@@ -499,6 +525,23 @@ class Checker implements TypeEnv {
     // Every effect the body uses directly must be authorized by the workflow's capabilities.
     const used = new Set<CapVal>();
     for (const u of frame.usages) {
+      // The envelope's data class bounds every model call in the run, whatever its capability allows.
+      if (frame.maxClass && u.effect === "Model" && u.cls && classRank(u.cls) > classRank(frame.maxClass)) {
+        this.report("E0220", `${u.cls} data is sent to a model, and ${name}'s envelope allows at most ${frame.maxClass} in the run (spawn.max_class).`, u.path, {
+          data_class: u.cls,
+          allowed: frame.maxClass,
+          by: "envelope",
+        });
+      }
+      // A delegation in the body itself is held to the class where it stands; one inside a function the body calls is held here.
+      if (frame.maxClass && u.effect === "Delegate" && u.via && u.cls && classRank(u.cls) > classRank(frame.maxClass)) {
+        this.report("E0220", `${u.to} receives ${u.cls} data inside ${u.via}, and ${name}'s envelope allows at most ${frame.maxClass} in a delegation (spawn.max_class).`, u.path, {
+          data_class: u.cls,
+          allowed: frame.maxClass,
+          by: "envelope",
+          via: u.via,
+        });
+      }
       if (UNGATED_EFFECTS.has(u.effect)) continue;
       const by = this.capsFor(u, caps);
       by.forEach((c) => used.add(c));
@@ -533,6 +576,35 @@ class Checker implements TypeEnv {
     const nodes = this.countNodes(d.body, new Set());
     if (nodes > LIMITS.expandedNodes) {
       this.report("E0105", `${name} expands to ${nodes} static nodes; the 0.1 limit is ${LIMITS.expandedNodes}.`, base, { nodes, limit: LIMITS.expandedNodes });
+    }
+  }
+
+  /**
+   * `spawn.max_class` bounds every delegation and model call in the run (spec/envelope.md "What it declares"), so
+   * also those in the body of a skill the workflow delegates to, however deep. What enters a skill was held to the
+   * class where it was delegated; what is found here is data that first has a higher class inside the skill, which
+   * hands it on or sends it to a model. The skills are the program's own: an imported agent's body was checked in
+   * its module.
+   */
+  private reach(name: string, max: DataClass, usages: Usage[]): void {
+    const seen = new Set<string>();
+    const next = usages.flatMap((u) => (u.effect === "Delegate" && u.to ? [u.to] : []));
+    while (next.length) {
+      const skill = next.shift()!;
+      if (seen.has(skill)) continue;
+      seen.add(skill);
+      for (const u of this.skillUsage.get(skill) ?? []) {
+        if (u.effect === "Delegate" && u.to) next.push(u.to);
+        if ((u.effect !== "Delegate" && u.effect !== "Model") || !u.cls || classRank(u.cls) <= classRank(max)) continue;
+        const what = u.effect === "Model" ? `${u.cls} data is sent to a model` : `${u.to} receives ${u.cls} data`;
+        this.report("E0220", `${what} inside ${skill}, which ${name} reaches, and ${name}'s envelope allows at most ${max} in the run (spawn.max_class).`, u.path, {
+          data_class: u.cls,
+          allowed: max,
+          by: "envelope",
+          workflow: name,
+          skill,
+        });
+      }
     }
   }
 
@@ -1101,7 +1173,12 @@ class Checker implements TypeEnv {
         const a = args[i];
         if (a) this.problem(assignable(a.ty, this.ty(param.type), this), `${path}/args/${i}/value`);
       });
-      for (const u of this.fnUsages(p!)) this.use(frame, { ...u, path, ...(u.effect === "Model" ? { cls: this.maxClass(cls, u.cls ?? PUBLIC) } : {}) });
+      // What the function does is done here, with what the call hands it: a model call or a delegation in it may
+      // receive the arguments, so it has at least their class.
+      for (const u of this.fnUsages(p!)) {
+        const sends = u.effect === "Model" || u.effect === "Delegate";
+        this.use(frame, { ...u, path, ...(sends ? { cls: this.maxClass(cls, u.cls ?? PUBLIC) } : {}), ...(u.effect === "Delegate" ? { via: u.via ?? p! } : {}) });
+      }
       return { ty: this.ty(d.returns), cls };
     }
     if (p === "quote") return { ty: TEXT, cls };
@@ -1295,7 +1372,7 @@ class Checker implements TypeEnv {
     this.delegateRest(e, frame, path, agent, skill, who, effective, given, cls);
     const remote = !!agent.remote;
     frame.delegated.push({ caps: effective, path, external: remote });
-    this.use(frame, { effect: "Delegate", path });
+    this.use(frame, { effect: "Delegate", path, cls, to: who });
     let ret = this.ty(skill.returns);
     if (remote && agent.remote!.trust !== "trusted") ret = named("Untrusted", ret);
     else if (!remote && !skill.body && effective.some((c) => c.ctor === "model.infer")) {
@@ -1353,6 +1430,15 @@ class Checker implements TypeEnv {
           allowed: DATA_CLASSES[best],
         });
       }
+    }
+
+    // An envelope bounds the data class of every delegation in the run (spec/envelope.md: spawn.max_class).
+    if (frame.maxClass && classRank(cls) > classRank(frame.maxClass)) {
+      this.report("E0220", `${who} receives ${cls} data, and ${frame.def}'s envelope allows at most ${frame.maxClass} in a delegation (spawn.max_class).`, path, {
+        data_class: cls,
+        allowed: frame.maxClass,
+        by: "envelope",
+      });
     }
 
     // A delegation's timeout is a Duration (§8.7, §9.1); the runtime enforces it.
@@ -1568,7 +1654,7 @@ class Checker implements TypeEnv {
     const limit = bounds.budget;
     if (!limit) return;
     const at = `${base}/${bounds.budgetAt}`;
-    const cost = this.costOf(d.body, `${base}/body`);
+    const cost = blockCost({ def: (n) => this.def(n), recursive: this.recursive, envelope: !!d.envelope }, d.body, `${base}/body`);
     const facts: Record<string, unknown> = {};
     if (limit.spend) {
       const currencies = Object.keys(cost.spend);
@@ -1583,114 +1669,15 @@ class Checker implements TypeEnv {
     }
     if (limit.tokens !== undefined && cost.tokens > limit.tokens) facts["tokens"] = { limit: limit.tokens, declared_by_children: cost.tokens };
     if (limit.time && cost.time > limit.time.ms) facts["time_ms"] = { limit: limit.time.ms, declared_by_children: cost.time };
+    // An envelope bounds the whole run, so its static part is held to steps and agents too
+    // (spec/envelope.md "Static checks"). A workflow's own budget is compared as it always was.
+    if (d.envelope) {
+      if (limit.steps !== undefined && cost.steps > limit.steps) facts["steps"] = { limit: limit.steps, declared_by_children: cost.steps };
+      if (limit.agents !== undefined && cost.agents > limit.agents) facts["agents"] = { limit: limit.agents, declared_by_children: cost.agents };
+    }
     if (Object.keys(facts).length) {
       this.report("E0501", `The budgets ${name} hands out exceed its own budget (${Object.keys(facts).join(", ")}).`, at, { ...facts, breakdown: cost.parts });
     }
-  }
-
-  /**
-   * Upper bound of a block's spend: sequential statements add up, `par`
-   * branches add money and tokens but take the longest time, `if` takes the
-   * larger branch, and loops multiply by max_iter. Inside a called function,
-   * costs are reported at the call site (`at`).
-   */
-  private costOf(stmts: Stmt[], base: string, inFns: ReadonlySet<string> = new Set()): Cost {
-    const total = zeroCost();
-    const at = (p: string): string => (inFns.size ? base : p);
-    const ec = (e: Expr, p: string): Cost => this.exprCost(e, at(p), inFns);
-    stmts.forEach((s, i) => {
-      const path = `${base}/${i}`;
-      switch (s.op) {
-        case "let":
-          addSeq(total, ec(s.value, `${path}/value`));
-          break;
-        case "expr":
-          addSeq(total, ec(s.value, `${path}/value`));
-          break;
-        case "return":
-          if (s.value) addSeq(total, ec(s.value, `${path}/value`));
-          break;
-        case "par": {
-          const branches = Object.entries(s.branches).map(([bn, e]) => ec(e, `${path}/branches/${bn}`));
-          addSeq(total, parallel(branches));
-          break;
-        }
-        case "if":
-          addSeq(total, alternative([this.costOf(s.then, at(`${path}/then`), inFns), this.costOf(s.else ?? [], at(`${path}/else`), inFns)]));
-          break;
-        case "loop": {
-          const once = this.costOf(s.body, at(`${path}/body`), inFns);
-          if (s.max_iter !== undefined) addSeq(total, scale(once, s.max_iter));
-          else addSeq(total, once);
-          break;
-        }
-        default:
-          break;
-      }
-    });
-    return total;
-  }
-
-  /** Upper bound of what an expression hands out: delegates and budgeted functions it runs. */
-  private exprCost(e: Expr, path: string, inFns: ReadonlySet<string> = new Set()): Cost {
-    const c = zeroCost();
-    // Costs are reported at the enclosing statement (or switch arm).
-    const sub = (x: Expr): Cost => this.exprCost(x, path, inFns);
-    if (e.op === "switch") {
-      // Only one arm runs.
-      addSeq(c, sub(e.on));
-      addSeq(c, alternative(e.cases.map((k, i) => this.exprCost(k.then, inFns.size ? path : `${path}/cases/${i}/then`, inFns))));
-      return c;
-    }
-    if (e.op === "block") return this.costOf(e.body, inFns.size ? path : `${path}/body`, inFns);
-    for (const k of children(e)) addSeq(c, sub(k));
-    if (e.op === "map") {
-      // `n ×` the map's budget, or its body: money and tokens add up over items, and time is
-      // `⌈n / k⌉ ×` one item's (spec/envelope.md "map"). A map with no `max` is bounded by the
-      // envelope's `agents`, which the envelope's own rules count.
-      const once = e.budget ? budgetCost(e.budget, "map", path) : this.costOf(e.body, inFns.size ? path : `${path}/body`, inFns);
-      if (e.max === undefined) addSeq(c, once);
-      else {
-        const all = scale(once, e.max);
-        all.time = once.time * Math.ceil(e.max / (e.par ?? 1));
-        addSeq(c, all);
-      }
-      return c;
-    }
-    if (e.op === "plan") {
-      const lead = this.def(e.agent);
-      if (lead?.kind !== "agent") return c;
-      const skill = Object.hasOwn(lead.skills, e.skill) ? lead.skills[e.skill] : undefined;
-      const b = e.budget ?? skill?.budget ?? lead.budget;
-      if (b) addSeq(c, budgetCost(b, `${e.agent}.${e.skill}`, path));
-      return c;
-    }
-    if (e.op === "delegate") {
-      const agent = this.def(e.agent);
-      if (agent?.kind !== "agent") return c;
-      const skill = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill] : undefined;
-      const b = e.budget ?? skill?.budget ?? agent.budget;
-      // Every attempt reserves again: restart(max: n) runs up to n + 1 times, and degrade(to: F) may run F after it.
-      const sup = e.supervise;
-      const maxArg = sup?.name === "restart" ? sup.args?.find((a) => a.name === "max")?.value : undefined;
-      const attempts = sup?.name === "restart" ? (maxArg?.op === "int" ? maxArg.value : 1) + 1 : 1;
-      if (b) addSeq(c, attempts > 1 ? scale(budgetCost(b, `${e.agent}.${e.skill}`, path), attempts) : budgetCost(b, `${e.agent}.${e.skill}`, path));
-      const to = sup?.name === "degrade" ? sup.args?.find((a) => a.name === "to")?.value : undefined;
-      const fb = to?.op === "var" ? this.def(to.name) : undefined;
-      if (fb?.kind === "agent") {
-        const fbSkill = Object.hasOwn(fb.skills, e.skill) ? fb.skills[e.skill] : undefined;
-        const fbBudget = e.budget ?? fbSkill?.budget ?? fb.budget;
-        if (fbBudget) addSeq(c, budgetCost(fbBudget, `${to!.op === "var" ? to.name : ""}.${e.skill}`, path));
-      }
-    } else if (e.op === "call" && e.callee.op === "var") {
-      const name = e.callee.name;
-      const f = this.def(name);
-      if (f?.kind !== "fn") return c;
-      // A function's own budget bounds everything it runs; without one, count its body.
-      if (f.budget) addSeq(c, budgetCost(f.budget, name, path));
-      else if (!inFns.has(name) && !this.recursive.has(name)) addSeq(c, this.costOf(f.body, path, new Set([...inFns, name])));
-    }
-    return c;
   }
 
   private countNodes(stmts: Stmt[], seen: Set<string>): number {
@@ -1714,76 +1701,6 @@ class Checker implements TypeEnv {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────
-
-interface Cost {
-  spend: Record<string, number>;
-  tokens: number;
-  time: number;
-  parts: Array<{ from: string; at: string; budget: Record<string, unknown> }>;
-}
-
-function zeroCost(): Cost {
-  return { spend: {}, tokens: 0, time: 0, parts: [] };
-}
-
-function budgetCost(b: Budget, from: string, at: string): Cost {
-  const c = zeroCost();
-  if (b.spend) c.spend[b.spend.currency] = b.spend.micros;
-  c.tokens = b.tokens ?? 0;
-  c.time = b.time?.ms ?? 0;
-  const shown: Record<string, unknown> = {};
-  if (b.spend) shown["spend"] = microsText(b.spend.micros, b.spend.currency);
-  if (b.tokens !== undefined) shown["tokens"] = b.tokens;
-  if (b.time) shown["time_ms"] = b.time.ms;
-  c.parts.push({ from, at, budget: shown });
-  return c;
-}
-
-function addSeq(into: Cost, c: Cost): void {
-  for (const [k, v] of Object.entries(c.spend)) into.spend[k] = (into.spend[k] ?? 0) + v;
-  into.tokens += c.tokens;
-  into.time += c.time;
-  into.parts.push(...c.parts);
-}
-
-/** Parallel branches: money and tokens add up; wall-clock time is the longest branch. */
-function parallel(cs: Cost[]): Cost {
-  const out = zeroCost();
-  for (const c of cs) {
-    for (const [k, v] of Object.entries(c.spend)) out.spend[k] = (out.spend[k] ?? 0) + v;
-    out.tokens += c.tokens;
-    out.time = Math.max(out.time, c.time);
-    out.parts.push(...c.parts);
-  }
-  return out;
-}
-
-/** Alternatives (if/else): the upper bound is the larger branch in each dimension. */
-function alternative(cs: Cost[]): Cost {
-  const out = zeroCost();
-  for (const c of cs) {
-    for (const [k, v] of Object.entries(c.spend)) out.spend[k] = Math.max(out.spend[k] ?? 0, v);
-    out.tokens = Math.max(out.tokens, c.tokens);
-    out.time = Math.max(out.time, c.time);
-    out.parts.push(...c.parts);
-  }
-  return out;
-}
-
-function scale(c: Cost, n: number): Cost {
-  const out = zeroCost();
-  for (const [k, v] of Object.entries(c.spend)) out.spend[k] = v * n;
-  out.tokens = c.tokens * n;
-  out.time = c.time * n;
-  out.parts = c.parts.map((p) => ({ ...p, from: `${p.from} ×${n}` }));
-  return out;
-}
-
-function microsText(micros: number, currency: string): string {
-  const whole = Math.floor(micros / 1_000_000);
-  const frac = String(micros % 1_000_000).padStart(6, "0").replace(/0+$/, "");
-  return `${whole}${frac ? "." + frac : ""} ${currency}`;
-}
 
 function overlapText(a: CapVal, b: CapVal): string {
   const sa = a.scope ? a.scope.join(", ") : "an unknown scope";
@@ -1878,7 +1795,7 @@ export function walkExpr(e: Expr, f: (e: Expr) => void): void {
 }
 
 /** Direct sub-expressions; the statements of a block or of a map's body are not included. */
-function children(e: Expr): Expr[] {
+export function children(e: Expr): Expr[] {
   switch (e.op) {
     case "list":
     case "set":
