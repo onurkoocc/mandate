@@ -35,12 +35,19 @@ import { join, resolve } from "node:path";
 import { globRegExp, requirementFor, type CapVal } from "@mandate/compiler";
 import type { CheckLog, CheckResult, CheckSubject, SystemFacts, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { sha256Of } from "./artifacts.js";
+import { childEnv, DOCKER_ENV } from "./env.js";
 import { PathRefused, realEntries, writeWithin } from "./paths.js";
 import { MxcAdapter } from "./sandbox.js";
 import { covers, diffMigrations, diffSpec, type ChangeKind } from "./specdiff.js";
 import { isObj, plain, type Value } from "./values.js";
 
 export const BOUNDARY_HANDLER = "mandate-boundary-verifier@0.3";
+
+/**
+ * The methods `BoundaryVerifier` answers itself, in the runtime's process (they need the run's working copies);
+ * it passes every other method to the verifier inside it. Their evidence carries no verifier attestation.
+ */
+export const BOUNDARY_METHODS: readonly string[] = ["test.suite_each", "test.contract", "test.integration", "test.ci", "test.planned"];
 
 /** Directories linked, not copied, into a test copy, and readable where they are: dependencies. */
 export const LINKED = ["node_modules", ".venv"];
@@ -137,7 +144,7 @@ export class BoundaryVerifier implements VerifierAdapter {
 
   async check(req: VerifyRequest): Promise<CheckResult> {
     const sys = req.system;
-    const boundary = ["test.suite_each", "test.contract", "test.integration", "test.ci", "test.planned"].includes(req.method);
+    const boundary = BOUNDARY_METHODS.includes(req.method);
     if (!boundary) return this.inner ? this.inner.check(req) : { passed: false, detail: { unsupported: `the verifier has no method ${req.method}` } };
     if (!sys) return { passed: false, detail: { reason: `${req.method} needs the run's system model and workspace (design doc 9 §4)` }, producer: this.producer() };
     const subject = snapshot(sys);
@@ -609,12 +616,15 @@ export class GitHubCi implements CiSource {
   }
 }
 
-/** docker on this host, through its CLI. */
+/**
+ * docker on this host, through its CLI. It gets what a program needs to run, the Docker client's own settings, and
+ * what the caller gives (a compose file's variables); none of the runtime's secrets (env.ts).
+ */
 export const realDocker: Docker = {
   run: (args, o = {}) =>
     new Promise((resolve) => {
       import("node:child_process").then(({ execFile }) => {
-        const child = execFile("docker", args, { cwd: o.cwd, env: { ...process.env, ...(o.env ?? {}) }, timeout: o.timeoutMs ?? 0, maxBuffer: 64 << 20, killSignal: "SIGKILL" }, (err, stdout, stderr) => {
+        const child = execFile("docker", args, { cwd: o.cwd, env: childEnv({ pass: DOCKER_ENV, set: o.env ?? {} }), timeout: o.timeoutMs ?? 0, maxBuffer: 64 << 20, killSignal: "SIGKILL" }, (err, stdout, stderr) => {
           const code = err ? (typeof (err as { code?: unknown }).code === "number" ? ((err as { code: number }).code) : 1) : 0;
           resolve({ exitCode: code, stdout: String(stdout), stderr: String(stderr) });
         });

@@ -46,14 +46,15 @@ import { managedAgentsExecutor, sdkApi } from "./managed-agents.js";
 import { AnthropicModel } from "./anthropic.js";
 import { ArtifactStore, DirBlobs } from "./artifacts.js";
 import { decisionKeysIn } from "./decisions.js";
+import { childEnv, verifierEnv } from "./env.js";
 import { EvidenceSigner, TrustedKeys } from "./evidence.js";
 import type { BucketConfig } from "./ratelimit.js";
 import type { RuntimeOptions } from "./runtime.js";
 import { openDb, type Db } from "./db.js";
 import { GitHubPullRequests } from "./github.js";
 import { GitHubMerges } from "./github-merge.js";
-import { BoundaryVerifier, GitHubCi, realDocker, type IntegrationConfig } from "./boundary.js";
-import { OnboardVerifier, type OnboardConfig } from "./onboard.js";
+import { BOUNDARY_METHODS, BoundaryVerifier, GitHubCi, realDocker, type IntegrationConfig } from "./boundary.js";
+import { ONBOARD_METHODS, OnboardVerifier, type OnboardConfig } from "./onboard.js";
 import { DeclaredReads, SampleReads } from "./broker.js";
 import type { Value } from "./values.js";
 import { MxcHost } from "./mxc.js";
@@ -214,11 +215,30 @@ export function runtimeOptions(config: RuntimeConfig, db: Db): RuntimeOptions {
     // Keys rotated out (`mandate rotate-key`) and keys the configuration names: their evidence still counts.
     trustedKeys: [...EvidenceSigner.trustedIn(trustedKeysDir(config)), ...(config.evidence.trusted ?? []).map((f) => readFileSync(f, "utf8"))],
     ...(config.rateLimits ? { rateLimits: config.rateLimits } : {}),
-    ...(config.verifier?.process ? { trustedVerifiers: verifierKeys(config) } : {}),
+    ...(config.verifier?.process ? { trustedVerifiers: verifierKeys(config), inProcessMethods: inProcessMethods(config) } : {}),
     // The members' public keys; a file that is not the key its name says stops every command (bad_decision_key).
     decisions: { mode: config.decisions.mode, keys: decisionKeysIn(config.decisions.keys) },
     ...(config.plan?.checkMs !== undefined ? { plan: { checkMs: config.plan.checkMs } } : {}),
   };
+}
+
+/** Whether the configuration runs boundary checks in this process: they need the run's working copies, and a sandbox. */
+function runsBoundary(config: RuntimeConfig): boolean {
+  return !!config.boundary && !!config.sandbox;
+}
+
+/** Whether the configuration runs onboarding checks in this process. */
+function runsOnboard(config: RuntimeConfig): boolean {
+  return !!config.onboard;
+}
+
+/**
+ * The methods this configuration checks in the runtime's process even with a verifier process of its own:
+ * `adaptersFor` puts the boundary and onboarding verifiers in front of it, and they answer these themselves.
+ * Their evidence carries no verifier attestation; every other check's does.
+ */
+export function inProcessMethods(config: RuntimeConfig): string[] {
+  return [...(runsBoundary(config) ? BOUNDARY_METHODS : []), ...(runsOnboard(config) ? ONBOARD_METHODS : [])];
 }
 
 /** The verifier process's entry point, next to this module. */
@@ -233,7 +253,8 @@ export function verifierKeys(config: RuntimeConfig, main: string[] = [process.ex
   const vp = config.verifier?.process;
   if (!vp) return new TrustedKeys();
   const files = vp.trusted ?? [`${vp.key}.pub`];
-  if (!vp.trusted && !existsSync(files[0]!)) execFileSync(main[0]!, [...main.slice(1), "--init-key", vp.key], { stdio: ["ignore", "ignore", "inherit"] });
+  // Creating a key needs nothing of the runtime's environment (env.ts).
+  if (!vp.trusted && !existsSync(files[0]!)) execFileSync(main[0]!, [...main.slice(1), "--init-key", vp.key], { stdio: ["ignore", "ignore", "inherit"], env: childEnv() });
   return new TrustedKeys(files.map((f) => readFileSync(f, "utf8")));
 }
 
@@ -316,8 +337,10 @@ function missing(what: string): never {
 /**
  * The adapters for a package. The model adapter needs the program and its
  * lock; secrets are read from the environment here and nowhere else (K7, K18).
+ * A verifier process is started with `main` (the program and its arguments)
+ * and gets only the variables env.ts `verifierEnv` lets through.
  */
-export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv = process.env): Adapters {
+export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv = process.env, main: string[] = [process.execPath, VERIFIER_MAIN]): Adapters {
   const model = modelFor(config, program, lock, env);
   const tools: Record<string, ToolAdapter> = {};
   if (config.github) {
@@ -330,13 +353,14 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
   const sandbox = sandboxFor(config);
   const executor = executorFor(config, lock, env);
   const own = config.verifier?.process
-    ? new ProcessVerifier({ command: [process.execPath, VERIFIER_MAIN, "--config", config.file!], trusted: verifierKeys(config), package: { program, lock }, env })
+    ? new ProcessVerifier({ command: [...main, "--config", config.file!], trusted: verifierKeys(config, main), package: { program, lock }, env: verifierEnv({ model: !!config.model }, env) })
     : config.verifier && sandbox
       ? new SandboxVerifier(config.verifier, sandbox, model)
       : undefined;
   // Boundary checks need the run's working copies, so they run in this process; other checks go to the verifier above.
-  const boundary = config.boundary && sandbox ? boundaryVerifier(config, sandbox, env, own) : undefined;
-  const onboard = config.onboard ? new OnboardVerifier(config.onboard, sandbox, boundary ?? own) : undefined;
+  // inProcessMethods says which methods these two answer, from the same conditions.
+  const boundary = runsBoundary(config) && sandbox ? boundaryVerifier(config, sandbox, env, own) : undefined;
+  const onboard = runsOnboard(config) ? new OnboardVerifier(config.onboard!, sandbox, boundary ?? own) : undefined;
   return {
     agents: { run: async () => missing("agent adapter: agents run as agent loops, which need model and sandbox") },
     ...(sandbox && (model || executor)

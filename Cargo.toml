@@ -1,0 +1,27 @@
+# The Rust implementation of Mandate. Today it is one crate, mandate-ir, which
+# reads, canonicalises and hashes IR exactly as the TypeScript compiler does;
+# the vectors in vectors/ hold the two to the same bytes.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.100"
+license = "Apache-2.0"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# Untrusted input must never panic: no unwrap, no indexing that can go out of
+# bounds, no arithmetic that can overflow.
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+indexing_slicing = "warn"
+arithmetic_side_effects = "warn"

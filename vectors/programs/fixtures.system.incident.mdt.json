@@ -1,0 +1,558 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "fixtures/system/incident.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.3",
+  "canonical": "{\"defs\":{\"Incident\":{\"kind\":\"type\",\"type\":{\"record\":{\"since\":{\"ref\":\"Text\"},\"tracking_no\":{\"ref\":\"Text\"}}}},\"Investigate\":{\"body\":[{\"name\":\"errors\",\"op\":\"let\",\"value\":{\"args\":[{\"value\":{\"name\":\"mcp_errors\",\"of\":{\"name\":\"prod_sim\",\"op\":\"var\"},\"op\":\"field\"}},{\"name\":\"since\",\"value\":{\"name\":\"since\",\"of\":{\"name\":\"incident\",\"op\":\"var\"},\"op\":\"field\"}},{\"name\":\"max_class\",\"value\":{\"name\":\"internal\",\"op\":\"var\"}}],\"callee\":{\"name\":\"read\",\"of\":{\"name\":\"data\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},{\"name\":\"warnings\",\"op\":\"let\",\"value\":{\"args\":[{\"value\":{\"name\":\"core_warnings\",\"of\":{\"name\":\"prod_sim\",\"op\":\"var\"},\"op\":\"field\"}},{\"name\":\"since\",\"value\":{\"name\":\"since\",\"of\":{\"name\":\"incident\",\"op\":\"var\"},\"op\":\"field\"}},{\"name\":\"max_class\",\"value\":{\"name\":\"internal\",\"op\":\"var\"}}],\"callee\":{\"name\":\"read\",\"of\":{\"name\":\"data\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},{\"name\":\"events\",\"op\":\"let\",\"value\":{\"args\":[{\"value\":{\"name\":\"shipment_events\",\"of\":{\"name\":\"prod_sim\",\"op\":\"var\"},\"op\":\"field\"}},{\"name\":\"tracking_no\",\"value\":{\"name\":\"tracking_no\",\"of\":{\"name\":\"incident\",\"op\":\"var\"},\"op\":\"field\"}},{\"name\":\"max_class\",\"value\":{\"name\":\"internal\",\"op\":\"var\"}}],\"callee\":{\"name\":\"read\",\"of\":{\"name\":\"data\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},{\"name\":\"shipment\",\"op\":\"let\",\"value\":{\"args\":[{\"value\":{\"name\":\"shipment_overview\",\"of\":{\"name\":\"prod_sim\",\"op\":\"var\"},\"op\":\"field\"}},{\"name\":\"tracking_no\",\"value\":{\"name\":\"tracking_no\",\"of\":{\"name\":\"incident\",\"op\":\"var\"},\"op\":\"field\"}},{\"name\":\"max_class\",\"value\":{\"name\":\"internal\",\"op\":\"var\"}}],\"callee\":{\"name\":\"read\",\"of\":{\"name\":\"data\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},{\"op\":\"expr\",\"value\":{\"agent\":\"Investigator\",\"args\":[{\"value\":{\"name\":\"errors\",\"op\":\"var\"}},{\"value\":{\"name\":\"warnings\",\"op\":\"var\"}},{\"value\":{\"name\":\"events\",\"op\":\"var\"}},{\"value\":{\"name\":\"shipment\",\"op\":\"var\"}}],\"op\":\"delegate\",\"skill\":\"analyze\"}}],\"budget\":{\"spend\":{\"currency\":\"USD\",\"micros\":3000000}},\"caps\":[{\"name\":\"ModelStd\",\"op\":\"var\"},{\"name\":\"Reads\",\"op\":\"var\"}],\"kind\":\"workflow\",\"params\":[{\"name\":\"incident\",\"type\":{\"ref\":\"Incident\"}}],\"returns\":{\"args\":[{\"ref\":\"Report\"}],\"ref\":\"Inferred\"}},\"Investigator\":{\"budget\":{\"spend\":{\"currency\":\"USD\",\"micros\":2000000},\"steps\":6,\"tokens\":400000},\"caps\":[{\"name\":\"ModelStd\",\"op\":\"var\"}],\"kind\":\"agent\",\"role\":\"Finds the root cause of an incident from logs and replica rows. Changes nothing.\",\"skills\":{\"analyze\":{\"effects\":[{\"effect\":\"Model\"}],\"params\":[{\"name\":\"errors\",\"type\":{\"args\":[{\"args\":[{\"ref\":\"LogLine\"}],\"ref\":\"List\"}],\"ref\":\"Untrusted\"}},{\"name\":\"warnings\",\"type\":{\"args\":[{\"args\":[{\"ref\":\"LogLine\"}],\"ref\":\"List\"}],\"ref\":\"Untrusted\"}},{\"name\":\"events\",\"type\":{\"args\":[{\"args\":[{\"ref\":\"EventRow\"}],\"ref\":\"List\"}],\"ref\":\"Untrusted\"}},{\"name\":\"shipment\",\"type\":{\"args\":[{\"args\":[{\"ref\":\"ShipmentSeen\"}],\"ref\":\"List\"}],\"ref\":\"Untrusted\"}}],\"returns\":{\"args\":[{\"ref\":\"Report\"}],\"ref\":\"Inferred\"}}}},\"ModelStd\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"tier\",\"value\":{\"name\":\"standard\",\"op\":\"var\"}}],\"callee\":{\"name\":\"infer\",\"of\":{\"name\":\"model\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"Reads\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"name\":\"prod_sim\",\"op\":\"var\"}},{\"value\":{\"name\":\"mcp_errors\",\"op\":\"var\"}},{\"value\":{\"name\":\"core_warnings\",\"op\":\"var\"}},{\"value\":{\"name\":\"shipment_events\",\"op\":\"var\"}},{\"value\":{\"name\":\"shipment_overview\",\"op\":\"var\"}}],\"callee\":{\"name\":\"read\",\"of\":{\"name\":\"data\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"Report\":{\"kind\":\"type\",\"type\":{\"record\":{\"affected_cities\":{\"args\":[{\"ref\":\"Text\"}],\"ref\":\"List\"},\"evidence\":{\"args\":[{\"ref\":\"Text\"}],\"ref\":\"List\"},\"root_cause\":{\"ref\":\"Text\"}}}},\"ShipmentSeen\":{\"kind\":\"type\",\"type\":{\"record\":{\"attempts\":{\"ref\":\"Int\"},\"delivery_date\":{\"ref\":\"Text\"},\"delivery_status\":{\"ref\":\"Text\"},\"destination_city\":{\"ref\":\"Text\"},\"email\":{\"ref\":\"Masked\"},\"full_name\":{\"ref\":\"Masked\"},\"phone\":{\"ref\":\"Masked\"},\"status\":{\"ref\":\"Text\"},\"tracking_no\":{\"ref\":\"Text\"}}}}},\"language\":\"mandate/0.3\",\"module\":\"acme.tasks.incident\",\"uses\":[{\"module\":\"acme.system\",\"names\":[\"EventRow\",\"LogLine\",\"prod_sim\"]},{\"module\":\"std\",\"names\":[\"data\",\"model\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:856584ddf4eaa139b60dfcb2863177d4843935efb20afcb3ec0d1a0d55031414",
+    "defs": [
+      [
+        "Incident",
+        "sha256:48ee93a61e5f094a225326553a46cc832d5496b44de4d0e8049e64a74fbf94a0"
+      ],
+      [
+        "Investigate",
+        "sha256:d486d94f6b24a7ab177629b12e28533d62a2a1ff2bbe37c1be73d6065a0d8ae9"
+      ],
+      [
+        "Investigator",
+        "sha256:70d35e41d043fb7164f09c7bb23dd264ffb69bb71156bf952b5a6731a39c4529"
+      ],
+      [
+        "ModelStd",
+        "sha256:d9ec40f0bc25850f99d9c096b64c837345c4d2824d85fdd7f6eaf80ce750c97a"
+      ],
+      [
+        "Reads",
+        "sha256:6315cf1ccd8b51c3a8c6cb25c6824bff6153cd3edde365ba3c9e1564a7ad95cf"
+      ],
+      [
+        "Report",
+        "sha256:84dd4449a8d982b571591284ddcb5396c7c391f79eea5ac0ebb0d0b5aec9e512"
+      ],
+      [
+        "ShipmentSeen",
+        "sha256:46fc32a0a53f7c4596ddb80de8f671eca3f71e31c88036d9c68f906e3bf6766e"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.3",
+    "module": "acme.tasks.incident",
+    "version": "0.1",
+    "defs": {
+      "Reads": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "data"
+            },
+            "name": "read"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "prod_sim"
+              }
+            },
+            {
+              "value": {
+                "op": "var",
+                "name": "mcp_errors"
+              }
+            },
+            {
+              "value": {
+                "op": "var",
+                "name": "core_warnings"
+              }
+            },
+            {
+              "value": {
+                "op": "var",
+                "name": "shipment_events"
+              }
+            },
+            {
+              "value": {
+                "op": "var",
+                "name": "shipment_overview"
+              }
+            }
+          ]
+        }
+      },
+      "ModelStd": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "model"
+            },
+            "name": "infer"
+          },
+          "args": [
+            {
+              "name": "tier",
+              "value": {
+                "op": "var",
+                "name": "standard"
+              }
+            }
+          ]
+        }
+      },
+      "Incident": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "since": {
+              "ref": "Text"
+            },
+            "tracking_no": {
+              "ref": "Text"
+            }
+          }
+        }
+      },
+      "ShipmentSeen": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "tracking_no": {
+              "ref": "Text"
+            },
+            "status": {
+              "ref": "Text"
+            },
+            "destination_city": {
+              "ref": "Text"
+            },
+            "delivery_date": {
+              "ref": "Text"
+            },
+            "delivery_status": {
+              "ref": "Text"
+            },
+            "attempts": {
+              "ref": "Int"
+            },
+            "full_name": {
+              "ref": "Masked"
+            },
+            "phone": {
+              "ref": "Masked"
+            },
+            "email": {
+              "ref": "Masked"
+            }
+          }
+        }
+      },
+      "Report": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "root_cause": {
+              "ref": "Text"
+            },
+            "evidence": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ]
+            },
+            "affected_cities": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Investigator": {
+        "kind": "agent",
+        "caps": [
+          {
+            "op": "var",
+            "name": "ModelStd"
+          }
+        ],
+        "skills": {
+          "analyze": {
+            "params": [
+              {
+                "name": "errors",
+                "type": {
+                  "ref": "Untrusted",
+                  "args": [
+                    {
+                      "ref": "List",
+                      "args": [
+                        {
+                          "ref": "LogLine"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "warnings",
+                "type": {
+                  "ref": "Untrusted",
+                  "args": [
+                    {
+                      "ref": "List",
+                      "args": [
+                        {
+                          "ref": "LogLine"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "events",
+                "type": {
+                  "ref": "Untrusted",
+                  "args": [
+                    {
+                      "ref": "List",
+                      "args": [
+                        {
+                          "ref": "EventRow"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "shipment",
+                "type": {
+                  "ref": "Untrusted",
+                  "args": [
+                    {
+                      "ref": "List",
+                      "args": [
+                        {
+                          "ref": "ShipmentSeen"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "ref": "Inferred",
+              "args": [
+                {
+                  "ref": "Report"
+                }
+              ]
+            },
+            "effects": [
+              {
+                "effect": "Model"
+              }
+            ]
+          }
+        },
+        "role": "Finds the root cause of an incident from logs and replica rows. Changes nothing.",
+        "budget": {
+          "tokens": 400000,
+          "spend": {
+            "micros": 2000000,
+            "currency": "USD"
+          },
+          "steps": 6
+        }
+      },
+      "Investigate": {
+        "kind": "workflow",
+        "params": [
+          {
+            "name": "incident",
+            "type": {
+              "ref": "Incident"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Inferred",
+          "args": [
+            {
+              "ref": "Report"
+            }
+          ]
+        },
+        "caps": [
+          {
+            "op": "var",
+            "name": "ModelStd"
+          },
+          {
+            "op": "var",
+            "name": "Reads"
+          }
+        ],
+        "body": [
+          {
+            "op": "let",
+            "name": "errors",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "data"
+                },
+                "name": "read"
+              },
+              "args": [
+                {
+                  "value": {
+                    "op": "field",
+                    "of": {
+                      "op": "var",
+                      "name": "prod_sim"
+                    },
+                    "name": "mcp_errors"
+                  }
+                },
+                {
+                  "name": "since",
+                  "value": {
+                    "op": "field",
+                    "of": {
+                      "op": "var",
+                      "name": "incident"
+                    },
+                    "name": "since"
+                  }
+                },
+                {
+                  "name": "max_class",
+                  "value": {
+                    "op": "var",
+                    "name": "internal"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "let",
+            "name": "warnings",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "data"
+                },
+                "name": "read"
+              },
+              "args": [
+                {
+                  "value": {
+                    "op": "field",
+                    "of": {
+                      "op": "var",
+                      "name": "prod_sim"
+                    },
+                    "name": "core_warnings"
+                  }
+                },
+                {
+                  "name": "since",
+                  "value": {
+                    "op": "field",
+                    "of": {
+                      "op": "var",
+                      "name": "incident"
+                    },
+                    "name": "since"
+                  }
+                },
+                {
+                  "name": "max_class",
+                  "value": {
+                    "op": "var",
+                    "name": "internal"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "let",
+            "name": "events",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "data"
+                },
+                "name": "read"
+              },
+              "args": [
+                {
+                  "value": {
+                    "op": "field",
+                    "of": {
+                      "op": "var",
+                      "name": "prod_sim"
+                    },
+                    "name": "shipment_events"
+                  }
+                },
+                {
+                  "name": "tracking_no",
+                  "value": {
+                    "op": "field",
+                    "of": {
+                      "op": "var",
+                      "name": "incident"
+                    },
+                    "name": "tracking_no"
+                  }
+                },
+                {
+                  "name": "max_class",
+                  "value": {
+                    "op": "var",
+                    "name": "internal"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "let",
+            "name": "shipment",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "data"
+                },
+                "name": "read"
+              },
+              "args": [
+                {
+                  "value": {
+                    "op": "field",
+                    "of": {
+                      "op": "var",
+                      "name": "prod_sim"
+                    },
+                    "name": "shipment_overview"
+                  }
+                },
+                {
+                  "name": "tracking_no",
+                  "value": {
+                    "op": "field",
+                    "of": {
+                      "op": "var",
+                      "name": "incident"
+                    },
+                    "name": "tracking_no"
+                  }
+                },
+                {
+                  "name": "max_class",
+                  "value": {
+                    "op": "var",
+                    "name": "internal"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "expr",
+            "value": {
+              "op": "delegate",
+              "agent": "Investigator",
+              "skill": "analyze",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "errors"
+                  }
+                },
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "warnings"
+                  }
+                },
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "events"
+                  }
+                },
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "shipment"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "budget": {
+          "spend": {
+            "micros": 3000000,
+            "currency": "USD"
+          }
+        }
+      }
+    },
+    "uses": [
+      {
+        "module": "acme.system",
+        "names": [
+          "EventRow",
+          "LogLine",
+          "prod_sim"
+        ]
+      },
+      {
+        "module": "std",
+        "names": [
+          "data",
+          "model"
+        ]
+      }
+    ]
+  }
+}

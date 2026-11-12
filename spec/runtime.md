@@ -343,11 +343,14 @@ value's word. Each must:
 - be evidence of this run, for the value's contract;
 - have passed;
 - be signed by a trusted key, exactly as recorded;
-- if it claims a verifier attestation, carry one that holds (below).
+- carry a verifier attestation that holds when its check requires one,
+  and hold any attestation it carries (below).
 
-Together they must cover every criterion of the contract. Otherwise the
-run stops with the violation `forged_evidence`, before anything is
-prepared.
+Together they must cover every criterion of the contract. With a verifier
+of its own configured, every part of a criterion must have a passing
+record of that part's method, once per part: under `and`, a static part's
+record does not cover the verifier's check beside it. Otherwise the run
+stops with the violation `forged_evidence`, before anything is prepared.
 
 ### The runtime's verifier
 
@@ -407,14 +410,44 @@ verifier key. Otherwise the criterion is not met, with the detail
 
 An accepted result's `producer` carries `process: "separate"` and the
 attestation (statement, key id, signature) into the evidence record.
-`verifyEvidence` and the `Verified` check (G03) then also require the
-attestation to verify under a trusted verifier key, and to say what the
-record says: passed, detail, the files checked, and each output's digest.
-So the runtime's key alone cannot make a check pass.
+
+Which records need an attestation is read from the program and the
+configuration, never from the record. With trusted verifier keys, a
+check's method is *attested* unless it is `static`, `human.approve`, or a
+method the configuration checks in the runtime's process: the boundary
+checks (`test.suite_each`, `test.contract`, `test.integration`, `test.ci`,
+`test.planned`) when `boundary` and `sandbox` are set, and the onboarding
+checks (`test.system_specs`, `test.consumes`, `test.commands`) when
+`onboard` is set. These need the run's working copies, so they run in
+front of the verifier process. `verifyEvidence` and the `Verified` check (G03) then
+require of each record:
+
+- its stored row names the contract, criterion and method its signed
+  record names;
+- its method is one the program declares for its criterion;
+- if its method is attested, an attestation that verifies under a trusted
+  verifier key and says what the record says: passed, detail, the files
+  checked, and each output's digest.
+
+A record that carries an attestation must hold it, whether or not one is
+required. So the runtime's key alone cannot make a check pass: a record
+whose attestation was taken out, or whose method was changed, does not
+hold. Evidence made while no verifier process was configured carries no
+attestation, and shows as invalid once one is. Without trusted verifier
+keys, only an attestation a record carries is checked.
 
 The verifier creates its key on first use (`.mandate/verifier.key` by
 default) and writes its public half to `<key>.pub`, which the runtime
 trusts unless `verifier.process.trusted` names other public keys.
+
+The verifier process does not inherit the runtime's environment. It gets
+what a program needs to run on Linux and on Windows (the search path, the
+system directories, the temporary and home directories, the locale and
+the time zone) and the sandbox SDK's settings. When the configuration has
+`model`, it also gets the model's credentials and the settings that reach
+its API, for model-backed checks. It never gets `MANDATE_GITHUB_TOKEN` or
+a read broker's database URL. The process that creates its key gets only
+what a program needs.
 
 Unmet criteria go to `on unmet(c)`, or else fail the verify with
 `Rejected`. An answer to an `escalate` there is the escalation's value,
@@ -857,7 +890,9 @@ lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
   `trusted`, default the key's `.pub` file). See "A verifier of its own".
 - **Secrets.** They come only from the environment: `CLAUDE_API_KEY` (and
   `CLAUDE_WORKSPACE_ID` for a key that is not scoped to a workspace), and
-  `MANDATE_GITHUB_TOKEN`.
+  `MANDATE_GITHUB_TOKEN`. The verifier process and `docker` get only the
+  variables they need (see "A verifier of its own" and "Boundary
+  verifier").
 - **Missing adapters.** An adapter the configuration leaves out is refused
   when a run reaches it, and never simulated.
 - **Strict reading.** Unknown fields in the file are an error.
@@ -1043,7 +1078,12 @@ Configuration (`mandate.runtime.json`):
   published ports and networks that are not internal. Each overridden
   service gets an image name of the project's, so candidate images never
   replace others. It runs `build`, then `run --rm <service>` (which starts
-  what the service depends on), and then `down -v --rmi local`.
+  what the service depends on), and then `down -v --rmi local`. `docker`
+  gets what a program needs to run, the Docker client's settings
+  (`DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`, `DOCKER_CERT_PATH`,
+  `DOCKER_TLS_VERIFY`, and `XDG_RUNTIME_DIR` for a rootless engine) and the
+  `env` the configuration gives, with `MANDATE_ENV`; none of the runtime's
+  secrets.
 - `suite_each` runs a component's tests as its change left them and lists
   the test files that differ from the base commit (`tests_changed`). Files
   `pinned` names run as they were at the base commit.

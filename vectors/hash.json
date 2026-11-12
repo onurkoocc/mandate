@@ -1,0 +1,250 @@
+{
+  "format": "mandate/vectors/hash/0.1",
+  "domain": [
+    {
+      "domain": "program",
+      "version": "0.1",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:11fc5957b378bdd39a3d6c42a7c2178795dc3c0b568a6e49544f91a9e07bc8c3"
+    },
+    {
+      "domain": "def",
+      "version": "0.1",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:afcfa4edb289d78d8b8f3d352166bdd1f9953460c689d16505a243865a9d7c65"
+    },
+    {
+      "domain": "package",
+      "version": "0.1",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:a41e7b31cfcfbcf37e96f7226d482945fa381a16aa7e31dfafcd325d2c81843b"
+    },
+    {
+      "domain": "run",
+      "version": "0.1",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:b7702c1c13407ec8101194d34f26e500e7c33a590810c85717002901b77ebf84"
+    },
+    {
+      "domain": "action",
+      "version": "0.1",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:99af9d6442d3fff1654f48017dda50cf850a469c70df0b3c6ac35ead638d94e8"
+    },
+    {
+      "domain": "operation",
+      "version": "0.1",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:bad80b5966498a31dbf2f1f1986af18480abb0eeec1e4f92f0ee6bc9e50f877e"
+    },
+    {
+      "domain": "request",
+      "version": "0.1",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:e99906649473b0589b910e6f258b5ae475225dccdbe751a9c43c23d6be515657"
+    },
+    {
+      "domain": "binding",
+      "version": "0.1",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:54285d4b217f7252af94746946cada8dea8f366844241aa80be135639c0702fe"
+    },
+    {
+      "domain": "decision",
+      "version": "0.1",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:51e1dcffa528f34ee3f742441c809990c00a2d2423276fa22e876853a1e21aaa"
+    },
+    {
+      "domain": "program",
+      "version": "0.2",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:107edf1844bbbc08d351c128a582554c5a14a7038520e33c6b4786d054595fe5"
+    },
+    {
+      "domain": "def",
+      "version": "0.2",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:c28299c1c5877d6409af5c0d1e5df4c13efcc461e9b31ba66b764880d68f104d"
+    },
+    {
+      "domain": "program",
+      "version": "0.3",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:7a74c69105137b4ae962bddb78ef56a5542eeac80ba45d8c5027879a7c6990e0"
+    },
+    {
+      "domain": "def",
+      "version": "0.3",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:ffadb195d015ed4b7468973414996b01cc6b3196d63044c54d9652b75008e9ab"
+    },
+    {
+      "domain": "program",
+      "version": "0.4",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:c65352866d6ca1eee111b6551ccd9ac98a9776c95535b74a1195c79eedfd83a6"
+    },
+    {
+      "domain": "def",
+      "version": "0.4",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:b6692a3a6bd9f00985440321d5f60db2e7508b8a64351052a4e4928b981062ad"
+    },
+    {
+      "domain": "program",
+      "version": "",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:f4b366c7ce9152f505e47da0c48a5cf5a09057f1345d0e90282214ec62f33efe"
+    },
+    {
+      "domain": "def",
+      "version": "",
+      "input": "{\"b\":[1,\"\u00e9\"],\"a\":{\"\ud83d\ude00\":null}}",
+      "hash": "sha256:f755cacca606fd285bb67e4c409e9c907835afdf32e120222f59596145f9900c"
+    },
+    {
+      "domain": "program",
+      "version": "0.1",
+      "input": "{}",
+      "hash": "sha256:3f6491274b53e27ab56fdfd7d99429177d8869cead498a831d3c59a5eb2d1199"
+    },
+    {
+      "domain": "def",
+      "version": "0.1",
+      "input": "\"\"",
+      "hash": "sha256:ee1542df4d324efb4c450704af6c3d489d7e03e1f62a36388075f5346c693891"
+    }
+  ],
+  "program": [
+    {
+      "name": "a 0.1 program",
+      "input": "{\"language\":\"mandate/0.1\",\"module\":\"m\",\"version\":\"0.1\",\"defs\":{\"T\":{\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}}}}",
+      "program": "sha256:de7fd275a70b581fb60d4486cad1c4f16857b61daa4a7024fed523ee1dc05a25",
+      "defs": [
+        [
+          "T",
+          "sha256:6a949c33eea8dae5ec8d708b23e3341664216c04419b1df4f533364c4f434f0a"
+        ]
+      ]
+    },
+    {
+      "name": "a 0.4 program",
+      "input": "{\"language\":\"mandate/0.4\",\"module\":\"m\",\"version\":\"0.1\",\"defs\":{\"T\":{\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}}}}",
+      "program": "sha256:7047ff29657e6691020560913b93c05bcd4847ebd338cdde15bb9b4d99d759e1",
+      "defs": [
+        [
+          "T",
+          "sha256:4f390ae757bba8d09accace63025a97d597754638ce5fe5b0212b9f27eb99edc"
+        ]
+      ]
+    },
+    {
+      "name": "no language: 0.1",
+      "input": "{\"module\":\"m\",\"defs\":{\"T\":{\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}}}}",
+      "program": "sha256:7f7f94e60414d1b35b47fcb90b607a70b527c5e62e25a36ec8fb3a51fa4fedef",
+      "defs": [
+        [
+          "T",
+          "sha256:6a949c33eea8dae5ec8d708b23e3341664216c04419b1df4f533364c4f434f0a"
+        ]
+      ]
+    },
+    {
+      "name": "a language not under mandate/: 0.1",
+      "input": "{\"language\":\"other/0.3\",\"defs\":{\"T\":{\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}}}}",
+      "program": "sha256:d85cc5f74cca79b0255fc5653b3574b0e722185e61d40ca2d382c992b7a6e012",
+      "defs": [
+        [
+          "T",
+          "sha256:6a949c33eea8dae5ec8d708b23e3341664216c04419b1df4f533364c4f434f0a"
+        ]
+      ]
+    },
+    {
+      "name": "a language that is not a string: 0.1",
+      "input": "{\"language\":3,\"defs\":{\"T\":{\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}}}}",
+      "program": "sha256:a47c52fbc08d8dbd676666ab6878d479831bd4cefeb65109b2624491e9d8f0aa",
+      "defs": [
+        [
+          "T",
+          "sha256:6a949c33eea8dae5ec8d708b23e3341664216c04419b1df4f533364c4f434f0a"
+        ]
+      ]
+    },
+    {
+      "name": "mandate/ alone: the empty version",
+      "input": "{\"language\":\"mandate/\",\"defs\":{\"T\":{\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}}}}",
+      "program": "sha256:3067ecc2e596582a979327ce9b94084e36cac93f070ee92f429a29abc138c209",
+      "defs": [
+        [
+          "T",
+          "sha256:4868d7c33441087d368b59233665f3300c347a47a9bd354e6d5e12ad04ed02e5"
+        ]
+      ]
+    },
+    {
+      "name": "definitions in UTF-16 order of their names",
+      "input": "{\"language\":\"mandate/0.3\",\"defs\":{\"\ud83d\ude00\":1,\"\\ue000\":2,\"b\":3,\"B\":4,\"10\":5,\"9\":6}}",
+      "program": "sha256:5124df4f191f7d095ed7ffe90e6f726bc8bcd7b7985ae0ae508281f7f2d8adcc",
+      "defs": [
+        [
+          "10",
+          "sha256:ebe7d5672f6f6d367b697d8bcc8cdb08a50e9a718f14db46d7421a35cdb4c5a2"
+        ],
+        [
+          "9",
+          "sha256:606fb264f4687cd0f913d51fdbe8eceee81716d746abc0482c1401df84bcb48f"
+        ],
+        [
+          "B",
+          "sha256:d4c95de02fdcadb7783cf6dea140e21c57b87b1bdb2dce16cb80ea802c599ad7"
+        ],
+        [
+          "b",
+          "sha256:08a1e43d0934f4fb39942632392523cb6f7632825b77a1cada196195e77b8f04"
+        ],
+        [
+          "\ud83d\ude00",
+          "sha256:5bcc5fae6aa03508906a694da83993b5f97ce9c07f0b16ddfd81b3b6aaa82754"
+        ],
+        [
+          "\ue000",
+          "sha256:30ed67b311d2531f1a3b6cdd43baa5ddb08875bb7f5f011fbd4f02349fbe48d1"
+        ]
+      ]
+    },
+    {
+      "name": "defs that is not an object: no definitions",
+      "input": "{\"language\":\"mandate/0.2\",\"defs\":[1,2]}",
+      "program": "sha256:3de8b1f3b2103281801a2f5c49eb288b5664b1d35d61c9a97cf94cf4920d46cf",
+      "defs": []
+    },
+    {
+      "name": "no defs: no definitions",
+      "input": "{\"language\":\"mandate/0.2\"}",
+      "program": "sha256:48d63f3ac300c43b6fb843c4c425b5a84d3c4776f00e9f70335d385b691e7b96",
+      "defs": []
+    },
+    {
+      "name": "a program that is not an object",
+      "input": "[\"mandate/0.2\"]",
+      "program": "sha256:de144e86514273331ba0660f02c15fb7c9d47a716e710224fff80ed08054b877",
+      "defs": []
+    }
+  ],
+  "package": [
+    {
+      "name": "no lock file: no pins",
+      "program_hash": "sha256:de7fd275a70b581fb60d4486cad1c4f16857b61daa4a7024fed523ee1dc05a25",
+      "lock": "{\"modules\":{}}",
+      "hash": "sha256:d649aec34896932b0cfa72092434ef9c1251671d7171a1d5b53d6ffc9eecfc76"
+    },
+    {
+      "name": "a lock with pins",
+      "program_hash": "sha256:de7fd275a70b581fb60d4486cad1c4f16857b61daa4a7024fed523ee1dc05a25",
+      "lock": "{\"modules\":{\"company.domain\":\"sha256:0f1e\"},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"m\",\"effort\":\"high\"}}}",
+      "hash": "sha256:8232ffed85d4b032013f88dd58378a1f461cb06135d41f5ad1e91d53cb9843c1"
+    }
+  ]
+}
