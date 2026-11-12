@@ -333,6 +333,10 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Lock field does not apply to the program's language",
     explain: "`isolation` and `egress` in a lock of format 0.5 are read into an agent's sandbox requirement 0.2, which only a program of mandate/0.5 or later has. In a lock packaged with an earlier program they would not apply, and a floor or a credential that silently does not apply misleads whoever reads the lock, so it is refused. Write the program in mandate/0.5, or take the field out. `host` applies to a program of any version (spec/boundary.md \"Lock 0.5\").",
   },
+  "MDT-E1804": {
+    title: "Imported method limit read without it",
+    explain: "A program reads every capability in its own language, imported ones included, and before 0.5 `methods` means nothing. So a program of mandate/0.1 to 0.4 that reaches, through an import, a net.https capability written with `methods` in a module of mandate/0.5 or later would allow any method where the module allows only some. It is refused at the import that brings the definition in. Write the program in mandate/0.5 or later. A `methods` the program writes itself, or a module below 0.5 writes, is read as nothing, as it always was (spec/boundary.md \"Language 0.5\").",
+  },
   "MDT-E0902": {
     title: "Sandbox requirement cannot be enforced",
     explain: "The sandbox adapter probed the host and it cannot enforce part of an agent's sandbox requirement: a backend, a path, host or command allow-list, a timeout, or a scope that is not statically known. The run refuses to start the agent (unsupported_sandbox_profile) instead of running it with less isolation (INV-11, G05).",

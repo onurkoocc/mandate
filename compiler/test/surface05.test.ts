@@ -106,6 +106,34 @@ describe("methods of net.https", () => {
   });
 });
 
+describe("a 0.5 method limit imported by an earlier program (E1804)", () => {
+  const MODULE = readRepo("conformance/E1804/github.mdt");
+  const PROGRAM = readRepo("conformance/E1804/program.mdt");
+  const mods = (text: string) => {
+    const r = loadModules([{ file: "github.mdt", text, kind: "mdt" }]);
+    expect(r.problems).toEqual([]);
+    return r.modules;
+  };
+  const said = (program: string, module: string) => check(program, "mdt", { modules: mods(module) }).diagnostics.map((d) => [d.code, d.at.path, d.message]);
+
+  it("refuses a program of 0.1 to 0.4 that reaches one, at the import", () => {
+    const message = "GitHubRead, imported from example.github, holds a net.https capability that allows only some methods, as mandate/0.5 reads it. This program is mandate/0.4, which would read it without the limit, allowing any method. Write the program in mandate/0.5 or later.";
+    expect(said(PROGRAM, MODULE)).toEqual([["MDT-E1804", "/uses/0", message]]);
+    expect(said(PROGRAM.replace("mandate @ 0.4", "mandate @ 0.2"), MODULE).map((d) => d[0])).toEqual(["MDT-E1804"]);
+    // Through an agent it imports: the capability comes with it.
+    const agentModule = `${MODULE}\nagent Reader {\n  role   "Reads."\n  caps   GitHubRead\n  budget { steps: 2 }\n  skill read(issue: Text) -> Text ! {Net}\n}\n`;
+    const user = "mandate @ 0.4\n\nmodule example.user @ 0.1\n\nuse example.github.{Reader}\n\nfn one() -> Int {\n  1\n}\n";
+    expect(check(user, "mdt", { modules: mods(agentModule) }).diagnostics.map((d) => [d.code, d.facts?.["definition"]])).toEqual([["MDT-E1804", "GitHubRead"]]);
+  });
+
+  it("leaves alone what is read as it always was: a 0.5 program, a module below 0.5, a module without methods, a program's own methods", () => {
+    expect(said(PROGRAM.replace("mandate @ 0.4", "mandate @ 0.5"), MODULE)).toEqual([]);
+    expect(said(PROGRAM, MODULE.replace("mandate @ 0.5", "mandate @ 0.4"))).toEqual([]);
+    expect(said(PROGRAM, MODULE.replace(", methods: [GET]", ""))).toEqual([]);
+    expect(check(CAPABILITIES, "mdt").ok).toBe(true);
+  });
+});
+
 describe("views of methods", () => {
   it("show each host with the methods the capability allows", () => {
     const v = authority(program(FETCH));

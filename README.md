@@ -173,7 +173,8 @@ pull request was opened, for 0.23 USD.
    anchors and an independent verifier; counted violations and a hard
    halt; views by role; an OpenTelemetry projection. What exists so far is
    the compile-time surface: language 0.5, whose `net.https` may allow only
-   some methods (E1801), and narrows by them; lock format 0.5 with `host`,
+   some methods (E1801), and narrows by them, and which an earlier
+   program cannot import without the limit (E1804); lock format 0.5 with `host`,
    `isolation` and `egress` (E1802, E1803), whose changes `view --against`
    shows; and sandbox requirement 0.2 for a 0.5 program. None of it is
    enforced yet, so nothing that needs it runs: the runtime refuses a

@@ -16,7 +16,7 @@ the configuration and the CLI.
 
 | Part | Change | State |
 |---|---|---|
-| Language 0.5: `net.https(…, methods: […])`, E1801, its views and diff | PR 2 | implemented |
+| Language 0.5: `net.https(…, methods: […])`, E1801, E1804, its views and diff | PR 2 | implemented |
 | Lock 0.5: `host`, `isolation`, `egress`; E1802, E1803; their changes in `view --against` | PR 2 | implemented |
 | Sandbox requirement 0.2, for a 0.5 program; a 0.5 parent's sub-programs in 0.5 | PR 2 | implemented. No host enforces what it adds beyond 0.1, so the MXC adapter refuses a requirement that asks for any of it, by name |
 | At load, a lock that sets `host`, `isolation` or `egress` is refused, each by its name (`unsupported_lock`) | PR 2 | implemented; each name is lifted by the change that enforces it |
@@ -90,6 +90,15 @@ capability GitHubRead = net.https(hosts: ["api.github.com"], methods: [GET])
   included. A lead's sub-program is written in its parent's language (its
   skeleton's, never below 0.4), so it reads the parent's capabilities as
   the parent does.
+- **An earlier program that imports a limit.** A program of 0.1 to 0.4
+  that reaches, through an import, a `net.https` capability written with
+  `methods` in a module of 0.5 or later would read it without the limit.
+  It is refused, E1804, at the import that brings the definition in,
+  whether the program imports the capability itself or a definition that
+  refers to it, such as an agent. A `methods` the program writes itself,
+  or a module below 0.5 writes, is read as nothing and not looked at, as
+  before. The runtime checks a package again at load, so it refuses such
+  a package too (`load_verification_failed`).
 - **Narrowing (C3).** A capability with methods covers another only when
   its hosts cover the other's and every method of the other is one of its
   own. One without `methods` covers every method set. One with `methods`
@@ -541,6 +550,7 @@ E18xx is this release's family ([`diagnostics.md`](diagnostics.md)):
 | MDT-E1801 | Unknown method | `mandate check` |
 | MDT-E1802 | Credential bound outside the sandbox | `mandate check` with the lock |
 | MDT-E1803 | Lock field does not apply to the program's language | `mandate check` with the lock |
+| MDT-E1804 | Imported method limit read without it | `mandate check`; at load, `load_verification_failed` |
 
 Refusals of the runtime that 0.5 adds:
 
@@ -565,6 +575,7 @@ Compile cases in [`conformance/`](../conformance/README.md):
 | E1802, E1802a, E1802b, E1802c | A host the agent does not hold; a binding to a workflow, to a remote agent, to an agent bound to Managed Agents |
 | E1802d | The 0.5 fixture checks with its lock |
 | E1803 | `isolation` and `egress` with a 0.4 program |
+| E1804, E1804a | A 0.4 program that imports a 0.5 capability with `methods`; the same program in 0.5 checks |
 
 Runtime cases continue from G14:
 
@@ -612,9 +623,6 @@ The letters P, T and L are kept for later releases.
   tenant-wide or outside log.
 - **Masking by data class** in views; `WatchRun`, `ListWaits`, `stage`,
   `report` and notifications (0.7).
-- **An imported definition** is read in the importing program's language:
-  a program of 0.1 to 0.4 that imports a 0.5 capability with `methods`
-  reads it without them. A program that relies on them is written in 0.5.
 - **What stays open.** MXC's proxy enforcement may not work on CI's runner;
   until a real enforcement test passes, sandbox egress is not said to be
   supported. The race between a start and a halt is narrowed by the second

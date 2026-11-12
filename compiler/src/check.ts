@@ -11,7 +11,7 @@ import { parseStrictJson, type Json } from "./json/strict-json.js";
 import { parseMdt } from "./parse/parser.js";
 import { resolveNames } from "./resolve/resolve.js";
 import { narrowings } from "./check/amendment.js";
-import { capsOf } from "./check/caps.js";
+import { capsOf, importedMethods } from "./check/caps.js";
 import { roleChecks } from "./check/roles.js";
 import { staticCheck, type Claim } from "./check/static.js";
 import { containment, opened, skeleton, subprogramShape, subprogramWorkflow, type Room } from "./check/subprogram.js";
@@ -116,6 +116,8 @@ export function check(text: string, kind: SourceKind, opts: CheckOptions = {}): 
   diagnostics.push(...resolveNames(loaded.program, loaded.spans, linked.defs));
   // A role is a name too, from 0.4: where one is named, it is a role definition (E1501, E1503).
   diagnostics.push(...roleChecks(loaded.program, loaded.spans, linked.defs));
+  // Before 0.5, a method limit an imported 0.5 capability writes would be read as none (E1804).
+  diagnostics.push(...importedMethods(loaded.program, linked, opts.modules).map((d) => (d.at.path !== undefined && loaded.spans.get(d.at.path) ? { ...d, at: { ...d.at, span: loaded.spans.get(d.at.path)! } } : d)));
   // Static checks assume every name resolves.
   if (!hasErrors(diagnostics)) diagnostics.push(...staticCheck(loaded.program, loaded.spans, linked.defs, opts.claim));
   if (opts.lock && !hasErrors(diagnostics)) {

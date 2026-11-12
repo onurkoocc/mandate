@@ -144,11 +144,12 @@ to the lead, and the Notes column says so.
 ## The boundary (0.5)
 
 Specified in [`boundary.md`](boundary.md). E18xx is assigned here.
-`mandate check` reports E1801, and E1802 and E1803 when it is given the
-lock.
+`mandate check` reports E1801 and E1804, and E1802 and E1803 when it is
+given the lock.
 
 | Code | Title | Conformance case | Notes |
 |---|---|---|---|
 | MDT-E1801 | Unknown method | E1801, E1801a, E1801b | assigned; 0.5 only; `methods` of `net.https` is a non-empty list of bare names from GET, HEAD, POST, PUT, PATCH, DELETE. Facts: `found` (the name written, or null) and `expected` |
 | MDT-E1802 | Credential bound outside the sandbox | E1802, E1802a, E1802b, E1802c | assigned; needs the lock; an `egress` binding names something other than a local agent, a remote agent, an agent bound to an executor, or a host none of the agent's `net.https` capabilities holds. Facts: `agent`, `reason` (`not_an_agent`, `remote`, `executor`, `host_not_held`), and for a host `host`, `credential` and `held`. The path is into the lock |
 | MDT-E1803 | Lock field does not apply to the program's language | E1803 | assigned; needs the lock; `isolation` or `egress` in a lock packaged with a program of 0.1 to 0.4. Facts: `field`, `language`. The path is into the lock |
+| MDT-E1804 | Imported method limit read without it | E1804, E1804a | assigned; a program of 0.1 to 0.4 that reaches, through an import, a `net.https` capability written with `methods` in a module of 0.5 or later; reported at the import. Facts: `definition`, `module`, `module_language`, `language`. Also refused at load (`load_verification_failed`) |

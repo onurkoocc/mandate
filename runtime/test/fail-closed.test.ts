@@ -3,7 +3,7 @@
 // asks nothing beyond 0.1 gives the policy a 0.1 requirement gives.
 
 import { readFileSync } from "node:fs";
-import { check, requirementFor, type CapVal, type Lock, type Program } from "@mandate/compiler";
+import { check, hashProgram, load, loadModules, requirementFor, type CapVal, type Json, type Lock, type Program } from "@mandate/compiler";
 import { afterAll, describe, expect, it } from "vitest";
 import { TrustedKeys } from "../src/evidence.js";
 import { buildPackage, notRunYet, verifyPackage } from "../src/runtime.js";
@@ -99,6 +99,26 @@ describe("a 0.5 package", () => {
     expect(old.language).toBe("mandate/0.2");
     expect(refusal(old, { modules: {}, host: { node: "22.23.4" } })).toMatchObject({ code: "unsupported_lock" });
     expect(refusal(old, { modules: {} })).toBeUndefined();
+  });
+
+  it("is not reached into by an earlier one: a 0.4 package that imports a 0.5 method limit is refused at load (MDT-E1804)", () => {
+    const text = readFileSync(new URL("../../conformance/E1804/github.mdt", import.meta.url), "utf8");
+    const { modules } = loadModules([{ file: "github.mdt", text, kind: "mdt" }]);
+    const src = readFileSync(new URL("../../conformance/E1804/program.mdt", import.meta.url), "utf8");
+    const lock = { modules: { "example.github": hashProgram(modules["example.github"] as unknown as Json).program } };
+    const program = (version: string): Program => load(src.replace("mandate @ 0.4", `mandate @ ${version}`), "mdt").program!;
+    const refused = (p: Program): unknown => {
+      try {
+        verifyPackage(buildPackage(p, lock, modules));
+        return undefined;
+      } catch (e) {
+        return e;
+      }
+    };
+    const e = refused(program("0.4"));
+    expect(e).toMatchObject({ code: "load_verification_failed" });
+    expect((e as Violation).message).toContain("MDT-E1804");
+    expect(refused(program("0.5"))).toBeUndefined();
   });
 
   it("whose agent may only GET a host is not started on a host that cannot hold it to GET", async () => {

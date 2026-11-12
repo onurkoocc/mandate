@@ -12,7 +12,8 @@
 //   component.repo(c…)           git.pr(c.repo…)
 
 import { posix } from "node:path";
-import { atLeast, type Arg, type ComponentDef, type Def, type Expr, type LanguageVersion } from "../ir/types.js";
+import { diag, ptr, type Diagnostic } from "../diag.js";
+import { atLeast, type Arg, type ComponentDef, type Def, type Expr, type LanguageVersion, type Program } from "../ir/types.js";
 import { CAP_CTORS, DEFAULT_MODEL_MAX_CLASS, DATA_CLASSES, type DataClass } from "../std/std.js";
 
 export interface CapVal {
@@ -165,6 +166,36 @@ export function capFromCall(e: Expr, opts: CapOptions = {}): CapVal | undefined 
     if (tier) cap.tier = tier;
   }
   return cap;
+}
+
+/**
+ * E1804: a program of 0.1 to 0.4 reads every capability in its own language, so a `net.https` written with
+ * `methods` in a module of 0.5 or later, which it reaches through an import, would allow any method there. Each
+ * imported definition that holds such a call is refused, at the import that brings it in. What the program writes
+ * itself, and what a module below 0.5 writes, are read as they always were and not looked at.
+ */
+export function importedMethods(program: Program, linked: { defs: Record<string, Def>; origin: Record<string, string> }, modules: Record<string, Program> = {}): Diagnostic[] {
+  if (readsMethods(program.language)) return [];
+  const out: Diagnostic[] = [];
+  const holds = (v: unknown): boolean => {
+    if (Array.isArray(v)) return v.some(holds);
+    if (!v || typeof v !== "object") return false;
+    const e = v as Expr;
+    if (e.op === "call" && calleePath(e.callee) === "net.https" && e.args.some((a) => a.name === "methods")) return true;
+    return Object.values(v).some(holds);
+  };
+  for (const name of Object.keys(linked.origin).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
+    const module = linked.origin[name]!;
+    const m = Object.hasOwn(modules, module) ? modules[module] : undefined;
+    if (!m || !readsMethods(m.language) || !holds(linked.defs[name])) continue;
+    const i = (program.uses ?? []).findIndex((u) => u.module === module);
+    out.push(
+      diag("E1804", `${name}, imported from ${module}, holds a net.https capability that allows only some methods, as ${m.language} reads it. This program is ${program.language}, which would read it without the limit, allowing any method. Write the program in mandate/0.5 or later.`, { path: i < 0 ? "/uses" : ptr("uses", i) }, {
+        facts: { definition: name, module, module_language: m.language, language: program.language },
+      }),
+    );
+  }
+  return out;
 }
 
 /** What a capability expression stands for, or why it stands for nothing. */
