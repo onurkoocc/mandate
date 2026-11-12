@@ -182,6 +182,7 @@ create table if not exists decisions (
   signature text not null,
   accepted_at bigint not null
 );
+alter table events add column if not exists hash text;
 `;
 
 /** Opens PostgreSQL at `url`, or an in-process PGlite database when `url` is absent. */

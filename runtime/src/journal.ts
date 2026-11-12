@@ -16,6 +16,7 @@ import type { Cost, Outcome } from "./adapters.js";
 import { decisionId, type SignedDecision, type StoredDecision } from "./decisions.js";
 import type { EvidenceRecord } from "./evidence.js";
 import { num, type Db, type Row, type Tx } from "./db.js";
+import { eventHash } from "./journal-chain.js";
 import { Cancelled, Fault, StaleFence, Violation } from "./signals.js";
 import type { Obj, Value } from "./values.js";
 
@@ -186,13 +187,20 @@ export class Journal {
    * Appends an event to the run's journal: one read of the run's last event and one insert. Every caller holds the
    * run's row lock (`lock`), or writes in the transaction that creates the run, so two appends to one run never
    * interleave between the read and the insert. Returns what was written.
+   *
+   * The event of a chained run carries its hash (spec/journal.md), over its data as the database gives it back:
+   * what `JSON.stringify` writes, read with `JSON.parse`. A run is chained when its first event has a hash, so a
+   * new run is, and a run begun before the journal was chained, whose last event has none, stays as it was.
    */
-  async event(tx: Tx, runId: string, type: string, data: Value): Promise<{ seq: number; at: number }> {
-    const [last] = await tx.query<Row>("select seq from events where run_id = $1 order by seq desc limit 1", [runId]);
+  async event(tx: Tx, runId: string, type: string, data: Value): Promise<{ seq: number; at: number; hash: string | null }> {
+    const [last] = await tx.query<Row>("select seq, hash from events where run_id = $1 order by seq desc limit 1", [runId]);
     const seq = last ? num(last["seq"]) + 1 : 1;
+    const prev = last ? ((last["hash"] ?? null) as string | null) : null;
     const at = this.now();
-    await tx.query("insert into events (run_id, seq, type, data, at) values ($1, $2, $3, $4, $5)", [runId, seq, type, json(data), at]);
-    return { seq, at };
+    const text = json(data);
+    const hash = !last || prev !== null ? eventHash({ run: runId, seq, type, data: JSON.parse(text) as Value, at, prev }) : null;
+    await tx.query("insert into events (run_id, seq, type, data, at, hash) values ($1, $2, $3, $4, $5, $6)", [runId, seq, type, text, at, hash]);
+    return { seq, at, hash };
   }
 
   /**
