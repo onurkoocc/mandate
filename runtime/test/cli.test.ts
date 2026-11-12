@@ -2,11 +2,11 @@
 // replayed from separate CLI calls over a PGlite database in a directory, and
 // every decision names the revision the person saw.
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { main } from "../src/cli.js";
+import { CONTROL_COMMANDS, main } from "../src/cli.js";
 
 const dir = mkdtempSync(join(tmpdir(), "mandate-cli-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -36,7 +36,9 @@ workflow Ship(d: Draft) -> Untrusted<Text>
 `;
 
 writeFileSync(join(dir, "ship.mdt"), PROGRAM);
-writeFileSync(join(dir, "mandate.runtime.json"), JSON.stringify({ database: "pglite:db" }));
+// The program is 0.2 and its people decide by name (--by), so the configuration says so: a runtime takes signed
+// decisions unless it is told otherwise (spec/envelope.md "Unsigned mode"). The signed commands are in cli-decisions.test.ts.
+writeFileSync(join(dir, "mandate.runtime.json"), JSON.stringify({ database: "pglite:db", decisions: { mode: "unsigned" } }));
 
 /** One CLI call, as a person would make it; returns its exit status and output. */
 async function mandate(...args: string[]): Promise<{ code: number; out: string; err: string }> {
@@ -114,5 +116,13 @@ describe("the control CLI (K19)", () => {
     const r = await mandate("approve", "c1");
     expect(r.code).toBe(2);
     expect(r.err).toContain("usage:");
+  });
+
+  it("is reached through the mandate binary: the compiler's CLI hands it every command it has, and no other", () => {
+    // The compiler cannot import the runtime, so its CLI keeps the names. A command missing there is one nobody can call.
+    const binary = readFileSync(new URL("../../compiler/src/cli.ts", import.meta.url), "utf8");
+    const handed = binary.match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m);
+    expect(handed).not.toBeNull();
+    expect((JSON.parse(handed![1]!) as string[]).sort()).toEqual([...CONTROL_COMMANDS].sort());
   });
 });

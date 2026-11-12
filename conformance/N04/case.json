@@ -1,0 +1,23 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "N04",
+  "kind": "compile",
+  "title": "An amendment that only widens the envelope checks, and it is a new program: its hash is that of the program with the new envelope.",
+  "spec": ["spec/envelope.md#amendments-n04", "spec/envelope.md#conformance-cases"],
+  "language": "mandate/0.4",
+  "input": { "file": "../N01/parent.mdt", "kind": "mdt" },
+  "modules": ["../N01/domain.mdt"],
+  "amendment": {
+    "workflow": "Run",
+    "patch": [
+      { "op": "replace", "path": "/budget/tokens", "value": 200000 },
+      { "op": "replace", "path": "/budget/agents", "value": 40 }
+    ]
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "hashes": { "program": "sha256:08343fbe46df6b0a292dcf2a13a6ba59e8db6db57f4f6134d2e898a3f4cb353a" }
+  }
+}

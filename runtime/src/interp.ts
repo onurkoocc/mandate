@@ -13,6 +13,9 @@
 // the adapter is called.
 
 import {
+  atLeast,
+  BUDGET_DIMENSIONS,
+  budgetAmount,
   calleePath,
   capCovers,
   capsOf,
@@ -21,11 +24,17 @@ import {
   DECISION_POLICIES,
   governanceFiles,
   hashProgram,
+  leadClasses,
   modelTiers,
   PROGRESS_DEFAULTS,
   requirementFor,
+  scopeWithin,
+  showCap,
   STD_EFFECTS,
   STD_FNS,
+  subprogramLinked,
+  workflowBounds,
+  writesOverlap,
   type Arg,
   type Tier,
   type Budget,
@@ -34,9 +43,14 @@ import {
   type ContractDef,
   type Def,
   type EffectDef,
+  type Envelope,
   type Expr,
   type Json,
+  type Lock,
+  type MapExpr,
+  type Modules,
   type Pattern,
+  type PlanExpr,
   type Program,
   type Stmt,
   type TypeExpr,
@@ -46,12 +60,14 @@ import {
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
+import { approvalProblem, type StoredDecision } from "./decisions.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
 import type { RateLimiter } from "./ratelimit.js";
 import type { Faults } from "./faults.js";
 import { runAgentLoop, type LoopTask } from "./loop.js";
+import { PLAN_TOOLS, planBrief, Planner, Shared, type PlanHost, type ProgramChecker } from "./plan.js";
 import { schemaErrors, typeSchema } from "./schema.js";
-import type { ActionRow, CommandRow, Journal } from "./journal.js";
+import type { ActionRow, Admission, CommandRow, Journal } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
 import {
   canonical,
@@ -136,6 +152,40 @@ interface Ctx {
   siblings?: Siblings;
   /** Path prefix for the contract or function being evaluated. */
   where: "workflow" | "contract";
+  /**
+   * The workflow whose body this is, through any function it calls and any contract it verifies against. Its
+   * capabilities are the context a delegation is granted from (C2), and its model tiers are a model call's. It is
+   * read from here and never from a command's path, which names where a command stands and not whose authority it has.
+   */
+  workflow: string;
+  /**
+   * Inside a map's body, for one item (spec/envelope.md "map"): `given` holds the `with caps` of each map around
+   * it, outermost first, each of which stands in the context in place of the kinds it names; `handed` is what the
+   * maps hand each delegation of the body.
+   */
+  item?: { given: CapVal[][]; handed: CapVal[] };
+}
+
+/**
+ * A package a run stands under, or stood under before an amendment (spec/envelope.md "Amendments"): its hash, and
+ * the envelope the run's workflow has in it.
+ */
+export interface Epoch {
+  hash: string;
+  envelope?: Envelope;
+}
+
+/** How one item of a map ended: with its value, with a fault, or with something that is not the item's to keep. */
+type ItemEnd = { ok: Value } | { fault: Fault } | { stop: unknown };
+
+/** What a delegation and a `plan` both say of the skill they run. */
+type Delegation = { skill: string; budget?: Budget; isolated?: boolean };
+
+/** What makes a delegation a lead's (`plan`): its tools for sub-programs, and how it steps aside while one runs. */
+interface Lead {
+  planner: (step: PlanHost["step"], aside: Lead["aside"]) => Planner;
+  /** Runs `fn` with the lead's place among the run's delegations given up, and takes a place again after. */
+  aside<T>(fn: () => Promise<T>): Promise<T>;
 }
 
 export interface InterpOptions {
@@ -154,6 +204,17 @@ export interface InterpOptions {
   trusted: TrustedKeys;
   /** Verifier keys whose check attestations count (P2-11). */
   verifiers?: TrustedKeys;
+  /**
+   * What a person's approval is checked against (spec/envelope.md "Signed decisions"): the members' public keys, the
+   * package's lock, and whether an approval must rest on a signed decision (signed mode, and every 0.4 package).
+   */
+  decisions?: { keys: TrustedKeys; lock: Lock; required: boolean };
+  /**
+   * The envelope of the run's workflow, when it has one (spec/envelope.md): every delegation attempt reserves one of
+   * its `agents`, at most `spawn.max_concurrent` delegations are in flight, and an effect under `approve` is
+   * authorized only by that role's decision.
+   */
+  envelope?: Envelope;
   /** The components the run works on, at their base commits (B3); verifier calls are told. */
   workspace?: RunComponents;
   /** How the run touches the outside world (B6); `live` when absent. */
@@ -168,6 +229,26 @@ export interface InterpOptions {
    * `tick` when the time comes, so no worker holds a lease while it waits.
    */
   durableTimers?: boolean;
+  /**
+   * What a `plan` needs (spec/envelope.md "plan"): the package's program and modules as they were packaged, which
+   * a sub-program is checked and linked against, the package's lock, which an amended package keeps, the checker,
+   * how long a check may take, and when the run started, which with the envelope's `time` is its deadline.
+   */
+  plan?: { parent: Program; modules: Modules; lock: Lock; checker: ProgramChecker; checkMs: number; startedAt: number };
+  /**
+   * The packages the run had before its envelope was amended, oldest first (spec/envelope.md "Amendments"). A
+   * command the journal holds stands under the package it was first recorded under: its grant, its action's digest
+   * and who approves its effect are derived under that one again, so a resumed run and a replay find what the
+   * journal recorded. Absent or empty for a run nobody amended.
+   */
+  earlier?: Epoch[];
+  /**
+   * Set for the interpreter of a sub-program: the command it was admitted as, under which its commands run and
+   * from whose reservation they draw, and the `plan` node it belongs to, which names its effects' operations (N07).
+   */
+  sub?: { command: string; plan: string };
+  /** What the interpreters of one run share. The run's own interpreter makes it. */
+  shared?: Shared;
 }
 
 const RESTARTABLE = new Set(["Timeout", "SkillFailed"]);
@@ -181,9 +262,55 @@ const RUNTIME_HANDLER = "mandate-runtime@0.2";
 
 export class Interpreter {
   private readonly defs: Record<string, Def>;
+  private readonly shared: Shared;
+  /**
+   * Whether a lead may amend the run's envelope: the run's own interpreter, of a program with a `plan`. A
+   * sub-program's interpreter is given no `plan`, and what `held` guards is reached only under an envelope.
+   */
+  private readonly amendable: boolean;
 
   constructor(private readonly o: InterpOptions) {
     this.defs = o.program.defs;
+    this.shared = o.shared ?? new Shared();
+    this.amendable = !!o.plan && Object.keys(leadClasses(o.plan.parent, o.program.defs)).length > 0;
+  }
+
+  /**
+   * The package a command stands under (spec/envelope.md "Amendments"): the one the run had when the command was
+   * first recorded, and for a command the journal has not seen, the run's package now. A run nobody amended has
+   * one package, and nothing is read.
+   */
+  private async under(id: string): Promise<Epoch> {
+    const now: Epoch = { hash: this.o.packageHash, ...(this.o.envelope ? { envelope: this.o.envelope } : {}) };
+    const earlier = this.o.earlier;
+    if (!earlier?.length) return now;
+    const row = await this.o.journal.command(this.o.runId, id);
+    if (!row) return now;
+    // A row without a package was written before amendments were recorded: under the run's first package.
+    const hash = row.package ?? earlier[0]!.hash;
+    return earlier.find((e) => e.hash === hash) ?? now;
+  }
+
+  /**
+   * A check against a number the envelope gives, made before anything is sent, at `id`. An amendment only widens
+   * the envelope (E1709), so what passed before it passes after it; what it refused might not. So in a run a lead
+   * may amend, a refusal is recorded, as the failed command `<id>/refused`, and a resumed run and a replay read it
+   * there: what the envelope refused stays refused, whatever the envelope is now. Any other run records nothing,
+   * and checks again each time, as it always did.
+   */
+  private async held(id: string, check: () => void): Promise<void> {
+    if (!this.amendable) return check();
+    const at = `${id}/refused`;
+    if (this.o.replay || this.o.earlier?.length) {
+      const row = await this.o.journal.command(this.o.runId, at);
+      if (row) return void replayed(row, at);
+    }
+    try {
+      check();
+    } catch (f) {
+      if (!(f instanceof Fault) || this.o.replay) throw f;
+      await this.command(at, "refusal", { refused: f.tag }, undefined, async () => ({ error: { tag: f.tag, args: f.args }, cost: {} }));
+    }
   }
 
   private def(name: string): Def | undefined {
@@ -198,17 +325,19 @@ export class Interpreter {
       if (!Object.hasOwn(input, p.name)) throw new Violation("missing_input", `Workflow ${name} needs input '${p.name}'.`);
       vars.set(p.name, input[p.name]!);
     }
-    const ctx: Ctx = { scope: { vars }, where: "workflow" };
+    const ctx: Ctx = { scope: { vars }, where: "workflow", workflow: name };
+    // A sub-program's workflow runs under the command it was admitted as (spec/envelope.md "Running").
+    const at = `${this.o.sub?.command ?? ""}/defs/${name}`;
     let result: Value;
     try {
-      result = await this.block(wf.body, ctx, `/defs/${name}/body`);
+      result = await this.block(wf.body, ctx, `${at}/body`);
     } catch (e) {
       if (!(e instanceof Return)) throw e;
       result = e.value;
     }
     // `ensures e` (§4.6): the workflow's postcondition over its result. A run whose result breaks it does not succeed.
     if (wf.ensures) {
-      const held = truthy(unwrap(await this.expr(wf.ensures, { scope: { vars: new Map([["result", result]]), parent: ctx.scope }, where: "workflow" }, `/defs/${name}/ensures`)));
+      const held = truthy(unwrap(await this.expr(wf.ensures, { ...ctx, scope: { vars: new Map([["result", result]]), parent: ctx.scope } }, `${at}/ensures`)));
       if (!held) throw new Fault("Rejected", [{ reason: "ensures", workflow: name }]);
     }
     return result;
@@ -229,7 +358,7 @@ export class Interpreter {
     const i = (wf.on ?? []).findIndex((h) => h.event === "budget_exceeded");
     if (i < 0) return this.wait(`/defs/${name}/on/budget_exceeded@${episode}`, "input", { pause: true });
     const vars = new Map<string, Value>(wf.params.map((p) => [p.name, input[p.name] ?? null]));
-    return this.expr(wf.on![i]!.then, { scope: { vars }, where: "workflow" }, `/defs/${name}/on/${i}@${episode}/then`);
+    return this.expr(wf.on![i]!.then, { scope: { vars }, where: "workflow", workflow: name }, `/defs/${name}/on/${i}@${episode}/then`);
   }
 
   // ── statements ────────────────────────────────────────────────────────
@@ -417,8 +546,9 @@ export class Interpreter {
       case "changeset":
         return this.changeset(e, ctx, path);
       case "escalate": {
-        const message = e.to.op === "call" && calleePath(e.to.callee) === "human" && e.to.args[0] ? await this.expr(e.to.args[0].value, ctx, `${path}/to/args/0/value`) : await this.expr(e.to, ctx, `${path}/to`);
-        return this.wait(path, "input", { escalation: message });
+        const person = e.to.op === "call" && calleePath(e.to.callee) === "human" ? e.to : undefined;
+        const message = person?.args[0] ? await this.expr(person.args[0].value, ctx, `${path}/to/args/0/value`) : await this.expr(e.to, ctx, `${path}/to`);
+        return this.wait(path, "input", { escalation: message, ...this.asked(person?.args.find((a) => a.name === "role")?.value) });
       }
       case "pause":
         if (e.then) return this.expr(e.then, ctx, `${path}/then`);
@@ -438,10 +568,157 @@ export class Interpreter {
       case "await":
         throw new Violation("unsupported", `${e.op} is not available in 0.1 (E0711).`);
       case "map":
+        return this.map(e, ctx, path);
       case "plan":
-        // The runtime refuses a 0.4 package when it loads it (RUNTIME_LANGUAGES), so this is not reached.
-        throw new Violation("unsupported", `${e.op} is language 0.4, which this runtime does not run yet (spec/envelope.md).`);
+        return this.plan(e, ctx, path);
     }
+  }
+
+  /**
+   * `map x in xs … { body }` (spec/envelope.md "map"): the body once for each element, at most `par` at a time,
+   * with the results in the order of `xs` (R11).
+   *
+   * Before any item is dispatched: a list longer than the bound is `Rejected(over_limit)` (N08); each item's
+   * `with caps` is evaluated, and must lie inside the context; and with `par > 1` no two items may write
+   * overlapping scopes, or the map is `Rejected(overlapping_scopes)` (N03, C5).
+   *
+   * A fault in an item is that item's `Failed` outcome, and the others go on (R12). Under `fail_fast` it stops the
+   * items not yet started, those in flight are waited for, and the map fails with it. Anything else that ends an
+   * item is not the item's to keep: a wait, a stop for a person, a crash, and the run's own `BudgetExceeded`, which
+   * goes to the run's budget handler as it does anywhere. No further item starts, and it leaves the map once the
+   * items in flight have settled.
+   *
+   * What the map does is decided by the items in input order, never by which one ended first, so a resumed run and
+   * a replay decide as the first run did: the first item that did not end with a value decides.
+   */
+  private async map(e: MapExpr, ctx: Ctx, path: string): Promise<Value> {
+    const over = unwrap(await this.expr(e.over, ctx, `${path}/over`));
+    if (!Array.isArray(over)) throw new Violation("not_a_list", `map runs its body over a list, and ${path}/over is not one.`);
+    // Without `max` the bound is the envelope's `agents`: every item starts a delegation, so no more could run (E1702).
+    const bound = e.max ?? this.o.envelope?.budget?.agents;
+    if (bound === undefined) throw new Violation("unbounded_map", `The map at ${path} has no 'max' and the run has no envelope (MDT-E1702).`);
+    const tooLong = (): void => {
+      if (over.length > bound) throw new Fault("Rejected", ["over_limit", { map: path, items: over.length, max: bound }]);
+    };
+    // A bound that is the envelope's `agents` rises with an amendment: a map it refused before stays refused (`held`).
+    if (e.max === undefined) await this.held(path, tooLong);
+    else tooLong();
+    const par = Math.max(1, e.par ?? 1);
+
+    const outer = this.available(ctx);
+    const items: Ctx[] = [];
+    const writes: CapVal[][] = [];
+    for (let i = 0; i < over.length; i++) {
+      let item: Ctx = { ...ctx, scope: { vars: new Map([[e.bind, over[i]!]]), parent: ctx.scope } };
+      const given: CapVal[] = [];
+      for (let j = 0; j < (e.caps ?? []).length; j++) given.push(...(await this.capsAt(e.caps![j]!, item, `${path}[${i}]/caps/${j}`)));
+      for (const g of given) {
+        if (!outer.some((a) => capCovers(a, g))) throw new Fault("PolicyDenied", [{ reason: "outside_authority", map: path, item: i, capability: showCap(g) }]);
+      }
+      if (given.length) {
+        const kinds = new Set(given.map((g) => g.ctor));
+        item = { ...item, item: { given: [...(ctx.item?.given ?? []), given], handed: [...(ctx.item?.handed ?? []).filter((c) => !kinds.has(c.ctor)), ...given] } };
+      }
+      items.push(item);
+      writes.push(given.filter((c) => c.write));
+    }
+    if (par > 1) {
+      for (let i = 0; i < writes.length; i++) {
+        for (let j = i + 1; j < writes.length; j++) {
+          for (const a of writes[i]!) {
+            const b = writes[j]!.find((c) => writesOverlap(a, c));
+            if (b) throw new Fault("Rejected", ["overlapping_scopes", { map: path, items: [i, j], left: showCap(a), right: showCap(b) }]);
+          }
+        }
+      }
+    }
+    if (!this.o.replay) await this.o.journal.mapStarted(this.o.runId, this.o.fence, { map: path, items: over.length, par });
+
+    const failFast = e.supervise?.name === "fail_fast";
+    const ends: Array<ItemEnd | undefined> = new Array<ItemEnd | undefined>(over.length).fill(undefined);
+    let stopped = false;
+    let next = 0;
+    // What an item may write is held from here until the item has ended, also by an item that has not started
+    // yet: a sub-program admitted meanwhile is kept clear of every place the map still writes (C5 across the run).
+    const holder = (i: number): string => `${path}[${i}]`;
+    writes.forEach((held, i) => void (held.length && this.shared.writes.set(holder(i), held)));
+    const worker = async (): Promise<void> => {
+      // A failed branch of a `par` around the map stops an item at its next command, like any command of that
+      // branch, and that stop ends the map here.
+      while (!stopped && next < over.length) {
+        const i = next++;
+        try {
+          ends[i] = { ok: await this.block(e.body, items[i]!, `${holder(i)}/body`) };
+        } catch (x) {
+          if (x instanceof Fault && x.tag !== "BudgetExceeded") {
+            ends[i] = { fault: x };
+            if (failFast) stopped = true;
+          } else {
+            ends[i] = { stop: x };
+            stopped = true;
+          }
+        } finally {
+          this.shared.writes.delete(holder(i));
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(par, over.length) }, () => worker()));
+
+    // How the map ended, for the run's views: each item's outcome by index. It is written when the map has an end
+    // the journal decided, with all its outcomes or as failed, and not when something stopped the run inside it.
+    const ended = async (failed?: string): Promise<void> => {
+      if (this.o.replay) return;
+      const outcomes = ends.map((end) => (!end || "stop" in end ? null : "ok" in end ? "Ok" : end.fault.tag));
+      await this.o.journal.mapEnded(this.o.runId, this.o.fence, { map: path, outcomes, ...(failed !== undefined ? { failed } : {}) });
+    };
+    const out: Value[] = [];
+    for (const [i, end] of ends.entries()) {
+      // Items start in input order, so one that never started comes after the one that stopped the map, which
+      // has decided by now.
+      if (!end) throw new Error(`map ${path}: item ${i} did not run, and no earlier item stopped the map`);
+      if ("stop" in end) throw end.stop;
+      if ("fault" in end && failFast) {
+        // The map has failed: the items it did not start will not run, and hold nothing.
+        for (let j = next; j < over.length; j++) this.shared.writes.delete(holder(j));
+        await ended(end.fault.tag);
+        throw end.fault;
+      }
+      out.push("ok" in end ? tag("Ok", end.ok) : tag("Failed", end.fault.value()));
+    }
+    await ended();
+    return out;
+  }
+
+  /**
+   * What a capability expression stands for at run time. `c.narrow(v)` over a value is c with the scope the value
+   * names. A `Path` is relative, and so may a text be: over files it names that path below each path of c. The
+   * checker bounded the result by c without knowing the value (C3); what the value turns out to be is held to c
+   * here, and a scope outside c is `PolicyDenied`. So is a file scope with `\`, `:` or NUL: a host may read it
+   * another way than this comparison does, so it is not known to lie inside anything (K68). Anything else is what
+   * it is statically (capsOf).
+   */
+  private async capsAt(e: Expr, ctx: Ctx, path: string): Promise<CapVal[]> {
+    if (!(e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow") || e.args.every((a) => a.value.op === "text")) return this.caps(e);
+    const bases = await this.capsAt(e.callee.of, ctx, `${path}/callee/of`);
+    const base = bases[0];
+    // A capability that stands for several cannot be narrowed as one (MDT-E1002): it stays without a scope, which no sandbox accepts.
+    if (!base || bases.length !== 1) return this.caps(e);
+    const scope: string[] = [];
+    for (let i = 0; i < e.args.length; i++) {
+      const v = unwrap(await this.expr(e.args[i]!.value, ctx, `${path}/args/${i}/value`));
+      const named = Array.isArray(v) ? v.map(unwrap) : [v];
+      for (const s of named) {
+        if (typeof s !== "string") throw new Violation("bad_scope", `narrow takes text or a path, and ${path}/args/${i}/value is ${show(v)}.`);
+        const files = base.ctor.startsWith("fs.");
+        if (files && /[\\:\0]/.test(s)) throw new Fault("PolicyDenied", [{ reason: "outside_capability", capability: showCap(base), requested: [s] }]);
+        if (files && !s.startsWith("/") && base.scope) scope.push(...base.scope.map((b) => `${b.replace(/\/+$/, "")}/${s}`));
+        else scope.push(s);
+      }
+    }
+    if (!scopeWithin(base.ctor, scope, base.scope)) {
+      throw new Fault("PolicyDenied", [{ reason: "outside_capability", capability: showCap(base), requested: scope }]);
+    }
+    return [{ ...base, scope, name: `${base.name ?? base.ctor}.narrow` }];
   }
 
   private variable(name: string, ctx: Ctx): Value {
@@ -454,6 +731,8 @@ export class Interpreter {
     if (d?.kind === "type") return tag(name);
     // A component, interface or environment stands for its name, e.g. `test.integration(env: staging, …)`.
     if (d?.kind === "component" || d?.kind === "interface" || d?.kind === "environment") return name;
+    // A role (0.4) is named where a person is asked: `human.approve(role: code_owner)`.
+    if (d?.kind === "role") return name;
     // A bare variant name such as `Uncertain` or `Refund`.
     if (/^[A-Z]/.test(name)) return tag(name);
     throw new Violation("unbound", `Unbound name '${name}'.`);
@@ -569,7 +848,7 @@ export class Interpreter {
     }
     if (p === "human.ask") {
       const { pos } = await this.args(e.args, ctx, path);
-      return this.wait(path, "input", { question: pos[0] ?? null });
+      return this.wait(path, "input", { question: pos[0] ?? null, ...this.asked(e.args.find((a) => a.name === "role")?.value) });
     }
     if (p === "time.now") return this.command(path, "time", {}, undefined, async () => ({ ok: this.o.adapters.clock.now() }));
     if (p === "data.read") return this.dataRead(e, ctx, path);
@@ -674,7 +953,7 @@ export class Interpreter {
         guard?.();
         bound = typeof reserve === "function" ? await reserve() : reserve;
       }
-      const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, bound, within);
+      const prior = await journal.dispatch(runId, fence, { id, kind, digest: requestDigest, ...(label ? { label } : {}) }, bound, within, this.o.sub?.command);
       if (prior) return replayed(prior, id);
       faults.check("after_dispatch", { id, kind });
       const limited = opts.buckets?.length && this.o.limiter ? await this.o.limiter.take(opts.buckets, this.o.policy.priority ?? "normal") : undefined;
@@ -694,6 +973,16 @@ export class Interpreter {
       if ("ok" in outcome) return outcome.ok;
       throw new Fault(outcome.error.tag, outcome.error.args ?? []);
     }
+  }
+
+  /**
+   * The role a question asks, as the wait's request names it: from 0.4 a role is a definition, and only a member who
+   * holds it may answer (spec/envelope.md "Roles"). An earlier program's question names none, as before.
+   */
+  private asked(role: Expr | undefined): { role: string } | Record<string, never> {
+    if (!role || !atLeast(this.o.program.language, "mandate/0.4")) return {};
+    const name = role.op === "var" ? role.name : role.op === "text" ? role.value : undefined;
+    return name === undefined ? {} : { role: name };
   }
 
   /** A wait for a person. The journal holds the answer once it arrives. */
@@ -730,7 +1019,8 @@ export class Interpreter {
   private async infer(e: Extract<Expr, { op: "infer" }>, ctx: Ctx, path: string): Promise<Value> {
     const input = await this.expr(e.from, ctx, `${path}/from`);
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
-    const tier = this.tierFor(e.using, path);
+    // The tier is read from the envelope the run has now. An `infer` records its request, which names no tier.
+    const tier = this.tierFor(e.using, ctx);
     const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
     return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.checkedInfer(req), { siblings: ctx.siblings, label: "infer", ...this.limits("infer", tier) });
   }
@@ -746,15 +1036,13 @@ export class Interpreter {
 
   /**
    * The model tier a model call runs under: the capability named by `using`,
-   * else the only tier among the enclosing definition's model capabilities,
+   * else the only tier among the workflow's model capabilities,
    * else the only tier the program names. The lock file maps it to a model.
    */
-  private tierFor(using: Expr | undefined, path: string): string | undefined {
+  private tierFor(using: Expr | undefined, ctx: Ctx): string | undefined {
     const tierOf = (e: Expr): string | undefined => this.caps(e).find((c) => c.tier)?.tier;
     if (using) return tierOf(using);
-    const def = this.def(path.split("/")[2]!);
-    const caps = def?.kind === "workflow" || def?.kind === "agent" ? def.caps : [];
-    const own = [...new Set(caps.map(tierOf).filter((t): t is string => !!t))];
+    const own = [...new Set(this.available(ctx).flatMap((c) => (c.tier ? [c.tier] : [])))];
     if (own.length === 1) return own[0];
     const all = [...modelTiers(this.o.program)];
     return all.length === 1 ? all[0] : undefined;
@@ -784,10 +1072,13 @@ export class Interpreter {
     // `timeout d` (§8.7, §9.1): each attempt must finish within d of its start. The start is journaled, so a resumed
     // worker keeps the deadline; a step not sent by then is refused, and a result that comes later is discarded.
     const timeoutMs = e.timeout ? Number(unwrap(await this.expr(e.timeout, ctx, `${path}/timeout`))) : undefined;
+    // `with caps`, with a scope a value names evaluated now: the same for every attempt.
+    const given: CapVal[] = [];
+    for (let i = 0; i < (e.caps ?? []).length; i++) given.push(...(await this.capsAt(e.caps![i]!, ctx, `${path}/caps/${i}`)));
     for (let attempt = 0; ; attempt++) {
       const id = attempt ? `${path}#${attempt}` : path;
       try {
-        return await this.attempt(e.agent, e, pos, ctx, id, attempt, timeoutMs);
+        return await this.attempt(e.agent, e, pos, given, ctx, id, attempt, timeoutMs);
       } catch (f) {
         if (!(f instanceof Fault)) throw f;
         if (sup?.name === "restart" && RESTARTABLE.has(f.tag) && attempt < max) {
@@ -799,7 +1090,7 @@ export class Interpreter {
         }
         if (fallback && RESTARTABLE.has(f.tag)) {
           // degrade (§8.7): the fallback, once, with the same arguments; its own fault is the delegation's.
-          return await this.attempt(fallback, e, pos, ctx, `${path}~${fallback}`, 0, timeoutMs);
+          return await this.attempt(fallback, e, pos, given, ctx, `${path}~${fallback}`, 0, timeoutMs);
         }
         if (sup?.name === "escalate" && ESCALATABLE.has(f.tag) && attempt < MAX_ESCALATIONS) {
           const role = arg("role");
@@ -807,7 +1098,7 @@ export class Interpreter {
             escalation: { delegate: `${e.agent}.${e.skill}`, fault: f.value(), attempt },
             question: `${e.agent}.${e.skill} failed with ${show(f.value())}. Answer "retry" to run it again, or anything else to let the failure stand.`,
             options: ["retry", "fail"],
-            ...(role?.op === "text" ? { role: role.value } : {}),
+            ...(role?.op === "text" ? { role: role.value } : this.asked(role)),
           });
           if (String(unwrap(answer)).trim().toLowerCase() === "retry") continue;
         }
@@ -816,15 +1107,139 @@ export class Interpreter {
     }
   }
 
+  /**
+   * A place among the run's delegations in flight (spec/envelope.md "The ledger"). `spawn.max_concurrent` is not a
+   * ledger: a delegation that would exceed it waits here until another one settles. The wait is not an attempt,
+   * holds no reservation and is not a fault. Nothing of it is journaled, and replay, which sends nothing, never
+   * waits. One worker drives a run at a time (R06), so the count is kept in memory, by the run's interpreter and
+   * those of its sub-programs together.
+   *
+   * Returns what gives the place back; it goes to whoever waited longest.
+   */
+  private async place(): Promise<() => void> {
+    const max = this.o.envelope?.spawn?.max_concurrent;
+    const s = this.shared;
+    if (max === undefined || this.o.replay) return () => {};
+    if (s.inFlight < max) s.inFlight++;
+    else await new Promise<void>((go) => s.waiting.push(go));
+    let held = true;
+    return () => {
+      if (!held) return;
+      held = false;
+      const next = s.waiting.shift();
+      // Handed on, the place stays taken; otherwise it is free again.
+      if (next) next();
+      else s.inFlight--;
+    };
+  }
+
+  /**
+   * One attempt of a delegation, once the run has a place for it (`spawn.max_concurrent`). A lead gives its place
+   * up while a sub-program of its runs, since the sub-program's delegations take places of their own, and takes
+   * one again when the sub-program has ended.
+   */
+  private async attempt(agentName: string, e: Delegation, pos: Value[], given: CapVal[], ctx: Ctx, id: string, attempt: number, timeoutMs: number | undefined, planner?: Lead["planner"]): Promise<Value> {
+    let leave = await this.place();
+    const aside = async <T>(fn: () => Promise<T>): Promise<T> => {
+      leave();
+      try {
+        return await fn();
+      } finally {
+        leave = await this.place();
+      }
+    };
+    try {
+      return await this.send(agentName, e, pos, given, ctx, id, attempt, timeoutMs, planner ? { planner, aside } : undefined);
+    } finally {
+      leave();
+    }
+  }
+
+  /**
+   * `plan A.s(args) within envelope` (spec/envelope.md "plan"): A's bodiless skill as an agent loop, like a
+   * delegation, with `check_program` and `submit_program` beside its tools. A sub-program the lead submits is
+   * checked against what is left of the envelope, admitted with its whole budget reserved, and run to its end
+   * inside the lead's tool call; its result goes back to the lead.
+   *
+   * A replay does not run the lead again. It runs each admitted sub-program against the journal, from the IR the
+   * artifact store holds, and then takes the lead's recorded result (N06).
+   */
+  private async plan(e: PlanExpr, ctx: Ctx, path: string): Promise<Value> {
+    const p = this.o.plan;
+    const envelope = this.o.envelope;
+    const run = this.o.program.defs;
+    // The checker refuses a `plan` outside an envelope (E1707) and in a sub-program (E1705).
+    if (!p || !envelope || this.o.sub) throw new Violation("unsupported", `The plan at ${path} is not in a workflow with an envelope that this runtime can run sub-programs for.`);
+    const cls = leadClasses(p.parent, run)[staticPath(path)];
+    if (cls === undefined) throw new Violation("unknown_plan", `The checker knows no plan at ${staticPath(path)}.`);
+    const { pos } = await this.args(e.args, ctx, path);
+    const time = envelope.budget?.time?.ms;
+    const planner: Lead["planner"] = (step, aside) =>
+      new Planner({
+        journal: this.o.journal,
+        runId: this.o.runId,
+        fence: this.o.fence,
+        replay: this.o.replay,
+        artifacts: this.o.artifacts,
+        scope: this.scope(),
+        now: () => this.o.adapters.clock.now(),
+        parent: p.parent,
+        modules: p.modules,
+        package: this.o.packageHash,
+        lock: p.lock,
+        workflow: ctx.workflow,
+        plan: path,
+        lead: `${e.agent}.${e.skill}`,
+        leadClass: cls,
+        ...(time !== undefined ? { deadline: p.startedAt + time } : {}),
+        checker: p.checker,
+        checkMs: p.checkMs,
+        shared: this.shared,
+        step,
+        // The lead holds no place among the run's delegations while its sub-program runs: the sub-program's own do.
+        run: (a, sub) => aside(() => this.subprogram(a, sub)),
+      });
+    if (this.o.replay) {
+      await planner(
+        () => Promise.reject(new Error("a replay runs no step")),
+        (fn) => fn(),
+      ).replay();
+      return replayed(await this.o.journal.command(this.o.runId, path), path);
+    }
+    if (!this.o.adapters.loop) throw new Violation("no_agent_loop", `The plan at ${path} runs ${e.agent}.${e.skill} as an agent loop, and this runtime has none (adapters.loop).`);
+    return this.attempt(e.agent, e, pos, [], ctx, path, 0, undefined, planner);
+  }
+
+  /**
+   * Runs an admitted sub-program's workflow to its end (spec/envelope.md "Running"), in the same run: under the
+   * command it was admitted as, with its own definitions and all its parent sees, and from its own reservation.
+   * The envelope's rules hold inside it: who approves an effect, and how many delegations are in flight at once.
+   * A map without `max` is bounded by the sub-program's own `agents`.
+   */
+  private subprogram(a: Admission, sub: Program): Promise<Value> {
+    const { plan, ...o } = this.o;
+    const program = subprogramLinked(sub, plan!.parent, plan!.modules);
+    const wf = Object.hasOwn(program.defs, a.workflow) ? program.defs[a.workflow] : undefined;
+    if (wf?.kind !== "workflow") throw new Violation("unknown_workflow", `Sub-program ${a.number} of ${a.plan} has no workflow '${a.workflow}'.`);
+    const inner = new Interpreter({ ...o, program, envelope: { ...o.envelope!, budget: wf.budget ?? {} }, sub: { command: a.command, plan: a.plan }, shared: this.shared });
+    return inner.runWorkflow(a.workflow, {});
+  }
+
   /** One attempt of a delegation, by `agentName` (the called agent, or a degrade fallback), as command `id`. */
-  private async attempt(agentName: string, e: Extract<Expr, { op: "delegate" }>, pos: Value[], ctx: Ctx, id: string, attempt: number, timeoutMs: number | undefined): Promise<Value> {
+  private async send(agentName: string, e: Delegation, pos: Value[], given: CapVal[], ctx: Ctx, id: string, attempt: number, timeoutMs: number | undefined, lead?: Lead): Promise<Value> {
     const agent = this.def(agentName);
     if (!agent || agent.kind !== "agent") throw new Violation("unknown_agent", `No agent '${agentName}'.`);
     const skill = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill]! : undefined;
     if (!skill) throw new Violation("unknown_skill", `No skill '${agentName}.${e.skill}'.`);
-    const granted = this.grants(agentName, e.caps ?? [], id);
+    // A delegation the journal holds keeps the grant it was sent with: it is derived under the package it was
+    // recorded under, whatever the envelope is now.
+    const under = await this.under(id);
+    const granted = this.grants(agentName, given, ctx, under);
     const caps = granted.map((c) => (c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor }));
     const budget = e.budget ?? skill.budget ?? agent.budget;
+    // Under an envelope every attempt is one of its `agents`: a first attempt, each restart and a degrade fallback
+    // each reserve one when they are dispatched, with their budget, in one transaction (spec/envelope.md "The ledger").
+    const one = this.o.envelope ? { agents: 1 } : undefined;
     const sandbox = agent.remote ? undefined : requirementFor({ agent: agentName, def: this.defHash(agentName) }, granted, budget?.time?.ms ?? null);
     const request = { agent: agentName, skill: e.skill, args: pos, caps: caps as unknown as Value, isolated: !!e.isolated };
     const loop = this.o.adapters.loop;
@@ -834,6 +1249,7 @@ export class Interpreter {
       if (this.o.adapters.clock.now() >= deadline) throw timedOut();
     };
     const label = `${agentName}.${e.skill}`;
+    if (lead && !(loop && sandbox && !skill.body)) throw new Violation("no_agent_loop", `${label} cannot lead: a plan runs a bodiless skill of a local agent as an agent loop.`);
     if (loop && sandbox && !skill.body) {
       // A bodiless skill runs as an agent loop in this process (§8.2, K7). The delegation reserves the
       // agent's budget less what its finished steps already spent, so a resumed loop is not charged twice.
@@ -854,12 +1270,20 @@ export class Interpreter {
         ...(budget?.spend ? { spend: budget.spend } : {}),
         sandbox,
         program: this.o.program,
+        ...(lead ? { extra: PLAN_TOOLS, brief: planBrief(this.o.plan!.parent, under.envelope!) } : {}),
       };
+      const planner = lead?.planner(
+        (cid, req, call, stepLabel) => this.command(cid, "tool", req, undefined, call, { siblings: ctx.siblings, label: stepLabel, within: id, ...(overdue ? { guard: overdue } : {}), ...this.limits("tool", task.tier) }),
+        lead.aside,
+      );
       return this.command(
         id,
         "delegate",
         request,
-        async () => subtractCost(budget, await this.o.journal.childCost(this.o.runId, id)),
+        async () => {
+          const left = subtractCost(budget, await this.o.journal.childCost(this.o.runId, id));
+          return one ? { ...left, ...one } : left;
+        },
         async () => {
           if (tiers.length !== 1) {
             return { error: { tag: "PolicyDenied", args: [{ reason: "model_tier", detail: `the agent loop needs exactly one model tier in its grant, not ${tiers.length}` }] }, cost: {} };
@@ -878,6 +1302,7 @@ export class Interpreter {
                 await this.o.journal.lock(tx, this.o.runId);
                 await this.o.journal.event(tx, this.o.runId, "sandbox_stopped", { delegate: id, agent: agentName, handle, result });
               }),
+            ...(planner && lead ? { extra: (cid, name, input, stepLabel) => planner.call(cid, name, input, stepLabel) } : {}),
           });
         },
         { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}) },
@@ -889,7 +1314,7 @@ export class Interpreter {
       id,
       "delegate",
       request,
-      budget,
+      one ? { ...budget, ...one } : budget,
       async (): Promise<Outcome> => {
         const out = await this.o.adapters.agents.run({
           agent: agentName,
@@ -927,23 +1352,48 @@ export class Interpreter {
 
   /**
    * Capabilities handed to a delegate: A.caps ∩ avail(ctx), with `with caps` narrowing its own kinds (C2, §9.1).
-   * An agent capability is in avail(ctx) when one of the workflow's covers it, as the compiler reads it
+   * An agent capability is in avail(ctx) when one of the workflow's (its envelope's, when it has one) covers it, as the compiler reads it
    * (capCovers): its scope by segment after `.` and `..`, and no higher data class, other tier or wider arguments.
+   *
+   * `own` is the delegation's `with caps`. Inside a map's body the map's `with caps` is handed to the delegation as
+   * if it had named it: for each kind the agent holds at least as widely and the delegation names none of its own
+   * (spec/envelope.md "map"). What the delegation names itself lies inside the context, which for a map item is what
+   * the map handed that item; a scope chosen at run time is held to that here, since the checker could only hold it
+   * to the capability it narrows.
    */
-  private grants(agentName: string, withCaps: Expr[], path: string): CapVal[] {
+  private grants(agentName: string, own: CapVal[], ctx: Ctx, under?: Epoch): CapVal[] {
     const agent = this.def(agentName) as Extract<Def, { kind: "agent" }>;
-    const wfName = path.split("/")[2]!;
-    const wf = this.def(wfName);
-    const avail = wf?.kind === "workflow" ? wf.caps.flatMap((c) => this.caps(c)) : undefined;
-    const inside = (c: CapVal): boolean => !avail || avail.some((a) => capCovers(a, c));
-    let out = agent.caps.flatMap((c) => this.caps(c)).filter(inside);
-    if (withCaps.length) {
-      const given = withCaps.flatMap((c) => this.caps(c));
+    const avail = this.available(ctx, under);
+    const inside = (c: CapVal): boolean => avail.some((a) => capCovers(a, c));
+    const held = agent.caps.flatMap((c) => this.caps(c));
+    let out = held.filter(inside);
+    for (const g of own) {
+      if (!inside(g)) throw new Fault("PolicyDenied", [{ reason: "outside_authority", delegate: agentName, capability: showCap(g) }]);
+    }
+    const named = new Set(own.map((g) => g.ctor));
+    const given = [...own, ...(ctx.item?.handed ?? []).filter((k) => !named.has(k.ctor) && (!!agent.remote || held.some((a) => capCovers(a, k))))];
+    if (given.length) {
       const kinds = new Set(given.map((g) => g.ctor));
       out = [...out.filter((c) => !kinds.has(c.ctor)), ...given];
     }
     const key = (c: CapVal): string => JSON.stringify(c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor });
     return out.sort((a, b) => (key(a) < key(b) ? -1 : 1));
+  }
+
+  /**
+   * avail(ctx): the capabilities of the workflow whose body is running, its envelope's when it has one (C2). Inside
+   * a map's body, what the maps around the item left of them: each map's `with caps` stand in place of the kinds
+   * they name. `under` is the package to read the run's envelope from, when it is not the run's package now: an
+   * amendment replaces that envelope and nothing else, and a sub-program is bounded by its own capabilities.
+   */
+  private available(ctx: Ctx, under?: Epoch): CapVal[] {
+    const bounds = under?.envelope && !this.o.sub ? (under.envelope.caps ?? []) : workflowBounds(this.workflowDef(ctx.workflow)).caps;
+    let avail = bounds.flatMap((c) => this.caps(c));
+    for (const given of ctx.item?.given ?? []) {
+      const kinds = new Set(given.map((g) => g.ctor));
+      avail = [...avail.filter((c) => !kinds.has(c.ctor)), ...given];
+    }
+    return avail;
   }
 
   /** What a capability expression stands for, over the program's definitions and its linked system model. */
@@ -960,7 +1410,7 @@ export class Interpreter {
     if (!c || c.kind !== "contract") throw new Violation("unknown_contract", `No contract '${e.contract}'.`);
     const vars = new Map<string, Value>();
     c.params.forEach((p, i) => vars.set(p.name, pos[i] ?? null));
-    const cctx: Ctx = { scope: { vars }, where: "contract" };
+    const cctx: Ctx = { scope: { vars }, where: "contract", workflow: ctx.workflow };
     const unmet: string[] = [];
     const evidence: string[] = [];
     for (let i = 0; i < (c.require ?? []).length; i++) {
@@ -984,10 +1434,11 @@ export class Interpreter {
     throw new Fault("Rejected", [{ contract: e.contract, unmet }]);
   }
 
-  private async criterion(v: Verifier, contract: string, name: string, ctx: Ctx, path: string, evidence: string[]): Promise<boolean> {
+  /** One criterion of a contract, or one part of it under `and`; `root` is the criterion's own path, whichever part `path` is. */
+  private async criterion(v: Verifier, contract: string, name: string, ctx: Ctx, path: string, evidence: string[], root = path): Promise<boolean> {
     if ("all" in v) {
       let ok = true;
-      for (let i = 0; i < v.all.length; i++) ok = (await this.criterion(v.all[i]!, contract, name, ctx, `${path}/all/${i}`, evidence)) && ok;
+      for (let i = 0; i < v.all.length; i++) ok = (await this.criterion(v.all[i]!, contract, name, ctx, `${path}/all/${i}`, evidence, root)) && ok;
       return ok;
     }
     let passed: boolean;
@@ -1002,10 +1453,12 @@ export class Interpreter {
       passed = truthy(unwrap(await this.expr(v.static, ctx, `${path}/static`)));
     } else if (needsPerson(v)) {
       method = "human.approve";
-      const r = await this.approval((v as { call: Extract<Expr, { op: "call" }> }).call, contract, name, ctx, `${path}/call`);
+      const r = await this.approval((v as { call: Extract<Expr, { op: "call" }> }).call, contract, name, ctx, `${path}/call`, root);
       passed = r["approved"] === true;
-      detail = { by: r["by"] ?? null, role: r["role"] ?? null, ...(r["expired"] === true ? { expired: true } : {}) };
-      producer = { kind: "person", by: r["by"] ?? null, role: r["role"] ?? null, via: "DecideAction" };
+      // A signed decision is named by its digest, with the member and the key that signed it (spec/envelope.md).
+      const signed: Obj = typeof r["decision"] === "string" ? { member: r["member"] ?? null, key: r["key"] ?? null, decision: r["decision"] } : {};
+      detail = { by: r["by"] ?? null, role: r["role"] ?? null, ...(r["expired"] === true ? { expired: true } : {}), ...signed };
+      producer = { kind: "person", by: r["by"] ?? null, role: r["role"] ?? null, via: "DecideAction", ...signed };
     } else {
       const call = v.call;
       method = call.op === "call" ? (calleePath(call.callee) ?? "call") : "call";
@@ -1095,12 +1548,14 @@ export class Interpreter {
    * applies only to the subject the person was shown (G02). An approval here
    * is evidence for the criterion; it authorizes no action.
    */
-  private async approval(call: Extract<Expr, { op: "call" }>, contract: string, criterion: string, ctx: Ctx, id: string): Promise<Obj> {
+  private async approval(call: Extract<Expr, { op: "call" }>, contract: string, criterion: string, ctx: Ctx, id: string, root: string): Promise<Obj> {
     const { named } = await this.args(call.args, ctx, id);
     const c = this.def(contract) as ContractDef;
     const subject = plain(c.params.map((p) => this.variable(p.name, ctx)));
     const role = named["role"] ?? null;
     const within = named["deadline"];
+    // `distinct_from: q` (0.4): the wait says which earlier approval of this criterion its decider must differ from.
+    const other = atLeast(this.o.program.language, "mandate/0.4") ? named["distinct_from"] : undefined;
     let decision: Value;
     try {
       decision = await this.wait(id, "decision", {
@@ -1110,6 +1565,7 @@ export class Interpreter {
         subject,
         subject_digest: digest("request", { contract, criterion, subject }),
         deadline: typeof within === "number" ? this.o.adapters.clock.now() + within : null,
+        ...(typeof other === "string" ? { distinct_from: other, criterion_path: root } : {}),
       });
     } catch (f) {
       // Past its deadline the approval was not given: the criterion is unmet, and `on unmet` decides (§8.8, R15).
@@ -1207,8 +1663,10 @@ export class Interpreter {
     const evidence = evidenceOf(pos);
     // Evidence is bound to what it checked: an action that would apply other bytes is refused (G01, INV-05).
     if (Object.keys(files).length && !this.o.replay) await this.checkEvidenceFresh(name, files, evidence, component);
+    // An action names the package it was prepared under (N04): the one its `prepare` command was recorded under, so
+    // that an action prepared before an amendment is found again after it, and not prepared and run a second time.
     const actionDigest = digest("action", {
-      package: this.o.packageHash,
+      package: (await this.under(`${path}/prepare`)).hash,
       run: this.o.runId,
       node: path,
       effect: name,
@@ -1220,10 +1678,21 @@ export class Interpreter {
       ...(Object.keys(files).length ? { artifacts: files } : {}),
       ...extra,
     });
-    const operationKey = digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: path, action: actionDigest });
+    // In a sub-program an effect with a business key is one action across the whole `plan` (N07, INV-06): its
+    // operation is named by the run, the plan, the effect and the key, and not by where the sub-program stands. A
+    // second sub-program with the same effect and key finds the first one's action.
+    const sub = this.o.sub;
+    const shared = sub !== undefined && key !== null && !component;
+    const operationKey = shared
+      ? digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: sub.plan, effect: name, key })
+      : digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: path, action: actionDigest });
     const { journal, runId, fence } = this.o;
 
     const action = await journal.action(operationKey);
+    // The key names one action. The same key over other parameters is not that action and not a new one.
+    if (shared && action && (action.effect !== name || canonical(action.params) !== canonical(params))) {
+      throw new Fault("Rejected", ["idempotency_conflict", { effect: name, operation: operationKey, command: action.command_id }]);
+    }
     if (this.o.replay) {
       if (action?.state === "confirmed") return { tool, receipt: action.receipt };
       throw new ReplayEnd(path, "no_result");
@@ -1273,10 +1742,11 @@ export class Interpreter {
     const mode = this.o.mode ?? "live";
     // What the set lands and why, for its view (doc 9 §3.4, §8.2): recorded with the set in every mode.
     const summary: Obj = { plan: plain(plan), plan_digest: digest("request", plain(plan)), plan_evidence: evidenceOf(plan), order: e.order, changes: (e.changes ?? {}) as Value, approver: e.approver };
-    const setOf = (members: Value[]): { setDigest: string; setKey: string } => {
+    // The set names the package its first member was prepared under, as each member's action does.
+    const setOf = async (members: Value[]): Promise<{ setDigest: string; setKey: string }> => {
       const setDigest = digest("action", {
         changeset: path,
-        package: this.o.packageHash,
+        package: (await this.under(`${path}/members/${e.order[0] ?? ""}/prepare`)).hash,
         run: this.o.runId,
         plan: summary["plan_digest"]!,
         plan_evidence: summary["plan_evidence"]!,
@@ -1298,7 +1768,7 @@ export class Interpreter {
         recorded.push({ component: m, effect: mem.effect, approver: mem.approver ?? (comp?.kind === "component" ? comp.owner : ""), evidence: evidenceOf(pos) });
       }
       if (!this.o.replay) {
-        const { setDigest, setKey } = setOf(recorded.map((r) => ({ component: r["component"]!, effect: r["effect"]! })));
+        const { setDigest, setKey } = await setOf(recorded.map((r) => ({ component: r["component"]!, effect: r["effect"]! })));
         await this.o.journal.prepareChangeset(this.o.runId, this.o.fence, { setKey, commandId: path, setDigest, members: recorded, summary, state: "simulated" });
       }
       return { simulated: true, members: sim };
@@ -1316,7 +1786,7 @@ export class Interpreter {
       members.push({ component: m, effect: mem.effect, approver: mem.approver ?? comp.owner, evidence: evidenceOf(pos), tool: p.tool, ...(p.action ? { action: p.action } : { receipt: p.receipt }) });
     }
     const recorded = (): Value => members.map((m) => ({ component: m.component, effect: m.effect, operation: m.action!.operation_key, action_digest: m.action!.action_digest, approver: m.approver, evidence: m.evidence }));
-    const { setDigest, setKey } = this.o.replay ? { setDigest: "", setKey: "" } : setOf(members.map((m) => ({ component: m.component, effect: m.effect, action: m.action!.action_digest })));
+    const { setDigest, setKey } = this.o.replay ? { setDigest: "", setKey: "" } : await setOf(members.map((m) => ({ component: m.component, effect: m.effect, action: m.action!.action_digest })));
     if (mode === "read_only") {
       // What the set would land: each member prepared and frozen, nothing approved or committed.
       const would: Obj = {};
@@ -1497,6 +1967,9 @@ export class Interpreter {
     const contract = String(v["$contract"] ?? "");
     const ids = Array.isArray(v["$evidence"]) ? v["$evidence"].map(String) : [];
     const rows = ids.length ? await this.o.journal.evidence(this.o.runId, ids) : [];
+    // A person's approval holds only while the decision it names is the one they signed (H04).
+    const approved = this.o.decisions;
+    const decisions = approved && rows.some((r) => r.method === "human.approve") ? new Map((await this.o.journal.decisions(this.o.runId)).map((d) => [d.decision_id, d])) : new Map<string, StoredDecision>();
     const problems: string[] = [];
     const found = new Set(rows.map((r) => r.evidence_id));
     for (const id of ids) if (!found.has(id)) problems.push(`${id} is not evidence of this run`);
@@ -1507,7 +1980,7 @@ export class Interpreter {
       if (!record || !r.key_id || !r.signature || !this.o.trusted.verify(record, { key_id: r.key_id, signature: r.signature })) problems.push(`${r.evidence_id} is not signed by a trusted key`);
       else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion) problems.push(`${r.evidence_id} does not match its signed record`);
       else {
-        const why = attestationProblem(record, this.o.verifiers);
+        const why = attestationProblem(record, this.o.verifiers) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined);
         if (why) problems.push(`${r.evidence_id}: ${why}`);
       }
     }
@@ -1598,7 +2071,28 @@ export class Interpreter {
     env?: { environment: string; tier: Tier },
     gov?: { files: Array<{ file: string; kind: string }>; owner: string },
   ): Promise<string> {
-    const base = this.o.policy.authorize?.[effect] ?? (member ? { by: "human" as const, role: member.role } : info.irreversible ? { by: "human" as const, role: "owner" } : { by: "policy" as const });
+    const configured = this.o.policy.authorize?.[effect];
+    // `approve E by r` in the run's envelope (spec/envelope.md): E is authorized only by a decision of role r, never by
+    // policy, wherever in the run it happens. The runtime's configuration cannot name another role or hand it to
+    // policy; a deadline it sets for the effect still applies, since a deadline only takes authority away.
+    // The envelope is the one the action was prepared under: an action that waited for its role before an amendment
+    // still waits for that role after it.
+    const approve = (await this.under(`${path}/prepare`)).envelope?.approve;
+    const owed = approve && Object.hasOwn(approve, effect) ? approve[effect] : undefined;
+    // Who else the program names for this action: an environment's tier, and the approver of a change set's member.
+    const named = [
+      ...(env?.tier.by === "human" ? [{ role: env.tier.role, who: `environment ${env.environment}` }] : []),
+      ...(member ? [{ role: member.role, who: `the change set's member ${member.component}` }] : []),
+    ];
+    const other = owed === undefined ? undefined : named.find((x) => x.role !== owed);
+    if (other) {
+      // Two rules name who decides, and neither gives way: the run stops for a person rather than pick one.
+      throw new Violation("approval_conflict", `The envelope asks ${owed} to approve ${effect}, and ${other.who} asks ${other.role}. Name the same role in both.`);
+    }
+    const base: AuthorizePolicy =
+      owed !== undefined
+        ? { by: "human", role: owed, ...(configured?.by === "human" && configured.deadlineMs !== undefined ? { deadlineMs: configured.deadlineMs } : {}) }
+        : (configured ?? (member ? { by: "human" as const, role: member.role } : info.irreversible ? { by: "human" as const, role: "owner" } : { by: "policy" as const }));
     // The environment's tier is the least that applies: a person's tier names who decides, and a policy tier never lowers the runtime's.
     let pol: AuthorizePolicy = env?.tier.by === "human" ? { ...base, by: "human" as const, role: env.tier.role } : base;
     // A governance-class file needs its owner (K70), and is never lowered: a policy becomes the owner's decision, and
@@ -1640,15 +2134,27 @@ export class Interpreter {
   }
 }
 
+/**
+ * The IR path of the node a command path stands at: the path without what a run adds to it, a loop's iteration
+ * (`@i`), a restarted `par` round (`#allN`) and a map's item (`[i]`).
+ */
+function staticPath(path: string): string {
+  return path.replace(/@\d+|#all\d+|\[\d+\]/g, "");
+}
+
 /** A delegation's budget less what its finished steps spent; dimensions never go below zero. */
-function subtractCost(budget: Budget | undefined, spent: Record<string, number>): Cost | undefined {
+function subtractCost(budget: Budget | undefined, spent: Record<string, number>): Budget | undefined {
   if (!budget) return undefined;
-  const left = (dim: string, v: number): number => Math.max(v - (spent[dim] ?? 0), 0);
-  return {
-    ...(budget.tokens !== undefined ? { tokens: left("tokens", budget.tokens) } : {}),
-    ...(budget.steps !== undefined ? { steps: left("steps", budget.steps) } : {}),
-    ...(budget.spend ? { spend: { micros: left(`spend:${budget.spend.currency}`, budget.spend.micros), currency: budget.spend.currency } } : {}),
-  };
+  const out: Budget = {};
+  for (const dim of BUDGET_DIMENSIONS) {
+    const amount = budgetAmount(budget, dim);
+    // `time` is not reserved: a deadline holds it.
+    if (amount === undefined || dim === "time") continue;
+    const left = Math.max(amount - (spent[dim === "spend" ? `spend:${budget.spend!.currency}` : dim] ?? 0), 0);
+    if (dim === "spend") out.spend = { micros: left, currency: budget.spend!.currency };
+    else out[dim] = left;
+  }
+  return out;
 }
 
 /** The result type a loop asks the model for: a skill returns `Inferred<T>`, and the model is asked for a `T`. */

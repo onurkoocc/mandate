@@ -1,7 +1,7 @@
 {
   "name": "mandate",
   "private": true,
-  "description": "Mandate: an agent-native coordination and contract language (reference implementation of 0.1 to 0.3)",
+  "description": "Mandate: an agent-native coordination and contract language (reference implementation of 0.1 to 0.4)",
   "license": "Apache-2.0",
   "workspaces": [
     "compiler",

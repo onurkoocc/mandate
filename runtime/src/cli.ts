@@ -3,12 +3,20 @@
 //
 //   mandate run <program> --workflow W --input <json> [--run-id ID] [--limit spend=20USD,tokens=2M]
 //   mandate status <run> [--json]
-//   mandate approve <run> --revision N --by NAME
-//   mandate decline <run> --revision N --by NAME
-//   mandate answer <run> --revision N --by NAME <text>
-//   mandate cancel <run>
-//   mandate reconcile <run> <operation>                   ask the system of record what an unknown outcome was
-//   mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
+//   mandate key new [--out FILE]                          a key of your own, to sign decisions with
+//   mandate approve-envelope <program> --key FILE [--member NAME] [--workflow W]
+//                                                         approve a package's envelope, so its runs may start
+//   mandate approve <run> --revision N --key FILE [--member NAME]
+//   mandate decline <run> --revision N --key FILE [--member NAME]
+//   mandate answer <run> --revision N --key FILE [--member NAME] <text>
+//   mandate cancel <run> [--key FILE]
+//   mandate reconcile <run> <operation> [--key FILE]      ask the system of record what an unknown outcome was
+//   mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
+//   mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
+//                                                         decide an amendment of the envelope a lead asked for
+//   mandate decision <run> <digest>                       a decision the run took, as its signed record
+//   mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
+//                                                         check a decision's signature; no configuration, no database
 //   mandate replay <run>
 //   mandate artifact <run> <blob:sha256:…>
 //   mandate show <run> [--format md|html|json]           the run's views (§15): status, evidence, cost, actions
@@ -24,18 +32,23 @@
 // the revision the person saw in `status`: if the run has moved since, it is
 // refused (`stale_revision`) and nothing is recorded. What a person approves
 // is what `status` showed them: the decision is bound to its digest.
+//
+// A decision is a record the person signs with their own key (--key), which
+// the package's lock lists under their name (spec/envelope.md "Signed
+// decisions"). With `decisions: { "mode": "unsigned" }` in the configuration
+// a package of 0.1 to 0.3 takes `--by NAME` instead, as before 0.4.
 
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, parseStrictJson, printProgram, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
-import type { Cost } from "./adapters.js";
+import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, printProgram, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
 import { adaptersFor, anthropicClient, connect, readConfig, runtimeOptions, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { deployManagedAgents, sdkApi } from "./managed-agents.js";
-import { EvidenceSigner } from "./evidence.js";
+import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type SignedDecision } from "./decisions.js";
+import { EvidenceSigner, TrustedKeys } from "./evidence.js";
 import { openDb, type Db } from "./db.js";
-import type { RunRow } from "./journal.js";
+import { costDims, type Limits, type RunRow } from "./journal.js";
 import { draft, drift, scan, type RepoFacts } from "./onboard.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
@@ -52,7 +65,7 @@ interface Args {
   pairs: Record<string, Record<string, string>>;
 }
 
-const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out"]);
 const PAIRS = new Set(["--component", "--host", "--repo"]);
 
 function parse(argv: string[]): Args {
@@ -87,12 +100,17 @@ const USAGE = `usage:
   mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M] [--lock FILE] [--module FILE]… [--priority high|normal] [--mode design|read_only|live]
   mandate shadow-diff <run> <other run>
   mandate status <run> [--json]
-  mandate approve <run> --revision N --by NAME
-  mandate decline <run> --revision N --by NAME
-  mandate answer <run> --revision N --by NAME <text>
-  mandate cancel <run>
-  mandate reconcile <run> <operation>
-  mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
+  mandate key new [--out FILE]
+  mandate approve-envelope <program> --key FILE [--member NAME] [--workflow W] [--lock FILE] [--module FILE]… [--json]
+  mandate approve <run> --revision N --key FILE [--member NAME]
+  mandate decline <run> --revision N --key FILE [--member NAME]
+  mandate answer <run> --revision N --key FILE [--member NAME] <text>
+  mandate cancel <run> [--key FILE]
+  mandate reconcile <run> <operation> [--key FILE]
+  mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
+  mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
+  mandate decision <run> <digest>
+  mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
   mandate replay <run>
   mandate artifact <run> <blob:sha256:…>
   mandate show <run> [--format md|html|json]
@@ -102,9 +120,10 @@ const USAGE = `usage:
   mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER/REPO]… [--name MODULE]
   mandate drift --module MODEL --component NAME=DIR… [--host HOST=NAME]… [--json]
   mandate deploy <program> --target managed-agents [--lock FILE] [--module FILE]… [--agents A,B] [--name PREFIX] [--harness-tokens N]
-options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID`;
+options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
+a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -118,6 +137,8 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     if (cmd === "onboard") return onboard(a, out);
     if (cmd === "drift") return driftCommand(a, out);
     if (cmd === "deploy") return await deploy(a, out, env);
+    if (cmd === "key") return keyNew(a, out);
+    if (cmd === "verify-decision") return verifyDecision(a, out);
     if (!existsSync(configFile)) throw new Usage(`no runtime configuration at ${configFile} (see spec/runtime.md, "Control CLI")`);
     const config = readConfig(configFile);
     db = await connect(config);
@@ -148,9 +169,40 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       return 0;
     }
 
+    if (cmd === "approve-envelope") {
+      // A member of the envelope's owner role signs for the package hash its card shows (`mandate view --card`).
+      const file = a.positional[0] ?? fail("approve-envelope needs a program file");
+      const { program, lock, modules } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined, a.modules);
+      const owner = envelopeOwner(program, file, typeof a.flags["--workflow"] === "string" ? a.flags["--workflow"] : undefined);
+      const key = readDecisionKey(str(a, "--key"));
+      const member = typeof a.flags["--member"] === "string" ? a.flags["--member"] : memberOf(lock, key.keyId);
+      if (member === undefined) throw new Violation("invalid_decision", `unknown_key: the lock of ${file} lists key ${key.keyId} under no member.`);
+      const pkg = buildPackage(program, lock, modules);
+      const rt = new Runtime(db, adaptersFor(config, linkedProgram(program, modules), lock, env), undefined, undefined, runtimeOptions(config, db));
+      const signed = signDecision(key, shownPackage(pkg.hash, owner), { kind: "envelope", member, at: new Date() });
+      const decision = await rt.approveEnvelope(pkg, signed);
+      out(json ? JSON.stringify({ package: pkg.hash, decision, member, role: owner, key: key.keyId, record: signed.record, signature: signed.signature }, null, 2) + "\n" : `package  ${pkg.hash}\napproved by ${member} as ${owner}\ndecision ${decision}\n`);
+      return 0;
+    }
+
     if (!runId) throw new Usage(`${cmd} needs a run id`);
-    const rt = await runtimeFor(db, config, runId, env);
-    const msg = { sender: typeof a.flags["--by"] === "string" ? a.flags["--by"] : "cli", messageId: typeof a.flags["--message-id"] === "string" ? a.flags["--message-id"] : randomUUID() };
+    const { rt, lock } = await runtimeFor(db, config, runId, env);
+    // Who decides: a member, by the key they sign with (the lock says whose it is), or in unsigned mode a name.
+    const key = typeof a.flags["--key"] === "string" ? readDecisionKey(a.flags["--key"]) : undefined;
+    const member = key ? (typeof a.flags["--member"] === "string" ? a.flags["--member"] : memberOf(lock, key.keyId)) : undefined;
+    if (key && member === undefined) throw new Violation("invalid_decision", `unknown_key: the lock of run ${runId}'s package lists key ${key.keyId} under no member.`);
+    const msg = { sender: member ?? (typeof a.flags["--by"] === "string" ? a.flags["--by"] : "cli"), messageId: typeof a.flags["--message-id"] === "string" ? a.flags["--message-id"] : randomUUID() };
+    /** The person's signed record of a decision on what the run shows; it names the revision they saw (--revision). */
+    const sign = async (about: "wait" | "run" | { reconcile: string }, kind: DecisionKind, payload?: string): Promise<SignedDecision> => {
+      const shown = await rt.shown(runId, about);
+      const seen = typeof a.flags["--revision"] === "string" ? revision(a) : shown.revision;
+      return signDecision(key!, { ...shown, revision: seen }, { kind, member: member!, ...(payload !== undefined ? { payload } : {}), at: new Date() });
+    };
+    /** In unsigned mode, the name of who decides. */
+    const by = (): string => {
+      if (typeof a.flags["--by"] === "string") return a.flags["--by"];
+      throw new Usage("--key FILE is required: a decision is signed (or --by NAME, in unsigned mode)");
+    };
     let run: RunRow;
     switch (cmd) {
       case "status":
@@ -158,34 +210,57 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         break;
       case "approve":
       case "decline": {
-        const [rev, by] = [revision(a), str(a, "--by")];
+        const [rev, who] = [revision(a), key ? "" : by()];
         const w = waitOf(await rt.getRun(runId));
+        if (w.kind === "amendment") throw new Violation("no_wait", `Run ${runId} is waiting for a decision on an amendment of its envelope: mandate amend ${runId} --revision ${rev} --key FILE ${cmd}`);
         if (w.kind !== "decision") throw new Violation("no_wait", `Run ${runId} is not waiting for a decision.`);
         const digest = String(w.request["subject_digest"] ?? w.request["action_digest"] ?? "");
-        run = await rt.decideAction(runId, msg, { commandId: w.command, revision: rev, digest, approve: cmd === "approve", by });
+        run = await rt.decideAction(runId, msg, key ? { signed: await sign("wait", cmd) } : { commandId: w.command, revision: rev, digest, approve: cmd === "approve", by: who });
         break;
       }
       case "answer": {
         const [rev, text] = [revision(a), a.positional.slice(1).join(" ")];
-        str(a, "--by");
+        if (!key) by();
         if (!text) throw new Usage("answer needs the text of the answer");
         const w = waitOf(await rt.getRun(runId));
         if (w.kind !== "input") throw new Violation("no_wait", `Run ${runId} is not waiting for an answer.`);
-        run = await rt.submitInput(runId, msg, { commandId: w.command, revision: rev, value: text });
+        run = await rt.submitInput(runId, msg, key ? { value: text, signed: await sign("wait", "answer", payloadOf.answer(text)) } : { commandId: w.command, revision: rev, value: text });
         break;
       }
       case "cancel":
-        run = await rt.cancelRun(runId);
+        run = await rt.cancelRun(runId, key ? await sign("run", "cancel") : undefined);
         break;
       case "reconcile": {
         // Asks the adapter what happened to an action whose outcome is unknown (§8.9), e.g. a change set's stopped member.
         const op = a.positional[1] ?? fail("reconcile needs the action's operation key (status shows it)");
-        run = await rt.reconcileAction(runId, op);
+        run = await rt.reconcileAction(runId, op, key ? await sign({ reconcile: op }, "reconcile", payloadOf.reconcile(op)) : undefined);
         break;
       }
-      case "raise-limits":
-        run = await rt.raiseLimits(runId, msg, { revision: revision(a), limits: limits(str(a, "--limit")), by: str(a, "--by") });
+      case "raise-limits": {
+        const [rev, wanted] = [revision(a), limits(str(a, "--limit"))];
+        run = await rt.raiseLimits(runId, msg, key ? { limits: wanted, signed: await sign("run", "raise_limits", payloadOf.limits(costDims(wanted))) } : { revision: rev, limits: wanted, by: by() });
         break;
+      }
+      case "amend": {
+        // The owner's decision on an amendment a lead asked for (spec/envelope.md "Amendments"): a signed record
+        // whose subject is the hash of the package with the new envelope, as `status` showed it.
+        const what = a.positional[1];
+        if (what !== "approve" && what !== "decline") throw new Usage("amend takes approve or decline");
+        revision(a);
+        if (!key) throw new Usage("--key FILE is required: an amendment is decided with a signed decision");
+        const w = waitOf(await rt.getRun(runId));
+        if (w.kind !== "amendment") throw new Violation("no_wait", `Run ${runId} is not waiting for a decision on an amendment.`);
+        run = await rt.decideAmendment(runId, msg, await sign("wait", what === "approve" ? "amend" : "decline"));
+        break;
+      }
+      case "decision": {
+        const id = a.positional[1] ?? fail("decision needs the decision's digest (status shows it)");
+        const d = (await rt.verifyDecisions(runId)).find((x) => x.decision_id === id);
+        if (!d) throw new Violation("unknown_decision", `Run ${runId} took no decision ${id}.`);
+        // The record and its signature, as `mandate verify-decision` reads them.
+        out(JSON.stringify({ record: d.record, signature: d.signature }, null, 2) + "\n");
+        return 0;
+      }
       case "show": {
         const format = typeof a.flags["--format"] === "string" ? a.flags["--format"] : "md";
         if (!["md", "html", "json"].includes(format)) throw new Usage("--format is md, html or json");
@@ -224,7 +299,8 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       return 2;
     }
     if (e instanceof Violation) {
-      process.stderr.write(`mandate: ${e.code}: ${e.message}\n`);
+      // A violation's message starts with its code.
+      process.stderr.write(`mandate: ${e.message}\n`);
       return 1;
     }
     throw e;
@@ -310,6 +386,21 @@ function originOf(dir: string): string | undefined {
   }
 }
 
+/**
+ * The role that approves a program's envelope: the owner of the workflow `--workflow` names, or of every workflow
+ * with an envelope when they have one owner. An approval is for the package, in a role; it names no workflow.
+ */
+function envelopeOwner(program: Program, file: string, workflow: string | undefined): string {
+  const owners = new Map<string, string>();
+  for (const [name, d] of Object.entries(program.defs)) if (d.kind === "workflow" && d.envelope?.owner !== undefined) owners.set(name, d.envelope.owner);
+  const all = [...owners.keys()].sort();
+  if (!all.length) throw new Violation("no_envelope", `${file} has no workflow with an envelope, so there is nothing to approve.`);
+  if (workflow !== undefined) return owners.get(workflow) ?? fail(`no workflow ${workflow} with an envelope in ${file}; it has ${all.join(", ")}`);
+  const roles = [...new Set(owners.values())].sort();
+  if (roles.length > 1) throw new Usage(`${file} has envelopes owned by ${roles.join(" and ")}; name the workflow whose envelope you approve with --workflow: ${all.join(", ")}`);
+  return roles[0]!;
+}
+
 function fail(message: string): never {
   throw new Usage(message);
 }
@@ -331,9 +422,9 @@ function revision(a: Args): number {
   return n;
 }
 
-/** `spend=20USD,tokens=2M,steps=40`. */
-function limits(text: string): Cost {
-  const c: Cost = {};
+/** `spend=20USD,tokens=2M,steps=40,agents=30`. */
+function limits(text: string): Limits {
+  const c: Limits = {};
   for (const part of text.split(",")) {
     const [k, v] = part.split("=");
     const m = v?.match(/^([0-9]+(?:\.[0-9]+)?)([kM]?)([A-Z]{3})?$/);
@@ -342,7 +433,8 @@ function limits(text: string): Cost {
     if (k === "spend") c.spend = { micros: Math.round(n * 1_000_000), currency: m[3] ?? "USD" };
     else if (k === "tokens") c.tokens = n;
     else if (k === "steps") c.steps = n;
-    else throw new Usage(`unknown limit ${k}; use spend, tokens or steps`);
+    else if (k === "agents") c.agents = n;
+    else throw new Usage(`unknown limit ${k}; use spend, tokens, steps or agents`);
   }
   return c;
 }
@@ -369,8 +461,7 @@ function load(file: string, lockFile: string | undefined, moduleFiles: string[] 
   if (problems.length) throw new Violation("load_verification_failed", problems.flatMap((p) => p.diagnostics.filter((d) => d.severity === "error").map((d) => `${p.file}: ${d.code} ${d.message}`)).join("\n"));
   const r = check(readFileSync(file, "utf8"), kindOf(file), { modules, ...(lock ? { lock } : {}) });
   if (!r.ok) throw new Violation("load_verification_failed", r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`).join("\n"));
-  const { lock: _format, ...pinned } = lock ?? { modules: {} };
-  return { program: r.program!, lock: pinned, modules };
+  return { program: r.program!, lock: packagedLock(lock), modules };
 }
 
 /**
@@ -410,10 +501,79 @@ async function deploy(a: Args, out: (s: string) => void, env: NodeJS.ProcessEnv)
   return 0;
 }
 
-async function runtimeFor(db: Db, config: RuntimeConfig, runId: string, env: NodeJS.ProcessEnv): Promise<Runtime> {
+/** The runtime for a run's package, and the package's lock: it says which member a key belongs to. */
+async function runtimeFor(db: Db, config: RuntimeConfig, runId: string, env: NodeJS.ProcessEnv): Promise<{ rt: Runtime; lock: Lock }> {
   const [row] = await db.query<{ program: Program; lock: Lock; modules: Modules | null }>("select p.program, p.lock, p.modules from runs r join packages p on p.package_hash = r.package_hash where r.run_id = $1", [runId]);
   if (!row) throw new Violation("unknown_run", `No run ${runId}.`);
-  return new Runtime(db, adaptersFor(config, linkedProgram(row.program, row.modules ?? {}), row.lock, env), undefined, undefined, runtimeOptions(config, db));
+  return { rt: new Runtime(db, adaptersFor(config, linkedProgram(row.program, row.modules ?? {}), row.lock, env), undefined, undefined, runtimeOptions(config, db)), lock: row.lock };
+}
+
+/**
+ * `mandate key new`: a person's own ed25519 key. The private half stays in `--out` (default `mandate.key`), readable
+ * by its owner only, and is never replaced. The public half is written next to it under the name the runtime's
+ * `decisions.keys` directory expects, `<key id>.pem`.
+ */
+function keyNew(a: Args, out: (s: string) => void): number {
+  if (a.positional[0] !== "new" || a.positional.length !== 1) throw new Usage("key takes new: mandate key new [--out FILE]");
+  const file = resolve(typeof a.flags["--out"] === "string" ? a.flags["--out"] : "mandate.key");
+  const key = newDecisionKey(file);
+  const pub = join(dirname(file), keyFileName(key.keyId));
+  writeFileSync(pub, key.publicKeyPem());
+  out(
+    [
+      `key ${key.keyId}`,
+      `private key: ${file} (keep it to yourself; it signs your decisions)`,
+      `public key:  ${pub}`,
+      key.publicKeyPem().trimEnd(),
+      `to decide with it: list the key id under your name in the lock's "members", and put the public key file in the runtime's decisions.keys directory`,
+    ].join("\n") + "\n",
+  );
+  return 0;
+}
+
+/**
+ * `mandate verify-decision`: whether a decision record carries a valid signature by the key in `--key`, and with
+ * `--lock` whether that lock binds the key to the record's member and role. It reads two or three files and
+ * nothing else: no configuration, no database, no runtime. Exit 1 when the decision does not hold.
+ */
+function verifyDecision(a: Args, out: (s: string) => void): number {
+  const file = a.positional[0] ?? fail("verify-decision needs a decision record file");
+  const keyFile = str(a, "--key");
+  const parsed = parseStrictJson(readFileSync(file, "utf8"));
+  const signed: unknown = parsed.ok ? parsed.value.value : undefined;
+  let keys: TrustedKeys;
+  try {
+    keys = new TrustedKeys([readFileSync(keyFile, "utf8")]);
+  } catch (e) {
+    throw new Violation("bad_decision_key", `${keyFile} is not an ed25519 public key: ${(e as Error).message}`);
+  }
+  const keyId = keys.ids()[0]!;
+  const lock = typeof a.flags["--lock"] === "string" ? (readLock(a.flags["--lock"]) ?? fail(`no lock file at ${a.flags["--lock"]}`)) : undefined;
+  const problem = !isSignedDecision(signed)
+    ? `${file} is not a signed decision record ({ "record": …, "signature": "ed25519:…" })`
+    : signed.record.key !== keyId
+      ? `the record names key ${signed.record.key}; ${keyFile} holds ${keyId}`
+      : !signatureHolds(signed, keys)
+        ? `the signature does not verify under key ${keyId}: the record is not what was signed`
+        : lock
+          ? (signerRefusal(signed, keys, lock) ?? roleRefusal(signed.record, lock, signed.record.role))?.message
+          : undefined;
+  if (problem || !isSignedDecision(signed)) {
+    out(`invalid: ${problem}\n`);
+    return 1;
+  }
+  const r = signed.record;
+  out(
+    [
+      `valid: decision ${decisionId(r)}`,
+      `  ${r.kind} by ${r.member}${r.role !== undefined ? ` as ${r.role}` : ""}, signed ${r.at} with key ${r.key}`,
+      `  package ${r.package}`,
+      ...(r.run !== undefined ? [`  run ${r.run}${r.revision !== undefined ? ` at revision ${r.revision}` : ""}${r.command !== undefined ? `, ${r.command}` : ""}`] : []),
+      `  subject ${r.subject}${r.payload !== undefined ? `, payload ${r.payload}` : ""}`,
+      lock ? `  the lock binds the key to ${r.member}${r.role !== undefined ? `, who holds ${r.role}` : ""}` : "  the signature holds; whether the key is this member's is what the package's lock says (--lock)",
+    ].join("\n") + "\n",
+  );
+  return 0;
 }
 
 function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {
@@ -429,7 +589,10 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
   const evidence = await rt.evidence(run.run_id);
   const signed = new Map((await rt.verifyEvidence(run.run_id)).map((e) => [e.evidence_id, e.valid]));
   const actions = await rt.journal.actions(run.run_id);
-  if (json) return JSON.stringify({ run, budget, evidence: evidence.map((e) => ({ ...e, signature_valid: signed.get(e.evidence_id) ?? false })), actions }, null, 2) + "\n";
+  const decisions = await rt.verifyDecisions(run.run_id);
+  // How this configuration takes a decision: signed with a key, or by name.
+  const as = config.decisions.mode === "unsigned" ? "--by <you>" : "--key <your key file>";
+  if (json) return JSON.stringify({ run, budget, evidence: evidence.map((e) => ({ ...e, signature_valid: signed.get(e.evidence_id) ?? false })), actions, ...(decisions.length ? { decisions } : {}) }, null, 2) + "\n";
   const lines = [`run ${run.run_id}  ${run.workflow}  ${run.state}  revision ${run.revision}`];
   if (run.state === "waiting" && isObj(run.waiting)) {
     const w = run.waiting;
@@ -439,17 +602,26 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
       lines.push(`  subject digest ${req["subject_digest"]}${typeof req["deadline"] === "number" ? `, deadline ${new Date(req["deadline"]).toISOString()}` : ""}`);
       lines.push(...subjectLines(req["subject"] ?? null));
       if (config.verifier) lines.push(`  the change in ${config.verifier.workdir}: git -C ${config.verifier.workdir} diff ${config.verifier.base}`);
-      lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} --by <you>`, `  decline: mandate decline ${run.run_id} --revision ${run.revision} --by <you>`);
+      lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} ${as}`, `  decline: mandate decline ${run.run_id} --revision ${run.revision} ${as}`);
+    } else if (w["kind"] === "amendment") {
+      // What the owner signs for is the new package's hash. The reason is the lead's own text: a model wrote it.
+      lines.push(`waiting for: ${req["role"] ?? "the owner"} to decide an amendment of ${req["workflow"]}'s envelope, asked by ${req["lead"]}`);
+      lines.push(`  package ${req["from"]} → ${req["package"]}${typeof req["deadline"] === "number" ? `, deadline ${new Date(req["deadline"]).toISOString()}` : ""}`);
+      const changes = Array.isArray(req["changes"]) ? req["changes"] : [];
+      for (const c of changes) if (isObj(c)) lines.push(`  ${String(c["text"])}`);
+      if (!changes.length) lines.push("  the envelope's amounts and capabilities are as they were");
+      lines.push(`  the lead's reason (model output): ${JSON.stringify(String(req["reason"] ?? ""))}`);
+      lines.push(`  approve: mandate amend ${run.run_id} --revision ${run.revision} ${as} approve`, `  decline: mandate amend ${run.run_id} --revision ${run.revision} ${as} decline`);
     } else if (w["kind"] === "timer") {
       lines.push(`waiting for: a timer until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "")}); the scheduler resumes the run then`);
     } else if (w["kind"] === "decision") {
       lines.push(`waiting for: approval of action ${req["effect"] ?? ""} (digest ${req["action_digest"]})`);
-      lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} --by <you>`);
+      lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} ${as}`);
     } else {
       const q = req["question"] ?? req["escalation"] ?? (w["kind"] === "budget_exceeded" ? "Budget exceeded." : null);
       lines.push(`waiting for: an answer${q !== null ? `: ${show(q as Value)}` : ""}`);
-      if (w["kind"] === "budget_exceeded") lines.push(`  raise:  mandate raise-limits ${run.run_id} --revision ${run.revision} --by <you> --limit spend=<amount>USD`);
-      lines.push(`  answer: mandate answer ${run.run_id} --revision ${run.revision} --by <you> <text>`);
+      if (w["kind"] === "budget_exceeded") lines.push(`  raise:  mandate raise-limits ${run.run_id} --revision ${run.revision} ${as} --limit spend=<amount>USD`);
+      lines.push(`  answer: mandate answer ${run.run_id} --revision ${run.revision} ${as} <text>`);
     }
   }
   if (run.state === "attention_required") lines.push(`attention: ${show(run.attention ?? null)}`);
@@ -461,6 +633,7 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
     lines.push(`budget ${d.dimension}: limit ${f(d.limit)}, settled ${f(d.settled)}, reserved ${f(d.reserved)}, available ${f(d.available)}`);
   }
   for (const e of evidence) lines.push(`evidence ${e.contract}.${e.criterion}: ${e.passed ? "met" : "not met"} (${e.method}; ${signed.get(e.evidence_id) ? "signed" : "SIGNATURE INVALID"})`);
+  for (const d of decisions) lines.push(`decision ${d.record.kind} by ${d.record.member}${d.record.role !== undefined ? ` as ${d.record.role}` : ""}: ${d.valid ? "signed" : "SIGNATURE INVALID"} (${d.decision_id})`);
   for (const x of actions) lines.push(`action ${x.effect}: ${x.state}${x.receipt ? ` ${show(x.receipt)}` : ""}`);
   return lines.join("\n") + "\n";
 }

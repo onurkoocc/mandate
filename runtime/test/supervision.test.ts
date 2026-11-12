@@ -8,7 +8,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { Runtime } from "../src/runtime.js";
 import { SimAgents, SimModel } from "../src/sim.js";
-import { closeAll, commandIds, world } from "./helpers.js";
+import { closeAll, commandIds, world, UNSIGNED } from "./helpers.js";
 
 afterAll(closeAll);
 
@@ -138,7 +138,7 @@ describe("Throttled (§8.6, V14)", () => {
   it("holds no reservation while it waits on a durable timer", async () => {
     const model = new SimModel((_r, n) => (n === 1 ? { error: { tag: "Throttled", args: [{ retry_after_ms: 60_000 }] }, cost: {} } : { ok: "an answer", cost: { tokens: 100 } }));
     const w = await world(PROGRAM, { model });
-    const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { durableTimers: true, signer: w.rt.signer });
+    const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { ...UNSIGNED, durableTimers: true, signer: w.rt.signer });
     const waiting = await rt.startRun({ pkg: w.pkg, workflow: "Ask", input: ISSUE, runId: "s6" });
     expect(waiting.waiting).toMatchObject({ kind: "timer", request: { reason: "throttled" } });
     expect((await rt.budgetReport("s6")).dimensions).toEqual([{ dimension: "tokens", limit: 10_000, settled: 0, reserved: 0, available: 10_000 }]);
@@ -152,7 +152,7 @@ describe("Throttled (§8.6, V14)", () => {
 describe("a shared token bucket (§8.6)", () => {
   it("is shared by every run: the second run waits for a token, then goes on", async () => {
     const w = await world(PROGRAM);
-    const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { durableTimers: true, signer: w.rt.signer, rateLimits: { model: { capacity: 1, perSecond: 0.01 } } });
+    const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { ...UNSIGNED, durableTimers: true, signer: w.rt.signer, rateLimits: { model: { capacity: 1, perSecond: 0.01 } } });
     expect((await rt.startRun({ pkg: w.pkg, workflow: "Ask", input: ISSUE, runId: "b1" })).state).toBe("succeeded");
     const second = await rt.startRun({ pkg: w.pkg, workflow: "Ask", input: ISSUE, runId: "b2" });
     // The model was never called for the second run: the bucket said not yet.
@@ -167,7 +167,7 @@ describe("a shared token bucket (§8.6)", () => {
 
   it("keeps a reserve for work a person waits for: batch runs cannot drain it (priority classes)", async () => {
     const w = await world(PROGRAM);
-    const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { durableTimers: true, signer: w.rt.signer, rateLimits: { model: { capacity: 2, perSecond: 0.01, reserve: 1 } } });
+    const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { ...UNSIGNED, durableTimers: true, signer: w.rt.signer, rateLimits: { model: { capacity: 2, perSecond: 0.01, reserve: 1 } } });
     // A batch run takes the one token it may; the next batch run waits, though one token is left.
     expect((await rt.startRun({ pkg: w.pkg, workflow: "Ask", input: ISSUE, runId: "p1" })).state).toBe("succeeded");
     const batch = await rt.startRun({ pkg: w.pkg, workflow: "Ask", input: ISSUE, runId: "p2" });
@@ -179,7 +179,7 @@ describe("a shared token bucket (§8.6)", () => {
 
   it("refuses outright when too many calls already wait: back pressure, never a silent queue", async () => {
     const w = await world(PROGRAM);
-    const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { durableTimers: true, signer: w.rt.signer, rateLimits: { "model:standard": { capacity: 1, perSecond: 0.01, queue: 0 } } });
+    const rt = new Runtime(w.db, w.adapters, w.faults, undefined, { ...UNSIGNED, durableTimers: true, signer: w.rt.signer, rateLimits: { "model:standard": { capacity: 1, perSecond: 0.01, queue: 0 } } });
     expect((await rt.startRun({ pkg: w.pkg, workflow: "Ask", input: ISSUE, runId: "b3" })).state).toBe("succeeded");
     const refused = await rt.startRun({ pkg: w.pkg, workflow: "Ask", input: ISSUE, runId: "b4" });
     expect(refused.state).toBe("failed");

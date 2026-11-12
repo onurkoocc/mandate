@@ -203,7 +203,7 @@ export const CODES: Record<string, { title: string; explain: string }> = {
   },
   "MDT-E0711": {
     title: "Dynamic spawn",
-    explain: "spawn is not available in 0.1. Use delegate, par or a bounded map (§9.1).",
+    explain: "spawn is not available in 0.1. Use delegate, par or a bounded map (§9.1). From 0.4 a lead agent plans work while a run is going with `plan Agent.skill(…) within envelope` (spec/envelope.md \"plan\").",
   },
   "MDT-E0712": {
     title: "UnknownOutcome restarted",
@@ -291,7 +291,7 @@ export const CODES: Record<string, { title: string; explain: string }> = {
   },
   "MDT-E1702": {
     title: "Unbounded map",
-    explain: "A map says how many elements it accepts at most: `max n`. Inside an envelope `max` may be left out when the body starts a delegation, since the envelope's `agents` then bounds it. A list longer than the bound is refused before any item runs (spec/envelope.md \"map\", N08).",
+    explain: "A map says how many elements it accepts at most: `max n`. Inside an envelope `max` may be left out when the body starts a delegation, itself or in a function it calls, since the envelope's `agents` then bounds it. A list longer than the bound is refused before any item runs (spec/envelope.md \"map\", N08).",
   },
   "MDT-E1703": {
     title: "Map concurrency above the envelope",
@@ -303,11 +303,11 @@ export const CODES: Record<string, { title: string; explain: string }> = {
   },
   "MDT-E1705": {
     title: "Not allowed in a sub-program",
-    explain: "A sub-program a lead submits defines only types, constants, capabilities, functions, local agents and one workflow. It cannot define roles, contracts, effects, externs, a system model, a remote agent or an envelope, and it cannot `plan` (spec/envelope.md \"The sub-program\", N09).",
+    explain: "A sub-program a lead submits defines only types, constants, capabilities, functions, local agents and one workflow. It cannot define roles, contracts, effects, externs, a system model, a remote agent or an envelope, and it cannot `plan`. Its workflow takes no parameters, and what the runtime's skeleton says of the module (its name, version, language and its one import) stays (spec/envelope.md \"The sub-program\", N09).",
   },
   "MDT-E1706": {
     title: "Sub-program does not fit the envelope",
-    explain: "A sub-program is admitted only when it fits what is left of the envelope: its capabilities lie inside the envelope's and clear of writes in flight, its budget is within the remainder in every dimension, its data class is within `spawn.max_class`, and the envelope's approvals still apply. The facts name the dimension. The diagnostic is returned to the lead; nothing runs (spec/envelope.md \"The sub-program\", N01, N02).",
+    explain: "A sub-program is admitted only when it fits what is left of the envelope: its workflow's capabilities lie inside the envelope's and clear of writes in flight, its budget names every dimension the run is limited in and is within the remainder, its time ends before the run's deadline, and what it sends to a model is within `spawn.max_class` and within what that model may receive of the lead's own data class. The fact `dimension` names what does not fit: `capability`, `write_scope`, a ledger dimension such as `tokens` or `spend:USD`, `time` or `data_class`. The diagnostic is returned to the lead; nothing runs (spec/envelope.md \"The sub-program\", N01, N02).",
   },
   "MDT-E1707": {
     title: "`plan` outside an envelope",
@@ -315,7 +315,11 @@ export const CODES: Record<string, { title: string; explain: string }> = {
   },
   "MDT-E1708": {
     title: "Person or critical effect in a map body",
-    explain: "A map body has no human.* step, no escalate and no critical effect: each item would wait for a person or be authorized on its own. Ask once about the list after the map, or land a batch with a change set (spec/envelope.md \"map\").",
+    explain: "Nothing in a map body waits for a person, and it has no critical effect: each item would wait or be authorized on its own. That covers a human.* step, escalate, pause, `supervise escalate`, a verify against a contract a person approves, a function that holds one of these, a critical effect and a change set. Ask once about the list after the map, or land a batch with a change set after it (spec/envelope.md \"map\").",
+  },
+  "MDT-E1709": {
+    title: "Amendment narrows the envelope",
+    explain: "An amendment of an envelope only widens it. The new envelope holds every capability the old one held; its budget names the same dimensions, each with at least the old amount; `spawn.max_concurrent` and `spawn.max_class` are no lower, and no bound is added where there was none. What ran under the old envelope then still lies inside the new one, and nothing that was allowed before is refused after. The owner and the `approve` rules may change (spec/envelope.md \"Amendments\").",
   },
   "MDT-E0902": {
     title: "Sandbox requirement cannot be enforced",

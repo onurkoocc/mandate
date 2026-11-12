@@ -1,10 +1,13 @@
-// Public API of the Mandate 0.1 reference compiler.
+// Public API of the Mandate reference compiler, for language 0.1 to 0.4.
 export { check, checkPatch, load, loadModules, kindOf, type CheckOptions, type CheckResult, type LoadResult, type ModuleSource, type PatchCheck, type SourceKind } from "./check.js";
+export { checkSubprogram, subprogramLinked, type SubprogramCheck, type SubprogramInput } from "./check.js";
+export { checkAmendment, type AmendmentCheck, type AmendmentInput } from "./check.js";
+export { narrowings } from "./check/amendment.js";
 export { link, linkedProgram, references, type Linked, type Modules } from "./modules.js";
-export { LOCK_FORMAT, LOCK_FORMATS, lockChecks, moduleLockChecks, roleLockChecks, lockSchema, modelTiers, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
+export { LOCK_FORMAT, LOCK_FORMATS, lockChecks, moduleLockChecks, roleLockChecks, lockSchema, modelTiers, packagedLock, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
 export { CODES } from "./codes.js";
 export { diag, formatDiagnostic, hasErrors, type Diagnostic, type Repair, type Span } from "./diag.js";
-export { domainHash, hashProgram, type HashDomain, type ProgramHashes } from "./hash.js";
+export { domainHash, hashProgram, packageHash, type HashDomain, type ProgramHashes } from "./hash.js";
 export * from "./ir/types.js";
 export { irSchema, validateIr } from "./ir/validate.js";
 export { canonicalize } from "./json/jcs.js";
@@ -15,8 +18,11 @@ export { parseMdt, RESERVED } from "./parse/parser.js";
 export { applyPatch, type GovernanceChange, type PatchOp, type PatchResult } from "./patch/patch.js";
 export { printProgram } from "./print/printer.js";
 export { resolveNames } from "./resolve/resolve.js";
-export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, within, type CapResult, type CapVal } from "./check/caps.js";
+export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, scopeWithin, showCap, within, writesOverlap, type CapResult, type CapVal } from "./check/caps.js";
 export { roleChecks, roleSites, rolesNamed, type RoleSite } from "./check/roles.js";
+export { staticCost, type CostPart, type StaticCost } from "./check/cost.js";
+export { leadClasses, type Claim } from "./check/static.js";
+export { containment, skeleton, subprogramShape, type Room } from "./check/subprogram.js";
 export { GOVERNANCE_FILES, GOVERNANCE_KINDS, globRegExp, governanceFiles, governanceKind, type GovernanceKind } from "./std/governance.js";
 export { BUILTIN_EFFECTS, classRank, DATA_CLASSES, DECISION_POLICIES, STD_EFFECTS, STD_FNS, type DataClass } from "./std/std.js";
 export { ACS_PROFILE, ACS_TARGET_FORMAT, ACS_VERSION, acsTarget, type AcsAgent, type AcsTarget } from "./target/acs.js";

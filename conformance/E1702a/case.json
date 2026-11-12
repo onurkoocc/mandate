@@ -1,0 +1,19 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1702a",
+  "kind": "compile",
+  "title": "A map with no max and no budget inside an envelope is refused at the map when its body starts no delegation, since the envelope's agents do not bound it.",
+  "spec": ["spec/envelope.md#map", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../E1702/program.mdt", "kind": "mdt" },
+  "patch": [
+    { "op": "remove", "path": "/defs/Run/body/0/value/max" },
+    { "op": "remove", "path": "/defs/Run/body/0/value/budget" },
+    { "op": "replace", "path": "/defs/Run/body/0/value/body/0", "value": { "op": "expr", "value": { "op": "field", "of": { "op": "var", "name": "x" }, "name": "name" } } }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E1702", "path": "/defs/Run/body/0/value", "facts": { "envelope": true, "delegates": false } }]
+  }
+}

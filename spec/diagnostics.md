@@ -47,7 +47,7 @@ Warnings (`W…`) never make a check fail.
 | MDT-E0212 | Verified against a different contract | — | Appendix B |
 | MDT-E0213 | Protected type produced by a program | S08 | assigned |
 | MDT-E0215 | Untrusted text in an instruction position | V02 | Appendix B |
-| MDT-E0220 | Data class above what the model may receive | V04 | Appendix B |
+| MDT-E0220 | Data class above what the model may receive | V04, E0220, E0220a, E0220b | Appendix B; under an envelope, also above its `spawn.max_class`, in the body, in a function it calls and in a skill it reaches |
 | MDT-E0230 | Non-exhaustive switch | S05, V07 | Appendix B |
 | MDT-E0231 | Switch on a raw decision | — | assigned |
 | MDT-W0232 | Choice without an out-of-scope option | — | assigned |
@@ -55,15 +55,15 @@ Warnings (`W…`) never make a check fail.
 | MDT-W0207 | peek on model output | — | assigned |
 | MDT-E0301 | Capability not in scope | — | Appendix B |
 | MDT-E0305 | Capability widened | — | Appendix B |
-| MDT-W0310 | Unused capability | — | Appendix B |
+| MDT-W0310 | Unused capability | — | Appendix B; an envelope's capability is used by a delegation inside a function the body calls |
 | MDT-W0311 | Policy and real use disagree (learning mode) | — | Appendix B |
-| MDT-E0320 | Overlapping writes in par | V03 | Appendix B |
+| MDT-E0320 | Overlapping writes in par | V03, E0320a | Appendix B; also at a map with `par > 1` whose body can write under a capability the map does not hand per item (N03) |
 | MDT-E0401 | Undeclared effect | — | Appendix B |
 | MDT-E0402 | Unknown effect | — | assigned |
 | MDT-E0403 | Missing idempotency | — | Appendix B |
 | MDT-E0405 | Irreversible effect without human approval | — | Appendix B |
 | MDT-E0408 | External write outside a workflow | S07 | Appendix B |
-| MDT-E0501 | Child budgets exceed the parent | — | Appendix B |
+| MDT-E0501 | Child budgets exceed the parent | E0501a, E0501b | Appendix B; an envelope's budget is compared in `steps` and `agents` too, and so is a map's `budget` with its body |
 | MDT-E0502 | Unbounded loop or recursion | S04, S06 | Appendix B |
 | MDT-E0503 | Agent loop without a step limit | — | Appendix B |
 | MDT-E0504 | Budget currency mismatch | — | assigned; also an agent budget in another currency than its tier's tariff |
@@ -121,19 +121,22 @@ assigned here.
 
 Specified in [`envelope.md`](envelope.md). E15xx (roles and people) and
 E17xx (envelopes) are assigned here, and `mandate explain` knows all of
-them. `mandate check` reports E1501 to E1503 today; the E17xx rules are
-not implemented yet, and the Notes column says so.
+them. `mandate check` reports E1501 to E1503, E1701 to E1704, E1707 and
+E1708. E1705, E1706 and E1709 are about what a lead sends while a run is
+going, a sub-program or an amendment: the runtime's checker reports them
+to the lead, and the Notes column says so.
 
 | Code | Title | Conformance case | Notes |
 |---|---|---|---|
 | MDT-E1501 | Role not declared | E1501 | assigned; a role a 0.4 module names is a `role` definition |
 | MDT-E1502 | Role not bound | E1502 | assigned; needs the lock; `unbound_role` at load time |
 | MDT-E1503 | `distinct_from` without an earlier approval | E1503, H02 | assigned |
-| MDT-E1701 | Malformed envelope | — | assigned; not reported yet |
-| MDT-E1702 | Unbounded map | N08 | assigned; not reported yet |
-| MDT-E1703 | Map concurrency above the envelope | — | assigned; not reported yet |
-| MDT-E1704 | Envelope approval names a non-critical or uncovered effect | — | assigned; not reported yet |
-| MDT-E1705 | Not allowed in a sub-program | N09 | assigned; not reported yet |
-| MDT-E1706 | Sub-program does not fit the envelope | N01, N02 | assigned; not reported yet; returned to the lead, never to the run |
-| MDT-E1707 | `plan` outside an envelope | — | assigned; not reported yet |
-| MDT-E1708 | Person or critical effect in a map body | — | assigned; not reported yet |
+| MDT-E1701 | Malformed envelope | E1701, E1701a | assigned; `owner`, `caps` and a `budget` with `agents`, and no `caps` or `budget` of the workflow's own |
+| MDT-E1702 | Unbounded map | E1702, E1702a | assigned; no `max` outside an envelope, or inside one around a body that starts no delegation; at run time a longer list is `Rejected(over_limit)` (N08) |
+| MDT-E1703 | Map concurrency above the envelope | E1703 | assigned; `par k` above `spawn.max_concurrent`, at the map's `par` |
+| MDT-E1704 | Envelope approval names a non-critical or uncovered effect | E1704, E1704a | assigned; an effect under `approve` is critical, and a capability of the envelope covers it |
+| MDT-E1705 | Not allowed in a sub-program | N09, E1705, E1705a | assigned; a definition a sub-program may not make, an envelope or a `plan` of its own, a workflow with parameters, or not exactly one workflow; returned to the lead, never to the run |
+| MDT-E1706 | Sub-program does not fit the envelope | N01, N01a, N01b, E1706, E1706a, E1706b | assigned; facts name the dimension (`capability`, `write_scope`, a budget dimension, `time`, `data_class`) with what was asked and what is left; returned to the lead, never to the run |
+| MDT-E1707 | `plan` outside an envelope | E1707 | assigned; a `plan` anywhere but the body of a workflow with an envelope |
+| MDT-E1708 | Person or critical effect in a map body | E1708, E1708a | assigned; a wait for a person in a map body or in a function it calls, a critical effect, a change set |
+| MDT-E1709 | Amendment narrows the envelope | N04, E1709, E1709a, E1709b, E1709c | assigned; a capability left out, a budget dimension lowered, dropped or added, fewer delegations at once or a lower data class; facts name the dimension (`capability`, a budget dimension, `max_concurrent`, `max_class`) with what the envelope gave and what was asked; returned to the lead, never to the run |

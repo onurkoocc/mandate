@@ -21,7 +21,7 @@ import { SimAgents, SimSandboxHost } from "../src/sim.js";
 import { isObj, type Obj } from "../src/values.js";
 import type { WorkspaceAdapter } from "../src/workspace.js";
 import { fakeGitHubs } from "./fake-github.js";
-import { closeAll, world } from "./helpers.js";
+import { closeAll, world, UNSIGNED } from "./helpers.js";
 import { ACME_SOURCE, acmeModules, lockFor } from "./acme.js";
 
 afterAll(closeAll);
@@ -99,7 +99,7 @@ async function audienceRun(change: { config: string; test: string; files?: Recor
   remote.commits.set(mcp.base, { ...remote.commits.get(remote.refs.get("heads/main")!)!, message: "seed" });
   remote.refs.set("heads/main", mcp.base);
   w.adapters.tools["git.merge"] = new GitHubMerges({ token: "t", repos: ["acme/mcp"], fetch: gh.fetch });
-  const rt = new Runtime(w.db, w.adapters);
+  const rt = new Runtime(w.db, w.adapters, undefined, undefined, UNSIGNED);
   const program = check(AUDIENCE, "mdt", { modules }).program!;
   let run = await rt.startRun({ pkg: buildPackage(program, lockFor(modules), modules), workflow: "Audience", input: { task: { id: "K-3", request: "Use the logical audience" } } });
   // The architect accepts the plan.

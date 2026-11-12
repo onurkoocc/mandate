@@ -104,7 +104,10 @@ If the reservation does not fit, the command is refused with
 `BudgetExceeded`. A known cost settles and closes the reservation. If the
 cost is `"unknown"`, the reservation stays active until `settleCharge`
 reports the real charge (R16). Run limits are the minimum of the
-workflow's budget and the caller's limits.
+workflow's budget and the caller's limits. For a workflow with an
+envelope that budget is the envelope's, and it has one more dimension,
+`agents`: the delegation attempts the run may start
+([`envelope.md`](envelope.md#the-ledger)).
 
 A delegate reserves the budget written at the call, else the skill's, else
 the agent's: the same budget the compiler adds up for E0501. `time` is a
@@ -123,8 +126,9 @@ happens is a numbered episode, recorded as a `budget_exceeded` event:
    (§13.2), recorded as `limits_raised` with who made it and the limits
    before and after. It can only raise a limit that exists (`not_a_raise`),
    never above the workflow's own budget (`above_program_budget`; that
-   needs a new program version). Like a decision, it names the revision it
-   was made on and is deduplicated by message.
+   needs a new program version, or an amendment of the envelope). Like a
+   decision, it names the revision it was made on and is deduplicated by
+   message.
 4. Answering the question resumes the run. The body runs again against the
    journal, so finished commands are not called again. The command that
    did not fit is dispatched again. If it still does not fit, the next
@@ -455,6 +459,11 @@ enforces the same limits again. Tool output is cut at 20,000 characters.
 <delegate>/plan/<i>               a step of a checked plan
 ```
 
+A lead's sub-program runs below its delegation too, under a command of
+its own, `<plan>/program/<n>`, and its commands below that
+([`envelope.md`](envelope.md#plan)). They are not the lead's steps and are
+not charged to its budget.
+
 The conversation is rebuilt from the journal, so recovery sends nothing
 already recorded again, and replay calls neither the model nor the
 sandbox.
@@ -605,6 +614,15 @@ handlers, on an in-process database of its own:
 | `git = fake_git()` | Every `git.*` effect, applied in memory |
 | `Human = auto_approve(role: r)`, `auto_decline(role: r)`, `answer("<text>")` | A person who decides every wait for role `r` (any role without it), or answers every question |
 
+A 0.4 program takes signed decisions only
+([`envelope.md`](envelope.md#signed-decisions)), so for one the runner
+makes up the people as well: two members with keys of their own for every
+role the program names and for `owner`, bound in the test's lock. The
+first decides for the role; the second decides an approval that must be
+`distinct_from` an earlier one. When the workflow has an envelope, the
+first member of its owner role approves the test's package before the run
+starts. An earlier program's test decides by name, as before.
+
 - **Arguments.** `run W(args) expect e` runs `W`. `fixtures.<name>` is the
   JSON file `fixtures/<name>.json` next to the program.
 - **Expectations.** `expect ok` means the run succeeded. `failed`,
@@ -688,6 +706,18 @@ listed in the run's summary (R09).
   (`no_executor`, `unsupported_binding`;
   [`executors.md`](executors.md));
 - runs the compiler's checks on the canonical IR again;
+- refuses a language version it does not run, and of 0.4 `agents` in a
+  budget that is not an envelope's, which it does not run yet
+  (`unsupported_language`; [`envelope.md`](envelope.md));
+- when the lock lists members or roles, requires it to be well formed
+  (`malformed_lock`), and for a 0.4 package requires every role it names
+  to have a member (`unbound_role`, E1502);
+- does not start a 0.4 package when it is in unsigned mode
+  (`signed_decisions_required`);
+- starts a workflow with an envelope only on a stored approval of the
+  package by a member of the envelope's owner role, which it checks again
+  (`unapproved_envelope`, H03;
+  [`envelope.md`](envelope.md#approving-an-envelope));
 - checks the input against the workflow's parameter types, with the same
   schemas a model's answer is checked against (`input_mismatch`). A `Path`
   in it keeps the Path rule (G14). A type the program imports but does not
@@ -701,6 +731,16 @@ listed in the run's summary (R09).
 | `GetRun` | `getRun`, with `budgetReport` and `evidence` |
 | `SubmitInput` | `submitInput` |
 | `DecideAction` | `decideAction`: an action's approval, or a contract's `human.approve` |
+| (governance) | `approveEnvelope`: an owner's approval of a package's envelope, before any run of it |
+
+Every message by which a person changes a run is a decision record the
+person signs ([`envelope.md`](envelope.md#signed-decisions)):
+`submitInput`, `decideAction`, `raiseLimits`, `reconcileAction` and
+`cancelRun` take one, and `approveEnvelope` one about a package. `shown`
+returns what a record must name now, and
+`verifyDecisions` checks again each record a run took. In unsigned mode
+(`RuntimeOptions.decisions.mode`), a package of 0.1 to 0.3 takes the
+caller's word for who decided, as before 0.4.
 
 `SubmitInput` and `DecideAction` carry the run revision the person saw, as
 `GetRun` returned it. Every state change and every cancel request raises
@@ -739,12 +779,17 @@ through the compiler's `mandate` command:
 ```sh
 mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD] [--module FILE]…
 mandate status <run> [--json]
-mandate approve <run> --revision N --by NAME
-mandate decline <run> --revision N --by NAME
-mandate answer <run> --revision N --by NAME <text>
-mandate cancel <run>
-mandate reconcile <run> <operation>
-mandate raise-limits <run> --revision N --by NAME --limit spend=30USD
+mandate key new [--out FILE]
+mandate approve-envelope <program> --key FILE [--member NAME] [--workflow W] [--lock FILE] [--module FILE]… [--json]
+mandate approve <run> --revision N --key FILE [--member NAME]
+mandate decline <run> --revision N --key FILE [--member NAME]
+mandate answer <run> --revision N --key FILE [--member NAME] <text>
+mandate cancel <run> [--key FILE]
+mandate reconcile <run> <operation> --key FILE [--member NAME]
+mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
+mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
+mandate decision <run> <digest>
+mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
 mandate replay <run>
 mandate artifact <run> <blob:sha256:…>
 mandate show <run> [--format md|html|json]
@@ -756,6 +801,14 @@ mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [-
 `deploy` writes an executor binding into the lock; it needs
 `CLAUDE_API_KEY` and no configuration ([`executors.md`](executors.md)).
 
+`--limit` takes `spend`, `tokens`, `steps` and, for a workflow with an
+envelope, `agents`, separated by commas. `approve-envelope` signs a
+package's envelope so that its runs may start
+([`envelope.md`](envelope.md#approving-an-envelope)). `amend` is the
+owner's decision on an amendment a lead asked for: `status` shows who
+asks, both package hashes, each line of the envelope that changes and the
+lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
+
 **Configuration.** Each call reads `mandate.runtime.json`, or the file
 `--config` names. It holds the database and the adapters:
 
@@ -764,6 +817,8 @@ mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [-
   "database": "pglite:.mandate/db",
   "artifacts": ".mandate/artifacts",
   "evidence": { "key": ".mandate/evidence.key" },
+  "decisions": { "keys": ".mandate/decision-keys" },
+  "plan": { "checkMs": 2000 },
   "rateLimits": { "model": { "capacity": 50, "perSecond": 1 } },
   "model": { "provider": "anthropic" },
   "executor": { "managed-agents": { "pollMs": 1000, "maxTurnMs": 3600000 } },
@@ -785,6 +840,15 @@ mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [-
   next to the key, where every later call loads it, so evidence it signed
   still verifies. Its private half is gone. To stop trusting an old key,
   remove its file: what it signed then shows `SIGNATURE INVALID`.
+- **Decisions.** `decisions.keys` is the directory of the members' public
+  keys, `<key id>.pem` each, `.mandate/decision-keys` by default. The lock
+  says whose each key is. `"mode": "unsigned"` lets a package of 0.1 to 0.3
+  take `--by NAME` in place of `--key FILE`, as before 0.4; without it
+  every decision is signed. See
+  [`envelope.md`](envelope.md#signed-decisions).
+- **Plan.** `plan.checkMs` is the longest the check of a lead's
+  sub-program may take, in milliseconds, 2000 by default. See
+  [`envelope.md`](envelope.md#limits).
 - **Executor.** `executor.managed-agents` runs the agents the lock binds
   to Claude Managed Agents there, each delegation in a session of its own.
   Their tools still run in `sandbox`. See [`executors.md`](executors.md).
@@ -810,8 +874,11 @@ holds, and the actions. `mandate show` prints the run's views
 
 **Decisions and revisions.** A decision names the revision the person saw.
 If the run has moved since, the decision is refused (`stale_revision`) and
-nothing is recorded. What a person approves is bound to the digest that
-`status` showed.
+nothing is recorded but, for a signed one, that it was refused. What a
+person approves is bound to the digest that `status` showed. The person
+signs the decision with their own key (`--key`): the record names the
+package, the run, the revision, the wait and that digest, and the lock of
+the run's package says which member the key belongs to.
 
 `fixtures/fixbug-target/` holds FixBug bound to a seeded test project,
 with its lock and input. `runtime/test/gate3.test.ts`
@@ -869,8 +936,6 @@ The same mechanisms are tested under Temporal against a local dev server:
 
 ## Not in this runtime yet
 
-- **`map`, and so R11 by input index and R12.** The 0.1 IR has no `map`.
-  `par` results are bound by name, and that binding is tested in its place.
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.
 
 ## Workspace and run manifest (design doc 9 §12, B3)
@@ -887,7 +952,9 @@ commit per component.
   workspace adapter do not start (`no_workspace`, INV-11).
 - **The manifest.** The run records what it started from:
   `{ format: "mandate/run-manifest/0.1", package, workflow, tenant, input:
-  <digest>, components: { name: { repo, root, base } } }`. Its hash, R, is
+  <digest>, components: { name: { repo, root, base } } }`. A run under an
+  envelope also lists the approval it started under, `envelope_approval:
+  { decision, member, role, key }`. The manifest's hash, R, is
   `digest("run", manifest)`. The same program from another base commit is
   another R. `mandate show` lists R and each component at its commit;
   verifier calls are told the components (`VerifyRequest.workspace`).

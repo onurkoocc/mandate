@@ -4,10 +4,17 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
-import { check, kindOf, load, loadModules, type CheckResult, type SourceKind } from "../src/check.js";
+import { check, checkAmendment, checkSubprogram, kindOf, load, loadModules, type AmendmentCheck, type AmendmentInput, type CheckResult, type SourceKind, type SubprogramCheck, type SubprogramInput } from "../src/check.js";
+import type { CapVal } from "../src/check/caps.js";
+import { skeleton } from "../src/check/subprogram.js";
 import type { Diagnostic } from "../src/diag.js";
 import { hasErrors } from "../src/diag.js";
+import { hashProgram } from "../src/hash.js";
+import type { Program } from "../src/ir/types.js";
+import type { Json } from "../src/json/strict-json.js";
 import type { Lock } from "../src/lock.js";
+import type { Modules } from "../src/modules.js";
+import { CAP_CTORS, DATA_CLASSES, type DataClass } from "../src/std/std.js";
 import { repoRoot } from "./helpers.js";
 
 export const CASES_DIR = join(repoRoot, "conformance");
@@ -31,6 +38,28 @@ export interface PatchOpJson {
   value?: unknown;
 }
 
+export type CaseSource = { file: string; kind: SourceKind } | { text: string; kind: SourceKind };
+
+/** A lead's sub-program, checked with the case's input as its parent (conformance/README.md). */
+export interface CaseSubprogram {
+  workflow: string;
+  number?: number;
+  defs?: CaseSource;
+  patch?: PatchOpJson[];
+  lead?: DataClass;
+  room: {
+    left: Record<string, number>;
+    time_left_ms?: number;
+    writes?: Array<{ ctor: string; scope: string[] }>;
+  };
+}
+
+/** An amendment of an envelope, checked with the case's input as the program the run has (conformance/README.md). */
+export interface CaseAmendment {
+  workflow: string;
+  patch: PatchOpJson[];
+}
+
 export interface Case {
   format: string;
   id: string;
@@ -38,10 +67,12 @@ export interface Case {
   title: string;
   spec: string[];
   language?: string;
-  input: { file: string; kind: SourceKind } | { text: string; kind: SourceKind };
+  input: CaseSource;
   modules?: string[];
   lock?: string | null;
   patch?: PatchOpJson[];
+  subprogram?: CaseSubprogram;
+  amendment?: CaseAmendment;
   expect: CaseExpect;
 }
 
@@ -215,12 +246,64 @@ export function readCase(name: string): Case {
 
 // ---------------------------------------------------------------- running
 
+function sourceText(dir: string, src: CaseSource): string {
+  return "text" in src ? src.text : readFileSync(caseFile(dir, src.file), "utf8");
+}
+
+/**
+ * What `checkSubprogram` receives for a case's `subprogram`, with `parent` as the
+ * program it stands under. The operations are one `add` for each definition of
+ * `defs`, in order, then `patch` as it is written. Throws when the case is not good.
+ */
+export function subprogramInput(dir: string, s: CaseSubprogram, parent: Program, modules: Modules): SubprogramInput {
+  const number = s.number ?? 1;
+  const ops: SubprogramInput["ops"] = [];
+  if (s.defs !== undefined) {
+    const r = load(sourceText(dir, s.defs), s.defs.kind);
+    if (!r.program || hasErrors(r.diagnostics)) {
+      throw new Error(`the defs of a subprogram case must load: ${r.diagnostics.map((d) => `${d.code} at ${d.at.path ?? ""}`).join(", ")}`);
+    }
+    // Only the definitions are read; the module's header is not.
+    for (const [name, def] of Object.entries(r.program.defs)) ops.push({ op: "add", path: `/defs/${name}`, value: def });
+  }
+  ops.push(...(s.patch ?? []));
+  const lead = s.lead ?? "public";
+  if (!DATA_CLASSES.includes(lead)) throw new Error(`lead ${String(lead)} is not a data class`);
+  const writes: CapVal[] = (s.room.writes ?? []).map((w) => {
+    const spec = Object.hasOwn(CAP_CTORS, w.ctor) ? CAP_CTORS[w.ctor] : undefined;
+    if (!spec?.write) throw new Error(`room.writes: ${w.ctor} is not a write capability constructor`);
+    return { ctor: w.ctor, effect: spec.effect, write: spec.write, scope: [...w.scope] };
+  });
+  return {
+    parent,
+    modules,
+    workflow: s.workflow,
+    number,
+    base: hashProgram(skeleton(parent.module, number) as unknown as Json).program,
+    ops,
+    lead,
+    room: { left: { ...s.room.left }, ...(s.room.time_left_ms !== undefined ? { time_left_ms: s.room.time_left_ms } : {}), writes },
+  };
+}
+
+/**
+ * What `checkAmendment` receives for a case's `amendment`, with `parent` as the program
+ * the run has: the envelope of the case's workflow with the patch applied to it. Throws
+ * when the case is not good.
+ */
+export function amendmentInput(a: CaseAmendment, parent: Program, modules: Modules): AmendmentInput {
+  const wf = Object.hasOwn(parent.defs, a.workflow) ? parent.defs[a.workflow] : undefined;
+  if (wf?.kind !== "workflow" || !wf.envelope) throw new Error(`amendment.workflow: ${a.workflow} is not a workflow with an envelope`);
+  return { parent, modules, workflow: a.workflow, envelope: applyJsonPatch(wf.envelope, a.patch) };
+}
+
+/** An amendment's check, with the hash of the program it makes where a case's `hashes` are read. */
+export type AmendmentObserved = AmendmentCheck & { hashes?: { program: string } };
+
 /** Runs a `compile` case with this compiler and returns what it observed. */
-export function runCompileCase(name: string, c: Case): CheckResult {
+export function runCompileCase(name: string, c: Case): CheckResult | SubprogramCheck | AmendmentObserved {
   const dir = join(CASES_DIR, name);
-  let text: string;
-  if ("text" in c.input) text = c.input.text;
-  else text = readFileSync(caseFile(dir, c.input.file), "utf8");
+  let text = sourceText(dir, c.input);
   let kind = c.input.kind;
 
   const sources = (c.modules ?? []).map((m) => {
@@ -233,6 +316,29 @@ export function runCompileCase(name: string, c: Case): CheckResult {
     throw new Error(`module ${first.file} does not load: ${first.diagnostics.map((d) => d.code).join(", ")}`);
   }
   const lock = typeof c.lock === "string" ? (JSON.parse(readFileSync(caseFile(dir, c.lock), "utf8")) as Lock) : undefined;
+
+  /** The program a sub-program or an amendment stands on: it checks, and it declares the case's language. */
+  const standsOn = (what: string): Program => {
+    const parent = check(text, kind, { modules: loaded.modules });
+    if (!parent.ok || !parent.program) {
+      throw new Error(`the ${what} must check without errors: ${parent.diagnostics.map((d) => `${d.code} at ${d.at.path ?? ""}`).join(", ")}`);
+    }
+    if (c.language !== undefined && parent.program.language !== c.language) throw new Error(`the case says language ${c.language}, the parent declares ${parent.program.language}`);
+    return parent.program;
+  };
+
+  if (c.amendment !== undefined) {
+    if (c.patch !== undefined || c.lock !== undefined || c.subprogram !== undefined) {
+      throw new Error("an amendment case has no top-level patch or lock, and no subprogram; the new envelope is the old one with amendment.patch");
+    }
+    const r = checkAmendment(amendmentInput(c.amendment, standsOn("program of an amendment case"), loaded.modules));
+    return r.hash !== undefined ? { ...r, hashes: { program: r.hash } } : r;
+  }
+
+  if (c.subprogram !== undefined) {
+    if (c.patch !== undefined || c.lock !== undefined) throw new Error("a subprogram case has no top-level patch or lock; the lead's operations go in subprogram.patch");
+    return checkSubprogram(subprogramInput(dir, c.subprogram, standsOn("parent of a subprogram case"), loaded.modules));
+  }
 
   if (c.patch !== undefined) {
     const base = load(text, kind);

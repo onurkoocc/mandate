@@ -11,12 +11,13 @@
 // worker that re-runs the workflow body finds earlier results instead of
 // calling the outside world again (R01, R13).
 
-import type { Budget } from "@mandate/compiler";
+import { BUDGET_DIMENSIONS, budgetAmount, type Budget } from "@mandate/compiler";
 import type { Cost, Outcome } from "./adapters.js";
+import { decisionId, type SignedDecision, type StoredDecision } from "./decisions.js";
 import type { EvidenceRecord } from "./evidence.js";
 import { num, type Db, type Row, type Tx } from "./db.js";
 import { Cancelled, Fault, StaleFence, Violation } from "./signals.js";
-import type { Value } from "./values.js";
+import type { Obj, Value } from "./values.js";
 
 export type RunState = "accepted" | "running" | "waiting" | "cancelling" | "attention_required" | "succeeded" | "failed" | "cancelled";
 
@@ -78,6 +79,12 @@ export interface CommandRow {
   payload_purged: boolean;
   /** How often the command was throttled (§8.6); while it waits to be sent again, its error is the Throttled fault. */
   throttled: number;
+  /**
+   * The run's package when the command was first recorded (spec/envelope.md "Amendments"). A command stands under
+   * that package for good: what is derived for it again, in a resumed run or a replay, is derived under it. Absent
+   * on a row written before amendments were recorded, whose run had one package.
+   */
+  package: string | null;
 }
 
 export type ActionState = "prepared" | "dispatched" | "confirmed" | "rejected" | "unknown_outcome" | "cancelled" | "would_apply";
@@ -118,15 +125,45 @@ export interface AuthorizationRow {
   consumed_by: string | null;
 }
 
-/** Budget dimensions: `tokens`, `steps`, and `spend:<currency>` in micro-units. */
+/**
+ * The ledger's dimensions of a cost or a budget: `tokens`, `steps`,
+ * `spend:<currency>` in micro-units, and `agents`. `time` is not one: it is
+ * held by deadlines, not by reservation.
+ */
 export function costDims(c: Cost | Budget | undefined): Record<string, number> {
   const out: Record<string, number> = {};
-  if (!c) return out;
-  if (c.tokens !== undefined) out["tokens"] = c.tokens;
-  if (c.steps !== undefined) out["steps"] = c.steps;
-  if (c.spend) out[`spend:${c.spend.currency}`] = c.spend.micros;
+  for (const dim of BUDGET_DIMENSIONS) {
+    const amount = budgetAmount(c, dim);
+    if (amount === undefined || dim === "time") continue;
+    out[dim === "spend" ? `spend:${c!.spend!.currency}` : dim] = amount;
+  }
   return out;
 }
+
+/**
+ * An admitted sub-program, as `program_admitted` records it (spec/envelope.md
+ * "Admission"): the `plan` node and the sub-program's number there, the step
+ * of the lead's loop that submitted it, the command its workflow runs under,
+ * its hash and the base its patch was written against, where its IR is in
+ * the artifact store, the name of its workflow, and what was reserved.
+ */
+export interface Admission {
+  plan: string;
+  number: number;
+  step: string;
+  command: string;
+  hash: string;
+  base: string;
+  artifact: string;
+  workflow: string;
+  reservation?: Record<string, number>;
+}
+
+/**
+ * A run's limits as a caller gives them: a cost by dimension, and under an
+ * envelope the delegation attempts the run may start (`agents`).
+ */
+export type Limits = Cost & { agents?: number };
 
 export class Journal {
   constructor(
@@ -150,10 +187,43 @@ export class Journal {
     await tx.query("insert into events (run_id, seq, type, data, at) values ($1, $2, $3, $4, $5)", [runId, num(r?.["seq"]), type, json(data), this.now()]);
   }
 
+  /**
+   * Records that a map began to run its items (spec/envelope.md "map"): once for a map node, however often the run
+   * is resumed and comes to it again. Only the lease holder may write (R06).
+   */
+  async mapStarted(runId: string, fence: number, data: { map: string; items: number; par: number }): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [seen] = await tx.query<Row>("select 1 as seen from events where run_id = $1 and type = 'map_started' and data->>'map' = $2 limit 1", [runId, data.map]);
+      if (!seen) await this.event(tx, runId, "map_started", data);
+    });
+  }
+
+  /**
+   * Records how a map ended (spec/envelope.md "map"): each item's outcome by input index, `Ok` or its fault's tag,
+   * and `null` for an item a failed map did not start or did not let end. Once for a map node, like `map_started`:
+   * the outcomes are what the journal's commands decided, so a resumed run that comes to the map again would say
+   * the same.
+   */
+  async mapEnded(runId: string, fence: number, data: { map: string; outcomes: Array<string | null>; failed?: string }): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [seen] = await tx.query<Row>("select 1 as seen from events where run_id = $1 and type = 'map_ended' and data->>'map' = $2 limit 1", [runId, data.map]);
+      if (!seen) await this.event(tx, runId, "map_ended", data);
+    });
+  }
+
   async run(runId: string): Promise<RunRow> {
     const [row] = await this.db.query<Row>("select * from runs where run_id = $1", [runId]);
     if (!row) throw new Violation("unknown_run", `No run '${runId}'.`);
     return toRun(row);
+  }
+
+  /** When the run was accepted, by the runtime's clock. With an envelope's `time` it is the run's deadline. */
+  async startedAt(runId: string): Promise<number> {
+    const [row] = await this.db.query<Row>("select created_at from runs where run_id = $1", [runId]);
+    if (!row) throw new Violation("unknown_run", `No run '${runId}'.`);
+    return num(row["created_at"]);
   }
 
   async events(runId: string): Promise<Array<{ seq: number; type: string; data: Value }>> {
@@ -244,6 +314,15 @@ export class Journal {
    * parent reserved, the step must fit in what is left of that reservation,
    * or it is refused with `SkillFailed(StepLimit)`; a dimension the parent did
    * not reserve is reserved from the run as usual.
+   *
+   * `inside` names the sub-program the command belongs to (`admitProgram`).
+   * What it reserves is then a share of what the program reserved when it
+   * was admitted: the share must fit in what is left of the program's
+   * reservation and comes out of it, so the run as a whole holds no more
+   * than it did (N02, INV-15). One that does not fit is `BudgetExceeded`
+   * naming the program. That holds in every dimension the run is limited
+   * in, also one the program reserved nothing of: nothing inside a
+   * sub-program is taken from the run.
    */
   async dispatch(
     runId: string,
@@ -251,6 +330,7 @@ export class Journal {
     cmd: { id: string; kind: string; digest: string; label?: string },
     reserve: Cost | Budget | undefined,
     within?: string,
+    inside?: string,
   ): Promise<CommandRow | undefined> {
     return this.db.tx(async (tx) => {
       const run = await this.lock(tx, runId, fence);
@@ -261,10 +341,8 @@ export class Journal {
       }
       if (existing && (existing.state === "succeeded" || existing.state === "failed")) return existing;
       if (run.cancel_requested) throw new Cancelled();
-      if (existing) {
-        // A worker died between dispatch and result; release what it reserved before reserving again.
-        await tx.query("update reservations set state = 'released' where run_id = $1 and command_id = $2 and state = 'active'", [runId, cmd.id]);
-      }
+      // A worker died between dispatch and result; release what it reserved before reserving again.
+      if (existing) await this.release(tx, runId, cmd.id);
       let dims = costDims(reserve);
       if (within) {
         const parent = await this.activeReservations(tx, runId, within);
@@ -276,23 +354,33 @@ export class Journal {
         }
         dims = Object.fromEntries(Object.entries(dims).filter(([dim]) => !(dim in parent)));
       }
-      await this.reserve(tx, runId, cmd.id, dims);
+      await this.reserve(tx, runId, cmd.id, dims, inside);
+      // The package is written with the row and never again: a command sent again keeps the one it was first recorded under.
       await tx.query(
-        `insert into commands (run_id, command_id, kind, state, fence, request_digest, label) values ($1, $2, $3, 'dispatched', $4, $5, $6)
+        `insert into commands (run_id, command_id, kind, state, fence, request_digest, label, inside, package) values ($1, $2, $3, 'dispatched', $4, $5, $6, $7, $8)
          on conflict (run_id, command_id) do update set state = 'dispatched', fence = $4`,
-        [runId, cmd.id, cmd.kind, fence, cmd.digest, cmd.label ?? null],
+        [runId, cmd.id, cmd.kind, fence, cmd.digest, cmd.label ?? null, inside ?? null, run.package_hash],
       );
       await this.event(tx, runId, "command_dispatched", { command: cmd.id, kind: cmd.kind, reserved: costDims(reserve) });
       return undefined;
     });
   }
 
-  /** available = limit − settled − active reservations; reserve only if it fits (§8.6). */
-  private async reserve(tx: Tx, runId: string, commandId: string, dims: Record<string, number>): Promise<void> {
+  /**
+   * available = limit − settled − active reservations; reserve only if it fits (§8.6). Inside a sub-program, a
+   * dimension the run is limited in, or the program holds, is taken from the program's reservation and never
+   * from the run: a program that holds none of it has none to give.
+   */
+  private async reserve(tx: Tx, runId: string, commandId: string, dims: Record<string, number>, inside?: string): Promise<void> {
+    const held = inside ? await this.activeReservations(tx, runId, inside) : {};
     for (const [dim, amount] of Object.entries(dims)) {
       if (amount <= 0) continue;
       const [b] = await tx.query<Row>("select limit_value, settled from budgets where run_id = $1 and dimension = $2", [runId, dim]);
-      if (b) {
+      if (inside && (b || Object.hasOwn(held, dim))) {
+        const left = held[dim] ?? 0;
+        if (amount > left) throw new Fault("BudgetExceeded", [{ dimension: dim, requested: amount, available: left, program: inside }]);
+        await this.giveBack(tx, runId, inside, dim, -amount);
+      } else if (b) {
         const [r] = await tx.query<Row>("select coalesce(sum(amount), 0) as active from reservations where run_id = $1 and dimension = $2 and state = 'active'", [runId, dim]);
         const available = num(b["limit_value"]) - num(b["settled"]) - num(r?.["active"]);
         if (amount > available) {
@@ -322,13 +410,7 @@ export class Journal {
       if (cost === "unknown") {
         await this.event(tx, runId, "charge_pending", { command: commandId });
       } else {
-        await this.settle(tx, runId, commandId, costDims(cost));
-        // What a step spent comes out of its delegation's reservation, which then holds only what is left.
-        if (within) {
-          for (const [dim, amount] of Object.entries(costDims(cost))) {
-            await tx.query("update reservations set amount = greatest(amount - $4, 0) where run_id = $1 and command_id = $2 and dimension = $3 and state = 'active'", [runId, within, dim, amount]);
-          }
-        }
+        await this.settle(tx, runId, commandId, costDims(cost), within);
       }
       const ok = "ok" in outcome;
       await tx.query("update commands set state = $3, result = $4, error = $5, cost = $6 where run_id = $1 and command_id = $2", [
@@ -348,9 +430,38 @@ export class Journal {
     return Object.fromEntries(rows.map((r) => [String(r["dimension"]), num(r["amount"])]));
   }
 
-  /** What the finished steps below `commandId` (`commandId/…`) have cost, by dimension. */
+  /** The sub-program a command belongs to, when it runs inside one. */
+  private async programOf(tx: Tx, runId: string, commandId: string): Promise<string | undefined> {
+    const [row] = await tx.query<Row>("select inside from commands where run_id = $1 and command_id = $2", [runId, commandId]);
+    return typeof row?.["inside"] === "string" ? row["inside"] : undefined;
+  }
+
+  /**
+   * Moves `amount` of a dimension into a sub-program's reservation, or out of it when negative. Only while the
+   * program is in flight: once it has ended, what comes back is the run's again.
+   */
+  private async giveBack(tx: Tx, runId: string, program: string, dim: string, amount: number): Promise<void> {
+    if (!amount) return;
+    await tx.query("update reservations set amount = greatest(amount + $4, 0) where run_id = $1 and command_id = $2 and dimension = $3 and state = 'active'", [runId, program, dim, amount]);
+  }
+
+  /** Releases what a command still holds. A share of a sub-program's reservation goes back to it. */
+  private async release(tx: Tx, runId: string, commandId: string): Promise<void> {
+    const program = await this.programOf(tx, runId, commandId);
+    if (program) {
+      for (const [dim, amount] of Object.entries(await this.activeReservations(tx, runId, commandId))) await this.giveBack(tx, runId, program, dim, amount);
+    }
+    await tx.query("update reservations set state = 'released' where run_id = $1 and command_id = $2 and state = 'active'", [runId, commandId]);
+  }
+
+  /**
+   * What the finished steps below `commandId` (`commandId/…`) have cost, by dimension. A lead's sub-programs run
+   * below its delegation (`commandId/program/<n>/…`) and are not its steps: they are paid from the envelope, by
+   * their own reservation.
+   */
   async childCost(runId: string, commandId: string): Promise<Record<string, number>> {
-    const rows = await this.db.query<Row>("select cost from commands where run_id = $1 and command_id like $2 and state in ('succeeded', 'failed')", [runId, `${commandId.replaceAll("%", "\\%").replaceAll("_", "\\_")}/%`]);
+    const below = commandId.replaceAll("%", "\\%").replaceAll("_", "\\_");
+    const rows = await this.db.query<Row>("select cost from commands where run_id = $1 and command_id like $2 and command_id not like $3 and state in ('succeeded', 'failed')", [runId, `${below}/%`, `${below}/program/%`]);
     const out: Record<string, number> = {};
     for (const r of rows) {
       const c = r["cost"];
@@ -360,9 +471,30 @@ export class Journal {
     return out;
   }
 
-  private async settle(tx: Tx, runId: string, commandId: string, dims: Record<string, number>): Promise<void> {
+  private async settle(tx: Tx, runId: string, commandId: string, cost: Record<string, number>, within?: string): Promise<void> {
+    // A delegation attempt is spent once it is sent, whatever came of it (spec/envelope.md "The ledger"): what the
+    // command reserved of `agents` is what it settles. No adapter reports it as a cost.
+    const own = await this.activeReservations(tx, runId, commandId);
+    const dims = Object.hasOwn(own, "agents") ? { ...cost, agents: own["agents"]! } : cost;
     for (const [dim, amount] of Object.entries(dims)) {
       await tx.query("update budgets set settled = settled + $3 where run_id = $1 and dimension = $2", [runId, dim, amount]);
+    }
+    // What a step spent comes out of its delegation's reservation, which then holds only what is left.
+    const paid = within ? await this.activeReservations(tx, runId, within) : {};
+    const program = await this.programOf(tx, runId, commandId);
+    for (const [dim, amount] of Object.entries(cost)) {
+      if (!Object.hasOwn(paid, dim)) continue;
+      await this.giveBack(tx, runId, within!, dim, -amount);
+      // A step that spent more than its delegation had left: the rest comes out of the sub-program's reservation.
+      if (program && amount > paid[dim]!) await this.giveBack(tx, runId, program, dim, paid[dim]! - amount);
+    }
+    // Inside a sub-program the command's share came out of the program's reservation. What it did not spend goes
+    // back there; what it spent beyond its share, or without one, comes out of it. So the program's reservation and
+    // its commands' shares together never hold more of the run than the program was admitted with.
+    if (program) {
+      for (const dim of new Set([...Object.keys(own), ...Object.keys(dims)])) {
+        if (!Object.hasOwn(paid, dim)) await this.giveBack(tx, runId, program, dim, (own[dim] ?? 0) - (dims[dim] ?? 0));
+      }
     }
     await tx.query("update reservations set state = 'settled' where run_id = $1 and command_id = $2 and state = 'active'", [runId, commandId]);
   }
@@ -386,7 +518,7 @@ export class Journal {
   async throttle(runId: string, fence: number, commandId: string, fault: Value): Promise<number> {
     return this.db.tx(async (tx) => {
       await this.lock(tx, runId, fence);
-      await tx.query("update reservations set state = 'released' where run_id = $1 and command_id = $2 and state = 'active'", [runId, commandId]);
+      await this.release(tx, runId, commandId);
       const [row] = await tx.query<Row>(
         "update commands set state = 'throttled', error = $3, throttled = throttled + 1 where run_id = $1 and command_id = $2 and state = 'dispatched' returning throttled",
         [runId, commandId, json(fault)],
@@ -398,18 +530,144 @@ export class Journal {
   }
 
   /** Opens a wait for a person (input or decision); returns the earlier row if it exists. */
-  async openWait(runId: string, fence: number, cmd: { id: string; kind: string; digest: string }, request: Value): Promise<CommandRow> {
+  async openWait(runId: string, fence: number, cmd: { id: string; kind: string; digest: string }, request: Value, before?: (tx: Tx, run: RunRow) => Promise<void>): Promise<CommandRow> {
     return this.db.tx(async (tx) => {
-      await this.lock(tx, runId, fence);
+      const run = await this.lock(tx, runId, fence);
       const [row] = await tx.query<Row>("select * from commands where run_id = $1 and command_id = $2", [runId, cmd.id]);
       if (row) return toCommand(row);
+      // What belongs to the wait is written with it, or not at all.
+      await before?.(tx, run);
       await tx.query(
-        "insert into commands (run_id, command_id, kind, state, fence, request_digest, result) values ($1, $2, $3, 'waiting', $4, $5, $6)",
-        [runId, cmd.id, cmd.kind, fence, cmd.digest, json(request)],
+        "insert into commands (run_id, command_id, kind, state, fence, request_digest, result, package) values ($1, $2, $3, 'waiting', $4, $5, $6, $7)",
+        [runId, cmd.id, cmd.kind, fence, cmd.digest, json(request), run.package_hash],
       );
       await this.event(tx, runId, "wait_opened", { command: cmd.id, kind: cmd.kind, request });
       const [created] = await tx.query<Row>("select * from commands where run_id = $1 and command_id = $2", [runId, cmd.id]);
       return toCommand(created!);
+    });
+  }
+
+  // ── amendments (spec/envelope.md "Amendments") ────────────────────────
+
+  /**
+   * Opens the wait of an amendment a lead asked for (N04): the package with the new envelope is stored under its
+   * hash, `amendment_requested` is written, and the run waits for a member of its envelope's owner role, all in one
+   * transaction. Once for a wait: a resumed run that comes to it again gets the row as it is.
+   */
+  async openAmendment(runId: string, fence: number, cmd: { id: string; digest: string }, request: Value, pkg: { hash: string; program: Value; lock: Value; modules: Value }, requested: Value): Promise<CommandRow> {
+    return this.openWait(runId, fence, { ...cmd, kind: "amendment" }, request, async (tx, run) => {
+      if (run.cancel_requested) throw new Cancelled();
+      await tx.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict (package_hash) do nothing", [pkg.hash, json(pkg.program), json(pkg.lock), json(pkg.modules)]);
+      await this.event(tx, runId, "amendment_requested", requested);
+    });
+  }
+
+  /** The packages a run moved between, oldest first, as `package_amended` records them. A run nobody amended has none. */
+  async amendments(runId: string): Promise<Array<{ from: string; to: string }>> {
+    const rows = await this.db.query<Row>("select data from events where run_id = $1 and type = 'package_amended' order by seq", [runId]);
+    return rows.map((r) => ({ from: String((r["data"] as Obj)["from"]), to: String((r["data"] as Obj)["to"]) }));
+  }
+
+  /**
+   * Moves a run to its amended package (INV-02 as 0.4 refines it), inside the transaction of the owner's decision:
+   *
+   * - the run's package is `to`;
+   * - each limit in `limits`, the dimensions the amendment raises, rises to the amount given, and none is lowered
+   *   or added;
+   * - the lease ends, so a worker that drove the run under the old package writes nothing after this (R06);
+   * - every other amendment the run still waits for was asked of the old package, and ends unanswered.
+   *
+   * Returns the limits it replaced and the waits it ended.
+   */
+  async amendRun(tx: Tx, runId: string, wait: string, to: string, limits: Record<string, number>): Promise<{ limits: Record<string, number>; superseded: string[] }> {
+    const before: Record<string, number> = {};
+    for (const [dim, limit] of Object.entries(limits).sort(([a], [b]) => (a < b ? -1 : 1))) {
+      const [b] = await tx.query<Row>("select limit_value from budgets where run_id = $1 and dimension = $2", [runId, dim]);
+      if (!b || num(b["limit_value"]) >= limit) continue;
+      before[dim] = num(b["limit_value"]);
+      await tx.query("update budgets set limit_value = $3 where run_id = $1 and dimension = $2", [runId, dim, limit]);
+    }
+    await tx.query("update runs set package_hash = $2, fence = fence + 1, updated_at = $3 where run_id = $1", [runId, to, this.now()]);
+    const others = await tx.query<Row>(
+      "update commands set state = 'failed', error = $3 where run_id = $1 and kind = 'amendment' and state = 'waiting' and command_id <> $2 returning command_id",
+      [runId, wait, json({ tag: "Rejected", args: ["superseded"] })],
+    );
+    return { limits: before, superseded: others.map((r) => String(r["command_id"])).sort() };
+  }
+
+  // ── sub-programs (spec/envelope.md "plan") ────────────────────────────
+
+  /**
+   * Records what a lead did with a sub-program at one step of its loop: `program_submitted` or `program_refused`.
+   * Once for a step and a type, however often the run is resumed and comes to the step again. Only the lease
+   * holder may write (R06).
+   */
+  async programEvent(runId: string, fence: number, type: "program_submitted" | "program_refused", data: { step: string; [k: string]: Value }): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [seen] = await tx.query<Row>("select 1 as seen from events where run_id = $1 and type = $2 and data->>'step' = $3 limit 1", [runId, type, data.step]);
+      if (!seen) await this.event(tx, runId, type, data);
+    });
+  }
+
+  /** The sub-programs admitted at a `plan` node, in the order of their numbers. */
+  async admissions(runId: string, plan: string): Promise<Admission[]> {
+    const rows = await this.db.query<Row>("select data from events where run_id = $1 and type = 'program_admitted' and data->>'plan' = $2 order by seq", [runId, plan]);
+    return rows.map((r) => r["data"] as unknown as Admission);
+  }
+
+  /**
+   * The sub-programs of a run that were admitted and have not ended, in the order they were admitted. One that
+   * waits, for a person or for the run to be resumed, is among them.
+   */
+  async inFlight(runId: string): Promise<Admission[]> {
+    const rows = await this.db.query<Row>(
+      `select e.data from events e join commands c on c.run_id = e.run_id and c.command_id = e.data->>'command'
+       where e.run_id = $1 and e.type = 'program_admitted' and c.state = 'dispatched' order by e.seq`,
+      [runId],
+    );
+    return rows.map((r) => r["data"] as unknown as Admission);
+  }
+
+  /**
+   * Admits a sub-program (spec/envelope.md "Admission"): its whole budget is reserved from the run, its command is
+   * recorded, `store` puts its IR into the artifact store, and `program_admitted` is written, all in one
+   * transaction. Its commands then draw their shares from that reservation (`dispatch` with `inside`).
+   *
+   * When the budget does not fit in what the run has left, nothing is recorded and the fault is `BudgetExceeded`:
+   * the check that came before saw a remainder that something else has taken since. A step whose sub-program was
+   * admitted before is not admitted again: the earlier admission is returned.
+   */
+  async admitProgram(runId: string, fence: number, a: Admission, budget: Budget | undefined, digest: string, store: (tx: Tx) => Promise<void>): Promise<Admission> {
+    return this.db.tx(async (tx) => {
+      const run = await this.lock(tx, runId, fence);
+      const [earlier] = await tx.query<Row>("select data from events where run_id = $1 and type = 'program_admitted' and data->>'step' = $2 limit 1", [runId, a.step]);
+      if (earlier) return earlier["data"] as unknown as Admission;
+      if (run.cancel_requested) throw new Cancelled();
+      const reservation = costDims(budget);
+      await this.reserve(tx, runId, a.command, reservation);
+      await tx.query("insert into commands (run_id, command_id, kind, state, fence, request_digest, label, package) values ($1, $2, 'program', 'dispatched', $3, $4, $5, $6)", [runId, a.command, fence, digest, `sub-program ${a.number}`, run.package_hash]);
+      await store(tx);
+      const admitted = { ...a, reservation };
+      await this.event(tx, runId, "program_admitted", admitted as unknown as Value);
+      return admitted;
+    });
+  }
+
+  /**
+   * A sub-program ended, with a value or a fault. What is left of its reservation is released: its commands have
+   * settled what they spent, and the rest is the run's again. A program that has ended stays as it ended.
+   */
+  async closeProgram(runId: string, fence: number, command: string, outcome: { ok: Value } | { error: { tag: string; args?: Value[] } }): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [row] = await tx.query<Row>("select kind, state from commands where run_id = $1 and command_id = $2", [runId, command]);
+      if (!row || row["kind"] !== "program") throw new Violation("not_dispatched", `${command} is not an admitted sub-program.`);
+      if (row["state"] !== "dispatched") return;
+      await tx.query("update reservations set state = 'released' where run_id = $1 and command_id = $2 and state = 'active'", [runId, command]);
+      const ok = "ok" in outcome;
+      await tx.query("update commands set state = $3, result = $4, error = $5 where run_id = $1 and command_id = $2", [runId, command, ok ? "succeeded" : "failed", json(ok ? outcome.ok : null), json(ok ? null : (outcome.error as unknown as Value))]);
+      await this.event(tx, runId, "command_completed", { command, ok, cost: null });
     });
   }
 
@@ -634,6 +892,46 @@ export class Journal {
   }
 
   /**
+   * Keeps an accepted decision with its signature, under its record's digest
+   * (spec/envelope.md "Signed decisions"). Returns that digest.
+   */
+  async recordDecision(tx: Tx, d: SignedDecision): Promise<string> {
+    const r = d.record;
+    const id = decisionId(r);
+    await tx.query(
+      `insert into decisions (decision_id, package_hash, run_id, command_id, kind, member, role, key_id, record, signature, accepted_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (decision_id) do nothing`,
+      [id, r.package, r.run ?? null, r.command ?? null, r.kind, r.member, r.role ?? null, r.key, json(r as unknown as Value), d.signature, this.now()],
+    );
+    return id;
+  }
+
+  /**
+   * The stored approvals of a package's envelope, oldest first (spec/envelope.md "Approving an envelope"). They are
+   * about the package and name no run. Whoever reads them checks each one again: a row is not a decision until its
+   * record and signature say so.
+   */
+  async envelopeApprovals(packageHash: string): Promise<StoredDecision[]> {
+    const rows = await this.db.query<Row>("select decision_id, record, signature from decisions where package_hash = $1 and kind = 'envelope' and run_id is null order by accepted_at, decision_id", [packageHash]);
+    return rows.map((r) => ({ decision_id: String(r["decision_id"]), record: r["record"] as StoredDecision["record"], signature: String(r["signature"]) }));
+  }
+
+  /** A stored decision by its digest, whatever it is about. */
+  async decision(decisionId: string): Promise<StoredDecision | undefined> {
+    const [r] = await this.db.query<Row>("select decision_id, record, signature from decisions where decision_id = $1", [decisionId]);
+    return r ? { decision_id: String(r["decision_id"]), record: r["record"] as StoredDecision["record"], signature: String(r["signature"]) } : undefined;
+  }
+
+  /**
+   * The accepted decisions of a run, oldest first; with `tx`, read inside that transaction. The order is that of the
+   * revisions they were made on, which is the order they were taken in: a clock may not move between two of them.
+   */
+  async decisions(runId: string, tx?: Tx): Promise<StoredDecision[]> {
+    const rows = await (tx ?? this.db).query<Row>("select decision_id, record, signature from decisions where run_id = $1 order by (record->>'revision')::bigint nulls last, accepted_at, decision_id", [runId]);
+    return rows.map((r) => ({ decision_id: String(r["decision_id"]), record: r["record"] as StoredDecision["record"], signature: String(r["signature"]) }));
+  }
+
+  /**
    * Records an inbound message once. The same key with the same payload is a
    * duplicate and returns false; the same key with a different payload is a
    * security error, never a silent choice (R03).
@@ -699,6 +997,7 @@ function toCommand(r: Row): CommandRow {
     error: (r["error"] ?? null) as Value,
     payload_purged: Boolean(r["payload_purged"]),
     throttled: num(r["throttled"]),
+    package: (r["package"] ?? null) as string | null,
   };
 }
 

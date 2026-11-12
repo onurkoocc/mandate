@@ -28,6 +28,16 @@
 //                                          a person who decides every wait for role r (any role without
 //                                          it), or answers every question
 //
+// A 0.4 program takes signed decisions only, so for one the runner makes up
+// the people too: for every role the program names (and `owner`, the role an
+// irreversible effect asks by default) two members with keys of their own,
+// bound in the test's lock. The first decides for the role; the second is
+// who decides an approval that must be `distinct_from` an earlier one. The
+// test's package is therefore not the one the real lock makes, as its
+// handlers are not the real ones. A workflow with an envelope starts only on
+// its owner's approval of the package, so the first member of that role
+// approves the test's package before the run.
+//
 // Swapping handlers is possible only here: in production the control plane
 // picks every handler (INV-03). A handler this runner does not know fails
 // the test by name; it is never ignored. An effect with no handler stops the
@@ -40,10 +50,12 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
-import { calleePath, type Expr, type Lock, type Program, type Stmt } from "@mandate/compiler";
+import { calleePath, rolesNamed, type Expr, type Lock, type Program, type Stmt } from "@mandate/compiler";
 import type { Adapters, Outcome } from "./adapters.js";
 import type { Db } from "./db.js";
-import { buildPackage, Runtime } from "./runtime.js";
+import { payloadOf, shownPackage, signDecision, type SignedDecision } from "./decisions.js";
+import { EvidenceSigner, TrustedKeys } from "./evidence.js";
+import { buildPackage, isSigned04, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { SimAgents, SimClock, SimModel, SimReads, SimTool, SimVerifier, SimWorkspace, simulate } from "./sim.js";
 import { isObj, type Obj, type Value } from "./values.js";
@@ -171,9 +183,42 @@ function handlersFor(program: Program, specs: Record<string, Expr>, dir: string)
   return { adapters: sim.adapters, clock, ...(person ? { person } : {}) };
 }
 
+/** The people of a 0.4 program's test: two members for each role, the keys they sign with, and the lock that binds them. */
+function testPeople(program: Program, lock: Lock): { lock: Lock; keys: TrustedKeys; sign: (role: string | undefined, other: boolean) => { member: string; key: EvidenceSigner } | undefined } {
+  const signers = new Map<string, EvidenceSigner>();
+  const member = (name: string): string => {
+    signers.set(name, EvidenceSigner.generate());
+    return name;
+  };
+  const roles = Object.fromEntries([...new Set([...rolesNamed(program.defs), "owner"])].sort().map((r) => [r, [member(`test_1_${r}`), member(`test_2_${r}`)]]));
+  member("test");
+  const members = Object.fromEntries([...signers].map(([name, key]) => [name, { keys: [key.keyId] }]));
+  return {
+    lock: { ...lock, members, roles },
+    keys: new TrustedKeys([...signers.values()].map((k) => k.publicKey)),
+    sign: (role, other) => {
+      const name = role === undefined ? "test" : Object.hasOwn(roles, role) ? roles[role]![other ? 1 : 0]! : undefined;
+      return name === undefined ? undefined : { member: name, key: signers.get(name)! };
+    },
+  };
+}
+
 async function runOne(program: Program, o: TestOptions, h: Handlers, workflow: string, input: Obj, runId: string): Promise<{ state: string; detail?: Value }> {
-  const rt = new Runtime(o.db, h.adapters);
-  const pkg = buildPackage(program, o.lock ?? { modules: Object.fromEntries((program.uses ?? []).filter((u) => u.module !== "std" && !u.module.startsWith("std.")).map((u) => [u.module, "test"])) });
+  const given = o.lock ?? { modules: Object.fromEntries((program.uses ?? []).filter((u) => u.module !== "std" && !u.module.startsWith("std.")).map((u) => [u.module, "test"])) };
+  // An earlier program's test decides by name, as it always did; a 0.4 program's test signs.
+  const people = isSigned04(program) ? testPeople(program, given) : undefined;
+  const rt = new Runtime(o.db, h.adapters, undefined, undefined, { decisions: people ? { keys: people.keys } : { mode: "unsigned" } });
+  const pkg = buildPackage(program, people ? people.lock : given);
+  const signed = async (kind: "approve" | "decline" | "answer", req: Obj, payload?: string): Promise<SignedDecision | undefined> => {
+    const shown = await rt.shown(runId, "wait");
+    const who = people!.sign(shown.role, typeof req["distinct_from"] === "string");
+    return who ? signDecision(who.key, shown, { kind, member: who.member, ...(payload !== undefined ? { payload } : {}), at: new Date(h.adapters.clock.now()) }) : undefined;
+  };
+  // The envelope's owner approves the test's package: without it the run would not start (unapproved_envelope).
+  const wf = Object.hasOwn(program.defs, workflow) ? program.defs[workflow] : undefined;
+  const owner = wf?.kind === "workflow" ? wf.envelope?.owner : undefined;
+  const approver = owner === undefined ? undefined : people?.sign(owner, false);
+  if (approver) await rt.approveEnvelope(pkg, signDecision(approver.key, shownPackage(pkg.hash, owner!), { kind: "envelope", member: approver.member, at: new Date(h.adapters.clock.now()) }));
   let run = await rt.startRun({ pkg, workflow, input, runId });
   // The person the handlers stand for answers each wait, a bounded number of times.
   for (let n = 0; run.state === "waiting" && n < 100; n++) {
@@ -182,9 +227,13 @@ async function runOne(program: Program, o: TestOptions, h: Handlers, workflow: s
     const msg = { sender: "test", messageId: `${run.run_id}:${n}` };
     if (w["kind"] === "decision" && h.person?.decide && (!h.person.decide.role || req["role"] === h.person.decide.role)) {
       const digest = String(req["subject_digest"] ?? req["action_digest"] ?? "");
-      run = await rt.decideAction(run.run_id, msg, { commandId: String(w["command"]), revision: run.revision, digest, approve: h.person.decide.approve, by: `test:${h.person.decide.approve ? "auto_approve" : "auto_decline"}` });
+      const record = people ? await signed(h.person.decide.approve ? "approve" : "decline", req) : undefined;
+      if (people && !record) break;
+      run = await rt.decideAction(run.run_id, msg, record ? { signed: record } : { commandId: String(w["command"]), revision: run.revision, digest, approve: h.person.decide.approve, by: `test:${h.person.decide.approve ? "auto_approve" : "auto_decline"}` });
     } else if (w["kind"] !== "decision" && h.person?.answer !== undefined) {
-      run = await rt.submitInput(run.run_id, msg, { commandId: String(w["command"]), revision: run.revision, value: h.person.answer });
+      const record = people ? await signed("answer", req, payloadOf.answer(h.person.answer)) : undefined;
+      if (people && !record) break;
+      run = await rt.submitInput(run.run_id, msg, record ? { value: h.person.answer, signed: record } : { commandId: String(w["command"]), revision: run.revision, value: h.person.answer });
     } else break;
   }
   const detail = run.state === "succeeded" ? run.result : run.state === "failed" ? run.error : run.state === "waiting" ? run.waiting : run.attention;

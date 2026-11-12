@@ -228,7 +228,20 @@ describe("changing the system model is a governance change (doc 9 §1, §5.3)", 
     const base = hashProgram(p as unknown as Json).program;
     const r = applyPatch(p, base, [{ op: "replace", path: "/defs/prod_sim/authorize/deploy", value: { by: "policy" } }]);
     expect(r.ok).toBe(true);
-    expect(r.governance).toEqual([{ kind: "system_model_changed", path: "/defs/prod_sim", detail: "environment 'prod_sim' changed" }]);
+    expect(r.governance).toEqual([{ kind: "system_model_changed", path: "/defs/prod_sim", detail: '~ environment prod_sim.authorize.deploy: {"by":"human","role":"release_manager"} → {"by":"policy"}' }]);
+  });
+
+  it("a patch opens a capability over imported components to classify it: wider is reported, narrower is not", () => {
+    const p = check(PROGRAM, "mdt", { modules: modules() }).program!;
+    const base = hashProgram(p as unknown as Json).program;
+    const capability = (from: string, to: string, name: string): unknown => check(PROGRAM.replace(from, to), "mdt", { modules: modules() }).program!.defs[name];
+    const mcpRoot = (acme().defs["mcp"] as { root: string }).root;
+    const wider = applyPatch(p, base, [{ op: "replace", path: "/defs/CoreRead", value: capability("component.read(core)", "component.read(core, mcp)", "CoreRead") }], modules());
+    expect(wider.ok).toBe(true);
+    expect(wider.governance).toEqual([{ kind: "capability_added", path: "/defs/CoreRead", detail: `+ CoreRead: read path ${JSON.stringify(mcpRoot)}` }]);
+    const narrower = applyPatch(p, base, [{ op: "replace", path: "/defs/McpSrc", value: capability('component.write(mcp, "src", "test")', 'component.write(mcp, "src")', "McpSrc") }], modules());
+    expect(narrower.ok).toBe(true);
+    expect(narrower.governance).toEqual([]);
   });
 
   it("is listed under governance in the semantic diff", () => {

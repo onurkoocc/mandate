@@ -1,6 +1,6 @@
 // Canonical IR for Mandate 0.1 to 0.4 (Doc 4 §3.2; spec/envelope.md for 0.4).
 //
-// The IR is the source of truth in 0.1 (§3.3, v0.2 decision): the `.mdt` text
+// The IR is the source of truth (§3.3, v0.2 decision): the `.mdt` text
 // form is a projection that lowers into these shapes and is printed back from
 // them. The JSON Schema in spec/ir.schema.json is the closed, published form of
 // the same types; keep the two in step.
@@ -339,6 +339,32 @@ export interface Budget {
   steps?: number;
   /** 0.4: delegation attempts (spec/envelope.md "The ledger"). */
   agents?: number;
+}
+
+/**
+ * The dimensions of a budget. Whatever adds budgets up, compares two of them
+ * or reserves one walks this list, so a dimension is added in one place.
+ */
+export const BUDGET_DIMENSIONS = ["tokens", "steps", "time", "spend", "agents"] as const;
+export type BudgetDimension = (typeof BUDGET_DIMENSIONS)[number];
+
+/**
+ * What a budget gives one dimension, as a number: tokens, steps and agents
+ * as counts, time in milliseconds, spend in micro-units of its currency.
+ */
+export function budgetAmount(b: Budget | undefined, dim: BudgetDimension): number | undefined {
+  switch (dim) {
+    case "tokens":
+      return b?.tokens;
+    case "steps":
+      return b?.steps;
+    case "time":
+      return b?.time?.ms;
+    case "spend":
+      return b?.spend?.micros;
+    case "agents":
+      return b?.agents;
+  }
 }
 
 export interface EffectRef {

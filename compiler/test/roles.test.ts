@@ -443,7 +443,7 @@ describe("the codes of 0.4", () => {
   it("are in CODES with the titles of spec/envelope.md", () => {
     const table = new Map<string, string>();
     for (const m of readRepo("spec/envelope.md").matchAll(/^\| (MDT-E1[57]\d\d) \| ([^|]+) \|/gm)) table.set(m[1]!, m[2]!.trim());
-    const expected = ["MDT-E1501", "MDT-E1502", "MDT-E1503", ...Array.from({ length: 8 }, (_, i) => `MDT-E170${i + 1}`)];
+    const expected = ["MDT-E1501", "MDT-E1502", "MDT-E1503", ...Array.from({ length: 9 }, (_, i) => `MDT-E170${i + 1}`)];
     expect([...table.keys()].sort()).toEqual(expected);
     for (const code of expected) {
       expect(CODES[code]?.title, code).toBe(table.get(code));

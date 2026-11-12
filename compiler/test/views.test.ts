@@ -4,7 +4,7 @@
 // new network target as a governance change (G11).
 
 import { describe, expect, it } from "vitest";
-import { check, type Lock, type Program } from "../src/index.js";
+import { applyPatch, check, type Json, type Lock, type PatchOp, type Program } from "../src/index.js";
 import { htmlEscape, toHtml, toMarkdown } from "../src/views/doc.js";
 import { architecture, authority, cost, programDoc, semanticDiff } from "../src/views/views.js";
 import { readRepo } from "./helpers.js";
@@ -64,6 +64,88 @@ describe("the authority view (§15.2)", () => {
     expect(rows["Planner"]).toMatchObject({ read: [], write: [], network: [] });
     expect(rows["FixBug"]).toMatchObject({ kind: "workflow", repos: ["company/backend"], effects: ["git.open_pr (critical; policy authorizes)"] });
     expect(rows["FixBug → Reviewer.counterexamples"]).toMatchObject({ kind: "delegation", read: ["/work/repo"], write: [] });
+  });
+});
+
+// A scope the run chooses (0.4): `c.narrow(v)` over a value of the run. The view cannot know the scope. It shows
+// the capability that is narrowed, which is the most the grant can be, and says the scope is chosen at run time.
+describe("the authority view of a scope chosen at run time (spec/envelope.md \"map\")", () => {
+  const src = (body: string): string => `mandate @ 0.4
+
+module test.late @ 0.1
+
+use std.{fs, model}
+
+role platform_lead "Platform lead"
+
+type Repo = { name: Text, root: Path, src: Path }
+
+capability RepoRead = fs.read("/work/repos")
+capability SrcWrite = fs.write("/work/repos")
+capability AllWrite = fs.write("/work")
+capability ModelStd = model.infer(tier: standard)
+
+agent Migrator {
+  role   "Moves one repository."
+  caps   RepoRead, AllWrite, ModelStd
+  budget { tokens: 1k, steps: 5 }
+  skill migrate(repo: Repo) -> Inferred<Text> ! {Fs.Read, Fs.Write, Model}
+}
+
+agent Reader {
+  role   "Reads one repository."
+  caps   RepoRead, ModelStd
+  budget { tokens: 1k, steps: 5 }
+  skill look(repo: Repo) -> Inferred<Text> ! {Fs.Read, Model}
+}
+
+workflow W(repos: List<Repo>, one: Repo) -> Inferred<Text>
+  envelope {
+    owner   platform_lead
+    caps    RepoRead, AllWrite, ModelStd
+    budget  { tokens: 100k, steps: 400, agents: 40 }
+  }
+{
+${body}
+}
+`;
+  const BY_ITEM = "with caps SrcWrite.narrow(repo.root)";
+  const LITERAL = 'with caps SrcWrite.narrow("/work/repos/a")';
+  /** A map over the repositories with these options and this body, and a reader after it, which the workflow returns. */
+  const mapped = (options: string, inner: string): string => `  let all = map repo in repos max 3 ${options} {\n    ${inner}\n  }\n  delegate Reader.look(one)`;
+  /** The row of the first delegation in the workflow: who, what it may write, and what the view calls unbounded. */
+  const first = (body: string): unknown[] => {
+    const p = program(src(body));
+    const row = authority(p).rows.find((r) => r.kind === "delegation")!;
+    const node = architecture(p).workflows[0]!.nodes.find((n) => n.kind === "delegate")!;
+    return [row.who, row.write, row.unbounded, node.detail[0]];
+  };
+  const LATE = "W → Migrator.migrate (with caps, scope chosen at run time)";
+  const WHOLE = "read /work/repos · write /work/repos · model standard (up to internal)";
+  const ONE = "read /work/repos · write /work/repos/a · model standard (up to internal)";
+
+  it("shows a delegation's own narrowing by a value as the capability it narrows, never as unbounded", () => {
+    expect(first("  delegate Migrator.migrate(one) with caps SrcWrite.narrow(one.root)")).toEqual([LATE, ["/work/repos"], [], WHOLE]);
+    // A scope the program states is shown as it is, and nothing is said of the run.
+    expect(first(`  delegate Migrator.migrate(one) ${LITERAL}`)).toEqual(["W → Migrator.migrate (with caps)", ["/work/repos/a"], [], ONE]);
+  });
+
+  it("shows what a map hands by item as the capability it narrows: not as what the agent holds, which is wider", () => {
+    // The migrator holds /work. Each item hands it a place below /work/repos.
+    expect(first(mapped(BY_ITEM, "delegate Migrator.migrate(repo)"))).toEqual([LATE, ["/work/repos"], [], WHOLE]);
+    expect(first(mapped(LITERAL, "delegate Migrator.migrate(repo)"))).toEqual(["W → Migrator.migrate (with caps)", ["/work/repos/a"], [], ONE]);
+  });
+
+  it("says it only of a delegation whose grant has a kind the run narrows", () => {
+    // A reader holds no write scope, and is handed none.
+    expect(first(mapped(BY_ITEM, "delegate Reader.look(repo)")).slice(0, 3)).toEqual(["W → Reader.look (with caps)", [], []]);
+    // The delegation states its own scope of that kind: the map's is not what it gets.
+    expect(first(mapped(BY_ITEM, `delegate Migrator.migrate(repo) ${LITERAL}`))).toEqual(["W → Migrator.migrate (with caps)", ["/work/repos/a"], [], ONE]);
+    expect(first(mapped(BY_ITEM, "delegate Migrator.migrate(repo) with caps SrcWrite.narrow(repo.src)"))).toEqual([LATE, ["/work/repos"], [], WHOLE]);
+    // A map inside states the scope of that kind for its own items.
+    expect(first(mapped(BY_ITEM, `map r in repos max 3 ${LITERAL} {\n      delegate Migrator.migrate(r)\n    }`))).toEqual(["W → Migrator.migrate (with caps)", ["/work/repos/a"], [], ONE]);
+    // A map that hands another kind leaves the outer map's write scope to its items.
+    expect(first(mapped(BY_ITEM, "map r in repos max 3 with caps RepoRead {\n      delegate Migrator.migrate(r)\n    }"))).toEqual([LATE, ["/work/repos"], [], WHOLE]);
   });
 });
 
@@ -144,6 +226,15 @@ describe("the semantic diff (§15.3)", () => {
     expect(semanticDiff(spending("49 USD"), spending("50 USD")).governance.map((c) => c.text)).toEqual(["~ W.budget.spend: 49 USD → 50 USD"]);
   });
 
+  it("shows a raised function budget as a governance change, as an agent's", () => {
+    const fn = (steps: number): Program => program(`module m @ 0.1\nfn shorten(t: Text) -> Text\n  budget { steps: ${steps} }\n{\n  t\n}\n`);
+    const d = semanticDiff(fn(2), fn(5));
+    expect(d.governance).toEqual([{ path: "/defs/shorten/budget", text: "~ shorten.budget.steps: 2 → 5" }]);
+    expect(d.behavior.map((c) => c.text)).toEqual(["~ fn shorten changed"]);
+    expect(d.unchanged).not.toContain("no budget raised");
+    expect(semanticDiff(fn(5), fn(2)).governance).toEqual([]);
+  });
+
   it("reports a removed or added criterion whatever it is named", () => {
     const criterion = '  accept owner_approved "The code owner approved"\n    by human.approve(role: "code_owner")\n';
     for (const name of ["constructor", "toString", "hasOwnProperty"]) {
@@ -156,6 +247,38 @@ describe("the semantic diff (§15.3)", () => {
     const withSkill = mutate(skill, `${skill}  skill constructor(issue: Issue) -> Inferred<List<Finding>> ! {Fs.Read, Model}\n`);
     expect(semanticDiff(fixbug, withSkill).behavior.map((c) => c.text)).toEqual(["+ skill Explorer.constructor"]);
     expect(semanticDiff(withSkill, fixbug).behavior.map((c) => c.text)).toEqual(["- skill Explorer.constructor"]);
+  });
+
+  it("classifies a patch's governance changes as it lists them: same paths, same texts", () => {
+    const base = check(FIXBUG, "mdt").hashes!.program;
+    const defOf = (from: string, to: string, name: string): Json => mutate(from, to).defs[name] as unknown as Json;
+    const fixAccepted = fixbug.defs["FixAccepted"] as unknown as { accept: Record<string, { by: Json }> };
+    const patches: Array<[string, PatchOp[], string[]]> = [
+      ["raise a budget", [{ op: "replace", path: "/defs/FixBug/budget/spend/micros", value: 60_000_000 }], ["budget_increased"]],
+      ["lower a budget", [{ op: "replace", path: "/defs/Explorer/budget/steps", value: 6 }], []],
+      ["narrow a capability", [{ op: "replace", path: "/defs/RepoRead/value/args/0/value/value", value: "/work/repo/src" }], []],
+      ["widen a capability", [{ op: "replace", path: "/defs/RepoRead", value: defOf('fs.read("/work/repo")', 'fs.read("/work")', "RepoRead") }], ["capability_added"]],
+      ["change a model tier", [{ op: "replace", path: "/defs/ModelStd", value: defOf("model.infer(tier: standard)", "model.infer(tier: premium)", "ModelStd") }], ["capability_added"]],
+      ["give an agent a capability", [{ op: "add", path: "/defs/Planner/caps/-", value: { op: "var", name: "PR" } }], ["capability_added"]],
+      ["drop a criterion", [{ op: "remove", path: "/defs/FixAccepted/accept/owner_approved" }], ["criterion_removed"]],
+      ["check a criterion another way", [{ op: "replace", path: "/defs/FixAccepted/accept/owner_approved/by", value: fixAccepted.accept["suite_green"]!.by }], ["criterion_changed"]],
+      [
+        "drop a criterion and raise an agent's steps",
+        [
+          { op: "remove", path: "/defs/FixAccepted/accept/scope_respected" },
+          { op: "replace", path: "/defs/Reviewer/budget/steps", value: 9 },
+        ],
+        ["criterion_removed", "budget_increased"],
+      ],
+    ];
+    for (const [what, ops, kinds] of patches) {
+      const r = applyPatch(fixbug, base, ops);
+      expect(r.ok, what).toBe(true);
+      const v = semanticDiff(fixbug, r.program!);
+      expect(r.governance.map((g) => g.kind), what).toEqual(kinds);
+      expect(r.governance.map((g) => g.path), what).toEqual(v.governance.map((g) => g.path));
+      expect(r.governance.map((g) => g.detail), what).toEqual(v.governance.map((g) => g.text));
+    }
   });
 });
 

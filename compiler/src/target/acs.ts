@@ -26,10 +26,10 @@
 // agent with the rules silently left out.
 
 import { diag, type Diagnostic } from "../diag.js";
-import { domainHash, hashProgram } from "../hash.js";
+import { hashProgram, packageHash } from "../hash.js";
 import type { AgentDef, Budget, Program } from "../ir/types.js";
 import type { Json } from "../json/strict-json.js";
-import { own, type Lock } from "../lock.js";
+import { own, packagedLock, type Lock } from "../lock.js";
 import { link, type Modules } from "../modules.js";
 import { DATA_CLASSES } from "../std/std.js";
 import type { ProfileLevel } from "./managed-agents.js";
@@ -115,8 +115,7 @@ export interface AcsTarget {
  */
 export function acsTarget(program: Program, modules: Modules = {}, lock?: Lock): AcsTarget {
   const programHash = hashProgram(program as unknown as Json).program;
-  const pinned = lock ? (({ lock: _f, ...rest }) => rest)(lock) : undefined;
-  const binding = pinned ? domainHash("package", { program: programHash, lock: pinned } as unknown as Json) : programHash;
+  const binding = lock ? packageHash(programHash, packagedLock(lock)) : programHash;
   const requirements = sandboxRequirements(program, modules);
   const defs = link(program, modules).defs;
   const diagnostics: Diagnostic[] = [];

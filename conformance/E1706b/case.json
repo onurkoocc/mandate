@@ -1,0 +1,21 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1706b",
+  "kind": "compile",
+  "title": "A sub-program whose model may not receive the class of what the lead received is not admitted.",
+  "spec": ["spec/envelope.md#the-sub-program", "spec/envelope.md#conformance-cases"],
+  "language": "mandate/0.4",
+  "input": { "file": "../N01/parent.mdt", "kind": "mdt" },
+  "modules": ["../N01/domain.mdt"],
+  "subprogram": {
+    "workflow": "Run",
+    "defs": { "file": "sub.mdt", "kind": "mdt" },
+    "lead": "internal",
+    "room": { "left": { "tokens": 50000, "steps": 100, "agents": 10, "spend:USD": 10000000 }, "time_left_ms": 1800000 }
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E1706", "path": "/defs/Fix/body/0/value", "facts": { "dimension": "data_class", "data_class": "internal", "allowed": "public", "by": "lead", "lead": "internal" } }]
+  }
+}

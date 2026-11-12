@@ -81,6 +81,13 @@ describe("the compiler's MCP server (§14)", () => {
     const raise = call(s, "mandate.apply_patch", { source: ir, base, ops: [{ op: "replace", path: "/defs/FixBug/budget/spend/micros", value: 60_000_000 }] });
     expect(raise.structuredContent).toMatchObject({ ok: true, requires_approval: true, governance: [{ kind: "budget_increased" }] });
     expect(raise.structuredContent!["hash"]).not.toBe(base);
+    // Narrowing a capability takes authority away: nothing for a person to approve.
+    const narrow = call(s, "mandate.apply_patch", { source: ir, base, ops: [{ op: "replace", path: "/defs/RepoRead/value/args/0/value/value", value: "/work/repo/src" }] });
+    expect(narrow.structuredContent).toMatchObject({ ok: true, requires_approval: false, governance: [] });
+    // A criterion checked another way is one, with its kind and the text the semantic diff shows.
+    const by = (JSON.parse(ir) as { defs: Record<string, { accept: Record<string, { by: unknown }> }> }).defs["FixAccepted"]!.accept["suite_green"]!.by;
+    const weaker = call(s, "mandate.apply_patch", { source: ir, base, ops: [{ op: "replace", path: "/defs/FixAccepted/accept/owner_approved/by", value: by }] });
+    expect(weaker.structuredContent).toMatchObject({ requires_approval: true, governance: [{ kind: "criterion_changed", path: "/defs/FixAccepted/accept/owner_approved", detail: expect.stringMatching(/^~ FixAccepted\.owner_approved: human\.approve → /) }] });
     const stale = call(s, "mandate.apply_patch", { source: ir, base: "sha256:0000", ops: [] });
     expect(stale.structuredContent).toMatchObject({ ok: false, diagnostics: [{ code: "MDT-E0130" }] });
   });

@@ -144,6 +144,8 @@ create table if not exists rate_buckets (
   updated_at bigint not null
 );
 alter table commands add column if not exists throttled integer not null default 0;
+alter table commands add column if not exists inside text;
+alter table commands add column if not exists package text;
 alter table actions add column if not exists artifacts jsonb;
 alter table evidence add column if not exists subject jsonb;
 alter table evidence add column if not exists record jsonb;
@@ -166,6 +168,19 @@ create table if not exists workspace_claims (
   root text primary key,
   run_id text not null,
   claimed_at bigint not null
+);
+create table if not exists decisions (
+  decision_id text primary key,
+  package_hash text not null,
+  run_id text,
+  command_id text,
+  kind text not null,
+  member text not null,
+  role text,
+  key_id text not null,
+  record jsonb not null,
+  signature text not null,
+  accepted_at bigint not null
 );
 `;
 

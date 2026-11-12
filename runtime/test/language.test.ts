@@ -1,12 +1,13 @@
-// The language versions this runtime runs (§3.5; spec/envelope.md). The
-// compiler reads 0.4, but what 0.4 asks of a run is not in this runtime yet,
-// so a package that holds 0.4 code is refused at load, whether the program or
-// a module it was packaged with is 0.4. A 0.3 package still loads.
+// The language versions this runtime runs (§3.5; spec/envelope.md). Of 0.4 it
+// runs roles, signed decisions, envelopes, `map` and `plan`. The `agents`
+// dimension of a budget that is not an envelope's is read by the compiler and
+// not run here, so a package that uses it is refused at load, by name. A 0.4
+// package also needs every role it names bound to a member in its lock.
 
 import { readFileSync } from "node:fs";
 import { check, hashProgram, loadModules, type Json, type Modules, type Program } from "@mandate/compiler";
 import { describe, expect, it } from "vitest";
-import { buildPackage, RUNTIME_LANGUAGES, verifyPackage, type Package } from "../src/runtime.js";
+import { buildPackage, isSigned04, notRunYet, RUNTIME_LANGUAGES, verifyPackage, type Lock, type Package } from "../src/runtime.js";
 import { Violation } from "../src/signals.js";
 
 const read = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
@@ -34,10 +35,42 @@ fn name_of(r: Repo) -> Text {
 }
 `;
 
-function checked(src: string, modules: Modules): Program {
+/** A 0.4 program that uses nothing of 0.4 but a role. */
+const ASK = `mandate @ 0.4
+
+module example.ask @ 0.1
+
+use std.{human, model}
+
+role reviewer "Reviewer"
+
+capability M = model.infer(tier: standard)
+
+agent A {
+  caps   M
+  budget { steps: 2 }
+  skill s(x: Text) -> Inferred<Text> ! {Model}
+}
+
+workflow W(xs: List<Text>) -> Text
+  caps M
+  budget { steps: 20 }
+{
+  let go = human.ask("Go on?", role: reviewer)
+  "done"
+}
+`;
+
+function checked(src: string, modules: Modules = {}): Program {
   const r = check(src, "mdt", { modules });
   expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
   return r.program!;
+}
+
+/** `ASK` with one change, which must still check. */
+function changed(from: string, to: string): Program {
+  expect(ASK.includes(from), from).toBe(true);
+  return checked(ASK.replace(from, to));
 }
 
 /** What verifyPackage threw, or undefined when it accepted the package. */
@@ -52,33 +85,116 @@ function refusal(pkg: Package): unknown {
 
 const pinned = (modules: Modules) => ({ modules: Object.fromEntries(Object.entries(modules).map(([name, m]) => [name, hashProgram(m as unknown as Json).program])) });
 
+const KEY = `sha256:${"3f".repeat(32)}`;
+/** A lock that binds the reviewer. */
+const BOUND: Lock = { modules: {}, members: { bob: { keys: [KEY] } }, roles: { reviewer: ["bob"] } };
+
 describe("the language versions the runtime runs", () => {
-  it("are 0.1 to 0.3", () => {
-    expect(RUNTIME_LANGUAGES).toEqual(["mandate/0.1", "mandate/0.2", "mandate/0.3"]);
+  it("are 0.1 to 0.4", () => {
+    expect(RUNTIME_LANGUAGES).toEqual(["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4"]);
   });
 
-  it("refuse a package whose program is 0.4 (unsupported_language)", () => {
+  it("accept a 0.4 program that names a role, with a lock that binds it", () => {
+    const program = checked(ASK);
+    expect(program.language).toBe("mandate/0.4");
+    expect(notRunYet(program)).toEqual([]);
+    expect(refusal(buildPackage(program, BOUND))).toBeUndefined();
+  });
+
+  it("accept the migration example: its envelope, its map and its plan are run", () => {
     const modules = domain("0.4");
     const program = checked(read("fixtures/envelope/migrate-all.mdt"), modules);
-    expect(program.language).toBe("mandate/0.4");
-    const e = refusal(buildPackage(program, pinned(modules), modules));
-    expect(e).toBeInstanceOf(Violation);
-    expect(e).toMatchObject({ code: "unsupported_language" });
-    expect((e as Violation).message).toContain("mandate/0.4");
+    expect(notRunYet(program)).toEqual([]);
+    const lock: Lock = { ...pinned(modules), members: { alice: { keys: [KEY] }, bob: { keys: [KEY.replace("3f", "4a")] } }, roles: { platform_lead: ["alice"], release_manager: ["bob"] } };
+    expect(refusal(buildPackage(program, lock, modules))).toBeUndefined();
+    // Without the people its roles stand for it is still refused, as any 0.4 package is.
+    expect(refusal(buildPackage(program, pinned(modules), modules))).toBeInstanceOf(Violation);
   });
 
-  it("refuse a 0.3 program packaged with a 0.4 module (unsupported_language)", () => {
-    const modules = domain("0.4");
-    const program = checked(REPORT, modules);
+  const ENVELOPE = "  envelope {\n    owner  reviewer\n    caps   M\n    budget { steps: 20, agents: 3 }\n  }\n{";
+
+  it("accept a 0.4 program with an envelope, whose budget has agents", () => {
+    const program = changed("  caps M\n  budget { steps: 20 }\n{", ENVELOPE);
+    expect(notRunYet(program)).toEqual([]);
+    expect(refusal(buildPackage(program, BOUND))).toBeUndefined();
+  });
+
+  const MAP = [`  "done"`, `  let rs = map x in xs max 3 { delegate A.s(x) }\n  "done"`] as const;
+
+  it("accept a 0.4 program with a map", () => {
+    const program = changed(...MAP);
+    expect(notRunYet(program)).toEqual([]);
+    expect(refusal(buildPackage(program, BOUND))).toBeUndefined();
+  });
+
+  it("accept a 0.4 program with a plan", () => {
+    // A plan stands only in a workflow with an envelope (E1707), so it comes with one.
+    const program = changed(
+      `  caps M\n  budget { steps: 20 }\n{\n  let go = human.ask("Go on?", role: reviewer)\n`,
+      ENVELOPE + `\n  let go = human.ask("Go on?", role: reviewer)\n  let r = plan A.s("x") within envelope\n`,
+    );
+    expect(notRunYet(program)).toEqual([]);
+    expect(refusal(buildPackage(program, BOUND))).toBeUndefined();
+  });
+
+  it.each([
+    ["an agents budget of the workflow's own", "budget { steps: 20 }", "budget { steps: 20, agents: 3 }", ["agents"]],
+    ["an agents budget of an agent", "budget { steps: 2 }", "budget { steps: 2, agents: 3 }", ["agents"]],
+  ])("refuse a 0.4 program with %s, and name it", (_what, from, to, names) => {
+    const program = changed(from, to);
+    expect(notRunYet(program)).toEqual(names);
+    const e = refusal(buildPackage(program, BOUND));
+    expect(e).toMatchObject({ code: "unsupported_language" });
+    expect((e as Violation).message).toContain(`${names.join(", ")} of mandate/0.4`);
+  });
+
+  it("refuse a 0.3 program packaged with a module that has an agents budget of its own, and accept one that has a map", () => {
+    const lib = (from: string, to: string): Modules => {
+      const text = ASK.replace("module example.ask @ 0.1", "module example.lib @ 0.1").replace(from, to);
+      expect(text).toContain(to);
+      const { modules, problems } = loadModules([{ file: "lib.mdt", text, kind: "mdt" }]);
+      expect(problems).toEqual([]);
+      return modules;
+    };
+    const user = (modules: Modules): Package => {
+      const program = checked(`mandate @ 0.3\n\nmodule example.user @ 0.1\n\nuse example.lib.{A}\n\nfn one() -> Int {\n  1\n}\n`, modules);
+      return buildPackage(program, pinned(modules), modules);
+    };
+    expect(refusal(user(lib("budget { steps: 2 }", "budget { steps: 2, agents: 3 }")))).toMatchObject({ code: "unsupported_language" });
+    expect(refusal(user(lib(...MAP)))).toBeUndefined();
+  });
+
+  it("accept a 0.3 program packaged with a 0.4 module of types, and with the module declared 0.3", () => {
+    for (const version of ["0.4", "0.3"] as const) {
+      const modules = domain(version);
+      const program = checked(REPORT, modules);
+      expect(program.language).toBe("mandate/0.3");
+      expect(refusal(buildPackage(program, pinned(modules), modules))).toBeUndefined();
+      // A package with any 0.4 code takes signed decisions only.
+      expect(isSigned04(program, modules)).toBe(version === "0.4");
+    }
+  });
+});
+
+describe("the roles of a 0.4 package at load (E1502)", () => {
+  it("refuse a package whose lock binds no member to a role it names (unbound_role)", () => {
+    const program = checked(ASK);
+    for (const lock of [{ modules: {} }, { modules: {}, members: { bob: { keys: [KEY] } }, roles: { other: ["bob"] } }] as Lock[]) {
+      const e = refusal(buildPackage(program, lock));
+      expect(e).toMatchObject({ code: "unbound_role" });
+      expect((e as Violation).message).toContain("reviewer");
+    }
+  });
+
+  it("refuse a lock whose role lists someone who is not a member, or whose key is under two members (malformed_lock)", () => {
+    const program = checked(ASK);
+    expect(refusal(buildPackage(program, { modules: {}, members: { bob: { keys: [KEY] } }, roles: { reviewer: ["carol"] } }))).toMatchObject({ code: "malformed_lock" });
+    expect(refusal(buildPackage(program, { modules: {}, members: { bob: { keys: [KEY] }, eve: { keys: [KEY] } }, roles: { reviewer: ["bob"] } }))).toMatchObject({ code: "malformed_lock" });
+  });
+
+  it("leave an earlier program alone: it names roles by any text, and its lock need bind none", () => {
+    const program = checked(ASK.replace("mandate @ 0.4", "mandate @ 0.3").replace(`role reviewer "Reviewer"\n`, "").replace("role: reviewer", `role: "reviewer"`));
     expect(program.language).toBe("mandate/0.3");
-    const e = refusal(buildPackage(program, pinned(modules), modules));
-    expect(e).toBeInstanceOf(Violation);
-    expect(e).toMatchObject({ code: "unsupported_language" });
-  });
-
-  it("accept the same 0.3 program packaged with the module declared 0.3", () => {
-    const modules = domain("0.3");
-    const program = checked(REPORT, modules);
-    expect(refusal(buildPackage(program, pinned(modules), modules))).toBeUndefined();
+    expect(refusal(buildPackage(program, { modules: {} }))).toBeUndefined();
   });
 });

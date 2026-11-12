@@ -111,16 +111,23 @@ describe("a change that loosens CI (K70, item 46)", () => {
     const files = ["deploy/release.sh", "src/main/java/Api.java"];
     let run = await w.rt.startRun({ pkg: w.pkg, workflow: "Release", input: { task: "release", files }, runId: "gov4" });
     const gate = waiting(run).request;
+    const asked = [waiting(run).command];
     expect(gate).toMatchObject({ gate: "governance", role: "core_owner", then: "release_manager", governance: [{ file: "deploy/release.sh", kind: "component" }] });
     run = await decide(w, run, true, 1);
     // A gate, not an authorization: nothing could commit on the owner's word alone.
     expect(await w.db.query("select authorization_id from authorizations where run_id = 'gov4'")).toEqual([]);
     expect((await w.rt.journal.events("gov4")).some((e) => e.type === "governance_approved")).toBe(true);
     expect(waiting(run).request).toMatchObject({ role: "release_manager", governance: [{ file: "deploy/release.sh", kind: "component" }] });
+    asked.push(waiting(run).command);
     run = await decide(w, run, true, 2);
     expect(waiting(run).request["role"]).toBe("architect");
+    asked.push(waiting(run).command);
     run = await decide(w, run, true, 3);
     expect(run.state).toBe("succeeded");
+    // The run's view lists the three decisions, each on its own wait. The owner's is read from the gate's event.
+    const said = (kind: string, about: string, by: string) => ({ kind, about, by, role: null, signature: "unsigned", problem: null, decision_id: null });
+    expect(new Set(asked).size).toBe(3);
+    expect((await runView(w.rt, "gov4")).view.decisions).toEqual([said("approve", asked[0]!, "core_owner"), said("approve", asked[1]!, "release_manager"), said("approve", asked[2]!, "architect")]);
 
     // The owner declining stops it before the release manager is asked.
     const w2 = await acme();
@@ -129,6 +136,11 @@ describe("a change that loosens CI (K70, item 46)", () => {
     expect(stopped.state).toBe("failed");
     expect((await w2.rt.journal.events("gov5")).some((e) => e.type === "governance_denied")).toBe(true);
     expect(w2.merge.executions).toEqual([]);
+    // Who declined is in the gate's event, so the view names them also once the wait's result is purged (R14).
+    const declined = [said("decline", waiting(r2).command, "core_owner")];
+    expect((await runView(w2.rt, "gov5")).view.decisions).toEqual(declined);
+    await w2.rt.purgePayloads("gov5");
+    expect((await runView(w2.rt, "gov5")).view.decisions).toEqual(declined);
   });
 });
 

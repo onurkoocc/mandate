@@ -250,26 +250,29 @@ describe("typing of map", () => {
     expect(said(src)).toEqual([["MDT-E0201", "/defs/MigrateAll/body/0/value/over"]]);
   });
 
+  // In the next three the map runs a dozen items one at a time: side by side, a write scope every item shares is E0320.
+  const IN_TURN = mutate(" max 150 par 16", " max 12");
+
   it("hands its body only capabilities the context holds (E0701)", () => {
-    const wide = mutate('capability SrcWrite = fs.write("/work/repos")', 'capability SrcWrite = fs.write("/work/repos")\ncapability Wide     = fs.write("/work")');
+    const wide = mutate('capability SrcWrite = fs.write("/work/repos")', 'capability SrcWrite = fs.write("/work/repos")\ncapability Wide     = fs.write("/work")', IN_TURN);
     expect(said(wide)).toEqual([]);
     expect(said(mutate("with caps SrcWrite.narrow(repo.root)", "with caps Wide", wide))).toEqual([["MDT-E0701", "/defs/MigrateAll/body/0/value/caps/0"]]);
   });
 
   it("hands its capabilities to the delegations of its body, as if each named them", () => {
     // A scope that is known statically narrows what the item's agent is granted; the delegation needs no `with caps`.
-    const narrow = mutate("with caps SrcWrite.narrow(repo.root)", 'with caps SrcWrite.narrow("/work/repos/a")');
+    const narrow = mutate("with caps SrcWrite.narrow(repo.root)", 'with caps SrcWrite.narrow("/work/repos/a")', IN_TURN);
     expect(said(narrow)).toEqual([]);
     const row = authority(check(narrow, "mdt", { modules: modules() }).program!).rows.find((r) => r.kind === "delegation" && r.who.includes("Migrator.migrate"))!;
     expect(row.write).toEqual(["/work/repos/a"]);
     expect(row.read).toEqual(["/work/repos"]);
     // Without the map's `with caps` the agent is granted what it holds inside the envelope.
-    const whole = authority(check(mutate(" with caps SrcWrite.narrow(repo.root)", ""), "mdt", { modules: modules() }).program!).rows.find((r) => r.kind === "delegation" && r.who.includes("Migrator.migrate"))!;
+    const whole = authority(check(mutate(" with caps SrcWrite.narrow(repo.root)", "", IN_TURN), "mdt", { modules: modules() }).program!).rows.find((r) => r.kind === "delegation" && r.who.includes("Migrator.migrate"))!;
     expect(whole.write).toEqual(["/work/repos"]);
   });
 
   it("lets a delegation of its body narrow further, and only inside what the map hands it (E0701)", () => {
-    const inside = mutate("delegate Migrator.migrate(repo)", 'delegate Migrator.migrate(repo) with caps SrcWrite.narrow("/work/repos/a/src")', mutate("with caps SrcWrite.narrow(repo.root)", 'with caps SrcWrite.narrow("/work/repos/a")'));
+    const inside = mutate("delegate Migrator.migrate(repo)", 'delegate Migrator.migrate(repo) with caps SrcWrite.narrow("/work/repos/a/src")', mutate("with caps SrcWrite.narrow(repo.root)", 'with caps SrcWrite.narrow("/work/repos/a")', IN_TURN));
     expect(said(inside)).toEqual([]);
     expect(said(mutate('SrcWrite.narrow("/work/repos/a/src")', 'SrcWrite.narrow("/work/repos/b")', inside))).toEqual([["MDT-E0701", "/defs/MigrateAll/body/0/value/body/0/value/caps/0"]]);
   });
@@ -365,7 +368,7 @@ describe("views of a workflow with an envelope", () => {
       ["Migrator.migrate", 150],
       ["Lead.finish", 1],
     ]);
-    expect(wf!.total).toBe("85 USD · 62000000 tokens · 1840 steps");
+    expect(wf!.total).toBe("85 USD · 62000000 tokens · 1840 steps · 151 agents");
     expect(wf!.limit).toContain("200 agents");
     expect(wf!.limit).toContain("120 USD");
   });
@@ -385,6 +388,39 @@ describe("changing an envelope is a governance change", () => {
     const r = applyPatch(p, base, [{ op: "replace", path: "/defs/MigrateAll/envelope/budget/spend", value: { micros: 150_000_000, currency: "USD" } }], modules());
     expect(r.ok).toBe(true);
     expect(r.governance).toEqual([{ kind: "envelope_changed", path: "/defs/MigrateAll/envelope", detail: expect.any(String) }]);
+  });
+
+  it("is reported by a patch that raises the envelope's agents", () => {
+    const p = migrateAll();
+    const base = hashProgram(p as unknown as Json).program;
+    const r = applyPatch(p, base, [{ op: "replace", path: "/defs/MigrateAll/envelope/budget/agents", value: 300 }], modules());
+    expect(r.ok).toBe(true);
+    expect(r.governance).toEqual([{ kind: "envelope_changed", path: "/defs/MigrateAll/envelope", detail: "~ MigrateAll: envelope changed" }]);
+  });
+
+  it("is reported by a patch that removes an envelope, or adds one", () => {
+    const p = migrateAll();
+    const r = applyPatch(p, hashProgram(p as unknown as Json).program, [{ op: "remove", path: "/defs/MigrateAll/envelope" }], modules());
+    expect(r.ok).toBe(true);
+    expect(r.governance).toEqual([{ kind: "envelope_changed", path: "/defs/MigrateAll/envelope", detail: "~ MigrateAll: envelope removed" }]);
+    const without = r.program!;
+    const back = applyPatch(without, r.hash!, [{ op: "add", path: "/defs/MigrateAll/envelope", value: (p.defs["MigrateAll"] as { envelope: unknown }).envelope }], modules());
+    expect(back.ok).toBe(true);
+    expect(back.governance).toEqual([{ kind: "envelope_changed", path: "/defs/MigrateAll/envelope", detail: "~ MigrateAll: envelope added" }]);
+  });
+
+  it("is reported, with the envelope's capabilities, for a new workflow with an envelope", () => {
+    const p = migrateAll();
+    const r = applyPatch(p, hashProgram(p as unknown as Json).program, [{ op: "add", path: "/defs/MigrateAgain", value: p.defs["MigrateAll"] }], modules());
+    expect(r.ok).toBe(true);
+    expect(r.governance.map((g) => [g.kind, g.path])).toEqual([
+      ["capability_added", "/defs/MigrateAgain/envelope/caps/0"],
+      ["capability_added", "/defs/MigrateAgain/envelope/caps/1"],
+      ["capability_added", "/defs/MigrateAgain/envelope/caps/2"],
+      ["capability_added", "/defs/MigrateAgain/envelope/caps/3"],
+      ["capability_added", "/defs/MigrateAgain/envelope/caps/4"],
+      ["envelope_changed", "/defs/MigrateAgain/envelope"],
+    ]);
   });
 
   it("is not reported by a patch that lowers a map's max", () => {

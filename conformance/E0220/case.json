@@ -1,0 +1,21 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0220",
+  "kind": "compile",
+  "title": "A delegation in the body of a workflow with an envelope that receives confidential data is refused when the envelope names no data class: the bound is internal.",
+  "spec": ["spec/envelope.md#what-it-declares", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "program.mdt", "kind": "mdt" },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/W/body/1",
+      "value": { "op": "expr", "value": { "op": "delegate", "agent": "A", "skill": "s", "args": [{ "value": { "op": "var", "name": "d" } }] } }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E0220", "path": "/defs/W/body/1/value", "facts": { "data_class": "confidential", "allowed": "internal", "by": "envelope" } }]
+  }
+}

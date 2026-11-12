@@ -1,0 +1,23 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "N01",
+  "kind": "compile",
+  "title": "A sub-program whose workflow asks for a capability outside the envelope's capabilities is not admitted.",
+  "spec": ["spec/envelope.md#the-sub-program", "spec/envelope.md#conformance-cases"],
+  "language": "mandate/0.4",
+  "input": { "file": "parent.mdt", "kind": "mdt" },
+  "modules": ["domain.mdt"],
+  "subprogram": {
+    "workflow": "Run",
+    "defs": { "file": "sub.mdt", "kind": "mdt" },
+    "room": { "left": { "tokens": 50000, "steps": 100, "agents": 10, "spend:USD": 10000000 }, "time_left_ms": 1800000 }
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-W0310", "path": "/defs/Fix/caps/1" },
+      { "code": "MDT-E1706", "path": "/defs/Fix/caps/1", "facts": { "dimension": "capability", "capability": "Mine = fs.write(\"/etc\")" } }
+    ]
+  }
+}

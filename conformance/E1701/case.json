@@ -1,0 +1,16 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1701",
+  "kind": "compile",
+  "title": "An envelope without an owner is malformed, and the diagnostic names what is missing.",
+  "spec": ["spec/envelope.md#what-it-declares", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../../fixtures/envelope/migrate-all.mdt", "kind": "mdt" },
+  "modules": ["../../fixtures/envelope/domain.mdt"],
+  "patch": [{ "op": "remove", "path": "/defs/MigrateAll/envelope/owner" }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E1701", "path": "/defs/MigrateAll/envelope", "facts": { "missing": ["owner"] } }]
+  }
+}

@@ -3,23 +3,34 @@
 //   P = SHA256("mandate/program/<v>\n" || JCS(program))
 //   D = SHA256("mandate/def/<v>\n"     || JCS(definition))
 //
-// <v> is the program's language version (0.1 or 0.2), so two versions can
+// <v> is the program's language version (0.1 to 0.4), so two versions can
 // never read the same bytes with different meaning (§3.5): a definition that
 // means something else in 0.2 hashes differently there. The runtime's own
-// domains (package, run, action, operation, request) use the 0.1 hash
+// domains (package, run, action, operation, request, decision) use the 0.1 hash
 // profile. Hashes are identities, not authentication.
 
 import { createHash } from "node:crypto";
 import { canonicalize } from "./json/jcs.js";
 import type { Json } from "./json/strict-json.js";
 
-export type HashDomain = "program" | "def" | "package" | "run" | "action" | "operation" | "request" | "binding";
+export type HashDomain = "program" | "def" | "package" | "run" | "action" | "operation" | "request" | "binding" | "decision";
 
 export function domainHash(domain: HashDomain, value: Json, version = "0.1"): string {
   const h = createHash("sha256");
   h.update(`mandate/${domain}/${version}\n`, "utf8");
   h.update(canonicalize(value), "utf8");
   return "sha256:" + h.digest("hex");
+}
+
+/**
+ * A package's hash (§3.5): the program's hash and the lock it is packaged
+ * with (`packagedLock` in lock.ts). The runtime recomputes it at load, and
+ * an envelope's approval is bound to it (spec/envelope.md "Approving an
+ * envelope"). It is computed here and nowhere else, so the hash a card shows
+ * a person is the hash the runtime runs.
+ */
+export function packageHash(programHash: string, lock: object): string {
+  return domainHash("package", { program: programHash, lock } as unknown as Json);
 }
 
 export interface ProgramHashes {

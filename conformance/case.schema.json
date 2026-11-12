@@ -6,6 +6,27 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "id", "kind", "title", "spec", "input", "expect"],
+  "dependentSchemas": {
+    "subprogram": {
+      "description": "A subprogram case has no top-level patch or lock.",
+      "not": {
+        "anyOf": [
+          { "type": "object", "properties": { "patch": true }, "required": ["patch"] },
+          { "type": "object", "properties": { "lock": true }, "required": ["lock"] }
+        ]
+      }
+    },
+    "amendment": {
+      "description": "An amendment case has no top-level patch or lock, and no subprogram.",
+      "not": {
+        "anyOf": [
+          { "type": "object", "properties": { "patch": true }, "required": ["patch"] },
+          { "type": "object", "properties": { "lock": true }, "required": ["lock"] },
+          { "type": "object", "properties": { "subprogram": true }, "required": ["subprogram"] }
+        ]
+      }
+    }
+  },
   "properties": {
     "$schema": { "type": "string" },
     "format": { "const": "mandate/conformance-case/0.1" },
@@ -27,28 +48,7 @@
       "pattern": "^mandate/[0-9]+[.][0-9]+$",
       "description": "When given, the program the case checks declares this language."
     },
-    "input": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["file", "kind"],
-          "properties": {
-            "file": { "$ref": "#/$defs/relativePath" },
-            "kind": { "$ref": "#/$defs/sourceKind" }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["text", "kind"],
-          "properties": {
-            "text": { "type": "string" },
-            "kind": { "$ref": "#/$defs/sourceKind" }
-          }
-        }
-      ]
-    },
+    "input": { "$ref": "#/$defs/source" },
     "modules": {
       "type": "array",
       "items": { "$ref": "#/$defs/relativePath" },
@@ -61,6 +61,64 @@
       "type": "array",
       "items": { "$ref": "#/$defs/patchOp" },
       "description": "An RFC 6902 patch applied to the IR of the input before it is checked as JSON IR."
+    },
+    "subprogram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflow", "room"],
+      "description": "A lead's sub-program. The input is its parent; expect is compared with the sub-program's check.",
+      "properties": {
+        "workflow": { "type": "string", "minLength": 1, "description": "The parent's workflow whose envelope bounds the run." },
+        "number": { "type": "integer", "minimum": 1, "description": "The sub-program's number; 1 when not given." },
+        "defs": { "$ref": "#/$defs/source", "description": "A module whose definitions become add operations at /defs/<name>, in order." },
+        "patch": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/patchOp" },
+          "description": "More operations of the lead, after those from defs."
+        },
+        "lead": { "enum": ["public", "internal", "confidential", "restricted"], "description": "The data class of what the lead received; public when not given." },
+        "room": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["left"],
+          "description": "What is left of the envelope.",
+          "properties": {
+            "left": {
+              "type": "object",
+              "additionalProperties": { "type": "integer", "minimum": 0 },
+              "description": "What is left in each ledger dimension: tokens, steps, agents, spend:<currency> in micro-units."
+            },
+            "time_left_ms": { "type": "integer", "description": "Milliseconds to the run's deadline." },
+            "writes": {
+              "type": "array",
+              "description": "Write capabilities still in flight.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["ctor", "scope"],
+                "properties": {
+                  "ctor": { "enum": ["fs.write", "git.pr", "env.deploy", "env.migrate"] },
+                  "scope": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "amendment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflow", "patch"],
+      "description": "An amendment of an envelope. The input is the program the run has; expect is compared with the amendment's check.",
+      "properties": {
+        "workflow": { "type": "string", "minLength": 1, "description": "The workflow whose envelope is amended." },
+        "patch": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/patchOp" },
+          "description": "An RFC 6902 patch applied to the IR of that envelope; its paths start at the envelope. The patched envelope is the one the lead asks for."
+        }
+      }
     },
     "expect": {
       "type": "object",
@@ -99,6 +157,28 @@
       "description": "Relative to the case directory; must stay inside the repository."
     },
     "sourceKind": { "enum": ["mdt", "json"] },
+    "source": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "kind"],
+          "properties": {
+            "file": { "$ref": "#/$defs/relativePath" },
+            "kind": { "$ref": "#/$defs/sourceKind" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text", "kind"],
+          "properties": {
+            "text": { "type": "string" },
+            "kind": { "$ref": "#/$defs/sourceKind" }
+          }
+        }
+      ]
+    },
     "patchOp": {
       "oneOf": [
         {
