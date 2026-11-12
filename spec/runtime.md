@@ -459,6 +459,11 @@ enforces the same limits again. Tool output is cut at 20,000 characters.
 <delegate>/plan/<i>               a step of a checked plan
 ```
 
+A lead's sub-program runs below its delegation too, under a command of
+its own, `<plan>/program/<n>`, and its commands below that
+([`envelope.md`](envelope.md#plan)). They are not the lead's steps and are
+not charged to its budget.
+
 The conversation is rebuilt from the journal, so recovery sends nothing
 already recorded again, and replay calls neither the model nor the
 sandbox.
@@ -701,9 +706,9 @@ listed in the run's summary (R09).
   (`no_executor`, `unsupported_binding`;
   [`executors.md`](executors.md));
 - runs the compiler's checks on the canonical IR again;
-- refuses a language version it does not run, and of 0.4 a `plan` and
-  `agents` in a budget that is not an envelope's, which it does not run
-  yet (`unsupported_language`; [`envelope.md`](envelope.md));
+- refuses a language version it does not run, and of 0.4 `agents` in a
+  budget that is not an envelope's, which it does not run yet
+  (`unsupported_language`; [`envelope.md`](envelope.md));
 - when the lock lists members or roles, requires it to be well formed
   (`malformed_lock`), and for a 0.4 package requires every role it names
   to have a member (`unbound_role`, E1502);
@@ -809,6 +814,7 @@ package's envelope so that its runs may start
   "artifacts": ".mandate/artifacts",
   "evidence": { "key": ".mandate/evidence.key" },
   "decisions": { "keys": ".mandate/decision-keys" },
+  "plan": { "checkMs": 2000 },
   "rateLimits": { "model": { "capacity": 50, "perSecond": 1 } },
   "model": { "provider": "anthropic" },
   "executor": { "managed-agents": { "pollMs": 1000, "maxTurnMs": 3600000 } },
@@ -836,6 +842,9 @@ package's envelope so that its runs may start
   take `--by NAME` in place of `--key FILE`, as before 0.4; without it
   every decision is signed. See
   [`envelope.md`](envelope.md#signed-decisions).
+- **Plan.** `plan.checkMs` is the longest the check of a lead's
+  sub-program may take, in milliseconds, 2000 by default. See
+  [`envelope.md`](envelope.md#limits).
 - **Executor.** `executor.managed-agents` runs the agents the lock binds
   to Claude Managed Agents there, each delegation in a session of its own.
   Their tools still run in `sandbox`. See [`executors.md`](executors.md).
@@ -923,9 +932,10 @@ The same mechanisms are tested under Temporal against a local dev server:
 
 ## Not in this runtime yet
 
-- **`plan` and sub-programs.** A 0.4 package with a `plan` is refused at
-  load. `map` runs ([`envelope.md`](envelope.md#map)): R11 by input index
-  and R12 are tested in `map.test.ts`.
+- **Amendments.** A lead cannot ask for a wider envelope yet (N04). `map`
+  and `plan` run ([`envelope.md`](envelope.md)): R11 by input index and
+  R12 are tested in `map.test.ts`, sub-programs in `plan.test.ts` and
+  `ledger.test.ts`, and the migration example in `demo.test.ts`.
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.
 
 ## Workspace and run manifest (design doc 9 §12, B3)

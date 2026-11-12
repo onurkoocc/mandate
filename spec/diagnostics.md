@@ -134,7 +134,7 @@ Notes column says so.
 | MDT-E1702 | Unbounded map | E1702, E1702a | assigned; no `max` outside an envelope, or inside one around a body that starts no delegation; at run time a longer list is `Rejected(over_limit)` (N08) |
 | MDT-E1703 | Map concurrency above the envelope | E1703 | assigned; `par k` above `spawn.max_concurrent`, at the map's `par` |
 | MDT-E1704 | Envelope approval names a non-critical or uncovered effect | E1704, E1704a | assigned; an effect under `approve` is critical, and a capability of the envelope covers it |
-| MDT-E1705 | Not allowed in a sub-program | N09 | assigned; not reported yet |
-| MDT-E1706 | Sub-program does not fit the envelope | N01, N02 | assigned; not reported yet; returned to the lead, never to the run |
+| MDT-E1705 | Not allowed in a sub-program | N09, E1705, E1705a | assigned; a definition a sub-program may not make, an envelope or a `plan` of its own, a workflow with parameters, or not exactly one workflow; returned to the lead, never to the run |
+| MDT-E1706 | Sub-program does not fit the envelope | N01, N01a, N01b, E1706, E1706a, E1706b | assigned; facts name the dimension (`capability`, `write_scope`, a budget dimension, `time`, `data_class`) with what was asked and what is left; returned to the lead, never to the run |
 | MDT-E1707 | `plan` outside an envelope | E1707 | assigned; a `plan` anywhere but the body of a workflow with an envelope |
 | MDT-E1708 | Person or critical effect in a map body | E1708, E1708a | assigned; a wait for a person in a map body or in a function it calls, a critical effect, a change set |
