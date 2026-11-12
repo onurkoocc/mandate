@@ -536,7 +536,8 @@ describe("MigrateAll's map: 24 repositories, 24 migrators", () => {
   }
 
   it("moves every repository inside its own root, sixteen at a time at most, and hands the lead the outcomes in order", async () => {
-    // The fixture's lead plans sub-programs, which this runtime does not run yet: here the lead is delegated to.
+    // The fixture's lead plans sub-programs (demo.test.ts runs it whole). Here the lead is delegated to, so that
+    // the map is seen on its own, with every agent answered by the delegate adapter.
     const src = here("fixtures/envelope/migrate-all.mdt").replace("plan Lead.finish(repos, done) within envelope", "delegate Lead.finish(repos, done)");
     expect(src).toContain("delegate Lead.finish(repos, done)");
     const mods = modules();

@@ -10,19 +10,25 @@ import { randomUUID } from "node:crypto";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { bundleWorkflowCode, DefaultLogger, Runtime as TemporalRuntime, type WorkflowBundleWithSourceMap } from "@temporalio/worker";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { TrustedKeys } from "../src/evidence.js";
+import { shownPackage, signDecision } from "../src/decisions.js";
+import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
+import type { ProgramChecker, WorkerChecker } from "../src/plan.js";
 import { Runtime } from "../src/runtime.js";
-import { SimAgents, SimTool, wallClock } from "../src/sim.js";
+import { MxcAdapter } from "../src/sandbox.js";
+import { SimAgents, SimSandboxHost, SimTool, wallClock } from "../src/sim.js";
 import { createWorker, TemporalDriver, workflowId, workflowsPath, type RunOptions } from "../src/temporal/index.js";
 import { isObj } from "../src/values.js";
-import { closeAll, world, type World, UNSIGNED } from "./helpers.js";
+import { closeAll, planChecker, world, type World, UNSIGNED } from "./helpers.js";
+import { commenting, finish, leadChat, program, programAt, submit } from "./planning.js";
 import { BUG, FIXBUG, fixbugAgents, RESULTS, USD, waitOf } from "./fixbug.js";
 import { ASK, FIX, ISSUE, NOTIFY } from "./programs.js";
 
 let env: TestWorkflowEnvironment;
 let bundle: WorkflowBundleWithSourceMap;
+let checker: WorkerChecker;
 
 beforeAll(async () => {
+  checker = await planChecker();
   TemporalRuntime.install({ logger: new DefaultLogger("WARN") });
   const path = process.env["TEMPORAL_CLI_PATH"];
   env = await TestWorkflowEnvironment.createLocal(path ? { server: { executable: { type: "existing-path", path } } } : {});
@@ -31,6 +37,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await env?.teardown();
+  await checker?.close();
   await closeAll();
 });
 
@@ -47,10 +54,11 @@ async function scheduled(src: string, o: Parameters<typeof world>[1] & { runOpti
   // The earlier programs take a decision on the caller's word; a 0.4 program gives the keys it takes signed ones with.
   const decisions = o.decisions ?? UNSIGNED.decisions;
   // The worker's runtime keeps timers durable; control calls share its key, so either can check the evidence.
-  const runtime = new Runtime(w.db, w.adapters, w.faults, undefined, { decisions, durableTimers: true, signer: w.rt.signer, artifacts: w.rt.artifacts });
+  const plan = o.plan ? { plan: o.plan } : {};
+  const runtime = new Runtime(w.db, w.adapters, w.faults, undefined, { decisions, durableTimers: true, signer: w.rt.signer, artifacts: w.rt.artifacts, ...plan });
   const worker = await createWorker({ connection: env.nativeConnection, taskQueue, runtime, workflowBundle: bundle });
   const driver = new TemporalDriver(env.client, taskQueue, o.runOptions);
-  return { ...w, rt: runtime, driver, control: new Runtime(w.db, w.adapters, w.faults, driver, { decisions, signer: w.rt.signer, artifacts: w.rt.artifacts }), serve: (body) => worker.runUntil(body()) };
+  return { ...w, rt: runtime, driver, control: new Runtime(w.db, w.adapters, w.faults, driver, { decisions, signer: w.rt.signer, artifacts: w.rt.artifacts, ...plan }), serve: (body) => worker.runUntil(body()) };
 }
 
 /** A 0.4 workflow that maps a list, with no envelope and no role: it asks no person, so it needs no member's key. */
@@ -261,6 +269,42 @@ describe("Temporal schedules runs", () => {
     expect(events.filter((e) => e.type === "lease_acquired")).toHaveLength(2);
     // The resumed run does not start the map a second time.
     expect(events.filter((e) => e.type === "map_started").map((e) => e.data)).toEqual([{ map: "/defs/Each/body/0/value", items: 3, par: 2 }]);
+  });
+
+  it("runs a plan: a worker that dies inside a sub-program is replaced, the sub-program is admitted and checked once, and the release manager's signed decision wakes the run (N05, R01)", async () => {
+    const alice = EvidenceSigner.generate();
+    const bob = EvidenceSigner.generate();
+    const lock = { modules: {}, members: { alice: { keys: [alice.keyId] }, bob: { keys: [bob.keyId] } }, roles: { platform_lead: ["alice"], release_manager: ["bob"] } };
+    const tool = new SimTool("git.comment", "reconcilable");
+    let checks = 0;
+    const counted: ProgramChecker = { check: (input, ms) => (checks++, checker.check(input, ms)) };
+    const s = await scheduled(program({ approve: "git.comment by release_manager" }), { lock, tools: [tool], decisions: { keys: new TrustedKeys([alice.publicKey, bob.publicKey]) }, plan: { checker: counted } });
+    const { chat, told } = leadChat([submit(1, commenting("a", "fixed")), finish("planned")]);
+    s.adapters.loop = { chat, sandbox: new MxcAdapter({ host: new SimSandboxHost(), schemaVersion: "0.8.0", modelEndpoints: {}, modelsInControlPlane: true }) };
+    await s.control.approveEnvelope(s.pkg, signDecision(alice, shownPackage(s.pkg.hash, "platform_lead"), { kind: "envelope", member: "alice", at: new Date(s.adapters.clock.now()) }));
+    // The worker dies once, after it recorded the result of the sub-program's delegation.
+    s.faults.arm("after_record", (i) => i.kind === "delegate" && i.id.startsWith(programAt(1)));
+    await s.control.startRun({ pkg: s.pkg, workflow: "W", input: { items: [{ name: "a" }] }, runId: "t11" });
+    const done = await s.serve(async () => {
+      await stateOf(s, "t11", "waiting");
+      // The sub-program is in flight and its comment waits for the release manager: nothing was sent.
+      expect(tool.executions).toHaveLength(0);
+      const signed = signDecision(bob, await s.control.shown("t11", "wait"), { kind: "approve", member: "bob", at: new Date(s.adapters.clock.now()) });
+      await s.control.decideAction("t11", { sender: "bob", messageId: "m1" }, { signed });
+      return s.driver.result("t11");
+    });
+    expect(done.state).toBe("succeeded");
+    expect((await s.control.getRun("t11")).result).toBe("planned");
+    expect(tool.executions).toHaveLength(1);
+    expect(told).toMatchObject([{ admitted: true, number: 1, result: "fixed a" }]);
+    // The worker that took over found the admission in the journal: one check, one admission, one worker's turn.
+    expect(checks).toBe(1);
+    const events = await s.control.journal.events("t11");
+    expect(events.filter((e) => e.type === "program_admitted")).toHaveLength(1);
+    expect(events.filter((e) => e.type === "program_submitted")).toHaveLength(1);
+    expect(events.filter((e) => e.type === "lease_acquired").length).toBeGreaterThanOrEqual(3);
+    expect(chat.calls.filter((c) => c.agent === "Worker")).toHaveLength(1);
+    expect((await s.control.journal.budget("t11"))["agents"]).toEqual({ limit: 12, settled: 2, reserved: 0 });
   });
 
   it("runs FixBug end to end: the code owner's approval wakes it, and a crash after commit opens one PR", async () => {

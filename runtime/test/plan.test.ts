@@ -8,7 +8,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { load, type Program, type SubprogramInput } from "@mandate/compiler";
+import type { Program, SubprogramInput } from "@mandate/compiler";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { readConfig, runtimeOptions, type RuntimeConfig } from "../src/control.js";
@@ -16,12 +16,13 @@ import { shownPackage, signDecision } from "../src/decisions.js";
 import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
 import type { RunRow } from "../src/journal.js";
 import type { RuntimeOptions } from "../src/runtime.js";
-import { baseOf, CHECK_MS, MAX_OPS, overLimit, type ProgramChecker, type WorkerChecker } from "../src/plan.js";
+import { CHECK_MS, MAX_OPS, overLimit, type ProgramChecker, type WorkerChecker } from "../src/plan.js";
 import { MxcAdapter } from "../src/sandbox.js";
 import { Crash } from "../src/signals.js";
 import { deferred, SimChat, SimModel, SimSandboxHost, SimTool, toolUse, type SimTurn } from "../src/sim.js";
 import { isObj, type Obj, type Value } from "../src/values.js";
 import { closeAll, commandIds, planChecker, until, world, type World } from "./helpers.js";
+import { answered, base, BUDGET, CAPS, check, commenting, finish, fixed, fixes, itemOf, leadChat, MODULE, ops, PLAN, program, programAt, sub, submit, toolStep, type Turn } from "./planning.js";
 
 let checker: WorkerChecker;
 let stuck: WorkerChecker;
@@ -45,77 +46,6 @@ function counting(): ProgramChecker & { calls: SubprogramInput[] } {
   return { calls, check: (input, ms) => (calls.push(input), checker.check(input, ms)) };
 }
 
-// ── the program ─────────────────────────────────────────────────────────
-
-const MODULE = "test.plan";
-
-/**
- * A 0.4 workflow whose envelope lets it read and write below /work/repos, and whose lead plans what to do with a
- * list of items. A test gives the envelope's budget, its other lines and the workflow's body where they matter.
- */
-const program = (o: { budget?: string; spawn?: string; approve?: string; body?: string } = {}): string => `mandate @ 0.4
-
-module ${MODULE} @ 0.1
-
-use std.{fs, git, model}
-
-role platform_lead   "Platform lead"
-role release_manager "Release manager"
-
-type Item = { name: Text }
-
-capability RepoRead = fs.read("/work/repos")
-capability SrcWrite = fs.write("/work/repos")
-capability ModelStd = model.infer(tier: standard)
-capability Merge    = git.pr("company/backend")
-
-agent Worker {
-  role   "Fixes one item."
-  caps   RepoRead, SrcWrite, ModelStd
-  budget { tokens: 3k, steps: 4 }
-  skill fix(i: Item) -> Inferred<Text> ! {Fs.Read, Fs.Write, Model}
-}
-
-agent Lead {
-  role   "Plans what is left."
-  caps   RepoRead, ModelStd
-  budget { tokens: 60k, steps: 30 }
-  skill finish(items: List<Item>) -> Inferred<Text> ! {Fs.Read, Model}
-}
-
-workflow W(items: List<Item>) -> Inferred<Text>
-  envelope {
-    owner   platform_lead
-    caps    RepoRead, SrcWrite, ModelStd, Merge
-    budget  ${o.budget ?? "{ tokens: 200k, steps: 400, agents: 12 }"}${o.spawn ? `\n    spawn   ${o.spawn}` : ""}${o.approve ? `\n    approve ${o.approve}` : ""}
-  }
-{
-${o.body ?? "  plan Lead.finish(items) within envelope"}
-}
-`;
-
-const PLAN = "/defs/W/body/0/value";
-const programAt = (n: number, plan = PLAN): string => `${plan}/program/${n}`;
-const toolStep = (turn: number, plan = PLAN): string => `${plan}/step/${turn - 1}/tool/0`;
-
-/** The definitions of a sub-program, written as text, as the operations a lead sends. */
-function ops(defs: string): Value[] {
-  const r = load(`mandate @ 0.4\n\nmodule ${MODULE}.plan_1 @ 0.1\n\nuse ${MODULE}\n\n${defs}\n`, "mdt");
-  expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
-  return Object.entries((r.program as Program).defs).map(([name, d]) => ({ op: "add", path: `/defs/${name}`, value: d as unknown as Value }));
-}
-
-const base = (n: number): string => baseOf(MODULE, n);
-
-const CAPS = "RepoRead, SrcWrite, ModelStd";
-const BUDGET = "{ tokens: 20k, steps: 40, agents: 4 }";
-
-/** A sub-program whose workflow has this body. */
-const sub = (body: string, budget = BUDGET, caps = CAPS, name = "Fix"): string => `workflow ${name}() -> Inferred<Text>\n  caps   ${caps}\n  budget ${budget}\n{\n${body}\n}`;
-
-/** A sub-program that hands each named item to a worker, one after the other. */
-const fixes = (names: string[], budget = BUDGET, caps = CAPS): string => sub(names.map((n) => `  delegate Worker.fix(Item { name: "${n}" })`).join("\n"), budget, caps);
-
 // ── the people and the model ────────────────────────────────────────────
 
 interface Planned extends World {
@@ -127,8 +57,6 @@ interface Planned extends World {
   told: Obj[];
 }
 
-type Turn = SimTurn | ((req: TurnRequest) => SimTurn | Promise<SimTurn>);
-
 /**
  * The program on a runtime where Alice, the platform lead, has approved its envelope, and Bob is the release
  * manager. `lead` is the lead's turns in order; a worker finishes at once, saying which item it fixed.
@@ -139,30 +67,10 @@ async function planned(lead: Turn[], o: { src?: string; worker?: (req: TurnReque
   const lock = { modules: {}, members: { alice: { keys: [alice.keyId] }, bob: { keys: [bob.keyId] } }, roles: { platform_lead: ["alice"], release_manager: ["bob"] } };
   const w = await world(o.src ?? program(), { lock, decisions: { keys: new TrustedKeys([alice.publicKey, bob.publicKey]) }, plan: o.plan ?? { checker }, ...(o.tools ? { tools: o.tools } : {}), ...(o.model ? { model: o.model } : {}) });
   const host = new SimSandboxHost();
-  const told: Obj[] = [];
-  let turns = 0;
-  const chat = new SimChat((req) => {
-    if (req.agent !== "Lead") return (o.worker ?? fixed)(req);
-    const answer = answered(req);
-    if (answer) told.push(answer);
-    const turn = lead[turns++];
-    if (turn === undefined) throw new Error(`the lead has no turn ${turns}`);
-    return typeof turn === "function" ? turn(req) : turn;
-  });
+  const { chat, told } = leadChat(lead, o.worker);
   w.adapters.loop = { chat, sandbox: new MxcAdapter({ host, schemaVersion: "0.8.0", modelEndpoints: {}, modelsInControlPlane: true }) };
   await w.rt.approveEnvelope(w.pkg, signDecision(alice, shownPackage(w.pkg.hash, "platform_lead"), { kind: "envelope", member: "alice", at: new Date(w.adapters.clock.now()) }));
   return { ...w, chat, host, alice, bob, told };
-}
-
-/** A worker's one turn: it says which item it fixed. */
-const fixed = (req: TurnRequest): SimTurn => [toolUse("w1", "finish", { result: `fixed ${itemOf(req)}` })];
-const itemOf = (req: TurnRequest): string => /\\"name\\":\\"([^"\\]+)\\"/.exec(JSON.stringify(req.messages[0]))?.[1] ?? "?";
-
-/** What the lead's last tool call answered, when the turn before this one made one. */
-function answered(req: TurnRequest): Obj | undefined {
-  const last = req.messages.at(-1) as { role: string; content: Array<{ type: string; content?: string }> };
-  const result = last.role === "user" ? last.content.find((b) => b.type === "tool_result") : undefined;
-  return result?.content?.startsWith("{") ? (JSON.parse(result.content) as Obj) : undefined;
 }
 
 const ITEMS: Obj[] = [{ name: "a" }, { name: "b" }];
@@ -170,10 +78,6 @@ const ITEMS: Obj[] = [{ name: "a" }, { name: "b" }];
 const run = (w: World, runId: string, o: Partial<Parameters<World["rt"]["startRun"]>[0]> = {}): Promise<RunRow> => w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { items: ITEMS }, runId, ...o });
 
 const events = async (w: World, runId: string, type: string): Promise<Obj[]> => (await w.rt.journal.events(runId)).filter((e) => e.type === type).map((e) => e.data as Obj);
-
-const submit = (n: number, defs: string): SimTurn => [toolUse(`s${n}`, "submit_program", { base: base(n), ops: ops(defs) })];
-const check = (n: number, defs: string): SimTurn => [toolUse(`c${n}`, "check_program", { base: base(n), ops: ops(defs) })];
-const finish = (result = "done"): SimTurn => [toolUse("done", "finish", { result })];
 
 /** The diagnostics a tool call answered with, as code, path and facts. */
 const refusals = (answer: Obj | undefined): unknown[] => ((answer?.["diagnostics"] ?? []) as Obj[]).filter((d) => d["severity"] === "error").map((d) => [d["code"], d["path"] ?? null, d["facts"] ?? null]);
@@ -492,10 +396,6 @@ describe("spawn.max_concurrent under a sub-program", () => {
 });
 
 // ── N05 ─────────────────────────────────────────────────────────────────
-
-/** A sub-program that fixes an item and then comments on it: a critical effect, with a business key. */
-const commenting = (item: string, text: string, key = `"${item}"`): string =>
-  sub(`  let note = delegate Worker.fix(Item { name: "${item}" })\n  effect git.comment(Item { name: "${item}" }, "${text}")\n    idempotent_by ${key}\n  note`, BUDGET, `${CAPS}, Merge`);
 
 describe("N05: a critical effect in a sub-program", () => {
   it("is authorized on its own: admission authorizes nothing, and under approve only that role's signed decision does", async () => {
