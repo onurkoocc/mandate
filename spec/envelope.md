@@ -582,7 +582,10 @@ In IR: `{ "op": "map", "bind": "x", "over": <expr>, "max": n, "par": k,
   `<map>[i]/body/…`. The list itself is a value of the workflow, so a
   replay sees the same items in the same order. `map_started` is written
   once for a map, after the checks above and before its first item, and
-  not again when the run is resumed.
+  not again when the run is resumed. `map_ended` is written once when the
+  map has ended, with each item's outcome by input index. A map that
+  something stopped has no end to record: a run-level `BudgetExceeded`, a
+  cancel, a failed sibling branch. A replay writes neither.
 - **A failed sibling.** A failed branch of a `par` around the map stops an
   item at its next command, like any other command of that branch, and
   the map starts no further item.
@@ -913,6 +916,7 @@ Existing checks extend to the new forms:
 |---|---|
 | `envelope_approved` | package, member, role, key, decision digest. Written to a run's log when it starts, naming the approval it starts under; the approval itself is stored with the package and listed in the run's manifest |
 | `map_started` | map node, number of items, `par` |
+| `map_ended` | map node; each item's outcome by input index, `Ok` or its fault's tag, and null for an item a failed map did not start or did not let end; under `fail_fast`, the fault that failed the map |
 | `program_submitted` | plan node, number, the step of the lead's loop, the lead (`Agent.skill`), base, patch digest, whether it checked; for one that did, its hash and the kinds of governance change in it |
 | `program_refused` | plan node, number, step, diagnostics digest, the codes of the errors |
 | `program_admitted` | plan node, number, step, the command it runs under, hash, base, where its IR is in the artifact store, its workflow, reservation |

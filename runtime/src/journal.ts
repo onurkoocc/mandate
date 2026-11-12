@@ -199,6 +199,20 @@ export class Journal {
     });
   }
 
+  /**
+   * Records how a map ended (spec/envelope.md "map"): each item's outcome by input index, `Ok` or its fault's tag,
+   * and `null` for an item a failed map did not start or did not let end. Once for a map node, like `map_started`:
+   * the outcomes are what the journal's commands decided, so a resumed run that comes to the map again would say
+   * the same.
+   */
+  async mapEnded(runId: string, fence: number, data: { map: string; outcomes: Array<string | null>; failed?: string }): Promise<void> {
+    await this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [seen] = await tx.query<Row>("select 1 as seen from events where run_id = $1 and type = 'map_ended' and data->>'map' = $2 limit 1", [runId, data.map]);
+      if (!seen) await this.event(tx, runId, "map_ended", data);
+    });
+  }
+
   async run(runId: string): Promise<RunRow> {
     const [row] = await this.db.query<Row>("select * from runs where run_id = $1", [runId]);
     if (!row) throw new Violation("unknown_run", `No run '${runId}'.`);
