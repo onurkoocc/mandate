@@ -330,7 +330,7 @@ print(json.dumps(out))
 
 /** Walks every directory the process can see (but /proc and /sys), bounded in time; prints the unix sockets found. */
 const WALK = String.raw`
-import json, os, time
+import json, os, stat, time
 t0, walked, found, cut, stack = time.time(), 0, [], False, ["/"]
 while stack:
     d = stack.pop()
@@ -341,10 +341,11 @@ while stack:
     for e in entries:
         walked += 1
         try:
-            if e.is_socket():
+            if e.is_dir(follow_symlinks=False):
+                if e.path not in ("/proc", "/sys"):
+                    stack.append(e.path)
+            elif not e.is_file(follow_symlinks=False) and not e.is_symlink() and stat.S_ISSOCK(e.stat(follow_symlinks=False).st_mode):
                 found.append(e.path)
-            elif e.is_dir(follow_symlinks=False) and e.path not in ("/proc", "/sys"):
-                stack.append(e.path)
         except OSError:
             pass
     if time.time() - t0 > 80:
