@@ -4,15 +4,16 @@
 // moved on, the patch is refused with stale_base (S12) instead of being merged
 // by position. Patches that widen authority are flagged as governance changes
 // (§13.2) so a human sees them; this step reports them, it does not block them.
+// The semantic diff (views/views.ts) classifies them, so a patch and a view agree.
 
 import { diag, hasErrors, type Diagnostic } from "../diag.js";
 import { hashProgram } from "../hash.js";
-import { BUDGET_DIMENSIONS, budgetAmount, SYSTEM_KINDS, type Budget, type BudgetDimension, type Def, type Program } from "../ir/types.js";
+import type { Program } from "../ir/types.js";
 import { validateIr } from "../ir/validate.js";
-import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
 import { link, type Modules } from "../modules.js";
 import { resolveNames } from "../resolve/resolve.js";
+import { governanceChanges, type GovernanceChangeKind } from "../views/views.js";
 
 export interface PatchOp {
   op: "add" | "remove" | "replace";
@@ -20,8 +21,9 @@ export interface PatchOp {
   value?: unknown;
 }
 
+/** `detail` is the change as the semantic diff shows it. */
 export interface GovernanceChange {
-  kind: "capability_added" | "budget_increased" | "criterion_removed" | "irreversible_added" | "system_model_changed" | "envelope_changed";
+  kind: GovernanceChangeKind;
   path: string;
   detail: string;
 }
@@ -74,7 +76,7 @@ export function applyPatch(program: Program, base: string, ops: PatchOp[], modul
     diagnostics.push(...linked.diagnostics, ...resolveNames(root as unknown as Program, undefined, linked.defs));
   }
   const ok = !hasErrors(diagnostics);
-  const result: PatchResult = { ok, diagnostics, governance: ok ? governance(program, root as unknown as Program) : [] };
+  const result: PatchResult = { ok, diagnostics, governance: ok ? governance(program, root as unknown as Program, modules) : [] };
   if (ok) {
     result.program = root as unknown as Program;
     result.hash = hashProgram(root).program;
@@ -132,86 +134,7 @@ function child(node: Json, token: string): Json {
 
 // ── governance classification (§13.2) ─────────────────────────────────────
 
-function governance(before: Program, after: Program): GovernanceChange[] {
-  const out: GovernanceChange[] = [];
-  for (const [name, d] of Object.entries(after.defs)) {
-    const prev: Def | undefined = Object.hasOwn(before.defs, name) ? before.defs[name] : undefined;
-    const base = `/defs/${name}`;
-    if (d.kind === "capability" && (!prev || prev.kind !== "capability" || json(prev.value) !== json(d.value))) {
-      out.push({ kind: "capability_added", path: base, detail: `capability '${name}' added or changed` });
-    }
-    if (d.kind === "agent" || d.kind === "workflow") {
-      // A workflow is where authority starts, so a new one adds every capability it holds (G11). A new
-      // agent holds only what a workflow hands it, and is a behavior change (spec/views.md).
-      const same = prev && prev.kind === d.kind ? prev : undefined;
-      if (same || d.kind === "workflow") {
-        const had = new Set((same?.caps ?? []).map(json));
-        d.caps.forEach((c, i) => {
-          if (!had.has(json(c))) out.push({ kind: "capability_added", path: `${base}/caps/${i}`, detail: `${name} gains ${json(c)}` });
-        });
-      }
-    }
-    if ((d.kind === "agent" || d.kind === "workflow" || d.kind === "fn") && prev && prev.kind === d.kind) {
-      for (const detail of budgetGrowth(prev.budget, d.budget)) out.push({ kind: "budget_increased", path: `${base}/budget`, detail: `${name}: ${detail}` });
-    }
-    if (d.kind === "agent" && prev && prev.kind === "agent") {
-      for (const [sn, s] of Object.entries(d.skills)) {
-        const ps = Object.hasOwn(prev.skills, sn) ? prev.skills[sn] : undefined;
-        if (ps) for (const detail of budgetGrowth(ps.budget, s.budget)) out.push({ kind: "budget_increased", path: `${base}/skills/${sn}/budget`, detail: `${name}.${sn}: ${detail}` });
-      }
-    }
-    // An envelope is what a person approved for a whole run: its authority, budget, agents, data class and
-    // the effects a person authorizes. Any change to one is that person's to approve (spec/envelope.md).
-    if (d.kind === "workflow" && json(d.envelope ?? null) !== json((prev?.kind === "workflow" ? prev.envelope : undefined) ?? null)) {
-      const was = prev?.kind === "workflow" && prev.envelope;
-      out.push({ kind: "envelope_changed", path: `${base}/envelope`, detail: `${name}: envelope ${!was ? "added" : !d.envelope ? "removed" : "changed"}` });
-    }
-    if (d.kind === "effect" && d.irreversible && !(prev && prev.kind === "effect" && prev.irreversible)) {
-      out.push({ kind: "irreversible_added", path: base, detail: `effect '${name}' is irreversible` });
-    }
-  }
-  // Components, interfaces and environments are the institution's model of its system: adding, changing or
-  // removing one is a governance change (design doc 9 §1, §5.3), whatever the program does with it.
-  for (const name of [...new Set([...Object.keys(before.defs), ...Object.keys(after.defs)])].sort()) {
-    const prev = Object.hasOwn(before.defs, name) ? before.defs[name] : undefined;
-    const now = Object.hasOwn(after.defs, name) ? after.defs[name] : undefined;
-    const sys = (d: Def | undefined): boolean => !!d && (SYSTEM_KINDS as readonly string[]).includes(d.kind);
-    if (!sys(prev) && !sys(now)) continue;
-    if (json(prev ?? null) === json(now ?? null)) continue;
-    const what = (now ?? prev)!.kind;
-    out.push({ kind: "system_model_changed", path: `/defs/${name}`, detail: `${what} '${name}' ${!prev ? "added" : !now ? "removed" : "changed"}` });
-  }
-  for (const [name, prev] of Object.entries(before.defs)) {
-    if (prev.kind !== "contract") continue;
-    const now = Object.hasOwn(after.defs, name) ? after.defs[name] : undefined;
-    for (const group of ["accept", "invariant"] as const) {
-      for (const crit of Object.keys(prev[group] ?? {})) {
-        if (!now || now.kind !== "contract" || !Object.hasOwn(now[group] ?? {}, crit)) {
-          out.push({ kind: "criterion_removed", path: `/defs/${name}/${group}/${crit}`, detail: `${name} drops ${group} criterion '${crit}'` });
-        }
-      }
-    }
-  }
-  return out;
-}
-
-function budgetGrowth(a: Budget | undefined, b: Budget | undefined): string[] {
-  if (!a) return [];
-  if (!b) return ["budget removed"];
-  const out: string[] = [];
-  for (const dim of BUDGET_DIMENSIONS) {
-    const [x, y] = [budgetAmount(a, dim), budgetAmount(b, dim)];
-    if (dim === "spend" && a.spend && b.spend && a.spend.currency !== b.spend.currency) out.push("spend currency changed");
-    else if (x === undefined) continue;
-    else if (y === undefined) out.push(`${GROWTH_FIELD[dim]} limit removed`);
-    else if (y > x) out.push(`${GROWTH_FIELD[dim]} ${x} → ${y}`);
-  }
-  return out;
-}
-
-/** How a governance change names each budget dimension: with its unit where the number alone does not say it. */
-const GROWTH_FIELD: Record<BudgetDimension, string> = { tokens: "tokens", steps: "steps", time: "time_ms", spend: "spend_micros", agents: "agents" };
-
-function json(v: unknown): string {
-  return canonicalize(v as Json);
+/** The semantic diff's governance changes (views.ts), so a patch and `mandate view --against` classify a change alike. */
+function governance(before: Program, after: Program, modules: Modules): GovernanceChange[] {
+  return governanceChanges(before, after, modules).map((c) => ({ kind: c.kind, path: c.path, detail: c.text }));
 }

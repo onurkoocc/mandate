@@ -41,6 +41,7 @@ import {
   type EffectDef,
   type EnvironmentDef,
   type Expr,
+  type FnDef,
   type InterfaceDef,
   type Program,
   type Stmt,
@@ -790,10 +791,44 @@ export function lockDiff(before: Lock | undefined, after: Lock | undefined): Cha
   return out;
 }
 
-/** With `locks`, the people the two locks bind are compared too (lockDiff), and listed as governance changes. */
-export function semanticDiff(before: Program, after: Program, locks?: { before?: Lock; after?: Lock }): DiffView {
-  const governance: Change[] = [];
+/**
+ * What a governance change (§13.2) is, as a machine reads it. The diff shows only each change's text;
+ * `mandate.apply_patch` and `mandate patch` report the kind with it (governanceChanges).
+ */
+export type GovernanceChangeKind =
+  /** Authority widened: a capability added or widened, or one more held by an agent or a workflow. */
+  | "capability_added"
+  | "budget_increased"
+  /** A criterion removed, or a whole contract with its criteria. */
+  | "criterion_removed"
+  /** A criterion checked by another method. */
+  | "criterion_changed"
+  | "require_changed"
+  | "irreversible_added"
+  | "system_model_changed"
+  | "envelope_changed"
+  | "remote_agent_added"
+  | "remote_binding_changed"
+  /** A definition replaced by one of another kind under the same name. */
+  | "kind_changed";
+
+/** A governance change with its kind. */
+export interface KindedChange extends Change {
+  kind: GovernanceChangeKind;
+}
+
+/**
+ * The program's own changes from `before` to `after`, each governance change with its kind. Both
+ * semanticDiff and governanceChanges read them from here, so a view and a patch classify a change alike.
+ * `modules` opens capabilities over imported components; definitions are compared only where the
+ * programs themselves hold them.
+ */
+function classify(before: Program, after: Program, modules: Modules = {}): { governance: KindedChange[]; behavior: Change[] } {
+  const governance: KindedChange[] = [];
   const behavior: Change[] = [];
+  const linked = Object.keys(modules).length > 0;
+  const lb = linked ? linkedProgram(before, modules) : before;
+  const la = linked ? linkedProgram(after, modules) : after;
   const names = [...new Set([...Object.keys(before.defs), ...Object.keys(after.defs)])].sort();
   for (const name of names) {
     const b = Object.hasOwn(before.defs, name) ? before.defs[name] : undefined;
@@ -801,35 +836,41 @@ export function semanticDiff(before: Program, after: Program, locks?: { before?:
     const path = `/defs/${name}`;
     if (b && a && j(b) === j(a)) continue;
     if (!a) {
-      (b?.kind === "contract" || isSystem(b!.kind) ? governance : behavior).push({ path, text: `- ${b!.kind} ${name} removed` });
+      const text = `- ${b!.kind} ${name} removed`;
+      if (b!.kind === "contract") governance.push({ kind: "criterion_removed", path, text });
+      else if (isSystem(b!.kind)) governance.push({ kind: "system_model_changed", path, text });
+      else behavior.push({ path, text });
       continue;
     }
     if (!b) {
-      if (a.kind === "capability") governance.push({ path, text: `+ capability ${shownCaps(after, { op: "var", name })}` });
-      else if (isSystem(a.kind)) governance.push({ path, text: `+ ${a.kind} ${name} (system model)` });
-      else if (a.kind === "agent" && a.remote) governance.push({ path, text: `+ remote agent ${name}` });
-      else if (a.kind === "effect" && a.irreversible) governance.push({ path, text: `+ irreversible effect ${name}` });
+      if (a.kind === "capability") governance.push({ kind: "capability_added", path, text: `+ capability ${shownCaps(la, { op: "var", name })}` });
+      else if (isSystem(a.kind)) governance.push({ kind: "system_model_changed", path, text: `+ ${a.kind} ${name} (system model)` });
+      else if (a.kind === "agent" && a.remote) governance.push({ kind: "remote_agent_added", path, text: `+ remote agent ${name}` });
+      else if (a.kind === "effect" && a.irreversible) governance.push({ kind: "irreversible_added", path, text: `+ irreversible effect ${name}` });
       else {
         behavior.push({ path, text: `+ ${a.kind} ${name}` });
         // A workflow is where authority starts: every capability a new one holds is authority added (G11).
         if (a.kind === "workflow") {
           const bounds = workflowBounds(a);
-          bounds.caps.forEach((c, i) => governance.push({ path: `${path}/${bounds.capsAt}/${i}`, text: `+ ${name}: ${shownCaps(after, c)}` }));
-          if (a.envelope) governance.push({ path: `${path}/envelope`, text: `+ ${name}: envelope` });
+          bounds.caps.forEach((c, i) => governance.push({ kind: "capability_added", path: `${path}/${bounds.capsAt}/${i}`, text: `+ ${name}: ${shownCaps(la, c)}` }));
+          if (a.envelope) governance.push({ kind: "envelope_changed", path: `${path}/envelope`, text: `+ ${name}: envelope` });
         }
       }
       continue;
     }
     if (a.kind !== b.kind) {
-      governance.push({ path, text: `~ ${name}: ${b.kind} → ${a.kind}` });
+      governance.push({ kind: "kind_changed", path, text: `~ ${name}: ${b.kind} → ${a.kind}` });
       continue;
     }
     switch (a.kind) {
       case "capability": {
-        const d = scopeDiffs(capsOf(before.defs, { op: "var", name }), capsOf(after.defs, { op: "var", name }));
-        for (const x of d.added) governance.push({ path, text: `+ ${name}: ${x}` });
-        for (const x of d.other) governance.push({ path, text: `~ ${name}: ${x}` });
+        const d = scopeDiffs(capsOf(lb.defs, { op: "var", name }), capsOf(la.defs, { op: "var", name }));
+        for (const x of d.added) governance.push({ kind: "capability_added", path, text: `+ ${name}: ${x}` });
+        for (const x of d.other) governance.push({ kind: "capability_added", path, text: `~ ${name}: ${x}` });
         for (const x of d.removed) behavior.push({ path, text: `- ${name}: ${x} (narrowed)` });
+        // What the scopes do not show may still widen: the amount `money.spend` allows, or a capability over a
+        // module that is not loaded here. A change this diff cannot read is a person's to see.
+        if (!d.added.length && !d.other.length && !d.removed.length) governance.push({ kind: "capability_added", path, text: `~ capability ${name} changed` });
         break;
       }
       case "agent":
@@ -838,13 +879,13 @@ export function semanticDiff(before: Program, after: Program, locks?: { before?:
         const had = new Set(bd.caps.map(j));
         const has = new Set(a.caps.map(j));
         a.caps.forEach((c, i) => {
-          if (!had.has(j(c))) governance.push({ path: `${path}/caps/${i}`, text: `+ ${name}: ${shownCaps(after, c)}` });
+          if (!had.has(j(c))) governance.push({ kind: "capability_added", path: `${path}/caps/${i}`, text: `+ ${name}: ${shownCaps(la, c)}` });
         });
         bd.caps.forEach((c) => {
-          if (!has.has(j(c))) behavior.push({ path: `${path}/caps`, text: `- ${name}: ${shownCaps(before, c)} (narrowed)` });
+          if (!has.has(j(c))) behavior.push({ path: `${path}/caps`, text: `- ${name}: ${shownCaps(lb, c)} (narrowed)` });
         });
         const bc = budgetChanges(name, bd.budget, a.budget);
-        bc.up.forEach((t) => governance.push({ path: `${path}/budget`, text: `~ ${t}` }));
+        bc.up.forEach((t) => governance.push({ kind: "budget_increased", path: `${path}/budget`, text: `~ ${t}` }));
         bc.down.forEach((t) => behavior.push({ path: `${path}/budget`, text: `~ ${t}` }));
         if (a.kind === "agent") {
           const ba = bd as AgentDef;
@@ -855,25 +896,31 @@ export function semanticDiff(before: Program, after: Program, locks?: { before?:
             else if (!bs) behavior.push({ path: `${path}/skills/${sn}`, text: `+ skill ${name}.${sn}` });
             else {
               const sb = budgetChanges(`${name}.${sn}`, bs.budget, as.budget);
-              sb.up.forEach((t) => governance.push({ path: `${path}/skills/${sn}/budget`, text: `~ ${t}` }));
+              sb.up.forEach((t) => governance.push({ kind: "budget_increased", path: `${path}/skills/${sn}/budget`, text: `~ ${t}` }));
               sb.down.forEach((t) => behavior.push({ path: `${path}/skills/${sn}/budget`, text: `~ ${t}` }));
               if (j({ p: bs.params, r: bs.returns, e: bs.effects, b: bs.body ?? null }) !== j({ p: as.params, r: as.returns, e: as.effects, b: as.body ?? null })) behavior.push({ path: `${path}/skills/${sn}`, text: `~ skill ${name}.${sn} changed` });
             }
           }
           if (j([ba.loop ?? null, ba.progress ?? null, ba.role ?? null, ba.model ?? null]) !== j([a.loop ?? null, a.progress ?? null, a.role ?? null, a.model ?? null])) behavior.push({ path, text: `~ ${name}: role, loop strategy or progress thresholds changed` });
-          if (j(ba.remote ?? null) !== j(a.remote ?? null)) governance.push({ path: `${path}/remote`, text: `~ ${name}: remote binding changed` });
+          if (j(ba.remote ?? null) !== j(a.remote ?? null)) governance.push({ kind: "remote_binding_changed", path: `${path}/remote`, text: `~ ${name}: remote binding changed` });
         } else {
           const bw = bd as WorkflowDef;
-          const before_ = steps(before, bw);
-          const after_ = steps(after, a);
+          const before_ = steps(lb, bw);
+          const after_ = steps(la, a);
           for (const s of after_.filter((x) => !before_.includes(x))) behavior.push({ path: `${path}/body`, text: `+ step: ${s}` });
           for (const s of before_.filter((x) => !after_.includes(x))) behavior.push({ path: `${path}/body`, text: `- step: ${s}` });
           if (!before_.some((x) => !after_.includes(x)) && !after_.some((x) => !before_.includes(x)) && j(bw.body) !== j(a.body)) behavior.push({ path: `${path}/body`, text: `~ ${name}: the body changed, with the same steps` });
           // The envelope is what a person approved for the run: any change to it is theirs to see (spec/envelope.md).
-          if (j(bw.envelope ?? null) !== j(a.envelope ?? null)) governance.push({ path: `${path}/envelope`, text: `~ ${name}: envelope ${!bw.envelope ? "added" : !a.envelope ? "removed" : "changed"}` });
+          if (j(bw.envelope ?? null) !== j(a.envelope ?? null)) governance.push({ kind: "envelope_changed", path: `${path}/envelope`, text: `~ ${name}: envelope ${!bw.envelope ? "added" : !a.envelope ? "removed" : "changed"}` });
           if (j(bw.ensures ?? null) !== j(a.ensures ?? null)) behavior.push({ path: `${path}/ensures`, text: `~ ${name}: ensures changed` });
           if (j(bw.on ?? null) !== j(a.on ?? null)) behavior.push({ path: `${path}/on`, text: `~ ${name}: event handlers changed` });
         }
+        break;
+      }
+      case "fn": {
+        // A function's budget bounds what a call to it may spend, as an agent's does: raising it is a governance change.
+        budgetChanges(name, (b as FnDef).budget, a.budget).up.forEach((t) => governance.push({ kind: "budget_increased", path: `${path}/budget`, text: `~ ${t}` }));
+        behavior.push({ path, text: `~ fn ${name} changed` });
         break;
       }
       case "contract": {
@@ -882,17 +929,17 @@ export function semanticDiff(before: Program, after: Program, locks?: { before?:
           const was = bc[group] ?? {};
           const now = a[group] ?? {};
           for (const k of Object.keys(was).sort()) {
-            if (!Object.hasOwn(now, k)) governance.push({ path: `${path}/${group}/${k}`, text: `- ${name}.${k} (${methodOf(was[k]!.by)}) removed` });
-            else if (j(was[k]!.by) !== j(now[k]!.by)) governance.push({ path: `${path}/${group}/${k}`, text: `~ ${name}.${k}: ${methodOf(was[k]!.by)} → ${methodOf(now[k]!.by)}` });
+            if (!Object.hasOwn(now, k)) governance.push({ kind: "criterion_removed", path: `${path}/${group}/${k}`, text: `- ${name}.${k} (${methodOf(was[k]!.by)}) removed` });
+            else if (j(was[k]!.by) !== j(now[k]!.by)) governance.push({ kind: "criterion_changed", path: `${path}/${group}/${k}`, text: `~ ${name}.${k}: ${methodOf(was[k]!.by)} → ${methodOf(now[k]!.by)}` });
           }
           for (const k of Object.keys(now).sort()) if (!Object.hasOwn(was, k)) behavior.push({ path: `${path}/${group}/${k}`, text: `+ ${name}.${k} by ${methodOf(now[k]!.by)}` });
         }
-        if (j(bc.require ?? null) !== j(a.require ?? null)) governance.push({ path: `${path}/require`, text: `~ ${name}: require changed` });
+        if (j(bc.require ?? null) !== j(a.require ?? null)) governance.push({ kind: "require_changed", path: `${path}/require`, text: `~ ${name}: require changed` });
         break;
       }
       case "effect": {
         const be = b as EffectDef;
-        if (a.irreversible && !be.irreversible) governance.push({ path, text: `~ effect ${name} became irreversible` });
+        if (a.irreversible && !be.irreversible) governance.push({ kind: "irreversible_added", path, text: `~ effect ${name} became irreversible` });
         else if (j(be) !== j(a)) behavior.push({ path, text: `~ effect ${name} changed` });
         break;
       }
@@ -900,12 +947,28 @@ export function semanticDiff(before: Program, after: Program, locks?: { before?:
       case "interface":
       case "environment":
         // The system model is the institution's, not the program's: every change to it is a governance change (doc 9 §1, §5.3).
-        for (const t of systemChanges(name, b as SystemDef, a)) governance.push({ path, text: `~ ${t}` });
+        for (const t of systemChanges(name, b as SystemDef, a)) governance.push({ kind: "system_model_changed", path, text: `~ ${t}` });
         break;
       default:
         behavior.push({ path, text: `~ ${a.kind} ${name} changed` });
     }
   }
+  return { governance, behavior };
+}
+
+/**
+ * The governance changes from `before` to `after`, each with its kind: the semantic diff's, without the
+ * locks' (a patch changes the program, not the lock). `mandate.apply_patch` reports these.
+ */
+export function governanceChanges(before: Program, after: Program, modules: Modules = {}): KindedChange[] {
+  return classify(before, after, modules).governance;
+}
+
+/** With `locks`, the people the two locks bind are compared too (lockDiff), and listed as governance changes. */
+export function semanticDiff(before: Program, after: Program, locks?: { before?: Lock; after?: Lock }): DiffView {
+  const changes = classify(before, after);
+  const governance: Change[] = changes.governance.map(({ path, text }) => ({ path, text }));
+  const behavior = changes.behavior;
   // After the program's own changes, so a diff without locks, or with the same people in both, reads as it did.
   if (locks) governance.push(...lockDiff(locks.before, locks.after));
   const critical = (p: Program): string[] =>
