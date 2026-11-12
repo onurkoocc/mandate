@@ -115,7 +115,13 @@ describe("the language versions the runtime runs", () => {
   it.each([
     ["an envelope", "  caps M\n  budget { steps: 20 }\n{", "  envelope {\n    owner  reviewer\n    caps   M\n    budget { steps: 20, agents: 3 }\n  }\n{", ["agents", "envelope"]],
     ["a map", `  "done"`, `  let rs = map x in xs max 3 { delegate A.s(x) }\n  "done"`, ["map"]],
-    ["a plan", `  "done"`, `  let r = plan A.s("x") within envelope\n  "done"`, ["plan"]],
+    // A plan stands only in a workflow with an envelope (E1707), so it comes with one.
+    [
+      "a plan",
+      `  caps M\n  budget { steps: 20 }\n{\n  let go = human.ask("Go on?", role: reviewer)\n`,
+      `  envelope {\n    owner  reviewer\n    caps   M\n    budget { steps: 20, agents: 3 }\n  }\n{\n  let go = human.ask("Go on?", role: reviewer)\n  let r = plan A.s("x") within envelope\n`,
+      ["agents", "envelope", "plan"],
+    ],
     ["an agents budget", "budget { steps: 20 }", "budget { steps: 20, agents: 3 }", ["agents"]],
   ])("refuse a 0.4 program with %s, and name it", (_what, from, to, names) => {
     const program = changed(from, to);

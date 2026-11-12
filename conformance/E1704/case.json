@@ -1,0 +1,22 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1704",
+  "kind": "compile",
+  "title": "An envelope that asks a role to approve an effect that is not critical is refused at that approval.",
+  "spec": ["spec/envelope.md#what-it-declares", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../../fixtures/envelope/migrate-all.mdt", "kind": "mdt" },
+  "modules": ["../../fixtures/envelope/domain.mdt"],
+  "patch": [{ "op": "add", "path": "/defs/MigrateAll/envelope/approve/fs.write_text", "value": "release_manager" }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1704",
+        "path": "/defs/MigrateAll/envelope/approve/fs.write_text",
+        "facts": { "effect": "fs.write_text", "role": "release_manager", "critical": false }
+      }
+    ]
+  }
+}

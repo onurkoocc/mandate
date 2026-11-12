@@ -1,0 +1,27 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1704a",
+  "kind": "compile",
+  "title": "An envelope that asks a role to approve git.merge while none of its caps covers git.merge is refused at that approval.",
+  "spec": ["spec/envelope.md#what-it-declares", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../../fixtures/envelope/migrate-all.mdt", "kind": "mdt" },
+  "modules": ["../../fixtures/envelope/domain.mdt"],
+  "patch": [{ "op": "remove", "path": "/defs/MigrateAll/envelope/caps/1" }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1704",
+        "path": "/defs/MigrateAll/envelope/approve/git.merge",
+        "facts": {
+          "effect": "git.merge",
+          "role": "release_manager",
+          "critical": true,
+          "available": ["Build = exec(\"npm\")", "ModelStd = model.infer", "RepoRead = fs.read(\"/work/repos\")", "SrcWrite = fs.write(\"/work/repos\")"]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1707",
+  "kind": "compile",
+  "title": "A plan in a workflow without an envelope is refused at the plan.",
+  "spec": ["spec/envelope.md#plan", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../../fixtures/envelope/migrate-all.mdt", "kind": "mdt" },
+  "modules": ["../../fixtures/envelope/domain.mdt"],
+  "patch": [
+    { "op": "remove", "path": "/defs/MigrateAll/envelope" },
+    {
+      "op": "replace",
+      "path": "/defs/MigrateAll/caps",
+      "value": [
+        { "op": "var", "name": "Build" },
+        { "op": "var", "name": "ModelStd" },
+        { "op": "var", "name": "RepoRead" },
+        { "op": "var", "name": "SrcWrite" }
+      ]
+    },
+    {
+      "op": "add",
+      "path": "/defs/MigrateAll/budget",
+      "value": { "tokens": 80000000, "spend": { "micros": 120000000, "currency": "USD" }, "time": { "ms": 21600000 }, "steps": 2000 }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1707",
+        "path": "/defs/MigrateAll/body/1/value",
+        "facts": { "def": "MigrateAll", "kind": "workflow", "envelope": false }
+      }
+    ]
+  }
+}

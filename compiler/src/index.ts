@@ -17,6 +17,7 @@ export { printProgram } from "./print/printer.js";
 export { resolveNames } from "./resolve/resolve.js";
 export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, within, type CapResult, type CapVal } from "./check/caps.js";
 export { roleChecks, roleSites, rolesNamed, type RoleSite } from "./check/roles.js";
+export { staticCost, type CostPart, type StaticCost } from "./check/cost.js";
 export { GOVERNANCE_FILES, GOVERNANCE_KINDS, globRegExp, governanceFiles, governanceKind, type GovernanceKind } from "./std/governance.js";
 export { BUILTIN_EFFECTS, classRank, DATA_CLASSES, DECISION_POLICIES, STD_EFFECTS, STD_FNS, type DataClass } from "./std/std.js";
 export { ACS_PROFILE, ACS_TARGET_FORMAT, ACS_VERSION, acsTarget, type AcsAgent, type AcsTarget } from "./target/acs.js";

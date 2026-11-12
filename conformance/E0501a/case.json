@@ -1,0 +1,22 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0501a",
+  "kind": "compile",
+  "title": "An envelope whose agents are fewer than the 151 delegation attempts of its static part is refused at its budget.",
+  "spec": ["spec/envelope.md#what-it-declares", "spec/envelope.md#static-checks", "spec/envelope.md#the-ledger"],
+  "language": "mandate/0.4",
+  "input": { "file": "../../fixtures/envelope/migrate-all.mdt", "kind": "mdt" },
+  "modules": ["../../fixtures/envelope/domain.mdt"],
+  "patch": [{ "op": "replace", "path": "/defs/MigrateAll/envelope/budget/agents", "value": 150 }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0501",
+        "path": "/defs/MigrateAll/envelope/budget",
+        "facts": { "agents": { "limit": 150, "declared_by_children": 151 } }
+      }
+    ]
+  }
+}
