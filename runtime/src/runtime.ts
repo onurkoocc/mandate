@@ -157,10 +157,12 @@ export class Runtime {
     readonly driver?: Driver,
     options: RuntimeOptions = {},
   ) {
-    this.journal = new Journal(db, () => adapters.clock.now());
+    this.signer = options.signer ?? EvidenceSigner.generate();
+    // The evidence key signs the journal's anchors too (spec/journal.md); the journal itself holds no key.
+    const signer = this.signer;
+    this.journal = new Journal(db, () => adapters.clock.now(), (format, statement) => signer.signStatement(format, statement));
     this.faults = faults ?? new Faults();
     this.artifacts = options.artifacts ?? new ArtifactStore(db, new MemoryBlobs(), () => adapters.clock.now());
-    this.signer = options.signer ?? EvidenceSigner.generate();
     this.trusted = new TrustedKeys([this.signer.publicKey, ...(options.trustedKeys ?? [])]);
     this.verifiers = options.trustedVerifiers ?? new TrustedKeys();
     this.durableTimers = options.durableTimers ?? false;

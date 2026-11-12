@@ -183,6 +183,15 @@ create table if not exists decisions (
   accepted_at bigint not null
 );
 alter table events add column if not exists hash text;
+create table if not exists journal_anchors (
+  run_id text not null references runs(run_id),
+  seq integer not null,
+  hash text not null,
+  at bigint not null,
+  key_id text not null,
+  signature text not null,
+  primary key (run_id, seq)
+);
 `;
 
 /** Opens PostgreSQL at `url`, or an in-process PGlite database when `url` is absent. */

@@ -25,3 +25,18 @@ export interface EventLink {
 export function eventHash(e: EventLink): string {
   return digest("event", { run: e.run, seq: e.seq, type: e.type, data: e.data, at: e.at, prev: e.prev });
 }
+
+/** The format of a journal anchor (spec/journal.md "Anchors"). */
+export const ANCHOR_FORMAT = "mandate/journal-anchor/0.1";
+
+/**
+ * What an anchor signs: the run, the seq and hash of the state event it was written with, and that event's time.
+ * The signature covers `"mandate/journal-anchor/0.1\n"` and the statement's canonical bytes, as every statement the
+ * runtime's evidence key signs (`EvidenceSigner.signStatement`).
+ */
+export function anchorStatement(run: string, seq: number, hash: string, at: number): Value {
+  return { format: ANCHOR_FORMAT, run, seq, hash, at };
+}
+
+/** Signs an anchor's statement with the runtime's evidence key. The journal holds no key: it is given this. */
+export type AnchorSigner = (format: string, statement: Value) => { key_id: string; signature: string };

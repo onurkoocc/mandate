@@ -88,7 +88,7 @@ export async function world(
   return { ...sim, rt: new Runtime(db, sim.adapters, faults, undefined, { decisions: o.decisions ?? UNSIGNED.decisions, ...(o.plan ? { plan: o.plan } : {}) }), db, pkg: buildPackage(r.program!, o.lock ?? LOCK, o.modules), faults };
 }
 
-const TABLES = ["decisions", "changesets", "workspace_claims", "rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];
+const TABLES = ["journal_anchors", "decisions", "changesets", "workspace_claims", "rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];
 
 export async function closeAll(): Promise<void> {
   const db = shared;
