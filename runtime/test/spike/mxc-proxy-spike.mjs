@@ -124,8 +124,12 @@ async function run(sdk, request) {
   }
   const tSpawned = Date.now();
   try {
-    proc.standardInput?.end();
-    const [status, stdout, stderr] = await Promise.all([proc.wait(), collect(proc.standardOutput), collect(proc.standardError)]);
+    // Take the streams before wait(), which drains any stream still untaken.
+    const input = proc.standardInput;
+    const out = collect(proc.standardOutput);
+    const err = collect(proc.standardError);
+    input?.end();
+    const [status, stdout, stderr] = await Promise.all([proc.wait(), out, err]);
     return { exitCode: status.exitCode, timedOut: status.timedOut, stdout, stderr, warnings: proc.warnings ?? [], ms: Date.now() - t0, spawnMs: tSpawned - t0 };
   } catch (e) {
     return { waitError: `${e?.code ? `[${e.code}] ` : ""}${e?.message ?? e}`, ms: Date.now() - t0, stdout: "", stderr: "" };
