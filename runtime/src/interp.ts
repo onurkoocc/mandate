@@ -59,7 +59,8 @@ import {
 } from "@mandate/compiler";
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
-import { attestationProblem } from "./attestation.js";
+import { attestationsRequired, recordProblem, type AttestationRule } from "./attestation.js";
+import { criterionMethods, needsPerson, partMethod, uncovered } from "./criteria.js";
 import { approvalProblem, type StoredDecision } from "./decisions.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
 import type { RateLimiter } from "./ratelimit.js";
@@ -204,6 +205,8 @@ export interface InterpOptions {
   trusted: TrustedKeys;
   /** Verifier keys whose check attestations count (P2-11). */
   verifiers?: TrustedKeys;
+  /** The methods checked in the runtime's process, whose evidence carries no verifier attestation (RuntimeOptions). */
+  inProcess?: ReadonlySet<string>;
   /**
    * What a person's approval is checked against (spec/envelope.md "Signed decisions"): the members' public keys, the
    * package's lock, and whether an approval must rest on a signed decision (signed mode, and every 0.4 package).
@@ -1442,17 +1445,16 @@ export class Interpreter {
       return ok;
     }
     let passed: boolean;
-    let method: string;
+    // The method the record names, as the checks of evidence read it from the program (criteria.ts).
+    const method = partMethod(v);
     let detail: Value = null;
     let files: Obj | undefined;
     let producer: Value = { kind: "runtime", handler: RUNTIME_HANDLER };
     let outputs: Value[] = [];
     if ("static" in v) {
       // A static criterion the compiler could not prove is checked here (W0601).
-      method = "static";
       passed = truthy(unwrap(await this.expr(v.static, ctx, `${path}/static`)));
     } else if (needsPerson(v)) {
-      method = "human.approve";
       const r = await this.approval((v as { call: Extract<Expr, { op: "call" }> }).call, contract, name, ctx, `${path}/call`, root);
       passed = r["approved"] === true;
       // A signed decision is named by its digest, with the member and the key that signed it (spec/envelope.md).
@@ -1461,7 +1463,6 @@ export class Interpreter {
       producer = { kind: "person", by: r["by"] ?? null, role: r["role"] ?? null, via: "DecideAction", ...signed };
     } else {
       const call = v.call;
-      method = call.op === "call" ? (calleePath(call.callee) ?? "call") : "call";
       // Verifier options such as `review(model: standard, isolated)` name
       // settings, not variables: an unbound bare name is passed as its text.
       const symbolic = call.op === "call" ? call.args.map((a) => (a.value.op === "var" && this.isModulePath(a.value, ctx) ? { ...a, value: { op: "text" as const, value: a.value.name } } : a)) : [];
@@ -1960,8 +1961,11 @@ export class Interpreter {
    * control plane's store, never taken from the value (§5.2, G03). Each id
    * must name evidence of this run that passed, for the value's contract,
    * signed by a trusted key; together they must cover every criterion of
-   * the contract. A model or an agent can produce JSON that looks like a
-   * Verified value; it never has such evidence.
+   * the contract. With a verifier of its own, each must also be a check the
+   * program declares for its criterion, attested by the verifier unless the
+   * configuration checks its method here, and every part of a criterion
+   * needs a record of its own method. A model or an agent can produce JSON
+   * that looks like a Verified value; it never has such evidence.
    */
   private async checkVerified(effect: string, v: Obj): Promise<void> {
     const contract = String(v["$contract"] ?? "");
@@ -1973,6 +1977,10 @@ export class Interpreter {
     const problems: string[] = [];
     const found = new Set(rows.map((r) => r.evidence_id));
     for (const id of ids) if (!found.has(id)) problems.push(`${id} is not evidence of this run`);
+    const c = this.def(contract);
+    // Which checks need their verifier's attestation is the configuration's to say, and which methods a criterion
+    // uses is the program's: never the record's (attestation.ts recordProblem).
+    const rule: AttestationRule = { keys: this.o.verifiers, inProcess: this.o.inProcess ?? new Set() };
     for (const r of rows) {
       const record = r.record as unknown as EvidenceRecord | null;
       if (!r.passed) problems.push(`${r.evidence_id} did not pass`);
@@ -1980,15 +1988,22 @@ export class Interpreter {
       if (!record || !r.key_id || !r.signature || !this.o.trusted.verify(record, { key_id: r.key_id, signature: r.signature })) problems.push(`${r.evidence_id} is not signed by a trusted key`);
       else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion) problems.push(`${r.evidence_id} does not match its signed record`);
       else {
-        const why = attestationProblem(record, this.o.verifiers) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined);
+        const why = recordProblem(record, r, criterionMethods(c, record.criterion), rule) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined);
         if (why) problems.push(`${r.evidence_id}: ${why}`);
       }
     }
-    const c = this.def(contract);
     const criteria = c?.kind === "contract" ? [...Object.keys(c.accept), ...Object.keys(c.invariant ?? {})] : [];
     if (c?.kind !== "contract") problems.push(`${contract} is not a contract of this program`);
     const covered = new Set(rows.filter((r) => r.passed).map((r) => r.criterion));
-    for (const k of criteria) if (!covered.has(k)) problems.push(`no evidence for ${contract}.${k}`);
+    for (const k of criteria) {
+      if (!covered.has(k)) problems.push(`no evidence for ${contract}.${k}`);
+      // With a verifier of its own, every part of a criterion needs a passing record of its own method: under `and`,
+      // a static part's record does not stand for the verifier's check beside it.
+      else if (attestationsRequired(rule)) {
+        const passed = rows.filter((r) => r.passed && r.criterion === k).map((r) => r.method);
+        for (const m of uncovered(criterionMethods(c, k) ?? [], passed)) problems.push(`no evidence by ${m} for ${contract}.${k}`);
+      }
+    }
     if (problems.length) throw new Violation("forged_evidence", `${effect} received a Verified value whose evidence does not hold: ${[...new Set(problems)].sort().join("; ")}.`);
   }
 
@@ -2167,11 +2182,6 @@ export class SiblingStopped extends Error {
   constructor() {
     super("stopped: a sibling branch failed");
   }
-}
-
-/** A criterion satisfied by a person: `human.approve(…)` (§10). */
-function needsPerson(v: Verifier): boolean {
-  return "call" in v && v.call.op === "call" && calleePath(v.call.callee) === "human.approve";
 }
 
 const HUMAN_RANK = 3;

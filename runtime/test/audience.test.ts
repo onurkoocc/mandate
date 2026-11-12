@@ -11,7 +11,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { check } from "@mandate/compiler";
 import { afterAll, describe, expect, it } from "vitest";
-import { BoundaryVerifier, type Docker } from "../src/boundary.js";
+import { BOUNDARY_METHODS, BoundaryVerifier, type Docker } from "../src/boundary.js";
+import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
 import { GitHubMerges } from "../src/github-merge.js";
 import { buildPackage, Runtime } from "../src/runtime.js";
 import { runDoc, runView } from "../src/views.js";
@@ -75,7 +76,11 @@ function e2eDocker(root: string, during?: () => void): Docker {
   };
 }
 
-async function audienceRun(change: { config: string; test: string; files?: Record<string, string> }, o: { during?: (root: string) => void } = {}) {
+/**
+ * `verifierProcess`: the runtime also trusts a verifier process of its own, as `verifier.process` makes it, and is
+ * told it checks `inProcess` here (by default the boundary methods, as control.ts says for this configuration).
+ */
+async function audienceRun(change: { config: string; test: string; files?: Record<string, string> }, o: { during?: (root: string) => void; verifierProcess?: { inProcess: readonly string[] } } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "mandate-aud-"));
   const mcp = mcpRepo(dir);
   const modules = acmeModules(ACME_SOURCE.replace('"/work/acme-mcp"', JSON.stringify(mcp.root.replace(/\\/g, "/"))));
@@ -99,7 +104,8 @@ async function audienceRun(change: { config: string; test: string; files?: Recor
   remote.commits.set(mcp.base, { ...remote.commits.get(remote.refs.get("heads/main")!)!, message: "seed" });
   remote.refs.set("heads/main", mcp.base);
   w.adapters.tools["git.merge"] = new GitHubMerges({ token: "t", repos: ["acme/mcp"], fetch: gh.fetch });
-  const rt = new Runtime(w.db, w.adapters, undefined, undefined, UNSIGNED);
+  const attested = o.verifierProcess ? { trustedVerifiers: new TrustedKeys([EvidenceSigner.generate().publicKeyPem()]), inProcessMethods: o.verifierProcess.inProcess } : {};
+  const rt = new Runtime(w.db, w.adapters, undefined, undefined, { ...UNSIGNED, ...attested });
   const program = check(AUDIENCE, "mdt", { modules }).program!;
   let run = await rt.startRun({ pkg: buildPackage(program, lockFor(modules), modules), workflow: "Audience", input: { task: { id: "K-3", request: "Use the logical audience" } } });
   // The architect accepts the plan.
@@ -156,6 +162,38 @@ describe("Acme task class 3: an audience change on one side (B5)", () => {
       expect(md).toContain("Module acme.system");
     } finally {
       t.cleanup();
+    }
+  });
+
+  it("with a verifier process of its own configured, counts the boundary checks made in this process without its attestation", async () => {
+    const change = { config: 'export const audience = process.env.MCP_RESOURCE ?? "http://mcp:3001/mcp";\n', test: 'expect audience "http://mcp:3001/mcp"\n' };
+    const land = async (inProcess: readonly string[]) => {
+      const t = await audienceRun(change, { verifierProcess: { inProcess } });
+      let run = t.run;
+      for (let i = 0; run.state === "waiting"; i++) {
+        const w = run.waiting as Obj;
+        const r = w["request"] as Obj;
+        run = await t.rt.decideAction(run.run_id, { sender: String(r["role"]), messageId: `d${i}` }, { commandId: String(w["command"]), revision: run.revision, digest: String(r["action_digest"]), approve: true, by: String(r["role"]) });
+      }
+      return { ...t, run, checked: await t.rt.verifyEvidence(run.run_id) };
+    };
+    const t = await land(BOUNDARY_METHODS);
+    try {
+      expect(t.run.state, JSON.stringify(t.run.attention ?? t.run.error)).toBe("succeeded");
+      expect(t.checked.every((e) => e.valid)).toBe(true);
+      expect(t.gh.repos["acme/mcp"]!.pulls[0]!.merged).toBe(true);
+    } finally {
+      t.cleanup();
+    }
+    // Told nothing runs here, the runtime finds the same records unattested, and lands nothing on them.
+    const u = await land([]);
+    try {
+      expect(u.run.state).toBe("attention_required");
+      expect(u.run.attention).toMatchObject({ violation: "forged_evidence" });
+      expect(u.checked.filter((e) => !e.valid).map((e) => e.criterion)).toEqual(["contracts", "integrated", "planned", "suites"]);
+      expect(u.gh.repos["acme/mcp"]!.pulls).toHaveLength(0);
+    } finally {
+      u.cleanup();
     }
   });
 

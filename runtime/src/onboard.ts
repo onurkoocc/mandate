@@ -224,6 +224,12 @@ function escape(s: string): string {
 
 export const ONBOARD_HANDLER = "mandate-onboard-verifier@0.3";
 
+/**
+ * The methods `OnboardVerifier` answers itself, in the runtime's process; it passes every other method to the
+ * verifier inside it. Their evidence carries no verifier attestation.
+ */
+export const ONBOARD_METHODS: readonly string[] = ["test.system_specs", "test.consumes", "test.commands"];
+
 // Types are allowed: an environment's reads return records the model defines.
 const SYSTEM_KINDS = new Set(["component", "interface", "environment", "type"]);
 
@@ -260,7 +266,7 @@ type Repo = SystemFacts["components"][string];
  *                                   sandbox over its base commit
  */
 export class OnboardVerifier implements VerifierAdapter {
-  static readonly METHODS = ["test.system_specs", "test.consumes", "test.commands"];
+  static readonly METHODS = ONBOARD_METHODS;
 
   constructor(
     private readonly o: OnboardConfig,
