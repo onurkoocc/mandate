@@ -5,6 +5,9 @@ these modules and this lock, gives these diagnostics. The files here are meant t
 be read by any implementation. The TypeScript reference compiler reads them in
 `compiler/test/cases.test.ts`; the Rust compiler will read the same files.
 
+A journal case (J01–J08) is a claim about a journal verifier instead: this export
+of a run's journal, under these public keys, gives this report (spec/journal.md).
+
 ## Layout
 
 One directory per case: `conformance/<id>/`. It holds `case.json` and the case's
@@ -18,13 +21,14 @@ own input files (`program.mdt` or `program.ir.json`, module files,
 - `format`: the constant `"mandate/conformance-case/0.1"`.
 - `id`: `S01`, `V03`, `V03b` (a letter, two digits, an optional lower-case
   letter) or `E0320` (a diagnostic code number). It equals the directory name.
-- `kind`: `"compile"` or `"run"`. Only `compile` has a runner now. A `run` case
-  fails the test run until a runner exists, so none is mistaken for checked.
+- `kind`: `"compile"`, `"run"` or `"journal"`. `compile` and `journal` have
+  runners. A `run` case fails the test run until a runner exists, so none is
+  mistaken for checked.
 - `title`: one sentence.
 - `spec`: a non-empty list of references, such as `"spec/ir.md#reading-ir"`.
 - `language`: optional, such as `"mandate/0.1"`. When given, the program the
   case checks (after the patch) must declare that language.
-- `input`: `{ "file": "<path>", "kind": "mdt" | "json" }` or
+- `input`: required except in a journal case. `{ "file": "<path>", "kind": "mdt" | "json" }` or
   `{ "text": "<source>", "kind": ... }`. Exactly one of `file` and `text`.
 - `modules`: optional list of module files, loaded the way `--module` loads them.
 - `lock`: optional path to a lock file, or `null`.
@@ -36,8 +40,11 @@ own input files (`program.mdt` or `program.ir.json`, module files,
   or `lock`.
 - `amendment`: optional; see below. A case with it has no top-level `patch`
   or `lock`, and no `subprogram`.
-- `expect`: `{ "ok": boolean, "diagnostics": [ { "code", "path", "facts"? } ],
-  "hashes"?: { "program"?, "defs"? } }`.
+- `expect`: required except in a journal case. `{ "ok": boolean, "diagnostics":
+  [ { "code", "path", "facts"? } ], "hashes"?: { "program"?, "defs"? } }`.
+- `journal`: only in a journal case, and required there; see below. A journal
+  case has no `input`, `expect`, `language`, `modules`, `lock`, `patch`,
+  `subprogram` or `amendment`.
 
 ## A sub-program case
 
@@ -90,6 +97,41 @@ program with the new envelope. An amendment that is refused has none.
 
 The amendment cases share the program of N01 too.
 
+## A journal case
+
+A case of `kind: "journal"` checks a verifier of a run's chained journal
+(spec/journal.md "Verification"). Its `journal` field names three kinds of file:
+
+- `export`: a `mandate/journal-export/0.1` document, exactly as
+  `mandate journal export` wrote it.
+- `keys`: one or more PEM files, each holding one or more ed25519 public keys
+  (SPKI, `-----BEGIN PUBLIC KEY-----`). They are the keys the verifier is given;
+  the export's own `keys` field is not one of them.
+- `report`: the `mandate/journal-verification/0.1` report the verifier must give.
+
+The verifier reads the export's bytes and the keys, and nothing else. Its report
+is compared with `report` as JSON values, exactly: every member, the findings
+in their order. The TypeScript verifier runs the cases in
+`runtime/test/journal-cases.test.ts`; the compiler's case test only checks
+that the files are there.
+
+The cases come from real runs on PGlite, written by
+`runtime/scripts/journal-cases.mjs` (`npm run build`, then
+`node runtime/scripts/journal-cases.mjs`). Each run has a fresh evidence key, so
+writing them again changes every file; the files committed are the cases. Only
+public keys are committed.
+
+| Case | What the export shows | Status |
+|---|---|---|
+| J01 | A closed run, also over data with fractions, exponents, -0, escapes and keys that sort differently by UTF-16 code units and by code points | verified |
+| J02 | An event's data edited in the database | broken: `chain_broken` |
+| J03 | An event deleted | broken: `seq_gap`, `chain_broken` |
+| J04 | The tail cut while its anchors stay | broken: `anchor_beyond_end` |
+| J05 | An open run with events after its last anchor | verified, `unanchored_tail` |
+| J06 | An anchor signed by another key, one whose signature does not verify | broken: `anchor_unknown_key`, `anchor_signature_invalid` |
+| J07 | The manifest and the package edited | broken: `manifest_mismatch`, `package_mismatch` |
+| J08 | A run begun before the journal was chained | unchained |
+
 All paths are relative to the case directory and must stay inside the
 repository. A path may go up into the repository to share a fixture, as V03 does.
 
@@ -119,4 +161,5 @@ repository. A path may go up into the repository to share a fixture, as V03 does
 npm test --workspace compiler
 ```
 
-or only the cases: `cd compiler && npx vitest run test/cases`.
+or only the cases: `cd compiler && npx vitest run test/cases`. The journal
+cases: `cd runtime && npx vitest run test/journal-cases`.

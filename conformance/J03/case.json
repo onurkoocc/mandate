@@ -1,0 +1,18 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "J03",
+  "kind": "journal",
+  "title": "An event deleted from the database leaves a gap in the seqs and breaks the chain at the event after it.",
+  "spec": [
+    "spec/journal.md#verification",
+    "spec/journal.md#conformance-cases"
+  ],
+  "journal": {
+    "export": "export.json",
+    "keys": [
+      "key.pem"
+    ],
+    "report": "report.json"
+  }
+}

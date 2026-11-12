@@ -60,10 +60,17 @@ export interface CaseAmendment {
   patch: PatchOpJson[];
 }
 
+/** A run's journal export, its keys and the report a verifier gives (conformance/README.md); the runtime's tests run it. */
+export interface CaseJournal {
+  export: string;
+  keys: string[];
+  report: string;
+}
+
 export interface Case {
   format: string;
   id: string;
-  kind: "compile" | "run";
+  kind: "compile" | "run" | "journal";
   title: string;
   spec: string[];
   language?: string;
@@ -74,6 +81,8 @@ export interface Case {
   subprogram?: CaseSubprogram;
   amendment?: CaseAmendment;
   expect: CaseExpect;
+  /** Only in a journal case, which has no input and no expect. */
+  journal?: CaseJournal;
 }
 
 /** What the comparison reads from a compiler result. */
