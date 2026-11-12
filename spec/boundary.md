@@ -20,13 +20,13 @@ the configuration and the CLI.
 | Lock 0.5: `host`, `isolation`, `egress`; E1802, E1803; their changes in `view --against` | PR 2 | implemented |
 | Sandbox requirement 0.2, for a 0.5 program; a 0.5 parent's sub-programs in 0.5 | PR 2 | implemented. No host enforces what it adds beyond 0.1, so the MXC adapter refuses a requirement that asks for any of it, by name |
 | At load, a lock that sets `host`, `isolation` or `egress` is refused, each by its name (`unsupported_lock`) | PR 2 | implemented; each name is lifted by the change that enforces it |
-| The attestation a check needs is read from the program, not the record; child processes get a filtered environment (B20) | PR 1 | specified (INV-27) |
+| The attestation a check needs is read from the program, not the record; child processes get a filtered environment (B20) | PR 1 (#34) | implemented (INV-27; [`runtime.md`](runtime.md)) |
 | The chained journal: event hashes, signed anchors, export, verification (J01–J08) | PR 3 | specified |
 | Isolation levels of hosts; host fitness (`unfit_host`) | PR 4 | specified |
 | Violations and the violation limit; a hard halt | PR 5 | specified |
 | The reference egress proxy and its admin channel | PR 6 | specified |
 | The control plane's adapters through gateways; `credential_in_environment` | PR 7 | specified |
-| Sandbox egress on Linux through the proxy | PR 8 | specified, pending the result of the MXC proxy experiment on CI |
+| Sandbox egress on Linux through the proxy | PR 8 | specified; enforceable where the sandbox SDK reports it, shown on the CI runner |
 | Sandbox egress on Windows | — | refused by name |
 | Views by role and the audit view; the OpenTelemetry projection | PR 9 | specified |
 | An independent journal verifier, `verify-journal`, in Rust | R3 | specified |
@@ -275,6 +275,10 @@ What the MXC adapter does with it, until the changes below land:
 *Specified; the proxy is implemented by PR 6, the control plane's gateways
 by PR 7, sandbox egress by PR 8.*
 
+This section states the rules. The byte-exact contract of the proxy, its
+configuration and its admin channel is spec/egress.md, which lands with
+PR 6.
+
 The proxy is the only way a sandbox, and with gateways the control plane's
 own adapters, reach a host. It holds the secrets; nothing else does.
 
@@ -331,14 +335,15 @@ it.
 | `hello` | `{ "format": "mandate/egress/0.1", "credentials": [<names>] }` |
 | `open_session { session, tenant, run, command, kind, destinations, ttl_ms }` | `{ proxy_url \| base_url, placeholders: { <name>: "mdt-ph-<128-bit random>" } }` |
 | `close_session { session }` | `{}` |
-| `revoke { session \| tenant \| all }` | `{}`; later requests of what it names are refused (`session_revoked`) |
+| `revoke { session \| run \| tenant \| all }` | `{}`; later requests of what it names are refused (`session_revoked`). A halt revokes its tenant or all; a cancelled run, its run |
 | `denials { session, after }` | `[{ id, host, method, why, path_digest, at }]`, after the denial `after` |
 
 `kind` is `forward` for a sandbox (the answer has `proxy_url`) or `gateway`
 for one of the control plane's adapters (`base_url`). Each destination is
 `{ host, methods | null, credential | null }`. Each session has its own
 short-lived port on the loopback address, since MXC opens one local
-endpoint to a sandbox. A placeholder is fresh per session.
+endpoint to a sandbox: one session, one port. A placeholder is fresh per
+session.
 
 ### The data path
 
@@ -375,16 +380,44 @@ endpoint to a sandbox. A placeholder is fresh per session.
 - **Earlier programs.** With a proxy configured, an agent of a 0.1 to 0.4
   program that holds `net.https` hosts reaches them through it: hosts only,
   any method, no credential. Binding a credential needs lock 0.5.
-- **Sandbox egress.** On Linux, `MxcHost` reports `network:
-  host_allow_list` only when MXC's Bubblewrap backend can enforce a proxy
-  (`proxyEnforcement === "supported"`) and the proxy answers `hello`. A
-  sandbox's session opens with it and closes with it; the sandbox gets the
-  proxy and its placeholders in its environment. After every tool call,
-  within the step, the session's denials are read into the journal.
-  *Pending the result of the MXC proxy experiment on CI's runner.*
-  On Windows, sandbox egress stays refused by name: AppContainer's proxy
-  is best effort, so it cannot be enforced.
 - **Replay** never touches the proxy.
+
+### Sandbox egress
+
+What PR 8 is held to. It was shown by an experiment on GitHub's
+`ubuntu-latest` runner, with MXC's Bubblewrap backend.
+
+- **Whether it can be enforced.** The MXC SDK reports
+  `getPlatformSupport().bubblewrapNetwork.proxyEnforcement`. It is
+  `"supported"` on a host with `slirp4netns`, `iptables` and unprivileged
+  user and network namespaces, and otherwise `"unsupported"`, with the
+  reason. Where it is unsupported, starting a proxied sandbox fails; it
+  never falls back to the host's network.
+- **What the host reports.** `MxcHost` reports that it can enforce an
+  outbound host list (`network: host_allow_list`) only when the SDK says
+  `supported` and the proxy answers `hello`. Otherwise a requirement with
+  outbound hosts is refused by name, as before 0.5.
+- **One endpoint.** A proxied sandbox reaches exactly one endpoint: its
+  session's proxy port. Every other loopback port, the host's own address,
+  external addresses, DNS over TCP and over UDP, IPv6 and ICMP are closed,
+  and the sandbox's processes have no capability to change that. So names
+  are resolved by the proxy, never in the sandbox, and enforcement does
+  not rest on the proxy variables a process may ignore.
+- **The proxy's address.** Inside the sandbox the proxy is not at
+  `127.0.0.1`: it is at the sandbox's gateway address, on the same port,
+  and the SDK sets the proxy variables itself. The runtime gives the SDK
+  the proxy's loopback address and port, and does not assume that the
+  sandbox's processes see the same address.
+- **No crossing.** Two sandboxes with two proxy ports do not reach each
+  other's proxy.
+- **Each session** opens with its sandbox and closes with it; the sandbox
+  gets its placeholders in its environment. After every tool call, within
+  the step, the session's denials are read into the journal.
+- **Not shown yet:** a successful HTTPS tunnel (`CONNECT`) from a sandbox,
+  and other distributions and kernels. Until a test shows a host, it is not
+  said to support sandbox egress.
+- **On Windows** sandbox egress stays refused by name: AppContainer's proxy
+  is best effort, so it cannot be enforced.
 
 ### What stays outside it
 
@@ -399,6 +432,10 @@ endpoint to a sandbox. A placeholder is fresh per session.
 ## The chained journal
 
 *Specified; implemented by PR 3, and checked independently by R3.*
+
+This section states the rules. The byte-exact contract of the event hash,
+the anchor, the export and the verification report is spec/journal.md,
+which lands with PR 3.
 
 - **Event hash.** Each event of a run has a hash:
   `events.hash = digest("event", { run, seq, type, data, at, prev })`,
@@ -623,9 +660,9 @@ The letters P, T and L are kept for later releases.
   tenant-wide or outside log.
 - **Masking by data class** in views; `WatchRun`, `ListWaits`, `stage`,
   `report` and notifications (0.7).
-- **What stays open.** MXC's proxy enforcement may not work on CI's runner;
-  until a real enforcement test passes, sandbox egress is not said to be
-  supported. The race between a start and a halt is narrowed by the second
+- **What stays open.** MXC's proxy enforcement is shown on CI's Ubuntu
+  runner and nowhere else yet, and a tunnel through it is not; a host is
+  said to support sandbox egress only where a test shows it. The race between a start and a halt is narrowed by the second
   pass and the check at resume, not closed. Someone who holds the
   runtime's key and its database can rewrite the journal. Linux sandbox
   tests, PostgreSQL, Node 22 and 24, and Rust run on CI.
