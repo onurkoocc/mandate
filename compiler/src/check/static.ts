@@ -111,8 +111,12 @@ interface Val {
 interface Usage {
   effect: string;
   scope?: string[];
-  /** For Model: the data class sent to the model. */
+  /** For Model: the data class sent to the model. For Delegate: the data class handed to the agent. */
   cls?: DataClass;
+  /** For Delegate: the `Agent.skill` it runs. */
+  to?: string;
+  /** The function this usage came through, when the body calls a function that does it. */
+  via?: string;
   path: string;
 }
 
@@ -164,6 +168,10 @@ class Checker implements TypeEnv {
   private readonly out: Diagnostic[] = [];
   private readonly capDefs = new Map<string, CapVal[]>();
   private readonly fnUsage = new Map<string, Usage[] | "pending">();
+  /** What the body of each of the program's own skills uses, by `Agent.skill`. */
+  private readonly skillUsage = new Map<string, Usage[]>();
+  /** The program's workflows with an envelope: its data class and what the body uses, for `reach`. */
+  private readonly enveloped: Array<{ name: string; max: DataClass; usages: Usage[] }> = [];
   private readonly constVals = new Map<string, Val | "pending">();
   private readonly recursive = new Set<string>();
 
@@ -244,6 +252,7 @@ class Checker implements TypeEnv {
           break;
       }
     }
+    for (const w of this.enveloped) this.reach(w.name, w.max, w.usages);
     return this.out;
   }
 
@@ -416,6 +425,7 @@ class Checker implements TypeEnv {
       } else {
         const frame = this.bodyFrame("skill", `${name}.${sn}`, s.params, caps, ret);
         this.body(s.body, frame, `${sb}/body`, true);
+        this.skillUsage.set(`${name}.${sn}`, frame.usages);
         this.checkUsagesDeclared(frame.usages, s.effects, `${name}.${sn}`);
         frame.usages.forEach((u) => this.capsFor(u, caps).forEach((c) => used.add(c)));
       }
@@ -504,6 +514,7 @@ class Checker implements TypeEnv {
       });
       // `internal` when the envelope does not say (spec/envelope.md "What it declares").
       frame.maxClass = d.envelope.spawn?.max_class ?? "internal";
+      this.enveloped.push({ name, max: frame.maxClass, usages: frame.usages });
     }
     if (d.ensures) {
       this.expectBool(this.expr(d.ensures, this.child(frame, new Map([["result", { ty: frame.returns!, cls: PUBLIC }]])), `${base}/ensures`), `${base}/ensures`);
@@ -520,6 +531,15 @@ class Checker implements TypeEnv {
           data_class: u.cls,
           allowed: frame.maxClass,
           by: "envelope",
+        });
+      }
+      // A delegation in the body itself is held to the class where it stands; one inside a function the body calls is held here.
+      if (frame.maxClass && u.effect === "Delegate" && u.via && u.cls && classRank(u.cls) > classRank(frame.maxClass)) {
+        this.report("E0220", `${u.to} receives ${u.cls} data inside ${u.via}, and ${name}'s envelope allows at most ${frame.maxClass} in a delegation (spawn.max_class).`, u.path, {
+          data_class: u.cls,
+          allowed: frame.maxClass,
+          by: "envelope",
+          via: u.via,
         });
       }
       if (UNGATED_EFFECTS.has(u.effect)) continue;
@@ -556,6 +576,35 @@ class Checker implements TypeEnv {
     const nodes = this.countNodes(d.body, new Set());
     if (nodes > LIMITS.expandedNodes) {
       this.report("E0105", `${name} expands to ${nodes} static nodes; the 0.1 limit is ${LIMITS.expandedNodes}.`, base, { nodes, limit: LIMITS.expandedNodes });
+    }
+  }
+
+  /**
+   * `spawn.max_class` bounds every delegation and model call in the run (spec/envelope.md "What it declares"), so
+   * also those in the body of a skill the workflow delegates to, however deep. What enters a skill was held to the
+   * class where it was delegated; what is found here is data that first has a higher class inside the skill, which
+   * hands it on or sends it to a model. The skills are the program's own: an imported agent's body was checked in
+   * its module.
+   */
+  private reach(name: string, max: DataClass, usages: Usage[]): void {
+    const seen = new Set<string>();
+    const next = usages.flatMap((u) => (u.effect === "Delegate" && u.to ? [u.to] : []));
+    while (next.length) {
+      const skill = next.shift()!;
+      if (seen.has(skill)) continue;
+      seen.add(skill);
+      for (const u of this.skillUsage.get(skill) ?? []) {
+        if (u.effect === "Delegate" && u.to) next.push(u.to);
+        if ((u.effect !== "Delegate" && u.effect !== "Model") || !u.cls || classRank(u.cls) <= classRank(max)) continue;
+        const what = u.effect === "Model" ? `${u.cls} data is sent to a model` : `${u.to} receives ${u.cls} data`;
+        this.report("E0220", `${what} inside ${skill}, which ${name} reaches, and ${name}'s envelope allows at most ${max} in the run (spawn.max_class).`, u.path, {
+          data_class: u.cls,
+          allowed: max,
+          by: "envelope",
+          workflow: name,
+          skill,
+        });
+      }
     }
   }
 
@@ -1124,7 +1173,12 @@ class Checker implements TypeEnv {
         const a = args[i];
         if (a) this.problem(assignable(a.ty, this.ty(param.type), this), `${path}/args/${i}/value`);
       });
-      for (const u of this.fnUsages(p!)) this.use(frame, { ...u, path, ...(u.effect === "Model" ? { cls: this.maxClass(cls, u.cls ?? PUBLIC) } : {}) });
+      // What the function does is done here, with what the call hands it: a model call or a delegation in it may
+      // receive the arguments, so it has at least their class.
+      for (const u of this.fnUsages(p!)) {
+        const sends = u.effect === "Model" || u.effect === "Delegate";
+        this.use(frame, { ...u, path, ...(sends ? { cls: this.maxClass(cls, u.cls ?? PUBLIC) } : {}), ...(u.effect === "Delegate" ? { via: u.via ?? p! } : {}) });
+      }
       return { ty: this.ty(d.returns), cls };
     }
     if (p === "quote") return { ty: TEXT, cls };
@@ -1318,7 +1372,7 @@ class Checker implements TypeEnv {
     this.delegateRest(e, frame, path, agent, skill, who, effective, given, cls);
     const remote = !!agent.remote;
     frame.delegated.push({ caps: effective, path, external: remote });
-    this.use(frame, { effect: "Delegate", path });
+    this.use(frame, { effect: "Delegate", path, cls, to: who });
     let ret = this.ty(skill.returns);
     if (remote && agent.remote!.trust !== "trusted") ret = named("Untrusted", ret);
     else if (!remote && !skill.body && effective.some((c) => c.ctor === "model.infer")) {

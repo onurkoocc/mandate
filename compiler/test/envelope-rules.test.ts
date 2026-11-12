@@ -383,6 +383,129 @@ ${body}
   });
 });
 
+describe("the envelope's data class in what the workflow reaches (E0220, spawn.max_class)", () => {
+  // The bound is on every delegation and model call in the run, so a function the body calls and the body of a
+  // skill it delegates to are held to it too. `bounds` is the workflow's envelope, or its own caps and budget.
+  const ENVELOPE = (spawn = "") => `envelope {\n    owner  owner_role\n    caps   M\n    budget { steps: 60, agents: 12 }${spawn}\n  }`;
+  const RAISED = "\n    spawn  { max_class: confidential }";
+  const reaches = (body: string, bounds = ENVELOPE()): string => `mandate @ 0.4
+
+module example.reach @ 0.1
+
+use std.{model}
+
+role owner_role "Owner"
+
+type Doc = { body: Text } classified confidential
+
+capability M = model.infer(tier: standard, max_class: confidential)
+
+agent A {
+  role   "Summarizes."
+  caps   M
+  budget { steps: 3 }
+  skill s(d: Doc) -> Inferred<Text> ! {Model}
+  skill echo(t: Text) -> Inferred<Text> ! {Model}
+}
+
+agent Outer {
+  role   "Makes a document of a text, and has it summarized."
+  caps   M
+  budget { steps: 3 }
+  skill wrap(t: Text) -> Inferred<Text> ! {Delegate} {
+    delegate A.s(Doc { body: t })
+  }
+  skill ask(t: Text) -> Inferred<Text> ! {Model} {
+    let x = Doc { body: t }
+    infer Text from quote("Summarize {x.body}")
+  }
+  skill relay(t: Text) -> Inferred<Text> ! {Delegate} {
+    delegate Outer.wrap(t)
+  }
+  skill plain(t: Text) -> Inferred<Text> ! {Delegate} {
+    delegate A.echo(t)
+  }
+}
+
+fn via(d: Doc) -> Inferred<Text> {
+  delegate A.s(d)
+}
+
+fn outer(d: Doc) -> Inferred<Text> {
+  via(d)
+}
+
+fn label(d: Doc, t: Text) -> Inferred<Text> {
+  delegate A.echo(t)
+}
+
+fn calm(t: Text) -> Inferred<Text> {
+  delegate A.echo(t)
+}
+
+fn through(t: Text) -> Inferred<Text> {
+  delegate Outer.wrap(t)
+}
+
+workflow W(d: Doc, t: Text) -> Inferred<Text>
+  ${bounds}
+{
+  let first = delegate A.echo(t)
+${body}
+}
+`;
+  const AT = "/defs/W/body/1/value";
+  const facts = (ds: Diagnostic[]) => ds.map((d) => d.facts);
+
+  it("accepts the program when nothing in it receives more than internal data", () => {
+    for (const body of ["  calm(t)", "  delegate Outer.plain(t)"]) expect(pairs(diagnostics(reaches(body), "mdt", {}))).toEqual([]);
+  });
+
+  it("refuses a delegation inside a function the body calls, at the call, however deep", () => {
+    for (const [body, fn] of [["  via(d)", "via"], ["  outer(d)", "via"]] as const) {
+      const ds = diagnostics(reaches(body), "mdt", {});
+      expect(pairs(ds)).toEqual([["MDT-E0220", AT]]);
+      expect(facts(ds)).toEqual([{ data_class: "confidential", allowed: "internal", by: "envelope", via: fn }]);
+      expect(ds[0]!.message).toContain(`A.s receives confidential data inside ${fn}`);
+      expect(pairs(diagnostics(reaches(body, ENVELOPE(RAISED)), "mdt", {}))).toEqual([]);
+    }
+  });
+
+  it("holds a function to the class of what it is handed, whichever argument it passes on", () => {
+    const ds = diagnostics(reaches("  label(d, t)"), "mdt", {});
+    expect(pairs(ds)).toEqual([["MDT-E0220", AT]]);
+    expect(facts(ds)).toEqual([{ data_class: "confidential", allowed: "internal", by: "envelope", via: "label" }]);
+  });
+
+  it("refuses a delegation in the body of a skill the workflow delegates to, where data first has the higher class", () => {
+    const ds = diagnostics(reaches("  delegate Outer.wrap(t)"), "mdt", {});
+    expect(pairs(ds)).toEqual([["MDT-E0220", "/defs/Outer/skills/wrap/body/0/value"]]);
+    expect(facts(ds)).toEqual([{ data_class: "confidential", allowed: "internal", by: "envelope", workflow: "W", skill: "Outer.wrap" }]);
+    expect(ds[0]!.message).toContain("A.s receives confidential data inside Outer.wrap, which W reaches");
+    expect(pairs(diagnostics(reaches("  delegate Outer.wrap(t)", ENVELOPE(RAISED)), "mdt", {}))).toEqual([]);
+  });
+
+  it("refuses a model call in such a skill's body", () => {
+    const ds = diagnostics(reaches("  delegate Outer.ask(t)"), "mdt", {});
+    expect(pairs(ds)).toEqual([["MDT-E0220", "/defs/Outer/skills/ask/body/1/value"]]);
+    expect(facts(ds)).toEqual([{ data_class: "confidential", allowed: "internal", by: "envelope", workflow: "W", skill: "Outer.ask" }]);
+    expect(ds[0]!.message).toContain("confidential data is sent to a model inside Outer.ask");
+  });
+
+  it("follows a skill that delegates to another, and one a function delegates to, and reports each place once", () => {
+    for (const body of ["  delegate Outer.relay(t)", "  through(t)", "  let again = delegate Outer.wrap(t)\n  delegate Outer.relay(t)"]) {
+      const ds = diagnostics(reaches(body), "mdt", {});
+      expect(pairs(ds)).toEqual([["MDT-E0220", "/defs/Outer/skills/wrap/body/0/value"]]);
+      expect(facts(ds)).toEqual([{ data_class: "confidential", allowed: "internal", by: "envelope", workflow: "W", skill: "Outer.wrap" }]);
+    }
+  });
+
+  it("is the envelope's rule: a workflow with caps and a budget of its own is not held to it", () => {
+    const own = "caps   M\n  budget { steps: 60 }";
+    for (const body of ["  via(d)", "  delegate Outer.wrap(t)", "  delegate Outer.ask(t)"]) expect(pairs(diagnostics(reaches(body, own), "mdt", {}))).toEqual([]);
+  });
+});
+
 describe("the static cost of MigrateAll", () => {
   it("is the spec's numbers: 151 agents, 85 USD, 62,000k tokens, 1,840 steps, 3 h 20 min", () => {
     const p = migrateAll();
