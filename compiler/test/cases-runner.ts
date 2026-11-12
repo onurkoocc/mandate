@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
-import { check, checkSubprogram, kindOf, load, loadModules, type CheckResult, type SourceKind, type SubprogramCheck, type SubprogramInput } from "../src/check.js";
+import { check, checkAmendment, checkSubprogram, kindOf, load, loadModules, type AmendmentCheck, type AmendmentInput, type CheckResult, type SourceKind, type SubprogramCheck, type SubprogramInput } from "../src/check.js";
 import type { CapVal } from "../src/check/caps.js";
 import { skeleton } from "../src/check/subprogram.js";
 import type { Diagnostic } from "../src/diag.js";
@@ -54,6 +54,12 @@ export interface CaseSubprogram {
   };
 }
 
+/** An amendment of an envelope, checked with the case's input as the program the run has (conformance/README.md). */
+export interface CaseAmendment {
+  workflow: string;
+  patch: PatchOpJson[];
+}
+
 export interface Case {
   format: string;
   id: string;
@@ -66,6 +72,7 @@ export interface Case {
   lock?: string | null;
   patch?: PatchOpJson[];
   subprogram?: CaseSubprogram;
+  amendment?: CaseAmendment;
   expect: CaseExpect;
 }
 
@@ -279,8 +286,22 @@ export function subprogramInput(dir: string, s: CaseSubprogram, parent: Program,
   };
 }
 
+/**
+ * What `checkAmendment` receives for a case's `amendment`, with `parent` as the program
+ * the run has: the envelope of the case's workflow with the patch applied to it. Throws
+ * when the case is not good.
+ */
+export function amendmentInput(a: CaseAmendment, parent: Program, modules: Modules): AmendmentInput {
+  const wf = Object.hasOwn(parent.defs, a.workflow) ? parent.defs[a.workflow] : undefined;
+  if (wf?.kind !== "workflow" || !wf.envelope) throw new Error(`amendment.workflow: ${a.workflow} is not a workflow with an envelope`);
+  return { parent, modules, workflow: a.workflow, envelope: applyJsonPatch(wf.envelope, a.patch) };
+}
+
+/** An amendment's check, with the hash of the program it makes where a case's `hashes` are read. */
+export type AmendmentObserved = AmendmentCheck & { hashes?: { program: string } };
+
 /** Runs a `compile` case with this compiler and returns what it observed. */
-export function runCompileCase(name: string, c: Case): CheckResult | SubprogramCheck {
+export function runCompileCase(name: string, c: Case): CheckResult | SubprogramCheck | AmendmentObserved {
   const dir = join(CASES_DIR, name);
   let text = sourceText(dir, c.input);
   let kind = c.input.kind;
@@ -296,14 +317,27 @@ export function runCompileCase(name: string, c: Case): CheckResult | SubprogramC
   }
   const lock = typeof c.lock === "string" ? (JSON.parse(readFileSync(caseFile(dir, c.lock), "utf8")) as Lock) : undefined;
 
-  if (c.subprogram !== undefined) {
-    if (c.patch !== undefined || c.lock !== undefined) throw new Error("a subprogram case has no top-level patch or lock; the lead's operations go in subprogram.patch");
+  /** The program a sub-program or an amendment stands on: it checks, and it declares the case's language. */
+  const standsOn = (what: string): Program => {
     const parent = check(text, kind, { modules: loaded.modules });
     if (!parent.ok || !parent.program) {
-      throw new Error(`the parent of a subprogram case must check without errors: ${parent.diagnostics.map((d) => `${d.code} at ${d.at.path ?? ""}`).join(", ")}`);
+      throw new Error(`the ${what} must check without errors: ${parent.diagnostics.map((d) => `${d.code} at ${d.at.path ?? ""}`).join(", ")}`);
     }
     if (c.language !== undefined && parent.program.language !== c.language) throw new Error(`the case says language ${c.language}, the parent declares ${parent.program.language}`);
-    return checkSubprogram(subprogramInput(dir, c.subprogram, parent.program, loaded.modules));
+    return parent.program;
+  };
+
+  if (c.amendment !== undefined) {
+    if (c.patch !== undefined || c.lock !== undefined || c.subprogram !== undefined) {
+      throw new Error("an amendment case has no top-level patch or lock, and no subprogram; the new envelope is the old one with amendment.patch");
+    }
+    const r = checkAmendment(amendmentInput(c.amendment, standsOn("program of an amendment case"), loaded.modules));
+    return r.hash !== undefined ? { ...r, hashes: { program: r.hash } } : r;
+  }
+
+  if (c.subprogram !== undefined) {
+    if (c.patch !== undefined || c.lock !== undefined) throw new Error("a subprogram case has no top-level patch or lock; the lead's operations go in subprogram.patch");
+    return checkSubprogram(subprogramInput(dir, c.subprogram, standsOn("parent of a subprogram case"), loaded.modules));
   }
 
   if (c.patch !== undefined) {

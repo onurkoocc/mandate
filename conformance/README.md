@@ -34,6 +34,8 @@ own input files (`program.mdt` or `program.ir.json`, module files,
   copying the program. The unpatched input must load without errors.
 - `subprogram`: optional; see below. A case with it has no top-level `patch`
   or `lock`.
+- `amendment`: optional; see below. A case with it has no top-level `patch`
+  or `lock`, and no `subprogram`.
 - `expect`: `{ "ok": boolean, "diagnostics": [ { "code", "path", "facts"? } ],
   "hashes"?: { "program"?, "defs"? } }`.
 
@@ -67,6 +69,26 @@ the parent's.
 
 The sub-program cases share the parent of N01: `conformance/N01/parent.mdt`
 and the module it imports, `conformance/N01/domain.mdt`.
+
+## An amendment case
+
+A `compile` case with `amendment` checks an amendment of an envelope
+(spec/envelope.md "Amendments"). Its `input` and `modules` are the program
+the run has, which must check without errors. `expect` is compared with the
+check of the amendment: the program with the new envelope, checked as any
+program is, and then held to the envelope it had (E1709). `language`, when
+given, is the program's.
+
+- `workflow`: the workflow whose envelope is amended. It has an envelope; if
+  it has none, the case is wrong.
+- `patch`: an RFC 6902 patch, only `add`, `replace` and `remove`, applied to
+  the IR of that envelope. Its paths start at the envelope, so `/budget/tokens`
+  is the envelope's tokens. The patched envelope is the one the lead asks for.
+
+`expect.hashes`, when given, is `{ "program": "<hash>" }`: the hash of the
+program with the new envelope. An amendment that is refused has none.
+
+The amendment cases share the program of N01 too.
 
 All paths are relative to the case directory and must stay inside the
 repository. A path may go up into the repository to share a fixture, as V03 does.
