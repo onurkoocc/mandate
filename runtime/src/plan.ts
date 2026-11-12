@@ -1,12 +1,16 @@
 // `plan`: a lead agent and its sub-programs (0.4; spec/envelope.md "plan").
 //
-// A lead is an agent loop with two more tools, which the runtime answers
+// A lead is an agent loop with three more tools, which the runtime answers
 // itself:
 //
 //   check_program(base, ops)    checks a sub-program and admits nothing
 //   submit_program(base, ops)   the same check; a sub-program that fits is
 //                               admitted, run to its end, and its result
 //                               returned to the lead
+//   request_amendment(envelope, reason)
+//                               asks the envelope's owner for a wider
+//                               envelope; the run waits for their signed
+//                               decision, and the call with it (N04)
 //
 // Each call is a journaled step of the lead's delegation. What happens to a
 // submission is recorded as it happens:
@@ -33,6 +37,11 @@
 // run finds the admission and runs the sub-program against the journal, and
 // so does a replay, which reads its IR from the artifact store by what
 // `program_admitted` names and calls no checker (N06).
+//
+// An amendment is checked within the same limits. The program with the new
+// envelope is a new package; it is stored, `amendment_requested` is written
+// and the wait is opened in one transaction. Nothing of the run changes
+// until the owner's decision arrives (Runtime.decideAmendment).
 
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -48,7 +57,9 @@ import {
   type CapVal,
   type DataClass,
   type Diagnostic,
+  type Envelope,
   type Json,
+  type Lock,
   type Modules,
   type Program,
   type Room,
@@ -57,12 +68,14 @@ import {
 } from "@mandate/compiler";
 import type { Outcome, ToolSpec } from "./adapters.js";
 import { refOf, sha256Of, type ArtifactScope, type ArtifactStore } from "./artifacts.js";
-import type { Admission, Journal } from "./journal.js";
-import { Fault, Violation } from "./signals.js";
+import type { Admission, CommandRow, Journal } from "./journal.js";
+import type { AmendedCheck, AmendedInput } from "./package.js";
+import { Fault, Suspend, Violation } from "./signals.js";
 import { canonical, digest, isObj, type Value } from "./values.js";
 
 export const CHECK_PROGRAM = "check_program";
 export const SUBMIT_PROGRAM = "submit_program";
+export const REQUEST_AMENDMENT = "request_amendment";
 
 /** How long a sub-program's check may take, unless `plan.checkMs` says otherwise. */
 export const CHECK_MS = 2000;
@@ -72,6 +85,8 @@ export const CHECK_MB = 256;
 export const MAX_OPS = 256;
 /** The most diagnostics a lead is shown for one check; the rest are counted. */
 const MAX_DIAGNOSTICS = 40;
+/** The most of a lead's reason for an amendment that is kept and shown, in characters. */
+const MAX_REASON = 2000;
 
 export const PROGRAM_MEDIA_TYPE = "application/vnd.mandate.program+json";
 
@@ -95,6 +110,12 @@ export const PLAN_TOOLS: ToolSpec[] = [
       "Check a sub-program and, if it fits the envelope, run it to its end and get its result. `base` and `ops` are as for check_program; send every operation again. A sub-program that does not fit is not run, and the diagnostics say what does not fit.",
     input_schema: INPUT as unknown as Value,
   },
+  {
+    name: REQUEST_AMENDMENT,
+    description:
+      "Ask the envelope's owner for a wider envelope, when a sub-program needs more than the envelope allows. `envelope` is the whole new envelope as JSON IR. It holds everything the envelope holds now: every capability, and every budget dimension with at least its amount. It may raise a budget or add a capability. `reason` says why, for the person who decides. The run waits for their decision. Returns whether the envelope was amended, the envelope as it is then, and what is left of it.",
+    input_schema: { type: "object", properties: { envelope: { type: "object" }, reason: { type: "string" } }, required: ["envelope", "reason"], additionalProperties: false } as unknown as Value,
+  },
 ];
 
 /** The hash of the module the runtime starts for sub-program `n`: the `base` of the lead's patch. */
@@ -105,9 +126,10 @@ export function baseOf(parent: string, n: number): string {
 /**
  * What a lead is told about sub-programs, after its inputs. It says the same on every run of the loop, since a
  * resumed loop is replayed from its first message: what changes while the run goes on, the next base and what is
- * left of the envelope, comes with each tool result.
+ * left of the envelope, comes with each tool result. `envelope` is the envelope as it was when the lead was first
+ * sent, which an amendment does not change for that lead; an amendment's answer gives the envelope as it is then.
  */
-export function planBrief(parent: Program): string {
+export function planBrief(parent: Program, envelope: Envelope): string {
   const by = (kind: string): string[] => Object.keys(parent.defs).filter((n) => parent.defs[n]!.kind === kind).sort();
   const names = (["agent", "capability", "type", "fn", "contract", "effect"] as const).flatMap((k) => (by(k).length ? [`  ${k}: ${by(k).join(", ")}`] : []));
   return [
@@ -120,6 +142,8 @@ export function planBrief(parent: Program): string {
     `- It may use every definition of ${parent.module}${names.length ? ":" : "."}`,
     ...names,
     `- ${CHECK_PROGRAM} checks and runs nothing. ${SUBMIT_PROGRAM} checks, and a sub-program that fits runs to its end; you get its result. One sub-program runs at a time; put parallel work inside it, in par and map.`,
+    `- The envelope as you start, as JSON IR: ${canonical(envelope as unknown as Value)}`,
+    `- ${REQUEST_AMENDMENT} asks the envelope's owner for a wider one, when a sub-program needs more than it allows. Send the whole new envelope. It keeps everything this one holds and may raise a budget or add a capability. A person decides, and the run waits for them.`,
   ].join("\n");
 }
 
@@ -139,6 +163,8 @@ export interface CheckFailed {
 /** Checks a lead's sub-program in at most `ms` milliseconds. Whatever it answers that is no check admits nothing. */
 export interface ProgramChecker {
   check(input: SubprogramInput, ms: number): Promise<SubprogramCheck | OverLimit | CheckFailed>;
+  /** Checks an amendment of the envelope and the package it makes, within the same limits. A checker without it checks none (`no_checker`). */
+  amendment?(input: AmendedInput, ms: number): Promise<AmendedCheck | OverLimit | CheckFailed>;
   close?(): Promise<void>;
 }
 
@@ -161,12 +187,21 @@ export class WorkerChecker implements ProgramChecker {
     readonly maxMb: number = CHECK_MB,
   ) {}
 
-  async check(input: SubprogramInput, ms: number): Promise<SubprogramCheck | OverLimit | CheckFailed> {
+  check(input: SubprogramInput, ms: number): Promise<SubprogramCheck | OverLimit | CheckFailed> {
+    return this.ask<SubprogramCheck>({ input }, ms);
+  }
+
+  amendment(input: AmendedInput, ms: number): Promise<AmendedCheck | OverLimit | CheckFailed> {
+    return this.ask<AmendedCheck>({ amendment: input }, ms);
+  }
+
+  /** One check in the worker: `what` says which, and the answer is its result. */
+  private async ask<T>(what: { input: SubprogramInput } | { amendment: AmendedInput }, ms: number): Promise<T | OverLimit | CheckFailed> {
     if (!existsSync(this.entry)) throw new Violation("no_checker", `The sub-program checker's worker is not at ${this.entry}.`);
     const worker = this.idle.pop() ?? new Worker(this.entry, { resourceLimits: { maxOldGenerationSizeMb: this.maxMb } });
     worker.unref();
     const id = ++this.seq;
-    return new Promise<SubprogramCheck | OverLimit | CheckFailed>((done) => {
+    return new Promise<T | OverLimit | CheckFailed>((done) => {
       const end = (keep: boolean): void => {
         clearTimeout(timer);
         worker.removeAllListeners("message");
@@ -179,7 +214,7 @@ export class WorkerChecker implements ProgramChecker {
         end(false);
         done({ limit: "time", max: ms });
       }, ms);
-      worker.on("message", (m: { id: number; result?: SubprogramCheck; error?: string }) => {
+      worker.on("message", (m: { id: number; result?: T; error?: string }) => {
         if (m.id !== id) return;
         end(true);
         done(m.result ?? { failed: m.error ?? "the checker gave no result" });
@@ -192,7 +227,7 @@ export class WorkerChecker implements ProgramChecker {
         end(false);
         done({ failed: `the checker's worker ended with code ${code}` });
       });
-      worker.postMessage({ id, input });
+      worker.postMessage({ id, ...what });
     });
   }
 
@@ -236,22 +271,25 @@ export function overLimit(ops: unknown): OverLimit | undefined {
   return over;
 }
 
-function limitDiagnostic(o: OverLimit): Value {
+/** `sent` is what the lead wrote: the operations of a sub-program, or the envelope of an amendment. */
+function limitDiagnostic(o: OverLimit, sent: "operations" | "envelope" = "operations"): Value {
+  const The = sent === "operations" ? "The operations are" : "The envelope is";
   const what =
     o.limit === "time"
       ? `The check took longer than ${o.max} ms and was stopped.`
       : o.limit === "memory"
         ? `The check needed more than ${o.max} MB and was stopped.`
         : o.limit === "size"
-          ? `The operations are larger than ${o.max} bytes.`
+          ? `${The} larger than ${o.max} bytes.`
           : o.limit === "depth"
-            ? `The operations are nested deeper than ${o.max} levels.`
+            ? `${The} nested deeper than ${o.max} levels.`
             : `There are more than ${o.max} operations.`;
-  return { code: "check_limit", severity: "error", message: `${what} Nothing was checked or run. Send a smaller sub-program.`, facts: { limit: o.limit, max: o.max } };
+  return { code: "check_limit", severity: "error", message: `${what} Nothing was checked or run. Send a smaller ${sent === "operations" ? "sub-program" : "envelope"}.`, facts: { limit: o.limit, max: o.max } };
 }
 
-function failedDiagnostic(f: CheckFailed): Value {
-  return { code: "check_failed", severity: "error", message: "The checker failed on this sub-program and checked nothing of it. Nothing was run. Send another sub-program.", facts: { reason: f.failed.slice(0, 200) } };
+function failedDiagnostic(f: CheckFailed, sent: "operations" | "envelope" = "operations"): Value {
+  const it = sent === "operations" ? "sub-program" : "envelope";
+  return { code: "check_failed", severity: "error", message: `The checker failed on this ${it} and checked nothing of it. Nothing was ${sent === "operations" ? "run" : "asked"}. Send another ${it}.`, facts: { reason: f.failed.slice(0, 200) } };
 }
 
 // ── what the interpreters of one run share ──────────────────────────────
@@ -297,9 +335,12 @@ export interface PlanHost {
   artifacts: ArtifactStore;
   scope: ArtifactScope;
   now(): number;
-  /** The package's program as it was packaged, and the modules packaged with it. */
+  /** The program of the run's package now, as it was packaged, and the modules packaged with it. */
   parent: Program;
   modules: Modules;
+  /** The run's package now, and its lock: an amended package keeps the lock. */
+  package: string;
+  lock: Lock;
   /** The run's workflow, whose envelope bounds every sub-program. */
   workflow: string;
   /** The `plan` node, as the path the lead's delegation runs under. */
@@ -321,13 +362,86 @@ export interface PlanHost {
 
 type Answer = { content: string; is_error?: boolean };
 
-/** Answers the `check_program` and `submit_program` calls of one lead. */
+/** Answers the `check_program`, `submit_program` and `request_amendment` calls of one lead. */
 export class Planner {
   constructor(private readonly h: PlanHost) {}
 
-  /** One call of `check_program` or `submit_program`, as the step `id` of the lead's delegation. */
+  /** One call of a lead's tool, as the step `id` of the lead's delegation. */
   async call(id: string, name: string, input: Record<string, unknown>, label: string): Promise<Answer> {
-    return shown(await this.h.step(id, { tool: name, input: input as Value }, async () => ({ ok: await this.answer(id, name, input), cost: {} }), label));
+    const answer = (): Promise<Value> => (name === REQUEST_AMENDMENT ? this.amendment(id, input) : this.answer(id, name, input));
+    return shown(await this.h.step(id, { tool: name, input: input as Value }, async () => ({ ok: await answer(), cost: {} }), label));
+  }
+
+  /**
+   * `request_amendment(envelope, reason)` at the step `step` (spec/envelope.md "Amendments", N04).
+   *
+   * The new envelope is checked within the limits of every check (N10): the run's program with it in place of its
+   * workflow's own passes the compiler's checks, takes nothing away from the envelope (E1709), and makes a package
+   * the runtime would start. One that does not is refused here with the diagnostics, and nobody is asked.
+   *
+   * One that does is a new package. It is stored, `amendment_requested` is written, and the run waits for a member
+   * of the envelope's `owner` role, whose signed decision names the new package hash. The step waits with it: a
+   * resumed run comes back here, finds the wait, and checks nothing again. When the decision is there the lead is
+   * told: the envelope was amended and the run is under the new package, or it was declined, or the wait ended
+   * unanswered, and the envelope is as it was.
+   */
+  private async amendment(step: string, input: Record<string, unknown>): Promise<Value> {
+    const h = this.h;
+    const id = `${step}/amendment`;
+    const wf = h.parent.defs[h.workflow];
+    const now = wf?.kind === "workflow" ? wf.envelope : undefined;
+    if (!now) throw new Violation("unsupported", `${h.workflow} has no envelope to amend.`);
+    const told = async (): Promise<Value> => {
+      const number = (await h.journal.admissions(h.runId, h.plan)).length + 1;
+      const room = await this.room();
+      return { envelope: now as unknown as Value, number, base: baseOf(h.parent.module, number), room: { left: room.left, ...(room.time_left_ms !== undefined ? { time_left_ms: room.time_left_ms } : {}), writes_in_flight: room.writes.map(showCap) } };
+    };
+    let wait: CommandRow | undefined = await h.journal.command(h.runId, id);
+    if (!wait) {
+      const refuse = async (ds: Value[]): Promise<Value> => ({ amended: false, ...((await told()) as object), ...listed(ds), $error: true });
+      const over = overLimit(input["envelope"]);
+      if (!over && !h.checker.amendment) throw new Violation("no_checker", "This runtime's checker checks no amendments.");
+      const checked = over ?? (await h.checker.amendment!({ parent: h.parent, modules: h.modules, workflow: h.workflow, envelope: input["envelope"], lock: h.lock }, h.checkMs));
+      if ("limit" in checked) return refuse([limitDiagnostic(checked, "envelope")]);
+      if ("failed" in checked) return refuse([failedDiagnostic(checked, "envelope")]);
+      const diagnostics = [...checked.diagnostics.filter((d) => d.severity === "error"), ...checked.diagnostics.filter((d) => d.severity !== "error")].map(forLead);
+      const to = checked.program?.defs[h.workflow];
+      if (!checked.ok || !checked.program || !checked.package || !checked.diff || to?.kind !== "workflow" || !to.envelope) return refuse(diagnostics);
+      if (checked.package === h.package) {
+        return refuse([{ code: "unchanged", severity: "error", message: "This is the envelope as it is: the amendment changes nothing, and nobody was asked.", facts: { package: h.package } }]);
+      }
+      const diff = digest("request", checked.diff as unknown as Value);
+      const request = {
+        plan: h.plan,
+        workflow: h.workflow,
+        lead: h.lead,
+        from: h.package,
+        package: checked.package,
+        role: now.owner ?? "",
+        // A lead's words, for the person who decides: shown as a model's writing, and cut where a person would stop reading.
+        reason: String(input["reason"] ?? "").slice(0, MAX_REASON),
+        envelope: to.envelope as unknown as Value,
+        diff,
+        changes: (checked.changes ?? []) as unknown as Value,
+        // The owner has until the run's own deadline, when its envelope names a time.
+        deadline: h.deadline ?? null,
+      };
+      wait = await h.journal.openAmendment(
+        h.runId,
+        h.fence,
+        { id, digest: digest("request", { kind: "amendment", request }) },
+        request,
+        { hash: checked.package, program: checked.program as unknown as Value, lock: h.lock as unknown as Value, modules: h.modules as unknown as Value },
+        { plan: h.plan, step, lead: h.lead, from: h.package, package: checked.package, diff },
+      );
+    }
+    // The request as first recorded: a resumed worker must not move its deadline.
+    if (wait.state === "waiting") throw new Suspend({ kind: "amendment", command: id, request: wait.result });
+    const decided = isObj(wait.result) ? wait.result : {};
+    if (wait.state === "succeeded" && decided["approved"] === true) return { amended: true, package: decided["package"] ?? null, ...((await told()) as object) };
+    // Declined by a person, or ended unanswered: past its deadline, or because another amendment was approved first.
+    const error = isObj(wait.error) && Array.isArray(wait.error["args"]) ? wait.error["args"][0] : undefined;
+    return { amended: false, declined: { reason: wait.state === "succeeded" ? "declined" : String(error ?? "declined"), by: decided["by"] ?? null }, ...((await told()) as object), $error: true };
   }
 
   /**

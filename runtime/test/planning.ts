@@ -6,9 +6,15 @@
 import { load, type Program } from "@mandate/compiler";
 import { expect } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
-import { baseOf } from "../src/plan.js";
-import { SimChat, toolUse, type SimTurn } from "../src/sim.js";
+import { shownPackage, signDecision } from "../src/decisions.js";
+import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
+import type { RunRow } from "../src/journal.js";
+import { baseOf, type ProgramChecker } from "../src/plan.js";
+import type { RuntimeOptions } from "../src/runtime.js";
+import { MxcAdapter } from "../src/sandbox.js";
+import { SimChat, SimSandboxHost, toolUse, type SimModel, type SimTool, type SimTurn } from "../src/sim.js";
 import type { Obj, Value } from "../src/values.js";
+import { world, type World } from "./helpers.js";
 
 export const MODULE = "test.plan";
 
@@ -51,6 +57,62 @@ workflow W(items: List<Item>) -> Inferred<Text>
     owner   platform_lead
     caps    RepoRead, SrcWrite, ModelStd, Merge
     budget  ${o.budget ?? "{ tokens: 200k, steps: 400, agents: 12 }"}${o.spawn ? `\n    spawn   ${o.spawn}` : ""}${o.approve ? `\n    approve ${o.approve}` : ""}
+  }
+{
+${o.body ?? "  plan Lead.finish(items) within envelope"}
+}
+`;
+
+/**
+ * A 0.4 program over two components the release manager owns, with a contract a change to one is verified against:
+ * what a change set needs. A test gives the envelope's budget and the workflow's body where they matter.
+ */
+export const landing = (o: { budget?: string; body?: string } = {}): string => `mandate @ 0.4
+
+module ${MODULE} @ 0.1
+
+use std.{component, fs, git, model}
+
+role platform_lead   "Platform lead"
+role release_manager "Release manager"
+
+type Item = { name: Text }
+type Change = { files: List<Text> }
+
+contract ChangeAccepted(change: Change) {
+  accept listed "The change names its files" by static len(change.files) >= 1
+}
+
+component left {
+  repo  "acme/left"
+  root  "/work/left"
+  lang  ts
+  owner role "release_manager"
+}
+
+component right {
+  repo  "acme/right"
+  root  "/work/right"
+  lang  ts
+  owner role "release_manager"
+}
+
+capability Repos    = component.repo(left, right)
+capability RepoRead = fs.read("/work")
+capability ModelStd = model.infer(tier: standard)
+
+agent Lead {
+  role   "Plans what is left."
+  caps   RepoRead, ModelStd
+  budget { tokens: 60k, steps: 30 }
+  skill finish(items: List<Item>) -> Inferred<Text> ! {Fs.Read, Model}
+}
+
+workflow W(items: List<Item>) -> Inferred<Text>
+  envelope {
+    owner   platform_lead
+    caps    RepoRead, ModelStd, Repos
+    budget  ${o.budget ?? "{ tokens: 200k, steps: 400, agents: 12 }"}
   }
 {
 ${o.body ?? "  plan Lead.finish(items) within envelope"}
@@ -122,4 +184,70 @@ export function leadChat(lead: Turn[], worker: (req: TurnRequest) => SimTurn | P
     return typeof turn === "function" ? turn(req) : turn;
   });
   return { chat, told };
+}
+
+// ── the people and the model ────────────────────────────────────────────
+
+export interface Planned extends World {
+  chat: SimChat;
+  host: SimSandboxHost;
+  alice: EvidenceSigner;
+  bob: EvidenceSigner;
+  /** What each of the lead's tool calls answered, in order. */
+  told: Obj[];
+}
+
+/**
+ * The program on a runtime where Alice, the platform lead, has approved its envelope, and Bob is the release
+ * manager. `lead` is the lead's turns in order; a worker finishes at once, saying which item it fixed.
+ */
+export async function planned(checker: ProgramChecker, lead: Turn[], o: { src?: string; worker?: (req: TurnRequest) => SimTurn | Promise<SimTurn>; plan?: RuntimeOptions["plan"]; tools?: SimTool[]; model?: SimModel } = {}): Promise<Planned> {
+  const alice = EvidenceSigner.generate();
+  const bob = EvidenceSigner.generate();
+  const lock = { modules: {}, members: { alice: { keys: [alice.keyId] }, bob: { keys: [bob.keyId] } }, roles: { platform_lead: ["alice"], release_manager: ["bob"] } };
+  const w = await world(o.src ?? program(), { lock, decisions: { keys: new TrustedKeys([alice.publicKey, bob.publicKey]) }, plan: o.plan ?? { checker }, ...(o.tools ? { tools: o.tools } : {}), ...(o.model ? { model: o.model } : {}) });
+  const host = new SimSandboxHost();
+  const { chat, told } = leadChat(lead, o.worker);
+  w.adapters.loop = { chat, sandbox: new MxcAdapter({ host, schemaVersion: "0.8.0", modelEndpoints: {}, modelsInControlPlane: true }) };
+  await w.rt.approveEnvelope(w.pkg, signDecision(alice, shownPackage(w.pkg.hash, "platform_lead"), { kind: "envelope", member: "alice", at: new Date(w.adapters.clock.now()) }));
+  return { ...w, chat, host, alice, bob, told };
+}
+
+export const ITEMS: Obj[] = [{ name: "a" }, { name: "b" }];
+
+export const run = (w: World, runId: string, o: Partial<Parameters<World["rt"]["startRun"]>[0]> = {}): Promise<RunRow> => w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { items: ITEMS }, runId, ...o });
+
+export const events = async (w: World, runId: string, type: string): Promise<Obj[]> => (await w.rt.journal.events(runId)).filter((e) => e.type === type).map((e) => e.data as Obj);
+
+/** The diagnostics a tool call answered with, as code, path and facts. */
+export const refusals = (answer: Obj | undefined): unknown[] => ((answer?.["diagnostics"] ?? []) as Obj[]).filter((d) => d["severity"] === "error").map((d) => [d["code"], d["path"] ?? null, d["facts"] ?? null]);
+
+export const state = (r: RunRow): string => `${r.state} ${JSON.stringify(r.error ?? r.attention ?? r.waiting ?? null)}`;
+
+export async function sign(w: Planned, runId: string, who: "alice" | "bob", kind: "approve" | "decline") {
+  return signDecision(w[who], await w.rt.shown(runId, "wait"), { kind, member: who, at: new Date(w.adapters.clock.now()) });
+}
+let n = 0;
+export const msg = (): { sender: string; messageId: string } => ({ sender: "test", messageId: `m${++n}` });
+
+/** A workflow whose two branches each run a lead. */
+export const BRANCHES = `  par {\n    one = plan Lead.finish(items) within envelope\n    two = plan Lead.finish(items) within envelope\n  }\n  one`;
+export const ONE = "/defs/W/body/0/branches/one";
+export const TWO = "/defs/W/body/0/branches/two";
+
+/**
+ * Plays the leads of a run by where each one runs: `turns` gives each lead's turns in order, under a prefix of
+ * its command. Returns what each lead's tool calls answered. Any other agent is a worker.
+ */
+export function leads(w: Planned, turns: Record<string, Turn[]>, worker: (req: TurnRequest) => SimTurn | Promise<SimTurn> = fixed): Record<string, Obj[]> {
+  const told: Record<string, Obj[]> = Object.fromEntries(Object.keys(turns).map((at) => [at, []]));
+  w.chat["script" as never] = (async (req: TurnRequest) => {
+    if (req.agent !== "Lead") return worker(req);
+    const at = Object.keys(turns).find((prefix) => req.commandId.startsWith(prefix))!;
+    const answer = answered(req);
+    if (answer) told[at]!.push(answer);
+    const turn = turns[at]!.shift()!;
+    return typeof turn === "function" ? turn(req) : turn;
+  }) as never;
+  return told;
 }

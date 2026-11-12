@@ -17,7 +17,7 @@ import { decisionId, type SignedDecision, type StoredDecision } from "./decision
 import type { EvidenceRecord } from "./evidence.js";
 import { num, type Db, type Row, type Tx } from "./db.js";
 import { Cancelled, Fault, StaleFence, Violation } from "./signals.js";
-import type { Value } from "./values.js";
+import type { Obj, Value } from "./values.js";
 
 export type RunState = "accepted" | "running" | "waiting" | "cancelling" | "attention_required" | "succeeded" | "failed" | "cancelled";
 
@@ -79,6 +79,12 @@ export interface CommandRow {
   payload_purged: boolean;
   /** How often the command was throttled (§8.6); while it waits to be sent again, its error is the Throttled fault. */
   throttled: number;
+  /**
+   * The run's package when the command was first recorded (spec/envelope.md "Amendments"). A command stands under
+   * that package for good: what is derived for it again, in a resumed run or a replay, is derived under it. Absent
+   * on a row written before amendments were recorded, whose run had one package.
+   */
+  package: string | null;
 }
 
 export type ActionState = "prepared" | "dispatched" | "confirmed" | "rejected" | "unknown_outcome" | "cancelled" | "would_apply";
@@ -335,10 +341,11 @@ export class Journal {
         dims = Object.fromEntries(Object.entries(dims).filter(([dim]) => !(dim in parent)));
       }
       await this.reserve(tx, runId, cmd.id, dims, inside);
+      // The package is written with the row and never again: a command sent again keeps the one it was first recorded under.
       await tx.query(
-        `insert into commands (run_id, command_id, kind, state, fence, request_digest, label, inside) values ($1, $2, $3, 'dispatched', $4, $5, $6, $7)
+        `insert into commands (run_id, command_id, kind, state, fence, request_digest, label, inside, package) values ($1, $2, $3, 'dispatched', $4, $5, $6, $7, $8)
          on conflict (run_id, command_id) do update set state = 'dispatched', fence = $4`,
-        [runId, cmd.id, cmd.kind, fence, cmd.digest, cmd.label ?? null, inside ?? null],
+        [runId, cmd.id, cmd.kind, fence, cmd.digest, cmd.label ?? null, inside ?? null, run.package_hash],
       );
       await this.event(tx, runId, "command_dispatched", { command: cmd.id, kind: cmd.kind, reserved: costDims(reserve) });
       return undefined;
@@ -509,19 +516,69 @@ export class Journal {
   }
 
   /** Opens a wait for a person (input or decision); returns the earlier row if it exists. */
-  async openWait(runId: string, fence: number, cmd: { id: string; kind: string; digest: string }, request: Value): Promise<CommandRow> {
+  async openWait(runId: string, fence: number, cmd: { id: string; kind: string; digest: string }, request: Value, before?: (tx: Tx, run: RunRow) => Promise<void>): Promise<CommandRow> {
     return this.db.tx(async (tx) => {
-      await this.lock(tx, runId, fence);
+      const run = await this.lock(tx, runId, fence);
       const [row] = await tx.query<Row>("select * from commands where run_id = $1 and command_id = $2", [runId, cmd.id]);
       if (row) return toCommand(row);
+      // What belongs to the wait is written with it, or not at all.
+      await before?.(tx, run);
       await tx.query(
-        "insert into commands (run_id, command_id, kind, state, fence, request_digest, result) values ($1, $2, $3, 'waiting', $4, $5, $6)",
-        [runId, cmd.id, cmd.kind, fence, cmd.digest, json(request)],
+        "insert into commands (run_id, command_id, kind, state, fence, request_digest, result, package) values ($1, $2, $3, 'waiting', $4, $5, $6, $7)",
+        [runId, cmd.id, cmd.kind, fence, cmd.digest, json(request), run.package_hash],
       );
       await this.event(tx, runId, "wait_opened", { command: cmd.id, kind: cmd.kind, request });
       const [created] = await tx.query<Row>("select * from commands where run_id = $1 and command_id = $2", [runId, cmd.id]);
       return toCommand(created!);
     });
+  }
+
+  // ── amendments (spec/envelope.md "Amendments") ────────────────────────
+
+  /**
+   * Opens the wait of an amendment a lead asked for (N04): the package with the new envelope is stored under its
+   * hash, `amendment_requested` is written, and the run waits for a member of its envelope's owner role, all in one
+   * transaction. Once for a wait: a resumed run that comes to it again gets the row as it is.
+   */
+  async openAmendment(runId: string, fence: number, cmd: { id: string; digest: string }, request: Value, pkg: { hash: string; program: Value; lock: Value; modules: Value }, requested: Value): Promise<CommandRow> {
+    return this.openWait(runId, fence, { ...cmd, kind: "amendment" }, request, async (tx, run) => {
+      if (run.cancel_requested) throw new Cancelled();
+      await tx.query("insert into packages (package_hash, program, lock, modules) values ($1, $2, $3, $4) on conflict (package_hash) do nothing", [pkg.hash, json(pkg.program), json(pkg.lock), json(pkg.modules)]);
+      await this.event(tx, runId, "amendment_requested", requested);
+    });
+  }
+
+  /** The packages a run moved between, oldest first, as `package_amended` records them. A run nobody amended has none. */
+  async amendments(runId: string): Promise<Array<{ from: string; to: string }>> {
+    const rows = await this.db.query<Row>("select data from events where run_id = $1 and type = 'package_amended' order by seq", [runId]);
+    return rows.map((r) => ({ from: String((r["data"] as Obj)["from"]), to: String((r["data"] as Obj)["to"]) }));
+  }
+
+  /**
+   * Moves a run to its amended package (INV-02 as 0.4 refines it), inside the transaction of the owner's decision:
+   *
+   * - the run's package is `to`;
+   * - each limit in `limits`, the dimensions the amendment raises, rises to the amount given, and none is lowered
+   *   or added;
+   * - the lease ends, so a worker that drove the run under the old package writes nothing after this (R06);
+   * - every other amendment the run still waits for was asked of the old package, and ends unanswered.
+   *
+   * Returns the limits it replaced and the waits it ended.
+   */
+  async amendRun(tx: Tx, runId: string, wait: string, to: string, limits: Record<string, number>): Promise<{ limits: Record<string, number>; superseded: string[] }> {
+    const before: Record<string, number> = {};
+    for (const [dim, limit] of Object.entries(limits).sort(([a], [b]) => (a < b ? -1 : 1))) {
+      const [b] = await tx.query<Row>("select limit_value from budgets where run_id = $1 and dimension = $2", [runId, dim]);
+      if (!b || num(b["limit_value"]) >= limit) continue;
+      before[dim] = num(b["limit_value"]);
+      await tx.query("update budgets set limit_value = $3 where run_id = $1 and dimension = $2", [runId, dim, limit]);
+    }
+    await tx.query("update runs set package_hash = $2, fence = fence + 1, updated_at = $3 where run_id = $1", [runId, to, this.now()]);
+    const others = await tx.query<Row>(
+      "update commands set state = 'failed', error = $3 where run_id = $1 and kind = 'amendment' and state = 'waiting' and command_id <> $2 returning command_id",
+      [runId, wait, json({ tag: "Rejected", args: ["superseded"] })],
+    );
+    return { limits: before, superseded: others.map((r) => String(r["command_id"])).sort() };
   }
 
   // ── sub-programs (spec/envelope.md "plan") ────────────────────────────
@@ -575,7 +632,7 @@ export class Journal {
       if (run.cancel_requested) throw new Cancelled();
       const reservation = costDims(budget);
       await this.reserve(tx, runId, a.command, reservation);
-      await tx.query("insert into commands (run_id, command_id, kind, state, fence, request_digest, label) values ($1, $2, 'program', 'dispatched', $3, $4, $5)", [runId, a.command, fence, digest, `sub-program ${a.number}`]);
+      await tx.query("insert into commands (run_id, command_id, kind, state, fence, request_digest, label, package) values ($1, $2, 'program', 'dispatched', $3, $4, $5, $6)", [runId, a.command, fence, digest, `sub-program ${a.number}`, run.package_hash]);
       await store(tx);
       const admitted = { ...a, reservation };
       await this.event(tx, runId, "program_admitted", admitted as unknown as Value);
@@ -926,6 +983,7 @@ function toCommand(r: Row): CommandRow {
     error: (r["error"] ?? null) as Value,
     payload_purged: Boolean(r["payload_purged"]),
     throttled: num(r["throttled"]),
+    package: (r["package"] ?? null) as string | null,
   };
 }
 

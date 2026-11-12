@@ -159,10 +159,20 @@ interface Ctx {
    */
   workflow: string;
   /**
-   * Inside a map's body, for one item (spec/envelope.md "map"): `avail` is the context with the map's `with caps`
-   * in place of the kinds it names, and `handed` is what the map hands each delegation of the body.
+   * Inside a map's body, for one item (spec/envelope.md "map"): `given` holds the `with caps` of each map around
+   * it, outermost first, each of which stands in the context in place of the kinds it names; `handed` is what the
+   * maps hand each delegation of the body.
    */
-  item?: { avail: CapVal[]; handed: CapVal[] };
+  item?: { given: CapVal[][]; handed: CapVal[] };
+}
+
+/**
+ * A package a run stands under, or stood under before an amendment (spec/envelope.md "Amendments"): its hash, and
+ * the envelope the run's workflow has in it.
+ */
+export interface Epoch {
+  hash: string;
+  envelope?: Envelope;
 }
 
 /** How one item of a map ended: with its value, with a fault, or with something that is not the item's to keep. */
@@ -221,10 +231,17 @@ export interface InterpOptions {
   durableTimers?: boolean;
   /**
    * What a `plan` needs (spec/envelope.md "plan"): the package's program and modules as they were packaged, which
-   * a sub-program is checked and linked against, the checker, how long a check may take, and when the run started,
-   * which with the envelope's `time` is its deadline.
+   * a sub-program is checked and linked against, the package's lock, which an amended package keeps, the checker,
+   * how long a check may take, and when the run started, which with the envelope's `time` is its deadline.
    */
-  plan?: { parent: Program; modules: Modules; checker: ProgramChecker; checkMs: number; startedAt: number };
+  plan?: { parent: Program; modules: Modules; lock: Lock; checker: ProgramChecker; checkMs: number; startedAt: number };
+  /**
+   * The packages the run had before its envelope was amended, oldest first (spec/envelope.md "Amendments"). A
+   * command the journal holds stands under the package it was first recorded under: its grant, its action's digest
+   * and who approves its effect are derived under that one again, so a resumed run and a replay find what the
+   * journal recorded. Absent or empty for a run nobody amended.
+   */
+  earlier?: Epoch[];
   /**
    * Set for the interpreter of a sub-program: the command it was admitted as, under which its commands run and
    * from whose reservation they draw, and the `plan` node it belongs to, which names its effects' operations (N07).
@@ -246,10 +263,54 @@ const RUNTIME_HANDLER = "mandate-runtime@0.2";
 export class Interpreter {
   private readonly defs: Record<string, Def>;
   private readonly shared: Shared;
+  /**
+   * Whether a lead may amend the run's envelope: the run's own interpreter, of a program with a `plan`. A
+   * sub-program's interpreter is given no `plan`, and what `held` guards is reached only under an envelope.
+   */
+  private readonly amendable: boolean;
 
   constructor(private readonly o: InterpOptions) {
     this.defs = o.program.defs;
     this.shared = o.shared ?? new Shared();
+    this.amendable = !!o.plan && Object.keys(leadClasses(o.plan.parent, o.program.defs)).length > 0;
+  }
+
+  /**
+   * The package a command stands under (spec/envelope.md "Amendments"): the one the run had when the command was
+   * first recorded, and for a command the journal has not seen, the run's package now. A run nobody amended has
+   * one package, and nothing is read.
+   */
+  private async under(id: string): Promise<Epoch> {
+    const now: Epoch = { hash: this.o.packageHash, ...(this.o.envelope ? { envelope: this.o.envelope } : {}) };
+    const earlier = this.o.earlier;
+    if (!earlier?.length) return now;
+    const row = await this.o.journal.command(this.o.runId, id);
+    if (!row) return now;
+    // A row without a package was written before amendments were recorded: under the run's first package.
+    const hash = row.package ?? earlier[0]!.hash;
+    return earlier.find((e) => e.hash === hash) ?? now;
+  }
+
+  /**
+   * A check against a number the envelope gives, made before anything is sent, at `id`. An amendment only widens
+   * the envelope (E1709), so what passed before it passes after it; what it refused might not. So in a run a lead
+   * may amend, a refusal is recorded, as the failed command `<id>/refused`, and a resumed run and a replay read it
+   * there: what the envelope refused stays refused, whatever the envelope is now. Any other run records nothing,
+   * and checks again each time, as it always did.
+   */
+  private async held(id: string, check: () => void): Promise<void> {
+    if (!this.amendable) return check();
+    const at = `${id}/refused`;
+    if (this.o.replay || this.o.earlier?.length) {
+      const row = await this.o.journal.command(this.o.runId, at);
+      if (row) return void replayed(row, at);
+    }
+    try {
+      check();
+    } catch (f) {
+      if (!(f instanceof Fault) || this.o.replay) throw f;
+      await this.command(at, "refusal", { refused: f.tag }, undefined, async () => ({ error: { tag: f.tag, args: f.args }, cost: {} }));
+    }
   }
 
   private def(name: string): Def | undefined {
@@ -536,7 +597,12 @@ export class Interpreter {
     // Without `max` the bound is the envelope's `agents`: every item starts a delegation, so no more could run (E1702).
     const bound = e.max ?? this.o.envelope?.budget?.agents;
     if (bound === undefined) throw new Violation("unbounded_map", `The map at ${path} has no 'max' and the run has no envelope (MDT-E1702).`);
-    if (over.length > bound) throw new Fault("Rejected", ["over_limit", { map: path, items: over.length, max: bound }]);
+    const tooLong = (): void => {
+      if (over.length > bound) throw new Fault("Rejected", ["over_limit", { map: path, items: over.length, max: bound }]);
+    };
+    // A bound that is the envelope's `agents` rises with an amendment: a map it refused before stays refused (`held`).
+    if (e.max === undefined) await this.held(path, tooLong);
+    else tooLong();
     const par = Math.max(1, e.par ?? 1);
 
     const outer = this.available(ctx);
@@ -551,7 +617,7 @@ export class Interpreter {
       }
       if (given.length) {
         const kinds = new Set(given.map((g) => g.ctor));
-        item = { ...item, item: { avail: [...outer.filter((c) => !kinds.has(c.ctor)), ...given], handed: [...(ctx.item?.handed ?? []).filter((c) => !kinds.has(c.ctor)), ...given] } };
+        item = { ...item, item: { given: [...(ctx.item?.given ?? []), given], handed: [...(ctx.item?.handed ?? []).filter((c) => !kinds.has(c.ctor)), ...given] } };
       }
       items.push(item);
       writes.push(given.filter((c) => c.write));
@@ -944,6 +1010,7 @@ export class Interpreter {
   private async infer(e: Extract<Expr, { op: "infer" }>, ctx: Ctx, path: string): Promise<Value> {
     const input = await this.expr(e.from, ctx, `${path}/from`);
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
+    // The tier is read from the envelope the run has now. An `infer` records its request, which names no tier.
     const tier = this.tierFor(e.using, ctx);
     const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
     return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.checkedInfer(req), { siblings: ctx.siblings, label: "infer", ...this.limits("infer", tier) });
@@ -1109,6 +1176,8 @@ export class Interpreter {
         now: () => this.o.adapters.clock.now(),
         parent: p.parent,
         modules: p.modules,
+        package: this.o.packageHash,
+        lock: p.lock,
         workflow: ctx.workflow,
         plan: path,
         lead: `${e.agent}.${e.skill}`,
@@ -1153,7 +1222,10 @@ export class Interpreter {
     if (!agent || agent.kind !== "agent") throw new Violation("unknown_agent", `No agent '${agentName}'.`);
     const skill = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill]! : undefined;
     if (!skill) throw new Violation("unknown_skill", `No skill '${agentName}.${e.skill}'.`);
-    const granted = this.grants(agentName, given, ctx);
+    // A delegation the journal holds keeps the grant it was sent with: it is derived under the package it was
+    // recorded under, whatever the envelope is now.
+    const under = await this.under(id);
+    const granted = this.grants(agentName, given, ctx, under);
     const caps = granted.map((c) => (c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor }));
     const budget = e.budget ?? skill.budget ?? agent.budget;
     // Under an envelope every attempt is one of its `agents`: a first attempt, each restart and a degrade fallback
@@ -1189,7 +1261,7 @@ export class Interpreter {
         ...(budget?.spend ? { spend: budget.spend } : {}),
         sandbox,
         program: this.o.program,
-        ...(lead ? { extra: PLAN_TOOLS, brief: planBrief(this.o.plan!.parent) } : {}),
+        ...(lead ? { extra: PLAN_TOOLS, brief: planBrief(this.o.plan!.parent, under.envelope!) } : {}),
       };
       const planner = lead?.planner(
         (cid, req, call, stepLabel) => this.command(cid, "tool", req, undefined, call, { siblings: ctx.siblings, label: stepLabel, within: id, ...(overdue ? { guard: overdue } : {}), ...this.limits("tool", task.tier) }),
@@ -1280,9 +1352,9 @@ export class Interpreter {
    * the map handed that item; a scope chosen at run time is held to that here, since the checker could only hold it
    * to the capability it narrows.
    */
-  private grants(agentName: string, own: CapVal[], ctx: Ctx): CapVal[] {
+  private grants(agentName: string, own: CapVal[], ctx: Ctx, under?: Epoch): CapVal[] {
     const agent = this.def(agentName) as Extract<Def, { kind: "agent" }>;
-    const avail = this.available(ctx);
+    const avail = this.available(ctx, under);
     const inside = (c: CapVal): boolean => avail.some((a) => capCovers(a, c));
     const held = agent.caps.flatMap((c) => this.caps(c));
     let out = held.filter(inside);
@@ -1301,10 +1373,18 @@ export class Interpreter {
 
   /**
    * avail(ctx): the capabilities of the workflow whose body is running, its envelope's when it has one (C2). Inside
-   * a map's body, what the map left of them for the item.
+   * a map's body, what the maps around the item left of them: each map's `with caps` stand in place of the kinds
+   * they name. `under` is the package to read the run's envelope from, when it is not the run's package now: an
+   * amendment replaces that envelope and nothing else, and a sub-program is bounded by its own capabilities.
    */
-  private available(ctx: Ctx): CapVal[] {
-    return ctx.item?.avail ?? workflowBounds(this.workflowDef(ctx.workflow)).caps.flatMap((c) => this.caps(c));
+  private available(ctx: Ctx, under?: Epoch): CapVal[] {
+    const bounds = under?.envelope && !this.o.sub ? (under.envelope.caps ?? []) : workflowBounds(this.workflowDef(ctx.workflow)).caps;
+    let avail = bounds.flatMap((c) => this.caps(c));
+    for (const given of ctx.item?.given ?? []) {
+      const kinds = new Set(given.map((g) => g.ctor));
+      avail = [...avail.filter((c) => !kinds.has(c.ctor)), ...given];
+    }
+    return avail;
   }
 
   /** What a capability expression stands for, over the program's definitions and its linked system model. */
@@ -1574,8 +1654,10 @@ export class Interpreter {
     const evidence = evidenceOf(pos);
     // Evidence is bound to what it checked: an action that would apply other bytes is refused (G01, INV-05).
     if (Object.keys(files).length && !this.o.replay) await this.checkEvidenceFresh(name, files, evidence, component);
+    // An action names the package it was prepared under (N04): the one its `prepare` command was recorded under, so
+    // that an action prepared before an amendment is found again after it, and not prepared and run a second time.
     const actionDigest = digest("action", {
-      package: this.o.packageHash,
+      package: (await this.under(`${path}/prepare`)).hash,
       run: this.o.runId,
       node: path,
       effect: name,
@@ -1651,10 +1733,11 @@ export class Interpreter {
     const mode = this.o.mode ?? "live";
     // What the set lands and why, for its view (doc 9 §3.4, §8.2): recorded with the set in every mode.
     const summary: Obj = { plan: plain(plan), plan_digest: digest("request", plain(plan)), plan_evidence: evidenceOf(plan), order: e.order, changes: (e.changes ?? {}) as Value, approver: e.approver };
-    const setOf = (members: Value[]): { setDigest: string; setKey: string } => {
+    // The set names the package its first member was prepared under, as each member's action does.
+    const setOf = async (members: Value[]): Promise<{ setDigest: string; setKey: string }> => {
       const setDigest = digest("action", {
         changeset: path,
-        package: this.o.packageHash,
+        package: (await this.under(`${path}/members/${e.order[0] ?? ""}/prepare`)).hash,
         run: this.o.runId,
         plan: summary["plan_digest"]!,
         plan_evidence: summary["plan_evidence"]!,
@@ -1676,7 +1759,7 @@ export class Interpreter {
         recorded.push({ component: m, effect: mem.effect, approver: mem.approver ?? (comp?.kind === "component" ? comp.owner : ""), evidence: evidenceOf(pos) });
       }
       if (!this.o.replay) {
-        const { setDigest, setKey } = setOf(recorded.map((r) => ({ component: r["component"]!, effect: r["effect"]! })));
+        const { setDigest, setKey } = await setOf(recorded.map((r) => ({ component: r["component"]!, effect: r["effect"]! })));
         await this.o.journal.prepareChangeset(this.o.runId, this.o.fence, { setKey, commandId: path, setDigest, members: recorded, summary, state: "simulated" });
       }
       return { simulated: true, members: sim };
@@ -1694,7 +1777,7 @@ export class Interpreter {
       members.push({ component: m, effect: mem.effect, approver: mem.approver ?? comp.owner, evidence: evidenceOf(pos), tool: p.tool, ...(p.action ? { action: p.action } : { receipt: p.receipt }) });
     }
     const recorded = (): Value => members.map((m) => ({ component: m.component, effect: m.effect, operation: m.action!.operation_key, action_digest: m.action!.action_digest, approver: m.approver, evidence: m.evidence }));
-    const { setDigest, setKey } = this.o.replay ? { setDigest: "", setKey: "" } : setOf(members.map((m) => ({ component: m.component, effect: m.effect, action: m.action!.action_digest })));
+    const { setDigest, setKey } = this.o.replay ? { setDigest: "", setKey: "" } : await setOf(members.map((m) => ({ component: m.component, effect: m.effect, action: m.action!.action_digest })));
     if (mode === "read_only") {
       // What the set would land: each member prepared and frozen, nothing approved or committed.
       const would: Obj = {};
@@ -1983,7 +2066,9 @@ export class Interpreter {
     // `approve E by r` in the run's envelope (spec/envelope.md): E is authorized only by a decision of role r, never by
     // policy, wherever in the run it happens. The runtime's configuration cannot name another role or hand it to
     // policy; a deadline it sets for the effect still applies, since a deadline only takes authority away.
-    const approve = this.o.envelope?.approve;
+    // The envelope is the one the action was prepared under: an action that waited for its role before an amendment
+    // still waits for that role after it.
+    const approve = (await this.under(`${path}/prepare`)).envelope?.approve;
     const owed = approve && Object.hasOwn(approve, effect) ? approve[effect] : undefined;
     // Who else the program names for this action: an environment's tier, and the approver of a change set's member.
     const named = [
