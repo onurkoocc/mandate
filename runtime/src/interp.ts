@@ -143,6 +143,12 @@ interface Ctx {
   siblings?: Siblings;
   /** Path prefix for the contract or function being evaluated. */
   where: "workflow" | "contract";
+  /**
+   * The workflow whose body this is, through any function it calls and any contract it verifies against. Its
+   * capabilities are the context a delegation is granted from (C2), and its model tiers are a model call's. It is
+   * read from here and never from a command's path, which names where a command stands and not whose authority it has.
+   */
+  workflow: string;
 }
 
 export interface InterpOptions {
@@ -216,7 +222,7 @@ export class Interpreter {
       if (!Object.hasOwn(input, p.name)) throw new Violation("missing_input", `Workflow ${name} needs input '${p.name}'.`);
       vars.set(p.name, input[p.name]!);
     }
-    const ctx: Ctx = { scope: { vars }, where: "workflow" };
+    const ctx: Ctx = { scope: { vars }, where: "workflow", workflow: name };
     let result: Value;
     try {
       result = await this.block(wf.body, ctx, `/defs/${name}/body`);
@@ -226,7 +232,7 @@ export class Interpreter {
     }
     // `ensures e` (§4.6): the workflow's postcondition over its result. A run whose result breaks it does not succeed.
     if (wf.ensures) {
-      const held = truthy(unwrap(await this.expr(wf.ensures, { scope: { vars: new Map([["result", result]]), parent: ctx.scope }, where: "workflow" }, `/defs/${name}/ensures`)));
+      const held = truthy(unwrap(await this.expr(wf.ensures, { ...ctx, scope: { vars: new Map([["result", result]]), parent: ctx.scope } }, `/defs/${name}/ensures`)));
       if (!held) throw new Fault("Rejected", [{ reason: "ensures", workflow: name }]);
     }
     return result;
@@ -247,7 +253,7 @@ export class Interpreter {
     const i = (wf.on ?? []).findIndex((h) => h.event === "budget_exceeded");
     if (i < 0) return this.wait(`/defs/${name}/on/budget_exceeded@${episode}`, "input", { pause: true });
     const vars = new Map<string, Value>(wf.params.map((p) => [p.name, input[p.name] ?? null]));
-    return this.expr(wf.on![i]!.then, { scope: { vars }, where: "workflow" }, `/defs/${name}/on/${i}@${episode}/then`);
+    return this.expr(wf.on![i]!.then, { scope: { vars }, where: "workflow", workflow: name }, `/defs/${name}/on/${i}@${episode}/then`);
   }
 
   // ── statements ────────────────────────────────────────────────────────
@@ -761,7 +767,7 @@ export class Interpreter {
   private async infer(e: Extract<Expr, { op: "infer" }>, ctx: Ctx, path: string): Promise<Value> {
     const input = await this.expr(e.from, ctx, `${path}/from`);
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
-    const tier = this.tierFor(e.using, path);
+    const tier = this.tierFor(e.using, ctx);
     const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
     return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.checkedInfer(req), { siblings: ctx.siblings, label: "infer", ...this.limits("infer", tier) });
   }
@@ -777,15 +783,13 @@ export class Interpreter {
 
   /**
    * The model tier a model call runs under: the capability named by `using`,
-   * else the only tier among the enclosing definition's model capabilities,
+   * else the only tier among the workflow's model capabilities,
    * else the only tier the program names. The lock file maps it to a model.
    */
-  private tierFor(using: Expr | undefined, path: string): string | undefined {
+  private tierFor(using: Expr | undefined, ctx: Ctx): string | undefined {
     const tierOf = (e: Expr): string | undefined => this.caps(e).find((c) => c.tier)?.tier;
     if (using) return tierOf(using);
-    const def = this.def(path.split("/")[2]!);
-    const caps = def?.kind === "workflow" ? workflowBounds(def).caps : def?.kind === "agent" ? def.caps : [];
-    const own = [...new Set(caps.map(tierOf).filter((t): t is string => !!t))];
+    const own = [...new Set(this.available(ctx).flatMap((c) => (c.tier ? [c.tier] : [])))];
     if (own.length === 1) return own[0];
     const all = [...modelTiers(this.o.program)];
     return all.length === 1 ? all[0] : undefined;
@@ -891,7 +895,7 @@ export class Interpreter {
     if (!agent || agent.kind !== "agent") throw new Violation("unknown_agent", `No agent '${agentName}'.`);
     const skill = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill]! : undefined;
     if (!skill) throw new Violation("unknown_skill", `No skill '${agentName}.${e.skill}'.`);
-    const granted = this.grants(agentName, e.caps ?? [], id);
+    const granted = this.grants(agentName, e.caps ?? [], ctx);
     const caps = granted.map((c) => (c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor }));
     const budget = e.budget ?? skill.budget ?? agent.budget;
     // Under an envelope every attempt is one of its `agents`: a first attempt, each restart and a degrade fallback
@@ -1005,12 +1009,10 @@ export class Interpreter {
    * An agent capability is in avail(ctx) when one of the workflow's (its envelope's, when it has one) covers it, as the compiler reads it
    * (capCovers): its scope by segment after `.` and `..`, and no higher data class, other tier or wider arguments.
    */
-  private grants(agentName: string, withCaps: Expr[], path: string): CapVal[] {
+  private grants(agentName: string, withCaps: Expr[], ctx: Ctx): CapVal[] {
     const agent = this.def(agentName) as Extract<Def, { kind: "agent" }>;
-    const wfName = path.split("/")[2]!;
-    const wf = this.def(wfName);
-    const avail = wf?.kind === "workflow" ? workflowBounds(wf).caps.flatMap((c) => this.caps(c)) : undefined;
-    const inside = (c: CapVal): boolean => !avail || avail.some((a) => capCovers(a, c));
+    const avail = this.available(ctx);
+    const inside = (c: CapVal): boolean => avail.some((a) => capCovers(a, c));
     let out = agent.caps.flatMap((c) => this.caps(c)).filter(inside);
     if (withCaps.length) {
       const given = withCaps.flatMap((c) => this.caps(c));
@@ -1019,6 +1021,11 @@ export class Interpreter {
     }
     const key = (c: CapVal): string => JSON.stringify(c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor });
     return out.sort((a, b) => (key(a) < key(b) ? -1 : 1));
+  }
+
+  /** avail(ctx): the capabilities of the workflow whose body is running, its envelope's when it has one (C2). */
+  private available(ctx: Ctx): CapVal[] {
+    return workflowBounds(this.workflowDef(ctx.workflow)).caps.flatMap((c) => this.caps(c));
   }
 
   /** What a capability expression stands for, over the program's definitions and its linked system model. */
@@ -1035,7 +1042,7 @@ export class Interpreter {
     if (!c || c.kind !== "contract") throw new Violation("unknown_contract", `No contract '${e.contract}'.`);
     const vars = new Map<string, Value>();
     c.params.forEach((p, i) => vars.set(p.name, pos[i] ?? null));
-    const cctx: Ctx = { scope: { vars }, where: "contract" };
+    const cctx: Ctx = { scope: { vars }, where: "contract", workflow: ctx.workflow };
     const unmet: string[] = [];
     const evidence: string[] = [];
     for (let i = 0; i < (c.require ?? []).length; i++) {
