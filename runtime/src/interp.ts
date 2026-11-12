@@ -60,6 +60,7 @@ import {
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
+import { needsPerson, partMethod } from "./criteria.js";
 import { approvalProblem, type StoredDecision } from "./decisions.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
 import type { RateLimiter } from "./ratelimit.js";
@@ -204,6 +205,8 @@ export interface InterpOptions {
   trusted: TrustedKeys;
   /** Verifier keys whose check attestations count (P2-11). */
   verifiers?: TrustedKeys;
+  /** The methods checked in the runtime's process, whose evidence carries no verifier attestation (RuntimeOptions). */
+  inProcess?: ReadonlySet<string>;
   /**
    * What a person's approval is checked against (spec/envelope.md "Signed decisions"): the members' public keys, the
    * package's lock, and whether an approval must rest on a signed decision (signed mode, and every 0.4 package).
@@ -1442,17 +1445,16 @@ export class Interpreter {
       return ok;
     }
     let passed: boolean;
-    let method: string;
+    // The method the record names, as the checks of evidence read it from the program (criteria.ts).
+    const method = partMethod(v);
     let detail: Value = null;
     let files: Obj | undefined;
     let producer: Value = { kind: "runtime", handler: RUNTIME_HANDLER };
     let outputs: Value[] = [];
     if ("static" in v) {
       // A static criterion the compiler could not prove is checked here (W0601).
-      method = "static";
       passed = truthy(unwrap(await this.expr(v.static, ctx, `${path}/static`)));
     } else if (needsPerson(v)) {
-      method = "human.approve";
       const r = await this.approval((v as { call: Extract<Expr, { op: "call" }> }).call, contract, name, ctx, `${path}/call`, root);
       passed = r["approved"] === true;
       // A signed decision is named by its digest, with the member and the key that signed it (spec/envelope.md).
@@ -1461,7 +1463,6 @@ export class Interpreter {
       producer = { kind: "person", by: r["by"] ?? null, role: r["role"] ?? null, via: "DecideAction", ...signed };
     } else {
       const call = v.call;
-      method = call.op === "call" ? (calleePath(call.callee) ?? "call") : "call";
       // Verifier options such as `review(model: standard, isolated)` name
       // settings, not variables: an unbound bare name is passed as its text.
       const symbolic = call.op === "call" ? call.args.map((a) => (a.value.op === "var" && this.isModulePath(a.value, ctx) ? { ...a, value: { op: "text" as const, value: a.value.name } } : a)) : [];
@@ -2167,11 +2168,6 @@ export class SiblingStopped extends Error {
   constructor() {
     super("stopped: a sibling branch failed");
   }
-}
-
-/** A criterion satisfied by a person: `human.approve(…)` (§10). */
-function needsPerson(v: Verifier): boolean {
-  return "call" in v && v.call.op === "call" && calleePath(v.call.callee) === "human.approve";
 }
 
 const HUMAN_RANK = 3;

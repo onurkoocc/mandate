@@ -84,6 +84,12 @@ export interface RuntimeOptions {
    */
   trustedVerifiers?: TrustedKeys;
   /**
+   * The methods the configuration checks in this process even with a verifier process of its own (boundary and
+   * onboarding checks; control.ts `inProcessMethods`). With trusted verifier keys, the evidence of every other
+   * method a verifier call makes must carry a verifier attestation (spec/runtime.md "A verifier of its own").
+   */
+  inProcessMethods?: readonly string[];
+  /**
    * A run's timers (a restart's backoff) are kept by its scheduler: the run
    * waits, and `tick` resumes it when the time comes. A Temporal worker's
    * runtime needs this; without it, the worker sleeps through the wait.
@@ -140,6 +146,8 @@ export class Runtime {
   readonly signer: EvidenceSigner;
   readonly trusted: TrustedKeys;
   readonly verifiers: TrustedKeys;
+  /** The methods checked in this process, whose evidence carries no verifier attestation. */
+  readonly inProcess: ReadonlySet<string>;
   readonly durableTimers: boolean;
   readonly limiter: RateLimiter | undefined;
   readonly decisionMode: "signed" | "unsigned";
@@ -163,6 +171,7 @@ export class Runtime {
     this.signer = options.signer ?? EvidenceSigner.generate();
     this.trusted = new TrustedKeys([this.signer.publicKey, ...(options.trustedKeys ?? [])]);
     this.verifiers = options.trustedVerifiers ?? new TrustedKeys();
+    this.inProcess = new Set(options.inProcessMethods ?? []);
     this.durableTimers = options.durableTimers ?? false;
     this.limiter = options.rateLimits && Object.keys(options.rateLimits).length ? new RateLimiter(db, options.rateLimits, () => adapters.clock.now()) : undefined;
     this.decisionMode = options.decisions?.mode ?? "signed";
@@ -552,6 +561,7 @@ export class Runtime {
       signer: this.signer,
       trusted: this.trusted,
       verifiers: this.verifiers,
+      inProcess: this.inProcess,
       ...(isObj(run.manifest) && isObj(run.manifest["components"] ?? null) ? { workspace: run.manifest["components"] as unknown as RunComponents } : {}),
       ...(isObj(run.manifest) && typeof run.manifest["mode"] === "string" ? { mode: run.manifest["mode"] as RunMode } : {}),
       replay,

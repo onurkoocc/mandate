@@ -42,6 +42,12 @@ import { isObj, plain, type Value } from "./values.js";
 
 export const BOUNDARY_HANDLER = "mandate-boundary-verifier@0.3";
 
+/**
+ * The methods `BoundaryVerifier` answers itself, in the runtime's process (they need the run's working copies);
+ * it passes every other method to the verifier inside it. Their evidence carries no verifier attestation.
+ */
+export const BOUNDARY_METHODS: readonly string[] = ["test.suite_each", "test.contract", "test.integration", "test.ci", "test.planned"];
+
 /** Directories linked, not copied, into a test copy, and readable where they are: dependencies. */
 export const LINKED = ["node_modules", ".venv"];
 
@@ -137,7 +143,7 @@ export class BoundaryVerifier implements VerifierAdapter {
 
   async check(req: VerifyRequest): Promise<CheckResult> {
     const sys = req.system;
-    const boundary = ["test.suite_each", "test.contract", "test.integration", "test.ci", "test.planned"].includes(req.method);
+    const boundary = BOUNDARY_METHODS.includes(req.method);
     if (!boundary) return this.inner ? this.inner.check(req) : { passed: false, detail: { unsupported: `the verifier has no method ${req.method}` } };
     if (!sys) return { passed: false, detail: { reason: `${req.method} needs the run's system model and workspace (design doc 9 §4)` }, producer: this.producer() };
     const subject = snapshot(sys);
