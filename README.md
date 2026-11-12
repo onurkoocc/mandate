@@ -175,10 +175,37 @@ spec/        core spec, IR schema and rules, static checks, diagnostic codes, ru
              executors, views, the compiler's MCP server
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
+crates/      the Rust implementation, started: mandate-ir (below)
 fixtures/    the tests' programs: fixbug/ is the design document's §20 workflow,
              fixbug-target/ the same workflow bound to a seeded test project,
              system/ a fictional system's model (Acme) and programs over it
+conformance/ language-independent compile cases
+vectors/     what the TypeScript reader, canonical text and hashes give, for
+             other implementations to match
 ```
+
+## Rust
+
+The repository is also a Cargo workspace (`Cargo.toml`, `crates/`), the
+start of a Rust implementation. It has one crate today,
+[`crates/mandate-ir`](crates/mandate-ir/README.md). It reads IR with the
+strict JSON reader (same limits, diagnostic codes, messages, JSON Pointers
+and UTF-16 columns), writes its canonical text (RFC 8785) and computes the
+program, definition and package hashes, byte for byte as the TypeScript
+compiler does. It is not a compiler: there is no `.mdt` parser, no schema
+validation and no checks in Rust yet.
+
+The two are held together by the files in [`vectors/`](vectors/README.md).
+`compiler/test/vectors.test.ts` writes them and fails when the committed
+ones differ; the Rust tests read them and need no Node.
+
+```sh
+cargo test
+MANDATE_UPDATE_VECTORS=1 npm test   # write vectors/ again after a change
+```
+
+The toolchain is pinned in `rust-toolchain.toml`; CI runs `cargo fmt
+--check`, `cargo clippy -- -D warnings` and `cargo test`.
 
 ## Using the compiler
 
