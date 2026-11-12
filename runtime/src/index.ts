@@ -32,3 +32,4 @@ export { EGRESS_FORMAT, egressConfig, readEgressConfig, readSecrets, type Egress
 export { DENIAL_REASONS, defaultDialer, EgressError, EgressProxy, PLACEHOLDER, type Denial, type DenialReason, type Destination, type Dialer, type DialRequest, type EgressProxyOptions, type OpenedSession, type Resolver, type RevokeScope, type SessionRequest } from "./egress/proxy.js";
 export { isPublicAddress } from "./egress/addresses.js";
 export { serveAdmin, type AdminServer } from "./egress/admin.js";
+export { serveEgress, type EgressServer, type ServeOptions } from "./egress/main.js";
