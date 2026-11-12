@@ -1,0 +1,34 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1801e",
+  "kind": "compile",
+  "title": "Before 0.5 methods is read and means nothing, as it always did: a 0.4 program with a method net.https does not know checks.",
+  "spec": [
+    "spec/boundary.md#language-05"
+  ],
+  "language": "mandate/0.4",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/language",
+      "value": "mandate/0.4"
+    },
+    {
+      "op": "replace",
+      "path": "/defs/GitHubRead/value/args/1/value/items/0",
+      "value": {
+        "op": "var",
+        "name": "FETCH"
+      }
+    }
+  ],
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

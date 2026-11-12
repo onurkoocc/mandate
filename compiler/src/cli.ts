@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// mandate — command-line front end for the reference compiler (language 0.1 to 0.4).
+// mandate — command-line front end for the reference compiler (language 0.1 to 0.5).
 //
 //   mandate check <file> [--json] [--lock <lock.json>] [--denials <report.json>] [--module <file>]…
 //                                          validate, resolve names, print hashes
@@ -236,7 +236,7 @@ function main(argv: string[]): void {
         report(r.diagnostics, file, asJson);
         process.exit(1);
       }
-      const all = sandboxRequirements(r.program!, modules);
+      const all = sandboxRequirements(r.program!, modules, lock);
       if (agent !== undefined && !Object.hasOwn(all, agent)) {
         process.stderr.write(`mandate: no local agent ${agent} in ${file}\n`);
         process.exit(2);

@@ -1,0 +1,45 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1803",
+  "kind": "compile",
+  "title": "A lock that sets isolation and egress is refused with a program of 0.4, whose sandbox requirements have neither; its host still applies.",
+  "spec": [
+    "spec/boundary.md#lock-05",
+    "spec/lock.md"
+  ],
+  "language": "mandate/0.4",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/language",
+      "value": "mandate/0.4"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1803",
+        "path": "/isolation",
+        "facts": {
+          "field": "isolation",
+          "language": "mandate/0.4"
+        }
+      },
+      {
+        "code": "MDT-E1803",
+        "path": "/egress",
+        "facts": {
+          "field": "egress",
+          "language": "mandate/0.4"
+        }
+      }
+    ]
+  }
+}

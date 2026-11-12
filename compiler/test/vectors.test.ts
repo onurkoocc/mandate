@@ -199,7 +199,10 @@ function jcsVectors(): unknown[] {
   });
 }
 
-const DOMAINS: HashDomain[] = ["program", "def", "package", "run", "action", "operation", "request", "binding", "decision"];
+const DOMAINS = ["program", "def", "package", "run", "action", "operation", "request", "binding", "decision", "event"] as const satisfies readonly HashDomain[];
+// Every domain has a vector: a domain added to HashDomain and not here does not compile.
+const everyDomain: Exclude<HashDomain, (typeof DOMAINS)[number]> extends never ? true : never = true;
+void everyDomain;
 
 function hashVectors(): unknown {
   const value = '{"b":[1,"é"],"a":{"😀":null}}';
@@ -210,7 +213,7 @@ function hashVectors(): unknown {
   };
   const domain: unknown[] = [];
   for (const d of DOMAINS) domain.push({ domain: d, version: "0.1", input: value, hash: domainHash(d, read(value), "0.1") });
-  for (const version of ["0.2", "0.3", "0.4", ""]) {
+  for (const version of ["0.2", "0.3", "0.4", "0.5", ""]) {
     for (const d of ["program", "def"] as const) domain.push({ domain: d, version, input: value, hash: domainHash(d, read(value), version) });
   }
   domain.push({ domain: "program", version: "0.1", input: "{}", hash: domainHash("program", {}, "0.1") });
@@ -220,6 +223,7 @@ function hashVectors(): unknown {
   const programs: Array<{ name: string; input: string }> = [
     { name: "a 0.1 program", input: `{"language":"mandate/0.1","module":"m","version":"0.1","defs":${defs}}` },
     { name: "a 0.4 program", input: `{"language":"mandate/0.4","module":"m","version":"0.1","defs":${defs}}` },
+    { name: "a 0.5 program", input: `{"language":"mandate/0.5","module":"m","version":"0.1","defs":${defs}}` },
     { name: "no language: 0.1", input: `{"module":"m","defs":${defs}}` },
     { name: "a language not under mandate/: 0.1", input: `{"language":"other/0.3","defs":${defs}}` },
     { name: "a language that is not a string: 0.1", input: `{"language":3,"defs":${defs}}` },

@@ -2,7 +2,7 @@
   "name": "@mandate/runtime",
   "version": "0.1.0",
   "private": true,
-  "description": "Mandate reference runtime for 0.1 to 0.4: journal, prepare/authorize/commit, budget ledger, supervision, Temporal scheduling",
+  "description": "Mandate reference runtime for 0.1 to 0.5: journal, prepare/authorize/commit, budget ledger, supervision, Temporal scheduling",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {

@@ -1,0 +1,20 @@
+mandate @ 0.4
+
+module example.reader @ 0.1
+
+use std.{net}
+use example.github.{GitHubRead}
+
+agent Reader {
+  role   "Reads one issue."
+  caps   GitHubRead
+  budget { steps: 4 }
+  skill read(issue: Text) -> Text ! {Net}
+}
+
+workflow Read(issue: Text) -> Text
+  caps   GitHubRead
+  budget { steps: 10 }
+{
+  delegate Reader.read(issue)
+}

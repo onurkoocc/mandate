@@ -54,6 +54,12 @@ the same way from what that delegation was actually granted (§7.5): the
 agent's capabilities inside the workflow's, narrowed by `with caps`, and the
 delegate's `time` budget. Without `with caps`, the two are equal.
 
+A 0.5 program's requirement has format `mandate/sandbox-requirement/0.2`:
+the fields above, the methods each host is limited to, the isolation level
+the sandbox needs, whether it may share its host, and the credential each
+host's requests carry, by name ([`boundary.md`](boundary.md#sandbox-requirement-02)).
+Every other program's is format 0.1, as above.
+
 ## The MXC adapter
 
 `MxcAdapter` (`runtime/src/sandbox.ts`) is pinned as `mandate-mxc@0.1`. It
@@ -278,5 +284,10 @@ repeat the Linux enforcement tests against a real AppContainer
 - **Learning mode on Linux.** Bubblewrap has none; a requirement for it is
   refused there.
 - **An outbound host allow-list.** MXC offers one through a proxy. It is
-  not wired up, so a requirement with `net.https` hosts is refused.
+  not wired up, so a requirement with `net.https` hosts is refused. The
+  egress proxy of 0.5 is how it will be ([`boundary.md`](boundary.md#the-egress-proxy)).
+- **What requirement 0.2 adds.** Method limits, an isolation level above
+  `process`, a sandbox that may not share its host, and credentials are
+  refused by the adapter by name, on every host, until a host enforces
+  them.
 - **An AX adapter.**

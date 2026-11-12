@@ -16,7 +16,8 @@ means. The detailed rules are on the other pages:
 - [`mcp.md`](mcp.md): the compiler as an MCP server for agents;
 - [`system.md`](system.md): existing systems: the system model, change sets, boundary evidence, reads and run modes;
 - [`diagnostics.md`](diagnostics.md): diagnostic codes;
-- [`envelope.md`](envelope.md): 0.4: roles, signed decisions, envelopes, `map` and `plan`.
+- [`envelope.md`](envelope.md): 0.4: roles, signed decisions, envelopes, `map` and `plan`;
+- [`boundary.md`](boundary.md): 0.5, in progress: `methods`, egress, isolation, the chained journal.
 
 *Must* marks a rule that every conforming implementation follows.
 

@@ -19,14 +19,18 @@
 // the lead received.
 
 import { diag, ptr, ptrToken, type Diagnostic } from "../diag.js";
-import { BUDGET_DIMENSIONS, budgetAmount, type Budget, type BudgetDimension, type Def, type Program } from "../ir/types.js";
+import { atLeast, BUDGET_DIMENSIONS, budgetAmount, type Budget, type BudgetDimension, type Def, type LanguageVersion, type Program } from "../ir/types.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
-import { capCovers, capsOf, showCap, writesOverlap, type CapVal } from "./caps.js";
+import { capCovers, capsOf, showCap, writesOverlap, type CapOptions, type CapVal } from "./caps.js";
 
-/** The module the runtime starts for sub-program `n` of a lead in module `parent`. Its hash is the `base` of the lead's patch. */
-export function skeleton(parent: string, n: number): Program {
-  return { language: "mandate/0.4", module: `${parent}.plan_${n}`, version: "0.1", uses: [{ module: parent }], defs: {} };
+/**
+ * The module the runtime starts for sub-program `n` of a lead in module `parent`. Its hash is the `base` of the lead's
+ * patch. It is written in its parent's language, and in 0.4 at least, where `plan` begins: so a sub-program reads
+ * its parent's definitions as its parent does, a capability's `methods` from 0.5 included.
+ */
+export function skeleton(parent: string, n: number, language: LanguageVersion = "mandate/0.4"): Program {
+  return { language: atLeast(language, "mandate/0.4") ? language : "mandate/0.4", module: `${parent}.plan_${n}`, version: "0.1", uses: [{ module: parent }], defs: {} };
 }
 
 /**
@@ -62,10 +66,10 @@ function nodes(v: unknown, op: string, path: string, found: string[]): void {
  * sub-program defines none of them; a remote agent is a network binding, and
  * an envelope or a `plan` of its own would be authority nobody approved.
  */
-export function subprogramShape(sub: Program, parent: string, n: number): Diagnostic[] {
+export function subprogramShape(sub: Program, parent: string, n: number, language?: LanguageVersion): Diagnostic[] {
   const out: Diagnostic[] = [];
   const no = (message: string, path: string, facts: Record<string, unknown>): void => void out.push(diag("E1705", message, { path }, { facts }));
-  const base = skeleton(parent, n);
+  const base = skeleton(parent, n, language);
   const same = (a: unknown, b: unknown): boolean => canonicalize((a ?? null) as Json) === canonicalize((b ?? null) as Json);
   for (const field of ["language", "module", "version", "uses", "tests"] as const) {
     if (same(sub[field], base[field])) continue;
@@ -136,10 +140,11 @@ function claimed(b: Budget | undefined): Array<{ dimension: string; field: Budge
  * E1706: whether a sub-program's claim fits what is left of the envelope
  * (N01, INV-15). `defs` is every definition the sub-program sees, its own and
  * its parent's; `workflow` is its one workflow; `envelope` holds the
- * envelope's capabilities, evaluated. Each diagnostic names the dimension
+ * envelope's capabilities, evaluated; `opts` says how the sub-program's own are
+ * read (its language). Each diagnostic names the dimension
  * that does not fit, with the numbers, so that the lead can ask for less.
  */
-export function containment(defs: Record<string, Def>, workflow: string, envelope: CapVal[], room: Room): Diagnostic[] {
+export function containment(defs: Record<string, Def>, workflow: string, envelope: CapVal[], room: Room, opts: CapOptions = {}): Diagnostic[] {
   const out: Diagnostic[] = [];
   const wf = Object.hasOwn(defs, workflow) ? defs[workflow] : undefined;
   if (wf?.kind !== "workflow") return out;
@@ -149,7 +154,7 @@ export function containment(defs: Record<string, Def>, workflow: string, envelop
   // C2: every capability lies inside one the envelope holds. C5 across the run: none may write where
   // something still in flight writes.
   wf.caps.forEach((e, i) => {
-    for (const c of capsOf(defs, e)) {
+    for (const c of capsOf(defs, e, opts)) {
       const shown = showCap(c);
       if (!envelope.some((w) => capCovers(w, c))) {
         no(`${workflow} asks for ${shown}, which lies inside no capability of the envelope. A sub-program holds only what the envelope's owner approved (C2).`, `${at}/caps/${i}`, {

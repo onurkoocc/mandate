@@ -1,7 +1,8 @@
 // What the compiler says about every program written before 0.4 is pinned
 // here, by digest: a 0.1 to 0.3 program reads, checks, hashes, prints and
 // shows exactly as it did. A later version adds to the language; it does not
-// change what an earlier program means.
+// change what an earlier program means. The 0.5 fixture is pinned beside them,
+// so what 0.5 says of it changes only with a reason too.
 //
 // The digests are in golden/outputs.json. A change to one of them is a change
 // to an earlier version's behavior and needs a reason in the commit that
@@ -24,7 +25,7 @@ import { readRepo, repoRoot, syntaxFixtures } from "./helpers.js";
 
 const GOLDEN = `${repoRoot}compiler/test/golden/outputs.json`;
 
-/** Every program in the repository written in 0.1 to 0.3. */
+/** Every program in the repository written in 0.1 to 0.3, and the 0.5 fixture. */
 const PROGRAMS = [
   "fixtures/fixbug/fixbug.mdt",
   "fixtures/fixbug/fixbug.ir.json",
@@ -37,6 +38,8 @@ const PROGRAMS = [
   "fixtures/system/onboard.mdt",
   "fixtures/system/repos.mdt",
   ...syntaxFixtures(),
+  // 0.5 (spec/boundary.md): methods, sandbox requirement 0.2 and lock 0.5.
+  "fixtures/boundary/fetch.mdt",
 ];
 
 /** The system models the task programs import, as `--module` gives them. */
@@ -88,7 +91,7 @@ function outputs(file: string, mods: Modules): Record<string, string> {
     out["view --format md"] = toMarkdown(doc);
     out["view --format html"] = toHtml(doc);
     out["view --against itself"] = json(semanticDiff(p, p));
-    out["sandbox"] = json({ program: checked.hashes!.program, requirements: sandboxRequirements(p, mods) });
+    out["sandbox"] = json({ program: checked.hashes!.program, requirements: sandboxRequirements(p, mods, lock) });
   }
   return out;
 }

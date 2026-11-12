@@ -1,0 +1,27 @@
+// An agent that reads issues from GitHub (spec/boundary.md). In 0.5 its
+// capability allows GET and nothing else; mandate.lock.json binds the
+// credential its requests carry, by name, and sets an isolation floor and
+// the host's minimum versions. The credential itself is never here.
+
+mandate @ 0.5
+
+module example.fetch @ 0.1
+
+use std.{model, net}
+
+capability GitHubRead = net.https(hosts: ["api.github.com"], methods: [GET])
+capability ModelStd   = model.infer(tier: standard, max_class: confidential)
+
+agent Reader {
+  role   "Reads one issue from GitHub and summarizes it."
+  caps   GitHubRead, ModelStd
+  budget { time: 10m, steps: 6 }
+  skill summarize(issue: Text) -> Inferred<Text> ! {Net, Model}
+}
+
+workflow Summarize(issue: Text) -> Inferred<Text>
+  caps   GitHubRead, ModelStd
+  budget { time: 15m, steps: 10 }
+{
+  delegate Reader.summarize(issue)
+}

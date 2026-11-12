@@ -42,6 +42,8 @@ pub enum HashDomain {
     Binding,
     /// A decision.
     Decision,
+    /// An event of a chained journal (spec/boundary.md).
+    Event,
 }
 
 impl HashDomain {
@@ -58,6 +60,7 @@ impl HashDomain {
             HashDomain::Request => "request",
             HashDomain::Binding => "binding",
             HashDomain::Decision => "decision",
+            HashDomain::Event => "event",
         }
     }
 
@@ -74,6 +77,7 @@ impl HashDomain {
             HashDomain::Request,
             HashDomain::Binding,
             HashDomain::Decision,
+            HashDomain::Event,
         ]
         .into_iter()
         .find(|d| d.as_str() == name)

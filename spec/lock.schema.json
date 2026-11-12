@@ -1,13 +1,55 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mandate.dev/spec/lock.schema.json",
-  "title": "Mandate lock file (mandate/lock/0.4; reads 0.2 and 0.3)",
-  "description": "Pins imported modules, the model behind each tier and its price, what the program's agents were deployed as on an executor, and the members and roles that sign decisions. Part of the package hash. See spec/lock.md, spec/executors.md and spec/envelope.md.",
+  "title": "Mandate lock file (mandate/lock/0.5; reads 0.2 to 0.4)",
+  "description": "Pins imported modules, the model behind each tier and its price, what the program's agents were deployed as on an executor, the members and roles that sign decisions, and from 0.5 the host's least versions, isolation floors and the credentials agents' requests carry, by name. Part of the package hash. See spec/lock.md, spec/executors.md, spec/envelope.md and spec/boundary.md.",
   "type": "object",
   "additionalProperties": false,
   "required": ["lock", "modules"],
+  "$defs": {
+    "Version": { "type": "string", "pattern": "^(0|[1-9][0-9]{0,8})(\\.(0|[1-9][0-9]{0,8})){0,2}$" },
+    "Level": { "enum": ["process", "user_kernel", "microvm", "dedicated_host"] },
+    "DataClass": { "enum": ["public", "internal", "confidential", "restricted"] }
+  },
   "properties": {
-    "lock": { "enum": ["mandate/lock/0.2", "mandate/lock/0.3", "mandate/lock/0.4"] },
+    "lock": { "enum": ["mandate/lock/0.2", "mandate/lock/0.3", "mandate/lock/0.4", "mandate/lock/0.5"] },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "node": { "$ref": "#/$defs/Version" },
+        "bwrap": { "$ref": "#/$defs/Version" }
+      }
+    },
+    "isolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "floor": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/DataClass" },
+          "additionalProperties": { "$ref": "#/$defs/Level" }
+        },
+        "untrusted_network": { "$ref": "#/$defs/Level" },
+        "co_tenancy": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/DataClass" },
+          "additionalProperties": { "enum": ["allowed", "forbidden"] }
+        }
+      }
+    },
+    "egress": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "propertyNames": { "type": "string", "minLength": 1, "maxLength": 253 },
+        "additionalProperties": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$" }
+      }
+    },
     "modules": {
       "type": "object",
       "additionalProperties": { "type": "string", "minLength": 1 }

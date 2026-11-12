@@ -148,6 +148,14 @@ version's lock is read from `--lock`, else `mandate.lock.json` next to the
 new file; the old version's from `--against-lock`, else `mandate.lock.json`
 next to the old file. Without an old lock, the old version binds no one.
 
+From lock format 0.5 the diff compares what the locks ask of the host and
+of sandboxes too: a credential bound to an agent's requests, or another
+credential for them; a floor lowered or taken away; a sandbox allowed to
+share its host again; a least host version lowered or taken away. Each is a
+governance change, and its opposite a behavior change
+([`boundary.md`](boundary.md#lock-05)). A method added to a 0.5
+capability, or its `methods` taken away, widens it like a new host.
+
 **Behavior changes:**
 
 - steps added or removed, a step's grant or supervision changed;

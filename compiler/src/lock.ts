@@ -11,26 +11,41 @@
 //   - members: each person who signs decisions, with the ids of their keys.
 //     A member may hold several keys; one key belongs to one member;
 //   - roles: the members each role the program names is bound to
-//     (spec/envelope.md). Members and roles need format 0.4.
+//     (spec/envelope.md). Members and roles need format 0.4;
+//   - host: the least versions of the tools the runtime's host runs;
+//   - isolation: the least isolation level of a sandbox, by the data class of
+//     its models and for one that reaches an untrusted network, and the data
+//     classes whose sandboxes may not share their host;
+//   - egress: per agent, the credential each host's requests carry, by name
+//     (spec/boundary.md). These three need format 0.5.
 //
-// The lock is part of the package hash, so a price change is a new package.
+// The lock is part of the package hash, so a price change is a new package,
+// and so is a raised floor: it needs a new approval of an envelope.
 // The compiler reads it for W0504: a declared agent budget below the upper
 // bound `steps × per-call bound` it can compute (§8.6).
 
 import { readFileSync } from "node:fs";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
-import { capFromCall } from "./check/caps.js";
+import { capFromCall, capsOf } from "./check/caps.js";
 import { roleSites } from "./check/roles.js";
 import { diag, ptr, type Diagnostic, type Span } from "./diag.js";
 import { hashProgram } from "./hash.js";
 import { atLeast as languageAtLeast, type Budget, type Def, type Expr, type Program } from "./ir/types.js";
 import type { Json } from "./json/strict-json.js";
 import type { Modules } from "./modules.js";
+import type { DataClass } from "./std/std.js";
 import { agentModels, bindingChecks, type ManagedAgentsBinding } from "./target/managed-agents.js";
+import type { CoTenancy, IsolationLevel } from "./target/sandbox.js";
 
-/** The lock format this compiler writes. It reads 0.2, which has no bindings, and 0.3, which has no members or roles. */
-export const LOCK_FORMAT = "mandate/lock/0.4";
-export const LOCK_FORMATS = ["mandate/lock/0.2", "mandate/lock/0.3", "mandate/lock/0.4"] as const;
+/**
+ * The lock format this compiler writes. It reads 0.2, which has no bindings, 0.3, which has no members or roles,
+ * and 0.4, which has no host, isolation or egress.
+ */
+export const LOCK_FORMAT = "mandate/lock/0.5";
+export const LOCK_FORMATS = ["mandate/lock/0.2", "mandate/lock/0.3", "mandate/lock/0.4", "mandate/lock/0.5"] as const;
+
+/** The lock fields of format 0.5 (spec/boundary.md "Lock 0.5"). */
+export const LOCK_FIELDS_0_5 = ["host", "isolation", "egress"] as const;
 
 /** A lock's format is `format` or later. */
 function atLeast(lock: Lock, format: (typeof LOCK_FORMATS)[number]): boolean {
@@ -63,6 +78,16 @@ export interface Lock {
   members?: Record<string, { keys: string[] }>;
   /** Each role's members. */
   roles?: Record<string, string[]>;
+  /** 0.5: the least versions of the tools the runtime's host runs (spec/boundary.md "Lock 0.5"). */
+  host?: { node?: string; bwrap?: string };
+  /** 0.5: isolation floors by data class and for an untrusted network, and where a sandbox may not share its host. */
+  isolation?: {
+    floor?: Partial<Record<DataClass, IsolationLevel>>;
+    untrusted_network?: IsolationLevel;
+    co_tenancy?: Partial<Record<DataClass, CoTenancy>>;
+  };
+  /** 0.5: per agent, the credential each host's requests carry, by name. Never a secret. */
+  egress?: Record<string, Record<string, string>>;
 }
 
 /**
@@ -95,6 +120,11 @@ export function validateLock(value: unknown): Diagnostic[] {
     for (const field of ["members", "roles"] as const) {
       if (lock[field] && !atLeast(lock, "mandate/lock/0.4")) {
         out.push(diag("E0140", `Lock field ${field} needs lock format mandate/lock/0.4, not ${String(lock.lock)}.`, { path: `/${field}` }, { facts: { field, lock: lock.lock ?? null } }));
+      }
+    }
+    for (const field of LOCK_FIELDS_0_5) {
+      if (lock[field] && !atLeast(lock, "mandate/lock/0.5")) {
+        out.push(diag("E0140", `Lock field ${field} needs lock format mandate/lock/0.5, not ${String(lock.lock)}.`, { path: `/${field}` }, { facts: { field, lock: lock.lock ?? null } }));
       }
     }
     const holder = new Map<string, string>();
@@ -142,7 +172,7 @@ export function modelTiers(program: Program): Set<string> {
   const visit = (v: unknown): void => {
     if (Array.isArray(v)) v.forEach(visit);
     else if (v && typeof v === "object") {
-      const c = capFromCall(v as Expr);
+      const c = capFromCall(v as Expr, { language: program.language });
       if (c?.ctor === "model.infer" && c.tier) tiers.add(c.tier);
       Object.values(v).forEach(visit);
     }
@@ -205,6 +235,57 @@ export function lockChecks(program: Program, lock: Lock, spans?: Map<string, Spa
     }
   }
   out.push(...bindingChecks(program, lock, spans));
+  out.push(...sandboxLockChecks(program, lock));
+  return out;
+}
+
+/**
+ * What the lock adds to sandbox requirements (spec/boundary.md "Lock 0.5"). Only a 0.5 program's requirement has
+ * an isolation level and credentials, so a lock packaged with an earlier program that sets `isolation` or `egress`
+ * would not apply, and is refused (E1803); `host` applies to every program. A credential is bound to an agent that
+ * runs in the runtime's sandbox, for a host one of its net.https capabilities holds (E1802). `program` has its
+ * imported definitions linked. Paths are into the lock.
+ */
+export function sandboxLockChecks(program: Program, lock: Lock): Diagnostic[] {
+  const out: Diagnostic[] = [];
+  if (!languageAtLeast(program.language, "mandate/0.5")) {
+    for (const field of ["isolation", "egress"] as const) {
+      if (!lock[field]) continue;
+      const what = field === "isolation" ? "isolation level" : "credentials";
+      out.push(
+        diag("E1803", `Lock field ${field} applies to a program of mandate/0.5 or later. This program is ${program.language}: its sandbox requirements have no ${what}, so ${field} would not apply. Write the program in mandate/0.5, or take ${field} out of the lock.`, { path: `/${field}` }, {
+          facts: { field, language: program.language },
+        }),
+      );
+    }
+    return out;
+  }
+  const executor = lock.bindings?.["managed-agents"]?.agents;
+  const sorted = (o: object): string[] => Object.keys(o).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  for (const agent of sorted(lock.egress ?? {})) {
+    const hosts = lock.egress![agent]!;
+    const d = Object.hasOwn(program.defs, agent) ? program.defs[agent] : undefined;
+    if (d?.kind !== "agent" || d.remote || (executor && Object.hasOwn(executor, agent))) {
+      const why = d?.kind !== "agent" ? "not_an_agent" : d.remote ? "remote" : "executor";
+      const what = why === "not_an_agent" ? "which is not an agent of the program" : why === "remote" ? "a remote agent" : "an agent the lock binds to Managed Agents";
+      out.push(
+        diag("E1802", `The lock binds credentials to the requests of ${agent}, ${what}. A credential is bound only to an agent that runs in the runtime's sandbox, whose requests go through the egress proxy.`, { path: ptr("egress", agent) }, {
+          facts: { agent, reason: why, hosts: sorted(hosts) },
+        }),
+      );
+      continue;
+    }
+    const held = d.caps.flatMap((c) => capsOf(program.defs, c, { language: program.language })).filter((c) => c.ctor === "net.https").flatMap((c) => c.scope ?? []);
+    for (const host of sorted(hosts)) {
+      if (held.includes(host)) continue;
+      const credential = hosts[host]!;
+      out.push(
+        diag("E1802", `The lock binds credential ${credential} to ${agent}'s requests to ${host}, a host none of ${agent}'s net.https capabilities holds.`, { path: ptr("egress", agent, host) }, {
+          facts: { agent, reason: "host_not_held", host, credential, held: [...new Set(held)].sort() },
+        }),
+      );
+    }
+  }
   return out;
 }
 
@@ -220,7 +301,7 @@ export function roleLockChecks(program: Program, linked: { defs: Record<string, 
   const out: Diagnostic[] = [];
   const sites = roleSites(linked.defs).filter((s) => s.role !== undefined);
   const mine = (def: string): boolean => Object.hasOwn(program.defs, def);
-  const older = atLeast(lock, "mandate/lock/0.4") ? "" : ` A 0.4 package needs a ${LOCK_FORMAT} lock, with members and roles.`;
+  const older = atLeast(lock, "mandate/lock/0.4") ? "" : " A 0.4 package needs a mandate/lock/0.4 lock, with members and roles.";
   for (const role of new Set(sites.map((s) => s.role!))) {
     if (own(lock.roles, role)?.length) continue;
     const named = sites.filter((s) => s.role === role);

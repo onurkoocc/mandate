@@ -1,0 +1,42 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1801b",
+  "kind": "compile",
+  "title": "An empty list of methods is refused: a capability that leaves methods out allows any method, and one that allows none is no capability.",
+  "spec": [
+    "spec/boundary.md#language-05"
+  ],
+  "language": "mandate/0.5",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/GitHubRead/value/args/1/value/items",
+      "value": []
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1801",
+        "path": "/defs/GitHubRead/value/args/1/value",
+        "facts": {
+          "found": null,
+          "expected": [
+            "GET",
+            "HEAD",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
+        }
+      }
+    ]
+  }
+}
