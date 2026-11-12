@@ -1,0 +1,17 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0501b",
+  "kind": "compile",
+  "title": "A map whose budget for an item is smaller than what its body hands out is refused at the map's budget.",
+  "spec": ["spec/envelope.md#map", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../E1702/program.mdt", "kind": "mdt" },
+  "patch": [{ "op": "replace", "path": "/defs/Run/body/0/value/budget/steps", "value": 4 }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E0501", "path": "/defs/Run/body/0/value/budget", "facts": { "steps": { "limit": 4, "declared_by_children": 5 } } }
+    ]
+  }
+}

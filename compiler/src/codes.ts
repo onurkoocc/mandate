@@ -291,7 +291,7 @@ export const CODES: Record<string, { title: string; explain: string }> = {
   },
   "MDT-E1702": {
     title: "Unbounded map",
-    explain: "A map says how many elements it accepts at most: `max n`. Inside an envelope `max` may be left out when the body starts a delegation, since the envelope's `agents` then bounds it. A list longer than the bound is refused before any item runs (spec/envelope.md \"map\", N08).",
+    explain: "A map says how many elements it accepts at most: `max n`. Inside an envelope `max` may be left out when the body starts a delegation, itself or in a function it calls, since the envelope's `agents` then bounds it. A list longer than the bound is refused before any item runs (spec/envelope.md \"map\", N08).",
   },
   "MDT-E1703": {
     title: "Map concurrency above the envelope",
@@ -315,7 +315,7 @@ export const CODES: Record<string, { title: string; explain: string }> = {
   },
   "MDT-E1708": {
     title: "Person or critical effect in a map body",
-    explain: "A map body has no human.* step, no escalate and no critical effect: each item would wait for a person or be authorized on its own. Ask once about the list after the map, or land a batch with a change set (spec/envelope.md \"map\").",
+    explain: "Nothing in a map body waits for a person, and it has no critical effect: each item would wait or be authorized on its own. That covers a human.* step, escalate, pause, `supervise escalate`, a verify against a contract a person approves, a function that holds one of these, a critical effect and a change set. Ask once about the list after the map, or land a batch with a change set after it (spec/envelope.md \"map\").",
   },
   "MDT-E0902": {
     title: "Sandbox requirement cannot be enforced",

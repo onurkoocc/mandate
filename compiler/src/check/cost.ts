@@ -13,10 +13,11 @@
 // lead's own delegation. What a lead's sub-programs start is not known here;
 // the runtime holds each one to what is left (spec/envelope.md "plan").
 //
-// Where a budget stands in for a body (a function's own budget, a map's
-// `budget`), money, tokens and time are the budget's, as they have been since
-// 0.1. Steps and agents are the budget's when it names them and the body's
-// when it does not, so that neither is ever undercounted.
+// Where a function's own budget stands in for its body, money, tokens and
+// time are the budget's, as they have been since 0.1. Steps and agents are
+// the budget's when it names them and the body's when it does not, so that
+// neither is ever undercounted. A map's `budget` stands in for one item in
+// the dimensions it names, and the body counts in every other one.
 
 import { atLeast, type Budget, type BudgetDimension, type Def, type Expr, type Program, type Stmt } from "../ir/types.js";
 import { children } from "./static.js";
@@ -50,6 +51,8 @@ export interface CostEnv {
    * part. Without it the parts are what they were before 0.4.
    */
   envelope: boolean;
+  /** The envelope's `agents`: how many items a map with no `max` accepts at most (spec/envelope.md "map"). */
+  agents?: number;
 }
 
 export function zeroCost(): StaticCost {
@@ -106,16 +109,27 @@ function attemptCost(env: CostEnv, b: Budget | undefined, from: string, at: stri
 
 /**
  * A budget that stands in for a body. Steps and agents the budget does not
- * name are the body's; for an envelope they are a part of their own.
+ * name are the body's; for an envelope they are a part of their own. With
+ * `every`, so are money, tokens and time (a map's budget): the body's parts
+ * then stand beside the budget's.
  */
-function standIn(env: CostEnv, b: Budget, from: string, at: string, body: () => StaticCost): StaticCost {
+function standIn(env: CostEnv, b: Budget, from: string, at: string, body: () => StaticCost, every = false): StaticCost {
   const c = budgetCost(env, b, from, at);
-  if (b.steps !== undefined && b.agents !== undefined) return c;
+  if (b.steps !== undefined && b.agents !== undefined && !every) return c;
   const inside = body();
   const more: Record<string, unknown> = {};
   if (b.steps === undefined && inside.steps) more["steps"] = c.steps = inside.steps;
   if (b.agents === undefined && inside.agents) more["agents"] = c.agents = inside.agents;
-  if (env.envelope && Object.keys(more).length) c.parts.push({ from: `${from} (its body)`, at, budget: more });
+  if (every) {
+    for (const [currency, micros] of Object.entries(inside.spend)) {
+      if (b.spend?.currency === currency || !micros) continue;
+      c.spend[currency] = micros;
+      more[`spend_${currency}`] = microsText(micros, currency);
+    }
+    if (b.tokens === undefined && inside.tokens) more["tokens"] = c.tokens = inside.tokens;
+    if (b.time === undefined && inside.time) more["time_ms"] = c.time = inside.time;
+  }
+  if ((env.envelope || every) && Object.keys(more).length) c.parts.push({ from: `${from} (its body)`, at, budget: more });
   return c;
 }
 
@@ -223,14 +237,15 @@ export function exprCost(env: CostEnv, e: Expr, path: string, inFns: ReadonlySet
   for (const k of children(e)) addSeq(c, sub(k));
   if (e.op === "map") {
     // `n ×` the map's budget, or its body: money, tokens, steps and agents add up over items, and time is
-    // `⌈n / k⌉ ×` one item's (spec/envelope.md "map"). A map with no `max` is bounded by the envelope's
-    // `agents` at run time, and counts once here.
+    // `⌈n / k⌉ ×` one item's (spec/envelope.md "map"). A map with no `max` accepts as many items as the
+    // envelope has `agents`. Outside an envelope it has no bound, which E1702 reports; it counts once here.
     const body = (): StaticCost => blockCost(env, e.body, inFns.size ? path : `${path}/body`, inFns);
-    const once = e.budget ? standIn(env, e.budget, "map", path, body) : body();
-    if (e.max === undefined) addSeq(c, once);
+    const once = e.budget ? standIn(env, e.budget, "map", path, body, true) : body();
+    const n = e.max ?? env.agents;
+    if (n === undefined) addSeq(c, once);
     else {
-      const all = scale(once, e.max);
-      all.time = once.time * Math.ceil(e.max / (e.par ?? 1));
+      const all = scale(once, n);
+      all.time = once.time * Math.ceil(n / (e.par ?? 1));
       addSeq(c, all);
     }
     return c;
@@ -283,6 +298,8 @@ export function staticCost(program: Program, workflow: string, linked?: Record<s
   const def = (name: string): Def | undefined => (Object.hasOwn(defs, name) ? defs[name] : undefined);
   const wf = def(workflow);
   if (wf?.kind !== "workflow") return undefined;
-  const env: CostEnv = { def, recursive: new Set(), envelope: atLeast(program.language, "mandate/0.4") && !!wf.envelope };
+  const enveloped = atLeast(program.language, "mandate/0.4") && !!wf.envelope;
+  const agents = enveloped ? wf.envelope?.budget?.agents : undefined;
+  const env: CostEnv = { def, recursive: new Set(), envelope: enveloped, ...(agents !== undefined ? { agents } : {}) };
   return blockCost(env, wf.body, `/defs/${workflow}/body`);
 }

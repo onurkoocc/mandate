@@ -1,0 +1,20 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1702",
+  "kind": "compile",
+  "title": "A map with no max in a workflow without an envelope is refused at the map.",
+  "spec": ["spec/envelope.md#map", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "program.mdt", "kind": "mdt" },
+  "patch": [
+    { "op": "remove", "path": "/defs/Run/envelope" },
+    { "op": "replace", "path": "/defs/Run/caps", "value": [{ "op": "var", "name": "M" }, { "op": "var", "name": "W" }] },
+    { "op": "add", "path": "/defs/Run/budget", "value": { "steps": 60 } },
+    { "op": "remove", "path": "/defs/Run/body/0/value/max" }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E1702", "path": "/defs/Run/body/0/value", "facts": { "envelope": false } }]
+  }
+}

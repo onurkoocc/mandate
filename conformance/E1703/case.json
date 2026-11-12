@@ -1,0 +1,15 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1703",
+  "kind": "compile",
+  "title": "A map that runs more items at once than the envelope's spawn.max_concurrent is refused at its par.",
+  "spec": ["spec/envelope.md#map", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../E1702/program.mdt", "kind": "mdt" },
+  "patch": [{ "op": "replace", "path": "/defs/Run/body/0/value/par", "value": 8 }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E1703", "path": "/defs/Run/body/0/value/par", "facts": { "par": 8, "max_concurrent": 4 } }]
+  }
+}
