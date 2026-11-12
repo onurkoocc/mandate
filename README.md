@@ -502,6 +502,22 @@ These cases from §25 are covered:
 | H03 | A run of an envelope workflow does not start without an approval of its package hash by a member of the envelope's owner role | `envelope`, `cli-envelope` |
 | H04 | Evidence for `human.approve` whose decision record was changed after signing shows as invalid, and a `Verified` value resting on it is refused | `decisions` |
 | H05 | A changed member, key or role binding in the lock is a new package and shows as a governance change | `lock-diff` (compiler) |
+| J01 | A closed run's journal verifies from its export and the public key alone, also over fractions, exponents and keys that sort differently by UTF-16 code units and by code points | `journal-verify`, `cli-journal`, `journal-hash` (and the case `J01`) |
+| J02 | An event edited in the database breaks the chain at that event | `journal-verify`, `cli-journal` (and the case `J02`) |
+| J03 | An event deleted from the database leaves a gap and breaks the chain after it | `journal-verify` (and the case `J03`) |
+| J04 | A tail cut while its anchors stay is caught; cut with them, the report says how far the signatures reach | `journal-verify` (and the case `J04`) |
+| J05 | An open run with events after its last anchor verifies, and the report says no signature covers them | `journal-verify` (and the case `J05`) |
+| J06 | An anchor by a key not given, or whose signature does not verify, is refused | `journal-verify`, `cli-journal` (and the case `J06`) |
+| J07 | A manifest or a package that is not the one the first event names is refused | `journal-verify` (and the case `J07`) |
+| J08 | A run begun before the chain is reported unchained, never verified | `journal-verify`, `journal-hash` (and the case `J08`) |
+
+The journal is chained ([`spec/journal.md`](spec/journal.md)): each event
+carries a hash over its contents and the one before it, and the evidence key
+signs an anchor at every state change. `mandate journal export` writes a
+run's journal with its manifest and package, `mandate journal key` the
+public keys, and `mandate journal verify` checks the export with those
+alone. J01–J08 are also cases in `conformance/` that any verifier can run.
+It is evidence against someone who holds the database but not the key.
 
 `map.test.ts` also runs the map of the migration example
 (`fixtures/envelope/migrate-all.mdt`) over 24 repositories: 24 migrators,
