@@ -1,0 +1,29 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S05a",
+  "kind": "compile",
+  "title": "A switch that leaves out a variant of the union is refused, and the missing variant is named.",
+  "spec": [
+    "spec/checks.md#decisions-810"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0230",
+        "path": "/defs/label/body/0/value",
+        "facts": {
+          "missing": [
+            "Question"
+          ]
+        }
+      }
+    ]
+  }
+}

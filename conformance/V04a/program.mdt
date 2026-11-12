@@ -1,0 +1,14 @@
+module m @ 0.1
+use std.{model}
+type Record = { name: Text } classified restricted
+capability M = model.infer(tier: standard)
+agent Summarizer {
+  caps M
+  budget { steps: 5 }
+  skill summarize(r: Record) -> Inferred<Text> ! {Model}
+}
+workflow Summarize(r: Record) -> Inferred<Text>
+  caps M
+{
+  delegate Summarizer.summarize(r)
+}

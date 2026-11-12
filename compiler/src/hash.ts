@@ -3,11 +3,12 @@
 //   P = SHA256("mandate/program/<v>\n" || JCS(program))
 //   D = SHA256("mandate/def/<v>\n"     || JCS(definition))
 //
-// <v> is the program's language version (0.1 to 0.4), so two versions can
+// <v> is the program's language version (0.1 to 0.5), so two versions can
 // never read the same bytes with different meaning (§3.5): a definition that
 // means something else in 0.2 hashes differently there. The runtime's own
-// domains (package, run, action, operation, request, decision) use the 0.1 hash
-// profile. Hashes are identities, not authentication.
+// domains (package, run, action, operation, request, binding, decision, and
+// from 0.5 event, for the chained journal of spec/boundary.md) use the 0.1
+// hash profile. Hashes are identities, not authentication.
 
 import { createHash } from "node:crypto";
 import { canonicalize } from "./json/jcs.js";

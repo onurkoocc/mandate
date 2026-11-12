@@ -3,7 +3,7 @@
 // to before it runs it. It trusts nobody who built one, itself included: an
 // amended package (spec/envelope.md "Amendments") passes it like any other.
 
-import { atLeast, bindingChecks, canonicalize, check, checkAmendment, envelopeChanges, hashProgram, link, linkedProgram, LOCK_FORMAT, modelTiers, packageHash, roleLockChecks, semanticDiff, validateLock, type AmendmentCheck, type AmendmentInput, type Change, type DiffView, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { atLeast, bindingChecks, canonicalize, check, checkAmendment, envelopeChanges, hashProgram, link, linkedProgram, LOCK_FIELDS_0_5, LOCK_FORMAT, modelTiers, packageHash, roleLockChecks, semanticDiff, validateLock, type AmendmentCheck, type AmendmentInput, type Change, type DiffView, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
 import { Violation } from "./signals.js";
 
 /** An amendment as the runtime checks it: with the lock of the run's package, which the amended package keeps. */
@@ -52,8 +52,11 @@ export interface Package {
   modules?: Modules;
 }
 
-/** The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes, `map` and `plan`; see `notRunYet`. */
-export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4"];
+/**
+ * The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes, `map` and `plan`; of
+ * 0.5 the program as far as its lock asks nothing the runtime does not enforce yet; see `notRunYet`.
+ */
+export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4", "mandate/0.5"];
 
 /**
  * What a program uses of 0.4 that this runtime does not run: the `agents` dimension in a budget other than an
@@ -61,9 +64,14 @@ export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "ma
  * best-effort basis (§3.5). An envelope runs: its approval, its `agents` ledger, `max_concurrent` and `approve`.
  * So do a `map` and a `plan`, whose sub-programs name `agents` in their own budgets, as their claim on the
  * envelope's.
+ *
+ * With `lock`, the package's lock: what its format 0.5 asks that this runtime does not enforce yet, each by its
+ * own name, `lock.host`, `lock.isolation` and `lock.egress` (spec/boundary.md). `host` applies to a package of
+ * any language. Each is lifted by the change that enforces it.
  */
-export function notRunYet(program: Program): string[] {
+export function notRunYet(program: Program, lock?: Lock): string[] {
   const found = new Set<string>();
+  for (const field of LOCK_FIELDS_0_5) if (lock?.[field] !== undefined) found.add(`lock.${field}`);
   const walk = (v: unknown, key: string, kept: unknown): void => {
     if (Array.isArray(v)) return v.forEach((x) => walk(x, key, kept));
     if (!v || typeof v !== "object") return;
@@ -75,6 +83,13 @@ export function notRunYet(program: Program): string[] {
   for (const d of Object.values(program.defs)) walk(d, "", d.kind === "workflow" ? d.envelope?.budget : undefined);
   return [...found].sort();
 }
+
+/** Why each lock field of 0.5 is not enforced yet, as a refusal names it. */
+const UNENFORCED: Record<(typeof LOCK_FIELDS_0_5)[number], string> = {
+  host: "the least versions of the host's tools, which this runtime does not check yet",
+  isolation: "isolation floors, which no sandbox host here reports a level for yet",
+  egress: "credentials for agents' requests, which go only through an egress proxy, and this runtime has none yet",
+};
 
 /** A 0.4 package: its program, or a module it was packaged with, is written in 0.4. Its decisions are always signed. */
 export function isSigned04(program: Program, modules: Modules = {}): boolean {
@@ -95,8 +110,12 @@ export function verifyPackage(pkg: Package): void {
   // The program and every module it was packaged with: a module's definitions run as the program's do.
   for (const p of [pkg.program, ...Object.values(pkg.modules ?? {})]) {
     if (!RUNTIME_LANGUAGES.includes(p?.language)) throw new Violation("unsupported_language", `Package language ${String(p?.language)} is not one of ${RUNTIME_LANGUAGES.join(", ")}.`);
-    const later = notRunYet(p);
+    const all = notRunYet(p, p === pkg.program ? pkg.lock : undefined);
+    const later = all.filter((n) => !n.startsWith("lock."));
     if (later.length) throw new Violation("unsupported_language", `The package uses ${later.join(", ")} of mandate/0.4, which this runtime does not run yet (spec/envelope.md).`);
+    // What the lock asks of the host and the sandboxes is enforced or not run with; never run on a best-effort basis.
+    const unenforced = all.filter((n) => n.startsWith("lock.")).map((n) => n.slice("lock.".length) as (typeof LOCK_FIELDS_0_5)[number]);
+    if (unenforced.length) throw new Violation("unsupported_lock", `The package's lock sets ${unenforced.map((f) => `${f} (${UNENFORCED[f]})`).join(", ")}, which this runtime does not enforce yet (spec/boundary.md).`);
   }
   const programHash = hashProgram(pkg.program as unknown as Json).program;
   if (programHash !== pkg.programHash) throw new Violation("package_hash_mismatch", `The program hashes to ${programHash}, not the packaged ${pkg.programHash}.`);
@@ -117,7 +136,7 @@ export function verifyPackage(pkg: Package): void {
   // A lock that pins models (spec/lock.md) must be well formed and pin every tier the program names.
   // A lock without models is for simulated models only; the Anthropic adapter refuses to run without one.
   // So must a lock that names members and roles: a key under two members, or a role held by nobody the lock lists, binds nothing.
-  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings || pkg.lock.members || pkg.lock.roles) {
+  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings || pkg.lock.members || pkg.lock.roles || LOCK_FIELDS_0_5.some((f) => pkg.lock[f])) {
     const bad = validateLock({ lock: LOCK_FORMAT, ...pkg.lock });
     if (bad.length) throw new Violation("malformed_lock", `The package's lock is malformed: ${bad.map((d) => d.message).join(" ")}`);
   }

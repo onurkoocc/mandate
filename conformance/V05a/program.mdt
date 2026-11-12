@@ -1,0 +1,15 @@
+module m @ 0.1
+use std.{model}
+use company.domain.{Issue}
+capability M = model.infer(tier: standard)
+agent A {
+  caps M
+  budget { steps: 5 }
+  skill s(i: Issue) -> Inferred<Text> ! {Model}
+}
+workflow W(i: Issue) -> Bool
+  caps M
+{
+  let t = spawn A.s(i)
+  true
+}

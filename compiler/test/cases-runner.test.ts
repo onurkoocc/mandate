@@ -52,6 +52,12 @@ describe("compareResult", () => {
     expect(compareResult(want, got(["MDT-E0101", "/a"]))).toHaveLength(2);
   });
 
+  it("takes a diagnostic without a path as one at the empty path", () => {
+    const noPath: Observed = { ok: false, diagnostics: [{ code: "MDT-E0101", at: {} }] };
+    expect(compareResult(base({ code: "MDT-E0101", path: "" }), noPath)).toEqual([]);
+    expect(compareResult(base({ code: "MDT-E0101", path: "/a" }), noPath)).toHaveLength(1);
+  });
+
   it("accepts extra fact keys", () => {
     const want = base({ ...A, facts: { found: "x" } });
     expect(compareResult(want, got(["MDT-E0101", "/a", { found: "x", more: 1 }]))).toEqual([]);
@@ -235,5 +241,39 @@ describe("amendment cases", () => {
     expect(schemaProblems(member({ patch: WIDER })).length).toBeGreaterThan(0);
     expect(schemaProblems(member({ workflow: "", patch: WIDER })).length).toBeGreaterThan(0);
     expect(schemaProblems(member({ workflow: "Run", patch: [{ op: "move", path: "/budget" }] })).length).toBeGreaterThan(0);
+  });
+});
+
+describe("patch cases with a base", () => {
+  const BASE = "sha256:de7fd275a70b581fb60d4486cad1c4f16857b61daa4a7024fed523ee1dc05a25";
+  const addU = [{ op: "add" as const, path: "/defs/U", value: { kind: "type", type: { ref: "Int" } } }];
+  /** The patch case of S12a with its own base, patch and expectation. */
+  const baseCase = (extra: Partial<Case>): Case => ({
+    format: "mandate/conformance-case/0.1", id: "S12a", kind: "compile", title: "t", spec: ["spec/ir.md#patches"],
+    input: { file: "program.mdt", kind: "mdt" }, patch: addU, base: BASE, expect: { ok: true, diagnostics: [] }, ...extra,
+  });
+
+  it("applies the patch against the base the case names, and refuses a stale one with E0130 and nothing else", () => {
+    const fresh = runCompileCase("S12a", baseCase({}));
+    expect(fresh.ok).toBe(true);
+    const stale = runCompileCase("S12a", baseCase({ base: "sha256:" + "1".repeat(64) }));
+    expect(stale.ok).toBe(false);
+    expect(stale.diagnostics.map((d) => [d.code, d.at.path])).toEqual([["MDT-E0130", ""]]);
+    expect(stale.diagnostics[0]!.facts).toEqual({ base: "sha256:" + "1".repeat(64), current: BASE });
+  });
+
+  it("reports an operation that cannot be applied as E0131 at its path, not as a broken case", () => {
+    const r = runCompileCase("S12a", baseCase({ patch: [{ op: "remove", path: "/defs/Nope" }] }));
+    expect(r.diagnostics.map((d) => [d.code, d.at.path])).toEqual([["MDT-E0131", "/defs/Nope"]]);
+  });
+
+  it("needs a patch, in the schema and in the runner, and a well-formed hash", () => {
+    expect(schemaProblems(baseCase({}))).toEqual([]);
+    const { patch: _patch, ...noPatch } = baseCase({});
+    expect(schemaProblems(noPatch).length).toBeGreaterThan(0);
+    expect(() => runCompileCase("S12a", noPatch as Case)).toThrow(/has a patch/);
+    expect(schemaProblems(baseCase({ base: "sha256:abc" })).length).toBeGreaterThan(0);
+    expect(schemaProblems(baseCase({ base: BASE.toUpperCase() })).length).toBeGreaterThan(0);
+    expect(schemaProblems(baseCase({ subprogram: { workflow: "Run", room: { left: { tokens: 1 } } } })).length).toBeGreaterThan(0);
   });
 });

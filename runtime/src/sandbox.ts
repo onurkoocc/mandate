@@ -13,6 +13,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { SandboxRequirement } from "@mandate/compiler";
 import type { AgentAdapter, DelegateRequest, Outcome } from "./adapters.js";
+import { inside } from "./tools.js";
 
 export type SandboxMode = "enforcement" | "learning" | "permissive";
 
@@ -30,6 +31,12 @@ export interface Enforceable {
   timeout: boolean;
   /** Desktop and clipboard access can be turned off. */
   ui: boolean;
+  /**
+   * Host paths no sandbox sees, whatever its policy grants: the host's
+   * runtime directories, where its services keep their sockets. A policy
+   * path at or under one is refused by name, not dropped.
+   */
+  hidden?: string[];
 }
 
 /** One process run inside a sandbox (§16.1 `Execute`): an argument vector, never a shell line. */
@@ -139,6 +146,10 @@ export class MxcAdapter {
     }
     const hosts = [...new Set([...req.network.hosts, ...modelHosts])].sort();
     for (const u of req.unbounded) unsupported.push(`capability without a static scope: ${u}`);
+    for (const p of [...req.filesystem.read, ...req.filesystem.write]) {
+      const root = hiddenUnder(p, can.hidden ?? []);
+      if (root) unsupported.push(`a path under ${root}, which this host keeps out of every sandbox: ${p}`);
+    }
     if (!can.backends.includes(isolation)) unsupported.push(`isolation backend ${isolation}`);
     if ((mode as SandboxMode) === "permissive" || !can.modes.includes(mode)) unsupported.push(`mode ${mode}`);
     if (!can.filesystem) unsupported.push("filesystem path lists");
@@ -148,6 +159,14 @@ export class MxcAdapter {
     else if (req.exec.some((x) => x.args_prefix) && can.exec !== "args_prefix") unsupported.push("argument-prefix limits on commands");
     if (timeoutMs !== null && !can.timeout) unsupported.push("a timeout");
     if (!can.ui) unsupported.push("turning off desktop and clipboard access");
+    // What a 0.2 requirement asks beyond 0.1 is not enforced by any host yet (spec/boundary.md): it is refused by
+    // name, never dropped. A requirement without it (process, sharing allowed, no limits, no credentials) passes.
+    const limited = Object.keys(req.network.methods ?? {});
+    if (limited.length) unsupported.push(`method limits on outbound hosts: ${limited.join(", ")}`);
+    if (req.isolation && req.isolation.min !== "process") unsupported.push(`isolation ${req.isolation.min} (this host gives process)`);
+    if (req.isolation?.co_tenancy === "forbidden") unsupported.push("co_tenancy forbidden (this host may share)");
+    const credentials = Object.keys(req.egress?.credentials ?? {});
+    if (credentials.length) unsupported.push(`credentials for outbound hosts: ${credentials.join(", ")}`);
     if (unsupported.length) return { unsupported };
     return {
       policy: {
@@ -164,6 +183,11 @@ export class MxcAdapter {
       },
     };
   }
+}
+
+/** The first of `hidden` that `p` is or lies under, compared by path segment. */
+export function hiddenUnder(p: string, hidden: readonly string[]): string | undefined {
+  return hidden.find((h) => inside(p, [h]));
 }
 
 /**

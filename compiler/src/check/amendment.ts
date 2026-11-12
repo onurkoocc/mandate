@@ -18,7 +18,7 @@
 import { diag, ptr, type Diagnostic } from "../diag.js";
 import { BUDGET_DIMENSIONS, budgetAmount, type Budget, type Def, type Envelope } from "../ir/types.js";
 import { classRank } from "../std/std.js";
-import { capCovers, capsOf, showCap } from "./caps.js";
+import { capCovers, capsOf, showCap, type CapOptions } from "./caps.js";
 
 /** A budget's amount in each dimension it names: `tokens`, `steps`, `agents`, `time` in milliseconds, `spend:<currency>` in micro-units. */
 function amounts(b: Budget | undefined): Map<string, { field: string; amount: number }> {
@@ -32,18 +32,19 @@ function amounts(b: Budget | undefined): Map<string, { field: string; amount: nu
 
 /**
  * E1709: what `after` takes away from `before`, the envelope of `workflow`.
- * `defs` is every definition the program sees. Each diagnostic names the
+ * `defs` is every definition the program sees, read as `opts` says (its
+ * language). Each diagnostic names the
  * dimension, what the envelope gave and what the amendment asks, so that a
  * lead can ask again for no less.
  */
-export function narrowings(defs: Record<string, Def>, workflow: string, before: Envelope, after: Envelope): Diagnostic[] {
+export function narrowings(defs: Record<string, Def>, workflow: string, before: Envelope, after: Envelope, opts: CapOptions = {}): Diagnostic[] {
   const out: Diagnostic[] = [];
   const at = `${ptr("defs", workflow)}/envelope`;
   const no = (message: string, path: string, facts: Record<string, unknown>): void => void out.push(diag("E1709", message, { path }, { facts }));
 
   // Authority: every capability the envelope held lies inside one it holds now.
-  const held = (after.caps ?? []).flatMap((c) => capsOf(defs, c));
-  for (const c of (before.caps ?? []).flatMap((e) => capsOf(defs, e))) {
+  const held = (after.caps ?? []).flatMap((c) => capsOf(defs, c, opts));
+  for (const c of (before.caps ?? []).flatMap((e) => capsOf(defs, e, opts))) {
     if (held.some((w) => capCovers(w, c))) continue;
     no(`The amendment leaves out ${showCap(c)}, which the envelope holds. An amendment only widens: what ran under the envelope must still lie inside it.`, `${at}/caps`, {
       dimension: "capability",

@@ -1,0 +1,45 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1801",
+  "kind": "compile",
+  "title": "In a 0.5 program, a method net.https does not know is refused where it is written.",
+  "spec": [
+    "spec/boundary.md#language-05"
+  ],
+  "language": "mandate/0.5",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/GitHubRead/value/args/1/value/items/0",
+      "value": {
+        "op": "var",
+        "name": "FETCH"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1801",
+        "path": "/defs/GitHubRead/value/args/1/value/items/0",
+        "facts": {
+          "found": "FETCH",
+          "expected": [
+            "GET",
+            "HEAD",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
+        }
+      }
+    ]
+  }
+}

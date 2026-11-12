@@ -21,7 +21,8 @@
         { "type": "object", "properties": { "lock": true }, "required": ["lock"] },
         { "type": "object", "properties": { "patch": true }, "required": ["patch"] },
         { "type": "object", "properties": { "subprogram": true }, "required": ["subprogram"] },
-        { "type": "object", "properties": { "amendment": true }, "required": ["amendment"] }
+        { "type": "object", "properties": { "amendment": true }, "required": ["amendment"] },
+        { "type": "object", "properties": { "base": true }, "required": ["base"] }
       ]
     }
   },
@@ -30,6 +31,9 @@
     "properties": { "input": true, "expect": true, "journal": true },
     "required": ["input", "expect"],
     "not": { "type": "object", "properties": { "journal": true }, "required": ["journal"] }
+  },
+  "dependentRequired": {
+    "base": ["patch"]
   },
   "dependentSchemas": {
     "subprogram": {
@@ -86,6 +90,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/patchOp" },
       "description": "An RFC 6902 patch applied to the IR of the input before it is checked as JSON IR."
+    },
+    "base": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "The program hash the patch was written against. Only with patch. When it is not the hash of the input's IR, the patch is stale: MDT-E0130."
     },
     "subprogram": {
       "type": "object",

@@ -11,7 +11,7 @@ import { parseStrictJson, type Json } from "./json/strict-json.js";
 import { parseMdt } from "./parse/parser.js";
 import { resolveNames } from "./resolve/resolve.js";
 import { narrowings } from "./check/amendment.js";
-import { capsOf } from "./check/caps.js";
+import { capsOf, importedMethods } from "./check/caps.js";
 import { roleChecks } from "./check/roles.js";
 import { staticCheck, type Claim } from "./check/static.js";
 import { containment, opened, skeleton, subprogramShape, subprogramWorkflow, type Room } from "./check/subprogram.js";
@@ -116,6 +116,8 @@ export function check(text: string, kind: SourceKind, opts: CheckOptions = {}): 
   diagnostics.push(...resolveNames(loaded.program, loaded.spans, linked.defs));
   // A role is a name too, from 0.4: where one is named, it is a role definition (E1501, E1503).
   diagnostics.push(...roleChecks(loaded.program, loaded.spans, linked.defs));
+  // Before 0.5, a method limit an imported 0.5 capability writes would be read as none (E1804).
+  diagnostics.push(...importedMethods(loaded.program, linked, opts.modules).map((d) => (d.at.path !== undefined && loaded.spans.get(d.at.path) ? { ...d, at: { ...d.at, span: loaded.spans.get(d.at.path)! } } : d)));
   // Static checks assume every name resolves.
   if (!hasErrors(diagnostics)) diagnostics.push(...staticCheck(loaded.program, loaded.spans, linked.defs, opts.claim));
   if (opts.lock && !hasErrors(diagnostics)) {
@@ -197,10 +199,10 @@ export interface SubprogramCheck {
 export function checkSubprogram(i: SubprogramInput): SubprogramCheck {
   const wf = Object.hasOwn(i.parent.defs, i.workflow) ? i.parent.defs[i.workflow] : undefined;
   if (wf?.kind !== "workflow" || !wf.envelope) throw new Error(`${i.workflow} is not a workflow with an envelope, so it has no sub-programs`);
-  const patched = applyOps(skeleton(i.parent.module, i.number), i.base, i.ops);
+  const patched = applyOps(skeleton(i.parent.module, i.number, i.parent.language), i.base, i.ops);
   if (!patched.program) return { ok: false, diagnostics: patched.diagnostics };
   const sub = patched.program;
-  const diagnostics = [...patched.diagnostics, ...subprogramShape(sub, i.parent.module, i.number)];
+  const diagnostics = [...patched.diagnostics, ...subprogramShape(sub, i.parent.module, i.number, i.parent.language)];
   if (hasErrors(diagnostics)) return { ok: false, diagnostics };
   const view = opened(sub, i.parent);
   const modules = { ...(i.modules ?? {}), [i.parent.module]: i.parent };
@@ -217,8 +219,9 @@ export function checkSubprogram(i: SubprogramInput): SubprogramCheck {
   }
   const workflow = subprogramWorkflow(sub)!;
   if (!hasErrors(diagnostics)) {
-    const envelope = (wf.envelope.caps ?? []).flatMap((c) => capsOf(link(i.parent, i.modules).defs, c));
-    diagnostics.push(...containment(link(view, modules).defs, workflow, envelope, i.room));
+    // The envelope is read in its parent's language, the sub-program in its own.
+    const envelope = (wf.envelope.caps ?? []).flatMap((c) => capsOf(link(i.parent, i.modules).defs, c, { language: i.parent.language }));
+    diagnostics.push(...containment(link(view, modules).defs, workflow, envelope, i.room, { language: view.language }));
   }
   if (hasErrors(diagnostics)) return { ok: false, diagnostics };
   return { ok: true, diagnostics, program: sub, hash: hashProgram(sub as unknown as Json).program, workflow };
@@ -261,7 +264,7 @@ export function checkAmendment(i: AmendmentInput): AmendmentCheck {
   const checked = check(JSON.stringify(amended), "json", i.modules ? { modules: i.modules } : {});
   const diagnostics = [...checked.diagnostics];
   const now = checked.program?.defs[i.workflow];
-  if (checked.ok && now?.kind === "workflow" && now.envelope) diagnostics.push(...narrowings(link(checked.program!, i.modules).defs, i.workflow, wf.envelope, now.envelope));
+  if (checked.ok && now?.kind === "workflow" && now.envelope) diagnostics.push(...narrowings(link(checked.program!, i.modules).defs, i.workflow, wf.envelope, now.envelope, { language: checked.program!.language }));
   if (hasErrors(diagnostics) || !checked.program || !checked.hashes) return { ok: false, diagnostics };
   return { ok: true, diagnostics, program: checked.program, hash: checked.hashes.program };
 }

@@ -1,0 +1,19 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S06b",
+  "kind": "compile",
+  "title": "A loop with max_iter is bounded.",
+  "spec": [
+    "spec/checks.md#budgets-86"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

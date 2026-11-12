@@ -1,0 +1,7 @@
+mandate @ 0.5
+
+module example.github @ 0.1
+
+use std.{net}
+
+capability GitHubRead = net.https(hosts: ["api.github.com"], methods: [GET])

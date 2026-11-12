@@ -1,0 +1,598 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "fixtures/system/onboard.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.3",
+  "canonical": "{\"defs\":{\"Cartographer\":{\"budget\":{\"spend\":{\"currency\":\"USD\",\"micros\":3000000},\"steps\":20,\"tokens\":1000000},\"caps\":[{\"name\":\"Model\",\"op\":\"var\"},{\"name\":\"ModelStd\",\"op\":\"var\"},{\"name\":\"ReadAll\",\"op\":\"var\"}],\"kind\":\"agent\",\"role\":\"Reads the repositories and writes the system model they describe: components, interfaces, who consumes what, owners.\",\"skills\":{\"draft\":{\"effects\":[{\"effect\":\"Fs.Read\"},{\"effect\":\"Fs.Write\"},{\"effect\":\"Model\"}],\"params\":[{\"name\":\"request\",\"type\":{\"ref\":\"Request\"}}],\"returns\":{\"args\":[{\"ref\":\"Draft\"}],\"ref\":\"Inferred\"}}}},\"Draft\":{\"kind\":\"type\",\"type\":{\"record\":{\"files\":{\"args\":[{\"ref\":\"Text\"}],\"ref\":\"List\"},\"path\":{\"ref\":\"Text\"},\"summary\":{\"ref\":\"Text\"}}}},\"Land\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"name\":\"system\",\"op\":\"var\"}}],\"callee\":{\"name\":\"repo\",\"of\":{\"name\":\"component\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"Model\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"name\":\"system\",\"op\":\"var\"}},{\"value\":{\"op\":\"text\",\"value\":\"system\"}}],\"callee\":{\"name\":\"write\",\"of\":{\"name\":\"component\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"ModelAccepted\":{\"accept\":{\"architect\":{\"by\":{\"call\":{\"args\":[{\"name\":\"role\",\"value\":{\"op\":\"text\",\"value\":\"architect\"}}],\"callee\":{\"name\":\"approve\",\"of\":{\"name\":\"human\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"The architect accepted the model\"},\"consumed\":{\"by\":{\"call\":{\"args\":[{\"value\":{\"name\":\"path\",\"of\":{\"name\":\"draft\",\"op\":\"var\"},\"op\":\"field\"}},{\"name\":\"at\",\"value\":{\"name\":\"system\",\"op\":\"var\"}}],\"callee\":{\"name\":\"consumes\",\"of\":{\"name\":\"test\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"Every call between components is modelled\"},\"described\":{\"by\":{\"call\":{\"args\":[{\"value\":{\"name\":\"path\",\"of\":{\"name\":\"draft\",\"op\":\"var\"},\"op\":\"field\"}},{\"name\":\"at\",\"value\":{\"name\":\"system\",\"op\":\"var\"}}],\"callee\":{\"name\":\"system_specs\",\"of\":{\"name\":\"test\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"The draft is a system model of every repository, its specs at the base commit\"},\"runnable\":{\"by\":{\"call\":{\"args\":[{\"value\":{\"name\":\"path\",\"of\":{\"name\":\"draft\",\"op\":\"var\"},\"op\":\"field\"}},{\"name\":\"at\",\"value\":{\"name\":\"system\",\"op\":\"var\"}}],\"callee\":{\"name\":\"commands\",\"of\":{\"name\":\"test\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"Every component builds and tests with the commands the draft names\"}},\"kind\":\"contract\",\"params\":[{\"name\":\"draft\",\"type\":{\"ref\":\"Draft\"}}]},\"ModelStd\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"tier\",\"value\":{\"name\":\"standard\",\"op\":\"var\"}}],\"callee\":{\"name\":\"infer\",\"of\":{\"name\":\"model\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"Onboard\":{\"body\":[{\"name\":\"draft\",\"op\":\"let\",\"value\":{\"agent\":\"Cartographer\",\"args\":[{\"value\":{\"name\":\"request\",\"op\":\"var\"}}],\"op\":\"delegate\",\"skill\":\"draft\"}},{\"name\":\"accepted\",\"op\":\"let\",\"value\":{\"args\":[{\"value\":{\"name\":\"draft\",\"op\":\"var\"}}],\"contract\":\"ModelAccepted\",\"on_unmet\":{\"bind\":\"c\",\"then\":{\"op\":\"escalate\",\"to\":{\"args\":[{\"value\":{\"op\":\"template\",\"parts\":[{\"text\":\"Open criteria: \"},{\"expr\":{\"name\":\"c\",\"op\":\"var\"}}]}}],\"callee\":{\"name\":\"human\",\"op\":\"var\"},\"op\":\"call\"}}},\"op\":\"verify\",\"value\":{\"name\":\"draft\",\"op\":\"var\"}}},{\"name\":\"landed\",\"op\":\"let\",\"value\":{\"approver\":\"architect\",\"idempotent_by\":{\"name\":\"id\",\"of\":{\"name\":\"request\",\"op\":\"var\"},\"op\":\"field\"},\"members\":{\"system\":{\"args\":[{\"value\":{\"name\":\"accepted\",\"op\":\"var\"}}],\"effect\":\"git.merge\"}},\"op\":\"changeset\",\"order\":[\"system\"],\"plan\":{\"name\":\"accepted\",\"op\":\"var\"}}},{\"op\":\"expr\",\"value\":{\"op\":\"text\",\"value\":\"accepted\"}}],\"budget\":{\"spend\":{\"currency\":\"USD\",\"micros\":5000000},\"time\":{\"ms\":3600000}},\"caps\":[{\"name\":\"Land\",\"op\":\"var\"},{\"name\":\"Model\",\"op\":\"var\"},{\"name\":\"ModelStd\",\"op\":\"var\"},{\"name\":\"ReadAll\",\"op\":\"var\"}],\"kind\":\"workflow\",\"params\":[{\"name\":\"request\",\"type\":{\"ref\":\"Request\"}}],\"returns\":{\"ref\":\"Text\"}},\"ReadAll\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"name\":\"auth\",\"op\":\"var\"}},{\"value\":{\"name\":\"mcp\",\"op\":\"var\"}},{\"value\":{\"name\":\"core\",\"op\":\"var\"}},{\"value\":{\"name\":\"search\",\"op\":\"var\"}},{\"value\":{\"name\":\"voice\",\"op\":\"var\"}},{\"value\":{\"name\":\"evals\",\"op\":\"var\"}},{\"value\":{\"name\":\"system\",\"op\":\"var\"}}],\"callee\":{\"name\":\"read\",\"of\":{\"name\":\"component\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"Request\":{\"kind\":\"type\",\"type\":{\"record\":{\"id\":{\"ref\":\"Text\"},\"note\":{\"ref\":\"Text\"}}}}},\"language\":\"mandate/0.3\",\"module\":\"acme.onboard\",\"uses\":[{\"module\":\"acme.repos\",\"names\":[\"auth\",\"core\",\"evals\",\"mcp\",\"search\",\"system\",\"voice\"]},{\"module\":\"std\",\"names\":[\"component\",\"git\",\"human\",\"model\",\"test\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:829104961a43506d2f8f531fdf4e2a2c5198c91f452a9e1fe16bc42c051bf4a4",
+    "defs": [
+      [
+        "Cartographer",
+        "sha256:6f0b024867952e5d97cc8e1d0b626e2858a6ab31ca70df091635b862ead2eef9"
+      ],
+      [
+        "Draft",
+        "sha256:75fc98f06f06d1c31e8ae1640e216650688f8c9d65f17ddbfd6d937e880d2862"
+      ],
+      [
+        "Land",
+        "sha256:d7de9b7e5ff423d07cb5663628541f8a9e8ddc13d383fce653adcc57d35b8a8c"
+      ],
+      [
+        "Model",
+        "sha256:e4659c54ae50f372ffea86f6c1a7038293a9da83daade7ce127379deba4c5e4d"
+      ],
+      [
+        "ModelAccepted",
+        "sha256:375e1ee7ab406efe35198091bf137a8c859b76beb9f426941afb132ed62558b9"
+      ],
+      [
+        "ModelStd",
+        "sha256:d9ec40f0bc25850f99d9c096b64c837345c4d2824d85fdd7f6eaf80ce750c97a"
+      ],
+      [
+        "Onboard",
+        "sha256:e7c627736c7f42c7aa00b6b4c67c318fcbbc91746c6668097cc2d18e5f97d046"
+      ],
+      [
+        "ReadAll",
+        "sha256:b63f4f1257d89f35e84adbf1fa176e6c7d6713483b5fc7d24f93657ff401d3e1"
+      ],
+      [
+        "Request",
+        "sha256:28ec05257161d0664bc236b7ae11ba3260ca9ac317c87e90123277629914e3d6"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.3",
+    "module": "acme.onboard",
+    "version": "0.1",
+    "defs": {
+      "ReadAll": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "component"
+            },
+            "name": "read"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "auth"
+              }
+            },
+            {
+              "value": {
+                "op": "var",
+                "name": "mcp"
+              }
+            },
+            {
+              "value": {
+                "op": "var",
+                "name": "core"
+              }
+            },
+            {
+              "value": {
+                "op": "var",
+                "name": "search"
+              }
+            },
+            {
+              "value": {
+                "op": "var",
+                "name": "voice"
+              }
+            },
+            {
+              "value": {
+                "op": "var",
+                "name": "evals"
+              }
+            },
+            {
+              "value": {
+                "op": "var",
+                "name": "system"
+              }
+            }
+          ]
+        }
+      },
+      "Model": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "component"
+            },
+            "name": "write"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "system"
+              }
+            },
+            {
+              "value": {
+                "op": "text",
+                "value": "system"
+              }
+            }
+          ]
+        }
+      },
+      "Land": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "component"
+            },
+            "name": "repo"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "system"
+              }
+            }
+          ]
+        }
+      },
+      "ModelStd": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "model"
+            },
+            "name": "infer"
+          },
+          "args": [
+            {
+              "name": "tier",
+              "value": {
+                "op": "var",
+                "name": "standard"
+              }
+            }
+          ]
+        }
+      },
+      "Request": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "id": {
+              "ref": "Text"
+            },
+            "note": {
+              "ref": "Text"
+            }
+          }
+        }
+      },
+      "Draft": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "path": {
+              "ref": "Text"
+            },
+            "files": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ]
+            },
+            "summary": {
+              "ref": "Text"
+            }
+          }
+        }
+      },
+      "ModelAccepted": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "draft",
+            "type": {
+              "ref": "Draft"
+            }
+          }
+        ],
+        "accept": {
+          "described": {
+            "description": "The draft is a system model of every repository, its specs at the base commit",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "test"
+                  },
+                  "name": "system_specs"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "draft"
+                      },
+                      "name": "path"
+                    }
+                  },
+                  {
+                    "name": "at",
+                    "value": {
+                      "op": "var",
+                      "name": "system"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "consumed": {
+            "description": "Every call between components is modelled",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "test"
+                  },
+                  "name": "consumes"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "draft"
+                      },
+                      "name": "path"
+                    }
+                  },
+                  {
+                    "name": "at",
+                    "value": {
+                      "op": "var",
+                      "name": "system"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "runnable": {
+            "description": "Every component builds and tests with the commands the draft names",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "test"
+                  },
+                  "name": "commands"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "draft"
+                      },
+                      "name": "path"
+                    }
+                  },
+                  {
+                    "name": "at",
+                    "value": {
+                      "op": "var",
+                      "name": "system"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "architect": {
+            "description": "The architect accepted the model",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "human"
+                  },
+                  "name": "approve"
+                },
+                "args": [
+                  {
+                    "name": "role",
+                    "value": {
+                      "op": "text",
+                      "value": "architect"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "Cartographer": {
+        "kind": "agent",
+        "caps": [
+          {
+            "op": "var",
+            "name": "Model"
+          },
+          {
+            "op": "var",
+            "name": "ModelStd"
+          },
+          {
+            "op": "var",
+            "name": "ReadAll"
+          }
+        ],
+        "skills": {
+          "draft": {
+            "params": [
+              {
+                "name": "request",
+                "type": {
+                  "ref": "Request"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "Inferred",
+              "args": [
+                {
+                  "ref": "Draft"
+                }
+              ]
+            },
+            "effects": [
+              {
+                "effect": "Fs.Read"
+              },
+              {
+                "effect": "Fs.Write"
+              },
+              {
+                "effect": "Model"
+              }
+            ]
+          }
+        },
+        "role": "Reads the repositories and writes the system model they describe: components, interfaces, who consumes what, owners.",
+        "budget": {
+          "tokens": 1000000,
+          "spend": {
+            "micros": 3000000,
+            "currency": "USD"
+          },
+          "steps": 20
+        }
+      },
+      "Onboard": {
+        "kind": "workflow",
+        "params": [
+          {
+            "name": "request",
+            "type": {
+              "ref": "Request"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Text"
+        },
+        "caps": [
+          {
+            "op": "var",
+            "name": "Land"
+          },
+          {
+            "op": "var",
+            "name": "Model"
+          },
+          {
+            "op": "var",
+            "name": "ModelStd"
+          },
+          {
+            "op": "var",
+            "name": "ReadAll"
+          }
+        ],
+        "body": [
+          {
+            "op": "let",
+            "name": "draft",
+            "value": {
+              "op": "delegate",
+              "agent": "Cartographer",
+              "skill": "draft",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "request"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "let",
+            "name": "accepted",
+            "value": {
+              "op": "verify",
+              "value": {
+                "op": "var",
+                "name": "draft"
+              },
+              "contract": "ModelAccepted",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "draft"
+                  }
+                }
+              ],
+              "on_unmet": {
+                "bind": "c",
+                "then": {
+                  "op": "escalate",
+                  "to": {
+                    "op": "call",
+                    "callee": {
+                      "op": "var",
+                      "name": "human"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "template",
+                          "parts": [
+                            {
+                              "text": "Open criteria: "
+                            },
+                            {
+                              "expr": {
+                                "op": "var",
+                                "name": "c"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "op": "let",
+            "name": "landed",
+            "value": {
+              "op": "changeset",
+              "plan": {
+                "op": "var",
+                "name": "accepted"
+              },
+              "members": {
+                "system": {
+                  "effect": "git.merge",
+                  "args": [
+                    {
+                      "value": {
+                        "op": "var",
+                        "name": "accepted"
+                      }
+                    }
+                  ]
+                }
+              },
+              "order": [
+                "system"
+              ],
+              "approver": "architect",
+              "idempotent_by": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "request"
+                },
+                "name": "id"
+              }
+            }
+          },
+          {
+            "op": "expr",
+            "value": {
+              "op": "text",
+              "value": "accepted"
+            }
+          }
+        ],
+        "budget": {
+          "spend": {
+            "micros": 5000000,
+            "currency": "USD"
+          },
+          "time": {
+            "ms": 3600000
+          }
+        }
+      }
+    },
+    "uses": [
+      {
+        "module": "acme.repos",
+        "names": [
+          "auth",
+          "core",
+          "evals",
+          "mcp",
+          "search",
+          "system",
+          "voice"
+        ]
+      },
+      {
+        "module": "std",
+        "names": [
+          "component",
+          "git",
+          "human",
+          "model",
+          "test"
+        ]
+      }
+    ]
+  }
+}

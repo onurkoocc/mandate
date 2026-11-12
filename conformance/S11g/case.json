@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S11g",
+  "kind": "compile",
+  "title": "An integer above 2^53-1 is refused.",
+  "spec": [
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "text": "{\"language\":\"mandate/0.1\",\"module\":\"m\",\"version\":\"0.1\",\"defs\":{\"N\":{\"kind\":\"const\",\"value\":{\"op\":\"int\",\"value\":9007199254740992}}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0106",
+        "path": "/defs/N/value/value"
+      }
+    ]
+  }
+}

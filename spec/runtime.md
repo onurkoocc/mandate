@@ -344,11 +344,14 @@ value's word. Each must:
 - be evidence of this run, for the value's contract;
 - have passed;
 - be signed by a trusted key, exactly as recorded;
-- if it claims a verifier attestation, carry one that holds (below).
+- carry a verifier attestation that holds when its check requires one,
+  and hold any attestation it carries (below).
 
-Together they must cover every criterion of the contract. Otherwise the
-run stops with the violation `forged_evidence`, before anything is
-prepared.
+Together they must cover every criterion of the contract. With a verifier
+of its own configured, every part of a criterion must have a passing
+record of that part's method, once per part: under `and`, a static part's
+record does not cover the verifier's check beside it. Otherwise the run
+stops with the violation `forged_evidence`, before anything is prepared.
 
 ### The runtime's verifier
 
@@ -388,7 +391,9 @@ ed25519 key, which the runtime process never reads. What it signs, its
 
 ```json
 {
-  "format": "mandate/check-attestation/0.1",
+  "format": "mandate/check-attestation/0.2",
+  "run": "run-1", "contract": "FixAccepted", "criterion": "suite_green", "method": "test.suite",
+  "part": "/defs/FixBug/body/…/contract/accept/suite_green",
   "request": "sha256:…",
   "passed": true, "detail": { … },
   "subject": { "src/a.ts": "sha256:…" },
@@ -398,24 +403,75 @@ ed25519 key, which the runtime process never reads. What it signs, its
 }
 ```
 
-The signature covers `mandate/check-attestation/0.1
-` followed by the
+`run`, `contract`, `criterion`, `method` and `part` say which check the
+attestation is for. `part` is the path in the program of the criterion's
+part that was checked, for a part of `and` ending in `/all/<i>`. With the
+run, the method and the result it gives the evidence id of the check's
+record. The runtime sends the run and the part with each `check`, beside
+the request (`check { request, binding: { run, part } }`). The request is
+unchanged, so its digest, which is the check's command identity in the
+journal, and every evidence id stay as they were.
+
+The signature covers the format name and a newline, followed by the
 statement's JCS bytes. `ProcessVerifier`, on the runtime's side, computes
-the same statement from the request and the result it received, and
-accepts the result only when the signature verifies against a pinned
-verifier key. Otherwise the criterion is not met, with the detail
-`unattested_check`: a result the verifier did not sign never passes.
+the same statement from the request, the run and part it sent, and the
+result it received. It accepts the result only when the signature
+verifies against a pinned verifier key. Otherwise the criterion is not
+met, with the detail `unattested_check`: a result the verifier did not
+sign for this check never passes, and neither does one signed in the
+format before 0.2 or for another run or part.
 
 An accepted result's `producer` carries `process: "separate"` and the
 attestation (statement, key id, signature) into the evidence record.
-`verifyEvidence` and the `Verified` check (G03) then also require the
-attestation to verify under a trusted verifier key, and to say what the
-record says: passed, detail, the files checked, and each output's digest.
-So the runtime's key alone cannot make a check pass.
+
+Which records need an attestation is read from the program and the
+configuration, never from the record. With trusted verifier keys, a
+check's method is *attested* unless it is `static`, `human.approve`, or a
+method the configuration checks in the runtime's process: the boundary
+checks (`test.suite_each`, `test.contract`, `test.integration`, `test.ci`,
+`test.planned`) when `boundary` and `sandbox` are set, and the onboarding
+checks (`test.system_specs`, `test.consumes`, `test.commands`) when
+`onboard` is set. These need the run's working copies, so they run in
+front of the verifier process. `verifyEvidence` and the `Verified` check
+(G03) then require of each record:
+
+- it is a record of the run it is stored under, and its stored row names
+  the contract, criterion and method its signed record names;
+- its method is one the program declares for its criterion;
+- if its method is attested, a `mandate/check-attestation/0.2`
+  attestation that verifies under a trusted verifier key, says what the
+  record says (passed, detail, the files checked, and each output's
+  digest), and was made for this record: its `run`, `contract`,
+  `criterion` and `method` are the record's, and the evidence id its
+  `run`, `part` and `method` give with the record's result is the
+  record's own.
+
+A record that carries an attestation must hold it, whether or not one is
+required, and a 0.2 attestation must name the record's check. So the
+runtime's key alone cannot make a check pass: a record whose attestation
+was taken out, whose method was changed, or whose attestation was made
+for another criterion, another part of its criterion, or another run,
+does not hold. A `mandate/check-attestation/0.1` attestation names none of
+these, and never stands for a check that requires one.
+
+Two kinds of evidence therefore show as invalid once the runtime has
+trusted verifier keys: evidence made while no verifier process was
+configured, which carries no attestation, and evidence attested before
+0.2, whose attestations are 0.1. Without trusted verifier keys, only an
+attestation a record carries is checked, as before.
 
 The verifier creates its key on first use (`.mandate/verifier.key` by
 default) and writes its public half to `<key>.pub`, which the runtime
 trusts unless `verifier.process.trusted` names other public keys.
+
+The verifier process does not inherit the runtime's environment. It gets
+what a program needs to run on Linux and on Windows (the search path, the
+system directories, the temporary and home directories, the locale and
+the time zone) and the sandbox SDK's settings. When the configuration has
+`model`, it also gets the model's credentials and the settings that reach
+its API, for model-backed checks. It never gets `MANDATE_GITHUB_TOKEN` or
+a read broker's database URL. The process that creates its key gets only
+what a program needs.
 
 Unmet criteria go to `on unmet(c)`, or else fail the verify with
 `Rejected`. An answer to an `escalate` there is the escalation's value,
@@ -710,6 +766,9 @@ listed in the run's summary (R09).
 - refuses a language version it does not run, and of 0.4 `agents` in a
   budget that is not an envelope's, which it does not run yet
   (`unsupported_language`; [`envelope.md`](envelope.md));
+- refuses a package whose lock sets `host`, `isolation` or `egress`, each
+  by its name, until it enforces them (`unsupported_lock`;
+  [`boundary.md`](boundary.md#lock-05));
 - when the lock lists members or roles, requires it to be well formed
   (`malformed_lock`), and for a 0.4 package requires every role it names
   to have a member (`unbound_role`, E1502);
@@ -868,7 +927,9 @@ lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
   `trusted`, default the key's `.pub` file). See "A verifier of its own".
 - **Secrets.** They come only from the environment: `CLAUDE_API_KEY` (and
   `CLAUDE_WORKSPACE_ID` for a key that is not scoped to a workspace), and
-  `MANDATE_GITHUB_TOKEN`.
+  `MANDATE_GITHUB_TOKEN`. The verifier process and `docker` get only the
+  variables they need (see "A verifier of its own" and "Boundary
+  verifier").
 - **Missing adapters.** An adapter the configuration leaves out is refused
   when a run reaches it, and never simulated.
 - **Strict reading.** Unknown fields in the file are an error.
@@ -1054,7 +1115,12 @@ Configuration (`mandate.runtime.json`):
   published ports and networks that are not internal. Each overridden
   service gets an image name of the project's, so candidate images never
   replace others. It runs `build`, then `run --rm <service>` (which starts
-  what the service depends on), and then `down -v --rmi local`.
+  what the service depends on), and then `down -v --rmi local`. `docker`
+  gets what a program needs to run, the Docker client's settings
+  (`DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`, `DOCKER_CERT_PATH`,
+  `DOCKER_TLS_VERIFY`, and `XDG_RUNTIME_DIR` for a rootless engine) and the
+  `env` the configuration gives, with `MANDATE_ENV`; none of the runtime's
+  secrets.
 - `suite_each` runs a component's tests as its change left them and lists
   the test files that differ from the base commit (`tests_changed`). Files
   `pinned` names run as they were at the base commit.

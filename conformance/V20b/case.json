@@ -1,0 +1,61 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V20b",
+  "kind": "compile",
+  "title": "A text literal that leaves the working copy, is absolute, or is not portable is not a Path, each at its place.",
+  "spec": [
+    "spec/core.md#paths",
+    "spec/diagnostics.md"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0204",
+        "path": "/defs/a0/value/args/0/value"
+      },
+      {
+        "code": "MDT-E0204",
+        "path": "/defs/a1/value/args/0/value"
+      },
+      {
+        "code": "MDT-E0204",
+        "path": "/defs/a2/value/args/0/value"
+      },
+      {
+        "code": "MDT-E0204",
+        "path": "/defs/a3/value/args/0/value"
+      },
+      {
+        "code": "MDT-E0204",
+        "path": "/defs/a4/value/args/0/value"
+      },
+      {
+        "code": "MDT-E0204",
+        "path": "/defs/a5/value/args/0/value"
+      },
+      {
+        "code": "MDT-E0204",
+        "path": "/defs/a6/value/args/0/value"
+      },
+      {
+        "code": "MDT-E0204",
+        "path": "/defs/a7/value/args/0/value"
+      },
+      {
+        "code": "MDT-E0204",
+        "path": "/defs/a8/value/args/0/value"
+      },
+      {
+        "code": "MDT-E0204",
+        "path": "/defs/a9/value/args/0/value"
+      }
+    ]
+  }
+}

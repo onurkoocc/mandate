@@ -1,0 +1,726 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "fixtures/system/acme.system.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.3",
+  "canonical": "{\"defs\":{\"AgentApi\":{\"kind\":\"interface\",\"protocol\":\"openapi\",\"spec\":\"docs/openapi.json\"},\"CoreApi\":{\"kind\":\"interface\",\"protocol\":\"openapi\",\"spec\":\"docs/openapi.json\"},\"CoreSchema\":{\"kind\":\"interface\",\"protocol\":\"db_schema\",\"spec\":\"src/main/resources/db/migration\"},\"CustomerName\":{\"class\":\"confidential\",\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}},\"CustomerTools\":{\"kind\":\"interface\",\"protocol\":\"mcp_tools\",\"spec\":\"docs/mcp-tools.json\"},\"Email\":{\"class\":\"confidential\",\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}},\"EventRow\":{\"kind\":\"type\",\"type\":{\"record\":{\"at\":{\"ref\":\"Text\"},\"description\":{\"ref\":\"Text\"},\"tracking_no\":{\"ref\":\"Text\"}}}},\"LogLine\":{\"kind\":\"type\",\"type\":{\"record\":{\"level\":{\"ref\":\"Text\"},\"msg\":{\"ref\":\"Text\"},\"service\":{\"ref\":\"Text\"},\"status\":{\"ref\":\"Int\"},\"tool\":{\"ref\":\"Text\"},\"trace_id\":{\"ref\":\"Text\"},\"ts\":{\"ref\":\"Text\"}}}},\"Phone\":{\"class\":\"confidential\",\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}},\"SearchApi\":{\"kind\":\"interface\",\"protocol\":\"openapi\",\"spec\":\"docs/openapi.json\"},\"ShipmentRow\":{\"kind\":\"type\",\"type\":{\"record\":{\"attempts\":{\"ref\":\"Int\"},\"delivery_date\":{\"ref\":\"Text\"},\"delivery_status\":{\"ref\":\"Text\"},\"destination_city\":{\"ref\":\"Text\"},\"email\":{\"ref\":\"Email\"},\"full_name\":{\"ref\":\"CustomerName\"},\"phone\":{\"ref\":\"Phone\"},\"status\":{\"ref\":\"Text\"},\"tracking_no\":{\"ref\":\"Text\"}}}},\"ShipmentStatusRow\":{\"kind\":\"type\",\"type\":{\"record\":{\"attempts\":{\"ref\":\"Int\"},\"delivery_date\":{\"ref\":\"Text\"},\"delivery_status\":{\"ref\":\"Text\"},\"destination_city\":{\"ref\":\"Text\"},\"status\":{\"ref\":\"Text\"},\"tracking_no\":{\"ref\":\"Text\"}}}},\"TicketRow\":{\"kind\":\"type\",\"type\":{\"record\":{\"category\":{\"ref\":\"Text\"},\"channel\":{\"ref\":\"Text\"},\"created_at\":{\"ref\":\"Text\"},\"status\":{\"ref\":\"Text\"},\"ticket_id\":{\"ref\":\"Text\"},\"tracking_no\":{\"ref\":\"Text\"}}}},\"TokenIssuance\":{\"kind\":\"interface\",\"protocol\":\"oauth\",\"spec\":\"docs/oauth-metadata.json\"},\"auth\":{\"build\":[{\"args\":[\"ci\",\"--ignore-scripts\"],\"command\":\"npm\"},{\"args\":[\"run\",\"build\"],\"command\":\"npm\"}],\"kind\":\"component\",\"lang\":\"ts\",\"owner\":\"identity_owner\",\"provides\":[\"TokenIssuance\"],\"repo\":\"acme/auth\",\"root\":\"/work/acme-auth\",\"test\":[{\"args\":[\"test\"],\"command\":\"npm\"}]},\"core\":{\"build\":[{\"args\":[\"-B\",\"-q\",\"-o\",\"-DskipTests\",\"package\"],\"command\":\"mvn\"}],\"governance\":[\"deploy/**\"],\"kind\":\"component\",\"lang\":\"java\",\"owner\":\"core_owner\",\"provides\":[\"CoreApi\",\"CoreSchema\"],\"repo\":\"acme/core\",\"root\":\"/work/acme-core\",\"test\":[{\"args\":[\"-B\",\"-q\",\"-o\",\"test\"],\"command\":\"mvn\"}]},\"dev\":{\"class\":\"internal\",\"kind\":\"environment\",\"reads\":{\"shipment_status\":{\"from\":\"core\",\"max_rows\":1,\"params\":[{\"name\":\"tracking_no\",\"type\":{\"ref\":\"Text\"}}],\"query\":{\"sql\":\"select tracking_no, status, destination_city, delivery_date, delivery_status, attempts from v_shipment_overview where tracking_no = :tracking_no\"},\"returns\":{\"ref\":\"ShipmentStatusRow\"}}}},\"evals\":{\"consumes\":[\"AgentApi\"],\"kind\":\"component\",\"lang\":\"py\",\"owner\":\"agent_owner\",\"repo\":\"acme/voice-evals\",\"root\":\"/work/acme-voice-evals\",\"test\":[{\"args\":[\"-m\",\"pytest\",\"-q\"],\"command\":\"python\"}]},\"mcp\":{\"build\":[{\"args\":[\"ci\",\"--ignore-scripts\"],\"command\":\"npm\"},{\"args\":[\"run\",\"build\"],\"command\":\"npm\"}],\"consumes\":[\"CoreApi\",\"SearchApi\",\"TokenIssuance\"],\"kind\":\"component\",\"lang\":\"ts\",\"owner\":\"support_platform_owner\",\"provides\":[\"CustomerTools\"],\"repo\":\"acme/mcp\",\"root\":\"/work/acme-mcp\",\"test\":[{\"args\":[\"test\"],\"command\":\"npm\"}]},\"prod_sim\":{\"authorize\":{\"deploy\":{\"by\":\"human\",\"role\":\"release_manager\"},\"migrate\":{\"by\":\"human\",\"role\":\"db_owner\"}},\"class\":\"confidential\",\"kind\":\"environment\",\"reads\":{\"core_warnings\":{\"from\":\"core\",\"max_rows\":500,\"params\":[{\"name\":\"since\",\"type\":{\"ref\":\"Text\"}}],\"query\":{\"logs\":{\"bop\":\"and\",\"left\":{\"bop\":\"or\",\"left\":{\"bop\":\"==\",\"left\":{\"name\":\"level\",\"op\":\"var\"},\"op\":\"binary\",\"right\":{\"op\":\"text\",\"value\":\"warn\"}},\"op\":\"binary\",\"right\":{\"bop\":\"==\",\"left\":{\"name\":\"level\",\"op\":\"var\"},\"op\":\"binary\",\"right\":{\"op\":\"text\",\"value\":\"error\"}}},\"op\":\"binary\",\"right\":{\"bop\":\">=\",\"left\":{\"name\":\"ts\",\"op\":\"var\"},\"op\":\"binary\",\"right\":{\"name\":\"since\",\"op\":\"var\"}}}},\"returns\":{\"ref\":\"LogLine\"}},\"mcp_errors\":{\"from\":\"mcp\",\"max_rows\":500,\"params\":[{\"name\":\"since\",\"type\":{\"ref\":\"Text\"}}],\"query\":{\"logs\":{\"bop\":\"and\",\"left\":{\"bop\":\"or\",\"left\":{\"bop\":\"==\",\"left\":{\"name\":\"level\",\"op\":\"var\"},\"op\":\"binary\",\"right\":{\"op\":\"text\",\"value\":\"error\"}},\"op\":\"binary\",\"right\":{\"bop\":\"==\",\"left\":{\"name\":\"level\",\"op\":\"var\"},\"op\":\"binary\",\"right\":{\"op\":\"text\",\"value\":\"warn\"}}},\"op\":\"binary\",\"right\":{\"bop\":\">=\",\"left\":{\"name\":\"ts\",\"op\":\"var\"},\"op\":\"binary\",\"right\":{\"name\":\"since\",\"op\":\"var\"}}}},\"returns\":{\"ref\":\"LogLine\"}},\"shipment_events\":{\"from\":\"core\",\"max_rows\":200,\"params\":[{\"name\":\"tracking_no\",\"type\":{\"ref\":\"Text\"}}],\"query\":{\"sql\":\"select tracking_no, at, description from shipment_events where tracking_no = :tracking_no order by at\"},\"returns\":{\"ref\":\"EventRow\"}},\"shipment_overview\":{\"from\":\"core\",\"max_rows\":1,\"params\":[{\"name\":\"tracking_no\",\"type\":{\"ref\":\"Text\"}}],\"query\":{\"sql\":\"select tracking_no, status, destination_city, delivery_date, delivery_status, attempts, full_name, phone, email from v_shipment_overview where tracking_no = :tracking_no\"},\"returns\":{\"ref\":\"ShipmentRow\"}},\"tickets_since\":{\"from\":\"core\",\"max_rows\":500,\"params\":[{\"name\":\"since\",\"type\":{\"ref\":\"Text\"}}],\"query\":{\"sql\":\"select ticket_id, tracking_no, category, status, channel, created_at from tickets where created_at >= cast(:since as timestamptz) order by created_at desc\"},\"returns\":{\"ref\":\"TicketRow\"}}}},\"search\":{\"kind\":\"component\",\"lang\":\"py\",\"owner\":\"search_owner\",\"provides\":[\"SearchApi\"],\"repo\":\"acme/search\",\"root\":\"/work/acme-search\",\"test\":[{\"args\":[\"-m\",\"pytest\",\"-q\"],\"command\":\"python\"}]},\"staging\":{\"authorize\":{\"deploy\":{\"by\":\"policy\"},\"migrate\":{\"by\":\"policy\"}},\"class\":\"internal\",\"kind\":\"environment\",\"reads\":{\"shipment_status\":{\"from\":\"core\",\"max_rows\":1,\"params\":[{\"name\":\"tracking_no\",\"type\":{\"ref\":\"Text\"}}],\"query\":{\"sql\":\"select tracking_no, status, destination_city, delivery_date, delivery_status, attempts from v_shipment_overview where tracking_no = :tracking_no\"},\"returns\":{\"ref\":\"ShipmentStatusRow\"}}}},\"voice\":{\"build\":[{\"args\":[\"ci\",\"--ignore-scripts\"],\"command\":\"npm\"},{\"args\":[\"run\",\"build\"],\"command\":\"npm\"}],\"consumes\":[\"CustomerTools\",\"TokenIssuance\"],\"kind\":\"component\",\"lang\":\"ts\",\"owner\":\"agent_owner\",\"provides\":[\"AgentApi\"],\"repo\":\"acme/voice\",\"root\":\"/work/acme-voice\",\"test\":[{\"args\":[\"test\"],\"command\":\"npm\"}]}},\"language\":\"mandate/0.3\",\"module\":\"acme.system\",\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:fa0db58319455a2d186c9f516b0bf8dc6e307f386dcd7ebab56e2897bfc07308",
+    "defs": [
+      [
+        "AgentApi",
+        "sha256:9d54dc74d07f9c0e0339c8a0fb5c1e3870d096bf67423cdf3d16e939e7f3fa8a"
+      ],
+      [
+        "CoreApi",
+        "sha256:9d54dc74d07f9c0e0339c8a0fb5c1e3870d096bf67423cdf3d16e939e7f3fa8a"
+      ],
+      [
+        "CoreSchema",
+        "sha256:2cd0451e26e16ecf29be789aff1d52865b513bd20c6632b7369998415ff33ff5"
+      ],
+      [
+        "CustomerName",
+        "sha256:e88eb6ed2041f91c663df2f25f7adfbfbea5362a8dadeb3b442e3a1ef45e0c2d"
+      ],
+      [
+        "CustomerTools",
+        "sha256:a2d0775653c7de435a509430c6e21bf8f2cd3adb1b87ae7d6f1391acfd7099f1"
+      ],
+      [
+        "Email",
+        "sha256:e88eb6ed2041f91c663df2f25f7adfbfbea5362a8dadeb3b442e3a1ef45e0c2d"
+      ],
+      [
+        "EventRow",
+        "sha256:81571da636cbea6e3747c6dbddbd468be5b1263becd7e684288a50b9d21103ec"
+      ],
+      [
+        "LogLine",
+        "sha256:684b9684cf302e1b2347344e7f0891f2c68ce3b9da05a502319bca7f283bcaa8"
+      ],
+      [
+        "Phone",
+        "sha256:e88eb6ed2041f91c663df2f25f7adfbfbea5362a8dadeb3b442e3a1ef45e0c2d"
+      ],
+      [
+        "SearchApi",
+        "sha256:9d54dc74d07f9c0e0339c8a0fb5c1e3870d096bf67423cdf3d16e939e7f3fa8a"
+      ],
+      [
+        "ShipmentRow",
+        "sha256:c007843e24222dec0c9991ebed91db93211f2dd9bf9289ec5dc93d66b8b86c0d"
+      ],
+      [
+        "ShipmentStatusRow",
+        "sha256:41b1f3388632c6e64797b9bde02e7684a869769d26841494e0b299c2faba9201"
+      ],
+      [
+        "TicketRow",
+        "sha256:8c575d615653f8d564500aa3acf6cb81d2fa2b85d3a36d0857230ae3989bbf35"
+      ],
+      [
+        "TokenIssuance",
+        "sha256:3860788beec5f6667131d3acac60b4642f51f6013cdb806dc9216c1fd75dde27"
+      ],
+      [
+        "auth",
+        "sha256:84d5718deb226f30bd53f386017c428f6f3f7d32ded05fdb45e62ee0e6cec017"
+      ],
+      [
+        "core",
+        "sha256:aabd35b694b96c54684f4016dcfb4052f31d773dc2cd6163ab6b0e50abf5a9fb"
+      ],
+      [
+        "dev",
+        "sha256:b9ad9c5dbd6e31828e9b34fffde1e7fd4fcd1fd4c9dcfb1be5b30ab69c157da8"
+      ],
+      [
+        "evals",
+        "sha256:a3a4fec169f1b4e2ca70e0c13c1af579a200da2a8b3c9673bf0a4411b04ebb72"
+      ],
+      [
+        "mcp",
+        "sha256:1577935c86af339eaec03335fd6c784fbadd3339f63a7db568a163e7443def77"
+      ],
+      [
+        "prod_sim",
+        "sha256:d2163cbd2b308a65eacfa1a2fd9cc468480e31b50ce52d6c3b833ee875d0ea21"
+      ],
+      [
+        "search",
+        "sha256:5e71b40e74a650cfafd675eda755766bc391a9bcf2442086aa9cac12625cfe34"
+      ],
+      [
+        "staging",
+        "sha256:db6a5d72d347b2e0139005acbb2f6ff7071d84c1419b93b45fe040d97059cf62"
+      ],
+      [
+        "voice",
+        "sha256:ebafd169bf0d348406300ab182c044beef318fb80a581c93ce46a85c734881d6"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.3",
+    "module": "acme.system",
+    "version": "0.1",
+    "defs": {
+      "TokenIssuance": {
+        "kind": "interface",
+        "protocol": "oauth",
+        "spec": "docs/oauth-metadata.json"
+      },
+      "CustomerTools": {
+        "kind": "interface",
+        "protocol": "mcp_tools",
+        "spec": "docs/mcp-tools.json"
+      },
+      "CoreApi": {
+        "kind": "interface",
+        "protocol": "openapi",
+        "spec": "docs/openapi.json"
+      },
+      "CoreSchema": {
+        "kind": "interface",
+        "protocol": "db_schema",
+        "spec": "src/main/resources/db/migration"
+      },
+      "SearchApi": {
+        "kind": "interface",
+        "protocol": "openapi",
+        "spec": "docs/openapi.json"
+      },
+      "AgentApi": {
+        "kind": "interface",
+        "protocol": "openapi",
+        "spec": "docs/openapi.json"
+      },
+      "auth": {
+        "kind": "component",
+        "repo": "acme/auth",
+        "root": "/work/acme-auth",
+        "lang": "ts",
+        "owner": "identity_owner",
+        "build": [
+          {
+            "command": "npm",
+            "args": [
+              "ci",
+              "--ignore-scripts"
+            ]
+          },
+          {
+            "command": "npm",
+            "args": [
+              "run",
+              "build"
+            ]
+          }
+        ],
+        "test": [
+          {
+            "command": "npm",
+            "args": [
+              "test"
+            ]
+          }
+        ],
+        "provides": [
+          "TokenIssuance"
+        ]
+      },
+      "mcp": {
+        "kind": "component",
+        "repo": "acme/mcp",
+        "root": "/work/acme-mcp",
+        "lang": "ts",
+        "owner": "support_platform_owner",
+        "build": [
+          {
+            "command": "npm",
+            "args": [
+              "ci",
+              "--ignore-scripts"
+            ]
+          },
+          {
+            "command": "npm",
+            "args": [
+              "run",
+              "build"
+            ]
+          }
+        ],
+        "test": [
+          {
+            "command": "npm",
+            "args": [
+              "test"
+            ]
+          }
+        ],
+        "provides": [
+          "CustomerTools"
+        ],
+        "consumes": [
+          "CoreApi",
+          "SearchApi",
+          "TokenIssuance"
+        ]
+      },
+      "core": {
+        "kind": "component",
+        "repo": "acme/core",
+        "root": "/work/acme-core",
+        "lang": "java",
+        "owner": "core_owner",
+        "build": [
+          {
+            "command": "mvn",
+            "args": [
+              "-B",
+              "-q",
+              "-o",
+              "-DskipTests",
+              "package"
+            ]
+          }
+        ],
+        "test": [
+          {
+            "command": "mvn",
+            "args": [
+              "-B",
+              "-q",
+              "-o",
+              "test"
+            ]
+          }
+        ],
+        "provides": [
+          "CoreApi",
+          "CoreSchema"
+        ],
+        "governance": [
+          "deploy/**"
+        ]
+      },
+      "search": {
+        "kind": "component",
+        "repo": "acme/search",
+        "root": "/work/acme-search",
+        "lang": "py",
+        "owner": "search_owner",
+        "test": [
+          {
+            "command": "python",
+            "args": [
+              "-m",
+              "pytest",
+              "-q"
+            ]
+          }
+        ],
+        "provides": [
+          "SearchApi"
+        ]
+      },
+      "voice": {
+        "kind": "component",
+        "repo": "acme/voice",
+        "root": "/work/acme-voice",
+        "lang": "ts",
+        "owner": "agent_owner",
+        "build": [
+          {
+            "command": "npm",
+            "args": [
+              "ci",
+              "--ignore-scripts"
+            ]
+          },
+          {
+            "command": "npm",
+            "args": [
+              "run",
+              "build"
+            ]
+          }
+        ],
+        "test": [
+          {
+            "command": "npm",
+            "args": [
+              "test"
+            ]
+          }
+        ],
+        "provides": [
+          "AgentApi"
+        ],
+        "consumes": [
+          "CustomerTools",
+          "TokenIssuance"
+        ]
+      },
+      "evals": {
+        "kind": "component",
+        "repo": "acme/voice-evals",
+        "root": "/work/acme-voice-evals",
+        "lang": "py",
+        "owner": "agent_owner",
+        "test": [
+          {
+            "command": "python",
+            "args": [
+              "-m",
+              "pytest",
+              "-q"
+            ]
+          }
+        ],
+        "consumes": [
+          "AgentApi"
+        ]
+      },
+      "CustomerName": {
+        "kind": "type",
+        "type": {
+          "ref": "Text"
+        },
+        "class": "confidential"
+      },
+      "Phone": {
+        "kind": "type",
+        "type": {
+          "ref": "Text"
+        },
+        "class": "confidential"
+      },
+      "Email": {
+        "kind": "type",
+        "type": {
+          "ref": "Text"
+        },
+        "class": "confidential"
+      },
+      "ShipmentRow": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "tracking_no": {
+              "ref": "Text"
+            },
+            "status": {
+              "ref": "Text"
+            },
+            "destination_city": {
+              "ref": "Text"
+            },
+            "delivery_date": {
+              "ref": "Text"
+            },
+            "delivery_status": {
+              "ref": "Text"
+            },
+            "attempts": {
+              "ref": "Int"
+            },
+            "full_name": {
+              "ref": "CustomerName"
+            },
+            "phone": {
+              "ref": "Phone"
+            },
+            "email": {
+              "ref": "Email"
+            }
+          }
+        }
+      },
+      "ShipmentStatusRow": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "tracking_no": {
+              "ref": "Text"
+            },
+            "status": {
+              "ref": "Text"
+            },
+            "destination_city": {
+              "ref": "Text"
+            },
+            "delivery_date": {
+              "ref": "Text"
+            },
+            "delivery_status": {
+              "ref": "Text"
+            },
+            "attempts": {
+              "ref": "Int"
+            }
+          }
+        }
+      },
+      "TicketRow": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "ticket_id": {
+              "ref": "Text"
+            },
+            "tracking_no": {
+              "ref": "Text"
+            },
+            "category": {
+              "ref": "Text"
+            },
+            "status": {
+              "ref": "Text"
+            },
+            "channel": {
+              "ref": "Text"
+            },
+            "created_at": {
+              "ref": "Text"
+            }
+          }
+        }
+      },
+      "EventRow": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "tracking_no": {
+              "ref": "Text"
+            },
+            "at": {
+              "ref": "Text"
+            },
+            "description": {
+              "ref": "Text"
+            }
+          }
+        }
+      },
+      "LogLine": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "ts": {
+              "ref": "Text"
+            },
+            "level": {
+              "ref": "Text"
+            },
+            "service": {
+              "ref": "Text"
+            },
+            "msg": {
+              "ref": "Text"
+            },
+            "tool": {
+              "ref": "Text"
+            },
+            "status": {
+              "ref": "Int"
+            },
+            "trace_id": {
+              "ref": "Text"
+            }
+          }
+        }
+      },
+      "dev": {
+        "kind": "environment",
+        "class": "internal",
+        "reads": {
+          "shipment_status": {
+            "from": "core",
+            "query": {
+              "sql": "select tracking_no, status, destination_city, delivery_date, delivery_status, attempts from v_shipment_overview where tracking_no = :tracking_no"
+            },
+            "params": [
+              {
+                "name": "tracking_no",
+                "type": {
+                  "ref": "Text"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "ShipmentStatusRow"
+            },
+            "max_rows": 1
+          }
+        }
+      },
+      "staging": {
+        "kind": "environment",
+        "class": "internal",
+        "reads": {
+          "shipment_status": {
+            "from": "core",
+            "query": {
+              "sql": "select tracking_no, status, destination_city, delivery_date, delivery_status, attempts from v_shipment_overview where tracking_no = :tracking_no"
+            },
+            "params": [
+              {
+                "name": "tracking_no",
+                "type": {
+                  "ref": "Text"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "ShipmentStatusRow"
+            },
+            "max_rows": 1
+          }
+        },
+        "authorize": {
+          "deploy": {
+            "by": "policy"
+          },
+          "migrate": {
+            "by": "policy"
+          }
+        }
+      },
+      "prod_sim": {
+        "kind": "environment",
+        "class": "confidential",
+        "reads": {
+          "shipment_overview": {
+            "from": "core",
+            "query": {
+              "sql": "select tracking_no, status, destination_city, delivery_date, delivery_status, attempts, full_name, phone, email from v_shipment_overview where tracking_no = :tracking_no"
+            },
+            "params": [
+              {
+                "name": "tracking_no",
+                "type": {
+                  "ref": "Text"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "ShipmentRow"
+            },
+            "max_rows": 1
+          },
+          "shipment_events": {
+            "from": "core",
+            "query": {
+              "sql": "select tracking_no, at, description from shipment_events where tracking_no = :tracking_no order by at"
+            },
+            "params": [
+              {
+                "name": "tracking_no",
+                "type": {
+                  "ref": "Text"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "EventRow"
+            },
+            "max_rows": 200
+          },
+          "tickets_since": {
+            "from": "core",
+            "query": {
+              "sql": "select ticket_id, tracking_no, category, status, channel, created_at from tickets where created_at >= cast(:since as timestamptz) order by created_at desc"
+            },
+            "params": [
+              {
+                "name": "since",
+                "type": {
+                  "ref": "Text"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "TicketRow"
+            },
+            "max_rows": 500
+          },
+          "mcp_errors": {
+            "from": "mcp",
+            "query": {
+              "logs": {
+                "op": "binary",
+                "bop": "and",
+                "left": {
+                  "op": "binary",
+                  "bop": "or",
+                  "left": {
+                    "op": "binary",
+                    "bop": "==",
+                    "left": {
+                      "op": "var",
+                      "name": "level"
+                    },
+                    "right": {
+                      "op": "text",
+                      "value": "error"
+                    }
+                  },
+                  "right": {
+                    "op": "binary",
+                    "bop": "==",
+                    "left": {
+                      "op": "var",
+                      "name": "level"
+                    },
+                    "right": {
+                      "op": "text",
+                      "value": "warn"
+                    }
+                  }
+                },
+                "right": {
+                  "op": "binary",
+                  "bop": ">=",
+                  "left": {
+                    "op": "var",
+                    "name": "ts"
+                  },
+                  "right": {
+                    "op": "var",
+                    "name": "since"
+                  }
+                }
+              }
+            },
+            "params": [
+              {
+                "name": "since",
+                "type": {
+                  "ref": "Text"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "LogLine"
+            },
+            "max_rows": 500
+          },
+          "core_warnings": {
+            "from": "core",
+            "query": {
+              "logs": {
+                "op": "binary",
+                "bop": "and",
+                "left": {
+                  "op": "binary",
+                  "bop": "or",
+                  "left": {
+                    "op": "binary",
+                    "bop": "==",
+                    "left": {
+                      "op": "var",
+                      "name": "level"
+                    },
+                    "right": {
+                      "op": "text",
+                      "value": "warn"
+                    }
+                  },
+                  "right": {
+                    "op": "binary",
+                    "bop": "==",
+                    "left": {
+                      "op": "var",
+                      "name": "level"
+                    },
+                    "right": {
+                      "op": "text",
+                      "value": "error"
+                    }
+                  }
+                },
+                "right": {
+                  "op": "binary",
+                  "bop": ">=",
+                  "left": {
+                    "op": "var",
+                    "name": "ts"
+                  },
+                  "right": {
+                    "op": "var",
+                    "name": "since"
+                  }
+                }
+              }
+            },
+            "params": [
+              {
+                "name": "since",
+                "type": {
+                  "ref": "Text"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "LogLine"
+            },
+            "max_rows": 500
+          }
+        },
+        "authorize": {
+          "deploy": {
+            "by": "human",
+            "role": "release_manager"
+          },
+          "migrate": {
+            "by": "human",
+            "role": "db_owner"
+          }
+        }
+      }
+    }
+  }
+}

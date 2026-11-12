@@ -1,0 +1,41 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V04b",
+  "kind": "compile",
+  "title": "The same delegation is accepted when the model capability allows restricted data.",
+  "spec": [
+    "spec/checks.md#data-classes-55"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "../V04a/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/M/value/args",
+      "value": [
+        {
+          "name": "tier",
+          "value": {
+            "op": "var",
+            "name": "local"
+          }
+        },
+        {
+          "name": "max_class",
+          "value": {
+            "op": "var",
+            "name": "restricted"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V03c",
+  "kind": "compile",
+  "title": "Write scopes are compared by path segment: /work/repo/src2 is not inside /work/repo/src.",
+  "spec": [
+    "spec/checks.md#capabilities-7"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "../../compiler/test/fixtures/syntax/supervision.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/RepoWrite/value/args/1/value/value",
+      "value": "/work/repo/src2"
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Split/body/0/branches/tests/caps/0/args/0/value/value",
+      "value": "/work/repo/src2"
+    }
+  ],
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

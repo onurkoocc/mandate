@@ -202,10 +202,21 @@ export interface CheckResult {
   logs?: CheckLog[];
 }
 
+/**
+ * Where a check belongs, beside its request: the run, and the part of the criterion it checks (the part's path in
+ * the program, which names its evidence record with the run, the method and the result). A verifier that attests
+ * its checks names both in what it signs (attestation.ts); one that does not ignores them. It is not part of the
+ * request, whose digest is the check's identity in the journal.
+ */
+export interface CheckBinding {
+  run: string;
+  part: string;
+}
+
 export interface VerifierAdapter {
   /** A check that costs something (a model review) is reserved first, like any model call (§8.6). */
   upperBound?(req: VerifyRequest): Promise<Cost | undefined>;
-  check(req: VerifyRequest): Promise<CheckResult>;
+  check(req: VerifyRequest, binding?: CheckBinding): Promise<CheckResult>;
 }
 
 /** How a run touches the outside world (design doc 9 §5.2): recorded in its manifest. */

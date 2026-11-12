@@ -4,7 +4,7 @@ Mandate is an agent-native coordination and contract language. Agents write
 and edit programs; people review them through generated views; the compiler
 checks capabilities, effects, budgets, contracts and delegation before
 anything runs. This repository holds the reference implementation of
-versions 0.1 to 0.4.
+versions 0.1 to 0.4, and of the first part of 0.5, which is in progress.
 
 ## Why
 
@@ -165,6 +165,23 @@ pull request was opened, for 0.23 USD.
    outcome, and for every decision its member, its role and whether its
    signature holds. See [`spec/envelope.md`](spec/envelope.md).
 
+12. **0.5, Boundary (in progress):** the runtime's border with the outside
+   world. [`spec/boundary.md`](spec/boundary.md) specifies all of it: an
+   egress proxy that is the only way out and puts credentials into
+   requests, so a sandbox sees placeholders; isolation levels and the
+   host's least versions in the lock; a hash-chained journal with signed
+   anchors and an independent verifier; counted violations and a hard
+   halt; views by role; an OpenTelemetry projection. What exists so far is
+   the compile-time surface: language 0.5, whose `net.https` may allow only
+   some methods (E1801), and narrows by them, and which an earlier
+   program cannot import without the limit (E1804); lock format 0.5 with `host`,
+   `isolation` and `egress` (E1802, E1803), whose changes `view --against`
+   shows; and sandbox requirement 0.2 for a 0.5 program. None of it is
+   enforced yet, so nothing that needs it runs: the runtime refuses a
+   package whose lock sets `host`, `isolation` or `egress`, by name, and the
+   sandbox adapter refuses a requirement that limits methods, asks for more
+   than process isolation, or carries credentials.
+
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
 
@@ -175,10 +192,40 @@ spec/        core spec, IR schema and rules, static checks, diagnostic codes, ru
              executors, views, the compiler's MCP server
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
+crates/      the Rust implementation, started: mandate-ir (below)
 fixtures/    the tests' programs: fixbug/ is the design document's §20 workflow,
              fixbug-target/ the same workflow bound to a seeded test project,
-             system/ a fictional system's model (Acme) and programs over it
+             system/ a fictional system's model (Acme) and programs over it,
+             envelope/ the 0.4 migration, boundary/ a 0.5 agent that may only GET
+conformance/ language-independent compile cases
+vectors/     what the TypeScript reader, canonical text and hashes give, for
+             other implementations to match
 ```
+
+## Rust
+
+The repository is also a Cargo workspace (`Cargo.toml`, `crates/`), the
+start of a Rust implementation. It has one crate today,
+[`crates/mandate-ir`](crates/mandate-ir/README.md). It reads IR with the
+strict JSON reader (same limits, diagnostic codes, messages, JSON Pointers
+and UTF-16 columns), writes its canonical text (RFC 8785) and computes the
+program, definition and package hashes, byte for byte as the TypeScript
+compiler does. It is not a compiler: there is no `.mdt` parser, no schema
+validation and no checks in Rust yet. It runs the conformance cases that need
+only the reader and the hashes (`crates/mandate-ir/tests/conformance.rs`) and
+counts the rest as skipped.
+
+The two are held together by the files in [`vectors/`](vectors/README.md).
+`compiler/test/vectors.test.ts` writes them and fails when the committed
+ones differ; the Rust tests read them and need no Node.
+
+```sh
+cargo test
+MANDATE_UPDATE_VECTORS=1 npm test   # write vectors/ again after a change
+```
+
+The toolchain is pinned in `rust-toolchain.toml`; CI runs `cargo fmt
+--check`, `cargo clippy -- -D warnings` and `cargo test`.
 
 ## Using the compiler
 
@@ -214,30 +261,33 @@ warnings: two of its `static` acceptance criteria become run-time checks.
 ## Conformance
 
 Tests live in `compiler/test`. These conformance cases from the design
-document's §25 are covered:
+document's §25 are covered. The last column names the case files in
+[`conformance/`](conformance/README.md) that say the claim for any
+implementation. The vitest tests stay, and say more where a claim is about a
+message, a position or an API:
 
-| Case | Rule | Code |
-|---|---|---|
-| S01 | Duplicate JSON keys are rejected before schema validation | E0102 |
-| S02 | Unknown fields and language versions are rejected | E0103, E0104 |
-| S03 | References to missing nodes are rejected | E0120 |
-| S04 | Call cycles are rejected | E0502 |
-| S05 | A switch must handle every variant | E0230 |
-| S06 | Unbounded iteration is rejected | E0502 |
-| S07 | No external write inside a function or skill | E0408 |
-| S08 | Programs cannot produce Evidence, Authorization, Receipt or Verified | E0213 |
-| S10 | Key order does not change the hash | — |
-| S11 | No silent Unicode or number normalization | E0106, E0107 |
-| S12 | A patch against a stale base is rejected | E0130 |
-| V01 | `Inferred<T>` cannot reach a critical effect | E0210 |
-| V02 | `Untrusted<T>` cannot reach the instruction part of a prompt | E0215 |
-| V03 | `par` branches cannot write overlapping scopes | E0320 |
-| V04 | Restricted data cannot reach a model that may not receive it | E0220 |
-| V05 | No dynamic `spawn` in 0.1 | E0711 |
-| V06 | `UnknownOutcome` is reconciled, never restarted | E0712 |
-| V07 | A switch on a decision handles `Uncertain` | E0230 |
-| V08 | A decision cannot reach a critical effect directly | E0210 |
-| V20 | A text literal stands for a `Path` only if it is relative and normalized (K68) | E0204 |
+| Case | Rule | Code | Case files |
+|---|---|---|---|
+| S01 | Duplicate JSON keys are rejected before schema validation | E0102 | `S01` |
+| S02 | Unknown fields and language versions are rejected | E0103, E0104 | `S02a`–`S02e` |
+| S03 | References to missing nodes are rejected | E0120 | `S03a`–`S03i` |
+| S04 | Call cycles are rejected | E0502 | `S04a` |
+| S05 | A switch must handle every variant | E0230 | `S05a`, `S05b` |
+| S06 | Unbounded iteration is rejected | E0502 | `S06a`, `S06b` |
+| S07 | No external write inside a function or skill | E0408 | `S07a`, `S07b` |
+| S08 | Programs cannot produce Evidence, Authorization, Receipt or Verified | E0213 | `S08a`–`S08d` |
+| S10 | Key order does not change the hash | — | `S10a`–`S10d` |
+| S11 | No silent Unicode or number normalization | E0106, E0107 | `S11a`–`S11m` |
+| S12 | A patch against a stale base is rejected | E0130 | `S12a`–`S12d` |
+| V01 | `Inferred<T>` cannot reach a critical effect | E0210 | `V01a`–`V01e` |
+| V02 | `Untrusted<T>` cannot reach the instruction part of a prompt | E0215 | `V02a`, `V02b` |
+| V03 | `par` branches cannot write overlapping scopes | E0320 | `V03`, `V03b`–`V03d` |
+| V04 | Restricted data cannot reach a model that may not receive it | E0220 | `V04a`–`V04c` |
+| V05 | No dynamic `spawn` in 0.1 | E0711 | `V05a` |
+| V06 | `UnknownOutcome` is reconciled, never restarted | E0712 | `V06a`, `V06b` |
+| V07 | A switch on a decision handles `Uncertain` | E0230 | `V07a` |
+| V08 | A decision cannot reach a critical effect directly | E0210 | `V08a` |
+| V20 | A text literal stands for a `Path` only if it is relative and normalized (K68) | E0204 | `V20a`–`V20e` |
 
 S09 (load-time verification) is covered by the runtime, below.
 `compiler/test/mcp.test.ts` checks the compiler's MCP server (§14): its
@@ -273,6 +323,12 @@ child budgets inside 50 USD, delegated capabilities inside the workflow's,
 disjoint writes for the two parallel agents, step limits, review never
 counted alone, and a verified, idempotent PR. It also applies one mutation
 per rule to FixBug and checks that the rule fires.
+`compiler/test/surface05.test.ts` checks the compile-time surface of 0.5
+([`spec/boundary.md`](spec/boundary.md)): `methods` read from 0.5 only,
+the 0.1 fixture that writes them included, narrowing by them, E1801 to
+E1803, lock format 0.5 and its changes in `view --against`, sandbox
+requirement 0.2 and its byte-identity below 0.5, and a 0.5 parent's
+sub-programs.
 
 ## Runtime
 
@@ -381,9 +437,24 @@ as invalid, and a Verified value whose evidence no longer verifies refused
 before anything is prepared. `verifier.test.ts` checks the runtime's
 verifier, including a pinned acceptance suite an agent tried to weaken
 (G06). `verifier-process.test.ts` runs the verifier as a process of its
-own: each check comes back signed by the verifier's key, a result changed
-on the way or signed by an untrusted key is not met, and a record the
-runtime's key re-signed without the verifier's attestation is invalid.
+own: each check comes back signed by the verifier's key, and a result
+changed on the way or signed by an untrusted key is not met. A record the
+runtime's key signed again after its content was changed, after its
+attestation was taken out, or after its method was changed to `static` or
+to one the runtime checks itself, is invalid, and the effect resting on it
+is refused (`forged_evidence`); so is a criterion `a and b` whose verifier
+part has no record of its own. An attestation names the run, contract,
+criterion, method and part it was made for: one copied onto a record of
+another criterion, of the other part of `m(a) and m(b)`, or of a later
+run is invalid, and so is one in the format before 0.2; a verifier that
+signs for another part, or in the old format, does not meet the
+criterion. Evidence made before the verifier had a process of its own, or
+attested before 0.2, shows as invalid once it has. The verifier process
+gets none of the runtime's secrets, and the model's key only when the
+configuration has a model. `audience.test.ts` lands a change set on
+boundary checks the runtime makes itself with a verifier key trusted, and
+`child-env.test.ts` checks that `docker` gets none of the runtime's
+secrets.
 `evidence.test.ts` also rotates the evidence key: what the old key signed
 still verifies.
 
@@ -471,8 +542,8 @@ These cases from §25 are covered:
 | G03 | An agent that says "approved" creates no authorization; a Verified value whose evidence does not verify is refused | `gate4`, `evidence` |
 | G04 | A sub-agent gets no more than it is handed: its sandbox and tools are narrowed to the grant | `gate4` (and E0701 statically) |
 | G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop`, `mxc`, `mxc-windows` |
-| G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed; a check its verifier did not sign is not met | `verifier`, `verifier-process` |
-| G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`), `mxc-windows` (AppContainer, CI job `sandbox-windows`) |
+| G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed; a check its verifier did not sign is not met, and with a verifier process configured, a record of a verifier check without that verifier's attestation for that run, criterion and part, or with a method its criterion does not declare, is invalid, whatever key signed it | `verifier`, `verifier-process`, `audience` |
+| G07 | A sandboxed process reaches no host (on Linux, not through a service socket of the host either), and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`), `mxc-windows` (AppContainer, CI job `sandbox-windows`) |
 | G08 | Another tenant's or run's artifact is refused like a missing one | `artifacts` |
 | G09 | A model's markup is shown as plain text in every view, never as a control: an agent's output, a name somebody typed, a lead's sub-program and its reason for an amendment | `views`, `views-envelope`, `cli-amend` |
 | G10 | A view the run has moved past says so, and a decision taken on it is refused | `views` |
@@ -539,6 +610,13 @@ journal: a map with a failed item, one that still runs and one that
 `fail_fast` failed; a refused and an admitted submission; a declined, an
 approved and an unanswered amendment; and decisions whose stored record
 was changed or removed.
+
+`fail-closed.test.ts` holds what 0.5 asks and this runtime does not
+enforce yet to its refusals: a lock's `host`, `isolation` and `egress`,
+each refused at load by its name; a requirement 0.2 that limits methods,
+asks for more than process isolation, forbids sharing or carries
+credentials, refused by the adapter on a host that enforces all of 0.1;
+and a 0.5 run whose agent may only GET, which is not started.
 
 ## Live runs
 

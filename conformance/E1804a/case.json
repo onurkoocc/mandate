@@ -1,0 +1,13 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1804a",
+  "kind": "compile",
+  "title": "The program of E1804 written in 0.5 checks: it reads the imported capability with its methods.",
+  "spec": ["spec/boundary.md#language-05"],
+  "language": "mandate/0.5",
+  "input": { "file": "../E1804/program.mdt", "kind": "mdt" },
+  "modules": ["../E1804/github.mdt"],
+  "patch": [{ "op": "replace", "path": "/language", "value": "mandate/0.5" }],
+  "expect": { "ok": true, "diagnostics": [] }
+}

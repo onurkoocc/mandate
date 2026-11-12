@@ -8,16 +8,21 @@ import { mkdirSync, mkdtempSync, writeFileSync, existsSync, readFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { check, type Lock } from "@mandate/compiler";
 import { build } from "esbuild";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Adapters } from "../src/adapters.js";
 import { attestationProblem } from "../src/attestation.js";
-import { readConfig, verifierKeys } from "../src/control.js";
+import { BOUNDARY_METHODS } from "../src/boundary.js";
+import { adaptersFor, inProcessMethods, readConfig, verifierKeys } from "../src/control.js";
+import { uncovered } from "../src/criteria.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "../src/evidence.js";
+import type { EvidenceRow, RunRow } from "../src/journal.js";
+import { ONBOARD_METHODS } from "../src/onboard.js";
 import { Runtime } from "../src/runtime.js";
 import { SimTool } from "../src/sim.js";
 import { ProcessVerifier } from "../src/verifier-service.js";
-import { isObj } from "../src/values.js";
+import { isObj, type Value } from "../src/values.js";
 import { BUG, FIXBUG, fixbugAgents, waitOf } from "./fixbug.js";
 import { closeAll, world, type World, UNSIGNED } from "./helpers.js";
 
@@ -57,17 +62,21 @@ afterAll(async () => {
 
 const keys = mkdtempSync(join(tmpdir(), "mandate-verifier-"));
 
-/** FixBug, with its checks made by a verifier process whose key is `verifierKey`, trusting `trusted`. */
-async function fixbug(o: { verifierKey: string; trusted: string[]; lie?: boolean }): Promise<World & { remote: ProcessVerifier }> {
-  const w0 = await world(FIXBUG, { tools: [new SimTool("git.open_pr")], agents: fixbugAgents() });
+/**
+ * FixBug, with its checks made by a verifier process whose key is `verifierKey`, trusting `trusted`; `inProcess`
+ * names the methods the runtime is told it checks in its own process; `src`, another FixBug program; `mode`, how
+ * the verifier process misbehaves (fixtures/sim-verifier-process.ts).
+ */
+async function fixbug(o: { verifierKey: string; trusted: string[]; lie?: boolean; inProcess?: readonly string[]; src?: string; mode?: "v01" | "rebind" }): Promise<World & { remote: ProcessVerifier }> {
+  const w0 = await world(o.src ?? FIXBUG, { tools: [new SimTool("git.open_pr")], agents: fixbugAgents() });
   const verifier = new ProcessVerifier({
-    command: [process.execPath, child, o.verifierKey, ...(o.lie ? ["lie"] : [])],
+    command: [process.execPath, child, o.verifierKey, ...(o.lie ? ["lie"] : []), ...(o.mode ? [o.mode] : [])],
     trusted: new TrustedKeys(o.trusted),
     package: { program: w0.pkg.program, lock: w0.pkg.lock },
   });
   verifiers.push(verifier);
   (w0.adapters as Adapters).verifier = verifier;
-  const rt = new Runtime(w0.db, w0.adapters, w0.faults, undefined, { ...UNSIGNED, artifacts: w0.rt.artifacts, signer: w0.rt.signer, trustedVerifiers: new TrustedKeys(o.trusted) });
+  const rt = new Runtime(w0.db, w0.adapters, w0.faults, undefined, { ...UNSIGNED, artifacts: w0.rt.artifacts, signer: w0.rt.signer, trustedVerifiers: new TrustedKeys(o.trusted), ...(o.inProcess ? { inProcessMethods: o.inProcess } : {}) });
   return { ...w0, rt, remote: verifier };
 }
 
@@ -94,7 +103,7 @@ describe("a verifier process of its own (P2-11)", () => {
     expect(checks.map((r) => r.criterion).sort()).toEqual(["no_blocking_review", "regression_test", "suite_green"]);
     for (const r of checks) {
       const producer = (r.record as unknown as EvidenceRecord).producer as Record<string, unknown>;
-      expect(producer).toMatchObject({ kind: "verifier", handler: "sim-verifier", process: "separate", attestation: { key_id: EvidenceSigner.loadOrCreate(key).keyId, statement: { format: "mandate/check-attestation/0.1", passed: true } } });
+      expect(producer).toMatchObject({ kind: "verifier", handler: "sim-verifier", process: "separate", attestation: { key_id: EvidenceSigner.loadOrCreate(key).keyId, statement: { format: "mandate/check-attestation/0.2", passed: true } } });
     }
     expect((await w.rt.verifyEvidence("vp1")).every((e) => e.valid)).toBe(true);
     // The verifier says which key it signs with; the runtime trusts the pinned one, not this answer.
@@ -150,5 +159,341 @@ describe("a verifier process of its own (P2-11)", () => {
     expect(trusted.ids()).toEqual([EvidenceSigner.loadOrCreate(join(dir, ".mandate", "verifier.key")).keyId]);
     writeFileSync(join(dir, "bad.json"), JSON.stringify({ database: "pglite:db", verifier: { workdir: ".", base: "seed", suites: {}, process: { secret: 1 } } }));
     expect(() => readConfig(join(dir, "bad.json"))).toThrow(/unknown field verifier\.process\.secret/);
+  });
+});
+
+// ── The verifier process's environment ────────────────────────────────
+
+describe("the verifier process's environment", () => {
+  let envMain: string;
+  beforeAll(async () => {
+    envMain = await bundle(here("./fixtures/env-verifier-process.ts"), "env-verifier-process");
+  }, 60_000);
+
+  /** What the runtime holds in its environment: none of it is the verifier's, but the model's key when it runs model-backed checks. */
+  const SECRETS = { MANDATE_CANARY_KEY: "sk-canary", MANDATE_GITHUB_TOKEN: "ghp_not_a_token", MANDATE_PROD_SIM_CORE_URL: "postgresql://reader:not-a-password@db/core", CLAUDE_API_KEY: "sk-ant-not-a-key" };
+  const FIXBUG_LOCK = JSON.parse(readFileSync(here("../../fixtures/fixbug/mandate.lock.json"), "utf8")) as Lock;
+
+  /** With these secrets in the runtime's environment, what the verifier process sees: when it creates its key, and when it checks. */
+  async function seen(o: { model: boolean }): Promise<{ init: Record<string, string>; check: Record<string, string> }> {
+    const dir = mkdtempSync(join(tmpdir(), "mandate-venv-"));
+    const file = join(dir, "mandate.runtime.json");
+    writeFileSync(file, JSON.stringify({ database: "pglite:db", verifier: { workdir: ".", base: "seed", suites: {}, process: {} }, broker: { "prod_sim/core": { url_env: "MANDATE_PROD_SIM_CORE_URL" } }, ...(o.model ? { model: { provider: "anthropic" } } : {}) }));
+    const saved = Object.fromEntries(Object.keys(SECRETS).map((k) => [k, process.env[k]]));
+    Object.assign(process.env, SECRETS);
+    try {
+      const adapters = adaptersFor(readConfig(file), check(FIXBUG, "mdt").program!, FIXBUG_LOCK, process.env, [process.execPath, envMain]);
+      const verifier = adapters.verifier as ProcessVerifier;
+      verifiers.push(verifier);
+      const r = await verifier.check({ method: "test.suite", args: [], named: {}, contract: "C", criterion: "k" });
+      expect(r.passed, JSON.stringify(r.detail)).toBe(true);
+      return { init: JSON.parse(readFileSync(join(dir, ".mandate", "verifier.key.env.json"), "utf8")) as Record<string, string>, check: (r.detail as { env: Record<string, string> }).env };
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  }
+
+  const names = (env: Record<string, string>): string[] => Object.keys(env).map((k) => k.toUpperCase());
+
+  it("gets what a program needs and none of the runtime's secrets; the model's key only when the configuration has a model", async () => {
+    const without = await seen({ model: false });
+    const withModel = await seen({ model: true });
+    for (const env of [without.init, without.check, withModel.init, withModel.check]) {
+      expect(names(env)).toContain("PATH");
+      for (const secret of ["MANDATE_CANARY_KEY", "MANDATE_GITHUB_TOKEN", "MANDATE_PROD_SIM_CORE_URL"]) expect(names(env)).not.toContain(secret);
+    }
+    // Creating its key needs no model; checking does when the configuration has one, and only then.
+    expect(names(without.init)).not.toContain("CLAUDE_API_KEY");
+    expect(names(withModel.init)).not.toContain("CLAUDE_API_KEY");
+    expect(names(without.check)).not.toContain("CLAUDE_API_KEY");
+    expect(withModel.check["CLAUDE_API_KEY"]).toBe(SECRETS.CLAUDE_API_KEY);
+  });
+
+  it("started without an environment of its own, gets only what a program needs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mandate-venv-"));
+    const file = join(dir, "mandate.runtime.json");
+    writeFileSync(file, JSON.stringify({ database: "pglite:db", verifier: { workdir: ".", base: "seed", suites: {}, process: { key: "v.key" } } }));
+    const key = EvidenceSigner.loadOrCreate(join(dir, "v.key"));
+    process.env["MANDATE_CANARY_KEY"] = "sk-canary";
+    try {
+      const verifier = new ProcessVerifier({ command: [process.execPath, envMain, "--config", file], trusted: new TrustedKeys([key.publicKeyPem()]), package: { program: check(FIXBUG, "mdt").program!, lock: FIXBUG_LOCK } });
+      verifiers.push(verifier);
+      const r = await verifier.check({ method: "test.suite", args: [], named: {}, contract: "C", criterion: "k" });
+      expect(r.passed, JSON.stringify(r.detail)).toBe(true);
+      const env = (r.detail as { env: Record<string, string> }).env;
+      expect(names(env)).toContain("PATH");
+      expect(names(env)).not.toContain("MANDATE_CANARY_KEY");
+    } finally {
+      delete process.env["MANDATE_CANARY_KEY"];
+    }
+  });
+});
+
+// ── Which checks need an attestation (B20) ─────────────────────────────
+
+/** FixBug approved by its code owner, with the worker dead just before git.open_pr is prepared: its evidence is recorded. */
+async function approvedThenCrashed(w: World, runId: string): Promise<void> {
+  w.faults.arm("after_dispatch", (i) => i.kind === "prepare");
+  await expect(approveOwner(w, runId)).rejects.toThrow(/crash at after_dispatch/);
+  expect((await w.rt.verifyEvidence(runId)).every((e) => e.valid)).toBe(true);
+}
+
+/** Whoever holds the runtime's key and its database rewrites one stored record, and its row with it, and signs it again. */
+async function forge(w: World, runId: string, pick: (r: EvidenceRow) => boolean, edit: (r: EvidenceRecord) => EvidenceRecord): Promise<void> {
+  const found = (await w.rt.evidence(runId)).find(pick)!;
+  const forged = edit(found.record as unknown as EvidenceRecord);
+  const sig = w.rt.signer.sign(forged);
+  await w.db.query("update evidence set record = $2, signature = $3, method = $4 where evidence_id = $1", [found.evidence_id, JSON.stringify(forged), sig.signature, forged.method]);
+}
+
+/** The record with its verifier's attestation taken out, as if the runtime had checked it itself. */
+function unattested(r: EvidenceRecord): EvidenceRecord {
+  const { attestation: _a, process: _p, ...producer } = r.producer as Record<string, Value>;
+  return { ...r, producer };
+}
+
+const invalid = async (w: World, runId: string) => (await w.rt.verifyEvidence(runId)).filter((e) => !e.valid).map((e) => e.criterion);
+const said = (run: RunRow): string => String(isObj(run.attention) ? run.attention["message"] : "");
+
+describe("with a verifier of its own, which checks need its attestation is the configuration's to say (B20)", () => {
+  it("refuses a check whose attestation was taken out and that the runtime's key signed again", async () => {
+    const key = join(keys, "v6.key");
+    const w = await fixbug({ verifierKey: key, trusted: [publicOf(key)] });
+    await approvedThenCrashed(w, "vp6");
+    await forge(w, "vp6", (r) => r.criterion === "regression_test", unattested);
+    expect(await invalid(w, "vp6")).toEqual(["regression_test"]);
+    const resumed = await w.rt.resume("vp6");
+    expect(resumed.attention).toMatchObject({ violation: "forged_evidence" });
+    expect(said(resumed)).toContain("its check carries no verifier attestation");
+    expect(w.tools["git.open_pr"]!.prepares).toHaveLength(0);
+  });
+
+  it.each([
+    ["static", "a static part's"],
+    ["test.suite_each", "a method the runtime checks in its own process"],
+  ])("refuses a check whose method was changed to %s (%s) and signed again: the program says which method a criterion uses", async (method) => {
+    const key = join(keys, `v7-${method}.key`);
+    const w = await fixbug({ verifierKey: key, trusted: [publicOf(key)], inProcess: BOUNDARY_METHODS });
+    const runId = `vp7-${method}`;
+    await approvedThenCrashed(w, runId);
+    await forge(w, runId, (r) => r.criterion === "regression_test", (r) => ({ ...unattested(r), method }));
+    expect(await invalid(w, runId)).toEqual(["regression_test"]);
+    const resumed = await w.rt.resume(runId);
+    expect(resumed.attention).toMatchObject({ violation: "forged_evidence" });
+    expect(said(resumed)).toContain(`FixAccepted.regression_test declares no check by ${method}`);
+    expect(w.tools["git.open_pr"]!.prepares).toHaveLength(0);
+  });
+
+  it("refuses a stored row that names another method than its signed record", async () => {
+    const key = join(keys, "v8.key");
+    const w = await fixbug({ verifierKey: key, trusted: [publicOf(key)] });
+    await approvedThenCrashed(w, "vp8");
+    await w.db.query("update evidence set method = 'static' where run_id = 'vp8' and criterion = 'regression_test'");
+    expect(await invalid(w, "vp8")).toEqual(["regression_test"]);
+    const resumed = await w.rt.resume("vp8");
+    expect(resumed.attention).toMatchObject({ violation: "forged_evidence" });
+    expect(said(resumed)).toContain("its stored row does not name what its signed record names");
+  });
+
+  it("does not let a static part's record stand for the verifier's check beside it under `and`", async () => {
+    // no_blocking_review is `static not pr.review.blocking and review(…)`: the review's record is made a second static one.
+    const key = join(keys, "v9.key");
+    const w = await fixbug({ verifierKey: key, trusted: [publicOf(key)] });
+    await approvedThenCrashed(w, "vp9");
+    await forge(w, "vp9", (r) => r.criterion === "no_blocking_review" && r.method === "review", (r) => ({ ...unattested(r), method: "static" }));
+    const resumed = await w.rt.resume("vp9");
+    expect(resumed.attention).toMatchObject({ violation: "forged_evidence" });
+    expect(said(resumed)).toContain("no evidence by review for FixAccepted.no_blocking_review");
+    expect(w.tools["git.open_pr"]!.prepares).toHaveLength(0);
+  });
+
+  it("goes on to the pull request when nothing was changed", async () => {
+    const key = join(keys, "v10.key");
+    const w = await fixbug({ verifierKey: key, trusted: [publicOf(key)], inProcess: BOUNDARY_METHODS });
+    await approvedThenCrashed(w, "vp10");
+    expect((await w.rt.resume("vp10")).state).toBe("succeeded");
+  });
+
+  it("shows evidence made before the verifier had a process of its own as invalid once it has", async () => {
+    const w = await world(FIXBUG, { tools: [new SimTool("git.open_pr")], agents: fixbugAgents() });
+    expect((await approveOwner(w, "vp11")).state).toBe("succeeded");
+    expect(await invalid(w, "vp11")).toEqual([]);
+    const now = new Runtime(w.db, w.adapters, w.faults, undefined, { ...UNSIGNED, artifacts: w.rt.artifacts, signer: w.rt.signer, trustedVerifiers: new TrustedKeys([EvidenceSigner.generate().publicKeyPem()]) });
+    // The static parts and the approval need no verifier; every check a verifier made does.
+    expect((await now.verifyEvidence("vp11")).filter((e) => !e.valid).map((e) => e.criterion)).toEqual(["no_blocking_review", "regression_test", "suite_green"]);
+  });
+
+  it("counts each part of a criterion once: two parts of one method need two records", () => {
+    expect(uncovered(["static", "review"], ["static"])).toEqual(["review"]);
+    expect(uncovered(["test.suite", "test.suite"], ["test.suite"])).toEqual(["test.suite"]);
+    expect(uncovered(["test.suite", "test.suite"], ["test.suite", "test.suite"])).toEqual([]);
+    expect(uncovered(["static"], ["static", "static"])).toEqual([]);
+  });
+
+  it("knows from the configuration which methods it checks in its own process: boundary checks with a sandbox, onboarding checks", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mandate-vconf-"));
+    const file = (name: string, c: object): string => {
+      writeFileSync(join(dir, name), JSON.stringify({ database: "pglite:db", verifier: { workdir: ".", base: "seed", suites: {}, process: {} }, ...c }));
+      return join(dir, name);
+    };
+    expect(inProcessMethods(readConfig(file("none.json", {})))).toEqual([]);
+    expect(inProcessMethods(readConfig(file("nosandbox.json", { boundary: {} })))).toEqual([]);
+    expect(inProcessMethods(readConfig(file("boundary.json", { boundary: {}, sandbox: { host: "mxc" } })))).toEqual([...BOUNDARY_METHODS]);
+    expect(inProcessMethods(readConfig(file("both.json", { boundary: {}, sandbox: { host: "mxc" }, onboard: {} })))).toEqual([...BOUNDARY_METHODS, ...ONBOARD_METHODS]);
+  });
+});
+
+// ── An attestation names the check it was made for (0.2) ───────────────
+
+/**
+ * FixBug with more criteria of the same methods: another criterion by test.suite, a criterion of two test.suite
+ * parts, one of a test.suite and a test.red_then_green part, and another contract with a criterion named like
+ * FixAccepted's suite_green, by the same method.
+ */
+const BOUND = FIXBUG.replace(
+  '    by test.suite(["unit", "integration"])\n',
+  '    by test.suite(["unit", "integration"])\n' +
+    '  accept unit_green "The unit suite passes"\n    by test.suite(["unit"])\n' +
+    '  accept both_green "Each suite passes on its own"\n    by test.suite(["unit"]) and test.suite(["integration"])\n' +
+    '  accept tested_twice "The suite and the regression test pass"\n    by test.suite(["unit"]) and test.red_then_green(pr.patch, pr.tests)\n',
+).replace("// ── Agents ", 'contract SuitesAgain(issue: Issue, pr: PullRequestDraft) {\n  accept suite_green "The existing test suite passes"\n    by test.suite(["unit", "integration"])\n}\n\n// ── Agents ');
+
+const recordOf = (r: EvidenceRow): EvidenceRecord => r.record as unknown as EvidenceRecord;
+const statementOfRow = (r: EvidenceRow): Record<string, Value> => ((recordOf(r).producer as Record<string, Value>)["attestation"] as Record<string, Value>)["statement"] as Record<string, Value>;
+
+/** Whoever holds the runtime's key and its database writes `record` into the row `id`, its columns with it, and signs it again; `run` moves the row to that run. */
+async function put(w: World, id: string, record: EvidenceRecord, run?: string): Promise<void> {
+  const sig = w.rt.signer.sign(record);
+  await w.db.query(`update evidence set record = $2, signature = $3, contract = $4, criterion = $5, method = $6, passed = $7${run ? ", run_id = $8" : ""} where evidence_id = $1`, [
+    id,
+    JSON.stringify(record),
+    sig.signature,
+    record.contract,
+    record.criterion,
+    record.method,
+    record.passed,
+    ...(run ? [run] : []),
+  ]);
+}
+
+/** The run's evidence rows, by `<criterion>` or, for a part of an `and`, `<criterion>/<part's index>`. */
+async function rowsOf(w: World, runId: string): Promise<Record<string, EvidenceRow>> {
+  const out: Record<string, EvidenceRow> = {};
+  for (const r of await w.rt.evidence(runId)) {
+    const part = typeof r.record === "object" && r.method !== "static" && r.method !== "human.approve" ? String(statementOfRow(r)["part"]) : "";
+    const index = part.match(/\/all\/(\d+)$/)?.[1];
+    out[index !== undefined ? `${r.criterion}/${index}` : r.method === "static" ? `${r.criterion}/static` : r.criterion] = r;
+  }
+  return out;
+}
+
+describe("a verifier's attestation names the run, contract, criterion, method and part it was made for (0.2)", () => {
+  async function bound(n: string, o: { mode?: "v01" | "rebind" } = {}) {
+    const key = join(keys, `b${n}.key`);
+    return { key, w: await fixbug({ verifierKey: key, trusted: [publicOf(key)], src: BOUND, ...o }) };
+  }
+
+  /** Resumed, the run stops before the pull request is prepared: nothing more is prepared than before. */
+  async function refused(w: World, runId: string, why: string): Promise<void> {
+    const before = w.tools["git.open_pr"]!.prepares.length;
+    const resumed = await w.rt.resume(runId);
+    expect(resumed.attention).toMatchObject({ violation: "forged_evidence" });
+    expect(said(resumed)).toContain(why);
+    expect(w.tools["git.open_pr"]!.prepares).toHaveLength(before);
+  }
+
+  it("names them, and an untouched run lands", async () => {
+    const { w } = await bound("1");
+    await approvedThenCrashed(w, "vb1");
+    const rows = await rowsOf(w, "vb1");
+    expect(statementOfRow(rows["both_green/1"]!)).toMatchObject({ format: "mandate/check-attestation/0.2", run: "vb1", contract: "FixAccepted", criterion: "both_green", method: "test.suite", part: expect.stringMatching(/\/contract\/accept\/both_green\/all\/1$/) });
+    expect((await w.rt.resume("vb1")).state).toBe("succeeded");
+  });
+
+  it("refuses an attestation copied onto a record of another criterion by the same method", async () => {
+    const { w } = await bound("2");
+    await approvedThenCrashed(w, "vb2");
+    const rows = await rowsOf(w, "vb2");
+    const target = rows["unit_green"]!;
+    await put(w, target.evidence_id, { ...recordOf(rows["suite_green"]!), criterion: "unit_green", evidence_id: target.evidence_id });
+    expect(await invalid(w, "vb2")).toEqual(["unit_green"]);
+    await refused(w, "vb2", "its verifier attestation was made for another criterion");
+  });
+
+  it("refuses one part's attested record copied under the other part's evidence id: `m(a) and m(b)` needs two checks", async () => {
+    const { w } = await bound("3");
+    await approvedThenCrashed(w, "vb3");
+    const rows = await rowsOf(w, "vb3");
+    const second = rows["both_green/1"]!;
+    await put(w, second.evidence_id, { ...recordOf(rows["both_green/0"]!), evidence_id: second.evidence_id });
+    expect(await invalid(w, "vb3")).toEqual(["both_green"]);
+    await refused(w, "vb3", "its verifier attestation was made for another part of its criterion");
+  });
+
+  it("refuses an attestation from an earlier run of the same program reused in a later one", async () => {
+    const { w } = await bound("4");
+    expect((await approveOwner(w, "vb4-earlier")).state).toBe("succeeded");
+    await approvedThenCrashed(w, "vb4");
+    const earlier = (await rowsOf(w, "vb4-earlier"))["suite_green"]!;
+    const later = (await rowsOf(w, "vb4"))["suite_green"]!;
+    await put(w, later.evidence_id, { ...recordOf(earlier), run: "vb4", evidence_id: later.evidence_id });
+    expect(await invalid(w, "vb4")).toEqual(["suite_green"]);
+    await refused(w, "vb4", "its verifier attestation was made in another run");
+  });
+
+  // Each comparison on its own: the record is changed in one field only, and keeps the evidence id its attestation gives.
+  it.each([
+    ["run", "the record says another run", (r: EvidenceRecord) => ({ ...r, run: "vb5-run" }), "suite_green", "vb5-run"],
+    ["run", "the record is of the earlier run, moved into this one", (r: EvidenceRecord) => r, "suite_green", "vb5-moved"],
+    ["contract", "the record names another contract with a criterion of that name and method", (r: EvidenceRecord) => ({ ...r, contract: "SuitesAgain" }), "suite_green", undefined],
+    ["criterion", "the record names another criterion by the same method", (r: EvidenceRecord) => ({ ...r, criterion: "unit_green" }), "suite_green", undefined],
+    ["method", "the record names the other method of its criterion", (r: EvidenceRecord) => ({ ...r, method: "test.red_then_green" }), "tested_twice/0", undefined],
+  ])("shows a record as invalid when its attestation names another %s: %s", async (_field, _what, edit, which, moveTo) => {
+    const { w } = await bound(`5-${_field}-${moveTo ?? "same"}`);
+    // A record of an earlier run, moved into the later run's store, stands for it in the views.
+    const source = moveTo ? "vb5-earlier" : "vb5";
+    if (moveTo) {
+      expect((await approveOwner(w, source)).state).toBe("succeeded");
+      await approvedThenCrashed(w, moveTo);
+    } else await approvedThenCrashed(w, source);
+    const row = (await rowsOf(w, source))[which]!;
+    await put(w, row.evidence_id, edit(recordOf(row)), moveTo);
+    const shown = await w.rt.verifyEvidence(moveTo ?? source);
+    expect(shown.find((e) => e.evidence_id === row.evidence_id)?.valid).toBe(false);
+  });
+
+  it("does not take a 0.1 attestation for a check that requires one: evidence attested before 0.2 shows as invalid", async () => {
+    const { key, w } = await bound("6");
+    await approvedThenCrashed(w, "vb6");
+    const row = (await rowsOf(w, "vb6"))["regression_test"]!;
+    const record = recordOf(row);
+    const producer = record.producer as Record<string, Value>;
+    // The same finding, signed by the same verifier key in the format before this one.
+    const { run: _r, contract: _c, criterion: _k, method: _m, part: _p, format: _f, ...found } = statementOfRow(row);
+    const statement = { format: "mandate/check-attestation/0.1", ...found };
+    const att = { statement, ...EvidenceSigner.loadOrCreate(key).signStatement("mandate/check-attestation/0.1", statement as unknown as Value) };
+    const older: EvidenceRecord = { ...record, producer: { ...producer, attestation: att as unknown as Value } };
+    expect(attestationProblem(older, new TrustedKeys([publicOf(key)]))).toBeUndefined();
+    await put(w, row.evidence_id, older);
+    expect(await invalid(w, "vb6")).toEqual(["regression_test"]);
+    await refused(w, "vb6", "does not name the check it was made for");
+  });
+
+  it.each([
+    ["v01", "signs each check in the format before 0.2"],
+    ["rebind", "signs each check for another part than the one it was sent"],
+  ] as const)("does not meet a criterion when the verifier %s: %s", async (mode, _what) => {
+    const { w } = await bound(`7-${mode}`, { mode });
+    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: `vb7-${mode}` });
+    expect(run.state).not.toBe("succeeded");
+    const checked = (await w.rt.evidence(`vb7-${mode}`)).filter((r) => r.method !== "static" && r.method !== "human.approve");
+    expect(checked.length).toBeGreaterThan(0);
+    for (const r of checked) {
+      expect(r.passed).toBe(false);
+      expect(r.detail).toMatchObject({ reason: "unattested_check" });
+    }
   });
 });

@@ -1,4 +1,4 @@
-// Static checks for Mandate 0.1 to 0.4 (Doc 4 §5–§10; Gate 1; spec/envelope.md for 0.4).
+// Static checks for Mandate 0.1 to 0.5 (Doc 4 §5–§10; Gate 1; spec/envelope.md for 0.4, spec/boundary.md for 0.5).
 //
 // Runs after name resolution on a program whose names all resolve. One pass
 // per definition types every expression, tracking for each value its type,
@@ -80,10 +80,14 @@ import {
   capCovers,
   capsFromCall,
   capsOf,
+  HTTP_METHODS,
   pathsOverlap,
+  readMethods,
+  readsMethods,
   scopeWithin,
   showCap,
   writesOverlap,
+  type CapOptions,
   type CapVal,
 } from "./caps.js";
 import {
@@ -201,6 +205,10 @@ export function leadClasses(program: Program, linked?: Record<string, Def>): Rec
 class Checker implements TypeEnv {
   private readonly out: Diagnostic[] = [];
   private readonly capDefs = new Map<string, CapVal[]>();
+  /** Capabilities are read in the program's language, imported ones too. */
+  private get capOpts(): CapOptions {
+    return { language: this.program.language };
+  }
   private readonly fnUsage = new Map<string, Usage[] | "pending">();
   /** What the body of each of the program's own skills uses, by `Agent.skill`. */
   private readonly skillUsage = new Map<string, Usage[]>();
@@ -309,7 +317,7 @@ class Checker implements TypeEnv {
     this.capDefs.set(name, []);
     // An imported capability was checked in its module; here it is only evaluated.
     const own = Object.hasOwn(this.program.defs, name);
-    const caps = (own ? this.evalCap(d.value, ptr("defs", name, "value")) : capsOf(this.defs, d.value)).map((c) => ({ ...c, name }));
+    const caps = (own ? this.evalCap(d.value, ptr("defs", name, "value")) : capsOf(this.defs, d.value, this.capOpts)).map((c) => ({ ...c, name }));
     this.capDefs.set(name, caps);
     return caps;
   }
@@ -355,11 +363,31 @@ class Checker implements TypeEnv {
     }
     if (e.op === "call") {
       e.args.forEach((a, i) => this.untrustedInCapArg(a.value, `${path}/args/${i}/value`, frame));
-      const r = capsFromCall(e, this.defs);
+      const r = capsFromCall(e, this.defs, this.capOpts);
       if (r?.problem) this.report("E1002", `${r.problem} (doc 9 §2.2).`, path, { problem: r.problem });
+      if (readsMethods(this.program.language) && calleePath(e.callee) === "net.https") this.methodsCheck(e, path);
       return r?.caps ?? [];
     }
     return [];
+  }
+
+  /** E1801: a 0.5 `net.https(…, methods: […])` names a non-empty list of methods it knows, as bare names. */
+  private methodsCheck(e: Extract<Expr, { op: "call" }>, path: string): void {
+    const i = e.args.findIndex((a) => a.name === "methods");
+    if (i < 0) return;
+    const expected = [...HTTP_METHODS];
+    const known = `${expected.slice(0, -1).join(", ")} or ${expected.at(-1)}`;
+    for (const p of readMethods(e.args[i]!.value).problems) {
+      const message =
+        p.problem === "unknown"
+          ? `Unknown method ${p.found}; net.https allows ${known}.`
+          : p.problem === "not_a_name"
+            ? `A method is written as a bare name, such as GET, not ${p.found === null ? "an expression" : JSON.stringify(p.found)}; net.https allows ${known}.`
+            : p.problem === "empty"
+              ? "methods lists at least one method; without methods, net.https allows any method."
+              : `methods takes a list of bare method names, such as methods: [GET]; net.https allows ${known}.`;
+      this.report("E1801", message, `${path}/args/${i}/value${p.at}`, { found: p.found, expected });
+    }
   }
 
   /** R5: untrusted content cannot pick a capability's scope. */
@@ -1285,7 +1313,7 @@ class Checker implements TypeEnv {
   private grantedThrough(who: string, frame: Frame): CapVal[] {
     const agent = this.def(who.slice(0, who.indexOf(".")));
     if (agent?.kind !== "agent") return [];
-    const held = agent.caps.flatMap((c) => capsOf(this.defs, c));
+    const held = agent.caps.flatMap((c) => capsOf(this.defs, c, this.capOpts));
     const handed = (frame.handed ?? []).filter((k) => agent.remote || held.some((a) => capCovers(a, k)));
     const kinds = new Set(handed.map((k) => k.ctor));
     return [...held.filter((c) => !kinds.has(c.ctor) && (!frame.avail || frame.avail.some((a) => capCovers(a, c)))), ...handed];

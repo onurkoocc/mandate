@@ -1,0 +1,29 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S03a",
+  "kind": "compile",
+  "title": "A type that does not exist is refused, and the name that is close to it is offered.",
+  "spec": [
+    "spec/ir.md#reading-ir",
+    "spec/diagnostics.md"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/Finding/type/record/file/ref",
+        "facts": {
+          "name": "Pathh",
+          "did_you_mean": "Path"
+        }
+      }
+    ]
+  }
+}

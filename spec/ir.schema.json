@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mandate.dev/spec/ir/0.1/schema.json",
-  "title": "Mandate canonical IR 0.1 to 0.4",
+  "title": "Mandate canonical IR 0.1 to 0.5",
   "description": "Closed schema for the canonical IR (Doc 4 §3.2-§3.5). Unknown fields are errors. Schema validity does not replace type, effect, capability or budget checking.",
   "type": "object",
   "additionalProperties": false,
@@ -17,7 +17,8 @@
         "mandate/0.1",
         "mandate/0.2",
         "mandate/0.3",
-        "mandate/0.4"
+        "mandate/0.4",
+        "mandate/0.5"
       ]
     },
     "module": {

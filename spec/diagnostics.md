@@ -140,3 +140,16 @@ to the lead, and the Notes column says so.
 | MDT-E1707 | `plan` outside an envelope | E1707 | assigned; a `plan` anywhere but the body of a workflow with an envelope |
 | MDT-E1708 | Person or critical effect in a map body | E1708, E1708a | assigned; a wait for a person in a map body or in a function it calls, a critical effect, a change set |
 | MDT-E1709 | Amendment narrows the envelope | N04, E1709, E1709a, E1709b, E1709c | assigned; a capability left out, a budget dimension lowered, dropped or added, fewer delegations at once or a lower data class; facts name the dimension (`capability`, a budget dimension, `max_concurrent`, `max_class`) with what the envelope gave and what was asked; returned to the lead, never to the run |
+
+## The boundary (0.5)
+
+Specified in [`boundary.md`](boundary.md). E18xx is assigned here.
+`mandate check` reports E1801 and E1804, and E1802 and E1803 when it is
+given the lock.
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E1801 | Unknown method | E1801, E1801a, E1801b | assigned; 0.5 only; `methods` of `net.https` is a non-empty list of bare names from GET, HEAD, POST, PUT, PATCH, DELETE. Facts: `found` (the name written, or null) and `expected` |
+| MDT-E1802 | Credential bound outside the sandbox | E1802, E1802a, E1802b, E1802c | assigned; needs the lock; an `egress` binding names something other than a local agent, a remote agent, an agent bound to an executor, or a host none of the agent's `net.https` capabilities holds. Facts: `agent`, `reason` (`not_an_agent`, `remote`, `executor`, `host_not_held`), and for a host `host`, `credential` and `held`. The path is into the lock |
+| MDT-E1803 | Lock field does not apply to the program's language | E1803 | assigned; needs the lock; `isolation` or `egress` in a lock packaged with a program of 0.1 to 0.4. Facts: `field`, `language`. The path is into the lock |
+| MDT-E1804 | Imported method limit read without it | E1804, E1804a | assigned; a program of 0.1 to 0.4 that reaches, through an import, a `net.https` capability written with `methods` in a module of 0.5 or later; reported at the import. Facts: `definition`, `module`, `module_language`, `language`. Also refused at load (`load_verification_failed`) |

@@ -1,0 +1,10 @@
+module m @ 0.1
+use std.{model}
+type Record = { name: Text } classified restricted
+capability M = model.infer(tier: standard)
+workflow Greet(r: Record) -> Inferred<Text>
+  caps M
+{
+  let name = r.name
+  infer Text from quote("Hello {name}")
+}

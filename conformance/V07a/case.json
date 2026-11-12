@@ -1,0 +1,35 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V07a",
+  "kind": "compile",
+  "title": "A switch on a decision outcome that leaves out Uncertain is refused.",
+  "spec": [
+    "spec/checks.md#decisions-810"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "../../compiler/test/fixtures/syntax/decision.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/HandleRequest/body/1/value/cases/2"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0230",
+        "path": "/defs/HandleRequest/body/1/value",
+        "facts": {
+          "missing": [
+            "Uncertain"
+          ]
+        }
+      }
+    ]
+  }
+}

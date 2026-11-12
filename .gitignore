@@ -13,3 +13,5 @@ __pycache__/
 runtime/test/.build/
 # Local working notes; never committed.
 work/
+# Rust build output.
+/target/

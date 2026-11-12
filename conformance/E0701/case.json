@@ -1,0 +1,84 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0701",
+  "kind": "compile",
+  "title": "In 0.5 a capability with methods does not cover one without them: a delegation cannot be handed any method of a host its agent may only GET.",
+  "spec": [
+    "spec/boundary.md#language-05",
+    "spec/checks.md"
+  ],
+  "language": "mandate/0.5",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/GitHubAny",
+      "value": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "net"
+            },
+            "name": "https"
+          },
+          "args": [
+            {
+              "name": "hosts",
+              "value": {
+                "op": "list",
+                "items": [
+                  {
+                    "op": "text",
+                    "value": "api.github.com"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Summarize/caps/0",
+      "value": {
+        "op": "var",
+        "name": "GitHubAny"
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/Summarize/body/0/value/caps",
+      "value": [
+        {
+          "op": "var",
+          "name": "GitHubAny"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0701",
+        "path": "/defs/Summarize/body/0/value/caps/0",
+        "facts": {
+          "capability": "GitHubAny = net.https(\"api.github.com\")",
+          "agent": [
+            "GitHubRead = net.https(\"api.github.com\", methods: [GET])",
+            "ModelStd = model.infer"
+          ]
+        }
+      }
+    ]
+  }
+}

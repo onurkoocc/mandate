@@ -1,0 +1,10 @@
+module m @ 0.1
+use std.{net, model, fs}
+agent A {
+  budget { steps: 5 }
+  skill s(t: T) -> Inferred<T> ! {Fs.Read, Model}
+  caps R, M
+}
+type T = { y: Text, x: Int }
+capability M = model.infer(tier: standard)
+capability R = fs.read("/a")

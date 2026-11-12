@@ -1,0 +1,21 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1802d",
+  "kind": "compile",
+  "title": "The 0.5 fixture checks with its lock: a credential bound to the one host its agent may GET, an isolation floor and the host's least versions.",
+  "spec": [
+    "spec/boundary.md#lock-05",
+    "spec/lock.md"
+  ],
+  "language": "mandate/0.5",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

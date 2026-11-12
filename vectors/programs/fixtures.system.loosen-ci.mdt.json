@@ -1,0 +1,472 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "fixtures/system/loosen-ci.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.3",
+  "canonical": "{\"defs\":{\"Change\":{\"kind\":\"type\",\"type\":{\"record\":{\"files\":{\"args\":[{\"ref\":\"Path\"}],\"ref\":\"List\"}}}},\"ChangeAccepted\":{\"accept\":{\"listed\":{\"by\":{\"static\":{\"bop\":\">=\",\"left\":{\"args\":[{\"value\":{\"name\":\"files\",\"of\":{\"name\":\"change\",\"op\":\"var\"},\"op\":\"field\"}}],\"callee\":{\"name\":\"len\",\"op\":\"var\"},\"op\":\"call\"},\"op\":\"binary\",\"right\":{\"op\":\"int\",\"value\":1}}},\"description\":\"The change names its files\"}},\"kind\":\"contract\",\"params\":[{\"name\":\"change\",\"type\":{\"ref\":\"Change\"}}]},\"Plan\":{\"kind\":\"type\",\"type\":{\"record\":{\"summary\":{\"ref\":\"Text\"}}}},\"PlanAccepted\":{\"accept\":{\"summarized\":{\"by\":{\"static\":{\"bop\":\">=\",\"left\":{\"args\":[{\"value\":{\"name\":\"summary\",\"of\":{\"name\":\"plan\",\"op\":\"var\"},\"op\":\"field\"}}],\"callee\":{\"name\":\"len\",\"op\":\"var\"},\"op\":\"call\"},\"op\":\"binary\",\"right\":{\"op\":\"int\",\"value\":1}}},\"description\":\"The plan says what changes\"}},\"kind\":\"contract\",\"params\":[{\"name\":\"plan\",\"type\":{\"ref\":\"Plan\"}}]},\"Release\":{\"body\":[{\"name\":\"plan\",\"op\":\"let\",\"value\":{\"args\":[{\"value\":{\"fields\":{\"summary\":{\"name\":\"task\",\"op\":\"var\"}},\"op\":\"record\",\"type\":\"Plan\"}}],\"contract\":\"PlanAccepted\",\"op\":\"verify\",\"value\":{\"fields\":{\"summary\":{\"name\":\"task\",\"op\":\"var\"}},\"op\":\"record\",\"type\":\"Plan\"}}},{\"name\":\"c\",\"op\":\"let\",\"value\":{\"args\":[{\"value\":{\"fields\":{\"files\":{\"name\":\"files\",\"op\":\"var\"}},\"op\":\"record\",\"type\":\"Change\"}}],\"contract\":\"ChangeAccepted\",\"op\":\"verify\",\"value\":{\"fields\":{\"files\":{\"name\":\"files\",\"op\":\"var\"}},\"op\":\"record\",\"type\":\"Change\"}}},{\"name\":\"landed\",\"op\":\"let\",\"value\":{\"approver\":\"architect\",\"idempotent_by\":{\"name\":\"task\",\"op\":\"var\"},\"members\":{\"core\":{\"approver\":\"release_manager\",\"args\":[{\"value\":{\"name\":\"c\",\"op\":\"var\"}}],\"effect\":\"git.merge\"}},\"op\":\"changeset\",\"order\":[\"core\"],\"plan\":{\"name\":\"plan\",\"op\":\"var\"}}},{\"op\":\"expr\",\"value\":{\"op\":\"text\",\"value\":\"landed\"}}],\"caps\":[{\"name\":\"Repos\",\"op\":\"var\"}],\"kind\":\"workflow\",\"params\":[{\"name\":\"task\",\"type\":{\"ref\":\"Text\"}},{\"name\":\"files\",\"type\":{\"args\":[{\"ref\":\"Path\"}],\"ref\":\"List\"}}],\"returns\":{\"ref\":\"Text\"}},\"Repos\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"name\":\"core\",\"op\":\"var\"}}],\"callee\":{\"name\":\"repo\",\"of\":{\"name\":\"component\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"Speed\":{\"body\":[{\"name\":\"plan\",\"op\":\"let\",\"value\":{\"args\":[{\"value\":{\"fields\":{\"summary\":{\"name\":\"task\",\"op\":\"var\"}},\"op\":\"record\",\"type\":\"Plan\"}}],\"contract\":\"PlanAccepted\",\"op\":\"verify\",\"value\":{\"fields\":{\"summary\":{\"name\":\"task\",\"op\":\"var\"}},\"op\":\"record\",\"type\":\"Plan\"}}},{\"name\":\"c\",\"op\":\"let\",\"value\":{\"args\":[{\"value\":{\"fields\":{\"files\":{\"name\":\"files\",\"op\":\"var\"}},\"op\":\"record\",\"type\":\"Change\"}}],\"contract\":\"ChangeAccepted\",\"op\":\"verify\",\"value\":{\"fields\":{\"files\":{\"name\":\"files\",\"op\":\"var\"}},\"op\":\"record\",\"type\":\"Change\"}}},{\"name\":\"landed\",\"op\":\"let\",\"value\":{\"approver\":\"architect\",\"idempotent_by\":{\"name\":\"task\",\"op\":\"var\"},\"members\":{\"core\":{\"args\":[{\"value\":{\"name\":\"c\",\"op\":\"var\"}}],\"effect\":\"git.merge\"}},\"op\":\"changeset\",\"order\":[\"core\"],\"plan\":{\"name\":\"plan\",\"op\":\"var\"}}},{\"op\":\"expr\",\"value\":{\"op\":\"text\",\"value\":\"landed\"}}],\"caps\":[{\"name\":\"Repos\",\"op\":\"var\"}],\"kind\":\"workflow\",\"params\":[{\"name\":\"task\",\"type\":{\"ref\":\"Text\"}},{\"name\":\"files\",\"type\":{\"args\":[{\"ref\":\"Path\"}],\"ref\":\"List\"}}],\"returns\":{\"ref\":\"Text\"}}},\"language\":\"mandate/0.3\",\"module\":\"acme.tasks.loosen_ci\",\"uses\":[{\"module\":\"acme.system\",\"names\":[\"core\"]},{\"module\":\"std\",\"names\":[\"component\",\"git\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:3efbf763a43add38365ad6d33498cb8533a97087f18bb7ab7bbeeb81241289c1",
+    "defs": [
+      [
+        "Change",
+        "sha256:a0bf8495cda475121a0d1b13ab477eb04a0f66ec833e69192ee8e059f0d6fe2a"
+      ],
+      [
+        "ChangeAccepted",
+        "sha256:4f073be136dce669fb50331ccd8bc32cea73b73a0ce11332b1d4a19bc86be228"
+      ],
+      [
+        "Plan",
+        "sha256:5273dcd88d9815ff1865068cc3cf0ec78926572002ac46c429fb3e7103ae2e12"
+      ],
+      [
+        "PlanAccepted",
+        "sha256:edf23b0e1939c4900e0fd5bc29f4ec52d0fcc6f1093db6b6903cac31b0a4cb73"
+      ],
+      [
+        "Release",
+        "sha256:3b7402e80ae42f9d832fcad6491d4250718b95226628c41f9228f582815e11d9"
+      ],
+      [
+        "Repos",
+        "sha256:761e3fb0e997bf4fece32c905a7fefe475dd412fa70194238f04078564c65f10"
+      ],
+      [
+        "Speed",
+        "sha256:244017750a6f95591d40f75613eae1f3dd03918d09ef9b94072eea733073dde7"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.3",
+    "module": "acme.tasks.loosen_ci",
+    "version": "0.1",
+    "defs": {
+      "Repos": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "component"
+            },
+            "name": "repo"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "core"
+              }
+            }
+          ]
+        }
+      },
+      "Plan": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "summary": {
+              "ref": "Text"
+            }
+          }
+        }
+      },
+      "Change": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "files": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Path"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "PlanAccepted": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "plan",
+            "type": {
+              "ref": "Plan"
+            }
+          }
+        ],
+        "accept": {
+          "summarized": {
+            "description": "The plan says what changes",
+            "by": {
+              "static": {
+                "op": "binary",
+                "bop": ">=",
+                "left": {
+                  "op": "call",
+                  "callee": {
+                    "op": "var",
+                    "name": "len"
+                  },
+                  "args": [
+                    {
+                      "value": {
+                        "op": "field",
+                        "of": {
+                          "op": "var",
+                          "name": "plan"
+                        },
+                        "name": "summary"
+                      }
+                    }
+                  ]
+                },
+                "right": {
+                  "op": "int",
+                  "value": 1
+                }
+              }
+            }
+          }
+        }
+      },
+      "ChangeAccepted": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "change",
+            "type": {
+              "ref": "Change"
+            }
+          }
+        ],
+        "accept": {
+          "listed": {
+            "description": "The change names its files",
+            "by": {
+              "static": {
+                "op": "binary",
+                "bop": ">=",
+                "left": {
+                  "op": "call",
+                  "callee": {
+                    "op": "var",
+                    "name": "len"
+                  },
+                  "args": [
+                    {
+                      "value": {
+                        "op": "field",
+                        "of": {
+                          "op": "var",
+                          "name": "change"
+                        },
+                        "name": "files"
+                      }
+                    }
+                  ]
+                },
+                "right": {
+                  "op": "int",
+                  "value": 1
+                }
+              }
+            }
+          }
+        }
+      },
+      "Speed": {
+        "kind": "workflow",
+        "params": [
+          {
+            "name": "task",
+            "type": {
+              "ref": "Text"
+            }
+          },
+          {
+            "name": "files",
+            "type": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Path"
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Text"
+        },
+        "caps": [
+          {
+            "op": "var",
+            "name": "Repos"
+          }
+        ],
+        "body": [
+          {
+            "op": "let",
+            "name": "plan",
+            "value": {
+              "op": "verify",
+              "value": {
+                "op": "record",
+                "type": "Plan",
+                "fields": {
+                  "summary": {
+                    "op": "var",
+                    "name": "task"
+                  }
+                }
+              },
+              "contract": "PlanAccepted",
+              "args": [
+                {
+                  "value": {
+                    "op": "record",
+                    "type": "Plan",
+                    "fields": {
+                      "summary": {
+                        "op": "var",
+                        "name": "task"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "let",
+            "name": "c",
+            "value": {
+              "op": "verify",
+              "value": {
+                "op": "record",
+                "type": "Change",
+                "fields": {
+                  "files": {
+                    "op": "var",
+                    "name": "files"
+                  }
+                }
+              },
+              "contract": "ChangeAccepted",
+              "args": [
+                {
+                  "value": {
+                    "op": "record",
+                    "type": "Change",
+                    "fields": {
+                      "files": {
+                        "op": "var",
+                        "name": "files"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "let",
+            "name": "landed",
+            "value": {
+              "op": "changeset",
+              "plan": {
+                "op": "var",
+                "name": "plan"
+              },
+              "members": {
+                "core": {
+                  "effect": "git.merge",
+                  "args": [
+                    {
+                      "value": {
+                        "op": "var",
+                        "name": "c"
+                      }
+                    }
+                  ]
+                }
+              },
+              "order": [
+                "core"
+              ],
+              "approver": "architect",
+              "idempotent_by": {
+                "op": "var",
+                "name": "task"
+              }
+            }
+          },
+          {
+            "op": "expr",
+            "value": {
+              "op": "text",
+              "value": "landed"
+            }
+          }
+        ]
+      },
+      "Release": {
+        "kind": "workflow",
+        "params": [
+          {
+            "name": "task",
+            "type": {
+              "ref": "Text"
+            }
+          },
+          {
+            "name": "files",
+            "type": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Path"
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Text"
+        },
+        "caps": [
+          {
+            "op": "var",
+            "name": "Repos"
+          }
+        ],
+        "body": [
+          {
+            "op": "let",
+            "name": "plan",
+            "value": {
+              "op": "verify",
+              "value": {
+                "op": "record",
+                "type": "Plan",
+                "fields": {
+                  "summary": {
+                    "op": "var",
+                    "name": "task"
+                  }
+                }
+              },
+              "contract": "PlanAccepted",
+              "args": [
+                {
+                  "value": {
+                    "op": "record",
+                    "type": "Plan",
+                    "fields": {
+                      "summary": {
+                        "op": "var",
+                        "name": "task"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "let",
+            "name": "c",
+            "value": {
+              "op": "verify",
+              "value": {
+                "op": "record",
+                "type": "Change",
+                "fields": {
+                  "files": {
+                    "op": "var",
+                    "name": "files"
+                  }
+                }
+              },
+              "contract": "ChangeAccepted",
+              "args": [
+                {
+                  "value": {
+                    "op": "record",
+                    "type": "Change",
+                    "fields": {
+                      "files": {
+                        "op": "var",
+                        "name": "files"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "let",
+            "name": "landed",
+            "value": {
+              "op": "changeset",
+              "plan": {
+                "op": "var",
+                "name": "plan"
+              },
+              "members": {
+                "core": {
+                  "effect": "git.merge",
+                  "args": [
+                    {
+                      "value": {
+                        "op": "var",
+                        "name": "c"
+                      }
+                    }
+                  ],
+                  "approver": "release_manager"
+                }
+              },
+              "order": [
+                "core"
+              ],
+              "approver": "architect",
+              "idempotent_by": {
+                "op": "var",
+                "name": "task"
+              }
+            }
+          },
+          {
+            "op": "expr",
+            "value": {
+              "op": "text",
+              "value": "landed"
+            }
+          }
+        ]
+      }
+    },
+    "uses": [
+      {
+        "module": "acme.system",
+        "names": [
+          "core"
+        ]
+      },
+      {
+        "module": "std",
+        "names": [
+          "component",
+          "git"
+        ]
+      }
+    ]
+  }
+}

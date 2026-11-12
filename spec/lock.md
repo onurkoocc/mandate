@@ -13,7 +13,7 @@ All of these are reported as `MDT-E0140`.
 
 ```json
 {
-  "lock": "mandate/lock/0.4",
+  "lock": "mandate/lock/0.5",
   "modules": { "company.domain": "sha256:0f1e" },
   "models": {
     "standard": { "provider": "anthropic", "model": "claude-opus-5-5", "effort": "high",
@@ -34,9 +34,13 @@ All of these are reported as `MDT-E0140`.
 | `bindings` | What the program's agents were deployed as on an executor (`managed-agents`), written by `mandate deploy`; see [`executors.md`](executors.md). Needs format `0.3` or later |
 | `members` | Each person who signs decisions, with the ids of their keys (`sha256:<hex>` of an ed25519 public key). Needs format `0.4` |
 | `roles` | For each role the program names, the members bound to it; see [`envelope.md`](envelope.md#the-lock-members-and-roles). Needs format `0.4` |
+| `host` | The least versions of the runtime's host's tools, `node` and `bwrap`; see [below](#host-isolation-and-egress-05). Needs format `0.5` |
+| `isolation` | Isolation floors by data class and for an untrusted network, and the data classes whose sandboxes may not share their host. Needs format `0.5` |
+| `egress` | Per agent, the credential each host's requests carry, by name. Needs format `0.5` |
 
-The format is `mandate/lock/0.4`. A `0.3` lock, which has no members or
-roles, and a `0.2` lock, which has no bindings either, are still read.
+The format is `mandate/lock/0.5`. A `0.4` lock, which has no host,
+isolation or egress, a `0.3` lock, which has no members or roles either,
+and a `0.2` lock, which has no bindings either, are still read.
 
 ## Members and roles
 
@@ -63,23 +67,59 @@ roles, and a `0.2` lock, which has no bindings either, are still read.
 
 These are reported as `MDT-E0140` too.
 
+## Host, isolation and egress (0.5)
+
+```json
+{
+  "lock": "mandate/lock/0.5",
+  "modules": {},
+  "host": { "node": "22.23.4", "bwrap": "0.11.0" },
+  "isolation": {
+    "floor": { "restricted": "microvm" },
+    "untrusted_network": "process",
+    "co_tenancy": { "restricted": "forbidden" }
+  },
+  "egress": { "Fixer": { "api.github.com": "github" } }
+}
+```
+
+- `host` names `node`, `bwrap` or both, each `major[.minor[.patch]]`.
+- A floor is one of `process`, `user_kernel`, `microvm`, `dedicated_host`,
+  for a data class (`floor`) or for a sandbox that reaches any host
+  (`untrusted_network`). `co_tenancy` is `allowed` or `forbidden`.
+- A floor, and `co_tenancy: forbidden`, hold for the class they name and
+  every more sensitive one.
+- An `egress` binding names an agent, a host and a credential: a name the
+  egress proxy's own configuration binds to that host, never a secret.
+- No floor and no least version is built in: all of them come from here.
+
+Each is closed, and in a lock older than `0.5` each is `MDT-E0140`. What
+they mean is in [`boundary.md`](boundary.md#lock-05).
+
 ## What reads it
 
 - **The package.** The lock is part of the package hash:
   `SHA256("mandate/package/0.1\n" ‖ JCS({program: <program hash>, lock}))`. A changed
-  price or model is a new package. A running run keeps the package it
-  started with (INV-02).
+  price or model is a new package, and so is a raised floor or a new
+  credential binding, which a workflow's envelope then needs approved
+  again. A running run keeps the package it started with (INV-02).
 - **The compiler.** `mandate check` reads `--lock <file>`, or else
-  `mandate.lock.json` next to the program. With a lock it adds two checks:
+  `mandate.lock.json` next to the program. With a lock it adds these checks:
   - `MDT-E0141`: every model tier the program names is locked.
   - `MDT-E1502`: every role a 0.4 program names has a member under `roles`
     ([`envelope.md`](envelope.md)).
   - `MDT-W0504`: every agent loop's declared budget covers its upper bound.
   - `MDT-E0903`–`MDT-E0905`: an executor binding still fits the program
     and the lock ([`executors.md`](executors.md)).
+  - `MDT-E1802`: an `egress` binding names a local agent that no executor
+    runs, and a host its `net.https` capabilities hold.
+  - `MDT-E1803`: `isolation` and `egress` are only in a lock checked with a
+    0.5 program.
 - **The runtime.** It refuses to load a package whose lock pins models but is
   malformed (`malformed_lock`) or leaves a named tier unlocked
-  (`unlocked_model_tier`). Its model adapter sends each tier's model and
+  (`unlocked_model_tier`). Until it enforces them, it refuses a package
+  whose lock sets `host`, `isolation` or `egress`, each by its name
+  (`unsupported_lock`). Its model adapter sends each tier's model and
   effort, and prices every call from the tariff. A lock without `models` is
   for simulated models: the Anthropic adapter refuses to run without one.
 

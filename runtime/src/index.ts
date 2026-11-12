@@ -1,8 +1,8 @@
-// Public API of the Mandate reference runtime, for language 0.1 to 0.4.
+// Public API of the Mandate reference runtime, for language 0.1 to 0.5.
 export * from "./adapters.js";
 export * from "./artifacts.js";
 export * from "./evidence.js";
-export { ATTESTATION_FORMAT, attestationProblem, statementOf, type Attestation, type CheckStatement } from "./attestation.js";
+export { ATTESTATION_FORMAT, ATTESTATION_FORMAT_0_1, attestationProblem, statementOf, type Attestation, type CheckStatement, type CheckStatement01 } from "./attestation.js";
 export { ProcessVerifier, serveVerifier, type ProcessVerifierOptions, type VerifierPackage } from "./verifier-service.js";
 export { RateLimiter, type BucketConfig, type Priority } from "./ratelimit.js";
 export { openDb, SCHEMA, type Db, type Tx } from "./db.js";
@@ -12,7 +12,9 @@ export { ANCHOR_FORMAT, anchorStatement, eventHash, EXPORT_LIMITS, exportJournal
 export { Journal, TERMINAL, type ActionRow, type BudgetReport, type ChangesetRow, type CommandRow, type EvidenceRow, type RunRow, type RunState } from "./journal.js";
 export { GitHubMerges, type GitHubMergeOptions } from "./github-merge.js";
 export { ContainerHost } from "./container.js";
-export { BOUNDARY_HANDLER, BoundaryVerifier, GitHubCi, leaks, measure, realDocker, snapshot, type BoundaryConfig, type CiConfig, type CiRun, type CiSource, type Docker, type IntegrationConfig } from "./boundary.js";
+export { criterionMethods, declaredMethods, partMethod } from "./criteria.js";
+export { childEnv } from "./env.js";
+export { BOUNDARY_HANDLER, BOUNDARY_METHODS, BoundaryVerifier, GitHubCi, leaks, measure, realDocker, snapshot, type BoundaryConfig, type CiConfig, type CiRun, type CiSource, type Docker, type IntegrationConfig } from "./boundary.js";
 export { covers, diffEvent, diffMcpTools, diffMigrations, diffOauth, diffOpenApi, diffSpec, type ChangeKind, type SpecChange } from "./specdiff.js";
 export { GitWorkspace, type ComponentSource, type WorkspaceAdapter, type WorkspaceComponent } from "./workspace.js";
 export { buildPackage, componentsOf, refusingAdapters, Runtime, RUN_MANIFEST_FORMAT, verifyPackage, type Lock, type Message, type Package, type ReplayResult, type RuntimeOptions, type StartOptions } from "./runtime.js";
