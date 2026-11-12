@@ -164,11 +164,14 @@ describe("verifying a journal (spec/journal.md)", () => {
     }
   });
 
-  it("breaks on an anchor whose hash is not its event's", async () => {
+  it("breaks on an anchor whose hash or time is not its event's", async () => {
     const w = await closed("v11");
     const x = await w.rt.exportJournal("v11");
-    x.anchors[1]!.hash = x.events[0]!.hash!;
-    expect(codes(verifyExport(JSON.stringify(x), w.rt.trusted.publicKeys()))).toEqual([`anchor_signature_invalid@${x.anchors[1]!.seq}`, `anchor_mismatch@${x.anchors[1]!.seq}`]);
+    const [a1, a2] = [x.anchors[1]!, x.anchors[2]!];
+    a1.hash = x.events[0]!.hash!;
+    // An anchor the key did sign, over another time than its event's: it signs nothing the journal holds.
+    Object.assign(a2, { at: a2.at + 1 }, w.rt.signer.signStatement(ANCHOR_FORMAT, anchorStatement("v11", a2.seq, a2.hash, a2.at + 1)));
+    expect(codes(verifyExport(JSON.stringify(x), w.rt.trusted.publicKeys()))).toEqual([`anchor_signature_invalid@${a1.seq}`, `anchor_mismatch@${a1.seq}`, `anchor_mismatch@${a2.seq}`]);
   });
 
   it("breaks when the manifest or the package is not the one the first event names", async () => {
@@ -222,6 +225,11 @@ describe("verifying a journal (spec/journal.md)", () => {
     const v = await closed("v15");
     await v.db.query("update events set hash = null where run_id = 'v15' and seq = 1");
     expect(codes(await verify(v, "v15"))).toEqual(["hash_missing@1", "chain_broken@2", "anchor_mismatch@1"]);
+    // Every hash stripped and the anchors left: still a chained run, and broken, not unchained.
+    await v.db.query("update events set hash = null where run_id = 'v15'");
+    const stripped = await verify(v, "v15");
+    expect(stripped.status).toBe("broken");
+    expect(codes(stripped).filter((c) => c.startsWith("hash_missing"))).toHaveLength(9);
   });
 
   it("reads an export strictly, and anything it cannot read is malformed_export", async () => {
