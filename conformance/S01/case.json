@@ -1,0 +1,13 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S01",
+  "kind": "compile",
+  "title": "A JSON object that repeats a key is rejected before schema validation.",
+  "spec": ["spec/ir.md#reading-ir"],
+  "input": { "file": "program.ir.json", "kind": "json" },
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E0102", "path": "/defs", "facts": { "key": "defs" } }]
+  }
+}

@@ -21,7 +21,7 @@ export interface PatchOp {
 }
 
 export interface GovernanceChange {
-  kind: "capability_added" | "budget_increased" | "criterion_removed" | "irreversible_added" | "system_model_changed";
+  kind: "capability_added" | "budget_increased" | "criterion_removed" | "irreversible_added" | "system_model_changed" | "envelope_changed";
   path: string;
   detail: string;
 }
@@ -159,6 +159,12 @@ function governance(before: Program, after: Program): GovernanceChange[] {
         const ps = Object.hasOwn(prev.skills, sn) ? prev.skills[sn] : undefined;
         if (ps) for (const detail of budgetGrowth(ps.budget, s.budget)) out.push({ kind: "budget_increased", path: `${base}/skills/${sn}/budget`, detail: `${name}.${sn}: ${detail}` });
       }
+    }
+    // An envelope is what a person approved for a whole run: its authority, budget, agents, data class and
+    // the effects a person authorizes. Any change to one is that person's to approve (spec/envelope.md).
+    if (d.kind === "workflow" && json(d.envelope ?? null) !== json((prev?.kind === "workflow" ? prev.envelope : undefined) ?? null)) {
+      const was = prev?.kind === "workflow" && prev.envelope;
+      out.push({ kind: "envelope_changed", path: `${base}/envelope`, detail: `${name}: envelope ${!was ? "added" : !d.envelope ? "removed" : "changed"}` });
     }
     if (d.kind === "effect" && d.irreversible && !(prev && prev.kind === "effect" && prev.irreversible)) {
       out.push({ kind: "irreversible_added", path: base, detail: `effect '${name}' is irreversible` });

@@ -20,7 +20,22 @@
 
 import { calleePath, capCovers, capsOf, showCap, within, type CapVal } from "../check/caps.js";
 import { hashProgram } from "../hash.js";
-import type { AgentDef, Budget, ComponentDef, ContractDef, EffectDef, EnvironmentDef, Expr, InterfaceDef, Program, Stmt, TypeExpr, Verifier, WorkflowDef } from "../ir/types.js";
+import {
+  workflowBounds,
+  type AgentDef,
+  type Budget,
+  type ComponentDef,
+  type ContractDef,
+  type EffectDef,
+  type EnvironmentDef,
+  type Expr,
+  type InterfaceDef,
+  type Program,
+  type Stmt,
+  type TypeExpr,
+  type Verifier,
+  type WorkflowDef,
+} from "../ir/types.js";
 import { link, linkedProgram, type Modules } from "../modules.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
@@ -48,12 +63,26 @@ export function capsIn(program: Program, list: Expr[]): CapVal[] {
   return list.flatMap((e) => capsOf(program.defs, e));
 }
 
-/** What a delegation is granted at run time: the agent's capabilities inside the workflow's, `with caps` replacing its kinds (C2). */
-export function grantOf(program: Program, wf: WorkflowDef, agent: AgentDef, withCaps: Expr[] = []): CapVal[] {
-  const avail = capsIn(program, wf.caps);
-  let out = capsIn(program, agent.caps).filter((c) => avail.some((a) => capCovers(a, c)));
-  if (withCaps.length) {
-    const given = capsIn(program, withCaps);
+/** What a map hands the delegations of its body: its `with caps`, and what a map around it hands of other kinds. */
+function handedBy(program: Program, outer: CapVal[], map: Extract<Expr, { op: "map" }>): CapVal[] {
+  const given = capsIn(program, map.caps ?? []);
+  const kinds = new Set(given.map((g) => g.ctor));
+  return [...outer.filter((c) => !kinds.has(c.ctor)), ...given];
+}
+
+/**
+ * What a delegation is granted at run time: the agent's capabilities inside the workflow's, `with caps`
+ * replacing its kinds (C2). `handed` is what a map around the delegation hands it: one of those replaces a
+ * kind too, where the agent holds it at least as widely and the delegation names none (spec/envelope.md "map").
+ */
+export function grantOf(program: Program, wf: WorkflowDef, agent: AgentDef, withCaps: Expr[] = [], handed: CapVal[] = []): CapVal[] {
+  const avail = capsIn(program, workflowBounds(wf).caps);
+  const held = capsIn(program, agent.caps);
+  let out = held.filter((c) => avail.some((a) => capCovers(a, c)));
+  const given = capsIn(program, withCaps);
+  const own = new Set(given.map((g) => g.ctor));
+  for (const k of handed) if (!own.has(k.ctor) && (agent.remote || held.some((a) => capCovers(a, k)))) given.push(k);
+  if (given.length) {
     const kinds = new Set(given.map((g) => g.ctor));
     out = [...out.filter((c) => !kinds.has(c.ctor)), ...given];
   }
@@ -125,7 +154,10 @@ function children(e: Expr): Expr[] {
     case "infer":
       return [e.from, ...(e.using ? [e.using] : [])];
     case "delegate":
+    case "plan":
       return e.args.map((a) => a.value);
+    case "map":
+      return [e.over];
     case "verify":
       return [e.value, ...e.args.map((a) => a.value)];
     case "effect":
@@ -160,6 +192,7 @@ function show(b: Budget | undefined): string {
   if (b.tokens !== undefined) parts.push(`${b.tokens} tokens`);
   if (b.steps !== undefined) parts.push(`${b.steps} steps`);
   if (b.time) parts.push(duration(b.time.ms));
+  if (b.agents !== undefined) parts.push(`${b.agents} agents`);
   return parts.join(" · ") || "—";
 }
 
@@ -194,7 +227,7 @@ function supervision(e: Extract<Expr, { op: "delegate" }>): string | undefined {
 
 export interface ArchNode {
   id: string;
-  kind: "delegate" | "verify" | "effect" | "changeset" | "human" | "infer" | "read";
+  kind: "delegate" | "verify" | "effect" | "changeset" | "human" | "infer" | "read" | "map";
   label: string;
   detail: string[];
 }
@@ -223,6 +256,8 @@ export interface ArchitectureView {
 class Graph {
   readonly nodes: ArchNode[] = [];
   readonly edges: ArchEdge[] = [];
+  /** Inside a map's body: what the map hands each delegation. */
+  private handed: CapVal[] = [];
 
   constructor(
     private readonly program: Program,
@@ -270,9 +305,23 @@ class Graph {
     switch (e.op) {
       case "delegate": {
         const agent = this.program.defs[e.agent];
-        const grant = agent?.kind === "agent" ? grantOf(this.program, this.wf, agent, e.caps ?? []) : [];
+        const grant = agent?.kind === "agent" ? grantOf(this.program, this.wf, agent, e.caps ?? [], this.handed) : [];
         const detail = [shortCaps(grant), e.isolated ? "isolated" : "", supervision(e) ?? "", e.timeout?.op === "duration" ? `timeout ${duration(e.timeout.ms)}` : ""].filter(Boolean);
         return [this.add("delegate", `${e.agent}.${e.skill}`, detail, prev)];
+      }
+      case "map": {
+        // One node for the map, then its body once: each item runs the same steps (spec/envelope.md "map").
+        const bound = [e.max !== undefined ? `at most ${e.max} items` : "", `${e.par ?? 1} at a time`, e.caps?.length ? "with caps" : "", e.supervise ? e.supervise.name : ""].filter(Boolean);
+        const outer = this.handed;
+        this.handed = handedBy(this.program, outer, e);
+        const ends = this.block(e.body, [this.add("map", `map ${e.bind}`, bound, prev)]);
+        this.handed = outer;
+        return ends;
+      }
+      case "plan": {
+        const lead = this.program.defs[e.agent];
+        const grant = lead?.kind === "agent" ? grantOf(this.program, this.wf, lead) : [];
+        return [this.add("delegate", `plan ${e.agent}.${e.skill}`, [shortCaps(grant), "submits sub-programs within the envelope"].filter(Boolean), prev)];
       }
       case "verify": {
         const v = this.add("verify", `verify ${e.contract}`, criteria(this.program, e.contract), prev);
@@ -365,7 +414,7 @@ export function architecture(program: Program): ArchitectureView {
     if (d.kind !== "workflow") continue;
     const g = new Graph(program, d);
     g.block(d.body, []);
-    const budget = show(d.budget);
+    const budget = show(workflowBounds(d).budget);
     workflows.push({ workflow: name, budget, nodes: g.nodes, edges: g.edges, mermaid: mermaid(name, budget, g.nodes, g.edges) });
   }
   return { format: VIEW_FORMAT, kind: "architecture", program: programRef(program), workflows };
@@ -416,19 +465,28 @@ export function authority(program: Program): AuthorityView {
   }
   for (const [name, d] of defs) {
     if (d.kind !== "workflow") continue;
-    rows.push({ who: name, kind: "workflow", effects: workflowEffects(program, d.body), ...authorityOf(capsIn(program, d.caps)) });
-    const visit = (v: unknown): void => {
-      if (Array.isArray(v)) v.forEach(visit);
+    rows.push({ who: name, kind: "workflow", effects: workflowEffects(program, d.body), ...authorityOf(capsIn(program, workflowBounds(d).caps)) });
+    const visit = (v: unknown, handed: CapVal[]): void => {
+      if (Array.isArray(v)) v.forEach((x) => visit(x, handed));
       else if (v && typeof v === "object") {
         const e = v as Expr;
         if (e.op === "delegate") {
           const agent = program.defs[e.agent];
-          if (agent?.kind === "agent") rows.push({ who: `${name} → ${e.agent}.${e.skill}${e.caps?.length ? " (with caps)" : ""}`, kind: "delegation", effects: [], ...authorityOf(grantOf(program, d, agent, e.caps ?? [])) });
+          const narrowed = e.caps?.length || handed.length;
+          if (agent?.kind === "agent") rows.push({ who: `${name} → ${e.agent}.${e.skill}${narrowed ? " (with caps)" : ""}`, kind: "delegation", effects: [], ...authorityOf(grantOf(program, d, agent, e.caps ?? [], handed)) });
         }
-        Object.values(v).forEach(visit);
+        if (e.op === "map") {
+          for (const [k, x] of Object.entries(e)) visit(x, k === "body" ? handedBy(program, handed, e) : handed);
+          return;
+        }
+        if (e.op === "plan") {
+          const lead = program.defs[e.agent];
+          if (lead?.kind === "agent") rows.push({ who: `${name} → plan ${e.agent}.${e.skill}`, kind: "delegation", effects: [], ...authorityOf(grantOf(program, d, lead)) });
+        }
+        Object.values(v).forEach((x) => visit(x, handed));
       }
     };
-    visit(d.body);
+    visit(d.body, []);
   }
   return { format: VIEW_FORMAT, kind: "authority", program: programRef(program), rows };
 }
@@ -498,10 +556,12 @@ export function cost(program: Program, lock?: Lock): CostView {
   for (const [name, d] of Object.entries(program.defs).sort(([a], [b]) => (a < b ? -1 : 1))) {
     if (d.kind !== "workflow") continue;
     const rows: CostRow[] = [];
+    /** Inside a map's body: what the map hands each delegation. */
+    let handed: CapVal[] = [];
     const row = (e: Extract<Expr, { op: "delegate" }>, agentName: string, times: number): Sum => {
       const { budget, from } = delegateBudget(program, e, agentName);
       const agent = program.defs[agentName];
-      const tier = agent?.kind === "agent" ? grantOf(program, d, agent, e.caps ?? []).find((c) => c.ctor === "model.infer")?.tier : undefined;
+      const tier = agent?.kind === "agent" ? grantOf(program, d, agent, e.caps ?? [], handed).find((c) => c.ctor === "model.infer")?.tier : undefined;
       const bound = lock && tier ? perCallBound(lock, tier) : undefined;
       const r: CostRow = { call: `${agentName}.${e.skill}`, times, budget: show(budget), from };
       if (bound) {
@@ -519,6 +579,15 @@ export function cost(program: Program, lock?: Lock): CostView {
       }
       if (e.op === "block") return blockCost(e.body, times);
       for (const c of children(e)) add(total, exprCost(c, times));
+      // A map runs its body once per item, `max` items at most (spec/envelope.md "map").
+      if (e.op === "map") {
+        const outer = handed;
+        handed = handedBy(program, outer, e);
+        add(total, blockCost(e.body, times * (e.max ?? 1)));
+        handed = outer;
+        return total;
+      }
+      if (e.op === "plan") return add(total, row({ op: "delegate", agent: e.agent, skill: e.skill, args: e.args, ...(e.budget ? { budget: e.budget } : {}) }, e.agent, times));
       if (e.op === "delegate") {
         const sup = e.supervise;
         const maxArg = sup?.name === "restart" ? sup.args?.find((a) => a.name === "max")?.value : undefined;
@@ -541,7 +610,7 @@ export function cost(program: Program, lock?: Lock): CostView {
       return total;
     };
     const total = blockCost(d.body, 1);
-    workflows.push({ workflow: name, limit: show(d.budget), rows, total: showSum(total) });
+    workflows.push({ workflow: name, limit: show(workflowBounds(d).budget), rows, total: showSum(total) });
   }
   return { format: VIEW_FORMAT, kind: "cost", program: programRef(program), workflows };
 }
@@ -676,7 +745,11 @@ export function semanticDiff(before: Program, after: Program): DiffView {
       else {
         behavior.push({ path, text: `+ ${a.kind} ${name}` });
         // A workflow is where authority starts: every capability a new one holds is authority added (G11).
-        if (a.kind === "workflow") a.caps.forEach((c, i) => governance.push({ path: `${path}/caps/${i}`, text: `+ ${name}: ${shownCaps(after, c)}` }));
+        if (a.kind === "workflow") {
+          const bounds = workflowBounds(a);
+          bounds.caps.forEach((c, i) => governance.push({ path: `${path}/${bounds.capsAt}/${i}`, text: `+ ${name}: ${shownCaps(after, c)}` }));
+          if (a.envelope) governance.push({ path: `${path}/envelope`, text: `+ ${name}: envelope` });
+        }
       }
       continue;
     }
@@ -729,6 +802,8 @@ export function semanticDiff(before: Program, after: Program): DiffView {
           for (const s of after_.filter((x) => !before_.includes(x))) behavior.push({ path: `${path}/body`, text: `+ step: ${s}` });
           for (const s of before_.filter((x) => !after_.includes(x))) behavior.push({ path: `${path}/body`, text: `- step: ${s}` });
           if (!before_.some((x) => !after_.includes(x)) && !after_.some((x) => !before_.includes(x)) && j(bw.body) !== j(a.body)) behavior.push({ path: `${path}/body`, text: `~ ${name}: the body changed, with the same steps` });
+          // The envelope is what a person approved for the run: any change to it is theirs to see (spec/envelope.md).
+          if (j(bw.envelope ?? null) !== j(a.envelope ?? null)) governance.push({ path: `${path}/envelope`, text: `~ ${name}: envelope ${!bw.envelope ? "added" : !a.envelope ? "removed" : "changed"}` });
           if (j(bw.ensures ?? null) !== j(a.ensures ?? null)) behavior.push({ path: `${path}/ensures`, text: `~ ${name}: ensures changed` });
           if (j(bw.on ?? null) !== j(a.on ?? null)) behavior.push({ path: `${path}/on`, text: `~ ${name}: event handlers changed` });
         }

@@ -1,0 +1,50 @@
+// A migration over many repositories, planned while it runs (spec/envelope.md).
+// A person approves the envelope once. A bulk `map` moves up to 150
+// repositories, then a lead agent plans what is left as sub-programs, each
+// checked against what remains of the envelope. Merging still needs the
+// release manager, wherever in the run it happens.
+
+mandate @ 0.4
+
+module company.migrations @ 0.1
+
+use std.{fs, exec, model, git, human}
+use company.domain.{Repo, Summary}
+
+role platform_lead   "Platform lead"
+role release_manager "Release manager"
+
+capability RepoRead = fs.read("/work/repos")
+capability SrcWrite = fs.write("/work/repos")
+capability Build    = exec(commands: ["npm"], args_prefix: [["ci"], ["test"]])
+capability ModelStd = model.infer(tier: standard)
+capability Merge    = git.pr("company/backend", "company/frontend")
+
+agent Migrator {
+  role   "Moves one repository to the new logging API."
+  caps   RepoRead, SrcWrite, Build, ModelStd
+  budget { tokens: 400k, time: 20m, spend: 0.5 USD, steps: 12 }
+  skill migrate(repo: Repo) -> Inferred<Summary> ! {Fs.Read, Fs.Write, Exec, Model}
+}
+
+agent Lead {
+  role   "Plans what is left after the bulk migration and writes sub-programs for it."
+  caps   RepoRead, ModelStd
+  budget { tokens: 2000k, spend: 10 USD, steps: 40 }
+  skill finish(repos: List<Repo>, done: List<Outcome<Inferred<Summary>>>) -> Inferred<Summary> ! {Fs.Read, Model}
+}
+
+workflow MigrateAll(repos: List<Repo>) -> Inferred<Summary>
+  envelope {
+    owner   platform_lead
+    caps    RepoRead, SrcWrite, Build, ModelStd, Merge
+    budget  { tokens: 80000k, time: 6h, spend: 120 USD, steps: 2000, agents: 200 }
+    spawn   { max_concurrent: 16, max_class: internal }
+    approve git.merge by release_manager
+  }
+{
+  let done = map repo in repos max 150 par 16 with caps SrcWrite.narrow(repo.root) {
+    delegate Migrator.migrate(repo)
+  }
+  plan Lead.finish(repos, done) within envelope
+}

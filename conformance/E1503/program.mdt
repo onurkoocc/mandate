@@ -1,0 +1,19 @@
+// One contract criterion asks two people: the second approval must come from
+// someone other than the one who approved as `accountant`, but no approval
+// before it in the criterion asks that role (spec/envelope.md "distinct_from").
+
+mandate @ 0.4
+
+module example.payments @ 0.1
+
+use std.{human}
+
+role accountant   "Accountant"
+role finance_lead "Finance lead"
+
+type Payment = { amount: Money, payee: Text }
+
+contract Approved(p: Payment) {
+  accept two_people "Two different people approved"
+    by human.approve(role: finance_lead) and human.approve(role: finance_lead, distinct_from: accountant)
+}

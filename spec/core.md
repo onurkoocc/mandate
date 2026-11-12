@@ -65,6 +65,7 @@ Definition kinds:
 | `component` | 0.3: a deployable unit of a system: repository, root, owner, build and test commands, interfaces it provides and consumes, its own governance-class file patterns |
 | `interface` | 0.3: a contract between components (`openapi`, `mcp_tools`, `oauth`, `event`, `db_schema`) and its spec file |
 | `environment` | 0.3: an environment: its data class, declared reads, and the weakest authorization each effect accepts there |
+| `role` | 0.4: a role people hold; the lock says who ([`envelope.md`](envelope.md)) |
 
 ## 2. Types
 
@@ -419,7 +420,8 @@ Every conforming implementation keeps these:
 
 ## 9. Not yet
 
-- **Not in the IR:** `map`, dynamic `spawn` and `await`.
+- **Not in the IR:** dynamic `spawn` and `await`.
+- **Read, not run yet:** 0.4's `envelope`, `map` and `plan` ([`envelope.md`](envelope.md)).
 - **Not generated yet:** these targets: host code, MCP, A2A and AX.
 
 ## 10. Existing systems (0.3)

@@ -273,6 +273,50 @@ export const CODES: Record<string, { title: string; explain: string }> = {
     title: "Read not as declared",
     explain: "data.read runs a read an environment declares: data.read(env.read, param: value, …, max_class: c). Every parameter is passed once, by name, and nothing else; values are bound as parameters and never become query text (K43). max_class is a data class; fields above it come back masked, typed Masked (design doc 9 §5.1).",
   },
+  "MDT-E1501": {
+    title: "Role not declared",
+    explain: "In a 0.4 module, every place that names a role names a `role` definition of the module or one imported with `use`: human.approve and human.ask, an escalation, a change set's approvers, a component's owner, an environment's authorization, and an envelope's owner and approvals. The text form `role: \"code_owner\"` resolves by the same name. The lock says who holds a role (spec/envelope.md \"Roles\").",
+  },
+  "MDT-E1502": {
+    title: "Role not bound",
+    explain: "A decision in a 0.4 package is signed by a member, so every role the package names is bound to at least one member under `roles` in the lock, which then has format mandate/lock/0.4. Reported when `mandate check` is given the lock; the runtime refuses the package with `unbound_role` (spec/envelope.md \"The lock: members and roles\").",
+  },
+  "MDT-E1503": {
+    title: "`distinct_from` without an earlier approval",
+    explain: "human.approve(role: r, distinct_from: q) asks for an approval by a different person than the one who approved as q. The approvals of one criterion open one after the other, so q is the role of an approval earlier in the same contract criterion (spec/envelope.md \"distinct_from\", H02).",
+  },
+  "MDT-E1701": {
+    title: "Malformed envelope",
+    explain: "An envelope gives `owner`, `caps`, and a `budget` with `agents`: the role that approves it, the upper bound of authority and the upper bound of what the run may spend and start. A workflow with an envelope writes no `caps` or `budget` of its own; the envelope's take their place (spec/envelope.md \"The envelope\").",
+  },
+  "MDT-E1702": {
+    title: "Unbounded map",
+    explain: "A map says how many elements it accepts at most: `max n`. Inside an envelope `max` may be left out when the body starts a delegation, since the envelope's `agents` then bounds it. A list longer than the bound is refused before any item runs (spec/envelope.md \"map\", N08).",
+  },
+  "MDT-E1703": {
+    title: "Map concurrency above the envelope",
+    explain: "`par k` on a map runs at most k items at once. Inside an envelope, k is at most `spawn.max_concurrent`, the most delegations in flight in the whole run (spec/envelope.md \"map\").",
+  },
+  "MDT-E1704": {
+    title: "Envelope approval names a non-critical or uncovered effect",
+    explain: "`approve E by r` in an envelope says that effect E is authorized only by a decision of role r. E is a critical effect, and a capability in the envelope's `caps` covers it; an approval for an effect the run could never perform protects nothing (spec/envelope.md \"What it declares\").",
+  },
+  "MDT-E1705": {
+    title: "Not allowed in a sub-program",
+    explain: "A sub-program a lead submits defines only types, constants, capabilities, functions, local agents and one workflow. It cannot define roles, contracts, effects, externs, a system model, a remote agent or an envelope, and it cannot `plan` (spec/envelope.md \"The sub-program\", N09).",
+  },
+  "MDT-E1706": {
+    title: "Sub-program does not fit the envelope",
+    explain: "A sub-program is admitted only when it fits what is left of the envelope: its capabilities lie inside the envelope's and clear of writes in flight, its budget is within the remainder in every dimension, its data class is within `spawn.max_class`, and the envelope's approvals still apply. The facts name the dimension. The diagnostic is returned to the lead; nothing runs (spec/envelope.md \"The sub-program\", N01, N02).",
+  },
+  "MDT-E1707": {
+    title: "`plan` outside an envelope",
+    explain: "`plan Agent.skill(…) within envelope` lets a lead agent submit sub-programs, so it is allowed only in the body of a workflow that has an envelope, which bounds everything they do (spec/envelope.md \"plan\").",
+  },
+  "MDT-E1708": {
+    title: "Person or critical effect in a map body",
+    explain: "A map body has no human.* step, no escalate and no critical effect: each item would wait for a person or be authorized on its own. Ask once about the list after the map, or land a batch with a change set (spec/envelope.md \"map\").",
+  },
   "MDT-E0902": {
     title: "Sandbox requirement cannot be enforced",
     explain: "The sandbox adapter probed the host and it cannot enforce part of an agent's sandbox requirement: a backend, a path, host or command allow-list, a timeout, or a scope that is not statically known. The run refuses to start the agent (unsupported_sandbox_profile) instead of running it with less isolation (INV-11, G05).",

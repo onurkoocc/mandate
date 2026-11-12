@@ -13,7 +13,7 @@ All of these are reported as `MDT-E0140`.
 
 ```json
 {
-  "lock": "mandate/lock/0.3",
+  "lock": "mandate/lock/0.4",
   "modules": { "company.domain": "sha256:0f1e" },
   "models": {
     "standard": { "provider": "anthropic", "model": "claude-opus-5-5", "effort": "high",
@@ -31,10 +31,37 @@ All of these are reported as `MDT-E0140`.
 | `modules` | The version of every imported module other than `std` (S09) |
 | `models` | For each tier: the model id and the effort sent with every call, and the input and output token limits of one call |
 | `tariffs` | Each locked model's prices per million tokens, in integer micro-units of one currency, with the day they were read |
-| `bindings` | What the program's agents were deployed as on an executor (`managed-agents`), written by `mandate deploy`; see [`executors.md`](executors.md). Needs format `0.3` |
+| `bindings` | What the program's agents were deployed as on an executor (`managed-agents`), written by `mandate deploy`; see [`executors.md`](executors.md). Needs format `0.3` or later |
+| `members` | Each person who signs decisions, with the ids of their keys (`sha256:<hex>` of an ed25519 public key). Needs format `0.4` |
+| `roles` | For each role the program names, the members bound to it; see [`envelope.md`](envelope.md#the-lock-members-and-roles). Needs format `0.4` |
 
-The format is `mandate/lock/0.3`. A `0.2` lock, which has no bindings, is
-still read.
+The format is `mandate/lock/0.4`. A `0.3` lock, which has no members or
+roles, and a `0.2` lock, which has no bindings either, are still read.
+
+## Members and roles
+
+```json
+{
+  "lock": "mandate/lock/0.4",
+  "modules": {},
+  "members": {
+    "alice": { "keys": ["sha256:3f1c…"] },
+    "bob":   { "keys": ["sha256:9a07…", "sha256:51d2…"] }
+  },
+  "roles": {
+    "code_owner":      ["alice"],
+    "release_manager": ["bob"]
+  }
+}
+```
+
+- A member holds at least one key, and may hold several, so a lost key can
+  be replaced.
+- One key belongs to one member: a key listed under two members is an
+  error.
+- A role lists at least one member, and only members in `members`.
+
+These are reported as `MDT-E0140` too.
 
 ## What reads it
 
@@ -45,6 +72,8 @@ still read.
 - **The compiler.** `mandate check` reads `--lock <file>`, or else
   `mandate.lock.json` next to the program. With a lock it adds two checks:
   - `MDT-E0141`: every model tier the program names is locked.
+  - `MDT-E1502`: every role a 0.4 program names has a member under `roles`
+    ([`envelope.md`](envelope.md)).
   - `MDT-W0504`: every agent loop's declared budget covers its upper bound.
   - `MDT-E0903`–`MDT-E0905`: an executor binding still fits the program
     and the lock ([`executors.md`](executors.md)).

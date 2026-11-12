@@ -83,15 +83,19 @@ export function validateIr(value: Json, spans?: Map<string, Span>): Diagnostic[]
 
 /**
  * What each language version added: definition kinds, expression forms and
- * fields of an agent. 0.2 added the agent loop's strategy and progress
- * thresholds; 0.3 the system model and change sets (design doc 9). An older
- * program that uses one is refused by name (E0104), not read with another
- * meaning. A version adds its constructs here.
+ * fields of an agent, a workflow and a budget. 0.2 added the agent loop's
+ * strategy and progress thresholds; 0.3 the system model and change sets
+ * (design doc 9); 0.4 roles, the envelope, `map`, `plan` and the `agents`
+ * budget dimension (spec/envelope.md). An older program that uses one is
+ * refused by name (E0104), not read with another meaning. A version adds its
+ * constructs here.
  */
-const SINCE: { kinds: Record<string, LanguageVersion>; ops: Record<string, LanguageVersion>; agentFields: Record<string, LanguageVersion> } = {
-  kinds: Object.fromEntries(SYSTEM_KINDS.map((k) => [k, "mandate/0.3"])),
-  ops: { changeset: "mandate/0.3" },
+const SINCE: Record<"kinds" | "ops" | "agentFields" | "workflowFields" | "budgetFields", Record<string, LanguageVersion>> = {
+  kinds: { ...Object.fromEntries(SYSTEM_KINDS.map((k) => [k, "mandate/0.3" as const])), role: "mandate/0.4" },
+  ops: { changeset: "mandate/0.3", map: "mandate/0.4", plan: "mandate/0.4" },
   agentFields: { loop: "mandate/0.2", progress: "mandate/0.2" },
+  workflowFields: { envelope: "mandate/0.4" },
+  budgetFields: { agents: "mandate/0.4" },
 };
 
 /** The definitions and expressions of `defs` that are newer than `lang`. */
@@ -106,7 +110,16 @@ function newerConstructs(defs: { [k: string]: Json }, lang: LanguageVersion, at:
     else if (v && typeof v === "object") {
       const since = newer(SINCE.ops, v["op"]);
       if (since) out.push(diag("E0104", `'${String(v["op"])}' is a ${since} expression; this program is ${lang}.`, at(path), { facts: { op: v["op"]!, language: lang } }));
-      for (const [k, x] of Object.entries(v)) walk(x, `${path}/${ptrToken(k)}`);
+      for (const [k, x] of Object.entries(v)) {
+        // Every budget is written under `budget`: a workflow's, an agent's, a skill's, a delegation's.
+        if (k === "budget" && x && typeof x === "object" && !Array.isArray(x)) {
+          for (const field of Object.keys(x)) {
+            const added = newer(SINCE.budgetFields, field);
+            if (added) out.push(diag("E0104", `'${field}' is a ${added} budget field; this program is ${lang}.`, at(`${path}/budget/${ptrToken(field)}`), { facts: { field, language: lang } }));
+          }
+        }
+        walk(x, `${path}/${ptrToken(k)}`);
+      }
     }
   };
   for (const [name, d] of Object.entries(defs)) {
@@ -115,6 +128,12 @@ function newerConstructs(defs: { [k: string]: Json }, lang: LanguageVersion, at:
     if (since) {
       out.push(diag("E0104", `${name}: '${String((d as { [k: string]: Json })["kind"])}' is a ${since} definition; this program is ${lang}.`, at(`${path}/kind`), { facts: { kind: (d as { [k: string]: Json })["kind"]!, language: lang } }));
       continue;
+    }
+    if (d && typeof d === "object" && !Array.isArray(d) && d["kind"] === "workflow") {
+      for (const field of Object.keys(d)) {
+        const added = newer(SINCE.workflowFields, field);
+        if (added) out.push(diag("E0104", `Workflow ${name}: '${field}' is a ${added} field; this program is ${lang}.`, at(`${path}/${ptrToken(field)}`), { facts: { field, language: lang } }));
+      }
     }
     walk(d, path);
   }

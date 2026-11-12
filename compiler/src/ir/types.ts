@@ -1,4 +1,4 @@
-// Canonical IR for Mandate 0.1 (Doc 4 §3.2).
+// Canonical IR for Mandate 0.1 to 0.4 (Doc 4 §3.2; spec/envelope.md for 0.4).
 //
 // The IR is the source of truth in 0.1 (§3.3, v0.2 decision): the `.mdt` text
 // form is a projection that lowers into these shapes and is printed back from
@@ -17,14 +17,15 @@
 //   - optional fields are omitted rather than written as null or false.
 
 /** The newest language version; what new programs are written in. */
-export const LANGUAGE_VERSION = "mandate/0.3";
+export const LANGUAGE_VERSION = "mandate/0.4";
 /**
  * Every language version this compiler reads. 0.2 adds the agent loop
  * strategy and its progress thresholds (`loop`, `progress`). 0.3 adds the
  * system model (`component`, `interface`, `environment`) and change sets
- * (design doc 9). An older program reads and hashes exactly as before.
+ * (design doc 9). 0.4 adds roles, the envelope, `map` and `plan`
+ * (spec/envelope.md). An older program reads and hashes exactly as before.
  */
-export const LANGUAGE_VERSIONS = ["mandate/0.1", "mandate/0.2", "mandate/0.3"] as const;
+export const LANGUAGE_VERSIONS = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4"] as const;
 export type LanguageVersion = (typeof LANGUAGE_VERSIONS)[number];
 
 export function isLanguageVersion(v: unknown): v is LanguageVersion {
@@ -63,7 +64,18 @@ export type Def =
   | ContractDef
   | ComponentDef
   | InterfaceDef
-  | EnvironmentDef;
+  | EnvironmentDef
+  | RoleDef;
+
+/**
+ * A role people hold (0.4; spec/envelope.md "Roles"): who may approve, answer
+ * or own something. The lock binds it to members and their keys. An agent's
+ * `role "…"` line is a description for its model, not one of these.
+ */
+export interface RoleDef {
+  kind: "role";
+  description: string;
+}
 
 /** Definition kinds of the system model (0.3; design doc 9 §2). */
 export const SYSTEM_KINDS = ["component", "interface", "environment"] as const;
@@ -250,15 +262,49 @@ export interface OnHandler {
   then: Expr;
 }
 
+/**
+ * The envelope of a workflow (0.4; spec/envelope.md "The envelope"): the
+ * upper bound of authority and cost for everything a run does, its
+ * sub-programs included. Every field is optional here so that a malformed
+ * envelope is reported by name (E1701), not as a schema error.
+ */
+export interface Envelope {
+  /** The role that approves the envelope before a run starts, and every amendment. */
+  owner?: string;
+  caps?: Expr[];
+  /** The whole run's budget; `agents` is the most delegation attempts it may start. */
+  budget?: Budget;
+  spawn?: {
+    /** The most delegations in flight at once, in the whole run. */
+    max_concurrent?: number;
+    /** The highest data class any delegation may receive; `internal` when absent. */
+    max_class?: "public" | "internal" | "confidential" | "restricted";
+  };
+  /** Effect name → the role whose decision authorizes it, wherever in the run it happens. */
+  approve?: Record<string, string>;
+}
+
 export interface WorkflowDef {
   kind: "workflow";
   params: Param[];
   returns: TypeExpr;
+  /** Empty when the workflow has an envelope, whose `caps` take their place. */
   caps: Expr[];
   budget?: Budget;
+  /** 0.4: takes the place of `caps` and `budget`. */
+  envelope?: Envelope;
   ensures?: Expr;
   body: Stmt[];
   on?: OnHandler[];
+}
+
+/**
+ * What a workflow may do and spend: its envelope's `caps` and `budget` when it has an envelope, its
+ * own otherwise. `at` is where they are written, under the workflow's definition.
+ */
+export function workflowBounds(d: WorkflowDef): { caps: Expr[]; capsAt: string; budget?: Budget; budgetAt: string } {
+  if (!d.envelope) return { caps: d.caps, capsAt: "caps", ...(d.budget ? { budget: d.budget } : {}), budgetAt: "budget" };
+  return { caps: d.envelope.caps ?? [], capsAt: "envelope/caps", ...(d.envelope.budget ? { budget: d.envelope.budget } : {}), budgetAt: "envelope/budget" };
 }
 
 export type Verifier = { static: Expr } | { call: Expr } | { all: Verifier[] };
@@ -291,6 +337,8 @@ export interface Budget {
   spend?: Money;
   time?: { ms: number };
   steps?: number;
+  /** 0.4: delegation attempts (spec/envelope.md "The ledger"). */
+  agents?: number;
 }
 
 export interface EffectRef {
@@ -362,6 +410,8 @@ export type Expr =
   | { op: "verify"; value: Expr; contract: string; args: Arg[]; on_unmet?: { bind: string; then: Expr } }
   | { op: "effect"; name: string; args: Arg[]; idempotent_by?: Expr; compensate?: string }
   | ChangesetExpr
+  | MapExpr
+  | PlanExpr
   | { op: "escalate"; to: Expr }
   | { op: "pause"; then?: Expr }
   | { op: "switch"; on: Expr; cases: Array<{ pattern: Pattern; then: Expr }> }
@@ -393,6 +443,40 @@ export interface ChangesetExpr {
   changes?: Record<string, ChangeKind>;
   approver: string;
   idempotent_by?: Expr;
+}
+
+/**
+ * `map x in xs [max n] [par k] [with caps K] [budget b] [supervise fail_fast] { body }`
+ * (0.4; spec/envelope.md "map"): the body once per element, at most `par` at
+ * a time. Its value is a `List<Outcome<T>>` in the order of `over`.
+ */
+export interface MapExpr {
+  op: "map";
+  bind: string;
+  over: Expr;
+  /** The most elements the map accepts. */
+  max?: number;
+  /** The most items running at once; one when absent. */
+  par?: number;
+  /** `with caps K`: what each item's delegations may be granted; a scope may depend on `bind`. */
+  caps?: Expr[];
+  /** The budget of one item. */
+  budget?: Budget;
+  supervise?: CallSpec;
+  body: Stmt[];
+}
+
+/**
+ * `plan Lead.finish(args) [budget b] within envelope` (0.4; spec/envelope.md
+ * "plan"): a bodiless skill of a local agent, run as an agent loop that may
+ * submit sub-programs. Only in a workflow with an envelope.
+ */
+export interface PlanExpr {
+  op: "plan";
+  agent: string;
+  skill: string;
+  args: Arg[];
+  budget?: Budget;
 }
 
 export type BinaryOp = "and" | "or" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "subseteq" | "+" | "-" | "*" | "/";

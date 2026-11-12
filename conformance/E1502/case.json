@@ -1,0 +1,22 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1502",
+  "kind": "compile",
+  "title": "With a lock, a role the program names that the lock binds to no member is refused at the first place that names it.",
+  "spec": ["spec/envelope.md#the-lock-members-and-roles", "spec/lock.md#members-and-roles"],
+  "language": "mandate/0.4",
+  "input": { "file": "../../fixtures/envelope/migrate-all.mdt", "kind": "mdt" },
+  "modules": ["../../fixtures/envelope/domain.mdt"],
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1502",
+        "path": "/defs/MigrateAll/envelope/approve/git.merge",
+        "facts": { "role": "release_manager", "lock": "mandate/lock/0.4", "bound": ["platform_lead"] }
+      }
+    ]
+  }
+}

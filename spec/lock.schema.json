@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://mandate.dev/spec/lock.schema.json",
-  "title": "Mandate lock file (mandate/lock/0.3; reads 0.2)",
-  "description": "Pins imported modules, the model behind each tier and its price, and what the program's agents were deployed as on an executor. Part of the package hash. See spec/lock.md and spec/executors.md.",
+  "title": "Mandate lock file (mandate/lock/0.4; reads 0.2 and 0.3)",
+  "description": "Pins imported modules, the model behind each tier and its price, what the program's agents were deployed as on an executor, and the members and roles that sign decisions. Part of the package hash. See spec/lock.md, spec/executors.md and spec/envelope.md.",
   "type": "object",
   "additionalProperties": false,
   "required": ["lock", "modules"],
   "properties": {
-    "lock": { "enum": ["mandate/lock/0.2", "mandate/lock/0.3"] },
+    "lock": { "enum": ["mandate/lock/0.2", "mandate/lock/0.3", "mandate/lock/0.4"] },
     "modules": {
       "type": "object",
       "additionalProperties": { "type": "string", "minLength": 1 }
@@ -49,6 +49,33 @@
             }
           }
         }
+      }
+    },
+    "members": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["keys"],
+        "properties": {
+          "keys": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          }
+        }
+      }
+    },
+    "roles": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
       }
     },
     "bindings": {

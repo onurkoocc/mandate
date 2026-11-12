@@ -1,9 +1,20 @@
 # Envelopes and signed decisions (0.4)
 
-**Status: draft.** Nothing on this page is implemented yet. It specifies
-language version 0.4 so that the TypeScript implementation and, later, the
-Rust one are held to the same cases. The IR schema, the parser and the
-runtime change when it is implemented, not before.
+**Status: being implemented.** The page specifies language version 0.4 so
+that the TypeScript implementation and, later, the Rust one are held to the
+same cases.
+
+| Part | State |
+|---|---|
+| The language surface: `role`, `envelope`, `map`, `plan`, `agents`, `Outcome` in the IR, the schema, the text form and the views | implemented |
+| Roles: E1501, E1502, E1503; lock format 0.4 with `members` and `roles` | implemented |
+| The envelope's own rules (E1701 to E1708) | not yet; `mandate explain` knows the codes, `mandate check` does not report them |
+| Signed decisions, the envelope's ledger and approval, running `map` and `plan`, amendments, the card | not yet |
+
+Until the runtime runs 0.4, it refuses a 0.4 package when it loads one
+(`unsupported_language`): a version is never run on a best-effort basis.
+So a 0.4 program can be read, checked, hashed, printed and viewed today,
+and not run.
 
 0.4 lets an agent plan work while a run is going, without a person approving
 every step. A person approves an **envelope** once: the most authority,
@@ -50,7 +61,11 @@ In IR: `"code_owner": { "kind": "role", "description": "Code owner of company/ba
   an environment's `authorize … by human(role: …)`, and an envelope's
   `owner` and `approve`. In a 0.4 module each of these must name a `role`
   defined in the module or imported with `use` (E1501). The text form
-  `role: "code_owner"` still parses and resolves by name.
+  `role: "code_owner"` still parses and resolves by name. A role is a
+  name or that text, never a computed value (E1501). A role imported from
+  a module that is not loaded is taken on trust, as any imported name is.
+- **An older module** names a role with any text and defines none. E1501
+  does not apply to it, and it checks as before.
 - **A wait with no role** accepts a decision from any member the lock lists.
 - **The `role "…"` line of an agent** is a description for its model, as
   before. It is not a role.
@@ -81,6 +96,10 @@ The lock format becomes `mandate/lock/0.4`. A `0.3` lock is still read; a
   does not hash to its name is refused.
 - Every role a 0.4 package names is bound to at least one member (E1502
   when `mandate check` is given the lock; `unbound_role` at load time).
+  The roles a package names are those of its own definitions and of the
+  definitions it imports, so the owner of an imported component counts
+  (E1502 is then reported at the import). A
+  `0.3` lock has no `roles`, so with one every role is unbound.
 - A member may hold several keys, so a lost key can be replaced. One person
   is one member: `distinct_from` compares members, not keys.
 - The lock is part of the package hash, so a changed binding is a new
@@ -158,7 +177,9 @@ accept two_people "Two different people approved"
 `distinct_from` names a role approved earlier in the same criterion
 (E1503). The two waits open one after the other. The second refuses a
 decision by the member who made the first (`invalid_decision`,
-`same_member`).
+`same_member`). An approval that is not part of a contract criterion has
+no earlier approval to compare with, so `distinct_from` on it is E1503
+too.
 
 ### The CLI
 
@@ -248,7 +269,10 @@ An envelope needs `owner`, `caps` and `budget` with `agents` (E1701). Every
 effect under `approve` is critical, and a capability in `caps` covers it
 (E1704).
 
-In IR the envelope is a field of the workflow:
+In IR the envelope is a field of the workflow. The workflow's own `caps`
+stays in the IR, as the empty list, and the text form does not write it:
+the field is required of every workflow since 0.1, and an older reader's
+diagnostics for it do not change.
 
 ```json
 "envelope": {
@@ -301,6 +325,10 @@ In IR: `{ "op": "map", "bind": "x", "over": <expr>, "max": n, "par": k,
   items finish (R11). `Outcome<T>` is `Ok(T) | Failed(fault)`, where `T` is
   the body's type and taint (an item whose body returns `Inferred<U>` gives
   `Ok(Inferred<U>)`). A `switch` on an outcome handles both (E0230).
+  `Outcome` is a built-in type name from 0.4; an older program that names
+  it gets E0120, as before.
+- **Elements.** `x` is known as the list is: an element of a model's list
+  is model output.
 - **Faults.** By default a fault in one item is that item's outcome, and the
   other items go on (R12). With `supervise fail_fast` the first fault stops
   items not yet dispatched, waits for those in flight, and fails the map
@@ -314,8 +342,11 @@ In IR: `{ "op": "map", "bind": "x", "over": <expr>, "max": n, "par": k,
   a time. Inside an envelope, `k ≤ max_concurrent` (E1703).
 - **Authority.** `with caps K` applies to each item's body: inside it, K
   replaces the capability kinds it names in what delegations can be
-  granted. Each capability in K lies inside the context (E0701), and its
-  scope may depend on `x`. A value that chooses a scope is never
+  granted. A delegation in the body is granted K as if it had written
+  `with caps K` itself, for each kind its agent holds at least as widely
+  and for which it names no capability of its own; what it names itself
+  lies inside K. Each capability in K lies inside the context (E0701), and
+  its scope may depend on `x`. A value that chooses a scope is never
   `Inferred` or `Untrusted` (E0215, R5).
 - **Disjoint writes (C5).** When `k > 1` and the body writes:
   - if the write scopes do not depend on `x`, every item writes the same
@@ -540,6 +571,10 @@ would be None, and a program with an envelope needs both (INV-11).
   It names the package hash a signature would bind to.
 - **Authority and cost views** show the envelope instead of the workflow's
   caps and budget, and `agents` as a dimension.
+- **Changes.** Any change to an envelope is a governance change: it is what
+  a person approved for the run. `mandate patch` reports it as
+  `envelope_changed` and `mandate view --against` lists it under
+  governance.
 - **Run views** add, per `plan`: each submission with its number, whether it
   was admitted, its hash, its reservation against the envelope, and for a
   refused one the codes; and the envelope's remainder per dimension. A

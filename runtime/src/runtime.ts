@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { bindingChecks, canonicalize, capsOf, check, domainHash, hashProgram, isLanguageVersion, LANGUAGE_VERSIONS, link, linkedProgram, LOCK_FORMAT, modelTiers, references, SANDBOX_DENIALS_FORMAT, validateLock, type DenialReport, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { bindingChecks, canonicalize, capsOf, check, domainHash, hashProgram, link, linkedProgram, LOCK_FORMAT, modelTiers, references, SANDBOX_DENIALS_FORMAT, validateLock, type DenialReport, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
 import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
@@ -35,6 +35,13 @@ export interface Package {
   modules?: Modules;
 }
 
+/**
+ * The language versions this runtime runs. The compiler reads 0.4, but what 0.4 asks of a run
+ * (signed decisions, the envelope's ledger, `map`, `plan`; spec/envelope.md) is not in this
+ * runtime yet, and a version is never run on a best-effort basis (§3.5).
+ */
+export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3"];
+
 export function buildPackage(program: Program, lock: Lock = { modules: {} }, modules: Modules = {}): Package {
   const programHash = hashProgram(program as unknown as Json).program;
   return { hash: domainHash("package", { program: programHash, lock } as unknown as Json), programHash, program, lock, ...(Object.keys(modules).length ? { modules } : {}) };
@@ -46,7 +53,10 @@ export function buildPackage(program: Program, lock: Lock = { modules: {} }, mod
  * module to be locked, and re-runs the compiler's checks.
  */
 export function verifyPackage(pkg: Package): void {
-  if (!isLanguageVersion(pkg.program.language)) throw new Violation("unsupported_language", `Package language ${String(pkg.program.language)} is not one of ${LANGUAGE_VERSIONS.join(", ")}.`);
+  // The program and every module it was packaged with: a module's definitions run as the program's do.
+  for (const language of [pkg.program.language, ...Object.values(pkg.modules ?? {}).map((m) => m?.language)]) {
+    if (!RUNTIME_LANGUAGES.includes(language)) throw new Violation("unsupported_language", `Package language ${String(language)} is not one of ${RUNTIME_LANGUAGES.join(", ")}.`);
+  }
   const programHash = hashProgram(pkg.program as unknown as Json).program;
   if (programHash !== pkg.programHash) throw new Violation("package_hash_mismatch", `The program hashes to ${programHash}, not the packaged ${pkg.programHash}.`);
   if (domainHash("package", { program: programHash, lock: pkg.lock } as unknown as Json) !== pkg.hash) {

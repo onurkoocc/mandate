@@ -1,4 +1,4 @@
-# Canonical IR, 0.1 to 0.3
+# Canonical IR, 0.1 to 0.4
 
 The canonical IR is the source of truth for a Mandate program (design doc
 4 §3.3). It is JSON, described by the closed schema in
@@ -10,11 +10,11 @@ back as text, and both directions keep the program hash.
 
 A conforming reader rejects, rather than repairs:
 
-- a `language` other than `"mandate/0.1"`, `"mandate/0.2"` or
-  `"mandate/0.3"` (E0103). Other versions are migrated explicitly, never
-  loaded on a best-effort basis;
-- a 0.2 field in a 0.1 program, or a 0.3 definition or expression in an
-  older program (E0104);
+- a `language` other than `"mandate/0.1"`, `"mandate/0.2"`,
+  `"mandate/0.3"` or `"mandate/0.4"` (E0103). Other versions are migrated
+  explicitly, never loaded on a best-effort basis;
+- a 0.2 field in a 0.1 program, or a 0.3 or 0.4 definition, field or
+  expression in an older program (E0104);
 - any field the schema does not define (E0104);
 - duplicate object keys, before schema validation (E0102);
 - numbers that are not integers within ±(2^53−1), and `-0` (E0106).
@@ -89,9 +89,9 @@ because writing test programs as JSON IR is slow and error-prone; the IR stays
 authoritative, and `fixtures/fixbug/fixbug.ir.json` is the committed source
 for the FixBug example, with `fixbug.mdt` as its projection.
 
-A file whose first line is `mandate @ 0.2` (or `0.3`) is a program of that
-version; a file without that line is 0.1. `mandate fmt` writes the line for
-0.2 and 0.3 programs.
+A file whose first line is `mandate @ 0.2` (or `0.3`, `0.4`) is a program
+of that version; a file without that line is 0.1. `mandate fmt` writes the
+line for every version but 0.1.
 
 ## What 0.2 adds
 
@@ -129,3 +129,21 @@ system rather than run anything (design doc 9 §2; [`system.md`](system.md)).
 
 `provides` and `consumes` are sets (sorted). A log read's `query` is
 `{ "logs": <expr> }`, a Bool over the row's fields and the read's parameters.
+
+## What 0.4 adds
+
+0.4 adds what a run needs to plan work while it is going
+([`envelope.md`](envelope.md)):
+
+| Addition | In the IR |
+|---|---|
+| A role | the definition kind `role`: `{ "kind": "role", "description": "…" }` |
+| An envelope | the workflow field `envelope`: `owner`, `caps`, `budget`, `spawn`, `approve`. The workflow's own `caps` is then `[]` |
+| Agents | the budget field `agents` |
+| A bounded map | the expression `{ "op": "map", "bind", "over", "max", "par", "caps", "budget", "supervise", "body" }` |
+| A plan | the expression `{ "op": "plan", "agent", "skill", "args", "budget" }` |
+
+Each of them in an older program is E0104. `Outcome` is a built-in type
+name from 0.4. The new forms are words of the text only where they stand:
+`role`, `envelope`, `map`, `plan`, `within`, `max` and `agents` are still
+names everywhere else, so no older program stops parsing.

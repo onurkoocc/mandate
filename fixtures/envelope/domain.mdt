@@ -1,0 +1,10 @@
+// The types the migration works on (spec/envelope.md). A repository is known
+// by its name and by where the run checks it out; `root` is what a map item's
+// write capability is narrowed to.
+
+mandate @ 0.4
+
+module company.domain @ 0.1
+
+type Repo    = { name: Text, root: Path }
+type Summary = { migrated: List<Text>, left: List<Text>, notes: Text }

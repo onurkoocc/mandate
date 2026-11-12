@@ -117,22 +117,23 @@ assigned here.
 | MDT-E1105 | Change set without a verified plan | — | assigned |
 | MDT-E1201 | Read not as declared | — | assigned; data.read of a declared read, its parameters by name, max_class |
 
-## Envelopes and signed decisions (0.4, draft)
+## Envelopes and signed decisions (0.4)
 
-Specified in [`envelope.md`](envelope.md) and not implemented yet, so
-`mandate explain` does not know these codes. E15xx (roles and people) and
-E17xx (envelopes) are assigned here.
+Specified in [`envelope.md`](envelope.md). E15xx (roles and people) and
+E17xx (envelopes) are assigned here, and `mandate explain` knows all of
+them. `mandate check` reports E1501 to E1503 today; the E17xx rules are
+not implemented yet, and the Notes column says so.
 
 | Code | Title | Conformance case | Notes |
 |---|---|---|---|
-| MDT-E1501 | Role not declared | — | assigned; a role a 0.4 module names is a `role` definition |
-| MDT-E1502 | Role not bound | — | assigned; needs the lock; `unbound_role` at load time |
-| MDT-E1503 | `distinct_from` without an earlier approval | H02 | assigned |
-| MDT-E1701 | Malformed envelope | — | assigned |
-| MDT-E1702 | Unbounded map | N08 | assigned |
-| MDT-E1703 | Map concurrency above the envelope | — | assigned |
-| MDT-E1704 | Envelope approval names a non-critical or uncovered effect | — | assigned |
-| MDT-E1705 | Not allowed in a sub-program | N09 | assigned |
-| MDT-E1706 | Sub-program does not fit the envelope | N01, N02 | assigned; returned to the lead, never to the run |
-| MDT-E1707 | `plan` outside an envelope | — | assigned |
-| MDT-E1708 | Person or critical effect in a map body | — | assigned |
+| MDT-E1501 | Role not declared | E1501 | assigned; a role a 0.4 module names is a `role` definition |
+| MDT-E1502 | Role not bound | E1502 | assigned; needs the lock; `unbound_role` at load time |
+| MDT-E1503 | `distinct_from` without an earlier approval | E1503, H02 | assigned |
+| MDT-E1701 | Malformed envelope | — | assigned; not reported yet |
+| MDT-E1702 | Unbounded map | N08 | assigned; not reported yet |
+| MDT-E1703 | Map concurrency above the envelope | — | assigned; not reported yet |
+| MDT-E1704 | Envelope approval names a non-critical or uncovered effect | — | assigned; not reported yet |
+| MDT-E1705 | Not allowed in a sub-program | N09 | assigned; not reported yet |
+| MDT-E1706 | Sub-program does not fit the envelope | N01, N02 | assigned; not reported yet; returned to the lead, never to the run |
+| MDT-E1707 | `plan` outside an envelope | — | assigned; not reported yet |
+| MDT-E1708 | Person or critical effect in a map body | — | assigned; not reported yet |

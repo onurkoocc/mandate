@@ -7,7 +7,11 @@
 //   - tariffs: each locked model's price per million tokens, in integer
 //     micro-units of one currency, with the date it was read (K11);
 //   - bindings: what the program's agents were deployed as on an executor,
-//     such as Claude Managed Agents (K45; target/managed-agents.ts).
+//     such as Claude Managed Agents (K45; target/managed-agents.ts);
+//   - members: each person who signs decisions, with the ids of their keys.
+//     A member may hold several keys; one key belongs to one member;
+//   - roles: the members each role the program names is bound to
+//     (spec/envelope.md). Members and roles need format 0.4.
 //
 // The lock is part of the package hash, so a price change is a new package.
 // The compiler reads it for W0504: a declared agent budget below the upper
@@ -16,16 +20,22 @@
 import { readFileSync } from "node:fs";
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import { capFromCall } from "./check/caps.js";
-import { diag, type Diagnostic, type Span } from "./diag.js";
+import { roleSites } from "./check/roles.js";
+import { diag, ptr, type Diagnostic, type Span } from "./diag.js";
 import { hashProgram } from "./hash.js";
-import type { Budget, Expr, Program } from "./ir/types.js";
+import { atLeast as languageAtLeast, type Budget, type Def, type Expr, type Program } from "./ir/types.js";
 import type { Json } from "./json/strict-json.js";
 import type { Modules } from "./modules.js";
 import { agentModels, bindingChecks, type ManagedAgentsBinding } from "./target/managed-agents.js";
 
-/** The lock format this compiler writes. It reads 0.2 too, which has no bindings. */
-export const LOCK_FORMAT = "mandate/lock/0.3";
-export const LOCK_FORMATS = ["mandate/lock/0.2", "mandate/lock/0.3"] as const;
+/** The lock format this compiler writes. It reads 0.2, which has no bindings, and 0.3, which has no members or roles. */
+export const LOCK_FORMAT = "mandate/lock/0.4";
+export const LOCK_FORMATS = ["mandate/lock/0.2", "mandate/lock/0.3", "mandate/lock/0.4"] as const;
+
+/** A lock's format is `format` or later. */
+function atLeast(lock: Lock, format: (typeof LOCK_FORMATS)[number]): boolean {
+  return lock.lock !== undefined && LOCK_FORMATS.indexOf(lock.lock) >= LOCK_FORMATS.indexOf(format);
+}
 
 export interface ModelLock {
   provider: "anthropic";
@@ -49,6 +59,10 @@ export interface Lock {
   models?: Record<string, ModelLock>;
   tariffs?: Record<string, Tariff>;
   bindings?: { "managed-agents"?: ManagedAgentsBinding };
+  /** Each member's key ids, `sha256:<hex>` of an ed25519 public key. */
+  members?: Record<string, { keys: string[] }>;
+  /** Each role's members. */
+  roles?: Record<string, string[]>;
 }
 
 let validator: ValidateFunction | undefined;
@@ -68,7 +82,25 @@ export function validateLock(value: unknown): Diagnostic[] {
   if (validator(value)) {
     const lock = value as Lock;
     const out: Diagnostic[] = [];
-    if (lock.bindings && lock.lock !== LOCK_FORMAT) out.push(diag("E0140", `Executor bindings need lock format ${LOCK_FORMAT}, not ${String(lock.lock)}.`, { path: "/lock" }, { facts: { lock: lock.lock ?? null } }));
+    if (lock.bindings && !atLeast(lock, "mandate/lock/0.3")) out.push(diag("E0140", `Executor bindings need lock format mandate/lock/0.3, not ${String(lock.lock)}.`, { path: "/lock" }, { facts: { lock: lock.lock ?? null } }));
+    for (const field of ["members", "roles"] as const) {
+      if (lock[field] && !atLeast(lock, "mandate/lock/0.4")) {
+        out.push(diag("E0140", `Lock field ${field} needs lock format mandate/lock/0.4, not ${String(lock.lock)}.`, { path: `/${field}` }, { facts: { field, lock: lock.lock ?? null } }));
+      }
+    }
+    const holder = new Map<string, string>();
+    for (const [member, m] of Object.entries(lock.members ?? {})) {
+      m.keys.forEach((key, i) => {
+        const first = holder.get(key);
+        if (first === undefined) holder.set(key, member);
+        else out.push(diag("E0140", `Key ${key} is listed under members ${first} and ${member}; one key belongs to one member.`, { path: `/members/${member}/keys/${i}` }, { facts: { key, members: [first, member] } }));
+      });
+    }
+    for (const [role, members] of Object.entries(lock.roles ?? {})) {
+      members.forEach((member, i) => {
+        if (!own(lock.members, member)) out.push(diag("E0140", `Role ${role} lists member ${member}, which is not in members.`, { path: `/roles/${role}/${i}` }, { facts: { role, member } }));
+      });
+    }
     for (const [tier, m] of Object.entries(lock.models ?? {})) {
       if (!own(lock.tariffs, m.model)) {
         out.push(diag("E0140", `The lock maps tier ${tier} to ${m.model}, which has no tariff.`, { path: `/models/${tier}/model` }, { facts: { tier, model: m.model } }));
@@ -164,6 +196,39 @@ export function lockChecks(program: Program, lock: Lock, spans?: Map<string, Spa
     }
   }
   out.push(...bindingChecks(program, lock, spans));
+  return out;
+}
+
+/**
+ * E1502: a decision in a 0.4 package is signed by a member, so every role the
+ * package names is held by at least one (spec/envelope.md). `linked` is the
+ * program's definitions with its imported modules loaded (modules.ts). A role
+ * named only by an imported definition, such as the owner of an imported
+ * component, counts, and is reported at the import that brings it in.
+ */
+export function roleLockChecks(program: Program, linked: { defs: Record<string, Def>; origin: Record<string, string> }, lock: Lock, spans?: Map<string, Span>): Diagnostic[] {
+  if (!languageAtLeast(program.language, "mandate/0.4")) return [];
+  const out: Diagnostic[] = [];
+  const sites = roleSites(linked.defs).filter((s) => s.role !== undefined);
+  const mine = (def: string): boolean => Object.hasOwn(program.defs, def);
+  const older = atLeast(lock, "mandate/lock/0.4") ? "" : ` A 0.4 package needs a ${LOCK_FORMAT} lock, with members and roles.`;
+  for (const role of new Set(sites.map((s) => s.role!))) {
+    if (own(lock.roles, role)?.length) continue;
+    const named = sites.filter((s) => s.role === role);
+    const site = named.find((s) => mine(s.def)) ?? named[0]!;
+    const facts: Record<string, unknown> = { role, lock: lock.lock ?? null, bound: Object.keys(lock.roles ?? {}).sort() };
+    let path = site.path;
+    if (!mine(site.def)) {
+      const module = own(linked.origin, site.def);
+      const i = (program.uses ?? []).findIndex((u) => u.module === module);
+      path = i < 0 ? "/uses" : ptr("uses", i);
+      facts["named_by"] = site.def;
+      if (module !== undefined) facts["module"] = module;
+    }
+    const span = spans?.get(path);
+    const by = mine(site.def) ? "" : ` (${site.where} of the imported ${site.def} names it)`;
+    out.push(diag("E1502", `Role ${role} has no member in the lock file, so nobody could decide for it${by}.${older}`, span ? { path, span } : { path }, { facts }));
+  }
   return out;
 }
 

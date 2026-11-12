@@ -1,0 +1,23 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104",
+  "kind": "compile",
+  "title": "A program declared 0.3 that uses 0.4 constructs is refused, each construct by name at its place.",
+  "spec": ["spec/envelope.md#what-04-adds"],
+  "language": "mandate/0.3",
+  "input": { "file": "../../fixtures/envelope/migrate-all.mdt", "kind": "mdt" },
+  "modules": ["../../fixtures/envelope/domain.mdt"],
+  "patch": [{ "op": "replace", "path": "/language", "value": "mandate/0.3" }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E0104", "path": "/defs/platform_lead/kind", "facts": { "kind": "role", "language": "mandate/0.3" } },
+      { "code": "MDT-E0104", "path": "/defs/release_manager/kind", "facts": { "kind": "role", "language": "mandate/0.3" } },
+      { "code": "MDT-E0104", "path": "/defs/MigrateAll/envelope", "facts": { "field": "envelope", "language": "mandate/0.3" } },
+      { "code": "MDT-E0104", "path": "/defs/MigrateAll/body/0/value", "facts": { "op": "map", "language": "mandate/0.3" } },
+      { "code": "MDT-E0104", "path": "/defs/MigrateAll/body/1/value", "facts": { "op": "plan", "language": "mandate/0.3" } },
+      { "code": "MDT-E0104", "path": "/defs/MigrateAll/envelope/budget/agents", "facts": { "field": "agents", "language": "mandate/0.3" } }
+    ]
+  }
+}
