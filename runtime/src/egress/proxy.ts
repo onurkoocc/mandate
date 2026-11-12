@@ -6,9 +6,11 @@
 // opened; a request outside that is refused before anything goes upstream,
 // and the refusal is recorded for `denials`.
 //
-// A `forward` session is an HTTP/1.1 forward proxy for a sandbox: it takes
-// absolute-form `http://host/…` requests, and `CONNECT host:443` to a
-// destination without credential or method restriction.
+// Two kinds of session share the data path. A `forward` session is an
+// HTTP/1.1 forward proxy for a sandbox: it takes absolute-form `http://host/…`
+// requests, and `CONNECT host:443` to a destination without credential or
+// method restriction. A `gateway` session has one destination and takes
+// origin-form requests, for a client that takes a base URL instead of a proxy.
 //
 // How a connection upstream is made, and how a name is resolved, are passed
 // in (`Dialer`, `Resolver`), so tests need neither the network nor a key.
@@ -213,7 +215,7 @@ export class EgressProxy {
     session.timers.push(setTimeout(() => this.end(session, "expired"), r.ttl_ms).unref());
     const url = `http://${isIP(this.config.listen) === 6 ? `[${this.config.listen}]` : this.config.listen}:${session.port}`;
     const ph = Object.fromEntries([...placeholders].sort(([a], [b]) => (a < b ? -1 : 1)));
-    return { proxy_url: url, placeholders: ph };
+    return s.kind === "forward" ? { proxy_url: url, placeholders: ph } : { base_url: url, placeholders: ph };
   }
 
   /** Closes a session: its port stops listening and its streams are cut. Its denials are gone with it. */
@@ -251,9 +253,10 @@ export class EgressProxy {
     };
     if (typeof r.session !== "string" || !SESSION_ID.test(r.session)) bad("session is 1 to 128 letters, digits and . _ : -");
     for (const k of ["tenant", "run", "command"] as const) if (typeof r[k] !== "string" || r[k].length === 0 || r[k].length > 256 || /[\x00-\x1f\x7f]/.test(r[k])) bad(`${k} is a non-empty string of at most 256 characters`);
-    if (r.kind !== "forward") bad(`kind is "forward"`);
+    if (r.kind !== "forward" && r.kind !== "gateway") bad(`kind is "forward" or "gateway"`);
     if (!Number.isSafeInteger(r.ttl_ms) || r.ttl_ms < 1 || r.ttl_ms > MAX_TTL_MS) bad(`ttl_ms is a whole number of milliseconds from 1 to ${MAX_TTL_MS}`);
     if (!Array.isArray(r.destinations) || r.destinations.length === 0 || r.destinations.length > MAX_DESTINATIONS) bad(`destinations is a list of 1 to ${MAX_DESTINATIONS}`);
+    if (r.kind === "gateway" && r.destinations.length !== 1) bad("a gateway session has exactly one destination");
     const destinations = new Map<string, Destination>();
     for (const d of r.destinations) {
       if (typeof d !== "object" || d === null || Array.isArray(d)) bad("a destination is { host, methods, credential }");
@@ -390,6 +393,7 @@ export class EgressProxy {
 
     if (!dest) return deny("host_not_allowed", `${shown ?? "the host"} is not one of the session's destinations`);
     if (method === "CONNECT") {
+      if (s.kind !== "forward") return deny("connect_not_allowed", "a gateway session takes no CONNECT");
       if (dest.credential !== null || dest.methods !== null) return deny("connect_not_allowed", `${dest.host} has a credential or a method restriction, so it is reached as http://${dest.host}/…, not through a tunnel`);
       if (target.port !== 443) return deny("connect_not_allowed", "CONNECT goes to port 443 only");
       return { tunnel: true, host: dest.host, port: 443, method };
@@ -583,7 +587,13 @@ function readTarget(kind: "forward" | "gateway", method: string, target: string,
   if (method === "CONNECT") {
     const a = readAuthority(target);
     if (!a || a.port === undefined) return { error: "CONNECT takes host:port", why: "malformed_request" };
+    if (kind === "gateway") return { error: "a gateway session takes no CONNECT", why: "connect_not_allowed", host: a.host };
     return a;
+  }
+  if (kind === "gateway") {
+    const only = [...destinations.keys()][0]!;
+    if (!target.startsWith("/")) return { error: "a gateway session takes origin-form requests: /path", why: "malformed_request", host: only, path: target };
+    return { host: only, path: target };
   }
   const m = target.match(/^http:\/\/([^/?#]*)([/?][^#]*)?$/i);
   if (!m) return { error: "a forward session takes absolute-form http://host/path requests", why: "malformed_request", ...(target.startsWith("/") ? { path: target } : {}) };
