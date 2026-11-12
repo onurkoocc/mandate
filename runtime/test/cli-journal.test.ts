@@ -90,6 +90,8 @@ describe("mandate journal (spec/journal.md)", () => {
     const broken = await mandate(["journal", "verify", file("j1-edited.json"), "--key", file("cp.pub.pem")], false);
     expect(broken.code).toBe(1);
     expect(broken.out).toContain("broken: run j1, 9 events\n  chain_broken at seq 4: ");
+    // The anchors still hold, but the events under them are not what was signed: no reach is claimed.
+    expect(broken.out).not.toContain("signed through");
   });
 
   it("verifies under the rotated-out key too, once journal key writes it", async () => {
@@ -108,6 +110,7 @@ describe("mandate journal (spec/journal.md)", () => {
 
   it("refuses to verify without a key, or with a file that holds none", async () => {
     expect((await mandate(["journal", "verify", file("j1.json")], false)).code).toBe(2);
+    expect((await mandate(["journal", "verify", file("missing.json"), "--key", file("cp.pub.pem")], false)).code).toBe(2);
     writeFileSync(file("not-a-key.pem"), "hello\n");
     const bad = await mandate(["journal", "verify", file("j1.json"), "--key", file("not-a-key.pem")], false);
     expect([bad.code, bad.err]).toEqual([1, expect.stringContaining("bad_journal_key")]);

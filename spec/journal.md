@@ -372,7 +372,7 @@ last state change; anything before it is covered.
 | `status` | `"verified"`, `"broken"` or `"unchained"` |
 | `events` | How many events the export has; 0 for a malformed export |
 | `last_seq` | The seq of the export's last event; `null` for a malformed export |
-| `anchored_through` | The greatest seq of an anchor that holds; `null` when none does, and for an unchained or malformed export |
+| `anchored_through` | The greatest seq of an anchor that holds; `null` when none does, and for an unchained or malformed export. Only in a `verified` report does it say the events through it are as signed: in a `broken` one it says which anchors hold, not that the chain under them does |
 | `unanchored` | How many events have a seq greater than `anchored_through` (all of them when it is `null`); 0 for a malformed export |
 | `signed_by` | The key ids of the anchors that hold, sorted |
 | `findings` | `{ "code", "seq"? }` each, in the order the steps above find them |
@@ -396,7 +396,7 @@ status `broken`. The findings:
 | `unanchored_tail` | the first event after `anchored_through` | No signature covers the events from here on |
 
 `mandate journal verify` prints the status, each finding with what it
-means, and how far the signatures reach; `--json` prints the report. It
+means, and for a verified journal how far the signatures reach; `--json` prints the report. It
 exits 0 when the status is `verified`, 1 when it is `broken` or
 `unchained`, and 2 on a usage error. A `--key` file may hold several PEM
 blocks, and `--key` may be given more than once.

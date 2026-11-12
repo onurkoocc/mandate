@@ -662,6 +662,7 @@ function journalVerify(a: Args, out: (s: string) => void): number {
     if (!found.length) throw new Violation("bad_journal_key", `${k} holds no public key (PEM)`);
     return found;
   });
+  if (!existsSync(file)) throw new Usage(`no export at ${file} (mandate journal export <run> --out FILE writes one)`);
   const bytes = readFileSync(file);
   const r = verifyExport(bytes, keys);
   if (a.flags["--json"] === true) out(JSON.stringify(r, null, 2) + "\n");
@@ -670,7 +671,8 @@ function journalVerify(a: Args, out: (s: string) => void): number {
     const lines = [`${r.status}: ${r.run !== null ? `run ${r.run}, ${r.events} events` : file}`];
     if (r.status === "unchained") lines.push("  the run began before its journal was chained: no event has a hash and nothing is anchored, so nothing can be verified");
     for (const f of r.findings) lines.push(`  ${f.code}${f.seq !== undefined ? ` at seq ${f.seq}` : ""}: ${FINDINGS[f.code]}${read && !read.ok ? ` (${read.problem})` : ""}`);
-    if (r.anchored_through !== null) lines.push(`  signed through seq ${r.anchored_through} by ${r.signed_by.join(", ")}; ${r.unanchored === 1 ? "1 event" : `${r.unanchored} events`} after it covered by no signature`);
+    // How far the signatures reach is what a verified journal says; in a broken one the events are not what was signed.
+    if (r.status === "verified" && r.anchored_through !== null) lines.push(`  signed through seq ${r.anchored_through} by ${r.signed_by.join(", ")}; ${r.unanchored === 1 ? "1 event" : `${r.unanchored} events`} after it covered by no signature`);
     out(lines.join("\n") + "\n");
   }
   return r.status === "verified" ? 0 : 1;
