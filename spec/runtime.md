@@ -787,6 +787,7 @@ mandate answer <run> --revision N --key FILE [--member NAME] <text>
 mandate cancel <run> [--key FILE]
 mandate reconcile <run> <operation> --key FILE [--member NAME]
 mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
+mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
 mandate decision <run> <digest>
 mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
 mandate replay <run>
@@ -803,7 +804,10 @@ mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [-
 `--limit` takes `spend`, `tokens`, `steps` and, for a workflow with an
 envelope, `agents`, separated by commas. `approve-envelope` signs a
 package's envelope so that its runs may start
-([`envelope.md`](envelope.md#approving-an-envelope)).
+([`envelope.md`](envelope.md#approving-an-envelope)). `amend` is the
+owner's decision on an amendment a lead asked for: `status` shows who
+asks, both package hashes, each line of the envelope that changes and the
+lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
 
 **Configuration.** Each call reads `mandate.runtime.json`, or the file
 `--config` names. It holds the database and the adapters:
@@ -932,10 +936,12 @@ The same mechanisms are tested under Temporal against a local dev server:
 
 ## Not in this runtime yet
 
-- **Amendments.** A lead cannot ask for a wider envelope yet (N04). `map`
-  and `plan` run ([`envelope.md`](envelope.md)): R11 by input index and
-  R12 are tested in `map.test.ts`, sub-programs in `plan.test.ts` and
-  `ledger.test.ts`, and the migration example in `demo.test.ts`.
+- **Run views of 0.4.** `map`, `plan` and amendments run
+  ([`envelope.md`](envelope.md)): R11 by input index and R12 are tested in
+  `map.test.ts`, sub-programs in `plan.test.ts` and `ledger.test.ts`,
+  amendments in `amend.test.ts` and `cli-amend.test.ts`, and the migration
+  example in `demo.test.ts`. The run's views do not show submissions, map
+  items or the envelope's remainder yet.
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.
 
 ## Workspace and run manifest (design doc 9 §12, B3)

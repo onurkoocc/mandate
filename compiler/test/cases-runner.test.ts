@@ -1,4 +1,4 @@
-// The runner's own tests: the comparison, the patch applier and the reading of a subprogram case.
+// The runner's own tests: the comparison, the patch applier and the reading of a subprogram case and of an amendment case.
 
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { load } from "../src/check.js";
 import { skeleton } from "../src/check/subprogram.js";
 import { hashProgram } from "../src/hash.js";
-import type { Program } from "../src/ir/types.js";
+import type { Program, WorkflowDef } from "../src/ir/types.js";
 import type { Json } from "../src/json/strict-json.js";
-import { applyJsonPatch, CASES_DIR, caseFile, compareResult, runCompileCase, schemaProblems, subprogramInput, type Case, type CaseExpect, type CaseSubprogram, type Observed } from "./cases-runner.js";
+import { amendmentInput, applyJsonPatch, CASES_DIR, caseFile, compareResult, runCompileCase, schemaProblems, subprogramInput, type Case, type CaseAmendment, type CaseExpect, type CaseSubprogram, type Observed, type PatchOpJson } from "./cases-runner.js";
 
 function got(...ds: Array<[string, string, Record<string, unknown>?]>): Observed {
   return { ok: false, diagnostics: ds.map(([code, path, facts]) => ({ code, at: { path }, ...(facts ? { facts } : {}) })) };
@@ -174,5 +174,66 @@ describe("subprogram cases", () => {
     expect(schemaProblems(subCase({ lead: "secret" as never })).length).toBeGreaterThan(0);
     expect(schemaProblems(subCase({ room: { left: { tokens: -1 } } })).length).toBeGreaterThan(0);
     expect(schemaProblems(subCase({ room: { ...ROOM, writes: [{ ctor: "fs.read", scope: [] }] } })).length).toBeGreaterThan(0);
+  });
+});
+
+describe("amendment cases", () => {
+  const WIDER: PatchOpJson[] = [{ op: "replace", path: "/budget/tokens", value: 200000 }];
+  /** An amendment case on the program of N01, with `patch` applied to its envelope. */
+  const amendCase = (patch: PatchOpJson[] = WIDER, extra: Partial<Case> = {}): Case => ({
+    format: "mandate/conformance-case/0.1", id: "N04", kind: "compile", title: "t", spec: ["spec/envelope.md#amendments-n04"],
+    input: { file: "../N01/parent.mdt", kind: "mdt" }, modules: ["../N01/domain.mdt"],
+    amendment: { workflow: "Run", patch },
+    expect: { ok: true, diagnostics: [] },
+    ...extra,
+  });
+  const program = (): Program => load(readFileSync(join(CASES_DIR, "N01", "parent.mdt"), "utf8"), "mdt").program!;
+  const envelopeOf = (p: Program): NonNullable<WorkflowDef["envelope"]> => (p.defs["Run"] as WorkflowDef).envelope!;
+
+  it("applies the patch to the envelope of the workflow, and leaves the program it stands on as it was", () => {
+    const p = program();
+    const i = amendmentInput({ workflow: "Run", patch: WIDER }, p, {});
+    expect(i.envelope).toEqual({ ...envelopeOf(p), budget: { ...envelopeOf(p).budget, tokens: 200000 } });
+    expect([i.parent, i.workflow]).toEqual([p, "Run"]);
+    expect(envelopeOf(p).budget!.tokens).toBe(100000);
+  });
+
+  it("observes the hash of the program with the new envelope, which a patch of the whole program gives too", () => {
+    const amended = runCompileCase("N04", amendCase());
+    const { amendment: _none, ...plain } = amendCase();
+    const patched = runCompileCase("N04", { ...plain, patch: [{ op: "replace", path: "/defs/Run/envelope/budget/tokens", value: 200000 }] });
+    expect(amended.ok).toBe(true);
+    expect((amended as Observed).hashes).toEqual({ program: (patched as { hashes: { program: string } }).hashes.program });
+    expect(compareResult({ ok: true, diagnostics: [], hashes: { program: "sha256:another" } }, amended)).toHaveLength(1);
+    // An amendment that is refused makes no program, so it has no hash to observe.
+    const refused = runCompileCase("N04", amendCase([{ op: "replace", path: "/budget/tokens", value: 99999 }]));
+    expect(refused.diagnostics.map((d) => [d.code, d.at.path])).toEqual([["MDT-E1709", "/defs/Run/envelope/budget/tokens"]]);
+    expect((refused as Observed).hashes).toBeUndefined();
+  });
+
+  it("refuses a workflow that has no envelope, and a program that does not check", () => {
+    expect(() => amendmentInput({ workflow: "label", patch: [] }, program(), {})).toThrow(/label is not a workflow with an envelope/);
+    expect(() => amendmentInput({ workflow: "Nobody", patch: [] }, program(), {})).toThrow(/Nobody is not a workflow with an envelope/);
+    const broken = "mandate @ 0.4\n\nmodule example.parent @ 0.1\n\nfn f() -> Text {\n  missing\n}\n";
+    expect(() => runCompileCase("N04", amendCase(WIDER, { input: { text: broken, kind: "mdt" } }))).toThrow(/program of an amendment case must check without errors/);
+  });
+
+  it("refuses a top-level patch, a lock or a subprogram beside an amendment, in the schema and in the runner", () => {
+    const room = { left: { tokens: 1 } };
+    const beside: Array<Partial<Case>> = [{ patch: [{ op: "remove", path: "/defs/label" }] }, { lock: null }, { subprogram: { workflow: "Run", room } }];
+    expect(schemaProblems(amendCase())).toEqual([]);
+    for (const extra of beside) {
+      expect(schemaProblems(amendCase(WIDER, extra)).length).toBeGreaterThan(0);
+      expect(() => runCompileCase("N04", amendCase(WIDER, extra))).toThrow(/no top-level patch or lock, and no subprogram/);
+    }
+  });
+
+  it("keeps the amendment member closed", () => {
+    const member = (amendment: unknown): Case => ({ ...amendCase(), amendment: amendment as CaseAmendment });
+    expect(schemaProblems(member({ workflow: "Run", patch: WIDER, extra: 1 })).length).toBeGreaterThan(0);
+    expect(schemaProblems(member({ workflow: "Run" })).length).toBeGreaterThan(0);
+    expect(schemaProblems(member({ patch: WIDER })).length).toBeGreaterThan(0);
+    expect(schemaProblems(member({ workflow: "", patch: WIDER })).length).toBeGreaterThan(0);
+    expect(schemaProblems(member({ workflow: "Run", patch: [{ op: "move", path: "/budget" }] })).length).toBeGreaterThan(0);
   });
 });

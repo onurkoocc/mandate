@@ -1,0 +1,19 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1709",
+  "kind": "compile",
+  "title": "An amendment that lowers a budget of the envelope is refused.",
+  "spec": ["spec/envelope.md#amendments-n04", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../N01/parent.mdt", "kind": "mdt" },
+  "modules": ["../N01/domain.mdt"],
+  "amendment": {
+    "workflow": "Run",
+    "patch": [{ "op": "replace", "path": "/budget/tokens", "value": 50000 }]
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E1709", "path": "/defs/Run/envelope/budget/tokens", "facts": { "dimension": "tokens", "was": 100000, "asked": 50000 } }]
+  }
+}

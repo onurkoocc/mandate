@@ -159,8 +159,10 @@ pull request was opened, for 0.23 USD.
    a lead agent whose sub-programs are checked within limits, admitted
    only when they fit what is left of the envelope, with their whole
    budget reserved, and run inside the same run; a finished run replays
-   them from the artifact store. Amendments of an envelope do not run
-   yet. See [`spec/envelope.md`](spec/envelope.md).
+   them from the artifact store. A lead may ask for a wider envelope:
+   the run waits for the owner's signed decision (`mandate amend`), goes
+   on under the new package, and what ran before stands as it was
+   recorded. See [`spec/envelope.md`](spec/envelope.md).
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.

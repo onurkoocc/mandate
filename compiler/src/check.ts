@@ -10,6 +10,7 @@ import { validateIr } from "./ir/validate.js";
 import { parseStrictJson, type Json } from "./json/strict-json.js";
 import { parseMdt } from "./parse/parser.js";
 import { resolveNames } from "./resolve/resolve.js";
+import { narrowings } from "./check/amendment.js";
 import { capsOf } from "./check/caps.js";
 import { roleChecks } from "./check/roles.js";
 import { staticCheck, type Claim } from "./check/static.js";
@@ -221,6 +222,48 @@ export function checkSubprogram(i: SubprogramInput): SubprogramCheck {
   }
   if (hasErrors(diagnostics)) return { ok: false, diagnostics };
   return { ok: true, diagnostics, program: sub, hash: hashProgram(sub as unknown as Json).program, workflow };
+}
+
+/** An amendment of an envelope, as `request_amendment` receives it (spec/envelope.md "Amendments"). */
+export interface AmendmentInput {
+  /** The run's program as it is now, and the modules it imports. */
+  parent: Program;
+  modules?: Modules;
+  /** The workflow of `parent` whose envelope the amendment replaces. */
+  workflow: string;
+  /** The new envelope, as IR. It is a lead's writing: it is read as JSON and held to the schema. */
+  envelope: unknown;
+}
+
+export interface AmendmentCheck {
+  /** The program with the new envelope passes every check, and the new envelope takes nothing away. */
+  ok: boolean;
+  diagnostics: Diagnostic[];
+  /** When `ok`: the program with the new envelope, and its hash. */
+  program?: Program;
+  hash?: string;
+}
+
+/**
+ * Checks an amendment (spec/envelope.md "Amendments", N04): the run's
+ * program with `envelope` in place of its workflow's own, and nothing else
+ * changed. All of `check` passes on it, and the new envelope only widens the
+ * old one (E1709). Nothing is saved and nothing runs.
+ */
+export function checkAmendment(i: AmendmentInput): AmendmentCheck {
+  const wf = Object.hasOwn(i.parent.defs, i.workflow) ? i.parent.defs[i.workflow] : undefined;
+  if (wf?.kind !== "workflow" || !wf.envelope) throw new Error(`${i.workflow} is not a workflow with an envelope, so it has none to amend`);
+  const at = `${ptr("defs", i.workflow)}/envelope`;
+  if (!i.envelope || typeof i.envelope !== "object" || Array.isArray(i.envelope)) {
+    return { ok: false, diagnostics: [diag("E1701", `An amendment gives ${i.workflow}'s new envelope, with its owner, its caps and its budget.`, { path: at }, { facts: { missing: ["owner", "caps", "budget"] } })] };
+  }
+  const amended = { ...i.parent, defs: { ...i.parent.defs, [i.workflow]: { ...wf, envelope: i.envelope } } };
+  const checked = check(JSON.stringify(amended), "json", i.modules ? { modules: i.modules } : {});
+  const diagnostics = [...checked.diagnostics];
+  const now = checked.program?.defs[i.workflow];
+  if (checked.ok && now?.kind === "workflow" && now.envelope) diagnostics.push(...narrowings(link(checked.program!, i.modules).defs, i.workflow, wf.envelope, now.envelope));
+  if (hasErrors(diagnostics) || !checked.program || !checked.hashes) return { ok: false, diagnostics };
+  return { ok: true, diagnostics, program: checked.program, hash: checked.hashes.program };
 }
 
 /**

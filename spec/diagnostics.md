@@ -122,8 +122,9 @@ assigned here.
 Specified in [`envelope.md`](envelope.md). E15xx (roles and people) and
 E17xx (envelopes) are assigned here, and `mandate explain` knows all of
 them. `mandate check` reports E1501 to E1503, E1701 to E1704, E1707 and
-E1708 today; the rules of sub-programs are not implemented yet, and the
-Notes column says so.
+E1708. E1705, E1706 and E1709 are about what a lead sends while a run is
+going, a sub-program or an amendment: the runtime's checker reports them
+to the lead, and the Notes column says so.
 
 | Code | Title | Conformance case | Notes |
 |---|---|---|---|
@@ -138,3 +139,4 @@ Notes column says so.
 | MDT-E1706 | Sub-program does not fit the envelope | N01, N01a, N01b, E1706, E1706a, E1706b | assigned; facts name the dimension (`capability`, `write_scope`, a budget dimension, `time`, `data_class`) with what was asked and what is left; returned to the lead, never to the run |
 | MDT-E1707 | `plan` outside an envelope | E1707 | assigned; a `plan` anywhere but the body of a workflow with an envelope |
 | MDT-E1708 | Person or critical effect in a map body | E1708, E1708a | assigned; a wait for a person in a map body or in a function it calls, a critical effect, a change set |
+| MDT-E1709 | Amendment narrows the envelope | N04, E1709, E1709a, E1709b, E1709c | assigned; a capability left out, a budget dimension lowered, dropped or added, fewer delegations at once or a lower data class; facts name the dimension (`capability`, a budget dimension, `max_concurrent`, `max_class`) with what the envelope gave and what was asked; returned to the lead, never to the run |

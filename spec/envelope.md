@@ -13,15 +13,15 @@ same cases.
 | The envelope at run time: its approval (H03), the `agents` ledger for delegations (N02), `spawn.max_concurrent`, `approve E by r`; the card | implemented |
 | `map`: its rules (E1702, E1703, E1708, E0320 and E0501 at the map) and its run (R11, R12, N03, N08) | implemented |
 | `plan` and sub-programs: their rules (E1705, E1706) and their run, with the ledger under a sub-program, the bounded check and replay (N01, N02, N05, N06, N07, N09, N10) | implemented |
-| Amendments (N04) | not yet |
+| Amendments: `request_amendment`, E1709, the owner's signed decision, `mandate amend`, and what ran before the amendment (N04) | implemented |
 | Run views of 0.4: submissions, the envelope's remainder, map items, each decision's member, role and signature | not yet; `mandate status` lists each decision a run took and whether its signature holds |
 
 The runtime runs a 0.4 package that uses roles, signed decisions,
-envelopes, `map` and `plan`. It refuses one that has `agents` in a budget
-that is not an envelope's, when it loads it (`unsupported_language`, naming
-what it found). That is not run yet, and a version is never run on a
-best-effort basis. Such a program can be read, checked, hashed, printed
-and viewed today, and not run. A lead has no `request_amendment` tool yet.
+envelopes, `map`, `plan` and amendments. It refuses one that has `agents`
+in a budget that is not an envelope's, when it loads it
+(`unsupported_language`, naming what it found). That is not run yet, and a
+version is never run on a best-effort basis. Such a program can be read,
+checked, hashed, printed and viewed today, and not run.
 
 0.4 lets an agent plan work while a run is going, without a person approving
 every step. A person approves an **envelope** once: the most authority,
@@ -171,7 +171,7 @@ What a record names, by kind:
 | `reconcile` | the action's command | the action digest | `{ "reconcile": "<operation key>" }` |
 | `cancel` | none | the run's package hash | none |
 | `envelope` | none, and no run or revision | the package hash | none |
-| `amend` | see "Amendments" | a package hash | |
+| `amend`, `decline` of an amendment | the amendment's wait | the hash of the package with the new envelope | none |
 
 A payload is the request digest of its value: the SHA-256 of
 `mandate/request/0.1\n` and the value's JCS bytes. `role` is the role the
@@ -268,7 +268,10 @@ mandate approve-envelope <program> --key FILE [--member NAME] [--workflow W]
 mandate amend        <run> --revision N --key FILE [--member NAME] (approve | decline)
 ```
 
-`amend` comes with amendments.
+`amend` decides an amendment a lead asked for
+([below](#amendments-n04)). `approve` signs a decision of kind `amend`
+and `decline` one of kind `decline`, for the package hash `mandate status`
+shows. It is always signed: only a 0.4 run has an amendment.
 
 `--member` is needed only when a key id is listed under more than one
 member, which the lock forbids, so in practice never. The CLI finds the
@@ -596,7 +599,7 @@ In IR: `{ "op": "plan", "agent": "Lead", "skill": "finish", "args": [ … ],
 "budget": { … } }`.
 
 `plan` runs a bodiless skill of a local agent as an agent loop, like a
-delegation, with two more tools. It is allowed only in the body of a
+delegation, with three more tools. It is allowed only in the body of a
 workflow that has an envelope (E1707), and the skill's own effects are
 checked as for any delegation (C1, C2). The lead's delegation runs under
 the `plan` node's path. A runtime without an agent loop does not run a
@@ -606,6 +609,7 @@ the `plan` node's path. A runtime without an agent loop does not run a
 |---|---|
 | `check_program(base, ops)` | Applies an IR patch to the sub-program skeleton and returns the diagnostics, as `mandate.apply_patch` does, with the envelope's remainder as facts. Admits nothing |
 | `submit_program(base, ops)` | The same check. If the sub-program fits, it is admitted, run to its end, and its result returned to the lead. If not, the diagnostics are returned and nothing runs |
+| `request_amendment(envelope, reason)` | Asks the envelope's owner for a wider envelope, and waits for the decision ([Amendments](#amendments-n04)) |
 
 Each tool call is a step of the lead's loop, charged to its budget and
 journaled like any tool call. The lead submits one sub-program at a time;
@@ -740,26 +744,88 @@ it stops the run. Neither diagnostic admits anything, and neither is an
 `MDT-` code: they say that no check was made. Only a checker that is not
 installed is the runtime's own failure (`no_checker`).
 
+An amendment's envelope is checked in the same worker, under the same
+limits of size, nesting, time and heap.
+
 ### Amendments (N04)
 
 When a sub-program needs more than the envelope allows, the lead may ask
 for an amendment with a third tool, `request_amendment(envelope, reason)`:
-a new envelope, nothing else.
+a new envelope for the run's workflow, as JSON IR, and nothing else. The
+lead's brief carries the envelope the lead started under, to ask from.
 
-- The runtime builds the program with that envelope, which is a new
-  program and so a new package hash, and the semantic diff between the two
-  (`mandate view --against`). Raising a budget or widening authority shows
-  as a governance change, as always.
-- The run waits for a member of the envelope's `owner` role: a signed
-  decision of kind `amend` whose subject is the new package hash. The lead's
-  tool call waits with it.
-- On approval the run goes on under the new package. The event
-  `package_amended` records both hashes, the diff and the decision. An
-  authorization given before carries over to nothing new: action digests
-  name the package, so a new action needs a new authorization. Evidence
-  already recorded keeps the package it was recorded under.
-- On a decline, or past the wait's deadline, the tool returns the decline
-  and the envelope stays as it was.
+- **The check.** The runtime builds the program with that envelope, which
+  is a new program and so a new package hash. The program is checked as
+  any program is, and its package is verified as at load. So a role that
+  nobody holds or a model tier the lock does not bind refuses it
+  (`unbound_role`, `unlocked_model_tier`). An amendment equal to the
+  envelope the run has is refused as `unchanged`.
+- **Only wider (E1709).** The new envelope holds every capability the old
+  one held, by the C2 test. Its budget names the dimensions the old one
+  named and no other, `time` included, each with at least the old amount.
+  `spawn.max_concurrent` is no lower, and is not added where there was
+  none. `spawn.max_class` is no lower. `owner` and `approve` may change.
+  So what ran under the old envelope lies inside the new one (INV-15),
+  and a check that passed before the amendment passes after it. The facts
+  name the `dimension` (`capability`, a budget dimension,
+  `max_concurrent` or `max_class`), what the envelope gave (`was`) and
+  what the amendment asks (`asked`); for a capability, the `capability`
+  left out.
+- **What refuses it** is returned to the lead as diagnostics with
+  `amended: false`, as an error to the model. Nobody is asked, nothing is
+  stored, and the run goes on.
+- **The wait.** Otherwise the new package is stored, `amendment_requested`
+  is recorded, and the run waits for a member of the `owner` role of the
+  envelope it has now. The lead's tool call waits with it: the wait is a
+  command of kind `amendment` at `<the tool's step>/amendment`. Its
+  request names the `plan` node, the lead, both package hashes, the role,
+  the lead's reason (a model's text, at most 2000 characters), the new
+  envelope and what it changes, line by line. It also names the digest of
+  the semantic diff between the two programs (`mandate view --against`),
+  where the change is one governance change, `envelope_changed`. The
+  wait's deadline is the run's own, its start plus the envelope's `time`;
+  without a `time` it has none.
+- **The decision** is a signed record of kind `amend`, or `decline`. Its
+  `command` is the wait, its `subject` the new package hash, its `package`
+  the one the run has now, and its `role` the owner's. It has no payload.
+- **On approval** the run goes on under the new package, in the
+  transaction that takes the decision. In each dimension the amendment
+  raises, the run's limit becomes the new envelope's amount. No other
+  limit changes, and none is added: a limit the caller set below the
+  envelope stays, and a raise may lift it. `package_amended` records both
+  hashes, the diff, the limits that rose and the decision. Every other
+  amendment the run still waits for was asked of the old package, and
+  ends unanswered (`superseded`); its lead may ask again. A worker that
+  was driving the run under the old package loses its lease (R06).
+- **Nothing carries over.** An approval of the old package's envelope and
+  an authorization for an action of the old package are for the old hash.
+  Action digests name the package, so a new action needs a new
+  authorization (E0406), and a decision signed for the old package is
+  refused once the run is under the new one (`subject_mismatch`). The
+  amended package has no envelope approval of its own: it runs this run
+  on its owner's decision about this run, and another run of it needs
+  `approve-envelope` (`unapproved_envelope`).
+- **What ran before stands.** Every command records the package the run
+  had when the command was first recorded. A command the journal holds is
+  read under that package, whatever the envelope is now: a delegation
+  keeps the grant it was sent with, an action its digest and the role
+  that authorizes it, a change set its digest. So a resumed run and a
+  replay find each command as it was recorded, and an effect done before
+  the amendment is not done again. Evidence already recorded keeps the
+  package it was recorded under. An `infer` records its request, which
+  names no tier: one that was sent and has no answer yet is sent again
+  with the tier the envelope gives now.
+- **What was refused stays refused.** Since an amendment only widens, one
+  refusal could turn into a pass: a map without `max` that was longer
+  than the envelope's `agents`. In a run whose program has a `plan`, that
+  refusal is recorded as a failed command, `<map>/refused`, and a resumed
+  run and a replay read it there.
+- **On a decline, or past the deadline,** the tool answers `amended:
+  false` with `declined`: the reason (`declined`, `approval_expired` or
+  `superseded`) and who declined. The envelope stays as it was.
+- **What the lead is told.** Every answer carries the envelope as it is
+  now, and the number, base and room of the next sub-program, as the
+  other tools' answers do. An approval adds the new package hash.
 
 This refines INV-02: a running run's package changes only by an amendment
 of its envelope that the envelope's owner signed, recorded with both
@@ -801,6 +867,7 @@ here (Appendix B has none for envelopes), E15xx for roles and people.
 | MDT-E1706 | Sub-program does not fit the envelope | Capabilities inside the envelope and clear of writes in flight; budget within what is left; data class; approvals kept. Facts name the dimension |
 | MDT-E1707 | `plan` outside an envelope | `plan` is only in the body of a workflow with an envelope |
 | MDT-E1708 | Person or critical effect in a map body | Nothing in a map body waits for a person (`human.*`, `escalate`, `pause`, `supervise escalate`, a `verify` a person approves, a function that holds one), and it has no critical effect and no change set. Facts name the map, the kind and the step |
+| MDT-E1709 | Amendment narrows the envelope | An amendment's envelope holds every capability of the old one, gives each budget dimension at least what it gave and names no other, and bounds delegations no more tightly. Facts name the dimension. Returned to the lead, never by `mandate check` |
 
 Existing checks extend to the new forms:
 
@@ -849,8 +916,8 @@ Existing checks extend to the new forms:
 | `program_submitted` | plan node, number, the step of the lead's loop, the lead (`Agent.skill`), base, patch digest, whether it checked; for one that did, its hash and the kinds of governance change in it |
 | `program_refused` | plan node, number, step, diagnostics digest, the codes of the errors |
 | `program_admitted` | plan node, number, step, the command it runs under, hash, base, where its IR is in the artifact store, its workflow, reservation |
-| `amendment_requested` | plan node, new package hash, diff digest |
-| `package_amended` | old and new package hashes, diff digest, decision digest |
+| `amendment_requested` | plan node, the step of the lead's loop, the lead, old and new package hashes, diff digest |
+| `package_amended` | old and new package hashes, diff digest, plan node, the wait, the limits that rose (from, to), the waits it superseded, and the member, role, key and decision digest |
 | `decision_refused` | command, reason (`invalid_signature`, `unknown_key`, `not_in_role`, `same_member`, `stale_revision`, `subject_mismatch`), and the kind, member, role and key the record names |
 | `reconcile_requested` | operation, member, role, key, decision digest (a signed reconciliation) |
 
@@ -873,7 +940,8 @@ with which key, and why. It changes nothing else and raises no revision.
 | `above_program_budget` | A raise above the envelope's budget; it needs an amendment |
 | `unsupported_language` | At load: a package with `agents` in a budget that is not an envelope's |
 | `no_agent_loop` | A `plan` on a runtime that has no agent loop, or whose lead is not a bodiless skill of a local agent |
-| `no_checker` | A submission on a runtime whose checker is not installed |
+| `no_checker` | A submission on a runtime whose checker is not installed, or an amendment on one whose checker checks none |
+| `stale_amendment` | An approval of an amendment that was asked of a package the run no longer has |
 | `program_hash_mismatch` | A stored sub-program that does not hash to what `program_admitted` names |
 
 A map is refused with a fault, before any of its items is dispatched. Like
@@ -934,7 +1002,7 @@ would be None, and a program with an envelope needs both (INV-11).
 
 | Id | Invariant | Where 0.4 keeps it |
 |---|---|---|
-| INV-02 (refined) | A running run's package does not change, except by an amendment of its envelope signed by the envelope's owner and recorded with both hashes | `package_amended`; action digests name the package |
+| INV-02 (refined) | A running run's package does not change, except by an amendment of its envelope signed by the envelope's owner and recorded with both hashes | `package_amended`; action digests name the package; a command is read under the package it was recorded under |
 | INV-15 | A sub-program does not run until it is shown to fit what is left of the envelope: authority, budget, agents and data class | Containment at admission; one reservation per sub-program |
 | INV-16 | A decision whose signature does not verify against a key the lock binds to its role is not a decision | Decision records; `invalid_decision` |
 
@@ -945,7 +1013,7 @@ would be None, and a program with an envelope needs both (INV-11).
 | N01 | A sub-program whose capabilities or budget exceed what is left of the envelope is not admitted, and nothing of it runs | E1706 |
 | N02 | A delegation or a sub-program that does not fit the remaining budget is refused at reservation; two siblings cannot both reserve what only one fits | `BudgetExceeded`, E1706 (R07 generalized) |
 | N03 | Map items with `par > 1` cannot write overlapping scopes: statically when the scopes do not depend on the item, before any dispatch when they do | E0320, `Rejected(overlapping_scopes)` |
-| N04 | An amendment is a new package hash; an envelope approval or an authorization given for the old hash does not authorize the new scope | `unapproved_envelope`, E0406 |
+| N04 | An amendment is a new package hash and only widens the envelope; an envelope approval or an authorization given for the old hash does not authorize the new scope | E1709, `unapproved_envelope`, E0406 |
 | N05 | A critical effect in a sub-program needs its own authorization, and one under `approve` needs that role's signed decision | E0406, `invalid_decision` |
 | N06 | Replay reads admitted sub-programs from the journal and calls no adapter and no checker | — (INV-09) |
 | N07 | Two sub-programs of one plan with the same effect and business key are one action | INV-06 |

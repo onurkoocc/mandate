@@ -145,6 +145,7 @@ create table if not exists rate_buckets (
 );
 alter table commands add column if not exists throttled integer not null default 0;
 alter table commands add column if not exists inside text;
+alter table commands add column if not exists package text;
 alter table actions add column if not exists artifacts jsonb;
 alter table evidence add column if not exists subject jsonb;
 alter table evidence add column if not exists record jsonb;

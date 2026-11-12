@@ -15,6 +15,16 @@
           { "type": "object", "properties": { "lock": true }, "required": ["lock"] }
         ]
       }
+    },
+    "amendment": {
+      "description": "An amendment case has no top-level patch or lock, and no subprogram.",
+      "not": {
+        "anyOf": [
+          { "type": "object", "properties": { "patch": true }, "required": ["patch"] },
+          { "type": "object", "properties": { "lock": true }, "required": ["lock"] },
+          { "type": "object", "properties": { "subprogram": true }, "required": ["subprogram"] }
+        ]
+      }
     }
   },
   "properties": {
@@ -93,6 +103,20 @@
               }
             }
           }
+        }
+      }
+    },
+    "amendment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflow", "patch"],
+      "description": "An amendment of an envelope. The input is the program the run has; expect is compared with the amendment's check.",
+      "properties": {
+        "workflow": { "type": "string", "minLength": 1, "description": "The workflow whose envelope is amended." },
+        "patch": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/patchOp" },
+          "description": "An RFC 6902 patch applied to the IR of that envelope; its paths start at the envelope. The patched envelope is the one the lead asks for."
         }
       }
     },

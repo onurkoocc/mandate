@@ -39,6 +39,7 @@ import {
   type ContractDef,
   type Def,
   type EffectDef,
+  type Envelope,
   type EnvironmentDef,
   type Expr,
   type FnDef,
@@ -50,7 +51,7 @@ import {
   type WorkflowDef,
 } from "../ir/types.js";
 import { link, linkedProgram, type Modules } from "../modules.js";
-import { ptrToken } from "../diag.js";
+import { ptr, ptrToken } from "../diag.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
 import { own, packagedLock, perCallBound, type Lock } from "../lock.js";
@@ -787,6 +788,51 @@ export function lockDiff(before: Lock | undefined, after: Lock | undefined): Cha
       const now = a.includes(m);
       if (b.includes(m) !== now) out.push({ path: `/roles/${ptrToken(r)}/${ptrToken(m)}`, text: now ? `+ ${m} holds role ${r}` : `- ${m} no longer holds role ${r}` });
     }
+  }
+  return out;
+}
+
+/**
+ * What changed in a workflow's envelope, line by line: what the one `envelope_changed` of a diff stands for. The
+ * owner who decides an amendment is shown these lines beside the hash they sign for (spec/envelope.md
+ * "Amendments"). Nothing, when the workflow has no envelope on one side: then the envelope came or went whole.
+ */
+export function envelopeChanges(before: Program, after: Program, workflow: string, modules: Modules = {}): Change[] {
+  const of = (p: Program): Envelope | undefined => {
+    const d = Object.hasOwn(p.defs, workflow) ? p.defs[workflow] : undefined;
+    return d?.kind === "workflow" ? d.envelope : undefined;
+  };
+  const b = of(before);
+  const a = of(after);
+  if (!b || !a) return [];
+  const linked = Object.keys(modules).length > 0;
+  const lb = linked ? linkedProgram(before, modules) : before;
+  const la = linked ? linkedProgram(after, modules) : after;
+  const at = `${ptr("defs", workflow)}/envelope`;
+  const name = `${workflow}.envelope`;
+  const out: Change[] = [];
+  if (b.owner !== a.owner) out.push({ path: `${at}/owner`, text: `~ ${name}.owner: ${b.owner ?? "nobody"} → ${a.owner ?? "nobody"}` });
+  const had = new Set((b.caps ?? []).map(j));
+  const has = new Set((a.caps ?? []).map(j));
+  (a.caps ?? []).forEach((c, i) => {
+    if (!had.has(j(c))) out.push({ path: `${at}/caps/${i}`, text: `+ ${name}: ${shownCaps(la, c)}` });
+  });
+  (b.caps ?? []).forEach((c) => {
+    if (!has.has(j(c))) out.push({ path: `${at}/caps`, text: `- ${name}: ${shownCaps(lb, c)}` });
+  });
+  const budget = budgetChanges(name, b.budget, a.budget);
+  for (const t of [...budget.up, ...budget.down]) out.push({ path: `${at}/budget`, text: `~ ${t}` });
+  const atOnce = (e: Envelope): string => (e.spawn?.max_concurrent === undefined ? "no bound" : String(e.spawn.max_concurrent));
+  if (atOnce(b) !== atOnce(a)) out.push({ path: `${at}/spawn/max_concurrent`, text: `~ ${name}.spawn.max_concurrent: ${atOnce(b)} → ${atOnce(a)}` });
+  const cls = (e: Envelope): string => e.spawn?.max_class ?? "internal";
+  if (cls(b) !== cls(a)) out.push({ path: `${at}/spawn/max_class`, text: `~ ${name}.spawn.max_class: ${cls(b)} → ${cls(a)}` });
+  const role = (e: Envelope, effect: string): string | undefined => (e.approve && Object.hasOwn(e.approve, effect) ? e.approve[effect] : undefined);
+  for (const effect of [...new Set([...Object.keys(b.approve ?? {}), ...Object.keys(a.approve ?? {})])].sort()) {
+    const was = role(b, effect);
+    const now = role(a, effect);
+    if (was === now) continue;
+    const text = was === undefined ? `+ ${name}.approve: ${effect} by ${now}` : now === undefined ? `- ${name}.approve: ${effect} by ${was}` : `~ ${name}.approve: ${effect} by ${was} → ${now}`;
+    out.push({ path: `${at}/approve/${ptrToken(effect)}`, text });
   }
   return out;
 }

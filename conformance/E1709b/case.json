@@ -1,0 +1,19 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1709b",
+  "kind": "compile",
+  "title": "An amendment whose budget leaves out a dimension the envelope names is refused.",
+  "spec": ["spec/envelope.md#amendments-n04", "spec/envelope.md#static-checks"],
+  "language": "mandate/0.4",
+  "input": { "file": "../N01/parent.mdt", "kind": "mdt" },
+  "modules": ["../N01/domain.mdt"],
+  "amendment": {
+    "workflow": "Run",
+    "patch": [{ "op": "remove", "path": "/budget/time" }]
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E1709", "path": "/defs/Run/envelope/budget", "facts": { "dimension": "time", "was": 3600000, "asked": null } }]
+  }
+}

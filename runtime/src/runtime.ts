@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, bindingChecks, canonicalize, capsOf, check, domainHash, hashProgram, link, linkedProgram, LOCK_FORMAT, modelTiers, packageHash, references, roleLockChecks, SANDBOX_DENIALS_FORMAT, validateLock, workflowBounds, type DenialReport, type Envelope, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { capsOf, check, domainHash, hashProgram, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, workflowBounds, type DenialReport, type Envelope, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
 import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
@@ -15,119 +15,19 @@ import { RateLimiter, type BucketConfig } from "./ratelimit.js";
 import type { Db, Row, Tx } from "./db.js";
 import { Faults } from "./faults.js";
 import { schemaErrors, typeSchema } from "./schema.js";
-import { Interpreter, ReplayEnd, type Policy } from "./interp.js";
+import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
 import { costDims, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type Limits, type RunRow } from "./journal.js";
+import { buildPackage, isSigned04, verifyPackage, type Package } from "./package.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { digest, isObj, type Obj, type Value } from "./values.js";
 
 export type { Lock };
-
-/**
- * A content-addressed package: the program, its hash, its lock, and the
- * imported modules it was checked with (a system model, design doc 9 §2.1).
- * The lock pins every module by its program hash, so the package hash covers
- * them too.
- */
-export interface Package {
-  hash: string;
-  programHash: string;
-  program: Program;
-  lock: Lock;
-  modules?: Modules;
-}
-
-/** The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes, `map` and `plan`; see `notRunYet`. */
-export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4"];
-
-/**
- * What a program uses of 0.4 that this runtime does not run: the `agents` dimension in a budget other than an
- * envelope's (spec/envelope.md). A package that uses it is refused at load: a version is never run on a
- * best-effort basis (§3.5). An envelope runs: its approval, its `agents` ledger, `max_concurrent` and `approve`.
- * So do a `map` and a `plan`, whose sub-programs name `agents` in their own budgets, as their claim on the
- * envelope's.
- */
-export function notRunYet(program: Program): string[] {
-  const found = new Set<string>();
-  const walk = (v: unknown, key: string, kept: unknown): void => {
-    if (Array.isArray(v)) return v.forEach((x) => walk(x, key, kept));
-    if (!v || typeof v !== "object") return;
-    const o = v as Record<string, unknown>;
-    if (key === "budget" && o["agents"] !== undefined && v !== kept) found.add("agents");
-    for (const [k, x] of Object.entries(o)) walk(x, k, kept);
-  };
-  // An envelope's own budget is the one the ledger keeps `agents` for; nothing reserves it anywhere else yet.
-  for (const d of Object.values(program.defs)) walk(d, "", d.kind === "workflow" ? d.envelope?.budget : undefined);
-  return [...found].sort();
-}
+export { buildPackage, isSigned04, notRunYet, RUNTIME_LANGUAGES, verifyPackage, type Package } from "./package.js";
 
 /** The roles that own an envelope in a program: who may approve its package. */
 function envelopeOwners(program: Program): Set<string> {
   return new Set(Object.values(program.defs).flatMap((d) => (d.kind === "workflow" && d.envelope?.owner !== undefined ? [d.envelope.owner] : [])));
-}
-
-/** A 0.4 package: its program, or a module it was packaged with, is written in 0.4. Its decisions are always signed. */
-export function isSigned04(program: Program, modules: Modules = {}): boolean {
-  return [program, ...Object.values(modules)].some((p) => atLeast(p.language, "mandate/0.4"));
-}
-
-export function buildPackage(program: Program, lock: Lock = { modules: {} }, modules: Modules = {}): Package {
-  const programHash = hashProgram(program as unknown as Json).program;
-  return { hash: packageHash(programHash, lock), programHash, program, lock, ...(Object.keys(modules).length ? { modules } : {}) };
-}
-
-/**
- * Load-time verification (§3.5, S09). The runtime does not trust whoever
- * built the package: it recomputes the hashes, requires every imported
- * module to be locked, and re-runs the compiler's checks.
- */
-export function verifyPackage(pkg: Package): void {
-  // The program and every module it was packaged with: a module's definitions run as the program's do.
-  for (const p of [pkg.program, ...Object.values(pkg.modules ?? {})]) {
-    if (!RUNTIME_LANGUAGES.includes(p?.language)) throw new Violation("unsupported_language", `Package language ${String(p?.language)} is not one of ${RUNTIME_LANGUAGES.join(", ")}.`);
-    const later = notRunYet(p);
-    if (later.length) throw new Violation("unsupported_language", `The package uses ${later.join(", ")} of mandate/0.4, which this runtime does not run yet (spec/envelope.md).`);
-  }
-  const programHash = hashProgram(pkg.program as unknown as Json).program;
-  if (programHash !== pkg.programHash) throw new Violation("package_hash_mismatch", `The program hashes to ${programHash}, not the packaged ${pkg.programHash}.`);
-  if (packageHash(programHash, pkg.lock) !== pkg.hash) {
-    throw new Violation("package_hash_mismatch", "The package hash does not match its program and lock.");
-  }
-  const unlocked = (pkg.program.uses ?? []).map((u) => u.module).filter((m) => m !== "std" && !m.startsWith("std.") && !Object.hasOwn(pkg.lock.modules, m));
-  if (unlocked.length) throw new Violation("unlocked_module", `Imported modules are not locked: ${[...new Set(unlocked)].join(", ")}.`);
-  // A module the package carries is the one the lock pins, byte for byte (S09, INV-02), and passes the checks itself.
-  const modules = pkg.modules ?? {};
-  for (const [name, m] of Object.entries(modules).sort(([a], [b]) => (a < b ? -1 : 1))) {
-    const hash = hashProgram(m as unknown as Json).program;
-    if (m.module !== name || pkg.lock.modules[name] !== hash) throw new Violation("module_hash_mismatch", `Module ${name} hashes to ${hash}; the lock pins ${pkg.lock.modules[name] ?? "nothing"}.`);
-    const others = Object.fromEntries(Object.entries(modules).filter(([n]) => n !== name));
-    const mr = check(canonicalize(m as unknown as Json), "json", { modules: others });
-    if (!mr.ok) throw new Violation("load_verification_failed", `Module ${name} does not pass the compiler's checks: ${mr.diagnostics.filter((d) => d.severity === "error").map((d) => d.code).join(", ")}.`);
-  }
-  // A lock that pins models (spec/lock.md) must be well formed and pin every tier the program names.
-  // A lock without models is for simulated models only; the Anthropic adapter refuses to run without one.
-  // So must a lock that names members and roles: a key under two members, or a role held by nobody the lock lists, binds nothing.
-  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings || pkg.lock.members || pkg.lock.roles) {
-    const bad = validateLock({ lock: LOCK_FORMAT, ...pkg.lock });
-    if (bad.length) throw new Violation("malformed_lock", `The package's lock is malformed: ${bad.map((d) => d.message).join(" ")}`);
-  }
-  if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings) {
-    const missing = [...modelTiers(pkg.program)].filter((t) => !Object.hasOwn(pkg.lock.models ?? {}, t)).sort();
-    if (missing.length) throw new Violation("unlocked_model_tier", `Model tiers are not locked: ${missing.join(", ")} (MDT-E0141).`);
-    // An executor binding that no longer fits the program and the lock is not run with (E0903–E0905, K45).
-    const unfit = bindingChecks(linkedProgram(pkg.program, modules), pkg.lock).filter((d) => d.severity === "error");
-    if (unfit.length) throw new Violation("unfit_binding", `The package's executor binding does not fit: ${unfit.map((d) => `${d.code} ${d.message}`).join(" ")}`);
-  }
-  const r = check(canonicalize(pkg.program as unknown as Json), "json", { modules });
-  if (!r.ok) {
-    throw new Violation("load_verification_failed", `The program does not pass the compiler's checks: ${r.diagnostics.filter((d) => d.severity === "error").map((d) => d.code).join(", ")}.`);
-  }
-  // Every role a 0.4 package names has a member in its lock (E1502): a wait for a role nobody holds could never end.
-  const unbound = roleLockChecks(pkg.program, link(pkg.program, modules), { lock: LOCK_FORMAT, ...pkg.lock });
-  if (unbound.length) {
-    const roles = [...new Set(unbound.map((d) => String((d.facts as { role?: unknown } | undefined)?.role)))].sort();
-    throw new Violation("unbound_role", `The package's lock binds no member to ${roles.length === 1 ? "role" : "roles"} ${roles.join(", ")} (MDT-E1502).`);
-  }
 }
 
 export interface StartOptions {
@@ -502,7 +402,7 @@ export class Runtime {
     if (TERMINAL.has(run.state)) return run;
     const loaded = await this.loaded(run.package_hash);
     await this.write(runId, fence, async (tx) => this.journal.setState(tx, runId, "running"));
-    const interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId));
+    const interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId), await this.earlier(run));
     try {
       const result = await interp.runWorkflow(run.workflow, run.input as Obj);
       await this.finish(runId, fence, { state: "succeeded", result });
@@ -619,13 +519,28 @@ export class Runtime {
     } else await this.finish(runId, fence, target);
   }
 
-  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number): Interpreter {
+  /**
+   * The packages a run had before its envelope was amended, oldest first, each with the envelope the run's
+   * workflow had in it (spec/envelope.md "Amendments"). The interpreter derives what belongs to a command the
+   * journal holds under the package that command was recorded under.
+   */
+  private async earlier(run: RunRow): Promise<Epoch[]> {
+    const out: Epoch[] = [];
+    for (const a of await this.journal.amendments(run.run_id)) {
+      const wf = (await this.packaged(a.from)).program.defs[run.workflow];
+      out.push({ hash: a.from, ...(wf?.kind === "workflow" && wf.envelope ? { envelope: wf.envelope } : {}) });
+    }
+    return out;
+  }
+
+  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[]): Interpreter {
     const wf = Object.hasOwn(loaded.program.defs, run.workflow) ? loaded.program.defs[run.workflow] : undefined;
     return new Interpreter({
       journal: this.journal,
       adapters,
       program: loaded.program,
-      plan: { parent: loaded.source, modules: loaded.modules, checker: this.checker, checkMs: this.checkMs, startedAt },
+      plan: { parent: loaded.source, modules: loaded.modules, lock: loaded.lock, checker: this.checker, checkMs: this.checkMs, startedAt },
+      ...(earlier.length ? { earlier } : {}),
       decisions: { keys: this.decisionKeys, lock: loaded.lock, required: loaded.signed },
       ...(wf?.kind === "workflow" && wf.envelope ? { envelope: wf.envelope } : {}),
       packageHash: run.package_hash,
@@ -746,7 +661,7 @@ export class Runtime {
     const w = run.waiting;
     const commandId = run.state === "waiting" && isObj(w) && typeof w["command"] === "string" ? w["command"] : undefined;
     const [row] = commandId === undefined ? [] : await this.db.query<Row>("select kind, state, result, request_digest from commands where run_id = $1 and command_id = $2", [runId, commandId]);
-    if (!row || row["state"] !== "waiting" || (row["kind"] !== "input" && row["kind"] !== "decision")) throw new Violation("no_wait", `Run ${runId} is not waiting for a person.`);
+    if (!row || row["state"] !== "waiting" || (row["kind"] !== "input" && row["kind"] !== "decision" && row["kind"] !== "amendment")) throw new Violation("no_wait", `Run ${runId} is not waiting for a person.`);
     return shownBy(run, commandId!, row);
   }
 
@@ -848,6 +763,58 @@ export class Runtime {
   }
 
   /**
+   * The owner's decision on an amendment a lead asked for (spec/envelope.md "Amendments", N04): a signed decision
+   * of kind `amend`, or `decline`, that names the amendment's wait and, as its subject, the hash of the package
+   * with the new envelope. It is made in the `owner` role of the envelope the run has now.
+   *
+   * An approval moves the run to the new package in the transaction that takes it (INV-02 as 0.4 refines it): the
+   * run's package hash changes, its limits rise to the new envelope's budget, and `package_amended` records both
+   * hashes, the diff and the decision. Nothing else carries over. A decision or an authorization names the package
+   * it was made for, so one made for the old package answers nothing of the new one. On a decline, or past the
+   * wait's deadline, the run's package stays as it was, and the lead is told.
+   */
+  async decideAmendment(runId: string, msg: Message, signed: SignedDecision): Promise<RunRow> {
+    const at = named(signed);
+    const approve = kindOf(signed) === "amend";
+    // The package the wait asks for is read before the transaction: an in-process database has one connection.
+    const [row] = await this.db.query<Row>("select result from commands where run_id = $1 and command_id = $2 and kind = 'amendment'", [runId, at.commandId]);
+    const asked = isObj((row?.["result"] ?? null) as Value) ? (row!["result"] as Obj) : {};
+    const to = typeof asked["package"] === "string" ? asked["package"] : undefined;
+    const next = approve && to !== undefined ? await this.packaged(to) : undefined;
+    const prev = next && typeof asked["from"] === "string" ? await this.packaged(asked["from"]) : undefined;
+    const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, "amendment", { signed } as unknown as Value, { signed, kinds: ["amend", "decline"] }, async (tx, request, run, who) => {
+      const r = isObj(request) ? request : {};
+      const deadline = r["deadline"];
+      if (typeof deadline === "number" && this.adapters.clock.now() >= deadline) return { state: "failed", error: { tag: "Rejected", args: ["approval_expired"] } };
+      if (!approve) return { state: "succeeded", result: { approved: false, by: who.by, ...who.signed } };
+      const wf = next?.program.defs[run.workflow];
+      // An amendment is asked of the package the run has: one asked of an earlier package ended when that one was amended.
+      if (to === undefined || r["package"] !== to || r["from"] !== run.package_hash || wf?.kind !== "workflow" || !wf.envelope) {
+        throw new Violation("stale_amendment", `The amendment at ${at.commandId} was asked of package ${String(r["from"])}, and run ${runId} is under ${run.package_hash}.`);
+      }
+      // A limit rises in the dimensions the amendment raises, to what the new envelope gives. In any other the run
+      // keeps the limit it has, also one its caller set below the envelope: that is a raise's to lift, not this.
+      const was = prev?.program.defs[run.workflow];
+      const before = costDims(was?.kind === "workflow" ? was.envelope?.budget : undefined);
+      const limits = Object.fromEntries(Object.entries(costDims(wf.envelope.budget)).filter(([dim, amount]) => amount > (before[dim] ?? amount)));
+      const moved = await this.journal.amendRun(tx, runId, at.commandId, to, limits);
+      await this.journal.event(tx, runId, "package_amended", {
+        from: run.package_hash,
+        to,
+        diff: r["diff"] ?? null,
+        plan: r["plan"] ?? null,
+        command: at.commandId,
+        limits: { from: moved.limits, to: Object.fromEntries(Object.keys(moved.limits).map((dim) => [dim, limits[dim]!])) },
+        superseded: moved.superseded,
+        by: who.by,
+        ...who.signed,
+      });
+      return { state: "succeeded", result: { approved: true, package: to, by: who.by, ...who.signed } };
+    });
+    return fresh ? this.drive(runId) : this.journal.run(runId);
+  }
+
+  /**
    * Raises a run's limits after `budget_exceeded` (§8.6). This is a
    * governance change (§13.2): a person makes it, it is recorded with who
    * made it, and it can only raise a limit, never lower one. It stops at the
@@ -901,7 +868,8 @@ export class Runtime {
     const deadline = isObj(req) ? req["deadline"] : null;
     if (typeof deadline !== "number" || this.adapters.clock.now() < deadline) return run;
     if (w["kind"] === "timer") return this.drive(runId);
-    if (w["kind"] !== "decision") return run;
+    // A decision expires, and so does an amendment nobody answered: the lead is told, and the envelope stays.
+    if (w["kind"] !== "decision" && w["kind"] !== "amendment") return run;
     await this.db.tx(async (tx) => {
       await this.journal.lock(tx, runId);
       await tx.query("update commands set state = 'failed', error = $3 where run_id = $1 and command_id = $2 and state = 'waiting'", [
@@ -919,7 +887,7 @@ export class Runtime {
     msg: Message,
     commandId: string,
     revision: number,
-    kind: "input" | "decision",
+    kind: "input" | "decision" | "amendment",
     payload: Value,
     from: { signed: SignedDecision | undefined; by?: string; kinds: DecisionKind[]; payload?: string },
     resolve: (tx: Tx, request: Value, run: RunRow, who: Decider) => Promise<{ state: "succeeded"; result: Value } | { state: "failed"; error: Value }>,
@@ -1102,7 +1070,7 @@ export class Runtime {
   /** Rebuilds the run from its journal without calling any adapter (INV-09, R13). */
   async replayRun(runId: string, adapters: Adapters = refusingAdapters(this.adapters)): Promise<ReplayResult> {
     const run = await this.journal.run(runId);
-    const interp = this.interpreter(run, await this.loaded(run.package_hash), run.fence, true, adapters, await this.journal.startedAt(runId));
+    const interp = this.interpreter(run, await this.loaded(run.package_hash), run.fence, true, adapters, await this.journal.startedAt(runId), await this.earlier(run));
     try {
       return { status: "complete", value: await interp.runWorkflow(run.workflow, run.input as Obj) };
     } catch (e) {
@@ -1122,8 +1090,10 @@ export class Runtime {
 /** What a waiting command shows to whoever decides on it: its digest and the role it asks (`Shown`). */
 function shownBy(run: RunRow, commandId: string, row: Row): Shown {
   const request = isObj((row["result"] ?? null) as Value) ? (row["result"] as Obj) : {};
-  // A decision wait shows the digest it is bound to; a question shows the digest of the question as recorded.
-  const subject = row["kind"] === "decision" ? String(request["subject_digest"] ?? request["action_digest"] ?? "") : String(row["request_digest"]);
+  // A decision wait shows the digest it is bound to; an amendment's, the hash of the package it asks for; a question
+  // shows the digest of the question as recorded.
+  const subject =
+    row["kind"] === "decision" ? String(request["subject_digest"] ?? request["action_digest"] ?? "") : row["kind"] === "amendment" ? String(request["package"] ?? "") : String(row["request_digest"]);
   const role = typeof request["role"] === "string" && request["role"] !== "" ? request["role"] : undefined;
   return { package: run.package_hash, run: run.run_id, revision: run.revision, command: commandId, subject, ...(role !== undefined ? { role } : {}) };
 }

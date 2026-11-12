@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { check, type Modules } from "@mandate/compiler";
 import { build } from "esbuild";
 import { expect } from "vitest";
@@ -18,7 +18,8 @@ const here = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
 /**
  * The checker of a lead's sub-programs, as the runtime uses it: the compiler in a worker thread. A worker thread
  * runs JavaScript, so its entry point is bundled first, once for a test file; `entry` names another worker, for a
- * test of a check that never ends.
+ * test of a check that never ends. The compiler reads its schemas from beside its own files, so each of its files
+ * keeps its own address in the bundle.
  */
 export async function planChecker(entry = "../src/plan-worker.ts", maxMb?: number): Promise<WorkerChecker> {
   const out = here("./.build");
@@ -33,6 +34,14 @@ export async function planChecker(entry = "../src/plan-worker.ts", maxMb?: numbe
     target: "node22",
     alias: { "@mandate/compiler": here("../../compiler/src/index.ts") },
     external: ["ajv", "ajv/*", "ajv-formats"],
+    plugins: [
+      {
+        name: "own-address",
+        setup(b) {
+          b.onLoad({ filter: /[\\/]compiler[\\/]src[\\/].*\.ts$/ }, (a) => ({ contents: readFileSync(a.path, "utf8").replaceAll("import.meta.url", JSON.stringify(pathToFileURL(a.path).href)), loader: "ts" }));
+        },
+      },
+    ],
     logLevel: "error",
   });
   return new WorkerChecker(outfile, maxMb);
