@@ -30,14 +30,37 @@ own input files (`program.mdt` or `program.ir.json`, module files,
 - `lock`: optional path to a lock file, or `null`.
 - `patch`: optional RFC 6902 patch, only `add`, `replace` and `remove`. It is
   applied to the IR of the input, and the patched IR is checked as JSON IR. No
-  base hash is involved. Use it to say "this program, with this change" without
-  copying the program. The unpatched input must load without errors.
+  base hash is involved, unless the case gives `base`. Use it to say "this
+  program, with this change" without copying the program. The unpatched input
+  must load without errors.
+- `base`: optional, only with `patch`: `sha256:` and 64 lower-case hex digits.
+  The program hash the patch was written against; see below.
 - `subprogram`: optional; see below. A case with it has no top-level `patch`
   or `lock`.
 - `amendment`: optional; see below. A case with it has no top-level `patch`
   or `lock`, and no `subprogram`.
 - `expect`: `{ "ok": boolean, "diagnostics": [ { "code", "path", "facts"? } ],
   "hashes"?: { "program"?, "defs"? } }`.
+
+## A patch against a base
+
+A patch is written against one version of a program, named by its program hash
+(spec/ir.md "Patches"; the compiler's `mandate.apply_patch`). A `compile` case
+with `base` says which version the patch of the case was written against, and
+the patch is applied the way `apply_patch` applies it:
+
+- If `base` is not the program hash of the input's IR (before the patch), the
+  patch is stale: the result is exactly one diagnostic, `MDT-E0130` at path `""`,
+  with the facts `base` (the case's) and `current` (the input's hash). Nothing
+  else is checked.
+- If an operation cannot be applied (a missing member, an index out of range),
+  the result is one `MDT-E0131` at that operation's path, with the fact `index`,
+  the operation's place in the patch.
+- Otherwise the patched IR is checked as JSON IR, as in a case without `base`,
+  and `expect.hashes`, when given, are the hashes of the patched program.
+
+`base` needs `patch`, and so excludes `subprogram` and `amendment`, which have
+a base of their own.
 
 ## A sub-program case
 
@@ -98,7 +121,8 @@ repository. A path may go up into the repository to share a fixture, as V03 does
 - `ok` must match.
 - The compiler's diagnostics and `expect.diagnostics` are compared in order, one
   to one: same count, and for each pair the same `code` and the same `path` (the
-  diagnostic's `at.path`).
+  diagnostic's `at.path`). A diagnostic that has no path, such as a text
+  reader's error that has only a position, is at the path `""`.
 - `facts`, when a case gives them, are a subset: every key the case names must
   be deeply equal in the diagnostic. Extra keys in the diagnostic are allowed.
 - `message` and `span` are never compared. Messages may change, and columns
