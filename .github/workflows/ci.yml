@@ -82,6 +82,18 @@ jobs:
         if: ${{ !cancelled() }}
         working-directory: runtime
         run: node test/spike/mxc-proxy-spike.mjs
+      - name: Spike, not for merge, what the SDK says when a prerequisite is missing
+        if: ${{ !cancelled() }}
+        working-directory: runtime
+        run: |
+          sudo apt-get remove -y -qq slirp4netns
+          SPIKE_VARIANT=no-slirp4netns node test/spike/mxc-proxy-spike.mjs
+          sudo apt-get install -y -qq slirp4netns
+          sudo apt-get remove -y -qq iptables
+          SPIKE_VARIANT=no-iptables node test/spike/mxc-proxy-spike.mjs
+          sudo apt-get install -y -qq iptables
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
+          SPIKE_VARIANT=apparmor-userns-restricted node test/spike/mxc-proxy-spike.mjs
 
   sandbox-windows:
     runs-on: windows-latest

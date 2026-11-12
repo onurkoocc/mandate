@@ -20,6 +20,8 @@ import { dirname, join } from "node:path";
 
 // SPIKE_DRYRUN=1 swaps the SDK for a fake that runs commands unsandboxed on this machine, to test the script itself.
 const DRYRUN = process.env.SPIKE_DRYRUN === "1";
+// SPIKE_VARIANT=<label> runs only the cheap part (platform support, one proxied sandbox, no sweep), for hosts set up on purpose with something missing.
+const VARIANT = process.env.SPIKE_VARIANT;
 const log = (...a) => console.log("[spike]", ...a);
 const result = {};
 const details = {};
@@ -237,7 +239,9 @@ async function main() {
   const probeCmd = (proxy, tag, mode, other = 0) => ["bash", probePath, tag, mode, proxy.port, decoyLoop.port, nlip, decoyAny.port, process.execPath, other].map(q).join(" ");
 
   // -- 1. a proxied sandbox, full probe
-  const req1 = request(proxyA, probeCmd(proxyA, "single", "full"));
+  if (VARIANT) result.variant = VARIANT;
+  const decoyHitsBefore = { loopback: decoyLoop.hits.length, any: decoyAny.hits.length };
+  const req1 = request(proxyA, probeCmd(proxyA, "single", VARIANT ? "short" : "full"));
   console.log(`REQUEST (proxied sandbox): ${JSON.stringify(req1)}`);
   const first = await run(sdk, req1);
   log(`proxied sandbox: ${first.spawnError ? `spawn failed: ${first.spawnError}` : `exit ${first.exitCode}${first.timedOut ? " (timed out)" : ""} in ${first.ms} ms`}`);
@@ -260,7 +264,7 @@ async function main() {
     result.proxy_get_raw = v("proxy_get_raw");
     result.proxy_get_curl = v("proxy_get_curl");
     result.proxy_logged_request = proxyLogged;
-    result.proxy_connect_403 = /refused-403/.test(probes.proxy_connect ?? "") ? "reached-proxy-refused-403" : `error: ${probes.proxy_connect ?? "no probe"}`;
+    result.proxy_connect_403 = /refused-403|response 403/.test(probes.proxy_connect ?? "") ? "reached-proxy-refused-403" : `error: ${probes.proxy_connect ?? "no probe"}`;
     result.noproxy_hostname = v("noproxy_hostname");
     result.decoy_loopback_own = v("decoy_loopback_own");
     result.decoy_loopback_gateway = v("decoy_loopback_gateway");
@@ -276,13 +280,14 @@ async function main() {
     result.dns_getent = v("dns_getent");
     result.dns_node = v("dns_node");
     result.external_https_curl_noproxy = v("external_https_curl_noproxy");
-    result.decoy_hits = { loopback: decoyLoop.hits.length, any: decoyAny.hits.length };
+    result.decoy_hits_from_sandbox = { loopback: decoyLoop.hits.length - decoyHitsBefore.loopback, any: decoyAny.hits.length - decoyHitsBefore.any };
+    result.extra = Object.fromEntries(Object.entries(probes).filter(([k]) => k.startsWith("x_")));
     result.proxyA_connection_sources = proxyA.connections;
     result.proxyA_requests = proxyA.requests;
   }
 
   // -- 2. two sandboxes at once, each with its own proxy
-  if (ran) {
+  if (ran && !VARIANT) {
     proxyA.requests.length = 0;
     proxyB.requests.length = 0;
     const [ra, rb] = await Promise.all([
@@ -313,7 +318,7 @@ async function main() {
       errors: [ra.spawnError ?? ra.waitError, rb.spawnError ?? rb.waitError].filter(Boolean),
     };
   } else {
-    result.two_sandboxes = "skipped: the first proxied sandbox did not run";
+    result.two_sandboxes = VARIANT ? "skipped: variant run" : "skipped: the first proxied sandbox did not run";
   }
 
   // -- 3. creation overhead: `true` with and without a proxy
@@ -325,6 +330,7 @@ async function main() {
     }
     return ms;
   };
+  if (VARIANT) return;
   const noNet = await timeIt(undefined);
   const proxied = await timeIt(proxyA);
   result.timing_ms = { no_network: noNet, proxied };

@@ -76,6 +76,61 @@ if [ "$MODE" = full ]; then
     C=$(timeout 9 curl -sS --max-time 6 --noproxy '*' -o /dev/null -w '%{http_code}' https://example.com/ 2>&1); rc=$?
     say "external_https_curl_noproxy $( [ $rc -eq 0 ] && echo "reached $C" || echo "blocked rc=$rc ${C//$'\n'/ }")"
   fi
+
+  # f. other routes a process might try: privileges, tampering, UDP, ICMP, unix sockets, other ports on the host's loopback
+  say "x_caps $(grep -E '^Cap(Eff|Prm|Bnd)' /proc/self/status 2>&1 | tr '\n\t' '; ')"
+  say "x_iptables_list $(timeout 5 iptables -S 2>&1 | head -12 | tr '\n' ';')"
+  say "x_ip6tables_list $(timeout 5 ip6tables -S 2>&1 | head -8 | tr '\n' ';')"
+  say "x_tamper_iptables $(timeout 5 iptables -P OUTPUT ACCEPT 2>&1 | head -1) rc=$?; $(timeout 5 iptables -F OUTPUT 2>&1 | head -1)"
+  say "x_tamper_route $(timeout 5 ip route replace default via 10.0.2.2 dev tap0 2>&1 | head -1)"
+  say "x_tamper_ifdown $(timeout 5 ip link set lo down 2>&1 | head -1)"
+  say "x_after_tamper_external_tcp_1_1_1_1_443 $(tcp 1.1.1.1 443)"
+  say "x_after_tamper_gateway_decoy $(tcp 10.0.2.2 $DL)"
+  say "x_ping_gateway $(timeout 5 ping -c1 -W2 10.0.2.2 2>&1 | tail -2 | tr '\n' ';')"
+  say "x_ping_external $(timeout 5 ping -c1 -W2 1.1.1.1 2>&1 | tail -2 | tr '\n' ';')"
+  say "x_unix_sockets $(ls -ld /var/run/docker.sock /run/docker.sock /run/systemd/resolve /run/systemd/resolve/io.systemd.Resolve /run/dbus/system_bus_socket 2>&1 | tr '\n' ';')"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$DL" "$PPORT" "$NLIP" "$DA" <<'PY' 2>&1 | sed 's/^/PROBE /'
+import socket, struct, sys, threading, time
+dl, pport, nlip, da = sys.argv[1:5]
+def dns(server):
+    q = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00" + b"\x07example\x03com\x00\x00\x01\x00\x01"
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.settimeout(2.5)
+    try:
+        s.sendto(q, (server, 53)); d, _ = s.recvfrom(512)
+        return "reached (%d bytes back)" % len(d)
+    except Exception as e:
+        return "blocked %s" % type(e).__name__
+    finally:
+        s.close()
+for srv in ("10.0.2.3", "1.1.1.1", "8.8.8.8", "10.0.2.2"):
+    print("x_udp_dns_%s %s" % (srv.replace(".", "_"), dns(srv)))
+def unix(path):
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(2)
+    try:
+        s.connect(path); return "reached"
+    except Exception as e:
+        return "blocked %s" % type(e).__name__
+    finally:
+        s.close()
+for p in ("/var/run/docker.sock", "/run/systemd/resolve/io.systemd.Resolve", "/run/dbus/system_bus_socket", "/run/systemd/private"):
+    print("x_unix_%s %s" % (p.strip("/").replace("/", "_"), unix(p)))
+res = {}
+def probe(host, port):
+    s = socket.socket(); s.settimeout(1.5)
+    try:
+        s.connect((host, port)); res[(host, port)] = "reached"
+    except Exception as e:
+        res[(host, port)] = "blocked"
+    finally:
+        s.close()
+targets = [("10.0.2.2", p) for p in (22, 53, 80, 443, 3000, 5432, 8080, 8888, 9999, int(pport) - 1, int(pport) + 1)]
+targets += [("10.0.2.3", 80), ("10.0.2.4", 80), ("10.0.2.15", 80), (nlip, 22), (nlip, 80), (nlip, int(pport)), ("169.254.169.254", 80), ("168.63.129.16", 80)]
+ts = [threading.Thread(target=probe, args=t) for t in targets]
+[t.start() for t in ts]; [t.join() for t in ts]
+print("x_port_sweep reached=%s blocked=%d" % ([f"{h}:{p}" for (h, p), v in res.items() if v == "reached"], sum(1 for v in res.values() if v == "blocked")))
+PY
+  fi
 fi
 if [ "$MODE" = hold ]; then sleep 3; fi
 exit 0
