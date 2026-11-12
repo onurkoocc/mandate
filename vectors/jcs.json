@@ -1,0 +1,85 @@
+{
+  "format": "mandate/vectors/jcs/0.1",
+  "vectors": [
+    {
+      "name": "RFC 8785 \u00a73.2.3: members sorted by UTF-16 code units",
+      "input": "{\"\u20ac\":1,\"\\r\":2,\"\u05d3\u05bc\":3,\"1\":4,\"\ud83d\ude00\":5,\"\\u0080\":6,\"\u00f6\":7}",
+      "canonical": "{\"\\r\":2,\"1\":4,\"\u0080\":6,\"\u00f6\":7,\"\u05d3\u05bc\":3,\"\u20ac\":1,\"\ud83d\ude00\":5}"
+    },
+    {
+      "name": "UTF-16 order differs from code point and UTF-8 byte order",
+      "input": "{\"\\uffff\":1,\"\\ue000\":2,\"\ud83d\ude00\":3,\"\\u00e9\":4,\"z\":5}",
+      "canonical": "{\"z\":5,\"\u00e9\":4,\"\ud83d\ude00\":3,\"\ue000\":2,\"\uffff\":1}"
+    },
+    {
+      "name": "a character outside the BMP sorts before U+E000 to U+FFFF",
+      "input": "{\"\\uff61\":1,\"\ud834\udd1e\":2,\"\\ue000\":3,\"\\ud7ff\":4}",
+      "canonical": "{\"\ud7ff\":4,\"\ud834\udd1e\":2,\"\ue000\":3,\"\uff61\":1}"
+    },
+    {
+      "name": "a prefix sorts first, the empty name before all",
+      "input": "{\"ab\":1,\"b\":2,\"a\":3,\"\":4}",
+      "canonical": "{\"\":4,\"a\":3,\"ab\":1,\"b\":2}"
+    },
+    {
+      "name": "upper case sorts before lower case",
+      "input": "{\"a\":1,\"B\":2,\"A\":3,\"b\":4}",
+      "canonical": "{\"A\":3,\"B\":2,\"a\":1,\"b\":4}"
+    },
+    {
+      "name": "integer-like names sort as strings",
+      "input": "{\"10\":1,\"9\":2,\"a\":3,\"1\":4}",
+      "canonical": "{\"1\":4,\"10\":1,\"9\":2,\"a\":3}"
+    },
+    {
+      "name": "no Unicode normalisation",
+      "input": "{\"\u00e9\":1,\"e\\u0301\":2}",
+      "canonical": "{\"e\u0301\":2,\"\u00e9\":1}"
+    },
+    {
+      "name": "members sorted at every depth, arrays kept in order",
+      "input": "{\"z\":[{\"b\":1,\"a\":2},[3,{\"d\":4,\"c\":5}]],\"y\":{\"y\":{\"b\":0,\"a\":0}}}",
+      "canonical": "{\"y\":{\"y\":{\"a\":0,\"b\":0}},\"z\":[{\"a\":2,\"b\":1},[3,{\"c\":5,\"d\":4}]]}"
+    },
+    {
+      "name": "every control character",
+      "input": "\"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f\"",
+      "canonical": "\"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f\""
+    },
+    {
+      "name": "quote, backslash and solidus",
+      "input": "\"\\\"\\\\\\/\"",
+      "canonical": "\"\\\"\\\\/\""
+    },
+    {
+      "name": "U+007F, U+2028 and U+2029 are written as themselves",
+      "input": "\"\\u007f\\u2028\\u2029\"",
+      "canonical": "\"\u007f\u2028\u2029\""
+    },
+    {
+      "name": "escapes of other characters are written as the characters",
+      "input": "\"\\u0041\\u00e9\\u20ac\\ud83d\\ude00\\uFFFF\"",
+      "canonical": "\"A\u00e9\u20ac\ud83d\ude00\uffff\""
+    },
+    {
+      "name": "control characters in a member name",
+      "input": "{\"\\u0001\\n\":1,\"\\t\":2}",
+      "canonical": "{\"\\u0001\\n\":1,\"\\t\":2}"
+    },
+    {
+      "name": "integers at the bounds and zero",
+      "input": "[9007199254740991,-9007199254740991,0,-1,10,100]",
+      "canonical": "[9007199254740991,-9007199254740991,0,-1,10,100]"
+    },
+    {
+      "name": "whitespace is removed",
+      "input": " {\n \"a\" : [ 1 , true , null ] ,\r\n \"b\" : { } }\t",
+      "canonical": "{\"a\":[1,true,null],\"b\":{}}"
+    },
+    {
+      "name": "scalars",
+      "input": "[null,true,false,\"\",[],{}]",
+      "canonical": "[null,true,false,\"\",[],{}]"
+    }
+  ]
+}

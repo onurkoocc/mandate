@@ -111,3 +111,18 @@ jobs:
         env:
           MANDATE_MXC: "1"
         run: npx vitest run test/mxc-windows.test.ts test/workspace.test.ts
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # rustup is on the runner; with no argument it installs the toolchain
+      # rust-toolchain.toml pins, with rustfmt and clippy.
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Rust tests, against the vectors the TypeScript compiler writes
+        run: cargo test --locked

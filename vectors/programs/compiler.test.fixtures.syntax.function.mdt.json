@@ -1,0 +1,97 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "compiler/test/fixtures/syntax/function.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.1",
+  "canonical": "{\"defs\":{\"summarize_log\":{\"body\":[{\"op\":\"expr\",\"value\":{\"from\":{\"op\":\"prompt\",\"parts\":[{\"text\":\"\\n    Summarize the failures in the test output below.\\n    \"},{\"expr\":{\"args\":[{\"value\":{\"name\":\"log\",\"op\":\"var\"}}],\"callee\":{\"name\":\"quote\",\"op\":\"var\"},\"op\":\"call\"}},{\"text\":\"\\n  \"}]},\"op\":\"infer\",\"type\":{\"ref\":\"LogSummary\"}}}],\"budget\":{\"tokens\":30000},\"effects\":[{\"effect\":\"Model\"}],\"kind\":\"fn\",\"params\":[{\"name\":\"log\",\"type\":{\"ref\":\"Text\"}}],\"returns\":{\"args\":[{\"ref\":\"LogSummary\"}],\"ref\":\"Inferred\"}}},\"language\":\"mandate/0.1\",\"module\":\"company.devflow\",\"uses\":[{\"module\":\"company.domain\",\"names\":[\"LogSummary\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:1eb6c237b5c6b97f8c3026c9c08b127fa9ab17878802d2a8cf9c02ad9e2bdb30",
+    "defs": [
+      [
+        "summarize_log",
+        "sha256:e35a3e8f879450530f16d5dbc9c66934857bca800bffaaaab2f2220a7f3d3c54"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.1",
+    "module": "company.devflow",
+    "version": "0.1",
+    "defs": {
+      "summarize_log": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "log",
+            "type": {
+              "ref": "Text"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Inferred",
+          "args": [
+            {
+              "ref": "LogSummary"
+            }
+          ]
+        },
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "infer",
+              "type": {
+                "ref": "LogSummary"
+              },
+              "from": {
+                "op": "prompt",
+                "parts": [
+                  {
+                    "text": "\n    Summarize the failures in the test output below.\n    "
+                  },
+                  {
+                    "expr": {
+                      "op": "call",
+                      "callee": {
+                        "op": "var",
+                        "name": "quote"
+                      },
+                      "args": [
+                        {
+                          "value": {
+                            "op": "var",
+                            "name": "log"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "text": "\n  "
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "effects": [
+          {
+            "effect": "Model"
+          }
+        ],
+        "budget": {
+          "tokens": 30000
+        }
+      }
+    },
+    "uses": [
+      {
+        "module": "company.domain",
+        "names": [
+          "LogSummary"
+        ]
+      }
+    ]
+  }
+}

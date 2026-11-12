@@ -1,0 +1,437 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "compiler/test/fixtures/syntax/decision.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.1",
+  "canonical": "{\"defs\":{\"HandleRequest\":{\"body\":[{\"name\":\"d\",\"op\":\"let\",\"value\":{\"args\":[{\"value\":{\"name\":\"req\",\"op\":\"var\"}}],\"callee\":{\"name\":\"classify\",\"op\":\"var\"},\"op\":\"call\"}},{\"op\":\"expr\",\"value\":{\"cases\":[{\"pattern\":{\"args\":[{\"p\":\"tag\",\"tag\":\"Complaint\"}],\"p\":\"tag\",\"tag\":\"Confident\"},\"then\":{\"agent\":\"Support\",\"args\":[{\"value\":{\"name\":\"req\",\"op\":\"var\"}}],\"op\":\"delegate\",\"skill\":\"handle\"}},{\"pattern\":{\"args\":[{\"p\":\"wild\"}],\"p\":\"tag\",\"tag\":\"Confident\"},\"then\":{\"agent\":\"Support\",\"args\":[{\"value\":{\"name\":\"req\",\"op\":\"var\"}}],\"op\":\"delegate\",\"skill\":\"handle\"}},{\"pattern\":{\"p\":\"tag\",\"tag\":\"Uncertain\"},\"then\":{\"op\":\"escalate\",\"to\":{\"args\":[{\"value\":{\"op\":\"template\",\"parts\":[{\"text\":\"Request type is unclear: \"},{\"expr\":{\"name\":\"distribution\",\"of\":{\"name\":\"d\",\"op\":\"var\"},\"op\":\"field\"}}]}}],\"callee\":{\"name\":\"human\",\"op\":\"var\"},\"op\":\"call\"}}}],\"on\":{\"args\":[{\"value\":{\"name\":\"d\",\"op\":\"var\"}},{\"name\":\"min_confidence\",\"value\":{\"op\":\"dec\",\"value\":\"0.85\"}}],\"callee\":{\"name\":\"threshold\",\"op\":\"var\"},\"op\":\"call\"},\"op\":\"switch\"}}],\"caps\":[{\"name\":\"ModelDecision\",\"op\":\"var\"}],\"kind\":\"workflow\",\"params\":[{\"name\":\"req\",\"type\":{\"args\":[{\"ref\":\"CustomerRequest\"}],\"ref\":\"Untrusted\"}}],\"returns\":{\"args\":[{\"ref\":\"Outcome\"}],\"ref\":\"Inferred\"}},\"ModelDecision\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"tier\",\"value\":{\"name\":\"decision\",\"op\":\"var\"}}],\"callee\":{\"name\":\"infer\",\"of\":{\"name\":\"model\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"RequestKind\":{\"kind\":\"type\",\"type\":{\"union\":[{\"tag\":\"Refund\"},{\"tag\":\"Complaint\"},{\"tag\":\"Question\"},{\"tag\":\"Other\"}]}},\"Support\":{\"budget\":{\"steps\":20},\"caps\":[{\"name\":\"ModelDecision\",\"op\":\"var\"}],\"kind\":\"agent\",\"skills\":{\"handle\":{\"effects\":[{\"effect\":\"Model\"}],\"params\":[{\"name\":\"req\",\"type\":{\"args\":[{\"ref\":\"CustomerRequest\"}],\"ref\":\"Untrusted\"}}],\"returns\":{\"args\":[{\"ref\":\"Outcome\"}],\"ref\":\"Inferred\"}}}},\"classify\":{\"body\":[{\"op\":\"expr\",\"value\":{\"from\":{\"args\":[{\"value\":{\"name\":\"req\",\"op\":\"var\"}}],\"callee\":{\"name\":\"quote\",\"op\":\"var\"},\"op\":\"call\"},\"op\":\"infer\",\"type\":{\"args\":[{\"ref\":\"RequestKind\"}],\"ref\":\"Choice\"},\"using\":{\"name\":\"triage\",\"op\":\"var\"}}}],\"budget\":{\"tokens\":8000},\"effects\":[{\"effect\":\"Model\"}],\"kind\":\"fn\",\"params\":[{\"name\":\"req\",\"type\":{\"args\":[{\"ref\":\"CustomerRequest\"}],\"ref\":\"Untrusted\"}}],\"returns\":{\"args\":[{\"args\":[{\"ref\":\"RequestKind\"}],\"ref\":\"Decision\"}],\"ref\":\"Inferred\"}},\"triage\":{\"kind\":\"const\",\"value\":{\"args\":[{\"name\":\"provider\",\"value\":{\"op\":\"text\",\"value\":\"typesafe/jev\"}},{\"name\":\"version\",\"value\":{\"op\":\"text\",\"value\":\"1.13\"}},{\"name\":\"eval\",\"value\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"sha256:51c0\"}}],\"callee\":{\"name\":\"evidence\",\"op\":\"var\"},\"op\":\"call\"}}],\"callee\":{\"name\":\"DecisionModel\",\"op\":\"var\"},\"op\":\"call\"}}},\"language\":\"mandate/0.1\",\"module\":\"company.support\",\"uses\":[{\"module\":\"company.domain\",\"names\":[\"CustomerRequest\",\"Outcome\"]},{\"module\":\"std\",\"names\":[\"human\",\"model\"]},{\"module\":\"std.decision\",\"names\":[\"Choice\",\"Confident\",\"DecisionModel\",\"Uncertain\",\"threshold\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:af92ac93c7f075e7bc861f5d287576b35e5f5acde81683b54aa6d1239ce57380",
+    "defs": [
+      [
+        "HandleRequest",
+        "sha256:cc7c525cbcfdb5bdc7d18b64b70ed6e2631e2fb930b310aac0b1f20a6c70682e"
+      ],
+      [
+        "ModelDecision",
+        "sha256:02f9976a0dc312e13a9ccee31c1e671682b75e724651cbc06ea2b30331a66554"
+      ],
+      [
+        "RequestKind",
+        "sha256:08dd1a61706713efe780f3799deb836533d87ac7df2733e3f790ceaf971040c9"
+      ],
+      [
+        "Support",
+        "sha256:232bb60d4ff5b5571de40aeeeb6db583b48dfcbf2f8941a52bf6b41b2f525bb9"
+      ],
+      [
+        "classify",
+        "sha256:8d721f7e11d2f91d87bb5f749f384b803361669f3b7f4a5a8555da91538ebb22"
+      ],
+      [
+        "triage",
+        "sha256:d0b7b25df602fb1803530666b01a5ceb9dc3bca7955a550f24a198d7d2215e10"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.1",
+    "module": "company.support",
+    "version": "0.1",
+    "defs": {
+      "ModelDecision": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "model"
+            },
+            "name": "infer"
+          },
+          "args": [
+            {
+              "name": "tier",
+              "value": {
+                "op": "var",
+                "name": "decision"
+              }
+            }
+          ]
+        }
+      },
+      "triage": {
+        "kind": "const",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "var",
+            "name": "DecisionModel"
+          },
+          "args": [
+            {
+              "name": "provider",
+              "value": {
+                "op": "text",
+                "value": "typesafe/jev"
+              }
+            },
+            {
+              "name": "version",
+              "value": {
+                "op": "text",
+                "value": "1.13"
+              }
+            },
+            {
+              "name": "eval",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "var",
+                  "name": "evidence"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "sha256:51c0"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "RequestKind": {
+        "kind": "type",
+        "type": {
+          "union": [
+            {
+              "tag": "Refund"
+            },
+            {
+              "tag": "Complaint"
+            },
+            {
+              "tag": "Question"
+            },
+            {
+              "tag": "Other"
+            }
+          ]
+        }
+      },
+      "Support": {
+        "kind": "agent",
+        "caps": [
+          {
+            "op": "var",
+            "name": "ModelDecision"
+          }
+        ],
+        "skills": {
+          "handle": {
+            "params": [
+              {
+                "name": "req",
+                "type": {
+                  "ref": "Untrusted",
+                  "args": [
+                    {
+                      "ref": "CustomerRequest"
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "ref": "Inferred",
+              "args": [
+                {
+                  "ref": "Outcome"
+                }
+              ]
+            },
+            "effects": [
+              {
+                "effect": "Model"
+              }
+            ]
+          }
+        },
+        "budget": {
+          "steps": 20
+        }
+      },
+      "classify": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "req",
+            "type": {
+              "ref": "Untrusted",
+              "args": [
+                {
+                  "ref": "CustomerRequest"
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Inferred",
+          "args": [
+            {
+              "ref": "Decision",
+              "args": [
+                {
+                  "ref": "RequestKind"
+                }
+              ]
+            }
+          ]
+        },
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "infer",
+              "type": {
+                "ref": "Choice",
+                "args": [
+                  {
+                    "ref": "RequestKind"
+                  }
+                ]
+              },
+              "from": {
+                "op": "call",
+                "callee": {
+                  "op": "var",
+                  "name": "quote"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "var",
+                      "name": "req"
+                    }
+                  }
+                ]
+              },
+              "using": {
+                "op": "var",
+                "name": "triage"
+              }
+            }
+          }
+        ],
+        "effects": [
+          {
+            "effect": "Model"
+          }
+        ],
+        "budget": {
+          "tokens": 8000
+        }
+      },
+      "HandleRequest": {
+        "kind": "workflow",
+        "params": [
+          {
+            "name": "req",
+            "type": {
+              "ref": "Untrusted",
+              "args": [
+                {
+                  "ref": "CustomerRequest"
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Inferred",
+          "args": [
+            {
+              "ref": "Outcome"
+            }
+          ]
+        },
+        "caps": [
+          {
+            "op": "var",
+            "name": "ModelDecision"
+          }
+        ],
+        "body": [
+          {
+            "op": "let",
+            "name": "d",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "var",
+                "name": "classify"
+              },
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "req"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "expr",
+            "value": {
+              "op": "switch",
+              "on": {
+                "op": "call",
+                "callee": {
+                  "op": "var",
+                  "name": "threshold"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "var",
+                      "name": "d"
+                    }
+                  },
+                  {
+                    "name": "min_confidence",
+                    "value": {
+                      "op": "dec",
+                      "value": "0.85"
+                    }
+                  }
+                ]
+              },
+              "cases": [
+                {
+                  "pattern": {
+                    "p": "tag",
+                    "tag": "Confident",
+                    "args": [
+                      {
+                        "p": "tag",
+                        "tag": "Complaint"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "delegate",
+                    "agent": "Support",
+                    "skill": "handle",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "req"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "pattern": {
+                    "p": "tag",
+                    "tag": "Confident",
+                    "args": [
+                      {
+                        "p": "wild"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "delegate",
+                    "agent": "Support",
+                    "skill": "handle",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "req"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "pattern": {
+                    "p": "tag",
+                    "tag": "Uncertain"
+                  },
+                  "then": {
+                    "op": "escalate",
+                    "to": {
+                      "op": "call",
+                      "callee": {
+                        "op": "var",
+                        "name": "human"
+                      },
+                      "args": [
+                        {
+                          "value": {
+                            "op": "template",
+                            "parts": [
+                              {
+                                "text": "Request type is unclear: "
+                              },
+                              {
+                                "expr": {
+                                  "op": "field",
+                                  "of": {
+                                    "op": "var",
+                                    "name": "d"
+                                  },
+                                  "name": "distribution"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "uses": [
+      {
+        "module": "company.domain",
+        "names": [
+          "CustomerRequest",
+          "Outcome"
+        ]
+      },
+      {
+        "module": "std",
+        "names": [
+          "human",
+          "model"
+        ]
+      },
+      {
+        "module": "std.decision",
+        "names": [
+          "Choice",
+          "Confident",
+          "DecisionModel",
+          "Uncertain",
+          "threshold"
+        ]
+      }
+    ]
+  }
+}
