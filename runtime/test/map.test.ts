@@ -178,6 +178,7 @@ describe("map: the body once for each element", () => {
     expect(r.state, JSON.stringify(r.error ?? r.attention)).toBe("succeeded");
     expect(r.result).toEqual([]);
     expect(await events(w, "empty", "map_started")).toEqual([{ map: MAP, items: 0, par: 2 }]);
+    expect(await events(w, "empty", "map_ended")).toEqual([{ map: MAP, outcomes: [] }]);
   });
 
   it.each([
@@ -212,6 +213,8 @@ describe("map: the body once for each element", () => {
     expect(r.state, JSON.stringify(r.error ?? r.attention)).toBe("succeeded");
     expect(r.result).toEqual([ok("moved a"), failed("SkillFailed", "no luck"), ok("moved c")]);
     expect(w.agents.count()).toBe(3);
+    // How it ended is recorded for the run's views: each item's outcome by input index, `Ok` or its fault.
+    expect(await events(w, "r12", "map_ended")).toEqual([{ map: MAP, outcomes: ["Ok", "SkillFailed", "Ok"] }]);
   });
 
   it("lets the program tell an item that failed from one that did not", async () => {
@@ -257,6 +260,8 @@ describe("map under supervise fail_fast", () => {
       { command_id: item(0), state: "succeeded" },
       { command_id: item(1), state: "failed" },
     ]);
+    // The map is recorded as failed, with the fault that failed it. The items it did not start have no outcome.
+    expect(await events(w, "ff", "map_ended")).toEqual([{ map: MAP, outcomes: ["Ok", "SkillFailed", null, null], failed: "SkillFailed" }]);
   });
 
   it("fails with the fault of the first failed item in the list, not of the one that failed first", async () => {
@@ -464,6 +469,8 @@ describe("map and the run", () => {
     expect(stopped.state).toBe("waiting");
     expect(stopped.waiting).toMatchObject({ kind: "budget_exceeded", detail: { $tag: "BudgetExceeded", $args: [{ dimension: "tokens" }] } });
     expect(w.agents.calls.map(named)).toEqual(["a", "b"]);
+    // The run stopped inside the map: the map has not ended, and nothing says it has.
+    expect(await events(w, "budget", "map_ended")).toEqual([]);
 
     const sign = async (kind: "raise_limits" | "answer", about: "run" | "wait", payload: string) =>
       signDecision(w.carol, await w.rt.shown("budget", about), { kind, member: "carol", payload, at: new Date(w.adapters.clock.now()) });
@@ -474,6 +481,7 @@ describe("map and the run", () => {
     // The items that ran are not sent again, and the map started once.
     expect(w.agents.calls.map(named)).toEqual(["a", "b", "c"]);
     expect(await events(w, "budget", "map_started")).toHaveLength(1);
+    expect(await events(w, "budget", "map_ended")).toEqual([{ map: MAP, outcomes: ["Ok", "Ok", "Ok"] }]);
   });
 
   it("resumes after a crash without sending a finished item again", async () => {
@@ -488,6 +496,20 @@ describe("map and the run", () => {
     expect(await events(w, "crash", "map_started")).toEqual([{ map: MAP, items: 3, par: 1 }]);
   });
 
+  it("records how it ended once, also when a resumed run comes to the ended map again", async () => {
+    // A reader looks at one more repository after the map. The run crashes there, with the map's end recorded.
+    const body = `  let moved = map repo in repos max 3 ${BY_ROOT} {\n${MIGRATE}\n  let seen = delegate Reader.look(Repo { name: "z", root: "z", src: "z/src" })\n  moved`;
+    const agents = new SimAgents().on("Migrator.migrate", (req) => (named(req) === "b" ? noLuck() : done(req))).on("Reader.look", done);
+    const w = await approved(program({ body }), { agents });
+    w.faults.arm("after_record", (i) => i.id === "/defs/W/body/1/value");
+    await expect(run(w, "again", repos("a", "b", "c"))).rejects.toBeInstanceOf(Crash);
+    const ended = [{ map: MAP, outcomes: ["Ok", "SkillFailed", "Ok"] }];
+    expect(await events(w, "again", "map_ended")).toEqual(ended);
+    const r = await w.rt.resume("again");
+    expect(r.state, JSON.stringify(r.error ?? r.attention)).toBe("succeeded");
+    expect(await events(w, "again", "map_ended")).toEqual(ended);
+  });
+
   it("replays to the same result without calling an agent", async () => {
     const agents = new SimAgents().on("Migrator.migrate", (req) => (named(req) === "b" ? noLuck() : done(req)));
     const w = await approved(program({ body: mapped(`max 3 par 3 ${BY_ROOT}`) }), { agents });
@@ -496,8 +518,13 @@ describe("map and the run", () => {
     const before = w.agents.count();
     expect(await w.rt.replayRun("replay")).toEqual({ status: "complete", value: r.result });
     expect(w.agents.count()).toBe(before);
-    // A replay records nothing: the map started once.
+    // A replay records nothing: the map started once, and ended once.
     expect(await events(w, "replay", "map_started")).toHaveLength(1);
+    expect(await events(w, "replay", "map_ended")).toHaveLength(1);
+    // Also where the journal holds no end of the map: a replay does not write one.
+    await w.db.query("delete from events where run_id = $1 and type = 'map_ended'", ["replay"]);
+    expect(await w.rt.replayRun("replay")).toEqual({ status: "complete", value: r.result });
+    expect(await events(w, "replay", "map_ended")).toEqual([]);
   });
 
   it("stops with the items of a failed branch around it", async () => {
@@ -520,6 +547,8 @@ describe("map and the run", () => {
     expect(r.state).toBe("failed");
     expect(r.error).toEqual({ $tag: "SkillFailed", $args: ["no luck"] });
     expect(w.agents.count("Migrator.migrate")).toBe(1);
+    // The map was stopped, not ended: it has no outcomes to record.
+    expect(await events(w, "sibling", "map_ended")).toEqual([]);
   });
 });
 

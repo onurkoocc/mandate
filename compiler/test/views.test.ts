@@ -67,6 +67,88 @@ describe("the authority view (§15.2)", () => {
   });
 });
 
+// A scope the run chooses (0.4): `c.narrow(v)` over a value of the run. The view cannot know the scope. It shows
+// the capability that is narrowed, which is the most the grant can be, and says the scope is chosen at run time.
+describe("the authority view of a scope chosen at run time (spec/envelope.md \"map\")", () => {
+  const src = (body: string): string => `mandate @ 0.4
+
+module test.late @ 0.1
+
+use std.{fs, model}
+
+role platform_lead "Platform lead"
+
+type Repo = { name: Text, root: Path, src: Path }
+
+capability RepoRead = fs.read("/work/repos")
+capability SrcWrite = fs.write("/work/repos")
+capability AllWrite = fs.write("/work")
+capability ModelStd = model.infer(tier: standard)
+
+agent Migrator {
+  role   "Moves one repository."
+  caps   RepoRead, AllWrite, ModelStd
+  budget { tokens: 1k, steps: 5 }
+  skill migrate(repo: Repo) -> Inferred<Text> ! {Fs.Read, Fs.Write, Model}
+}
+
+agent Reader {
+  role   "Reads one repository."
+  caps   RepoRead, ModelStd
+  budget { tokens: 1k, steps: 5 }
+  skill look(repo: Repo) -> Inferred<Text> ! {Fs.Read, Model}
+}
+
+workflow W(repos: List<Repo>, one: Repo) -> Inferred<Text>
+  envelope {
+    owner   platform_lead
+    caps    RepoRead, AllWrite, ModelStd
+    budget  { tokens: 100k, steps: 400, agents: 40 }
+  }
+{
+${body}
+}
+`;
+  const BY_ITEM = "with caps SrcWrite.narrow(repo.root)";
+  const LITERAL = 'with caps SrcWrite.narrow("/work/repos/a")';
+  /** A map over the repositories with these options and this body, and a reader after it, which the workflow returns. */
+  const mapped = (options: string, inner: string): string => `  let all = map repo in repos max 3 ${options} {\n    ${inner}\n  }\n  delegate Reader.look(one)`;
+  /** The row of the first delegation in the workflow: who, what it may write, and what the view calls unbounded. */
+  const first = (body: string): unknown[] => {
+    const p = program(src(body));
+    const row = authority(p).rows.find((r) => r.kind === "delegation")!;
+    const node = architecture(p).workflows[0]!.nodes.find((n) => n.kind === "delegate")!;
+    return [row.who, row.write, row.unbounded, node.detail[0]];
+  };
+  const LATE = "W → Migrator.migrate (with caps, scope chosen at run time)";
+  const WHOLE = "read /work/repos · write /work/repos · model standard (up to internal)";
+  const ONE = "read /work/repos · write /work/repos/a · model standard (up to internal)";
+
+  it("shows a delegation's own narrowing by a value as the capability it narrows, never as unbounded", () => {
+    expect(first("  delegate Migrator.migrate(one) with caps SrcWrite.narrow(one.root)")).toEqual([LATE, ["/work/repos"], [], WHOLE]);
+    // A scope the program states is shown as it is, and nothing is said of the run.
+    expect(first(`  delegate Migrator.migrate(one) ${LITERAL}`)).toEqual(["W → Migrator.migrate (with caps)", ["/work/repos/a"], [], ONE]);
+  });
+
+  it("shows what a map hands by item as the capability it narrows: not as what the agent holds, which is wider", () => {
+    // The migrator holds /work. Each item hands it a place below /work/repos.
+    expect(first(mapped(BY_ITEM, "delegate Migrator.migrate(repo)"))).toEqual([LATE, ["/work/repos"], [], WHOLE]);
+    expect(first(mapped(LITERAL, "delegate Migrator.migrate(repo)"))).toEqual(["W → Migrator.migrate (with caps)", ["/work/repos/a"], [], ONE]);
+  });
+
+  it("says it only of a delegation whose grant has a kind the run narrows", () => {
+    // A reader holds no write scope, and is handed none.
+    expect(first(mapped(BY_ITEM, "delegate Reader.look(repo)")).slice(0, 3)).toEqual(["W → Reader.look (with caps)", [], []]);
+    // The delegation states its own scope of that kind: the map's is not what it gets.
+    expect(first(mapped(BY_ITEM, `delegate Migrator.migrate(repo) ${LITERAL}`))).toEqual(["W → Migrator.migrate (with caps)", ["/work/repos/a"], [], ONE]);
+    expect(first(mapped(BY_ITEM, "delegate Migrator.migrate(repo) with caps SrcWrite.narrow(repo.src)"))).toEqual([LATE, ["/work/repos"], [], WHOLE]);
+    // A map inside states the scope of that kind for its own items.
+    expect(first(mapped(BY_ITEM, `map r in repos max 3 ${LITERAL} {\n      delegate Migrator.migrate(r)\n    }`))).toEqual(["W → Migrator.migrate (with caps)", ["/work/repos/a"], [], ONE]);
+    // A map that hands another kind leaves the outer map's write scope to its items.
+    expect(first(mapped(BY_ITEM, "map r in repos max 3 with caps RepoRead {\n      delegate Migrator.migrate(r)\n    }"))).toEqual([LATE, ["/work/repos"], [], WHOLE]);
+  });
+});
+
 describe("the cost view", () => {
   it("adds up what FixBug hands out, with the lock's per-call bound", () => {
     const [w] = cost(fixbug, LOCK).workflows;

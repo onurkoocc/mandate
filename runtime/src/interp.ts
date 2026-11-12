@@ -664,6 +664,13 @@ export class Interpreter {
     };
     await Promise.all(Array.from({ length: Math.min(par, over.length) }, () => worker()));
 
+    // How the map ended, for the run's views: each item's outcome by index. It is written when the map has an end
+    // the journal decided, with all its outcomes or as failed, and not when something stopped the run inside it.
+    const ended = async (failed?: string): Promise<void> => {
+      if (this.o.replay) return;
+      const outcomes = ends.map((end) => (!end || "stop" in end ? null : "ok" in end ? "Ok" : end.fault.tag));
+      await this.o.journal.mapEnded(this.o.runId, this.o.fence, { map: path, outcomes, ...(failed !== undefined ? { failed } : {}) });
+    };
     const out: Value[] = [];
     for (const [i, end] of ends.entries()) {
       // Items start in input order, so one that never started comes after the one that stopped the map, which
@@ -673,10 +680,12 @@ export class Interpreter {
       if ("fault" in end && failFast) {
         // The map has failed: the items it did not start will not run, and hold nothing.
         for (let j = next; j < over.length; j++) this.shared.writes.delete(holder(j));
+        await ended(end.fault.tag);
         throw end.fault;
       }
       out.push("ok" in end ? tag("Ok", end.ok) : tag("Failed", end.fault.value()));
     }
+    await ended();
     return out;
   }
 

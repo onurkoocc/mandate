@@ -1,6 +1,6 @@
 // Canonical IR for Mandate 0.1 to 0.4 (Doc 4 §3.2; spec/envelope.md for 0.4).
 //
-// The IR is the source of truth in 0.1 (§3.3, v0.2 decision): the `.mdt` text
+// The IR is the source of truth (§3.3, v0.2 decision): the `.mdt` text
 // form is a projection that lowers into these shapes and is printed back from
 // them. The JSON Schema in spec/ir.schema.json is the closed, published form of
 // the same types; keep the two in step.

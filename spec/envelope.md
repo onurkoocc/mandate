@@ -1,8 +1,8 @@
 # Envelopes and signed decisions (0.4)
 
-**Status: being implemented.** The page specifies language version 0.4 so
-that the TypeScript implementation and, later, the Rust one are held to the
-same cases.
+**Status: implemented in the TypeScript implementation.** The page
+specifies language version 0.4 so that this implementation and, later, the
+Rust one are held to the same cases.
 
 | Part | State |
 |---|---|
@@ -14,7 +14,7 @@ same cases.
 | `map`: its rules (E1702, E1703, E1708, E0320 and E0501 at the map) and its run (R11, R12, N03, N08) | implemented |
 | `plan` and sub-programs: their rules (E1705, E1706) and their run, with the ledger under a sub-program, the bounded check and replay (N01, N02, N05, N06, N07, N09, N10) | implemented |
 | Amendments: `request_amendment`, E1709, the owner's signed decision, `mandate amend`, and what ran before the amendment (N04) | implemented |
-| Run views of 0.4: submissions, the envelope's remainder, map items, each decision's member, role and signature | not yet; `mandate status` lists each decision a run took and whether its signature holds |
+| Run views of 0.4: the envelope's remainder and amendments, submissions with each admitted sub-program's text, map items and their outcomes, each decision's member, role and signature | implemented |
 
 The runtime runs a 0.4 package that uses roles, signed decisions,
 envelopes, `map`, `plan` and amendments. It refuses one that has `agents`
@@ -582,7 +582,10 @@ In IR: `{ "op": "map", "bind": "x", "over": <expr>, "max": n, "par": k,
   `<map>[i]/body/…`. The list itself is a value of the workflow, so a
   replay sees the same items in the same order. `map_started` is written
   once for a map, after the checks above and before its first item, and
-  not again when the run is resumed.
+  not again when the run is resumed. `map_ended` is written once when the
+  map has ended, with each item's outcome by input index. A map that
+  something stopped has no end to record: a run-level `BudgetExceeded`, a
+  cancel, a failed sibling branch. A replay writes neither.
 - **A failed sibling.** A failed branch of a `par` around the map stops an
   item at its next command, like any other command of that branch, and
   the map starts no further item.
@@ -913,6 +916,7 @@ Existing checks extend to the new forms:
 |---|---|
 | `envelope_approved` | package, member, role, key, decision digest. Written to a run's log when it starts, naming the approval it starts under; the approval itself is stored with the package and listed in the run's manifest |
 | `map_started` | map node, number of items, `par` |
+| `map_ended` | map node; each item's outcome by input index, `Ok` or its fault's tag, and null for an item a failed map did not start or did not let end; under `fail_fast`, the fault that failed the map |
 | `program_submitted` | plan node, number, the step of the lead's loop, the lead (`Agent.skill`), base, patch digest, whether it checked; for one that did, its hash and the kinds of governance change in it |
 | `program_refused` | plan node, number, step, diagnostics digest, the codes of the errors |
 | `program_admitted` | plan node, number, step, the command it runs under, hash, base, where its IR is in the artifact store, its workflow, reservation |
@@ -992,11 +996,15 @@ would be None, and a program with an envelope needs both (INV-11).
   a person approved for the run. `mandate patch` reports it as
   `envelope_changed` and `mandate view --against` lists it under
   governance.
-- **Run views** add, per `plan`: each submission with its number, whether it
-  was admitted, its hash, its reservation against the envelope, and for a
-  refused one the codes; and the envelope's remainder per dimension. A
-  `map` shows its items by index with their outcome. Every decision shows
-  its member, role and whether its signature holds, or `unsigned`.
+- **Run views** (`mandate show`; [`views.md`](views.md#views-of-a-run))
+  add, per `plan`: each submission with its number, whether it was
+  admitted, its hash, its reservation against the envelope, and for a
+  refused one the codes; each admitted sub-program as text, shown as a
+  model's writing; and the amendments its lead asked for, with how each
+  ended. They add the envelope's remainder per dimension, the run's
+  deadline and the amendments its owner approved. A `map` shows its items
+  by index with their outcome. Every decision shows its member, role and
+  whether its signature holds, or `unsigned`.
 
 ## Invariants
 

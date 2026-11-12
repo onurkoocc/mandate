@@ -936,12 +936,6 @@ The same mechanisms are tested under Temporal against a local dev server:
 
 ## Not in this runtime yet
 
-- **Run views of 0.4.** `map`, `plan` and amendments run
-  ([`envelope.md`](envelope.md)): R11 by input index and R12 are tested in
-  `map.test.ts`, sub-programs in `plan.test.ts` and `ledger.test.ts`,
-  amendments in `amend.test.ts` and `cli-amend.test.ts`, and the migration
-  example in `demo.test.ts`. The run's views do not show submissions, map
-  items or the envelope's remainder yet.
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.
 
 ## Workspace and run manifest (design doc 9 §12, B3)

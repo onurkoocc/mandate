@@ -1,4 +1,4 @@
-// Public API of the Mandate 0.1 reference compiler.
+// Public API of the Mandate reference compiler, for language 0.1 to 0.4.
 export { check, checkPatch, load, loadModules, kindOf, type CheckOptions, type CheckResult, type LoadResult, type ModuleSource, type PatchCheck, type SourceKind } from "./check.js";
 export { checkSubprogram, subprogramLinked, type SubprogramCheck, type SubprogramInput } from "./check.js";
 export { checkAmendment, type AmendmentCheck, type AmendmentInput } from "./check.js";

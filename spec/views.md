@@ -37,6 +37,14 @@ It is given as a Mermaid flowchart and as a table.
   default;
 - any capability whose scope is not statically known.
 
+From 0.4 a delegation's `with caps`, or a map's, may narrow a capability
+by a value of the run (`c.narrow(v)`; [`envelope.md`](envelope.md), "map").
+The view cannot know that scope. It shows the capability that is narrowed:
+the scope must lie inside it (`outside_capability`), so it is the most the
+grant can be. The delegation's row says `scope chosen at run time`. Such a
+grant is not listed as a capability of unknown scope, and the architecture
+view shows the same grant.
+
 **Cost.** For every workflow:
 
 - its limit;
@@ -165,6 +173,58 @@ hashes:
 - **Cost:** limit, settled, reserved and available per dimension, and each
   command's reservation and cost.
 - **External actions:** state, operation and receipt.
+- **Decisions:** each decision a person made on the run, in the order the
+  run took them: its kind, who made it, the role, whether its signature
+  holds, the wait it answered and the record's digest.
+  - A signed record is read from the store and checked again when the
+    view is made (INV-16). One that was changed after it was signed, or
+    whose key the lock does not bind to its member and role, shows
+    `INVALID` with the reason. So does one the journal names and the store
+    no longer has; its kind then shows as `decision`. A decision is listed
+    where the first event that names it is, and a stored record that no
+    event names is listed last.
+  - A decision the runtime took in unsigned mode shows `unsigned`, with
+    the name the caller gave as untrusted text. An answer is given with no
+    name, and shows the sender of its message.
+  - Which way an unsigned decision went is read from the journal's events,
+    not from the wait's result, which retention may purge: the event that
+    names the same wait, or the authorization whose id names the message
+    that carried the approval. One that came after its wait's deadline
+    decided nothing and shows as `decision`: the journal does not say
+    which way it went.
+  - An unsigned reconciliation leaves no event, and is not listed.
+- **Envelope** (0.4), for a run of a workflow that has one:
+  - its owner, and the run's deadline: its start plus the envelope's
+    `time`;
+  - per dimension: what the envelope gives, the run's limit, and what is
+    settled, reserved and left. A dimension the caller limited and the
+    envelope does not name shows `no limit` for the envelope;
+  - each amendment its owner approved: the package before and after, who
+    approved it, and the limits it raised.
+- **Plans** (0.4), one section per `plan` node whose lead submitted or
+  asked for something:
+  - each submission in order: its number, whether it was admitted or
+    refused and with which codes, the sub-program's hash, what its
+    admission reserved of the envelope, the kinds of governance change in
+    it (§13.2), the command it runs as and that command's state. A refused
+    submission takes no number, so the next one has the same. One that did
+    not check has no hash. One the journal has neither admitted nor
+    refused yet shows as `submitted`;
+  - each admitted sub-program as text, read from the artifact store and
+    shown as untrusted content: a model wrote it (G09). It is shown only
+    when what is stored hashes to what was admitted. Otherwise the view
+    says that it is gone, or that it does not match;
+  - the amendments the lead asked for, each with both package hashes and
+    how it ended: `waiting`, `approved` or `declined` with the member, or
+    why its wait ended unanswered (`approval_expired`, `superseded`).
+- **Maps** (0.4), one section per map that began to run its items: the
+  number of items, its `par`, and each item by input index with its
+  outcome.
+  - Once the map has ended: `Ok` or the item's fault, from `map_ended`.
+  - A map that `fail_fast` failed: the fault that failed it, and
+    `no outcome` for an item it did not start or did not let end.
+  - While the map runs: `not started`, `in flight`, or `settled` for an
+    item whose commands have all ended.
 - **Change sets** (design doc 9 §8.2), one section per set:
   - the approved plan, its digest, and who approved it;
   - each component's change: its files, each interface it provides with
@@ -187,6 +247,9 @@ hashes:
 
 The header lists every imported module, such as the system model, by
 program hash.
+
+In JSON the 0.4 parts are `decisions`, `envelope` (null without one),
+`plans` and `maps`. A run that has none of a part has no section for it.
 
 Every run view names the revision and the last event it shows (`as_of`).
 `freshness(run, as_of)` says how many events the run has moved since. A

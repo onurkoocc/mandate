@@ -1,4 +1,4 @@
-// Public API of the Mandate 0.1 reference runtime.
+// Public API of the Mandate reference runtime, for language 0.1 to 0.4.
 export * from "./adapters.js";
 export * from "./artifacts.js";
 export * from "./evidence.js";

@@ -9,7 +9,7 @@ import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { attestationProblem } from "./attestation.js";
-import { approvalProblem, InvalidDecision, isSignedDecision, payloadOf, roleRefusal, shownRefusal, signerRefusal, storedProblem, type DecisionKind, type Refusal, type Shown, type SignedDecision, type StoredDecision } from "./decisions.js";
+import { approvalProblem, authorizationId, InvalidDecision, isSignedDecision, payloadOf, roleRefusal, shownRefusal, signerRefusal, storedProblem, type DecisionKind, type Refusal, type Shown, type SignedDecision, type StoredDecision } from "./decisions.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
 import { RateLimiter, type BucketConfig } from "./ratelimit.js";
 import type { Db, Row, Tx } from "./db.js";
@@ -747,7 +747,7 @@ export class Runtime {
         if (gate) await this.journal.event(tx, runId, d.approve ? "governance_approved" : "governance_denied", { command: d.commandId, digest: d.digest, by, ...who.signed });
         return { state: "succeeded", result: { approved: d.approve, by, ...who.signed } };
       }
-      const id = digest("operation", { authorize: d.digest, by, message: msg.messageId });
+      const id = authorizationId(d.digest, by, msg.messageId);
       const ttl = (run.policy as unknown as Policy).authorizationTtlMs ?? 15 * 60_000;
       await tx.query("insert into authorizations (authorization_id, run_id, action_digest, decided_by, expires_at) values ($1, $2, $3, $4, $5) on conflict do nothing", [
         id,

@@ -10,18 +10,21 @@
 // The agents are loops answered by a scripted model. Every number the test
 // states is one the ledger or the journal holds.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { check, hashProgram, kindOf, load, loadModules, type Json, type Modules, type Program } from "@mandate/compiler";
+import { check, hashProgram, kindOf, load, loadModules, toMarkdown, type Json, type Modules, type Program } from "@mandate/compiler";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { TurnRequest } from "../src/adapters.js";
+import type { ChatModel, TurnRequest } from "../src/adapters.js";
+import { AnthropicModel } from "../src/anthropic.js";
 import { shownPackage, signDecision } from "../src/decisions.js";
 import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
 import { baseOf, type WorkerChecker } from "../src/plan.js";
 import { MxcAdapter } from "../src/sandbox.js";
 import { SimChat, SimSandboxHost, SimTool, toolUse, type SimTurn } from "../src/sim.js";
-import type { Obj, Value } from "../src/values.js";
+import { isObj, type Obj, type Value } from "../src/values.js";
+import { runDoc, runView } from "../src/views.js";
 import { closeAll, commandIds, planChecker, world, type World } from "./helpers.js";
+import { LOCK } from "./models.js";
 
 let checker: WorkerChecker;
 beforeAll(async () => {
@@ -236,6 +239,35 @@ describe("MigrateAll: an envelope approved once, 24 migrators, and a lead that p
       ["release_approved", true],
     ]);
 
+    // ── the view: what a person reads of the run afterwards ───────────
+    const { view, program } = await runView(w.rt, "demo");
+    // 174 of the envelope's 200 agents are left, and the run had the envelope's six hours from its start.
+    expect(view.envelope).toMatchObject({ workflow: "MigrateAll", owner: "platform_lead", amendments: [] });
+    expect(view.envelope!.remainder.find((d) => d.dimension === "agents")).toEqual({ dimension: "agents", envelope: 200, limit: 200, settled: 26, reserved: 0, left: 174 });
+    expect(view.envelope!.deadline! - (await w.rt.journal.startedAt("demo"))).toBe(6 * 3_600_000);
+    // The map's 24 items by index: one failed, and the lead was told which.
+    expect(view.maps).toEqual([{ node: "/defs/MigrateAll/body/0/value", items: 24, par: 16, state: "ended", failed: null, outcomes: NAMES.map((n) => (n === HARD ? "SkillFailed" : "Ok")) }]);
+    // The lead's two submissions under the same number: the one refused with its code, the one admitted with its reservation.
+    expect(view.plans).toMatchObject([
+      {
+        node: PLAN,
+        lead: "Lead.finish",
+        submissions: [
+          { number: 1, outcome: "refused", codes: ["MDT-E1706"], hash: null, command: null },
+          { number: 1, outcome: "admitted", codes: [], reservation: { tokens: 400_000, steps: 12, agents: 1, "spend:USD": 500_000 }, command: PROGRAM, state: "succeeded", stored: "kept" },
+        ],
+        amendments: [],
+      },
+    ]);
+    expect(view.plans[0]!.submissions[1]!.text).toContain(`capability Hard = SrcWrite.narrow("/work/repos/${HARD}")`);
+    expect(view.decisions.map((d) => [d.kind, d.by, d.role, d.signature])).toEqual([
+      ["envelope", "alice", "platform_lead", "valid"],
+      ["approve", "bob", "release_manager", "valid"],
+      ["approve", "bob", "release_manager", "valid"],
+    ]);
+    const md = toMarkdown(runDoc(view, program));
+    for (const heading of ["## Envelope", `## Plan at ${PLAN}`, "## Map at /defs/MigrateAll/body/0/value", "## Decisions"]) expect(md).toContain(heading);
+
     // ── the replay: the same value, from the journal and the stored sub-program ─
     const turns = chat.calls.length;
     const sandboxes = host.created.length;
@@ -244,4 +276,94 @@ describe("MigrateAll: an envelope approved once, 24 migrators, and a lead that p
     expect(host.created).toHaveLength(sandboxes);
     expect(merge.executions).toHaveLength(1);
   });
+});
+
+// ── with a real model as the lead ───────────────────────────────────────
+//
+// The same run with the lead's turns answered by a real model. It runs only
+// with MANDATE_LIVE=1 and MANDATE_ENVELOPE=1, never in PR CI, and it spends
+// real money: the lead's budget is 10 USD at most. The key is read as in
+// live.test.ts. The migrators stay scripted, so what is shown is a model
+// that reads the outcomes of the map, writes a sub-program as IR and sends
+// it to the checker. What the model writes is its own. The test holds the
+// run to what must be true whatever it writes, and prints what happened.
+
+const LIVE = process.env["MANDATE_LIVE"] === "1" && process.env["MANDATE_ENVELOPE"] === "1";
+const envFile = new URL("../../.env", import.meta.url);
+if (LIVE && !process.env["CLAUDE_API_KEY"] && existsSync(envFile)) process.loadEnvFile(envFile);
+
+describe.skipIf(!LIVE)("live: MigrateAll with a real model as its lead", () => {
+  it("runs nothing that does not fit the envelope, whatever the lead writes", async () => {
+    const { modules, problems } = loadModules([{ file: DOMAIN, text: here(DOMAIN), kind: kindOf(DOMAIN) }]);
+    expect(problems).toEqual([]);
+    const signers = { alice: EvidenceSigner.generate(), bob: EvidenceSigner.generate() };
+    // FixBug's lock pins the models and their prices. This one adds the people and the module.
+    const lock = {
+      ...LOCK,
+      modules: { "company.domain": hashProgram(check(here(DOMAIN), "mdt").program as unknown as Json).program },
+      members: { alice: { keys: [signers.alice.keyId] }, bob: { keys: [signers.bob.keyId] } },
+      roles: { platform_lead: ["alice"], release_manager: ["bob"] },
+    };
+    const merge = new SimTool("git.merge", "reconcilable");
+    const w = await world(source(), { modules, lock, decisions: { keys: new TrustedKeys([signers.alice.publicKey, signers.bob.publicKey]) }, plan: { checker }, tools: [merge] });
+    const apiKey = process.env["CLAUDE_API_KEY"];
+    expect(apiKey, "CLAUDE_API_KEY").toBeTruthy();
+    const ws = process.env["CLAUDE_WORKSPACE_ID"] ?? process.env["anthropic-workspace-id"];
+    const model = new AnthropicModel({ lock, program: check(source(), "mdt", { modules }).program!, apiKey: apiKey!, ...(ws ? { workspaceId: ws } : {}) });
+    // A migrator of the map cannot move one repository. Any other migrator, one of a sub-program among them, moves its own.
+    const migrators = new SimChat((req) => {
+      const name = repoOf(req);
+      if (name === HARD && !req.commandId.startsWith(`${PLAN}/program/`)) return { error: { tag: "SkillFailed", args: ["its build is not the one the bulk migration knows"] }, cost: { steps: 1 } };
+      return [toolUse("f", "finish", { result: { migrated: [name], left: [], notes: "" } })];
+    });
+    const of = (req: TurnRequest): ChatModel => (req.agent === "Lead" ? model : migrators);
+    const chat: ChatModel = { turnBound: (req) => of(req).turnBound(req), turn: (req) => of(req).turn(req) };
+    w.adapters.loop = { chat, sandbox: new MxcAdapter({ host: new SimSandboxHost(), schemaVersion: "0.8.0", modelEndpoints: {}, modelsInControlPlane: true }) };
+
+    await w.rt.approveEnvelope(w.pkg, signDecision(signers.alice, shownPackage(w.pkg.hash, "platform_lead"), { kind: "envelope", member: "alice", at: new Date(w.adapters.clock.now()) }));
+    let r = await w.rt.startRun({ pkg: w.pkg, workflow: "MigrateAll", input: { repos: NAMES.map((n) => ({ name: n, root: n })) }, runId: "live-demo" });
+    // The people answer what the run asks them: the release manager approves, and the owner does not widen the envelope.
+    for (let sent = 1; sent <= 12 && r.state === "waiting"; sent++) {
+      const wait = isObj(r.waiting) ? r.waiting : {};
+      const role = isObj(wait["request"]) ? wait["request"]["role"] : undefined;
+      const who = role === "platform_lead" ? "alice" : role === "release_manager" ? "bob" : undefined;
+      if (!who || (wait["kind"] !== "decision" && wait["kind"] !== "amendment")) break;
+      const signed = signDecision(signers[who], await w.rt.shown("live-demo", "wait"), { kind: wait["kind"] === "amendment" ? "decline" : "approve", member: who, at: new Date(w.adapters.clock.now()) });
+      const msg = { sender: "test", messageId: `live-${sent}` };
+      r = wait["kind"] === "amendment" ? await w.rt.decideAmendment("live-demo", msg, signed) : await w.rt.decideAction("live-demo", msg, { signed });
+    }
+
+    const { view } = await runView(w.rt, "live-demo");
+    const plan = view.plans[0];
+    console.log(
+      `live demo: ${JSON.stringify({
+        state: r.state,
+        result: r.result ?? r.error ?? r.attention ?? r.waiting,
+        submissions: plan?.submissions.map((s) => [s.number, s.outcome, s.codes]),
+        amendments: plan?.amendments.map((a) => a.outcome),
+        merges: merge.executions.length,
+        left: view.envelope?.remainder.map((d) => [d.dimension, d.left]),
+      })}`,
+    );
+    // The bulk migration is the program's own: 24 items, and the one that failed.
+    expect(view.maps[0]).toMatchObject({ items: 24, state: "ended", outcomes: NAMES.map((n) => (n === HARD ? "SkillFailed" : "Ok")) });
+    // Whatever the lead wrote, the run stayed inside the envelope in every dimension.
+    for (const d of view.envelope!.remainder) {
+      expect(d.settled + d.reserved, d.dimension).toBeLessThanOrEqual(d.envelope ?? d.limit);
+      expect(d.left, d.dimension).toBeGreaterThanOrEqual(0);
+    }
+    // A submission was admitted or refused, and an admitted one is stored as what was admitted.
+    for (const s of plan?.submissions ?? []) {
+      expect(["admitted", "refused"]).toContain(s.outcome);
+      if (s.outcome === "admitted") expect(s.stored).toBe("kept");
+    }
+    // Nothing was merged without the release manager's signed approval of that merge.
+    const authorized = await events(w, "live-demo", "action_authorized");
+    expect(merge.executions.length).toBeLessThanOrEqual(authorized.length);
+    for (const a of authorized) expect(a).toMatchObject({ member: "bob", role: "release_manager" });
+    // Every decision the run took is a signed record that verifies.
+    expect(view.decisions.map((d) => d.signature)).toEqual(view.decisions.map(() => "valid"));
+    // A finished run replays to the same value. A replay refuses any call to a model, an adapter or the checker.
+    if (r.state === "succeeded") expect(await w.rt.replayRun("live-demo")).toEqual({ status: "complete", value: r.result });
+  }, 900_000);
 });

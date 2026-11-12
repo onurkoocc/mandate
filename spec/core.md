@@ -421,7 +421,6 @@ Every conforming implementation keeps these:
 ## 9. Not yet
 
 - **Not in the IR:** dynamic `spawn` and `await`.
-- **Not shown yet:** 0.4 in run views ([`envelope.md`](envelope.md)).
 - **Not generated yet:** these targets: host code, MCP, A2A and AX.
 
 ## 10. Existing systems (0.3)

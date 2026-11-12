@@ -1,4 +1,4 @@
-// What the 0.1 checker knows about the standard library: capability
+// What the checker knows about the standard library: capability
 // constructors, built-in effects (Doc 4 §6.1), the std effects that need a
 // capability, and the signatures of the std functions the examples use.
 //
