@@ -1,0 +1,12 @@
+module m @ 0.1
+fn open(p: Path) -> Bool { true }
+let a0 = open("../x")
+let a1 = open("src/../../x")
+let a2 = open("/etc/passwd")
+let a3 = open("C:/Windows")
+let a4 = open("src\\a.ts")
+let a5 = open("a//b")
+let a6 = open("./a")
+let a7 = open("a/")
+let a8 = open("")
+let a9 = open("file.txt:stream")

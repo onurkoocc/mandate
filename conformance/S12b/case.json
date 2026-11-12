@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S12b",
+  "kind": "compile",
+  "title": "A patch written against the program's own hash is applied, and the result has the hashes of the patched program.",
+  "spec": [
+    "spec/ir.md#patches"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "../S12a/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/U",
+      "value": {
+        "kind": "type",
+        "type": {
+          "ref": "Int"
+        }
+      }
+    }
+  ],
+  "base": "sha256:de7fd275a70b581fb60d4486cad1c4f16857b61daa4a7024fed523ee1dc05a25",
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "hashes": {
+      "program": "sha256:1747427d463ce4f756a8002ebf70e19194e38f7132f840293b68e07862c97b7e",
+      "defs": {
+        "T": "sha256:6a949c33eea8dae5ec8d708b23e3341664216c04419b1df4f533364c4f434f0a",
+        "U": "sha256:d7894df280e35a730c249427607f6f48f0357f8d38cdadcb6392710892ff8a93"
+      }
+    }
+  }
+}

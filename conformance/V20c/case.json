@@ -1,0 +1,25 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V20c",
+  "kind": "compile",
+  "title": "Every literal of a list of Paths is held to the rule: the one that leaves the working copy is refused.",
+  "spec": [
+    "spec/core.md#paths",
+    "spec/diagnostics.md"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0204",
+        "path": "/defs/a/value/args/0/value"
+      }
+    ]
+  }
+}

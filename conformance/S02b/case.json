@@ -1,0 +1,23 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S02b",
+  "kind": "compile",
+  "title": "A program without a language field is refused as an unknown language version.",
+  "spec": [
+    "spec/ir.md#reading-ir"
+  ],
+  "input": {
+    "text": "{\"module\":\"example.minimal\",\"version\":\"0.1\",\"defs\":{\"Greeting\":{\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0103",
+        "path": "/language"
+      }
+    ]
+  }
+}

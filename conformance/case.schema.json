@@ -6,6 +6,9 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "id", "kind", "title", "spec", "input", "expect"],
+  "dependentRequired": {
+    "base": ["patch"]
+  },
   "dependentSchemas": {
     "subprogram": {
       "description": "A subprogram case has no top-level patch or lock.",
@@ -61,6 +64,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/patchOp" },
       "description": "An RFC 6902 patch applied to the IR of the input before it is checked as JSON IR."
+    },
+    "base": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "The program hash the patch was written against. Only with patch. When it is not the hash of the input's IR, the patch is stale: MDT-E0130."
     },
     "subprogram": {
       "type": "object",

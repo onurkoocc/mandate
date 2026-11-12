@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V01b",
+  "kind": "compile",
+  "title": "A critical effect does not take a model's review.",
+  "spec": [
+    "spec/checks.md#effects-6",
+    "spec/checks.md#epistemic-types-52"
+  ],
+  "language": "mandate/0.2",
+  "input": {
+    "file": "../../fixtures/fixbug/fixbug.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/FixBug/body/6/value/args/0/value/name",
+      "value": "review"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/FixAccepted/accept/no_blocking_review/by/all/0/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/FixAccepted/accept/scope_respected/by/static"
+      },
+      {
+        "code": "MDT-E0210",
+        "path": "/defs/FixBug/body/6/value/args/0/value"
+      }
+    ]
+  }
+}

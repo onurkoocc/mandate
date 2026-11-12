@@ -1,0 +1,27 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S03i",
+  "kind": "compile",
+  "title": "A type name that does not exist is refused in JSON IR as it is in text, at the name.",
+  "spec": [
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "text": "{\"language\":\"mandate/0.1\",\"module\":\"example.minimal\",\"version\":\"0.1\",\"defs\":{\"Greeting\":{\"kind\":\"type\",\"type\":{\"ref\":\"Txt\"}}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/Greeting/type/ref",
+        "facts": {
+          "name": "Txt"
+        }
+      }
+    ]
+  }
+}

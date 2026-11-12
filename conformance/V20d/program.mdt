@@ -1,0 +1,3 @@
+module m @ 0.1
+fn open(p: Path) -> Bool { true }
+fn f(t: Text) -> Bool { open(t) }
