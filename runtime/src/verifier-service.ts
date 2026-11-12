@@ -19,6 +19,7 @@ import { createInterface } from "node:readline";
 import type { Lock, Program } from "@mandate/compiler";
 import type { CheckResult, Cost, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { ATTESTATION_FORMAT, statementOf, type Attestation } from "./attestation.js";
+import { childEnv } from "./env.js";
 import type { EvidenceSigner, Signature, TrustedKeys } from "./evidence.js";
 import { isObj, type Value } from "./values.js";
 
@@ -85,6 +86,7 @@ export interface ProcessVerifierOptions {
   /** The verifier keys whose attestations count. */
   trusted: TrustedKeys;
   package: VerifierPackage;
+  /** The process's whole environment (env.ts `verifierEnv`); without it, only what any program needs (`childEnv`). */
   env?: NodeJS.ProcessEnv;
 }
 
@@ -126,7 +128,8 @@ export class ProcessVerifier implements VerifierAdapter {
 
   private start(): ChildProcessWithoutNullStreams {
     const [cmd, ...args] = this.o.command;
-    const child = spawn(cmd!, args, { stdio: ["pipe", "pipe", "pipe"], env: this.o.env ?? process.env });
+    // Only what the caller gives, or what any program needs: never the runtime's whole environment (env.ts).
+    const child = spawn(cmd!, args, { stdio: ["pipe", "pipe", "pipe"], env: this.o.env ?? childEnv() });
     const lines = createInterface({ input: child.stdout });
     lines.on("line", (line) => {
       let msg: { id?: number; result?: Value; error?: { message: string } };

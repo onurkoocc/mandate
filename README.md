@@ -191,11 +191,38 @@ spec/        core spec, IR schema and rules, static checks, diagnostic codes, ru
              executors, views, the compiler's MCP server
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
+crates/      the Rust implementation, started: mandate-ir (below)
 fixtures/    the tests' programs: fixbug/ is the design document's §20 workflow,
              fixbug-target/ the same workflow bound to a seeded test project,
              system/ a fictional system's model (Acme) and programs over it,
              envelope/ the 0.4 migration, boundary/ a 0.5 agent that may only GET
+conformance/ language-independent compile cases
+vectors/     what the TypeScript reader, canonical text and hashes give, for
+             other implementations to match
 ```
+
+## Rust
+
+The repository is also a Cargo workspace (`Cargo.toml`, `crates/`), the
+start of a Rust implementation. It has one crate today,
+[`crates/mandate-ir`](crates/mandate-ir/README.md). It reads IR with the
+strict JSON reader (same limits, diagnostic codes, messages, JSON Pointers
+and UTF-16 columns), writes its canonical text (RFC 8785) and computes the
+program, definition and package hashes, byte for byte as the TypeScript
+compiler does. It is not a compiler: there is no `.mdt` parser, no schema
+validation and no checks in Rust yet.
+
+The two are held together by the files in [`vectors/`](vectors/README.md).
+`compiler/test/vectors.test.ts` writes them and fails when the committed
+ones differ; the Rust tests read them and need no Node.
+
+```sh
+cargo test
+MANDATE_UPDATE_VECTORS=1 npm test   # write vectors/ again after a change
+```
+
+The toolchain is pinned in `rust-toolchain.toml`; CI runs `cargo fmt
+--check`, `cargo clippy -- -D warnings` and `cargo test`.
 
 ## Using the compiler
 
@@ -404,9 +431,19 @@ as invalid, and a Verified value whose evidence no longer verifies refused
 before anything is prepared. `verifier.test.ts` checks the runtime's
 verifier, including a pinned acceptance suite an agent tried to weaken
 (G06). `verifier-process.test.ts` runs the verifier as a process of its
-own: each check comes back signed by the verifier's key, a result changed
-on the way or signed by an untrusted key is not met, and a record the
-runtime's key re-signed without the verifier's attestation is invalid.
+own: each check comes back signed by the verifier's key, and a result
+changed on the way or signed by an untrusted key is not met. A record the
+runtime's key signed again after its content was changed, after its
+attestation was taken out, or after its method was changed to `static` or
+to one the runtime checks itself, is invalid, and the effect resting on it
+is refused (`forged_evidence`); so is a criterion `a and b` whose verifier
+part has no record of its own. Evidence made before the verifier had a
+process of its own shows as invalid once it has. The verifier process
+gets none of the runtime's secrets, and the model's key only when the
+configuration has a model. `audience.test.ts` lands a change set on
+boundary checks the runtime makes itself with a verifier key trusted, and
+`child-env.test.ts` checks that `docker` gets none of the runtime's
+secrets.
 `evidence.test.ts` also rotates the evidence key: what the old key signed
 still verifies.
 
@@ -494,7 +531,7 @@ These cases from §25 are covered:
 | G03 | An agent that says "approved" creates no authorization; a Verified value whose evidence does not verify is refused | `gate4`, `evidence` |
 | G04 | A sub-agent gets no more than it is handed: its sandbox and tools are narrowed to the grant | `gate4` (and E0701 statically) |
 | G05 | A host that cannot enforce the sandbox refuses the agent; no permissive fallback | `sandbox`, `loop`, `mxc`, `mxc-windows` |
-| G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed; a check its verifier did not sign is not met | `verifier`, `verifier-process` |
+| G06 | A pinned acceptance suite runs as the base commit has it, whatever the agents changed; a check its verifier did not sign is not met, and with a verifier process configured, a record of a verifier check without that verifier's attestation, or with a method its criterion does not declare, is invalid, whatever key signed it | `verifier`, `verifier-process`, `audience` |
 | G07 | A sandboxed process reaches no host, and gets none of the runtime's credentials | `mxc` (Bubblewrap, CI job `sandbox`), `mxc-windows` (AppContainer, CI job `sandbox-windows`) |
 | G08 | Another tenant's or run's artifact is refused like a missing one | `artifacts` |
 | G09 | A model's markup is shown as plain text in every view, never as a control: an agent's output, a name somebody typed, a lead's sub-program and its reason for an amendment | `views`, `views-envelope`, `cli-amend` |

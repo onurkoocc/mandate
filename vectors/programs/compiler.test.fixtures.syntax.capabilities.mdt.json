@@ -1,0 +1,214 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "compiler/test/fixtures/syntax/capabilities.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.1",
+  "canonical": "{\"defs\":{\"CIApi\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"hosts\",\"value\":{\"items\":[{\"op\":\"text\",\"value\":\"ci.internal.example\"}],\"op\":\"list\"}},{\"name\":\"methods\",\"value\":{\"items\":[{\"name\":\"GET\",\"op\":\"var\"},{\"name\":\"POST\",\"op\":\"var\"}],\"op\":\"list\"}}],\"callee\":{\"name\":\"https\",\"of\":{\"name\":\"net\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"ModelStd\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"tier\",\"value\":{\"name\":\"standard\",\"op\":\"var\"}},{\"name\":\"providers\",\"value\":{\"items\":[{\"name\":\"anthropic\",\"op\":\"var\"},{\"name\":\"openai\",\"op\":\"var\"}],\"op\":\"list\"}}],\"callee\":{\"name\":\"infer\",\"of\":{\"name\":\"model\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"RepoRead\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"/work/repo\"}}],\"callee\":{\"name\":\"read\",\"of\":{\"name\":\"fs\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"RepoWrite\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"/work/repo/src\"}},{\"value\":{\"op\":\"text\",\"value\":\"/work/repo/test\"}}],\"callee\":{\"name\":\"write\",\"of\":{\"name\":\"fs\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"Spend20\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"max\",\"value\":{\"currency\":\"USD\",\"micros\":20000000,\"op\":\"money\"}},{\"name\":\"per\",\"value\":{\"name\":\"workflow_run\",\"op\":\"var\"}}],\"callee\":{\"name\":\"spend\",\"of\":{\"name\":\"money\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}}},\"language\":\"mandate/0.1\",\"module\":\"company.devflow\",\"uses\":[{\"module\":\"std\",\"names\":[\"fs\",\"model\",\"money\",\"net\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:59c867dc9be19f60147d447bf9f82d5e85e6a9f3076fd4fff834e1f5f5a3aa99",
+    "defs": [
+      [
+        "CIApi",
+        "sha256:c79d47590668b93b5d03e20671a6b0530eb5bf9a5a48ae4d01a78238fe9d3628"
+      ],
+      [
+        "ModelStd",
+        "sha256:9ac408706bb1c2581a7d95d3fd898f565c790bada926d500a9d86adb0c3256ff"
+      ],
+      [
+        "RepoRead",
+        "sha256:0a768ae3dae00beffd60f36a959b002bbb2460780bd4fe26b7a5e64fdb9d97bb"
+      ],
+      [
+        "RepoWrite",
+        "sha256:8e4d0693565380c80263c01dd998e69736f5b0924f7a2c8c11015561db0864dd"
+      ],
+      [
+        "Spend20",
+        "sha256:9a6aca3f2eab83c30dad9d63aad58aeb5abd507d153a4c44652400bc2256eec6"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.1",
+    "module": "company.devflow",
+    "version": "0.1",
+    "defs": {
+      "RepoRead": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "fs"
+            },
+            "name": "read"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "/work/repo"
+              }
+            }
+          ]
+        }
+      },
+      "RepoWrite": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "fs"
+            },
+            "name": "write"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "/work/repo/src"
+              }
+            },
+            {
+              "value": {
+                "op": "text",
+                "value": "/work/repo/test"
+              }
+            }
+          ]
+        }
+      },
+      "CIApi": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "net"
+            },
+            "name": "https"
+          },
+          "args": [
+            {
+              "name": "hosts",
+              "value": {
+                "op": "list",
+                "items": [
+                  {
+                    "op": "text",
+                    "value": "ci.internal.example"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "methods",
+              "value": {
+                "op": "list",
+                "items": [
+                  {
+                    "op": "var",
+                    "name": "GET"
+                  },
+                  {
+                    "op": "var",
+                    "name": "POST"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "ModelStd": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "model"
+            },
+            "name": "infer"
+          },
+          "args": [
+            {
+              "name": "tier",
+              "value": {
+                "op": "var",
+                "name": "standard"
+              }
+            },
+            {
+              "name": "providers",
+              "value": {
+                "op": "list",
+                "items": [
+                  {
+                    "op": "var",
+                    "name": "anthropic"
+                  },
+                  {
+                    "op": "var",
+                    "name": "openai"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "Spend20": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "money"
+            },
+            "name": "spend"
+          },
+          "args": [
+            {
+              "name": "max",
+              "value": {
+                "op": "money",
+                "micros": 20000000,
+                "currency": "USD"
+              }
+            },
+            {
+              "name": "per",
+              "value": {
+                "op": "var",
+                "name": "workflow_run"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "uses": [
+      {
+        "module": "std",
+        "names": [
+          "fs",
+          "model",
+          "money",
+          "net"
+        ]
+      }
+    ]
+  }
+}

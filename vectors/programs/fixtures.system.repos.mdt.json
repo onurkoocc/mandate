@@ -1,0 +1,96 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "fixtures/system/repos.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.3",
+  "canonical": "{\"defs\":{\"auth\":{\"kind\":\"component\",\"lang\":\"other\",\"owner\":\"unassigned\",\"repo\":\"acme/auth\",\"root\":\"/work/acme-auth\"},\"core\":{\"kind\":\"component\",\"lang\":\"other\",\"owner\":\"unassigned\",\"repo\":\"acme/core\",\"root\":\"/work/acme-core\"},\"evals\":{\"kind\":\"component\",\"lang\":\"other\",\"owner\":\"unassigned\",\"repo\":\"acme/voice-evals\",\"root\":\"/work/acme-voice-evals\"},\"mcp\":{\"kind\":\"component\",\"lang\":\"other\",\"owner\":\"unassigned\",\"repo\":\"acme/mcp\",\"root\":\"/work/acme-mcp\"},\"search\":{\"kind\":\"component\",\"lang\":\"other\",\"owner\":\"unassigned\",\"repo\":\"acme/search\",\"root\":\"/work/acme-search\"},\"system\":{\"kind\":\"component\",\"lang\":\"other\",\"owner\":\"unassigned\",\"repo\":\"acme/system\",\"root\":\"/work/acme-system\"},\"voice\":{\"kind\":\"component\",\"lang\":\"other\",\"owner\":\"unassigned\",\"repo\":\"acme/voice\",\"root\":\"/work/acme-voice\"}},\"language\":\"mandate/0.3\",\"module\":\"acme.repos\",\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:3861540feaa857b59f17dee7556296d06e2318f303f8bbc5a8117622a7019da9",
+    "defs": [
+      [
+        "auth",
+        "sha256:a404a5aaf6b3d761cee866d5f81cb8616e73851e7a369f6fb292d72afc34b50f"
+      ],
+      [
+        "core",
+        "sha256:b2d4ed3bc88ca964eeff61e4c1dcbe45de00cd0708a614686f29b840750a6a72"
+      ],
+      [
+        "evals",
+        "sha256:a909f904e88c09119c6499fe07ccf86f12598fae76058b8de0849e12fd5eb2ef"
+      ],
+      [
+        "mcp",
+        "sha256:b78d014aba27e5d60c48b24575952bcbc6e882ce947757098473dffff11af434"
+      ],
+      [
+        "search",
+        "sha256:fce90e963fc4c107abaaea75c40bc6c44a2cced54ce3fe2ab01130e7e412aef0"
+      ],
+      [
+        "system",
+        "sha256:03925bab1b8303d166071ac99a4939f092f14873de106418a137363ac8f86bf3"
+      ],
+      [
+        "voice",
+        "sha256:a7a8f1680cc321a507f92d14ef876a16864049f2bb68c1ed178cd44fd11aa2bb"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.3",
+    "module": "acme.repos",
+    "version": "0.1",
+    "defs": {
+      "auth": {
+        "kind": "component",
+        "repo": "acme/auth",
+        "root": "/work/acme-auth",
+        "lang": "other",
+        "owner": "unassigned"
+      },
+      "mcp": {
+        "kind": "component",
+        "repo": "acme/mcp",
+        "root": "/work/acme-mcp",
+        "lang": "other",
+        "owner": "unassigned"
+      },
+      "core": {
+        "kind": "component",
+        "repo": "acme/core",
+        "root": "/work/acme-core",
+        "lang": "other",
+        "owner": "unassigned"
+      },
+      "search": {
+        "kind": "component",
+        "repo": "acme/search",
+        "root": "/work/acme-search",
+        "lang": "other",
+        "owner": "unassigned"
+      },
+      "voice": {
+        "kind": "component",
+        "repo": "acme/voice",
+        "root": "/work/acme-voice",
+        "lang": "other",
+        "owner": "unassigned"
+      },
+      "evals": {
+        "kind": "component",
+        "repo": "acme/voice-evals",
+        "root": "/work/acme-voice-evals",
+        "lang": "other",
+        "owner": "unassigned"
+      },
+      "system": {
+        "kind": "component",
+        "repo": "acme/system",
+        "root": "/work/acme-system",
+        "lang": "other",
+        "owner": "unassigned"
+      }
+    }
+  }
+}

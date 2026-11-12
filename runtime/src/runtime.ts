@@ -8,7 +8,8 @@ import { capsOf, check, domainHash, hashProgram, link, linkedProgram, packageHas
 import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
-import { attestationProblem } from "./attestation.js";
+import { recordProblem, type AttestationRule } from "./attestation.js";
+import { criterionMethods } from "./criteria.js";
 import { approvalProblem, authorizationId, InvalidDecision, isSignedDecision, payloadOf, roleRefusal, shownRefusal, signerRefusal, storedProblem, type DecisionKind, type Refusal, type Shown, type SignedDecision, type StoredDecision } from "./decisions.js";
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js";
 import { RateLimiter, type BucketConfig } from "./ratelimit.js";
@@ -84,6 +85,12 @@ export interface RuntimeOptions {
    */
   trustedVerifiers?: TrustedKeys;
   /**
+   * The methods the configuration checks in this process even with a verifier process of its own (boundary and
+   * onboarding checks; control.ts `inProcessMethods`). With trusted verifier keys, the evidence of every other
+   * method a verifier call makes must carry a verifier attestation (spec/runtime.md "A verifier of its own").
+   */
+  inProcessMethods?: readonly string[];
+  /**
    * A run's timers (a restart's backoff) are kept by its scheduler: the run
    * waits, and `tick` resumes it when the time comes. A Temporal worker's
    * runtime needs this; without it, the worker sleeps through the wait.
@@ -140,6 +147,8 @@ export class Runtime {
   readonly signer: EvidenceSigner;
   readonly trusted: TrustedKeys;
   readonly verifiers: TrustedKeys;
+  /** The methods checked in this process, whose evidence carries no verifier attestation. */
+  readonly inProcess: ReadonlySet<string>;
   readonly durableTimers: boolean;
   readonly limiter: RateLimiter | undefined;
   readonly decisionMode: "signed" | "unsigned";
@@ -163,6 +172,7 @@ export class Runtime {
     this.signer = options.signer ?? EvidenceSigner.generate();
     this.trusted = new TrustedKeys([this.signer.publicKey, ...(options.trustedKeys ?? [])]);
     this.verifiers = options.trustedVerifiers ?? new TrustedKeys();
+    this.inProcess = new Set(options.inProcessMethods ?? []);
     this.durableTimers = options.durableTimers ?? false;
     this.limiter = options.rateLimits && Object.keys(options.rateLimits).length ? new RateLimiter(db, options.rateLimits, () => adapters.clock.now()) : undefined;
     this.decisionMode = options.decisions?.mode ?? "signed";
@@ -553,6 +563,7 @@ export class Runtime {
       signer: this.signer,
       trusted: this.trusted,
       verifiers: this.verifiers,
+      inProcess: this.inProcess,
       ...(isObj(run.manifest) && isObj(run.manifest["components"] ?? null) ? { workspace: run.manifest["components"] as unknown as RunComponents } : {}),
       ...(isObj(run.manifest) && typeof run.manifest["mode"] === "string" ? { mode: run.manifest["mode"] as RunMode } : {}),
       replay,
@@ -602,13 +613,17 @@ export class Runtime {
    * Checks every evidence record of a run against its signature: whether a
    * trusted key signed exactly this record (§10.3), and, for a check made by
    * a verifier of its own, whether a trusted verifier key attested the same
-   * result (P2-11). Views show the result.
+   * result (P2-11). With a verifier of its own configured, which checks need
+   * that attestation is read from the program and the configuration, never
+   * from the record (attestation.ts `recordProblem`). Views show the result.
    */
   async verifyEvidence(runId: string): Promise<Array<{ evidence_id: string; criterion: string; valid: boolean; key_id: string | null }>> {
     const run = await this.journal.run(runId);
-    const { lock, signed } = await this.loaded(run.package_hash);
+    const { lock, signed, program } = await this.loaded(run.package_hash);
     // A person's approval rests on their signed decision (H04): the record it names must still be the one they signed.
     const decisions = new Map((await this.journal.decisions(runId)).map((d) => [d.decision_id, d]));
+    const rule: AttestationRule = { keys: this.verifiers, inProcess: this.inProcess };
+    const declared = (record: EvidenceRecord): string[] | undefined => criterionMethods(Object.hasOwn(program.defs, record.contract) ? program.defs[record.contract] : undefined, record.criterion);
     return (await this.journal.evidence(runId)).map((e) => ({
       evidence_id: e.evidence_id,
       criterion: e.criterion,
@@ -620,7 +635,7 @@ export class Runtime {
         this.trusted.verify(e.record as unknown as EvidenceRecord, { key_id: e.key_id, signature: e.signature }) &&
         (e.record as unknown as EvidenceRecord).evidence_id === e.evidence_id &&
         (e.record as unknown as EvidenceRecord).passed === e.passed &&
-        !attestationProblem(e.record as unknown as EvidenceRecord, this.verifiers) &&
+        !recordProblem(e.record as unknown as EvidenceRecord, e, declared(e.record as unknown as EvidenceRecord), rule) &&
         !approvalProblem(e.record as unknown as EvidenceRecord, decisions, this.decisionKeys, lock, signed),
     }));
   }

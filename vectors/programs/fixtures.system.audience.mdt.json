@@ -1,0 +1,777 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "fixtures/system/audience.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.3",
+  "canonical": "{\"defs\":{\"Audience\":{\"body\":[{\"name\":\"draft\",\"op\":\"let\",\"value\":{\"agent\":\"Planner\",\"args\":[{\"value\":{\"name\":\"task\",\"op\":\"var\"}}],\"op\":\"delegate\",\"skill\":\"plan\"}},{\"name\":\"plan\",\"op\":\"let\",\"value\":{\"args\":[{\"value\":{\"name\":\"draft\",\"op\":\"var\"}}],\"contract\":\"PlanAccepted\",\"op\":\"verify\",\"value\":{\"name\":\"draft\",\"op\":\"var\"}}},{\"name\":\"change\",\"op\":\"let\",\"value\":{\"agent\":\"McpDev\",\"args\":[{\"value\":{\"name\":\"plan\",\"op\":\"var\"}}],\"op\":\"delegate\",\"skill\":\"implement\"}},{\"name\":\"checked\",\"op\":\"let\",\"value\":{\"args\":[{\"value\":{\"name\":\"change\",\"op\":\"var\"}},{\"value\":{\"name\":\"plan\",\"op\":\"var\"}}],\"contract\":\"BoundaryAccepted\",\"on_unmet\":{\"bind\":\"c\",\"then\":{\"op\":\"escalate\",\"to\":{\"args\":[{\"value\":{\"op\":\"template\",\"parts\":[{\"text\":\"Open acceptance criteria: \"},{\"expr\":{\"name\":\"c\",\"op\":\"var\"}}]}}],\"callee\":{\"name\":\"human\",\"op\":\"var\"},\"op\":\"call\"}}},\"op\":\"verify\",\"value\":{\"name\":\"change\",\"op\":\"var\"}}},{\"name\":\"landed\",\"op\":\"let\",\"value\":{\"approver\":\"architect\",\"idempotent_by\":{\"name\":\"id\",\"of\":{\"name\":\"task\",\"op\":\"var\"},\"op\":\"field\"},\"members\":{\"mcp\":{\"args\":[{\"value\":{\"name\":\"checked\",\"op\":\"var\"}}],\"effect\":\"git.merge\"}},\"op\":\"changeset\",\"order\":[\"mcp\"],\"plan\":{\"name\":\"plan\",\"op\":\"var\"}}},{\"op\":\"expr\",\"value\":{\"op\":\"text\",\"value\":\"landed\"}}],\"budget\":{\"spend\":{\"currency\":\"USD\",\"micros\":8000000},\"time\":{\"ms\":3600000}},\"caps\":[{\"name\":\"McpRead\",\"op\":\"var\"},{\"name\":\"McpRepo\",\"op\":\"var\"},{\"name\":\"McpSrc\",\"op\":\"var\"},{\"name\":\"McpTest\",\"op\":\"var\"},{\"name\":\"ModelStd\",\"op\":\"var\"}],\"kind\":\"workflow\",\"params\":[{\"name\":\"task\",\"type\":{\"ref\":\"Task\"}}],\"returns\":{\"ref\":\"Text\"}},\"BoundaryAccepted\":{\"accept\":{\"contracts\":{\"by\":{\"call\":{\"args\":[{\"value\":{\"name\":\"changes\",\"of\":{\"name\":\"plan\",\"op\":\"var\"},\"op\":\"field\"}}],\"callee\":{\"name\":\"contract\",\"of\":{\"name\":\"test\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"Interfaces change only as the plan declares\"},\"integrated\":{\"by\":{\"call\":{\"args\":[{\"name\":\"env\",\"value\":{\"name\":\"staging\",\"op\":\"var\"}},{\"value\":{\"name\":\"components\",\"of\":{\"name\":\"plan\",\"op\":\"var\"},\"op\":\"field\"}}],\"callee\":{\"name\":\"integration\",\"of\":{\"name\":\"test\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"The system works end to end on staging data\"},\"planned\":{\"by\":{\"call\":{\"args\":[{\"value\":{\"name\":\"plan\",\"op\":\"var\"}}],\"callee\":{\"name\":\"planned\",\"of\":{\"name\":\"test\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"Nothing outside the accepted plan changed\"},\"suites\":{\"by\":{\"call\":{\"args\":[{\"value\":{\"name\":\"components\",\"of\":{\"name\":\"plan\",\"op\":\"var\"},\"op\":\"field\"}}],\"callee\":{\"name\":\"suite_each\",\"of\":{\"name\":\"test\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"Each component the plan changes passes its own tests\"}},\"kind\":\"contract\",\"params\":[{\"name\":\"change\",\"type\":{\"ref\":\"Change\"}},{\"name\":\"plan\",\"type\":{\"ref\":\"Plan\"}}]},\"Change\":{\"kind\":\"type\",\"type\":{\"record\":{\"files\":{\"args\":[{\"ref\":\"Text\"}],\"ref\":\"List\"},\"summary\":{\"ref\":\"Text\"}}}},\"McpDev\":{\"budget\":{\"spend\":{\"currency\":\"USD\",\"micros\":4000000},\"steps\":12,\"time\":{\"ms\":1200000},\"tokens\":800000},\"caps\":[{\"name\":\"McpRead\",\"op\":\"var\"},{\"name\":\"McpSrc\",\"op\":\"var\"},{\"name\":\"McpTest\",\"op\":\"var\"},{\"name\":\"ModelStd\",\"op\":\"var\"}],\"kind\":\"agent\",\"role\":\"Changes acme-mcp as the accepted plan says, with its tests.\",\"skills\":{\"implement\":{\"effects\":[{\"effect\":\"Exec\"},{\"effect\":\"Fs.Read\"},{\"effect\":\"Fs.Write\"},{\"effect\":\"Model\"}],\"params\":[{\"name\":\"plan\",\"type\":{\"args\":[{\"ref\":\"Plan\"},{\"ref\":\"PlanAccepted\"}],\"ref\":\"Verified\"}}],\"returns\":{\"args\":[{\"ref\":\"Change\"}],\"ref\":\"Inferred\"}}}},\"McpRead\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"name\":\"mcp\",\"op\":\"var\"}}],\"callee\":{\"name\":\"read\",\"of\":{\"name\":\"component\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"McpRepo\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"name\":\"mcp\",\"op\":\"var\"}}],\"callee\":{\"name\":\"repo\",\"of\":{\"name\":\"component\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"McpSrc\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"name\":\"mcp\",\"op\":\"var\"}},{\"value\":{\"op\":\"text\",\"value\":\"src\"}},{\"value\":{\"op\":\"text\",\"value\":\"test\"}}],\"callee\":{\"name\":\"write\",\"of\":{\"name\":\"component\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"McpTest\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"name\":\"mcp\",\"op\":\"var\"}},{\"value\":{\"name\":\"test\",\"op\":\"var\"}}],\"callee\":{\"name\":\"exec\",\"of\":{\"name\":\"component\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"ModelStd\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"tier\",\"value\":{\"name\":\"standard\",\"op\":\"var\"}}],\"callee\":{\"name\":\"infer\",\"of\":{\"name\":\"model\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"Plan\":{\"kind\":\"type\",\"type\":{\"record\":{\"changes\":{\"args\":[{\"ref\":\"Text\"},{\"ref\":\"Text\"}],\"ref\":\"Map\"},\"components\":{\"args\":[{\"ref\":\"Text\"}],\"ref\":\"List\"},\"summary\":{\"ref\":\"Text\"}}}},\"PlanAccepted\":{\"accept\":{\"architect\":{\"by\":{\"call\":{\"args\":[{\"name\":\"role\",\"value\":{\"op\":\"text\",\"value\":\"architect\"}}],\"callee\":{\"name\":\"approve\",\"of\":{\"name\":\"human\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"The architect accepted the plan\"}},\"kind\":\"contract\",\"params\":[{\"name\":\"plan\",\"type\":{\"ref\":\"Plan\"}}]},\"Planner\":{\"budget\":{\"spend\":{\"currency\":\"USD\",\"micros\":2000000},\"steps\":6,\"tokens\":400000},\"caps\":[{\"name\":\"McpRead\",\"op\":\"var\"},{\"name\":\"ModelStd\",\"op\":\"var\"}],\"kind\":\"agent\",\"role\":\"Turns a request into a plan: which components change, and how each interface changes.\",\"skills\":{\"plan\":{\"effects\":[{\"effect\":\"Fs.Read\"},{\"effect\":\"Model\"}],\"params\":[{\"name\":\"task\",\"type\":{\"ref\":\"Task\"}}],\"returns\":{\"args\":[{\"ref\":\"Plan\"}],\"ref\":\"Inferred\"}}}},\"Task\":{\"kind\":\"type\",\"type\":{\"record\":{\"id\":{\"ref\":\"Text\"},\"request\":{\"ref\":\"Text\"}}}}},\"language\":\"mandate/0.3\",\"module\":\"acme.tasks.audience\",\"uses\":[{\"module\":\"acme.system\",\"names\":[\"mcp\",\"staging\"]},{\"module\":\"std\",\"names\":[\"component\",\"git\",\"human\",\"model\",\"test\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:5906789ba25f7889053a05a9279a24511312a19836af4b89e926ceccfed35e89",
+    "defs": [
+      [
+        "Audience",
+        "sha256:b552edc451c86e2f4e924b8d6a8746781f4261ce9944459d039c4b2a59cdfa74"
+      ],
+      [
+        "BoundaryAccepted",
+        "sha256:3fa8d94cac42c80ed4cee98c77e10eefacc448cbece2829b6e9542787e0e6bd3"
+      ],
+      [
+        "Change",
+        "sha256:2965ebd639c5402d375283ca77d4e1a20ee142f4570c5cbfc2b000da294259b2"
+      ],
+      [
+        "McpDev",
+        "sha256:0d033b47adfd759d4ef1076f6e839f04e8edac9630a7925258374e12f1e16ed7"
+      ],
+      [
+        "McpRead",
+        "sha256:fc986e7309943d822f5099b304b37f527ed85ebcccb219a8167978c895b3d645"
+      ],
+      [
+        "McpRepo",
+        "sha256:edda2475b38e2f8c1f64de60af71ad596c92d10fbc959d4a3ffc7fbc0de9e046"
+      ],
+      [
+        "McpSrc",
+        "sha256:58427c7bd985409fcebfa1a931feec20272508e4464b632f557230fab620078e"
+      ],
+      [
+        "McpTest",
+        "sha256:9fd7317da59892eaa104f3d778aa4109860c7c0f59412315dbf359487daf2635"
+      ],
+      [
+        "ModelStd",
+        "sha256:d9ec40f0bc25850f99d9c096b64c837345c4d2824d85fdd7f6eaf80ce750c97a"
+      ],
+      [
+        "Plan",
+        "sha256:0a15ef03793c86f1e107950cd96dad8ec7fb91e26102f028449c31f04c313682"
+      ],
+      [
+        "PlanAccepted",
+        "sha256:51fabdeb440fb8de4ff76f1fc88ac4ba2e8b18c0531d3c1b2809d3e705a08a8c"
+      ],
+      [
+        "Planner",
+        "sha256:d32d2a3dcef70d0b65b4665d14ab696c3f122fb4a8a98059dc0d4e8fd469ba37"
+      ],
+      [
+        "Task",
+        "sha256:623754ee5034f65edb2f682af3311e39e737cb6e4185d5661dc6db2f9aaa92dc"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.3",
+    "module": "acme.tasks.audience",
+    "version": "0.1",
+    "defs": {
+      "McpRead": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "component"
+            },
+            "name": "read"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "mcp"
+              }
+            }
+          ]
+        }
+      },
+      "McpSrc": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "component"
+            },
+            "name": "write"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "mcp"
+              }
+            },
+            {
+              "value": {
+                "op": "text",
+                "value": "src"
+              }
+            },
+            {
+              "value": {
+                "op": "text",
+                "value": "test"
+              }
+            }
+          ]
+        }
+      },
+      "McpTest": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "component"
+            },
+            "name": "exec"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "mcp"
+              }
+            },
+            {
+              "value": {
+                "op": "var",
+                "name": "test"
+              }
+            }
+          ]
+        }
+      },
+      "McpRepo": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "component"
+            },
+            "name": "repo"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "mcp"
+              }
+            }
+          ]
+        }
+      },
+      "ModelStd": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "model"
+            },
+            "name": "infer"
+          },
+          "args": [
+            {
+              "name": "tier",
+              "value": {
+                "op": "var",
+                "name": "standard"
+              }
+            }
+          ]
+        }
+      },
+      "Task": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "id": {
+              "ref": "Text"
+            },
+            "request": {
+              "ref": "Text"
+            }
+          }
+        }
+      },
+      "Plan": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "summary": {
+              "ref": "Text"
+            },
+            "components": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ]
+            },
+            "changes": {
+              "ref": "Map",
+              "args": [
+                {
+                  "ref": "Text"
+                },
+                {
+                  "ref": "Text"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Change": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "files": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ]
+            },
+            "summary": {
+              "ref": "Text"
+            }
+          }
+        }
+      },
+      "PlanAccepted": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "plan",
+            "type": {
+              "ref": "Plan"
+            }
+          }
+        ],
+        "accept": {
+          "architect": {
+            "description": "The architect accepted the plan",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "human"
+                  },
+                  "name": "approve"
+                },
+                "args": [
+                  {
+                    "name": "role",
+                    "value": {
+                      "op": "text",
+                      "value": "architect"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "BoundaryAccepted": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "change",
+            "type": {
+              "ref": "Change"
+            }
+          },
+          {
+            "name": "plan",
+            "type": {
+              "ref": "Plan"
+            }
+          }
+        ],
+        "accept": {
+          "suites": {
+            "description": "Each component the plan changes passes its own tests",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "test"
+                  },
+                  "name": "suite_each"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "plan"
+                      },
+                      "name": "components"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "contracts": {
+            "description": "Interfaces change only as the plan declares",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "test"
+                  },
+                  "name": "contract"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "plan"
+                      },
+                      "name": "changes"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "integrated": {
+            "description": "The system works end to end on staging data",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "test"
+                  },
+                  "name": "integration"
+                },
+                "args": [
+                  {
+                    "name": "env",
+                    "value": {
+                      "op": "var",
+                      "name": "staging"
+                    }
+                  },
+                  {
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "plan"
+                      },
+                      "name": "components"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "planned": {
+            "description": "Nothing outside the accepted plan changed",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "test"
+                  },
+                  "name": "planned"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "var",
+                      "name": "plan"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "Planner": {
+        "kind": "agent",
+        "caps": [
+          {
+            "op": "var",
+            "name": "McpRead"
+          },
+          {
+            "op": "var",
+            "name": "ModelStd"
+          }
+        ],
+        "skills": {
+          "plan": {
+            "params": [
+              {
+                "name": "task",
+                "type": {
+                  "ref": "Task"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "Inferred",
+              "args": [
+                {
+                  "ref": "Plan"
+                }
+              ]
+            },
+            "effects": [
+              {
+                "effect": "Fs.Read"
+              },
+              {
+                "effect": "Model"
+              }
+            ]
+          }
+        },
+        "role": "Turns a request into a plan: which components change, and how each interface changes.",
+        "budget": {
+          "tokens": 400000,
+          "spend": {
+            "micros": 2000000,
+            "currency": "USD"
+          },
+          "steps": 6
+        }
+      },
+      "McpDev": {
+        "kind": "agent",
+        "caps": [
+          {
+            "op": "var",
+            "name": "McpRead"
+          },
+          {
+            "op": "var",
+            "name": "McpSrc"
+          },
+          {
+            "op": "var",
+            "name": "McpTest"
+          },
+          {
+            "op": "var",
+            "name": "ModelStd"
+          }
+        ],
+        "skills": {
+          "implement": {
+            "params": [
+              {
+                "name": "plan",
+                "type": {
+                  "ref": "Verified",
+                  "args": [
+                    {
+                      "ref": "Plan"
+                    },
+                    {
+                      "ref": "PlanAccepted"
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "ref": "Inferred",
+              "args": [
+                {
+                  "ref": "Change"
+                }
+              ]
+            },
+            "effects": [
+              {
+                "effect": "Exec"
+              },
+              {
+                "effect": "Fs.Read"
+              },
+              {
+                "effect": "Fs.Write"
+              },
+              {
+                "effect": "Model"
+              }
+            ]
+          }
+        },
+        "role": "Changes acme-mcp as the accepted plan says, with its tests.",
+        "budget": {
+          "tokens": 800000,
+          "time": {
+            "ms": 1200000
+          },
+          "spend": {
+            "micros": 4000000,
+            "currency": "USD"
+          },
+          "steps": 12
+        }
+      },
+      "Audience": {
+        "kind": "workflow",
+        "params": [
+          {
+            "name": "task",
+            "type": {
+              "ref": "Task"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Text"
+        },
+        "caps": [
+          {
+            "op": "var",
+            "name": "McpRead"
+          },
+          {
+            "op": "var",
+            "name": "McpRepo"
+          },
+          {
+            "op": "var",
+            "name": "McpSrc"
+          },
+          {
+            "op": "var",
+            "name": "McpTest"
+          },
+          {
+            "op": "var",
+            "name": "ModelStd"
+          }
+        ],
+        "body": [
+          {
+            "op": "let",
+            "name": "draft",
+            "value": {
+              "op": "delegate",
+              "agent": "Planner",
+              "skill": "plan",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "task"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "let",
+            "name": "plan",
+            "value": {
+              "op": "verify",
+              "value": {
+                "op": "var",
+                "name": "draft"
+              },
+              "contract": "PlanAccepted",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "draft"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "let",
+            "name": "change",
+            "value": {
+              "op": "delegate",
+              "agent": "McpDev",
+              "skill": "implement",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "plan"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "let",
+            "name": "checked",
+            "value": {
+              "op": "verify",
+              "value": {
+                "op": "var",
+                "name": "change"
+              },
+              "contract": "BoundaryAccepted",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "change"
+                  }
+                },
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "plan"
+                  }
+                }
+              ],
+              "on_unmet": {
+                "bind": "c",
+                "then": {
+                  "op": "escalate",
+                  "to": {
+                    "op": "call",
+                    "callee": {
+                      "op": "var",
+                      "name": "human"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "template",
+                          "parts": [
+                            {
+                              "text": "Open acceptance criteria: "
+                            },
+                            {
+                              "expr": {
+                                "op": "var",
+                                "name": "c"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "op": "let",
+            "name": "landed",
+            "value": {
+              "op": "changeset",
+              "plan": {
+                "op": "var",
+                "name": "plan"
+              },
+              "members": {
+                "mcp": {
+                  "effect": "git.merge",
+                  "args": [
+                    {
+                      "value": {
+                        "op": "var",
+                        "name": "checked"
+                      }
+                    }
+                  ]
+                }
+              },
+              "order": [
+                "mcp"
+              ],
+              "approver": "architect",
+              "idempotent_by": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "task"
+                },
+                "name": "id"
+              }
+            }
+          },
+          {
+            "op": "expr",
+            "value": {
+              "op": "text",
+              "value": "landed"
+            }
+          }
+        ],
+        "budget": {
+          "spend": {
+            "micros": 8000000,
+            "currency": "USD"
+          },
+          "time": {
+            "ms": 3600000
+          }
+        }
+      }
+    },
+    "uses": [
+      {
+        "module": "acme.system",
+        "names": [
+          "mcp",
+          "staging"
+        ]
+      },
+      {
+        "module": "std",
+        "names": [
+          "component",
+          "git",
+          "human",
+          "model",
+          "test"
+        ]
+      }
+    ]
+  }
+}
