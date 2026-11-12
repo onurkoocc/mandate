@@ -468,6 +468,55 @@ describe.runIf(REAL)("no service socket of the host reaches a Bubblewrap sandbox
   });
 });
 
+// TEMPORARY: what the Bubblewrap baseline shows and what MXC does with deniedPaths, for the first CI run.
+describe.runIf(REAL)("diagnostics (temporary)", () => {
+  it("prints what a sandbox sees", { timeout: 120_000 }, async () => {
+    const sh = (c: string) => {
+      try {
+        return execFileSync("sh", ["-c", c], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      } catch (e) {
+        return `(failed: ${String((e as { stderr?: string }).stderr ?? e)})`;
+      }
+    };
+    const specifier: string = "@microsoft/mxc-sdk/v1";
+    const sdk = (await import(specifier)) as MxcSdk & { getAvailableBackends(): unknown };
+    console.log(`DIAG backends: ${JSON.stringify(sdk.getAvailableBackends())}`);
+    console.log(`DIAG host: uid=${process.getuid?.()} XDG_RUNTIME_DIR=${process.env["XDG_RUNTIME_DIR"]}\n${sh("ls -la / /run /run/user /tmp /var /dev/shm 2>&1; readlink -f /var/run /etc/resolv.conf; find /tmp /var/tmp /dev/shm /var/lib /home -type s 2>/dev/null | head -20; sudo -n true && echo SUDO-OK")}`);
+    const look = "cat /proc/self/mountinfo; echo ---; ls -la / /run /var /var/run/ /tmp /dev 2>&1; echo ---; readlink /etc/resolv.conf; ls /proc | head -30";
+    const dir = mkdtempSync(join(tmpdir(), "mandate-diag-"));
+    const variants: Array<[string, MxcContainerRequest["filesystem"], string]> = [
+      ["no denied", { readonlyPaths: [], readwritePaths: [], deniedPaths: [] }, look],
+      ["denied /run /var/run", { readonlyPaths: [], readwritePaths: [], deniedPaths: ["/run", "/var/run"] }, look],
+      ["denied nonexistent", { readonlyPaths: [], readwritePaths: [], deniedPaths: ["/run", "/nonexistent-mandate-diag"] }, "ls -la /run /nonexistent-mandate-diag 2>&1"],
+      ["ro /run/systemd/resolve under denied /run", { readonlyPaths: ["/run/systemd/resolve"], readwritePaths: [], deniedPaths: ["/run"] }, "grep -E ' /run' /proc/self/mountinfo; ls -la /run /run/systemd/resolve 2>&1"],
+      ["ro /var with denied /var/run", { readonlyPaths: ["/var"], readwritePaths: [], deniedPaths: ["/run", "/var/run"] }, "grep -E ' /(var|run)' /proc/self/mountinfo; ls -la /var/run/ /run 2>&1; find /var /run -type s 2>&1 | head"],
+      ["rw tmp grant under denied /tmp", { readonlyPaths: [], readwritePaths: [dir], deniedPaths: ["/run", "/tmp"] }, `grep -E ' /(tmp|run)' /proc/self/mountinfo; ls -la /tmp ${dir} 2>&1; touch ${dir}/w && echo WROTE`],
+    ];
+    for (const [label, filesystem, command] of variants) {
+      try {
+        const proc = await sdk.spawn({ command, filesystem, network: { egress: { default: "deny" }, ingress: { default: "deny", hostLoopback: "deny" } }, containment: { type: "bubblewrap" }, timeoutMs: 30_000 });
+        const read = (s: NodeJS.ReadableStream | null) =>
+          new Promise<string>((r) => {
+            if (!s) return r("");
+            let t = "";
+            s.on("data", (c) => (t += String(c)));
+            s.on("end", () => r(t));
+            s.on("error", () => r(t));
+          });
+        const out = read(proc.standardOutput);
+        const err = read(proc.standardError);
+        proc.standardInput?.end();
+        const [status, o, e] = await Promise.all([proc.wait(), out, err]);
+        console.log(`DIAG [${label}] exit ${status.exitCode} warnings=${JSON.stringify((proc as { warnings?: unknown }).warnings ?? null)}\n${o}\n${e}`);
+        proc.dispose();
+      } catch (e) {
+        console.log(`DIAG [${label}] spawn failed: ${(e as Error).message}`);
+      }
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe.runIf(REAL)("an agent loop in a Bubblewrap sandbox (P1-8)", () => {
   afterAll(closeAll);
 
