@@ -1,0 +1,14 @@
+mandate @ 0.4
+
+module example.parent.plan_1 @ 0.1
+
+use example.parent
+
+capability Mine = fs.write("/etc")
+
+workflow Fix() -> Inferred<Text>
+  caps   M, R, Mine
+  budget { tokens: 6000, time: 10m, spend: 2 USD, steps: 25, agents: 2 }
+{
+  delegate Lead.finish([Item { name: "a" }])
+}

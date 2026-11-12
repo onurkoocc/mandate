@@ -4,7 +4,7 @@
 // new network target as a governance change (G11).
 
 import { describe, expect, it } from "vitest";
-import { check, type Lock, type Program } from "../src/index.js";
+import { applyPatch, check, type Json, type Lock, type PatchOp, type Program } from "../src/index.js";
 import { htmlEscape, toHtml, toMarkdown } from "../src/views/doc.js";
 import { architecture, authority, cost, programDoc, semanticDiff } from "../src/views/views.js";
 import { readRepo } from "./helpers.js";
@@ -144,6 +144,15 @@ describe("the semantic diff (§15.3)", () => {
     expect(semanticDiff(spending("49 USD"), spending("50 USD")).governance.map((c) => c.text)).toEqual(["~ W.budget.spend: 49 USD → 50 USD"]);
   });
 
+  it("shows a raised function budget as a governance change, as an agent's", () => {
+    const fn = (steps: number): Program => program(`module m @ 0.1\nfn shorten(t: Text) -> Text\n  budget { steps: ${steps} }\n{\n  t\n}\n`);
+    const d = semanticDiff(fn(2), fn(5));
+    expect(d.governance).toEqual([{ path: "/defs/shorten/budget", text: "~ shorten.budget.steps: 2 → 5" }]);
+    expect(d.behavior.map((c) => c.text)).toEqual(["~ fn shorten changed"]);
+    expect(d.unchanged).not.toContain("no budget raised");
+    expect(semanticDiff(fn(5), fn(2)).governance).toEqual([]);
+  });
+
   it("reports a removed or added criterion whatever it is named", () => {
     const criterion = '  accept owner_approved "The code owner approved"\n    by human.approve(role: "code_owner")\n';
     for (const name of ["constructor", "toString", "hasOwnProperty"]) {
@@ -156,6 +165,38 @@ describe("the semantic diff (§15.3)", () => {
     const withSkill = mutate(skill, `${skill}  skill constructor(issue: Issue) -> Inferred<List<Finding>> ! {Fs.Read, Model}\n`);
     expect(semanticDiff(fixbug, withSkill).behavior.map((c) => c.text)).toEqual(["+ skill Explorer.constructor"]);
     expect(semanticDiff(withSkill, fixbug).behavior.map((c) => c.text)).toEqual(["- skill Explorer.constructor"]);
+  });
+
+  it("classifies a patch's governance changes as it lists them: same paths, same texts", () => {
+    const base = check(FIXBUG, "mdt").hashes!.program;
+    const defOf = (from: string, to: string, name: string): Json => mutate(from, to).defs[name] as unknown as Json;
+    const fixAccepted = fixbug.defs["FixAccepted"] as unknown as { accept: Record<string, { by: Json }> };
+    const patches: Array<[string, PatchOp[], string[]]> = [
+      ["raise a budget", [{ op: "replace", path: "/defs/FixBug/budget/spend/micros", value: 60_000_000 }], ["budget_increased"]],
+      ["lower a budget", [{ op: "replace", path: "/defs/Explorer/budget/steps", value: 6 }], []],
+      ["narrow a capability", [{ op: "replace", path: "/defs/RepoRead/value/args/0/value/value", value: "/work/repo/src" }], []],
+      ["widen a capability", [{ op: "replace", path: "/defs/RepoRead", value: defOf('fs.read("/work/repo")', 'fs.read("/work")', "RepoRead") }], ["capability_added"]],
+      ["change a model tier", [{ op: "replace", path: "/defs/ModelStd", value: defOf("model.infer(tier: standard)", "model.infer(tier: premium)", "ModelStd") }], ["capability_added"]],
+      ["give an agent a capability", [{ op: "add", path: "/defs/Planner/caps/-", value: { op: "var", name: "PR" } }], ["capability_added"]],
+      ["drop a criterion", [{ op: "remove", path: "/defs/FixAccepted/accept/owner_approved" }], ["criterion_removed"]],
+      ["check a criterion another way", [{ op: "replace", path: "/defs/FixAccepted/accept/owner_approved/by", value: fixAccepted.accept["suite_green"]!.by }], ["criterion_changed"]],
+      [
+        "drop a criterion and raise an agent's steps",
+        [
+          { op: "remove", path: "/defs/FixAccepted/accept/scope_respected" },
+          { op: "replace", path: "/defs/Reviewer/budget/steps", value: 9 },
+        ],
+        ["criterion_removed", "budget_increased"],
+      ],
+    ];
+    for (const [what, ops, kinds] of patches) {
+      const r = applyPatch(fixbug, base, ops);
+      expect(r.ok, what).toBe(true);
+      const v = semanticDiff(fixbug, r.program!);
+      expect(r.governance.map((g) => g.kind), what).toEqual(kinds);
+      expect(r.governance.map((g) => g.path), what).toEqual(v.governance.map((g) => g.path));
+      expect(r.governance.map((g) => g.detail), what).toEqual(v.governance.map((g) => g.text));
+    }
   });
 });
 

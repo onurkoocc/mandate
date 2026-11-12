@@ -390,6 +390,39 @@ describe("changing an envelope is a governance change", () => {
     expect(r.governance).toEqual([{ kind: "envelope_changed", path: "/defs/MigrateAll/envelope", detail: expect.any(String) }]);
   });
 
+  it("is reported by a patch that raises the envelope's agents", () => {
+    const p = migrateAll();
+    const base = hashProgram(p as unknown as Json).program;
+    const r = applyPatch(p, base, [{ op: "replace", path: "/defs/MigrateAll/envelope/budget/agents", value: 300 }], modules());
+    expect(r.ok).toBe(true);
+    expect(r.governance).toEqual([{ kind: "envelope_changed", path: "/defs/MigrateAll/envelope", detail: "~ MigrateAll: envelope changed" }]);
+  });
+
+  it("is reported by a patch that removes an envelope, or adds one", () => {
+    const p = migrateAll();
+    const r = applyPatch(p, hashProgram(p as unknown as Json).program, [{ op: "remove", path: "/defs/MigrateAll/envelope" }], modules());
+    expect(r.ok).toBe(true);
+    expect(r.governance).toEqual([{ kind: "envelope_changed", path: "/defs/MigrateAll/envelope", detail: "~ MigrateAll: envelope removed" }]);
+    const without = r.program!;
+    const back = applyPatch(without, r.hash!, [{ op: "add", path: "/defs/MigrateAll/envelope", value: (p.defs["MigrateAll"] as { envelope: unknown }).envelope }], modules());
+    expect(back.ok).toBe(true);
+    expect(back.governance).toEqual([{ kind: "envelope_changed", path: "/defs/MigrateAll/envelope", detail: "~ MigrateAll: envelope added" }]);
+  });
+
+  it("is reported, with the envelope's capabilities, for a new workflow with an envelope", () => {
+    const p = migrateAll();
+    const r = applyPatch(p, hashProgram(p as unknown as Json).program, [{ op: "add", path: "/defs/MigrateAgain", value: p.defs["MigrateAll"] }], modules());
+    expect(r.ok).toBe(true);
+    expect(r.governance.map((g) => [g.kind, g.path])).toEqual([
+      ["capability_added", "/defs/MigrateAgain/envelope/caps/0"],
+      ["capability_added", "/defs/MigrateAgain/envelope/caps/1"],
+      ["capability_added", "/defs/MigrateAgain/envelope/caps/2"],
+      ["capability_added", "/defs/MigrateAgain/envelope/caps/3"],
+      ["capability_added", "/defs/MigrateAgain/envelope/caps/4"],
+      ["envelope_changed", "/defs/MigrateAgain/envelope"],
+    ]);
+  });
+
   it("is not reported by a patch that lowers a map's max", () => {
     const p = migrateAll();
     const base = hashProgram(p as unknown as Json).program;

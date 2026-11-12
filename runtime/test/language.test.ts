@@ -1,9 +1,8 @@
 // The language versions this runtime runs (§3.5; spec/envelope.md). Of 0.4 it
-// runs roles, signed decisions, envelopes and `map`. `plan` and the `agents`
-// dimension of a budget that is not an envelope's are read by the compiler and
-// not run here yet, so a package that uses one of them is refused at load, by
-// name. A 0.4 package also needs every role it names bound to a member in its
-// lock.
+// runs roles, signed decisions, envelopes, `map` and `plan`. The `agents`
+// dimension of a budget that is not an envelope's is read by the compiler and
+// not run here, so a package that uses it is refused at load, by name. A 0.4
+// package also needs every role it names bound to a member in its lock.
 
 import { readFileSync } from "node:fs";
 import { check, hashProgram, loadModules, type Json, type Modules, type Program } from "@mandate/compiler";
@@ -102,15 +101,14 @@ describe("the language versions the runtime runs", () => {
     expect(refusal(buildPackage(program, BOUND))).toBeUndefined();
   });
 
-  it("refuse the migration example, which has a plan (unsupported_language)", () => {
+  it("accept the migration example: its envelope, its map and its plan are run", () => {
     const modules = domain("0.4");
     const program = checked(read("fixtures/envelope/migrate-all.mdt"), modules);
-    // Its envelope, with the agents of the envelope's budget, and its map are run; the plan is not yet.
-    expect(notRunYet(program)).toEqual(["plan"]);
-    const e = refusal(buildPackage(program, pinned(modules), modules));
-    expect(e).toBeInstanceOf(Violation);
-    expect(e).toMatchObject({ code: "unsupported_language" });
-    expect((e as Violation).message).toContain("plan of mandate/0.4");
+    expect(notRunYet(program)).toEqual([]);
+    const lock: Lock = { ...pinned(modules), members: { alice: { keys: [KEY] }, bob: { keys: [KEY.replace("3f", "4a")] } }, roles: { platform_lead: ["alice"], release_manager: ["bob"] } };
+    expect(refusal(buildPackage(program, lock, modules))).toBeUndefined();
+    // Without the people its roles stand for it is still refused, as any 0.4 package is.
+    expect(refusal(buildPackage(program, pinned(modules), modules))).toBeInstanceOf(Violation);
   });
 
   const ENVELOPE = "  envelope {\n    owner  reviewer\n    caps   M\n    budget { steps: 20, agents: 3 }\n  }\n{";
@@ -129,14 +127,17 @@ describe("the language versions the runtime runs", () => {
     expect(refusal(buildPackage(program, BOUND))).toBeUndefined();
   });
 
-  it.each([
+  it("accept a 0.4 program with a plan", () => {
     // A plan stands only in a workflow with an envelope (E1707), so it comes with one.
-    [
-      "a plan",
+    const program = changed(
       `  caps M\n  budget { steps: 20 }\n{\n  let go = human.ask("Go on?", role: reviewer)\n`,
       ENVELOPE + `\n  let go = human.ask("Go on?", role: reviewer)\n  let r = plan A.s("x") within envelope\n`,
-      ["plan"],
-    ],
+    );
+    expect(notRunYet(program)).toEqual([]);
+    expect(refusal(buildPackage(program, BOUND))).toBeUndefined();
+  });
+
+  it.each([
     ["an agents budget of the workflow's own", "budget { steps: 20 }", "budget { steps: 20, agents: 3 }", ["agents"]],
     ["an agents budget of an agent", "budget { steps: 2 }", "budget { steps: 2, agents: 3 }", ["agents"]],
   ])("refuse a 0.4 program with %s, and name it", (_what, from, to, names) => {

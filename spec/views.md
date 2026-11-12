@@ -102,14 +102,35 @@ three parts.
 
 - authority widened: a new capability; a new path, host, command or
   repository in one; a new model tier or a higher data class; a capability
-  added to an agent or a workflow;
+  added to an agent or a workflow; a capability changed in a way the diff
+  cannot read as a narrowing, such as the amount `money.spend` allows;
 - a budget raised or a limit removed;
 - an acceptance criterion removed, or its method changed; a `require`
   changed;
 - an effect made irreversible;
-- a remote agent added or rebound.
+- a remote agent added or rebound;
+- a definition replaced by one of another kind.
 
 A new network target always shows here (G11).
+
+`mandate patch` and `mandate.apply_patch` ([`mcp.md`](mcp.md)) report the
+same governance changes for a patch, computed by the same code, but not the
+locks' (a patch changes the program, not its lock). Each comes with a kind,
+its path, and as `detail` the text shown here:
+
+| Kind | The change |
+|---|---|
+| `capability_added` | A capability added or widened (a scope, a model tier, a data class, argument prefixes), one changed in a way its scopes do not show (what `money.spend` allows), or one more held by an agent or a workflow |
+| `budget_increased` | A workflow's, agent's, skill's or function's budget raised, or a limit removed |
+| `criterion_removed` | A criterion removed; for a removed contract, one change at the contract's path |
+| `criterion_changed` | A criterion checked by another method |
+| `require_changed` | A contract's `require` changed |
+| `irreversible_added` | An effect made irreversible, or a new irreversible effect |
+| `system_model_changed` | A component, interface or environment added, changed or removed ([`system.md`](system.md)) |
+| `envelope_changed` | A workflow's envelope added, changed or removed ([`envelope.md`](envelope.md)) |
+| `remote_agent_added` | A new remote agent |
+| `remote_binding_changed` | A remote agent rebound |
+| `kind_changed` | A definition replaced by one of another kind under the same name |
 
 The diff also compares the two versions' locks: a member added or removed,
 a key added to or removed from a member, a member added to or removed from

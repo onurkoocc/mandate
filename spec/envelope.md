@@ -12,15 +12,16 @@ same cases.
 | The envelope's own rules: E1701, E1704 and E1707; E0501 with `steps` and `agents`; E0220 with `spawn.max_class` | implemented |
 | The envelope at run time: its approval (H03), the `agents` ledger for delegations (N02), `spawn.max_concurrent`, `approve E by r`; the card | implemented |
 | `map`: its rules (E1702, E1703, E1708, E0320 and E0501 at the map) and its run (R11, R12, N03, N08) | implemented |
-| `plan`, sub-programs and their rules (E1705, E1706); amendments | not yet; `mandate explain` knows the codes, `mandate check` does not report them |
+| `plan` and sub-programs: their rules (E1705, E1706) and their run, with the ledger under a sub-program, the bounded check and replay (N01, N02, N05, N06, N07, N09, N10) | implemented |
+| Amendments (N04) | not yet |
 | Run views of 0.4: submissions, the envelope's remainder, map items, each decision's member, role and signature | not yet; `mandate status` lists each decision a run took and whether its signature holds |
 
 The runtime runs a 0.4 package that uses roles, signed decisions,
-envelopes and `map`. It refuses one that has a `plan`, or `agents` in a
-budget that is not an envelope's, when it loads it (`unsupported_language`,
-naming what it found). Those are not run yet, and a version is never run on
-a best-effort basis. Such a program can be read, checked, hashed, printed
-and viewed today, and not run.
+envelopes, `map` and `plan`. It refuses one that has `agents` in a budget
+that is not an envelope's, when it loads it (`unsupported_language`, naming
+what it found). That is not run yet, and a version is never run on a
+best-effort basis. Such a program can be read, checked, hashed, printed
+and viewed today, and not run. A lead has no `request_amendment` tool yet.
 
 0.4 lets an agent plan work while a run is going, without a person approving
 every step. A person approves an **envelope** once: the most authority,
@@ -597,23 +598,41 @@ In IR: `{ "op": "plan", "agent": "Lead", "skill": "finish", "args": [ … ],
 `plan` runs a bodiless skill of a local agent as an agent loop, like a
 delegation, with two more tools. It is allowed only in the body of a
 workflow that has an envelope (E1707), and the skill's own effects are
-checked as for any delegation (C1, C2).
+checked as for any delegation (C1, C2). The lead's delegation runs under
+the `plan` node's path. A runtime without an agent loop does not run a
+`plan` (`no_agent_loop`).
 
 | Tool | Does |
 |---|---|
 | `check_program(base, ops)` | Applies an IR patch to the sub-program skeleton and returns the diagnostics, as `mandate.apply_patch` does, with the envelope's remainder as facts. Admits nothing |
 | `submit_program(base, ops)` | The same check. If the sub-program fits, it is admitted, run to its end, and its result returned to the lead. If not, the diagnostics are returned and nothing runs |
 
-Each tool call is a step of the lead's loop, charged to its budget. The
-lead submits one sub-program at a time; parallel work goes inside a
-sub-program, in `par` and `map`.
+Each tool call is a step of the lead's loop, charged to its budget and
+journaled like any tool call. The lead submits one sub-program at a time;
+parallel work goes inside a sub-program, in `par` and `map`.
+
+- **What the lead sends.** `ops` is the whole patch each time: `add`,
+  `remove` and `replace` operations against the skeleton whose hash is
+  `base`. A patch against another base is stale (E0130).
+- **What the lead is told.** Every answer names the sub-program the next
+  patch is for (`number`, `base`) and what is left for it (`room`): the
+  envelope's remainder per dimension, the time left before the run's
+  deadline, and the write capabilities in flight. `check_program` adds
+  `ok` and `diagnostics`. `submit_program` answers `admitted: false` with
+  the diagnostics, as an error to the model, or `admitted: true` with the
+  sub-program's `hash`, its `result` or its `error`, and `next`: the
+  number and base of the sub-program after it. Errors come first, and at
+  most 40 diagnostics are shown.
+- **Numbers.** `n` counts the sub-programs this `plan` node has admitted,
+  from 1. A refused submission does not advance it. Two `plan` nodes
+  number their sub-programs separately.
 
 ### The sub-program
 
 A sub-program is a module the runtime starts for the lead:
 
 ```json
-{ "language": "mandate/0.4", "module": "<parent module>.plan.<n>", "version": "0.1",
+{ "language": "mandate/0.4", "module": "<parent module>.plan_<n>", "version": "0.1",
   "uses": [ { "module": "<parent module>" } ], "defs": {} }
 ```
 
@@ -627,17 +646,29 @@ agents, capabilities, contracts, types, functions, effects.
   `environment`, remote agent, envelope or `plan` (E1705). Acceptance
   criteria, external effects, host code, people and the system model
   belong to the program a person approved; a network binding is a
-  governance change (G11).
+  governance change (G11). So an effect that takes a verified value, as
+  `git.merge` does, is verified against a contract of the parent. The
+  workflow takes no parameters. A capability of the sub-program may narrow
+  one of its parent's, under any name.
 - **The checks.** All of `mandate check` runs on the sub-program, with its
   parent linked as a module. Its workflow's `caps` and `budget` are its
   claim on the envelope.
 - **Containment (N01).** The sub-program is admitted only when:
   - every capability of its workflow lies inside a capability of the
     envelope (the C2 test), and does not overlap a write scope that a
-    sub-program or map item still in flight holds (C5 across the run);
-  - its workflow's budget fits in what the envelope has left, per
-    dimension: `limit − settled − active reservations`, `agents`
-    included; its `time` fits before the run's deadline;
+    sub-program or map item still in flight holds (C5 across the run). A
+    sub-program is in flight from its admission until it has ended, also
+    while it waits for a person or for the run to be resumed. A map holds
+    the scope of every item from before its first item is dispatched; an
+    item's scope is free when the item has ended, and all of them when
+    the map has failed. The test is made at admission: a map that starts
+    while a sub-program in flight holds an overlapping scope is not
+    refused in 0.4;
+  - its workflow's budget names every dimension the run is limited in and
+    fits in what the envelope has left, per dimension: `limit − settled −
+    active reservations`, `agents` included. When the envelope names a
+    `time`, the sub-program names one that fits before the run's deadline,
+    which is the run's start plus the envelope's `time`;
   - every model of its agents may receive the class of what the lead
     received, and that class is at most the envelope's `max_class`. A
     sub-program is the lead's output, so it has the lead's class (§2.2);
@@ -648,19 +679,45 @@ agents, capabilities, contracts, types, functions, effects.
   in the same transaction that records it, like a delegation's
   reservation; its own commands draw from it. Its IR goes to the artifact
   store, and the event `program_admitted` records its number, its hash and
-  its base.
+  its base. A check and the admission it leads to are one step among the
+  leads of a run, so two leads are never given the same remainder or the
+  same place to write. If a delegation outside any sub-program reserved
+  what the check saw as left, the admission is refused as E1706 with the
+  ledger's numbers. `program_submitted` is written for every submission
+  once it was checked, and `program_refused` for one that is not admitted.
+- **The ledger (N02).** A command inside a sub-program takes its
+  reservation out of the sub-program's, in every dimension the run is
+  limited in, and gives back what it did not spend when it settles. A
+  sub-program that asked for nothing of a dimension has nothing of it to
+  give: nothing inside a sub-program is taken from the run. What it
+  spent beyond its share comes out of the sub-program's reservation too.
+  So the sub-program and its commands never hold more of the run than it
+  was admitted with. A command that does not fit what the sub-program has
+  left is `BudgetExceeded` naming the program. That is the sub-program's
+  fault and goes to the lead, not to the run's budget handler. When the
+  sub-program ends, what is left of its reservation is released.
 - **Running.** Its workflow runs inside the run, under `<plan>/program/<n>`.
   Every command, sandbox, reservation and effect works as in the parent.
   A critical effect still goes through prepare → authorize → commit (N05);
-  admission authorizes nothing.
+  admission authorizes nothing. The envelope's `approve` and
+  `spawn.max_concurrent` hold inside it. The lead gives up its place among
+  the run's delegations while its sub-program runs and takes one again
+  after, so a sub-program runs even where only one delegation may be in
+  flight. A map without `max` is bounded by the sub-program's own
+  `agents`. Neither the envelope's `time` nor a sub-program's is a timer
+  in 0.4: they bound what is admitted.
 - **Business keys.** A sub-program's effect keeps one action per business
   key across the whole `plan`: the operation key of an effect in a
   sub-program is derived from the run, the `plan` node, the effect and its
   `idempotent_by` key, not from the sub-program. A second sub-program that
   opens the same pull request finds the first one's action (INV-06, N07).
+  The same key over other parameters is neither that action nor a new
+  one: the effect fails with `Rejected(idempotency_conflict)`. A member of
+  a change set in a sub-program keeps the key of its place in the set.
 - **Its result** is returned to the lead as a tool result. A value it
   returns keeps its type: what an agent made is `Inferred`, and only a
-  `verify` in the sub-program makes it `Verified`.
+  `verify` in the sub-program makes it `Verified`. A fault of the
+  sub-program is returned too, as `error`, and the lead may plan again.
 - **Its text.** A sub-program's literals (agent roles, prompts, messages)
   are the lead's output. They may instruct its agents, since that is what
   a plan is. They cannot widen authority, which containment bounds. Views
@@ -669,10 +726,19 @@ agents, capabilities, contracts, types, functions, effects.
 ### Limits
 
 A sub-program has the 0.1 limits (1 MiB, nesting 64, 64 definitions, 1000
-expanded nodes). The checker runs on it with a time limit (2 s by default,
-`plan.checkMs` in `mandate.runtime.json`) in a worker of its own. A check
-that takes longer is a diagnostic to the lead (`check_limit`), and the
-runtime goes on. Input over a limit is refused before it is parsed.
+expanded nodes), and a patch has at most 256 operations. A patch over a
+limit in size, nesting or operations is refused before anything is built
+from it. The checker then runs in a worker of its own, with a time limit
+(2 s by default, `plan.checkMs` in `mandate.runtime.json`) and a heap of
+its own (256 MB). A check that runs over a limit is a diagnostic to the
+lead, `check_limit`, whose facts name the limit (`time`, `memory`, `size`,
+`depth` or `operations`) and its value, and the runtime goes on.
+
+A checker that fails on what it was given is a diagnostic to the lead as
+well, `check_failed`. A sub-program is a model's writing, and nothing in
+it stops the run. Neither diagnostic admits anything, and neither is an
+`MDT-` code: they say that no check was made. Only a checker that is not
+installed is the runtime's own failure (`no_checker`).
 
 ### Amendments (N04)
 
@@ -706,6 +772,16 @@ its `program_admitted` event names, and runs it against the journal. It
 calls no model, no adapter and no checker that could answer differently: a
 recorded admission is not checked again. A refused submission is a
 recorded tool result.
+
+The lead's loop is not run again, since its result and every tool result
+are in the journal. The sub-programs a `plan` admitted are run in the
+order they were admitted. Each is held to the hash it was admitted with
+(`program_hash_mismatch`), and must end as the journal says it ended
+(`nondeterministic_replay`).
+
+A run that is resumed does the same for a step whose sub-program was
+admitted: it finds the admission, checks nothing again, and runs the
+sub-program on from the journal.
 
 ## Static checks
 
@@ -756,6 +832,11 @@ Existing checks extend to the new forms:
   capabilities are reported as before 0.4.
 - **E0711** stays: there is no `spawn`. Its message names `plan … within
   envelope` as the dynamic form (V05).
+- **Capabilities that name capabilities.** From 0.4 a capability may
+  narrow another whatever their names are. Before, the checker evaluated
+  capabilities in name order, and one that names a later one came out
+  empty; a program of 0.1 to 0.3 is checked as it was. A capability that
+  names itself, directly or through another, is nothing in every version.
 
 ## Runtime
 
@@ -765,9 +846,9 @@ Existing checks extend to the new forms:
 |---|---|
 | `envelope_approved` | package, member, role, key, decision digest. Written to a run's log when it starts, naming the approval it starts under; the approval itself is stored with the package and listed in the run's manifest |
 | `map_started` | map node, number of items, `par` |
-| `program_submitted` | plan node, number, base, patch digest |
-| `program_refused` | plan node, number, diagnostics digest |
-| `program_admitted` | plan node, number, hash, base, reservation |
+| `program_submitted` | plan node, number, the step of the lead's loop, the lead (`Agent.skill`), base, patch digest, whether it checked; for one that did, its hash and the kinds of governance change in it |
+| `program_refused` | plan node, number, step, diagnostics digest, the codes of the errors |
+| `program_admitted` | plan node, number, step, the command it runs under, hash, base, where its IR is in the artifact store, its workflow, reservation |
 | `amendment_requested` | plan node, new package hash, diff digest |
 | `package_amended` | old and new package hashes, diff digest, decision digest |
 | `decision_refused` | command, reason (`invalid_signature`, `unknown_key`, `not_in_role`, `same_member`, `stale_revision`, `subject_mismatch`), and the kind, member, role and key the record names |
@@ -790,17 +871,27 @@ with which key, and why. It changes nothing else and raises no revision.
 | `no_envelope` | An envelope approval of a package that has no envelope |
 | `approval_conflict` | An effect under `approve` whose environment or change set member names another role. The run is `attention_required` |
 | `above_program_budget` | A raise above the envelope's budget; it needs an amendment |
-| `unsupported_language` | At load: a package with a `plan`, or `agents` in a budget that is not an envelope's |
+| `unsupported_language` | At load: a package with `agents` in a budget that is not an envelope's |
+| `no_agent_loop` | A `plan` on a runtime that has no agent loop, or whose lead is not a bodiless skill of a local agent |
+| `no_checker` | A submission on a runtime whose checker is not installed |
+| `program_hash_mismatch` | A stored sub-program that does not hash to what `program_admitted` names |
 
 A map is refused with a fault, before any of its items is dispatched. Like
 any fault it can be an outer map item's outcome.
 
 | Fault | When |
 |---|---|
-| `Rejected(over_limit)` | The list is longer than the map's bound: `max`, or without it the envelope's `agents` (N08). Names the map, the number of items and the bound |
+| `Rejected(over_limit)` | The list is longer than the map's bound: `max`, or without it the envelope's `agents`, or in a sub-program its own (N08). Names the map, the number of items and the bound |
 | `Rejected(overlapping_scopes)` | With `par > 1`, two items are handed write scopes that overlap (N03). Names the map, the two items and the two capabilities |
 | `PolicyDenied(outside_capability)` | A scope chosen at run time does not lie inside the capability it narrows. Names the capability and the scope asked for. Also for a delegation outside a map |
 | `PolicyDenied(outside_authority)` | A map's `with caps` outside what its context holds (names the map and the item), or a delegation's own outside what it can be granted (names the delegate) |
+
+Two faults belong to a sub-program. Each is returned to its lead.
+
+| Fault | When |
+|---|---|
+| `BudgetExceeded` naming a `program` | A command inside a sub-program asks for more than the sub-program has left (N02). Names the dimension, what was asked and what is left |
+| `Rejected(idempotency_conflict)` | An effect whose business key another effect of the same `plan` used with other parameters (N07). Names the effect, the operation and the first one's command |
 
 ### Executors
 

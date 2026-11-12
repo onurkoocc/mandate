@@ -1,0 +1,17 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "N01b",
+  "kind": "compile",
+  "title": "The sub-program of N01a is admitted when the envelope has as many tokens left as it asks for.",
+  "spec": ["spec/envelope.md#the-sub-program", "spec/envelope.md#conformance-cases"],
+  "language": "mandate/0.4",
+  "input": { "file": "../N01/parent.mdt", "kind": "mdt" },
+  "modules": ["../N01/domain.mdt"],
+  "subprogram": {
+    "workflow": "Run",
+    "defs": { "file": "../N01a/sub.mdt", "kind": "mdt" },
+    "room": { "left": { "tokens": 50001, "steps": 100, "agents": 10, "spend:USD": 10000000 }, "time_left_ms": 1800000 }
+  },
+  "expect": { "ok": true, "diagnostics": [] }
+}

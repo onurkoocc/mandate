@@ -1,0 +1,19 @@
+mandate @ 0.4
+
+module example.parent.plan_1 @ 0.1
+
+use example.parent
+
+agent Quiet {
+  role   "Takes a note."
+  caps   Public
+  budget { tokens: 500, spend: 1 USD, steps: 3 }
+  skill note(t: Text) -> Inferred<Text> ! {Model}
+}
+
+workflow Fix() -> Inferred<Text>
+  caps   Public
+  budget { tokens: 2000, time: 10m, spend: 2 USD, steps: 10, agents: 2 }
+{
+  delegate Quiet.note("go")
+}

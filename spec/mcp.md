@@ -32,7 +32,10 @@ The server only computes:
 A patch against a stale base is refused (`MDT-E0130`). A patch that widens
 authority, raises a budget, removes a criterion or adds an irreversible
 effect is reported as a governance change with `requires_approval: true`
-(§13.2). The server cannot grant that approval.
+(§13.2). The server cannot grant that approval. Each change has a kind, a
+path and a `detail`, classified as the semantic diff classifies it
+([`views.md`](views.md#what-changed-between-two-versions) lists the kinds),
+so a patch that only narrows authority needs no approval.
 
 A call a tool cannot serve, such as an unknown code or a program that does
 not check, is a tool result with `isError: true`, which the model reads and

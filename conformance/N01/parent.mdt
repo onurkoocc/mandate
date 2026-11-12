@@ -1,0 +1,50 @@
+mandate @ 0.4
+
+module example.parent @ 0.1
+
+use std.{exec, fs, git, human, model}
+use example.domain.{Ticket}
+
+role owner_role "Owner"
+role release    "Release manager"
+
+type Item   = { name: Text }
+type Secret = { body: Text } classified confidential
+
+capability M      = model.infer(tier: standard)
+capability Public = model.infer(tier: small, max_class: public)
+capability High   = model.infer(tier: premium, max_class: confidential)
+capability R      = fs.read("/work")
+capability W      = fs.write("/work")
+capability Merge  = git.pr("company/backend")
+
+agent Worker {
+  role   "Fixes one item."
+  caps   M, R, W
+  budget { tokens: 1000, spend: 1 USD, steps: 5 }
+  skill fix(i: Item) -> Inferred<Text> ! {Fs.Read, Fs.Write, Model}
+}
+
+agent Lead {
+  role   "Plans what is left."
+  caps   M, High, R
+  budget { tokens: 5000, spend: 2 USD, steps: 20 }
+  skill finish(items: List<Item>) -> Inferred<Text> ! {Fs.Read, Model}
+  skill study(s: Secret) -> Inferred<Text> ! {Fs.Read, Model}
+}
+
+fn label(i: Item) -> Text {
+  i.name
+}
+
+workflow Run(items: List<Item>, secret: Secret) -> Inferred<Text>
+  envelope {
+    owner   owner_role
+    caps    M, Public, High, R, W, Merge
+    budget  { tokens: 100000, time: 1h, spend: 20 USD, steps: 200, agents: 20 }
+    spawn   { max_concurrent: 4 }
+    approve git.merge by release
+  }
+{
+  plan Lead.finish(items) within envelope
+}

@@ -32,8 +32,41 @@ own input files (`program.mdt` or `program.ir.json`, module files,
   applied to the IR of the input, and the patched IR is checked as JSON IR. No
   base hash is involved. Use it to say "this program, with this change" without
   copying the program. The unpatched input must load without errors.
+- `subprogram`: optional; see below. A case with it has no top-level `patch`
+  or `lock`.
 - `expect`: `{ "ok": boolean, "diagnostics": [ { "code", "path", "facts"? } ],
   "hashes"?: { "program"?, "defs"? } }`.
+
+## A sub-program case
+
+A `compile` case with `subprogram` checks a lead's sub-program
+(spec/envelope.md "The sub-program"). Its `input` and `modules` are the
+parent program, which must check without errors. `expect` is compared with
+the check of the sub-program, not of the parent. `language`, when given, is
+the parent's.
+
+- `workflow`: the parent's workflow whose envelope bounds the run.
+- `number`: optional, 1 when not given. The sub-program's number. The patch
+  is written against the skeleton of that number, `<parent module>.plan_<n>`,
+  and its program hash is the patch's base.
+- `defs`: optional, a module given like `input`. Each of its definitions
+  becomes one `add` operation at `/defs/<name>`, in the order the module
+  defines them. Only its definitions are read, not its header. It must load;
+  if it does not, the case is wrong.
+- `patch`: optional, more operations of the lead, after those from `defs`.
+  They are given to the check as they are.
+- `lead`: optional, `public` when not given. The data class of what the lead
+  received: `public`, `internal`, `confidential` or `restricted`.
+- `room`: what is left of the envelope.
+  - `left`: what is left in each ledger dimension the run is limited in,
+    such as `tokens`, `steps`, `agents` and `spend:USD` in micro-units.
+  - `time_left_ms`: optional, milliseconds to the run's deadline.
+  - `writes`: optional, the write capabilities still in flight, each
+    `{ "ctor", "scope" }`. `ctor` is `fs.write`, `git.pr`, `env.deploy` or
+    `env.migrate`; `scope` lists its paths, repositories or environments.
+
+The sub-program cases share the parent of N01: `conformance/N01/parent.mdt`
+and the module it imports, `conformance/N01/domain.mdt`.
 
 All paths are relative to the case directory and must stay inside the
 repository. A path may go up into the repository to share a fixture, as V03 does.

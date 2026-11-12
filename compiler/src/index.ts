@@ -1,5 +1,6 @@
 // Public API of the Mandate 0.1 reference compiler.
 export { check, checkPatch, load, loadModules, kindOf, type CheckOptions, type CheckResult, type LoadResult, type ModuleSource, type PatchCheck, type SourceKind } from "./check.js";
+export { checkSubprogram, subprogramLinked, type SubprogramCheck, type SubprogramInput } from "./check.js";
 export { link, linkedProgram, references, type Linked, type Modules } from "./modules.js";
 export { LOCK_FORMAT, LOCK_FORMATS, lockChecks, moduleLockChecks, roleLockChecks, lockSchema, modelTiers, packagedLock, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
 export { CODES } from "./codes.js";
@@ -18,6 +19,8 @@ export { resolveNames } from "./resolve/resolve.js";
 export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, scopeWithin, showCap, within, writesOverlap, type CapResult, type CapVal } from "./check/caps.js";
 export { roleChecks, roleSites, rolesNamed, type RoleSite } from "./check/roles.js";
 export { staticCost, type CostPart, type StaticCost } from "./check/cost.js";
+export { leadClasses, type Claim } from "./check/static.js";
+export { containment, skeleton, subprogramShape, type Room } from "./check/subprogram.js";
 export { GOVERNANCE_FILES, GOVERNANCE_KINDS, globRegExp, governanceFiles, governanceKind, type GovernanceKind } from "./std/governance.js";
 export { BUILTIN_EFFECTS, classRank, DATA_CLASSES, DECISION_POLICIES, STD_EFFECTS, STD_FNS, type DataClass } from "./std/std.js";
 export { ACS_PROFILE, ACS_TARGET_FORMAT, ACS_VERSION, acsTarget, type AcsAgent, type AcsTarget } from "./target/acs.js";

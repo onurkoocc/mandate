@@ -7,6 +7,7 @@ import { hashProgram } from "../src/hash.js";
 import type { Program } from "../src/ir/types.js";
 import type { Json } from "../src/json/strict-json.js";
 import { applyPatch } from "../src/patch/patch.js";
+import { semanticDiff } from "../src/views/views.js";
 import { checkJson, codes, minimal } from "./helpers.js";
 
 describe("S01 duplicate JSON key", () => {
@@ -310,8 +311,8 @@ agent A {
     const r = applyPatch(p, base, [{ op: "add", path: "/defs/Leak", value: leak }]);
     expect(r.diagnostics).toEqual([]);
     expect(r.governance).toEqual([
-      { kind: "capability_added", path: "/defs/Leak/caps/0", detail: 'Leak gains {"args":[{"value":{"op":"text","value":"/"}}],"callee":{"name":"write","of":{"name":"fs","op":"var"},"op":"field"},"op":"call"}' },
-      { kind: "capability_added", path: "/defs/Leak/caps/1", detail: 'Leak gains {"name":"Write","op":"var"}' },
+      { kind: "capability_added", path: "/defs/Leak/caps/0", detail: '+ Leak: fs.write("/")' },
+      { kind: "capability_added", path: "/defs/Leak/caps/1", detail: '+ Leak: Write = fs.write("/repo")' },
     ]);
   });
 
@@ -321,7 +322,7 @@ agent A {
       const base = hashProgram(p as unknown as Json).program;
       const r = applyPatch(p, base, [{ op: "remove", path: `/defs/Done/accept/${name}` }]);
       expect(r.ok, name).toBe(true);
-      expect(r.governance, name).toEqual([{ kind: "criterion_removed", path: `/defs/Done/accept/${name}`, detail: `Done drops accept criterion '${name}'` }]);
+      expect(r.governance, name).toEqual([{ kind: "criterion_removed", path: `/defs/Done/accept/${name}`, detail: `- Done.${name} (human.approve) removed` }]);
     }
   });
 
@@ -331,5 +332,116 @@ agent A {
     const r = applyPatch(p, base, [{ op: "replace", path: "/defs/A/budget/steps", value: 3 }]);
     expect(r.ok).toBe(true);
     expect(r.governance).toEqual([]);
+  });
+
+  /** `src` with `from` replaced by `to`, checked; its definition `name`. */
+  const defIn = (from: string, to: string, name: string): unknown => {
+    expect(src).toContain(from);
+    const r = check(src.replace(from, to), "mdt");
+    expect(r.program, to).toBeDefined();
+    return r.program!.defs[name];
+  };
+
+  /** Applies `ops` to `p` and returns its governance changes, as kind, path and detail. */
+  const changes = (p: Program, ops: Parameters<typeof applyPatch>[2]) => {
+    const r = applyPatch(p, hashProgram(p as unknown as Json).program, ops);
+    expect(r.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    return r.governance;
+  };
+
+  it("classifies a changed capability by what it authorizes: a narrowing is not reported, a widening is", () => {
+    const p = check(src, "mdt").program!;
+    expect(changes(p, [{ op: "replace", path: "/defs/Read", value: defIn('fs.read("/repo")', 'fs.read("/repo/src")', "Read") }])).toEqual([]);
+    expect(changes(p, [{ op: "replace", path: "/defs/Read", value: defIn('fs.read("/repo")', 'fs.read("/repo", "/etc")', "Read") }])).toEqual([
+      { kind: "capability_added", path: "/defs/Read", detail: '+ Read: read path "/etc"' },
+    ]);
+  });
+
+  it("flags a changed capability whose scopes do not show the change", () => {
+    // What `money.spend` allows is not a scope. Raising it widens authority all the same, so the change is reported.
+    const spend = `use std.{fs, human, money}`;
+    const withSpend = `${src.replace("use std.{fs, human}", spend)}\ncapability Spend = money.spend(max: 20 USD, per: workflow_run)\n`;
+    const p = check(withSpend, "mdt").program!;
+    const raised = check(withSpend.replace("max: 20 USD", "max: 2000 USD"), "mdt").program!;
+    expect(changes(p, [{ op: "replace", path: "/defs/Spend", value: raised.defs["Spend"] }])).toEqual([{ kind: "capability_added", path: "/defs/Spend", detail: "~ capability Spend changed" }]);
+    expect(semanticDiff(p, raised).governance).toEqual([{ path: "/defs/Spend", text: "~ capability Spend changed" }]);
+    // A narrowing the scopes do show stays a behavior change.
+    const narrowed = check(withSpend.replace('fs.read("/repo")', 'fs.read("/repo/src")'), "mdt").program!;
+    expect(semanticDiff(p, narrowed).governance).toEqual([]);
+  });
+
+  it("flags a criterion checked another way, and a changed require", () => {
+    const p = check(src, "mdt").program!;
+    const done = p.defs["Done"]!;
+    if (done.kind !== "contract") throw new Error("Done is a contract");
+    expect(changes(p, [{ op: "replace", path: "/defs/Done/accept/tests/by", value: done.accept["owner"]!.by }])).toEqual([
+      { kind: "criterion_changed", path: "/defs/Done/accept/tests", detail: "~ Done.tests: human.approve → human.approve" },
+    ]);
+    const required = defIn("contract Done(i: Issue) {\n", "contract Done(i: Issue) {\n  require i.reproducible\n", "Done");
+    expect(changes(p, [{ op: "replace", path: "/defs/Done", value: required }])).toEqual([{ kind: "require_changed", path: "/defs/Done/require", detail: "~ Done: require changed" }]);
+  });
+
+  it("flags a definition that becomes another kind", () => {
+    const p = check(src, "mdt").program!;
+    expect(changes(p, [{ op: "replace", path: "/defs/Write", value: { kind: "type", type: { ref: "Text" } } }])).toEqual([
+      { kind: "kind_changed", path: "/defs/Write", detail: "~ Write: capability → type" },
+    ]);
+  });
+
+  it("flags an effect that becomes irreversible, and a new one that is", () => {
+    const wipe = `effect ops.wipe(i: Issue) -> Bool\n  requires caps Write\n  critical\n  idempotency required\n  retry_class reconcilable\n`;
+    const p = check(`${src}\n${wipe}`, "mdt").program!;
+    const q = check(`${src}\n${wipe}  irreversible\n`, "mdt").program!;
+    expect(q.defs["ops.wipe"]).toMatchObject({ kind: "effect", irreversible: true });
+    expect(changes(p, [{ op: "add", path: "/defs/ops.wipe/irreversible", value: true }])).toEqual([{ kind: "irreversible_added", path: "/defs/ops.wipe", detail: "~ effect ops.wipe became irreversible" }]);
+    expect(changes(q, [{ op: "remove", path: "/defs/ops.wipe/irreversible" }])).toEqual([]);
+    expect(changes(check(src, "mdt").program!, [{ op: "add", path: "/defs/ops.wipe", value: q.defs["ops.wipe"] }])).toEqual([{ kind: "irreversible_added", path: "/defs/ops.wipe", detail: "+ irreversible effect ops.wipe" }]);
+  });
+
+  it("flags a removed contract once, as its criteria removed", () => {
+    const p = check(src, "mdt").program!;
+    expect(changes(p, [{ op: "remove", path: "/defs/Done" }])).toEqual([{ kind: "criterion_removed", path: "/defs/Done", detail: "- contract Done removed" }]);
+  });
+
+  it("flags a new remote agent and a changed remote binding", () => {
+    const remote = `agent remote Partner = a2a("https://partner.example/.well-known/agent-card.json")
+  version  "1.0"
+  trust    untrusted
+  caps     net.https(hosts: ["partner.example"])
+  skills {
+    review(i: Issue) -> Bool
+  }`;
+    const withNet = src.replace("use std.{fs, human}", "use std.{fs, human, net}");
+    const p = check(withNet, "mdt").program!;
+    const q = check(`${withNet}\n${remote}\n`, "mdt").program!;
+    expect(changes(p, [{ op: "add", path: "/defs/Partner", value: q.defs["Partner"] }])).toEqual([{ kind: "remote_agent_added", path: "/defs/Partner", detail: "+ remote agent Partner" }]);
+    expect(changes(q, [{ op: "replace", path: "/defs/Partner/remote/version", value: "2.0" }])).toEqual([
+      { kind: "remote_binding_changed", path: "/defs/Partner/remote", detail: "~ Partner: remote binding changed" },
+    ]);
+  });
+
+  it("flags a raised function budget, and not a lowered one", () => {
+    const p = check(`${src}\nfn shorten(t: Text) -> Text\n  budget { steps: 2 }\n{\n  t\n}\n`, "mdt").program!;
+    expect(changes(p, [{ op: "replace", path: "/defs/shorten/budget/steps", value: 5 }])).toEqual([
+      { kind: "budget_increased", path: "/defs/shorten/budget", detail: "~ shorten.budget.steps: 2 → 5" },
+    ]);
+    expect(changes(p, [{ op: "replace", path: "/defs/shorten/budget/steps", value: 1 }])).toEqual([]);
+  });
+
+  it("flags more agents in a workflow's, an agent's, a skill's and a function's budget", () => {
+    const p = structuredClone(check(`${src}\nfn shorten(t: Text) -> Text\n  budget { steps: 2 }\n{\n  t\n}\nworkflow W(t: Text) -> Bool\n  caps Read\n  budget { steps: 2 }\n{\n  true\n}\n`, "mdt").program!);
+    // `agents` is a mandate/0.4 budget field.
+    p.language = "mandate/0.4";
+    const defs = p.defs as Record<string, { budget?: Record<string, unknown>; skills?: Record<string, { budget?: Record<string, unknown> }> }>;
+    for (const b of [defs["W"]!.budget!, defs["A"]!.budget!, defs["shorten"]!.budget!]) b["agents"] = 2;
+    defs["A"]!.skills!["go"]!.budget = { agents: 2 };
+    const paths = ["/defs/W/budget/agents", "/defs/A/budget/agents", "/defs/A/skills/go/budget/agents", "/defs/shorten/budget/agents"];
+    const r = changes(p, paths.map((path) => ({ op: "replace" as const, path, value: 3 })));
+    expect(r.map((g) => [g.kind, g.path, g.detail])).toEqual([
+      ["budget_increased", "/defs/A/budget", "~ A.budget.agents: 2 → 3"],
+      ["budget_increased", "/defs/A/skills/go/budget", "~ A.go.budget.agents: 2 → 3"],
+      ["budget_increased", "/defs/W/budget", "~ W.budget.agents: 2 → 3"],
+      ["budget_increased", "/defs/shorten/budget", "~ shorten.budget.agents: 2 → 3"],
+    ]);
   });
 });

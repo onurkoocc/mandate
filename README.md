@@ -146,7 +146,8 @@ pull request was opened, for 0.23 USD.
    when the compiler shows they fit what is left of it. `map` with bounds
    and disjoint writes, roles bound to people's keys in the lock, and a
    signed record for every decision. Today the language is read, checked
-   and hashed, and roles, signed decisions and envelopes run: a decision
+   and hashed, and roles, signed decisions, envelopes, `map` and `plan`
+   run: a decision
    is a record its member signs with `--key`, and `mandate
    verify-decision` checks one without the runtime. A workflow with an
    envelope starts only once a member of its owner role has signed the
@@ -154,8 +155,12 @@ pull request was opened, for 0.23 USD.
    approve-envelope`), and every delegation attempt is one of the
    envelope's agents. A `map` runs its body once for each element of a
    list, at most `par` at a time, each item with the write scope its
-   element chooses, and gives the outcomes in input order. `plan` does
-   not run yet. See [`spec/envelope.md`](spec/envelope.md).
+   element chooses, and gives the outcomes in input order. A `plan` runs
+   a lead agent whose sub-programs are checked within limits, admitted
+   only when they fit what is left of the envelope, with their whole
+   budget reserved, and run inside the same run; a finished run replays
+   them from the artifact store. Amendments of an envelope do not run
+   yet. See [`spec/envelope.md`](spec/envelope.md).
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
@@ -479,9 +484,15 @@ These cases from §25 are covered:
 | X04 | A bound agent's turns run in its delegation's session and its tools in the runtime's sandbox, journaled; replay calls neither | `managed-agents` |
 | R11 | A map's results are in input order, whatever order its items finish in | `map` |
 | R12 | A failed map item is that item's outcome, and the others go on | `map` |
-| N02 | A delegation that does not fit what is left of the envelope's `agents` is refused at reservation, and two siblings cannot both reserve the last one. Sub-programs come with `plan` | `envelope` |
+| N01 | A sub-program whose capabilities or budget exceed what is left of the envelope is not admitted, and nothing of it runs | `plan`, `demo` (and E1706 in the compiler, `subprogram`, and the cases `N01`, `N01a`, `N01b`) |
+| N02 | A delegation or a sub-program that does not fit what is left is refused at reservation, and two siblings cannot both reserve what only one fits: the envelope's last agent, or what is left of a sub-program's own reservation | `envelope`, `plan`, `ledger` |
 | N03 | Map items with `par > 1` cannot write overlapping scopes: scopes the map does not hand per item are refused by the compiler, and scopes the elements choose are compared before any item is dispatched | `map` (and E0320 in the compiler, `map-rules`) |
+| N05 | A critical effect in a sub-program needs its own authorization, and one under `approve` needs that role's signed decision; admission authorizes nothing | `plan`, `demo`, `temporal` |
+| N06 | Replay reads an admitted sub-program from the artifact store, holds it to the hash it was admitted with, runs it against the journal, and calls no model, adapter or checker | `plan`, `demo` |
+| N07 | Two sub-programs of one plan with the same effect and business key are one action, and the same key over other parameters is refused | `plan` |
 | N08 | A list longer than a map's bound is refused before any item is dispatched | `map` (and E1702 in the compiler, `map-rules`) |
+| N09 | A sub-program that defines a contract, an effect, an extern, a role, a remote agent or a system model definition is refused, and nothing of it runs | `plan` (and E1705 in the compiler, `subprogram`, and the cases `N09`, `E1705`, `E1705a`) |
+| N10 | A lead's check that runs over a limit in time, memory, size, nesting or operations, or a checker that fails, admits nothing and does not stop the run | `plan` |
 | H01 | A decision with no valid signature, an unknown key, or a member outside the role is refused and recorded as `decision_refused`; the wait stays open | `decisions`, `cli-decisions` |
 | H02 | `distinct_from` refuses a second approval by the same member, whichever key signs it | `decisions`, `cli-decisions` (and E1503 in the compiler) |
 | H03 | A run of an envelope workflow does not start without an approval of its package hash by a member of the envelope's owner role | `envelope`, `cli-envelope` |
@@ -492,6 +503,14 @@ These cases from §25 are covered:
 (`fixtures/envelope/migrate-all.mdt`) over 24 repositories: 24 migrators,
 at most 16 at once, each with its own repository as its write scope, the
 outcomes in input order, and a replay that gives the same result.
+
+`demo.test.ts` runs the whole example with every agent as a loop: the
+envelope's approval, the map, a lead whose first sub-program is refused
+for asking more agents than are left and whose second is admitted, a
+merge the release manager signs as evidence and as authorization, 26
+agents in the ledger, and the replay. The example has no contract, so the
+test adds one: a sub-program can define none, and a merge needs a value a
+contract verified.
 
 ## Live runs
 

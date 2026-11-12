@@ -20,7 +20,8 @@
 // 0.4 (spec/envelope.md): `map` and `plan` are typed here, and a workflow with an envelope is
 // checked against the envelope's capabilities, budget (with `steps` and `agents`) and
 // `spawn.max_class`. The envelope's own rules, E1701, E1704 and E1707, are in envelope.ts,
-// and the static cost model in cost.ts.
+// and the static cost model in cost.ts. A lead's sub-program is checked with a `Claim`: its
+// workflow stands under its parent's envelope (subprogram.ts has its own rules, E1705 and E1706).
 //
 // Std calls the checker does not describe have unknown type and no effects,
 // so missing knowledge never produces an error.
@@ -153,20 +154,48 @@ interface Frame {
 
 const PUBLIC: DataClass = "public";
 
+/**
+ * Where a sub-program stands in its parent's run (spec/envelope.md "The sub-program"). Its workflow is
+ * checked as a body under the parent's envelope, and what it sends on has at least the class of what
+ * its lead received.
+ */
+export interface Claim {
+  /** The envelope of the workflow whose `plan` runs the lead. */
+  envelope: Envelope;
+  /** The data class of what the lead received. The sub-program is the lead's output, so all of it has that class (§5.5). */
+  lead: DataClass;
+}
+
 /** Types a read parameter may have: values, never structure that could become query text. */
 const SCALARS = new Set(["Bool", "Int", "Dec", "Text", "Path", "Url", "Time", "Duration", "Id", "Money"]);
 
 /**
  * `linked` is the table of definitions the program sees with its imported
  * modules loaded (modules.ts). Only the program's own definitions are
- * checked; imported ones were checked in their module.
+ * checked; imported ones were checked in their module. `claim` is given for
+ * a lead's sub-program.
  */
-export function staticCheck(program: Program, spans?: Map<string, Span>, linked?: Record<string, Def>): Diagnostic[] {
+export function staticCheck(program: Program, spans?: Map<string, Span>, linked?: Record<string, Def>, claim?: Claim): Diagnostic[] {
+  return checker(program, spans, linked, claim).run();
+}
+
+function checker(program: Program, spans?: Map<string, Span>, linked?: Record<string, Def>, claim?: Claim): Checker {
   // Check the canonical form so that .mdt and .ir.json inputs of the same IR
   // report the same diagnostics in the same order.
   const canonical = JSON.parse(canonicalize(program as unknown as Json)) as Program;
   const defs = linked ? (JSON.parse(canonicalize({ ...linked, ...canonical.defs } as unknown as Json)) as Record<string, Def>) : canonical.defs;
-  return new Checker(canonical, defs, spans).run();
+  return new Checker(canonical, defs, spans, claim);
+}
+
+/**
+ * The data class of what each `plan` of a program hands its lead, by the
+ * plan's path: the class a sub-program of that lead has (`Claim.lead`). For
+ * a program that passed the checks.
+ */
+export function leadClasses(program: Program, linked?: Record<string, Def>): Record<string, DataClass> {
+  const c = checker(program, undefined, linked);
+  c.run();
+  return Object.fromEntries([...c.leads].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
 class Checker implements TypeEnv {
@@ -181,13 +210,21 @@ class Checker implements TypeEnv {
   private readonly enveloped: Array<{ name: string; max: DataClass; usages: Usage[] }> = [];
   private readonly constVals = new Map<string, Val | "pending">();
   private readonly recursive = new Set<string>();
+  /** The data class of what each `plan` hands its lead, by the plan's path. */
+  readonly leads = new Map<string, DataClass>();
+  /** In a sub-program, the class of what its lead received: the least class of anything it sends on. `public` elsewhere. */
+  private readonly floor: DataClass;
 
   constructor(
     private readonly program: Program,
     /** The program's own definitions and the linked imported ones. */
     private readonly defs: Record<string, Def>,
     private readonly spans?: Map<string, Span>,
-  ) {}
+    /** Given for a lead's sub-program. */
+    private readonly claim?: Claim,
+  ) {
+    this.floor = claim?.lead ?? PUBLIC;
+  }
 
   // ── TypeEnv ────────────────────────────────────────────────────────────
 
@@ -219,16 +256,11 @@ class Checker implements TypeEnv {
   // ── driver ─────────────────────────────────────────────────────────────
 
   run(): Diagnostic[] {
-    for (const [name, d] of Object.entries(this.defs)) {
-      if (d.kind !== "capability") continue;
-      // An imported capability was checked in its module; here it is only evaluated.
-      const own = Object.hasOwn(this.program.defs, name);
-      const caps = own ? this.evalCap(d.value, ptr("defs", name, "value")) : capsOf(this.defs, d.value);
-      this.capDefs.set(name, caps.map((c) => ({ ...c, name })));
-    }
+    for (const [name, d] of Object.entries(this.defs)) if (d.kind === "capability") this.capDef(name);
     this.findRecursion();
     this.checkSystem();
-    plansOutside(this.program.defs, (code, message, path, facts) => this.report(code, message, path, facts));
+    // A sub-program has no `plan` at all (E1705, subprogram.ts), so E1707 has nothing to add there.
+    if (!this.claim) plansOutside(this.program.defs, (code, message, path, facts) => this.report(code, message, path, facts));
     for (const [name, d] of Object.entries(this.program.defs)) {
       const base = ptr("defs", name);
       switch (d.kind) {
@@ -266,12 +298,31 @@ class Checker implements TypeEnv {
   // ── capabilities ───────────────────────────────────────────────────────
 
   /**
+   * What a capability definition evaluates to, once. A capability that names itself, directly or through another,
+   * is nothing: while it is evaluated it holds no value, and so neither does what is narrowed from it.
+   */
+  private capDef(name: string): CapVal[] {
+    const known = this.capDefs.get(name);
+    if (known) return known;
+    const d = Object.hasOwn(this.defs, name) ? this.defs[name] : undefined;
+    if (d?.kind !== "capability") return [];
+    this.capDefs.set(name, []);
+    // An imported capability was checked in its module; here it is only evaluated.
+    const own = Object.hasOwn(this.program.defs, name);
+    const caps = (own ? this.evalCap(d.value, ptr("defs", name, "value")) : capsOf(this.defs, d.value)).map((c) => ({ ...c, name }));
+    this.capDefs.set(name, caps);
+    return caps;
+  }
+
+  /**
    * Evaluates a capability expression: a name, a constructor call, or
    * `cap.narrow(…)`. A capability over a component may stand for several
    * values (one per command it may run).
    */
   private evalCap(e: Expr, path: string, frame: Frame = this.constFrame()): CapVal[] {
-    if (e.op === "var") return this.capDefs.get(e.name) ?? [];
+    // Before 0.4 a capability that names one evaluated after it, in name order, comes out empty. That is kept as it
+    // was. From 0.4 the order does not matter, so a sub-program can narrow a capability of its parent under any name.
+    if (e.op === "var") return this.capDefs.get(e.name) ?? (atLeast(this.program.language, "mandate/0.4") ? this.capDef(e.name) : []);
     if (e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow") {
       const bases = this.evalCap(e.callee.of, `${path}/callee/of`, frame);
       if (bases.length > 1) {
@@ -519,9 +570,15 @@ class Checker implements TypeEnv {
         isCritical: (effect) => this.isCriticalEffect(effect),
         covering: (effect, among) => this.capsFor({ effect, path: base }, among),
       });
+    }
+    // The envelope the body stands under. A sub-program's workflow stands under its parent's: what may run at
+    // once and the data class are the parent's, and its own budget is what it has of the parent's
+    // (spec/envelope.md "The sub-program").
+    const under = this.under(d);
+    if (under) {
       // `internal` when the envelope does not say (spec/envelope.md "What it declares").
-      frame.maxClass = d.envelope.spawn?.max_class ?? "internal";
-      frame.envelope = d.envelope;
+      frame.maxClass = under.spawn?.max_class ?? "internal";
+      frame.envelope = under;
       this.enveloped.push({ name, max: frame.maxClass, usages: frame.usages });
     }
     if (d.ensures) {
@@ -535,7 +592,7 @@ class Checker implements TypeEnv {
     for (const u of frame.usages) {
       // The envelope's data class bounds every model call in the run, whatever its capability allows.
       if (frame.maxClass && u.effect === "Model" && u.cls && classRank(u.cls) > classRank(frame.maxClass)) {
-        this.report("E0220", `${u.cls} data is sent to a model, and ${name}'s envelope allows at most ${frame.maxClass} in the run (spawn.max_class).`, u.path, {
+        this.overEnvelope(`${u.cls} data is sent to a model, and ${this.envelopeOf(name)} allows at most ${frame.maxClass} in the run (spawn.max_class).`, u.path, {
           data_class: u.cls,
           allowed: frame.maxClass,
           by: "envelope",
@@ -543,7 +600,7 @@ class Checker implements TypeEnv {
       }
       // A delegation in the body itself is held to the class where it stands; one inside a function the body calls is held here.
       if (frame.maxClass && u.effect === "Delegate" && u.via && u.cls && classRank(u.cls) > classRank(frame.maxClass)) {
-        this.report("E0220", `${u.to} receives ${u.cls} data inside ${u.via}, and ${name}'s envelope allows at most ${frame.maxClass} in a delegation (spawn.max_class).`, u.path, {
+        this.overEnvelope(`${u.to} receives ${u.cls} data inside ${u.via}, and ${this.envelopeOf(name)} allows at most ${frame.maxClass} in a delegation (spawn.max_class).`, u.path, {
           data_class: u.cls,
           allowed: frame.maxClass,
           by: "envelope",
@@ -563,7 +620,7 @@ class Checker implements TypeEnv {
       if (u.effect === "Model" && u.cls) {
         const best = Math.max(...by.map((c) => classRank(c.maxClass ?? "internal")));
         if (classRank(u.cls) > best) {
-          this.report("E0220", `${u.cls} data is sent to a model whose capability allows at most ${DATA_CLASSES[best]}.`, u.path, {
+          this.overModel(`${u.cls} data is sent to a model whose capability allows at most ${DATA_CLASSES[best]}.`, u.path, best, {
             data_class: u.cls,
             allowed: DATA_CLASSES[best],
           });
@@ -572,8 +629,8 @@ class Checker implements TypeEnv {
     }
     for (const dl of frame.delegated) for (const c of dl.caps) for (const w of caps) if (capCovers(w, c)) used.add(w);
     // A delegation inside a function the body calls is granted from these capabilities too. An envelope's count
-    // as used by it; a workflow's own are reported as they were before 0.4.
-    if (d.envelope) {
+    // as used by it, and so do a sub-program's; a workflow's own are reported as they were before 0.4.
+    if (under) {
       for (const u of frame.usages) {
         if (u.effect !== "Delegate" || !u.via || !u.to) continue;
         for (const c of this.grantedThrough(u.to, frame)) for (const w of caps) if (capCovers(w, c)) used.add(w);
@@ -588,7 +645,7 @@ class Checker implements TypeEnv {
       if (!used.has(c)) this.report("W0310", `${name} holds ${showCap(c)} but neither its body nor its delegates use it.`, `${capsAt}/${i}`);
     });
 
-    this.checkBudget(name, d, base);
+    this.checkBudget(name, d, base, under);
     const nodes = this.countNodes(d.body, new Set());
     if (nodes > LIMITS.expandedNodes) {
       this.report("E0105", `${name} expands to ${nodes} static nodes; the 0.1 limit is ${LIMITS.expandedNodes}.`, base, { nodes, limit: LIMITS.expandedNodes });
@@ -602,6 +659,39 @@ class Checker implements TypeEnv {
    * hands it on or sends it to a model. The skills are the program's own: an imported agent's body was checked in
    * its module.
    */
+  /** The envelope a workflow's body stands under: its own, or for a sub-program's workflow what its parent's envelope leaves it. */
+  private under(d: WorkflowDef): Envelope | undefined {
+    if (d.envelope || !this.claim) return d.envelope;
+    const spawn = this.claim.envelope.spawn;
+    return { ...(spawn ? { spawn } : {}), ...(d.budget ? { budget: d.budget } : {}) };
+  }
+
+  /** How a message names the envelope that bounds workflow `name`: a sub-program's is its parent's, the run's. */
+  private envelopeOf(name: string): string {
+    return this.claim ? "the run's envelope" : `${name}'s envelope`;
+  }
+
+  /**
+   * Data above the envelope's `spawn.max_class`. In a sub-program this is a part of containment: the
+   * sub-program does not fit the envelope (E1706, dimension `data_class`).
+   */
+  private overEnvelope(message: string, path: string, facts: Record<string, unknown>): void {
+    if (this.claim) this.report("E1706", message, path, { dimension: "data_class", ...facts });
+    else this.report("E0220", message, path, facts);
+  }
+
+  /**
+   * Data above what a model's capability allows; `best` is the rank of the class it allows. In a
+   * sub-program, a model that may not receive even what the lead received can be sent nothing the lead
+   * wrote, which is containment (E1706); data that gets a higher class inside the sub-program is E0220
+   * as anywhere.
+   */
+  private overModel(message: string, path: string, best: number, facts: Record<string, unknown>): void {
+    if (this.claim && classRank(this.floor) > best) {
+      this.report("E1706", `${message} The lead received ${this.floor} data, and a sub-program is its output.`, path, { dimension: "data_class", ...facts, by: "lead", lead: this.floor });
+    } else this.report("E0220", message, path, facts);
+  }
+
   private reach(name: string, max: DataClass, usages: Usage[]): void {
     const seen = new Set<string>();
     const next = usages.flatMap((u) => (u.effect === "Delegate" && u.to ? [u.to] : []));
@@ -613,7 +703,7 @@ class Checker implements TypeEnv {
         if (u.effect === "Delegate" && u.to) next.push(u.to);
         if ((u.effect !== "Delegate" && u.effect !== "Model") || !u.cls || classRank(u.cls) <= classRank(max)) continue;
         const what = u.effect === "Model" ? `${u.cls} data is sent to a model` : `${u.to} receives ${u.cls} data`;
-        this.report("E0220", `${what} inside ${skill}, which ${name} reaches, and ${name}'s envelope allows at most ${max} in the run (spawn.max_class).`, u.path, {
+        this.overEnvelope(`${what} inside ${skill}, which ${name} reaches, and ${this.envelopeOf(name)} allows at most ${max} in the run (spawn.max_class).`, u.path, {
           data_class: u.cls,
           allowed: max,
           by: "envelope",
@@ -1050,13 +1140,22 @@ class Checker implements TypeEnv {
         return this.infer(e, frame, path);
       case "delegate":
         return this.delegate(e, frame, path);
-      case "plan":
+      case "plan": {
         // The lead's skill is typed and granted as a delegation of it is (C1, C2; spec/envelope.md "plan").
-        return this.delegate({ op: "delegate", agent: e.agent, skill: e.skill, args: e.args, ...(e.budget ? { budget: e.budget } : {}) }, frame, path);
+        const v = this.delegate({ op: "delegate", agent: e.agent, skill: e.skill, args: e.args, ...(e.budget ? { budget: e.budget } : {}) }, frame, path);
+        this.leads.set(path, v.cls);
+        return v;
+      }
       case "map":
         return this.map(e, frame, path);
       case "spawn": {
-        this.report("E0711", "Dynamic spawn is not available in 0.1; use delegate, par, or a bounded map (§9.1, V05).", path);
+        this.report(
+          "E0711",
+          atLeast(this.program.language, "mandate/0.4")
+            ? "There is no 'spawn'. An agent plans work while a run is going with 'plan Agent.skill(…) within envelope', in a workflow that has an envelope; use delegate, par or a bounded map for work known beforehand (spec/envelope.md \"plan\", V05)."
+            : "Dynamic spawn is not available in 0.1; use delegate, par, or a bounded map (§9.1, V05).",
+          path,
+        );
         e.args.forEach((a, i) => this.expr(a.value, frame, `${path}/args/${i}/value`));
         return lit(UNKNOWN);
       }
@@ -1464,8 +1563,10 @@ class Checker implements TypeEnv {
       this.choiceOptions(opt, `${path}/type`);
       target = named("Decision", opt);
     }
-    this.use(frame, { effect: "Model", cls: from.cls, path });
-    return { ty: named("Inferred", target), cls: from.cls };
+    // In a sub-program the question is the lead's writing, whatever it is asked about.
+    const cls = this.maxClass(from.cls, this.floor);
+    this.use(frame, { effect: "Model", cls, path });
+    return { ty: named("Inferred", target), cls };
   }
 
   private choiceOptions(opt: Ty, path: string): void {
@@ -1494,7 +1595,8 @@ class Checker implements TypeEnv {
 
   private delegate(e: Extract<Expr, { op: "delegate" }>, frame: Frame, path: string): Val {
     const args = e.args.map((a, i) => this.expr(a.value, frame, `${path}/args/${i}/value`));
-    const cls = this.maxClass(...args.map((a) => a.cls));
+    // In a sub-program, what an agent is handed is the lead's writing: it has at least the class of what the lead received.
+    const cls = this.maxClass(this.floor, ...args.map((a) => a.cls));
     const agent = this.def(e.agent);
     if (!agent || agent.kind !== "agent") return { ty: UNKNOWN, cls };
     const skill: Skill | undefined = Object.hasOwn(agent.skills, e.skill) ? agent.skills[e.skill] : undefined;
@@ -1588,7 +1690,7 @@ class Checker implements TypeEnv {
     if (models.length && skill.effects.some((x) => x.effect === "Model")) {
       const best = Math.max(...models.map((c) => classRank(c.maxClass ?? "internal")));
       if (classRank(cls) > best) {
-        this.report("E0220", `${who} receives ${cls} data, but its model capability allows at most ${DATA_CLASSES[best]} (§5.5).`, path, {
+        this.overModel(`${who} receives ${cls} data, but its model capability allows at most ${DATA_CLASSES[best]} (§5.5).`, path, best, {
           data_class: cls,
           allowed: DATA_CLASSES[best],
         });
@@ -1597,7 +1699,7 @@ class Checker implements TypeEnv {
 
     // An envelope bounds the data class of every delegation in the run (spec/envelope.md: spawn.max_class).
     if (frame.maxClass && classRank(cls) > classRank(frame.maxClass)) {
-      this.report("E0220", `${who} receives ${cls} data, and ${frame.def}'s envelope allows at most ${frame.maxClass} in a delegation (spawn.max_class).`, path, {
+      this.overEnvelope(`${who} receives ${cls} data, and ${this.envelopeOf(frame.def)} allows at most ${frame.maxClass} in a delegation (spawn.max_class).`, path, {
         data_class: cls,
         allowed: frame.maxClass,
         by: "envelope",
@@ -1825,16 +1927,18 @@ class Checker implements TypeEnv {
 
   // ── budgets (§8.6) ─────────────────────────────────────────────────────
 
-  private checkBudget(name: string, d: WorkflowDef, base: string): void {
+  /** `under` is the envelope the workflow's body stands under, if any: its own, or for a sub-program its parent's. */
+  private checkBudget(name: string, d: WorkflowDef, base: string, under: Envelope | undefined): void {
     const bounds = workflowBounds(d);
     const limit = bounds.budget;
     if (!limit) return;
     const at = `${base}/${bounds.budgetAt}`;
-    const agents = d.envelope?.budget?.agents;
-    const cost = blockCost({ def: (n) => this.def(n), recursive: this.recursive, envelope: !!d.envelope, ...(agents !== undefined ? { agents } : {}) }, d.body, `${base}/body`);
+    const agents = under?.budget?.agents;
+    const cost = blockCost({ def: (n) => this.def(n), recursive: this.recursive, envelope: !!under, ...(agents !== undefined ? { agents } : {}) }, d.body, `${base}/body`);
     // An envelope bounds the whole run, so its static part is held to steps and agents too
-    // (spec/envelope.md "Static checks"). A workflow's own budget is compared as it always was.
-    const facts = this.overBudget(limit, cost, at, `${name}'s budget`, !!d.envelope);
+    // (spec/envelope.md "Static checks"), and so is a sub-program's budget, which is all it may use of
+    // one. A workflow's own budget is compared as it always was.
+    const facts = this.overBudget(limit, cost, at, `${name}'s budget`, !!under);
     if (Object.keys(facts).length) {
       this.report("E0501", `The budgets ${name} hands out exceed its own budget (${Object.keys(facts).join(", ")}).`, at, { ...facts, breakdown: cost.parts });
     }
