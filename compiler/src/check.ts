@@ -197,10 +197,10 @@ export interface SubprogramCheck {
 export function checkSubprogram(i: SubprogramInput): SubprogramCheck {
   const wf = Object.hasOwn(i.parent.defs, i.workflow) ? i.parent.defs[i.workflow] : undefined;
   if (wf?.kind !== "workflow" || !wf.envelope) throw new Error(`${i.workflow} is not a workflow with an envelope, so it has no sub-programs`);
-  const patched = applyOps(skeleton(i.parent.module, i.number), i.base, i.ops);
+  const patched = applyOps(skeleton(i.parent.module, i.number, i.parent.language), i.base, i.ops);
   if (!patched.program) return { ok: false, diagnostics: patched.diagnostics };
   const sub = patched.program;
-  const diagnostics = [...patched.diagnostics, ...subprogramShape(sub, i.parent.module, i.number)];
+  const diagnostics = [...patched.diagnostics, ...subprogramShape(sub, i.parent.module, i.number, i.parent.language)];
   if (hasErrors(diagnostics)) return { ok: false, diagnostics };
   const view = opened(sub, i.parent);
   const modules = { ...(i.modules ?? {}), [i.parent.module]: i.parent };

@@ -3,8 +3,11 @@
 // 0.4 that writes it reads it as it always did, as nothing.
 
 import { describe, expect, it } from "vitest";
-import { check } from "../src/check.js";
+import { check, checkSubprogram, load, loadModules } from "../src/check.js";
 import { capCovers, capFromCall, capsOf, readMethods, showCap, type CapVal } from "../src/check/caps.js";
+import { skeleton } from "../src/check/subprogram.js";
+import { hashProgram } from "../src/hash.js";
+import type { Json } from "../src/json/strict-json.js";
 import type { Expr, LanguageVersion, Program } from "../src/ir/types.js";
 import { LOCK_FORMATS, validateLock, type Lock } from "../src/lock.js";
 import { requirementFor, sandboxRequirements } from "../src/target/sandbox.js";
@@ -130,6 +133,43 @@ describe("views of methods", () => {
   it("read a 0.4 program's methods as nothing, so a change to them is a change the diff cannot read", () => {
     const old = (methods: string): Program => program(fetch("mandate @ 0.5", "mandate @ 0.4").replace("methods: [GET]", methods));
     expect(semanticDiff(old("methods: [GET]"), old("methods: [GET, POST]")).governance.map((c) => c.text)).toEqual(["~ capability GitHubRead changed"]);
+  });
+});
+
+describe("a sub-program of a 0.5 parent", () => {
+  const { modules } = loadModules([{ file: "domain.mdt", text: readRepo("conformance/N01/domain.mdt"), kind: "mdt" }]);
+  const edit = (s: string, from: string, to: string): string => {
+    expect(s.includes(from), from).toBe(true);
+    return s.replace(from, to);
+  };
+  let src = readRepo("conformance/N01/parent.mdt");
+  src = edit(src, "mandate @ 0.4", "mandate @ 0.5");
+  src = edit(src, "use std.{exec, fs, git, human, model}", "use std.{exec, fs, git, human, model, net}");
+  src = edit(src, "capability Merge", 'capability GH     = net.https(hosts: ["api.github.com"], methods: [GET])\ncapability Merge');
+  src = edit(src, "caps    M, Public, High, R, W, Merge", "caps    M, Public, High, R, W, Merge, GH");
+  const parent = check(src, "mdt", { modules }).program!;
+  const room = { left: { tokens: 50_000, steps: 100, agents: 10, "spend:USD": 10_000_000 }, time_left_ms: 1_800_000, writes: [] };
+  const submit = (caps: string, base = hashProgram(skeleton(parent.module, 1, parent.language) as unknown as Json).program, extra = "") => {
+    const sub = load(`mandate @ 0.5\n\nmodule example.parent.plan_1 @ 0.1\n\nuse example.parent\n\ncapability Wa = W.narrow("/work/a")\n${extra}\nworkflow Fix() -> Inferred<Text>\n  caps   ${caps}\n  budget { tokens: 2000, time: 10m, spend: 2 USD, steps: 10, agents: 2 }\n{\n  delegate Worker.fix(Item { name: "a" }) with caps Wa\n}\n`, "mdt").program!;
+    const ops = Object.entries(sub.defs).map(([name, d]) => ({ op: "add" as const, path: `/defs/${name}`, value: d }));
+    return checkSubprogram({ parent, modules, workflow: "Run", number: 1, base, ops, lead: "public", room });
+  };
+
+  it("is written in its parent's language, and a 0.4 parent's skeleton is as it was", () => {
+    expect(parent.language).toBe("mandate/0.5");
+    expect(skeleton("example.parent", 1, "mandate/0.5")).toEqual({ language: "mandate/0.5", module: "example.parent.plan_1", version: "0.1", uses: [{ module: "example.parent" }], defs: {} });
+    expect(skeleton("example.parent", 1)).toEqual(skeleton("example.parent", 1, "mandate/0.4"));
+    expect(skeleton("example.parent", 1, "mandate/0.3").language).toBe("mandate/0.4");
+  });
+
+  it("reads its parent's methods as its parent does: GET of the envelope's host fits, any method of it does not (E1706)", () => {
+    const r = submit("M, R, Wa, GH");
+    expect(r.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(r.ok).toBe(true);
+    const any = submit("M, R, Wa, Any", undefined, 'capability Any = net.https(hosts: ["api.github.com"])\n');
+    expect(any.diagnostics.filter((d) => d.severity === "error").map((d) => [d.code, d.facts?.["dimension"], d.facts?.["capability"]])).toEqual([["MDT-E1706", "capability", 'Any = net.https("api.github.com")']]);
+    // A patch written against the 0.4 skeleton is written against another base.
+    expect(submit("M, R, Wa, GH", hashProgram(skeleton(parent.module, 1) as unknown as Json).program).diagnostics.map((d) => d.code)).toEqual(["MDT-E0130"]);
   });
 });
 
