@@ -34,7 +34,9 @@
 // bound in the test's lock. The first decides for the role; the second is
 // who decides an approval that must be `distinct_from` an earlier one. The
 // test's package is therefore not the one the real lock makes, as its
-// handlers are not the real ones.
+// handlers are not the real ones. A workflow with an envelope starts only on
+// its owner's approval of the package, so the first member of that role
+// approves the test's package before the run.
 //
 // Swapping handlers is possible only here: in production the control plane
 // picks every handler (INV-03). A handler this runner does not know fails
@@ -51,7 +53,7 @@ import { join, relative, resolve, sep } from "node:path";
 import { calleePath, rolesNamed, type Expr, type Lock, type Program, type Stmt } from "@mandate/compiler";
 import type { Adapters, Outcome } from "./adapters.js";
 import type { Db } from "./db.js";
-import { payloadOf, signDecision, type SignedDecision } from "./decisions.js";
+import { payloadOf, shownPackage, signDecision, type SignedDecision } from "./decisions.js";
 import { EvidenceSigner, TrustedKeys } from "./evidence.js";
 import { buildPackage, isSigned04, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
@@ -212,6 +214,11 @@ async function runOne(program: Program, o: TestOptions, h: Handlers, workflow: s
     const who = people!.sign(shown.role, typeof req["distinct_from"] === "string");
     return who ? signDecision(who.key, shown, { kind, member: who.member, ...(payload !== undefined ? { payload } : {}), at: new Date(h.adapters.clock.now()) }) : undefined;
   };
+  // The envelope's owner approves the test's package: without it the run would not start (unapproved_envelope).
+  const wf = Object.hasOwn(program.defs, workflow) ? program.defs[workflow] : undefined;
+  const owner = wf?.kind === "workflow" ? wf.envelope?.owner : undefined;
+  const approver = owner === undefined ? undefined : people?.sign(owner, false);
+  if (approver) await rt.approveEnvelope(pkg, signDecision(approver.key, shownPackage(pkg.hash, owner!), { kind: "envelope", member: approver.member, at: new Date(h.adapters.clock.now()) }));
   let run = await rt.startRun({ pkg, workflow, input, runId });
   // The person the handlers stand for answers each wait, a bounded number of times.
   for (let n = 0; run.state === "waiting" && n < 100; n++) {

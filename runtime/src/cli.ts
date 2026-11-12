@@ -4,6 +4,8 @@
 //   mandate run <program> --workflow W --input <json> [--run-id ID] [--limit spend=20USD,tokens=2M]
 //   mandate status <run> [--json]
 //   mandate key new [--out FILE]                          a key of your own, to sign decisions with
+//   mandate approve-envelope <program> --key FILE [--member NAME] [--workflow W]
+//                                                         approve a package's envelope, so its runs may start
 //   mandate approve <run> --revision N --key FILE [--member NAME]
 //   mandate decline <run> --revision N --key FILE [--member NAME]
 //   mandate answer <run> --revision N --key FILE [--member NAME] <text>
@@ -39,13 +41,12 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, printProgram, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
-import type { Cost } from "./adapters.js";
 import { adaptersFor, anthropicClient, connect, readConfig, runtimeOptions, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { deployManagedAgents, sdkApi } from "./managed-agents.js";
-import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, signatureHolds, signDecision, signerRefusal, type DecisionKind, type SignedDecision } from "./decisions.js";
+import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type SignedDecision } from "./decisions.js";
 import { EvidenceSigner, TrustedKeys } from "./evidence.js";
 import { openDb, type Db } from "./db.js";
-import { costDims, type RunRow } from "./journal.js";
+import { costDims, type Limits, type RunRow } from "./journal.js";
 import { draft, drift, scan, type RepoFacts } from "./onboard.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
@@ -98,6 +99,7 @@ const USAGE = `usage:
   mandate shadow-diff <run> <other run>
   mandate status <run> [--json]
   mandate key new [--out FILE]
+  mandate approve-envelope <program> --key FILE [--member NAME] [--workflow W] [--lock FILE] [--module FILE]… [--json]
   mandate approve <run> --revision N --key FILE [--member NAME]
   mandate decline <run> --revision N --key FILE [--member NAME]
   mandate answer <run> --revision N --key FILE [--member NAME] <text>
@@ -118,7 +120,7 @@ const USAGE = `usage:
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -161,6 +163,22 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         ...(a.flags["--mode"] !== undefined ? { mode: runMode(a.flags["--mode"]) } : {}),
       });
       out(await report(rt, run, json, config));
+      return 0;
+    }
+
+    if (cmd === "approve-envelope") {
+      // A member of the envelope's owner role signs for the package hash its card shows (`mandate view --card`).
+      const file = a.positional[0] ?? fail("approve-envelope needs a program file");
+      const { program, lock, modules } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined, a.modules);
+      const owner = envelopeOwner(program, file, typeof a.flags["--workflow"] === "string" ? a.flags["--workflow"] : undefined);
+      const key = readDecisionKey(str(a, "--key"));
+      const member = typeof a.flags["--member"] === "string" ? a.flags["--member"] : memberOf(lock, key.keyId);
+      if (member === undefined) throw new Violation("invalid_decision", `unknown_key: the lock of ${file} lists key ${key.keyId} under no member.`);
+      const pkg = buildPackage(program, lock, modules);
+      const rt = new Runtime(db, adaptersFor(config, linkedProgram(program, modules), lock, env), undefined, undefined, runtimeOptions(config, db));
+      const signed = signDecision(key, shownPackage(pkg.hash, owner), { kind: "envelope", member, at: new Date() });
+      const decision = await rt.approveEnvelope(pkg, signed);
+      out(json ? JSON.stringify({ package: pkg.hash, decision, member, role: owner, key: key.keyId, record: signed.record, signature: signed.signature }, null, 2) + "\n" : `package  ${pkg.hash}\napproved by ${member} as ${owner}\ndecision ${decision}\n`);
       return 0;
     }
 
@@ -352,6 +370,21 @@ function originOf(dir: string): string | undefined {
   }
 }
 
+/**
+ * The role that approves a program's envelope: the owner of the workflow `--workflow` names, or of every workflow
+ * with an envelope when they have one owner. An approval is for the package, in a role; it names no workflow.
+ */
+function envelopeOwner(program: Program, file: string, workflow: string | undefined): string {
+  const owners = new Map<string, string>();
+  for (const [name, d] of Object.entries(program.defs)) if (d.kind === "workflow" && d.envelope?.owner !== undefined) owners.set(name, d.envelope.owner);
+  const all = [...owners.keys()].sort();
+  if (!all.length) throw new Violation("no_envelope", `${file} has no workflow with an envelope, so there is nothing to approve.`);
+  if (workflow !== undefined) return owners.get(workflow) ?? fail(`no workflow ${workflow} with an envelope in ${file}; it has ${all.join(", ")}`);
+  const roles = [...new Set(owners.values())].sort();
+  if (roles.length > 1) throw new Usage(`${file} has envelopes owned by ${roles.join(" and ")}; name the workflow whose envelope you approve with --workflow: ${all.join(", ")}`);
+  return roles[0]!;
+}
+
 function fail(message: string): never {
   throw new Usage(message);
 }
@@ -373,9 +406,9 @@ function revision(a: Args): number {
   return n;
 }
 
-/** `spend=20USD,tokens=2M,steps=40`. */
-function limits(text: string): Cost {
-  const c: Cost = {};
+/** `spend=20USD,tokens=2M,steps=40,agents=30`. */
+function limits(text: string): Limits {
+  const c: Limits = {};
   for (const part of text.split(",")) {
     const [k, v] = part.split("=");
     const m = v?.match(/^([0-9]+(?:\.[0-9]+)?)([kM]?)([A-Z]{3})?$/);
@@ -384,7 +417,8 @@ function limits(text: string): Cost {
     if (k === "spend") c.spend = { micros: Math.round(n * 1_000_000), currency: m[3] ?? "USD" };
     else if (k === "tokens") c.tokens = n;
     else if (k === "steps") c.steps = n;
-    else throw new Usage(`unknown limit ${k}; use spend, tokens or steps`);
+    else if (k === "agents") c.agents = n;
+    else throw new Usage(`unknown limit ${k}; use spend, tokens, steps or agents`);
   }
   return c;
 }

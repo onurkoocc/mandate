@@ -24,8 +24,9 @@
 //
 //   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key
 //                                          control a run (the runtime's CLI, @mandate/runtime/cli)
-//   mandate key new | decision | verify-decision
-//                                          a member's key, and a decision as its signed record (the runtime's CLI)
+//   mandate key new | decision | verify-decision | approve-envelope
+//                                          a member's key, a decision as its signed record, and the
+//                                          approval of an envelope (the runtime's CLI)
 //   mandate test <file>                    run the program's tests with their effect handlers (§6.4)
 //
 // <file> is .mdt text or .json canonical IR. `--module <file>` (repeatable)
@@ -71,6 +72,7 @@ function usage(): never {
       "  mcp [--module <file>]…   (an MCP server on stdio)",
       "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key   (see `mandate status`)",
       "  key new [--out FILE] | decision <run> <digest> | verify-decision <record.json> --key <public key.pem> [--lock FILE]",
+      "  approve-envelope <file> --key FILE [--member NAME] [--workflow W] [--lock <lock.json>] [--module <file>]…",
       "  test <file> [--json]",
       "",
     ].join("\n"),
@@ -334,7 +336,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {
