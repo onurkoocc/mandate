@@ -34,3 +34,13 @@ export function minimal(): Record<string, unknown> {
     },
   };
 }
+
+/**
+ * `check`, less the two W0601 that `Moved` in fixtures/envelope/migrate-all.mdt gives: its static criteria need
+ * the run's values, so they become run-time checks. The tests of that fixture are about what they change in it;
+ * envelope.test.ts has the one test that states these warnings.
+ */
+export const checkLessMoved: typeof check = (...args) => {
+  const r = check(...args);
+  return { ...r, diagnostics: r.diagnostics.filter((d) => !(d.code === "MDT-W0601" && (d.at.path ?? "").startsWith("/defs/Moved/"))) };
+};

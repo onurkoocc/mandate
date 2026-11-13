@@ -21,7 +21,9 @@
           "critical": true,
           "available": ["Build = exec(\"npm\")", "ModelStd = model.infer", "RepoRead = fs.read(\"/work/repos\")", "SrcWrite = fs.write(\"/work/repos\")"]
         }
-      }
+      },
+      { "code": "MDT-W0601", "path": "/defs/Moved/accept/moved/by/static" },
+      { "code": "MDT-W0601", "path": "/defs/Moved/accept/nothing_left/by/static" }
     ]
   }
 }
