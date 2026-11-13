@@ -14,6 +14,9 @@
 //! - [`domain_hash`], [`hash_program`] and [`package_hash`]:
 //!   `compiler/src/hash.ts`.
 //!
+//! [`number_to_string`] is ECMAScript's `Number::toString`, which the
+//! compiler's output and the runtime's canonical form write numbers with.
+//!
 //! The vectors in the repository's `vectors/` directory are written by the
 //! TypeScript implementation and read by this crate's tests.
 //!
@@ -33,6 +36,7 @@ mod diag;
 mod hash;
 mod jcs;
 pub mod limits;
+mod number;
 mod reader;
 mod value;
 
@@ -41,5 +45,6 @@ pub use hash::{
     HashDomain, ProgramHashes, RUNTIME_HASH_VERSION, domain_hash, hash_program, package_hash,
 };
 pub use jcs::{canonicalize, compare_utf16, write_json_string};
+pub use number::{is_integer, is_safe_integer, number_to_string, write_number};
 pub use reader::{Parsed, parse, parse_bytes};
 pub use value::{Int, Map, Value};

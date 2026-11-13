@@ -6,7 +6,8 @@
 //! writes them and members are sorted by [`mandate_ir::compare_utf16`]: those
 //! rules are the IR's too. Numbers are not: the IR admits only safe integers,
 //! and a runtime value holds any double, written as ECMAScript's
-//! `Number::toString` writes it ([`write_number`]).
+//! `Number::toString` writes it ([`write_number`], which is
+//! [`mandate_ir::write_number`] for the finite doubles an export holds).
 
 use std::fmt::Write as _;
 
@@ -61,7 +62,8 @@ pub fn write_canonical(out: &mut String, value: &Json) {
 }
 
 /// `x` as ECMAScript's `Number::toString` writes it (ECMA-262
-/// §6.1.6.1.20, RFC 8785 §3.2.2.3).
+/// §6.1.6.1.20, RFC 8785 §3.2.2.3), and `null` for a value that is not
+/// finite, which a read export never holds, as `JSON.stringify` writes it.
 #[must_use]
 pub fn number_to_string(x: f64) -> String {
     let mut out = String::new();
@@ -69,64 +71,15 @@ pub fn number_to_string(x: f64) -> String {
     out
 }
 
-/// Appends `x` as ECMAScript's `Number::toString` writes it: `0` for both
-/// zeros; otherwise the shortest digits that read back as `x` (the closer to
-/// `x` of two), as an integer up to 21 digits, as a decimal fraction down to
-/// `0.000001`, and in exponent form beyond those. A value that is not finite,
-/// which a read export never holds, is written `null`, as `JSON.stringify`
-/// writes it.
+/// Appends [`number_to_string`] of `x`: [`mandate_ir::write_number`] for a
+/// finite `x` (`0` for both zeros; otherwise the shortest digits that read
+/// back as `x`, as an integer up to 21 digits, as a decimal fraction down to
+/// `0.000001`, and in exponent form beyond those), and `null` otherwise.
 pub fn write_number(out: &mut String, x: f64) {
-    if !x.is_finite() {
-        out.push_str("null");
-        return;
-    }
-    if x == 0.0 {
-        out.push('0');
-        return;
-    }
-    if x < 0.0 {
-        out.push('-');
-    }
-    // Rust's exponent form of a double is its shortest round-trip digits,
-    // the one closest to it when two are as short (`{:e}` of core's
-    // flt2dec, Grisu with a Dragon4 fallback): `1e21`, `1.2345e-7`.
-    let sci = format!("{:e}", x.abs());
-    let (mantissa, exponent) = sci.split_once('e').unwrap_or((sci.as_str(), "0"));
-    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
-    let e: i64 = exponent.parse().unwrap_or(0);
-    // In the spec's terms: s is `digits`, k its length, x = s × 10^(n−k).
-    let k = i64::try_from(digits.len()).unwrap_or(i64::MAX);
-    let n = e.saturating_add(1);
-    if (k..=21).contains(&n) {
-        out.push_str(&digits);
-        for _ in 0..n.saturating_sub(k) {
-            out.push('0');
-        }
-    } else if (1..=21).contains(&n) {
-        let (int, frac) = digits
-            .split_at_checked(usize::try_from(n).unwrap_or(0))
-            .unwrap_or((digits.as_str(), ""));
-        out.push_str(int);
-        out.push('.');
-        out.push_str(frac);
-    } else if (-5..=0).contains(&n) {
-        out.push_str("0.");
-        for _ in 0..n.saturating_neg() {
-            out.push('0');
-        }
-        out.push_str(&digits);
+    if x.is_finite() {
+        mandate_ir::write_number(out, x);
     } else {
-        let (first, rest) = digits.split_at_checked(1).unwrap_or((digits.as_str(), ""));
-        out.push_str(first);
-        if !rest.is_empty() {
-            out.push('.');
-            out.push_str(rest);
-        }
-        let power = n.saturating_sub(1);
-        out.push('e');
-        out.push(if power < 0 { '-' } else { '+' });
-        // Writing to a String cannot fail.
-        let _ = write!(out, "{}", power.unsigned_abs());
+        out.push_str("null");
     }
 }
 
