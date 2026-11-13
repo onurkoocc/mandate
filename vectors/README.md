@@ -876,3 +876,189 @@ The port carries these over as they are. All are cases of the written pairs.
 - Two kinds of text are never produced although the code has a branch for them: the
   `command` label of a scope (an `exec` capability is paired by its command list) and
   `s without a static scope (unbounded)` (a scope that was static and is not).
+
+## corpus/
+
+The compiled corpus: every call that the compiler's own tests (`compiler/test/*.test.ts`)
+make to a front door of the compiler, with its input and its whole result, for
+another compiler to make again and match. The tests build their inputs in code, so,
+unlike `diagnostics/`, an entry carries its inputs: an entry and the shared items it
+names are enough to make the call again.
+
+### How it is made
+
+`compiler/vitest.config.ts` has a collecting mode, on when `MANDATE_CORPUS=1` or
+`MANDATE_UPDATE_VECTORS=1`. In it, every test file but `corpus.test.ts` runs first,
+with `compiler/test/corpus-record.ts` as a setup file: it replaces the modules that
+export a front door with the same modules whose door functions note each call (its
+arguments as they come in, its return value as it goes out) and return what the door
+returned, unchanged. A call that a door makes of another door, through another module,
+is part of the outer call and is not noted again. Each test file writes what it noted
+to a temporary directory. Then `compiler/test/corpus.test.ts` runs alone, merges the
+notes and writes (with `MANDATE_UPDATE_VECTORS=1`) or compares (with `MANDATE_CORPUS=1`)
+the files below. Without the mode the suite runs as it always has, and `corpus.test.ts`
+checks the stored entries alone. How each door's arguments and return value are stored
+is in `compiler/test/corpus-doors.ts`.
+
+To write the corpus again after a change to the compiler or to a test:
+`MANDATE_UPDATE_VECTORS=1 npm test` (or `npm test -w compiler`), the same command as
+for every other vector file. Running it twice gives the same files: the entries are
+sorted by `id`, the shared items by key, the notes by test file, and nothing depends on
+the order in which vitest ran the files.
+
+`corpus.test.ts` asserts:
+
+- in every run, that every entry, made again from its stored input, gives exactly its
+  stored result, compared as text (staleness; the test names each entry that does not;
+  about 2 s);
+- in every run, the limits below, that every shared item an entry names exists and
+  every shared item is named, and that `summary.json` counts what the entries hold;
+- in every run, that every code of `compiler/src/codes.ts` occurs in a stored result of
+  the corpus or of `diagnostics/`, except the codes no input of a front door can give
+  (`NOT_REACHABLE` in the test, with the reason for each, and only `MDT-E0902` today: the
+  runtime raises it when a sandbox host cannot enforce an agent's requirement, and
+  nothing in `compiler/src` gives it);
+- in the collecting mode, that every test file wrote its notes and that the files are
+  exactly what the suite calls now (completeness): a test that makes a new call fails it
+  until the corpus is written again.
+
+Every file is ASCII strict JSON within the Rust reader's limits: under 900 KB (a list is
+split into numbered parts when a part would pass 800 KB), nesting up to 64, integers
+only, no duplicate key, no lone surrogate (a character outside the BMP is its
+surrogate pair of `\u` escapes). The corpus is at most 3 MiB in all; the test asserts
+all of it.
+
+### The front doors
+
+A front door is a function of `compiler/src` that a user of the compiler calls (a CLI
+command, a tool of the MCP server, the runtime) with what it was given (a text, a lock,
+a patch, a program, a report) and that returns diagnostics. The doors, by the name an
+entry carries:
+
+| Door | Function | Called by |
+|---|---|---|
+| `load` | `load(text, kind)` | `mandate load`, `ir`, `fmt`, `mandate.apply_patch` |
+| `check` | `check(text, kind, { modules, lock, claim })` | `mandate check`, `hash`, `view`, `sandbox`, `target`, `mandate.check`, the runtime |
+| `load_modules` | `loadModules(sources)` | `--module`, the runtime's CLI |
+| `check_patch` | `checkPatch(program, base, ops, modules)` | `mandate.apply_patch` |
+| `apply_patch` | `applyPatch(program, base, ops, modules)` | `mandate patch` |
+| `check_subprogram` | `checkSubprogram(input)` | the runtime's `check_program` and `submit_program` |
+| `check_amendment` | `checkAmendment(input)` | the runtime's `request_amendment` |
+| `validate_lock` | `validateLock(value)` | the runtime, on a package's lock (and `check`, given a lock) |
+| `acs_target` | `acsTarget(program, modules, lock)` | `mandate target acs` |
+| `denial_diagnostics` | `denialDiagnostics(program, report)` | `mandate check --denials` |
+
+The other exported functions that return diagnostics are inner phases of a door, and
+the door reaches all they can say, so they are not recorded even where a test calls them
+directly: `parseStrictJson` (`load` of JSON returns its diagnostics as they are;
+`reader.json` has its vectors), `parseMdt` and `validateIr` (`load`), `link`,
+`resolveNames`, `roleChecks`, `importedMethods` and `staticCheck` (`check`),
+`lockChecks`, `roleLockChecks`, `moduleLockChecks`, `sandboxLockChecks` and
+`bindingChecks` (`check` with a lock; the runtime also calls the last two on a package
+it has checked), `applyOps` (`apply_patch` and `check_subprogram`), `subprogramShape`
+and `containment` (`check_subprogram`), `narrowings` (`check_amendment`). The MCP
+server (`McpServer`, `callTool`) is a transport: its tools call `check`, `load`,
+`loadModules` and `checkPatch`, and those calls are recorded as theirs.
+
+The calls of the three test files that write vectors of their own
+(`diagnostic-vectors.test.ts`, `schema-vectors.test.ts`, `vectors.test.ts`) are left
+out: what they call is in those vectors already.
+
+### entries-N.json
+
+`{ "format": "mandate/vectors/corpus/entries/0.1", "part": N, "parts": M, "entries": [
+… ] }`, one entry on each line, the entries in one order across the parts (by `id`, in
+UTF-16 order). An entry:
+
+- `id`: `<door>-<16 hex digits>`, the first 16 hex digits of the SHA-256 of the door,
+  a line feed and the compact JSON text of `input`. Unique; the staleness test names an
+  entry by it;
+- `door`: one of the doors above;
+- `files`: the test files that made the call (repository paths, in UTF-16 order). The
+  same call made by several tests is one entry;
+- `input`: the arguments, by name (below). A member that is not there is an argument
+  that was not given (or `undefined`): the door takes its default;
+- then exactly one of `result` (the return value, below), `result_text` (for a return
+  value that holds a number that is not an integer: its exact text, `JSON.stringify` of
+  the value as `result` would hold it; no entry has one today) and `throws` (the message
+  of the error the door threw: `checkAmendment` and `checkSubprogram` throw for a
+  `workflow` that is not a workflow with an envelope).
+
+The inputs, by door. **T** is the key of a shared text, **V** the key of a shared JSON
+value, and `modules` is `{ <module name>: V, … }` in the order the call gave them (the
+loaded modules, `Record<name, Program>`, each module's IR):
+
+- `load`: `source` (T), `kind` (`"mdt"` or `"json"`);
+- `check`: `source` (T), `kind`, `modules`, `lock` (V, the lock as a value), `claim` (the
+  option `checkSubprogram` passes, inline; no entry has one today);
+- `load_modules`: `sources`, `[{ file, kind, text (T) }, …]`, in order; `file` is the
+  name given for messages;
+- `check_patch` and `apply_patch`: `program` (V, the IR the patch applies to), `base`,
+  `ops` (the RFC 6902 operations, inline), `modules`;
+- `check_subprogram`: `parent` (V), `modules`, `workflow`, `number`, `base`, `ops`,
+  `lead`, `room` (inline, as `SubprogramInput` has them);
+- `check_amendment`: `parent` (V), `modules`, `workflow`, `envelope` (inline, any JSON
+  value: it is a lead's writing);
+- `validate_lock`: `value` (inline, any JSON value);
+- `acs_target`: `program` (V), `modules`, `lock` (V);
+- `denial_diagnostics`: `program` (V), `report` (inline).
+
+A result is the return value as plain JSON (what `JSON.stringify` keeps of it), every
+member in the compiler's order, with three exceptions: a program's IR is not stored but
+its digest, and so is a span table and each module that `loadModules` returns. A digest
+is `sha256:` and the hex SHA-256 of a compact JSON text as `JSON.stringify` writes it
+(no space; in strings `\"`, `\\`, `\b`, `\f`, `\n`, `\r`, `\t`, `\u00xx` in lower case for
+the other characters below U+0020, every other character as itself, hashed as UTF-8):
+of the IR in the member order the compiler built it (as in JavaScript, member names
+that are array indices come first, in numeric order), and of a span table as `[[pointer,
+[startLine, startCol, endLine, endCol]], …]` sorted by pointer in UTF-16 order. The
+IR is left out because it is the size of the input and is pinned elsewhere (`hashes`,
+and `programs/` for the golden programs); the diagnostics, `ok` and the hashes are
+always stored whole. The results, by door:
+
+- `load`: `{ program?, spans, diagnostics }` (`program` when the input was read);
+- `check`: `{ program?, spans, diagnostics, ok, hashes? }` (`hashes`, `{ program, defs }`,
+  when `ok`);
+- `load_modules`: `{ modules: { <name>: digest, … }, problems: [{ file, diagnostics },
+  …] }`;
+- `check_patch`: `{ ok, hash?, diagnostics, governance, requires_approval, program? }`;
+- `apply_patch`: `{ ok, diagnostics, governance, program?, hash? }`;
+- `check_subprogram`: `{ ok, diagnostics, program?, hash?, workflow? }`;
+- `check_amendment`: `{ ok, diagnostics, program?, hash? }`;
+- `validate_lock` and `denial_diagnostics`: the array of diagnostics;
+- `acs_target`: the whole target, `{ format, acs_version, program, binding, agents,
+  profile, diagnostics }` (`program` and `binding` are hashes; `agents` holds each
+  manifest and Rego text).
+
+A diagnostic is as in `diagnostics/`: `code`, `severity`, `message`, `at` (`path`,
+`span`), `docs`, and `facts` and `repair` where it has them, in that order as the
+compiler builds it.
+
+### shared-N.json
+
+`{ "format": "mandate/vectors/corpus/shared/0.1", "part": N, "parts": M, "items": { …
+} }`, one item on each line, by key in UTF-16 order across the parts. The texts and
+the values that entries name, each stored once however many entries name it. The key
+is the first 16 hex digits of the SHA-256 of the item's compact JSON text (of the text
+as a JSON string, with its quotes, or of the value). An item is one of:
+
+- `{ "text": "…" }`: a text;
+- `{ "parts": [[piece, count], …] }`: a text over 4096 code units that repeats, as
+  pieces: each piece repeated `count` times, all joined (the 1 MiB inputs of the tests
+  of the limits);
+- `{ "value": … }`: a JSON value: a program's or a module's IR, or a lock.
+
+### summary.json
+
+`{ format, calls, distinct_calls, entries, shared, by_door, by_file, by_code, left_out,
+not_recorded }`: `calls`, the calls the suite made to a door (each test's, as often as it
+made them); `distinct_calls`, how many distinct ones; `entries` and `shared`, how many
+of each are stored; `by_door`, entries by door (every door, in the order above);
+`by_file`, entries by test file; `by_code`, diagnostics in stored results by code;
+`left_out`, `[{ id, door, files, reason }]`, the distinct calls not stored, with why;
+`not_recorded`, calls whose arguments could not be noted at all, by reason. A call is
+left out when the same input gave two results, when its input or result holds a lone
+surrogate or a credential-shaped string (which the repository's secret scanner would
+refuse), when its input holds a number that is not an integer (which the Rust reader
+refuses: one call of `lock.test.ts` today), or when, made again from what would be
+stored, it gives another result.
