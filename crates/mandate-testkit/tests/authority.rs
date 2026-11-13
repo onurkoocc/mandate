@@ -1,12 +1,21 @@
 //! The library crates hold no ambient authority: their sources name none of
-//! `std::fs`, `std::env`, `std::process`, `std::net`, `SystemTime` and
-//! `Instant`, so they read no file, environment variable or clock, start no
-//! process and open no connection; what they work on is given to them. This
-//! keeps them buildable for `wasm32-wasip1` and callable from a sandbox.
+//! `std::fs`, `std::env`, `std::process`, `std::net`, `std::os`, `std::path`
+//! (whose `Path` methods such as `exists`, `metadata` and `read_dir` touch
+//! the file system; a compiler library treats a path as text), `SystemTime`,
+//! `Instant`, the standard streams (`stdin`, `stdout`, `stderr`) and the
+//! macros that write to them (`print!`, `println!`, `eprint!`, `eprintln!`,
+//! `dbg!`); nor do they rename `std` (`use std as s`) or glob it
+//! (`use std::*`), which would hide the rest. So they read no file,
+//! environment variable or clock, write nothing out, start no process and
+//! open no connection; what they work on is given to them. This keeps them
+//! buildable for `wasm32-wasip1` and callable from a sandbox.
 //!
-//! The sources are scanned as text, with comments, strings and character
-//! literals left out, and a `std::{...}` group is looked into. Each crate of
-//! the compiler adds itself to `LIBRARIES` when it is written.
+//! The sources are scanned as text, with comments, strings (raw and byte
+//! strings too) and character literals left out, and a `std::{...}` group is
+//! looked into. Each crate of the compiler adds itself to `LIBRARIES` when it
+//! is written; a file that is not library code is exempted there by name.
+//! The workspace has no `clippy.toml`, so no `disallowed-methods` rule backs
+//! this up.
 
 #![allow(
     clippy::panic,
@@ -23,10 +32,25 @@ use mandate_testkit::{files, read_text, subdirectories};
 const LIBRARIES: &[(&str, &[&str])] = &[("mandate-ir", &[]), ("verify-journal", &["main.rs"])];
 
 /// The modules of `std` that give ambient authority.
-const MODULES: [&str; 4] = ["fs", "env", "process", "net"];
+const MODULES: [&str; 6] = ["fs", "env", "process", "net", "os", "path"];
 
-/// The clocks, wherever they are named from.
-const CLOCKS: [&str; 2] = ["SystemTime", "Instant"];
+/// The names that give it wherever they are named from: the clocks, the
+/// standard streams, and the macros that write to them.
+const NAMES: [&str; 13] = [
+    "SystemTime",
+    "Instant",
+    "stdin",
+    "stdout",
+    "stderr",
+    "Stdin",
+    "Stdout",
+    "Stderr",
+    "print!",
+    "println!",
+    "eprint!",
+    "eprintln!",
+    "dbg!",
+];
 
 /// The `.rs` files under the repository directory `dir`, relative to it.
 fn rust_files(dir: &str) -> Vec<String> {
@@ -79,9 +103,12 @@ fn code_only(src: &str) -> String {
             }
         } else if c == 'r'
             && matches!(next, Some('"' | '#'))
-            && !ident(chars.get(i.wrapping_sub(1)))
+            && (!ident(chars.get(i.wrapping_sub(1)))
+                || (matches!(at(i.wrapping_sub(1)), Some('b' | 'c'))
+                    && !ident(chars.get(i.wrapping_sub(2)))))
         {
-            // A raw string, r"..." or r#"..."#.
+            // A raw string, r"..." or r#"..."#, and the raw byte and C
+            // strings br"..." and cr#"..."#.
             let mut j = i + 1;
             while at(j) == Some('#') {
                 j += 1;
@@ -131,14 +158,15 @@ fn code_only(src: &str) -> String {
     out
 }
 
-/// The words of `code` with their lines; `::`, `{`, `}` and `,` are words.
+/// The words of `code` with their lines; `::`, `{`, `}` and `,` are words,
+/// `*` is kept, and a macro's name keeps its `!`.
 fn words(code: &str) -> Vec<(usize, String)> {
     let mut out = Vec::new();
     for (n, line) in code.lines().enumerate() {
         let kept: String = line
             .chars()
             .map(|c| {
-                if ident(Some(&c)) || ":{},".contains(c) {
+                if ident(Some(&c)) || ":{},!*".contains(c) {
                     c
                 } else {
                     ' '
@@ -149,8 +177,15 @@ fn words(code: &str) -> Vec<(usize, String)> {
             .replace("::", " :: ")
             .replace('{', " { ")
             .replace('}', " } ")
-            .replace(',', " , ");
-        out.extend(spaced.split_whitespace().map(|w| (n + 1, w.to_owned())));
+            .replace(',', " , ")
+            .replace('*', " * ");
+        out.extend(
+            spaced
+                .split_whitespace()
+                .map(|w| w.trim_start_matches('!'))
+                .filter(|w| !w.is_empty())
+                .map(|w| (n + 1, w.to_owned())),
+        );
     }
     out
 }
@@ -160,10 +195,14 @@ fn findings(code: &str) -> Vec<String> {
     let words = words(code);
     let mut out = Vec::new();
     for (k, (line, w)) in words.iter().enumerate() {
-        if CLOCKS.contains(&w.as_str()) {
+        if NAMES.contains(&w.as_str()) {
             out.push(format!("{line}: {w}"));
         }
-        if w != "std" || words.get(k + 1).map(|(_, w)| w.as_str()) != Some("::") {
+        let next = words.get(k + 1).map(|(_, w)| w.as_str());
+        if w == "std" && next == Some("as") {
+            out.push(format!("{line}: std renamed"));
+        }
+        if w != "std" || next != Some("::") {
             continue;
         }
         // `std::x` or `std::{a, b::c, d::{e}}`: the first segment of each path.
@@ -183,7 +222,7 @@ fn findings(code: &str) -> Vec<String> {
                 "," => first = depth == 1,
                 "::" => {}
                 segment => {
-                    if first && MODULES.contains(&segment) {
+                    if first && (MODULES.contains(&segment) || segment == "*") {
                         out.push(format!("{line}: std::{segment}"));
                     }
                     first = false;
@@ -208,6 +247,31 @@ fn the_scan_finds_what_it_looks_for() {
     );
     assert_eq!(found("use std::time::{Duration, Instant};"), ["1: Instant"]);
     assert_eq!(found("\nlet t = SystemTime::now();"), ["2: SystemTime"]);
+    assert_eq!(found("use std::path::Path;"), ["1: std::path"]);
+    assert_eq!(found("use std::{fmt, path};"), ["1: std::path"]);
+    assert_eq!(found("use std::os::unix::ffi::OsStrExt;"), ["1: std::os"]);
+    assert_eq!(found("let s = std::io::stdout();"), ["1: stdout"]);
+    assert_eq!(found("use std::io::{self, Stdin};"), ["1: Stdin"]);
+    assert_eq!(found("if !*stderr {}"), ["1: stderr"]);
+    assert_eq!(
+        found("println!(\"x\"); dbg!(y);\nprint!(\"a\"); eprint!(\"b\"); eprintln!();"),
+        [
+            "1: println!",
+            "1: dbg!",
+            "2: print!",
+            "2: eprint!",
+            "2: eprintln!"
+        ]
+    );
+    assert_eq!(found("use std as s;"), ["1: std renamed"]);
+    assert_eq!(found("extern crate std as s;"), ["1: std renamed"]);
+    assert_eq!(found("use std::*;"), ["1: std::*"]);
+    assert_eq!(found("use std::{io, *};"), ["1: std::*"]);
+    // After a raw byte string with a backslash in it, the code is still scanned.
+    assert_eq!(found("let b = br\"\\\"; use std::fs;"), ["1: std::fs"]);
+    assert_eq!(found("let b = br#\"\\\"#; use std::env;"), ["1: std::env"]);
+    assert_eq!(found("let c = cr\"\\\"; use std::net;"), ["1: std::net"]);
+    assert!(found("let b = br\"std::fs\"; let x = a!=b; let y = *p;").is_empty());
     // Not code: comments, strings, characters; nor other modules of std.
     assert!(found("// std::fs\n/* std::env /* */ */ let s = \"std::process\";").is_empty());
     assert!(found("let c = '\"'; let s = r#\"std::fs\"#; let q = '\\''; use std::fmt;").is_empty());
