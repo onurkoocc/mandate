@@ -209,7 +209,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     }
 
     if (cmd === "journal") return await journal(a, config, db, out);
-    if (cmd === "halt") return await halt(a, config, db, out);
+    if (cmd === "halt") return await halt(a, config, db, out, (r) => (made = r));
     if (cmd === "otel") return await otel(a, db, out);
 
     if (cmd === "approve-envelope") {
@@ -737,13 +737,17 @@ async function otel(a: Args, db: Db, out: (s: string) => void): Promise<number> 
 
 /**
  * `mandate halt` (spec/boundary.md "Violations and halt"): the operator's hard stop of a tenant or of every tenant,
- * its lift, and the list of halts. Halting reads no secret and no package. Exit 1 when the halt is in force but what
- * comes after it failed (revoking, asking an open action to stop): the runs have ended all the same.
+ * its lift, and the list of halts. Halting reads no secret and no package, and refuses none that the environment holds.
+ * With an egress proxy in the configuration, it revokes the proxy's sessions of the scope; `made` is told of the
+ * runtime, so that its admin connection is closed when the command ends. A lift and a list never reach the proxy. Exit
+ * 1 when the halt is in force but what comes after it failed (revoking, asking an open action to stop): the runs have
+ * ended all the same.
  */
-async function halt(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => void): Promise<number> {
+async function halt(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => void, made: (rt: Runtime) => void): Promise<number> {
   if (a.positional.length) throw new Usage("halt takes no run: mandate halt (--tenant T | --all) [--reason TEXT]");
   const json = a.flags["--json"] === true;
   const rt = new Runtime(db, operatorAdapters(config), undefined, undefined, runtimeOptions(config, db));
+  made(rt);
   const where = (h: HaltRow): string => (h.tenant === null ? "every tenant" : `tenant ${h.tenant}`);
   if (a.flags["--list"] === true) {
     if (a.flags["--lift"] !== undefined || a.flags["--tenant"] !== undefined || a.flags["--all"] !== undefined) throw new Usage("halt --list takes no scope: mandate halt --list [--json]");
