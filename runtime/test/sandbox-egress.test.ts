@@ -21,7 +21,6 @@ import { createServer as createHttpsServer, type Server as HttpsServer } from "n
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PassThrough } from "node:stream";
 import type { TLSSocket } from "node:tls";
 import { check, requirementFor, type CapVal, type Lock, type SandboxRequirement } from "@mandate/compiler";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,69 +30,16 @@ import { serveAdmin, type AdminServer } from "../src/egress/admin.js";
 import { egressConfig } from "../src/egress/config.js";
 import { EgressProxy, type DenialReason, type SessionRequest } from "../src/egress/proxy.js";
 import { EgressLink } from "../src/gateway.js";
-import { MASK_CHECK, MxcHost, SANDBOX_SESSION_TTL_MS, type MxcContainerRequest, type MxcSdk } from "../src/mxc.js";
+import { MxcHost, SANDBOX_SESSION_TTL_MS, type MxcContainerRequest, type MxcSdk } from "../src/mxc.js";
 import { WindowsMxcHost, type WindowsContainerRequest, type WindowsMxcSdk } from "../src/mxc-windows.js";
 import { Runtime } from "../src/runtime.js";
 import { EGRESS_DENIALS_KEPT, MxcAdapter, placeholderVariable, type ExecResult, type MxcPolicy, type SandboxOwner } from "../src/sandbox.js";
 import { SimChat, toolUse } from "../src/sim.js";
 import { Violation } from "../src/signals.js";
+import { adapter, EgressSdk, fetcher, SUPPORTED } from "./egress-sdk.js";
 import { adminPath, http, OTHER_SECRET, portOf, SECRET, seenHeader, send, world as egressWorld, type World as EgressWorld } from "./egress-world.js";
 import { closeAll, world as runtimeWorld } from "./helpers.js";
 import { LOCK as MODELS_LOCK } from "./models.js";
-
-/** What a process in the fake sandbox does with the request MXC got: what it prints, and how it exits. */
-type Proc = (request: MxcContainerRequest) => Promise<{ stdout?: string; exitCode?: number }>;
-
-/** A process that has already printed `stdout` and exited. */
-function finished(stdout: string, exitCode = 0) {
-  const out = new PassThrough();
-  const err = new PassThrough();
-  out.end(stdout);
-  err.end();
-  return { standardInput: new PassThrough(), standardOutput: out, standardError: err, wait: async () => ({ exitCode, timedOut: false }), kill: () => {}, dispose: () => {} };
-}
-
-const SUPPORTED = { isSupported: true, availableMethods: ["bubblewrap"], bubblewrapNetwork: { proxyEnforcement: "supported", warnings: [] } };
-
-/** MXC's Bubblewrap backend as far as the host uses it. A process is the program its command's first word names. */
-class EgressSdk implements MxcSdk {
-  readonly spawned: MxcContainerRequest[] = [];
-  support: ReturnType<MxcSdk["getPlatformSupport"]> = SUPPORTED;
-  readonly programs = new Map<string, Proc>([["fetch", fetcher]]);
-  getPlatformSupport() {
-    return this.support;
-  }
-  async spawn(request: MxcContainerRequest) {
-    if (request.command === MASK_CHECK) return finished("end\n");
-    this.spawned.push(structuredClone(request));
-    const program = this.programs.get(request.command.split(" ")[0]!);
-    const r = program ? await program(request) : { stdout: "ok\n" };
-    return finished(r.stdout ?? "", r.exitCode ?? 0);
-  }
-}
-
-/**
- * `fetch METHOD URL [METHOD URL …]`: sends each request to its sandbox's proxy, in absolute form, and prints each
- * one's status and denial reason. A request to api.github.com carries the GitHub credential's placeholder in its
- * header when the environment has one; a method written `+GET` sends it whatever the host. It reaches the proxy only
- * through the address the request names, as a proxied sandbox does.
- */
-const fetcher: Proc = async (request) => {
-  const [, ...args] = request.command.split(" ");
-  const proxy = request.network.runtimeConfig?.networkProxy;
-  if (!proxy) return { stdout: "no proxy\n", exitCode: 7 };
-  const ph = request.environment?.[placeholderVariable("github")];
-  let out = "";
-  for (let i = 0; i + 1 < args.length; i += 2) {
-    const [written, url] = [args[i]!, args[i + 1]!];
-    const method = written.replace(/^\+/, "");
-    const host = new URL(url).host;
-    const auth = ph && (host === "api.github.com" || written.startsWith("+")) ? [`authorization: Bearer ${ph}`] : [];
-    const r = await send(portOf(proxy), http([`${method} ${url} HTTP/1.1`, `host: ${host}`, ...auth]));
-    out += `${written} ${url} ${r.status} ${r.header("x-mandate-egress-denied") ?? r.body}\n`;
-  }
-  return { stdout: out };
-};
 
 const net = (hosts: string[], methods?: string[]): CapVal => ({ ctor: "net.https", effect: "Net", write: false, scope: hosts, ...(methods ? { methods } : {}) });
 const FETCH: CapVal = { ctor: "exec", effect: "Exec", write: false, scope: ["fetch"] };
@@ -104,7 +50,6 @@ function req05(caps: CapVal[], bound: Record<string, string> = {}, timeoutMs = 3
   return requirementFor({ agent: "Fetcher", def: "sha256:0" }, [...caps, FETCH, MODEL], timeoutMs, { language: "mandate/0.5", lock: { modules: {}, ...(Object.keys(bound).length ? { egress: { Fetcher: bound } } : {}) } });
 }
 
-const adapter = (host: MxcHost | WindowsMxcHost) => new MxcAdapter({ host, schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true });
 const OWNER: SandboxOwner = { run: "r-egress", tenant: "acme", command: "/defs/Fetch/body/0/value" };
 
 async function open(host: MxcHost, req: SandboxRequirement, owner: SandboxOwner = OWNER): Promise<{ handle: string; policy: MxcPolicy }> {
