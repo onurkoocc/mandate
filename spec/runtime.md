@@ -807,6 +807,16 @@ request; it does not erase anything. A dispatch after the cancel request is
 refused. An action already in flight is followed to its real result and
 listed in the run's summary (R09).
 
+A run that no worker is driving (`accepted`, `waiting`,
+`attention_required`) is ended by the cancel itself, which takes its lease
+as a halt does: the fence goes up when the cancel is recorded and again
+when the run is ended, and the run's state and actions are read again under
+its row lock before it is ended. A resume that comes meanwhile (a person's
+answer, a decision, a timer, another worker) writes nothing, and a run that
+ended meanwhile is left as it ended, so a cancelled run ends once, with one
+`run_cancelled`, and does not leave `cancelled`. A `running` run keeps its
+worker, which ends the run itself at its next dispatch.
+
 A halt is the hard stop of a tenant, or of every tenant: it ends each of
 their open runs at once, `cancelled` or, with an action open,
 `attention_required`, drops their leases so no result in flight is
