@@ -23,8 +23,8 @@ const cases = readdirSync(root, { withFileTypes: true })
   .filter(({ c }) => c.kind === "journal");
 
 describe("journal conformance cases", () => {
-  it("are J01 to J08", () => {
-    expect(cases.map(({ c }) => c.id)).toEqual(["J01", "J02", "J03", "J04", "J05", "J06", "J07", "J08"]);
+  it("are J01 to J16", () => {
+    expect(cases.map(({ c }) => c.id)).toEqual(Array.from({ length: 16 }, (_, i) => `J${String(i + 1).padStart(2, "0")}`));
   });
 
   for (const { dir, c } of cases) {

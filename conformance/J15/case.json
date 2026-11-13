@@ -1,0 +1,18 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "J15",
+  "kind": "journal",
+  "title": "An export with a duplicate member is unreadable, malformed_export: nothing is said about the journal.",
+  "spec": [
+    "spec/journal.md#verification",
+    "spec/journal.md#conformance-cases"
+  ],
+  "journal": {
+    "export": "export.json",
+    "keys": [
+      "key.pem"
+    ],
+    "report": "report.json"
+  }
+}

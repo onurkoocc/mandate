@@ -1,0 +1,18 @@
+{
+  "format": "mandate/journal-verification/0.1",
+  "run": "j12",
+  "status": "broken",
+  "events": 9,
+  "last_seq": 9,
+  "anchored_through": 9,
+  "unanchored": 0,
+  "signed_by": [
+    "sha256:accb972dbb0eed95253f8c3545cc67dc1fbd6b60a05da757187a7a25a9be035b"
+  ],
+  "findings": [
+    {
+      "code": "anchor_missing",
+      "seq": 5
+    }
+  ]
+}

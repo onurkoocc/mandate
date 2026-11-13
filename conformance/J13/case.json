@@ -1,0 +1,18 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "J13",
+  "kind": "journal",
+  "title": "Events moved in the export, seqs [1, 2, 5, 3, 4, …]: the first misplaced position is seq_gap, and an anchor names the first event with its seq in the export's order.",
+  "spec": [
+    "spec/journal.md#verification",
+    "spec/journal.md#conformance-cases"
+  ],
+  "journal": {
+    "export": "export.json",
+    "keys": [
+      "key.pem"
+    ],
+    "report": "report.json"
+  }
+}

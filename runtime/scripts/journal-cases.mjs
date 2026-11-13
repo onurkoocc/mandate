@@ -1,15 +1,17 @@
 // Writes the journal conformance cases J01–J08 (conformance/README.md, spec/journal.md) from real runs on an
 // in-process PGlite database. Each run gets a fresh evidence key, so the files differ every time this runs; the
 // standing test is that the TypeScript verifier gives the committed report for the committed export and keys
-// (runtime/test/journal-cases.test.ts). Only public keys are written.
+// (runtime/test/journal-cases.test.ts). Only public keys are written. Some cases change the export's text after it
+// was written, as someone holding the file could: J09 spells the same values otherwise, J13 and J14 move or repeat
+// events, J15 is no export at all.
 //
-//   npm run build && node runtime/scripts/journal-cases.mjs
+//   npm run build && node runtime/scripts/journal-cases.mjs [J09 J10 …]     (without ids: every case)
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { check } from "@mandate/compiler";
-import { buildPackage, EvidenceSigner, openDb, Runtime, simulate, verifyExport } from "../dist/index.js";
+import { buildPackage, EvidenceSigner, EXPORT_LIMITS, openDb, Runtime, simulate, verifyExport } from "../dist/index.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "conformance");
 
@@ -76,7 +78,7 @@ const EDGES = {
 const CASES = [
   {
     id: "J01",
-    title: "A closed run whose chain holds and whose anchors cover every event verifies, also over data with fractions, exponents, -0, escapes and keys that sort differently by UTF-16 code units and by code points.",
+    title: "A closed run whose chain holds and whose anchors cover every event verifies, also over data with fractions, exponents, escapes and keys that sort differently by UTF-16 code units and by code points.",
     status: "verified",
     async make(w) {
       await waiting(w, "j01");
@@ -166,12 +168,144 @@ const CASES = [
   },
 ];
 
+/** Writes a value with its members in reverse order and tabs, as another writer of the same JSON might. */
+function respelled(v) {
+  if (Array.isArray(v)) return v.map(respelled);
+  if (v && typeof v === "object") return Object.fromEntries(Object.keys(v).reverse().map((k) => [k, respelled(v[k])]));
+  return v;
+}
+
+/** Replaces `from` once in `text`; a spelling the case relies on must be there. */
+function once(text, from, to) {
+  if (!text.includes(from)) throw new Error(`J09: no ${from} in the export`);
+  return text.replace(from, to);
+}
+
+/** The anchors of a run, by seq. */
+async function anchorRows(w, runId) {
+  return w.db.query("select seq, hash, at from journal_anchors where run_id = $1 order by seq", [runId]);
+}
+
+CASES.push(
+  {
+    id: "J09",
+    title: "An export whose text spells the same values otherwise (exponents, trailing zeros, -0, a number below the smallest double, escapes, member order, white space) verifies: the verifier hashes values, not their spelling.",
+    status: "verified",
+    async make(w) {
+      await waiting(w, "j09");
+      await append(w, "j09", "probe", { j09_zero: 0, j09_negzero: 0, j09_tenth: 0.1, j09_big: 1e21, j09_one: 1, j09_e: "\u00e9", j09_slash: "a/b" });
+      await answered(w, "j09");
+    },
+    respell(x) {
+      let text = JSON.stringify(respelled(x), null, "\t") + "\n";
+      text = once(text, '"j09_zero": 0', '"j09_zero": 1e-400');
+      text = once(text, '"j09_negzero": 0', '"j09_negzero": -0');
+      text = once(text, '"j09_tenth": 0.1', '"j09_tenth": 0.10');
+      text = once(text, '"j09_big": 1e+21', '"j09_big": 1E21');
+      text = once(text, '"j09_one": 1', '"j09_one": 1.0e0');
+      text = once(text, '"j09_e": "\u00e9"', '"j09_e": "\\u00e9"');
+      text = once(text, '"j09_slash": "a/b"', '"j09_slash": "a\\/b"');
+      // The first seq 1 and the first time in the text, whichever object they are in: the value is the same.
+      if (!/"seq": 1(?=\s)/.test(text)) throw new Error("J09: no seq 1");
+      text = text.replace(/"seq": 1(?=\s)/, '"seq": 1.0');
+      const at = x.events[0].at;
+      text = once(text, `"at": ${at}`, `"at": ${at / 10}e1`);
+      return text.replaceAll('": ', '":  ');
+    },
+  },
+  {
+    id: "J10",
+    title: "An event of a chained run whose hash was removed in the database is hash_missing, and breaks the chain at the event after it.",
+    status: "broken",
+    async make(w) {
+      await waiting(w, "j10");
+      await answered(w, "j10");
+      await w.db.query("update events set hash = null where run_id = 'j10' and type = 'wait_opened'");
+    },
+  },
+  {
+    id: "J11",
+    title: "An anchor signed by the runtime's key over a hash its event does not have is anchor_mismatch, however its signature holds.",
+    status: "broken",
+    async make(w) {
+      await waiting(w, "j11");
+      await answered(w, "j11");
+      const [a] = (await anchorRows(w, "j11")).filter((r) => Number(r.seq) === 5);
+      const [other] = await w.db.query("select hash from events where run_id = 'j11' and seq = 4");
+      const sig = w.signer.signStatement("mandate/journal-anchor/0.1", { format: "mandate/journal-anchor/0.1", run: "j11", seq: 5, hash: other.hash, at: Number(a.at) });
+      await w.db.query("update journal_anchors set hash = $1, signature = $2 where run_id = 'j11' and seq = 5", [other.hash, sig.signature]);
+    },
+  },
+  {
+    id: "J12",
+    title: "A state event whose anchor was removed from the database is anchor_missing, and the run is broken, not clean.",
+    status: "broken",
+    async make(w) {
+      await waiting(w, "j12");
+      await answered(w, "j12");
+      await w.db.query("delete from journal_anchors where run_id = 'j12' and seq = 5");
+    },
+  },
+  {
+    id: "J13",
+    title: "Events moved in the export, seqs [1, 2, 5, 3, 4, …]: the first misplaced position is seq_gap, and an anchor names the first event with its seq in the export's order.",
+    status: "broken",
+    async make(w) {
+      await waiting(w, "j13");
+      await answered(w, "j13");
+    },
+    respell(x) {
+      const [e1, e2, e3, e4, e5, ...rest] = x.events;
+      return JSON.stringify({ ...x, events: [e1, e2, e5, e3, e4, ...rest] }, null, 2) + "\n";
+    },
+  },
+  {
+    id: "J14",
+    title: "A second event with the last seq, after the genuine one: the anchor names the first in the export's order, which holds, and the copy is seq_gap and chain_broken.",
+    status: "broken",
+    async make(w) {
+      await waiting(w, "j14");
+      await answered(w, "j14");
+    },
+    respell(x) {
+      const last = x.events[x.events.length - 1];
+      return JSON.stringify({ ...x, events: [...x.events, { ...last, data: { forged: true } }] }, null, 2) + "\n";
+    },
+  },
+  {
+    id: "J15",
+    title: "An export with a duplicate member is unreadable, malformed_export: nothing is said about the journal.",
+    status: "unreadable",
+    async make(w) {
+      await waiting(w, "j15");
+      await answered(w, "j15");
+    },
+    respell(x) {
+      return once(JSON.stringify(x, null, 2) + "\n", '"tenant": "default"', '"tenant": "default",\n  "tenant": "default"');
+    },
+  },
+  {
+    id: "J16",
+    title: "A run whose event data nests deeper than every verifier reads is journaled as any other, and its export is unreadable, export_over_limit.",
+    status: "unreadable",
+    async make(w) {
+      await waiting(w, "j16");
+      let deep = [];
+      for (let i = 0; i < EXPORT_LIMITS.depth; i++) deep = [deep];
+      await append(w, "j16", "probe", { deep });
+      await answered(w, "j16");
+    },
+  },
+);
+
+const only = process.argv.slice(2);
 for (const c of CASES) {
+  if (only.length && !only.includes(c.id)) continue;
   const w = await world();
   try {
     await c.make(w);
     const x = await w.rt.exportJournal(c.id.toLowerCase());
-    const text = JSON.stringify(x, null, 2) + "\n";
+    const text = c.respell ? c.respell(x) : JSON.stringify(x, null, 2) + "\n";
     const pem = w.signer.publicKeyPem();
     const report = verifyExport(Buffer.from(text), [pem]);
     if (report.status !== c.status) throw new Error(`${c.id} is ${report.status}, and the case says ${c.status}: ${JSON.stringify(report.findings)}`);

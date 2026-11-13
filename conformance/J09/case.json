@@ -1,0 +1,18 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "J09",
+  "kind": "journal",
+  "title": "An export whose text spells the same values otherwise (exponents, trailing zeros, -0, a number below the smallest double, escapes, member order, white space) verifies: the verifier hashes values, not their spelling.",
+  "spec": [
+    "spec/journal.md#verification",
+    "spec/journal.md#conformance-cases"
+  ],
+  "journal": {
+    "export": "export.json",
+    "keys": [
+      "key.pem"
+    ],
+    "report": "report.json"
+  }
+}
