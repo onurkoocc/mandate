@@ -1057,9 +1057,14 @@ lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
 - **Secrets.** They come only from the environment: `CLAUDE_API_KEY` or
   `ANTHROPIC_API_KEY` (and `CLAUDE_WORKSPACE_ID` for a key that is not scoped
   to a workspace), and `MANDATE_GITHUB_TOKEN`. With a gateway on, that
-  gateway's secrets belong to the egress proxy, and a command that builds a
-  runtime refuses while it finds one in the environment
-  (`credential_in_environment`). The verifier process and `docker` get only the
+  gateway's secrets belong to the egress proxy, and a command that can run
+  an adapter refuses while it finds one in the environment
+  (`credential_in_environment`): `run`, `approve-envelope`, `approve`,
+  `decline`, `answer`, `cancel`, `reconcile`, `raise-limits` and `amend`.
+  `status`, `show`, `denials`, `artifact`, `decision` and `shadow-diff` are
+  built without adapters, and `replay` with every adapter refused, so they
+  run with the secret in the environment, as `halt` does; the message for
+  `cancel` points to `mandate halt`. The verifier process and `docker` get only the
   variables they need (see "A verifier of its own" and "Boundary
   verifier").
 - **Egress.** `egress { admin, gateways: { model, github } }` names the

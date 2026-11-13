@@ -547,9 +547,13 @@ sent in `x-api-key` as `{secret}`, toward `api.anthropic.com`; for
 `github`, in `authorization` as `Bearer {secret}`, toward `api.github.com`.
 The model adapter, the Managed Agents executor, `git.open_pr`, `git.merge`
 and the boundary verifier's CI source then hold a placeholder, never the
-secret, and the runtime refuses to start while the gateway's secret is in
-its own environment (`credential_in_environment`: `CLAUDE_API_KEY` or
-`ANTHROPIC_API_KEY`; `MANDATE_GITHUB_TOKEN`). The verifier process gets a
+secret, and a command that can run an adapter refuses to start while the
+gateway's secret is in its own environment (`credential_in_environment`:
+`CLAUDE_API_KEY` or `ANTHROPIC_API_KEY`; `MANDATE_GITHUB_TOKEN`). `status`,
+`show`, `denials`, `artifact`, `decision`, `shadow-diff` and `replay` hold no
+adapter that could use it and run with the secret in the environment, as
+`halt` does; `cancel` is refused, and its message points to `mandate halt`.
+The verifier process gets a
 session of its own and its placeholder. A start is refused when the proxy
 does not answer or lacks a gateway's credential (`egress_unavailable`); a
 cancelled run's sessions are revoked; `status`, `show` and `replay` never

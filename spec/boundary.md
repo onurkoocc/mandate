@@ -379,11 +379,26 @@ own adapters, reach a host. It holds the secrets; nothing else does.
   the runtime's environment.
 - A sandbox sees **placeholders**, never secrets: the proxy puts the secret
   into a request on its way out.
-- With a gateway on, the runtime refuses to start when it finds that
-  gateway's credential in its own environment, `credential_in_environment`,
-  naming the variable and never its value: `CLAUDE_API_KEY` or
-  `ANTHROPIC_API_KEY` for the model gateway, `MANDATE_GITHUB_TOKEN` for the
-  GitHub one. The refusal is per gateway: a gateway that is off refuses
+- With a gateway on, a command that can run an adapter refuses to start when
+  it finds that gateway's credential in its own environment,
+  `credential_in_environment`, naming the variable and never its value:
+  `CLAUDE_API_KEY` or `ANTHROPIC_API_KEY` for the model gateway,
+  `MANDATE_GITHUB_TOKEN` for the GitHub one. The commands that cannot run an
+  adapter are not refused, because the process holds no adapter that could
+  use the secret: `halt`, `otel` and `rotate-key`, the `journal` and
+  `egress serve` commands, and, of the commands that take a run, the
+  read-only `status`, `show`, `denials`, `artifact`, `decision` and
+  `shadow-diff`, which are built without adapters as `halt` is. `replay` is
+  not refused either: it is built with the configuration's tool map, to read
+  each tool's contract, and with every adapter wrapped so that a call to one
+  fails (`replay_called_adapter`), so no adapter is ever called in it. `run`,
+  `approve-envelope`, `approve`, `decline`, `answer`, `reconcile`,
+  `raise-limits`, `amend` and `cancel` are refused. For `cancel` the message
+  says what to do instead: it asks the run's adapters to stop an action whose
+  outcome is unknown, so it cannot run beside the secret, and `mandate halt
+  --tenant T` (a halt names a tenant, not a run) ends the runs of the run's
+  tenant without an adapter, or `mandate cancel` is run from an environment
+  without the secret. The refusal is per gateway: a gateway that is off refuses
   nothing, so with only the model gateway on, `MANDATE_GITHUB_TOKEN` is
   the GitHub adapter's as before. A variable set to the empty string holds
   nothing and is not refused; on Windows a name matches in any case, as
@@ -528,8 +543,9 @@ adapter holds no secret: it sends to the session's base URL with the
 session's placeholder in the gateway's header, and its SDK client reads no
 credential of its own from the environment.
 
-- **Refusals at start.** `adaptersFor`, which every command that builds a
-  runtime calls, refuses a gateway when `egress.admin` names no proxy
+- **Refusals at start.** `adaptersFor`, which every command that can run an
+  adapter calls (not the read-only ones, `replay` or `halt`: see "Where secrets
+  live"), refuses a gateway when `egress.admin` names no proxy
   (`no_egress_proxy`), and a gateway whose secret is in the runtime's
   environment (`credential_in_environment`). `StartRun`, before anything
   else that reaches out (the bindings, the executor), asks the proxy
@@ -585,7 +601,7 @@ credential of its own from the environment.
   revoke is reported to whoever cancelled, and the cancel stands. A halt
   calls it for its tenant or all; `mandate halt` has it from `egress.admin`
   alone, as "Halt" says, and `mandate cancel` from the same configuration
-  as every command that builds a runtime for a run.
+  as every command that builds adapters for a run.
 
 ### Sandbox egress
 
@@ -946,7 +962,9 @@ Without `egress.admin` there is nothing to revoke, and the report says so.
 The command holds no secret, opens no session and reads no credential from
 its environment, so a credential there does not refuse it
 (`credential_in_environment` is a refusal of the commands that run
-adapters). It connects only for the revoke: `--lift` and `--list` never reach
+adapters, and `mandate cancel`, which asks one, is among them: with the
+secret in the environment, `mandate halt --tenant T` is the way to stop the
+runs of a tenant). It connects only for the revoke: `--lift` and `--list` never reach
 the proxy, and the connection is closed when the command ends. The proxy has
 10 seconds to take the connection and 10 seconds to answer; a proxy that does
 neither is reported as a failed revoke (`egress_unavailable`, naming the
