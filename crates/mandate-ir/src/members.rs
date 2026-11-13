@@ -68,7 +68,7 @@ impl<V: Eq> Eq for Members<V> {}
 impl<V: fmt::Debug> fmt::Debug for Members<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_map()
-            .entries(self.entries.iter().map(|(k, v)| (k, v)))
+            .entries(self.entries.iter().map(|entry| (&entry.0, &entry.1)))
             .finish()
     }
 }
