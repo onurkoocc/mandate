@@ -18,6 +18,7 @@
 
 import { createHash } from "node:crypto";
 import { modelTiers, type Program } from "@mandate/compiler";
+import { eventClass } from "./classes.js";
 import type { Db, Row, Tx } from "./db.js";
 import { TERMINAL } from "./journal.js";
 import { Violation } from "./signals.js";
@@ -95,73 +96,8 @@ export function eventSpanId(run: string, seq: number): string {
 
 // ── the classes (spec/boundary.md, INV-17) ──────────────────────────────
 
-/** The class of an event type: S0 to S4, from the type alone. */
+/** The class of an event type: S0 to S4, from the type alone. The export's own is `eventClass`, the table the role views are built from (INV-17). */
 export type ClassOf = (eventType: string) => string;
-
-/**
- * THE STAND-IN FOR THE SHARED CLASS TABLE. The class of each event type is assigned in one place for the role views
- * and for this export (INV-17), a function from an event type to its class that another change builds. Until both are
- * in, the export has this small table of its own, written from the table in spec/boundary.md "Views by role and the
- * audit view". When the shared table lands, `defaultClassOf` is deleted and `mandate otel export` is given that
- * table's function in its place (`otelExport`'s `classOf`); nothing else here changes.
- *
- * A type this table does not name is S4, the class only the audit view shows: a type nobody has classed is not shown
- * to anyone who is not looking at everything.
- */
-const STAND_IN_CLASSES: Record<string, string> = {
-  // S0: a decision, and what was asked of whom
-  wait_opened: "S0",
-  decision_received: "S0",
-  decision_refused: "S0",
-  action_authorized: "S0",
-  envelope_approved: "S0",
-  governance_approved: "S0",
-  governance_denied: "S0",
-  criterion_approved: "S0",
-  criterion_denied: "S0",
-  amendment_requested: "S0",
-  package_amended: "S0",
-  limits_raised: "S0",
-  // S1: how the run ended, a fault, a violation, a halt
-  run_succeeded: "S1",
-  run_failed: "S1",
-  run_cancelled: "S1",
-  run_attention_required: "S1",
-  violation: "S1",
-  budget_exceeded: "S1",
-  guarantee_lowered: "S1",
-  sandbox_stopped: "S1",
-  wait_expired: "S1",
-  program_refused: "S1",
-  cancel_requested: "S1",
-  lease_revoked: "S1",
-  egress_denied: "S1",
-  // S2: progress
-  run_accepted: "S2",
-  run_running: "S2",
-  run_waiting: "S2",
-  run_cancelling: "S2",
-  lease_acquired: "S2",
-  map_started: "S2",
-  map_ended: "S2",
-  command_dispatched: "S2",
-  command_completed: "S2",
-  command_throttled: "S2",
-  throttled: "S2",
-  charge_pending: "S2",
-  charge_settled: "S2",
-  program_admitted: "S2",
-  program_submitted: "S2",
-  input_received: "S2",
-  // S3: a step's detail
-  action_prepared: "S3",
-  action_committed: "S3",
-  reconcile_requested: "S3",
-  input: "S3",
-  at_most_once: "S3",
-};
-
-export const defaultClassOf: ClassOf = (type) => (Object.hasOwn(STAND_IN_CLASSES, type) ? STAND_IN_CLASSES[type]! : "S4");
 
 // ── what the projection is given ────────────────────────────────────────
 
@@ -493,7 +429,7 @@ export const OTEL_INTERVAL_MS = 2_000;
  * reported and tried again at the next one, and the call returns when `signal` aborts.
  */
 export async function otelExport(db: Db, o: OtelOptions): Promise<OtelReport> {
-  const classOf = o.classOf ?? defaultClassOf;
+  const classOf = o.classOf ?? eventClass;
   const batch = Math.max(1, o.batch ?? OTEL_BATCH);
   const packages = new Map<string, ModelFact>();
   const report: OtelReport = { endpoint: o.endpoint, runs: [], rejected: 0 };

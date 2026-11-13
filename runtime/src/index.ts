@@ -36,4 +36,4 @@ export { DENIAL_REASONS, defaultDialer, EgressError, EgressProxy, PLACEHOLDER, t
 export { isPublicAddress } from "./egress/addresses.js";
 export { serveAdmin, type AdminServer } from "./egress/admin.js";
 export { serveEgress, type EgressServer, type ServeOptions } from "./egress/main.js";
-export { defaultClassOf, eventSpanId as otelEventSpanId, modelFact, otelEndpoint, otelExport, project as projectOtel, spanId as otelSpanId, traceId as otelTraceId, OTEL_SCHEMA_URL, type ClassOf, type OtelOptions, type OtelReport, type OtlpBody, type OtlpSpan } from "./otel.js";
+export { eventSpanId as otelEventSpanId, modelFact, otelEndpoint, otelExport, project as projectOtel, spanId as otelSpanId, traceId as otelTraceId, OTEL_SCHEMA_URL, type ClassOf, type OtelOptions, type OtelReport, type OtlpBody, type OtlpSpan } from "./otel.js";

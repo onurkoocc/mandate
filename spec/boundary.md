@@ -1029,10 +1029,9 @@ the journal as it is, a journal tests change on purpose included.
   reported on stderr and tried again at the next; it exits 1 only when it was
   stopped while the collector was failing, 0 otherwise. Runs of `--tenant`,
   or of every tenant, begun after it started are exported too.
-- **The classes** are given to the projection as a function from an event
-  type to its class. Until the table that assigns them for the role views
-  exists, `runtime/src/otel.ts` has a stand-in of its own, `defaultClassOf`,
-  which gives a type it does not name S4.
+- **The classes** are those of the role views: the export takes an event's
+  class from `eventClass` (`runtime/src/classes.ts`), by its type alone, and a
+  type the table does not name is S4.
 
 ## Invariants
 

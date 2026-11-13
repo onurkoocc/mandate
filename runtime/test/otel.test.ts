@@ -14,7 +14,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { main } from "../src/cli.js";
 import type { Db } from "../src/db.js";
-import { defaultClassOf, eventSpanId, otelEndpoint, otelExport, project, spanId, traceId, windows, type CommandFact, type EventFact, type OtelOptions, type OtlpBody, type OtlpSpan } from "../src/otel.js";
+import { eventClass } from "../src/classes.js";
+import { eventSpanId, otelEndpoint, otelExport, project, spanId, traceId, windows, type CommandFact, type EventFact, type OtelOptions, type OtlpBody, type OtlpSpan } from "../src/otel.js";
 import { Runtime } from "../src/runtime.js";
 import { MxcAdapter } from "../src/sandbox.js";
 import { SimChat, SimModel, SimSandboxHost, toolUse, type SimTurn } from "../src/sim.js";
@@ -267,7 +268,7 @@ describe("what leaves", () => {
       const s = c.eventSpans[i]!;
       expect([attr(s.attributes, "mandate.event.type"), s.name, attr(s.attributes, "mandate.event.hash")]).toEqual([r.type, r.type, r.hash]);
       expect(attr(s.attributes, "mandate.event.hash")).toMatch(/^sha256:/);
-      expect(attr(s.attributes, "mandate.event.class")).toBe(defaultClassOf(r.type));
+      expect(attr(s.attributes, "mandate.event.class")).toBe(eventClass(r.type));
       expect(s.startTimeUnixNano).toBe(s.endTimeUnixNano);
       expect(s.status).toBeUndefined();
       expect([attr(s.attributes, "mandate.run"), attr(s.attributes, "mandate.tenant"), attr(s.attributes, "mandate.package")]).toEqual(["fix", "acme", w.pkg.hash]);
@@ -516,7 +517,7 @@ describe("the projection, given facts", () => {
   const named = (spans: OtlpSpan[]): string[] => spans.map((s) => (s.name === "mandate.run" || s.name.startsWith("mandate.") ? `${s.name}` : `${s.name}#${attr(s.attributes, "mandate.event.seq")}`));
 
   it("sends a type it has never seen as its type, class, sequence number and hash, and nothing else", () => {
-    const spans = project(facts([ev(1, "run_accepted"), ev(2, "an_event_added_next_year")]), 0, 2, defaultClassOf);
+    const spans = project(facts([ev(1, "run_accepted"), ev(2, "an_event_added_next_year")]), 0, 2, eventClass);
     const event = spans[1]!;
     expect(event.name).toBe("an_event_added_next_year");
     expect(event.parentSpanId).toBe(spanId("r", ""));
@@ -532,14 +533,14 @@ describe("the projection, given facts", () => {
   });
 
   it("names an event's span by its type when the type is shaped like one, and mandate.event when it is not", () => {
-    const spans = project(facts([ev(1, "run_accepted"), ev(2, "Not A Type: with customer text")]), 0, 2, defaultClassOf);
+    const spans = project(facts([ev(1, "run_accepted"), ev(2, "Not A Type: with customer text")]), 0, 2, eventClass);
     expect(spans.map((s) => s.name)).toEqual(["run_accepted", "mandate.event"]);
     expect(attr(spans[1]!.attributes as Attrs, "mandate.event.type")).toBe("Not A Type: with customer text");
   });
 
   it("does not take a command id for an identifier unless it is shaped like one", () => {
     const hostile = "the customer's name is Jane Doe";
-    const spans = project(facts([ev(1, "run_accepted"), ev(2, "command_dispatched", hostile), ev(3, "command_completed", hostile)], [cmd(hostile)]), 0, 3, defaultClassOf);
+    const spans = project(facts([ev(1, "run_accepted"), ev(2, "command_dispatched", hostile), ev(3, "command_completed", hostile)], [cmd(hostile)]), 0, 3, eventClass);
     expect(JSON.stringify(spans)).not.toContain("Jane");
     for (const s of spans.filter((x) => attr(x.attributes as Attrs, "mandate.command") !== undefined)) expect(attr(s.attributes as Attrs, "mandate.command")).toMatch(/^sha256:[0-9a-f]{16}$/);
     // The span's id is still the spec's, of the command as it is, and the event spans are its children.
@@ -551,7 +552,7 @@ describe("the projection, given facts", () => {
   it("takes the model an adapter reported only when the lock pins that model id, else the program's one tier's, else none", () => {
     const model = (locked: string | null, known: { sole: string | null; ids: string[] }) => {
       const events = [ev(1, "run_accepted"), { ...ev(2, "command_completed", "main/0"), locked }];
-      const spans = project({ ...facts(events, [cmd("main/0", "turn", "dispatched")]), models: new Map([["sha256:p", { sole: known.sole, ids: new Set(known.ids) }]]) }, 0, 2, defaultClassOf);
+      const spans = project({ ...facts(events, [cmd("main/0", "turn", "dispatched")]), models: new Map([["sha256:p", { sole: known.sole, ids: new Set(known.ids) }]]) }, 0, 2, eventClass);
       return attr(spans.find((s) => s.name === "mandate.turn")!.attributes as Attrs, "gen_ai.request.model");
     };
     expect(model("claude-a", { sole: "claude-b", ids: ["claude-a", "claude-b", "claude-c"] })).toBe("claude-a");
@@ -562,13 +563,13 @@ describe("the projection, given facts", () => {
 
   it("sends nothing for a window with no events, and no span of the run or a command before the event that ends it", () => {
     const f = facts([ev(1, "run_accepted"), ev(2, "command_dispatched", "c"), ev(3, "run_running")], [cmd("c")]);
-    expect(project(f, 3, 3, defaultClassOf)).toEqual([]);
-    expect(named(project(f, 0, 3, defaultClassOf))).toEqual(["run_accepted#1", "command_dispatched#2", "run_running#3"]);
+    expect(project(f, 3, 3, eventClass)).toEqual([]);
+    expect(named(project(f, 0, 3, eventClass))).toEqual(["run_accepted#1", "command_dispatched#2", "run_running#3"]);
   });
 
   it("sends a command's span once, in the window of its completion, from its first event to it, with its status", () => {
     const f = facts([ev(1, "run_accepted"), ev(2, "command_dispatched", "c"), ev(3, "command_throttled", "c"), ev(4, "command_completed", "c"), ev(5, "charge_settled", "c")], [cmd("c")]);
-    const [one, two, three] = [project(f, 0, 2, defaultClassOf), project(f, 2, 4, defaultClassOf), project(f, 4, 5, defaultClassOf)];
+    const [one, two, three] = [project(f, 0, 2, eventClass), project(f, 2, 4, eventClass), project(f, 4, 5, eventClass)];
     expect(named(one)).toEqual(["run_accepted#1", "command_dispatched#2"]);
     expect(named(two)).toEqual(["command_throttled#3", "command_completed#4", "mandate.tool"]);
     // After it went out, an event that names the command is its own span, with the command's span as parent.
@@ -582,8 +583,8 @@ describe("the projection, given facts", () => {
 
   it("ends a command that never completed with the run, and the run's span with the event that ends it", () => {
     const f = facts([ev(1, "run_accepted"), ev(2, "command_dispatched", "c"), ev(3, "run_failed")], [cmd("c", "read", "dispatched")]);
-    expect(named(project(f, 0, 2, defaultClassOf))).toEqual(["run_accepted#1", "command_dispatched#2"]);
-    const end = project(f, 2, 3, defaultClassOf);
+    expect(named(project(f, 0, 2, eventClass))).toEqual(["run_accepted#1", "command_dispatched#2"]);
+    const end = project(f, 2, 3, eventClass);
     expect(named(end)).toEqual(["run_failed#3", "mandate.read", "mandate.run"]);
     // No status for a command that did not complete; ERROR for a run that failed.
     expect(end[1]!.status).toBeUndefined();
@@ -594,19 +595,19 @@ describe("the projection, given facts", () => {
 
   it("ends a run with a terminal state and with no other: waiting, and attention required, are not ends", () => {
     for (const state of ["accepted", "running", "waiting", "cancelling", "attention_required"]) {
-      expect(named(project(facts([ev(1, "run_accepted"), ev(2, `run_${state}`)]), 0, 2, defaultClassOf)).includes("mandate.run"), state).toBe(false);
+      expect(named(project(facts([ev(1, "run_accepted"), ev(2, `run_${state}`)]), 0, 2, eventClass)).includes("mandate.run"), state).toBe(false);
     }
-    const status = (type: string) => project(facts([ev(1, "run_accepted"), ev(2, type)]), 0, 2, defaultClassOf).find((s) => s.name === "mandate.run")?.status;
+    const status = (type: string) => project(facts([ev(1, "run_accepted"), ev(2, type)]), 0, 2, eventClass).find((s) => s.name === "mandate.run")?.status;
     expect(status("run_succeeded")).toEqual({ code: 1 });
     expect(status("run_failed")).toEqual({ code: 2 });
     // A cancelled run was stopped: it ends, and its status is left unset.
-    expect(project(facts([ev(1, "run_accepted"), ev(2, "run_cancelled")]), 0, 2, defaultClassOf).filter((s) => s.name === "mandate.run")).toHaveLength(1);
+    expect(project(facts([ev(1, "run_accepted"), ev(2, "run_cancelled")]), 0, 2, eventClass).filter((s) => s.name === "mandate.run")).toHaveLength(1);
     expect(status("run_cancelled")).toBeUndefined();
   });
 
   it("sends the run's span once if the run were to end again, and a completion after the run's end is only an event", () => {
     const f = facts([ev(1, "run_accepted"), ev(2, "command_dispatched", "c"), ev(3, "run_succeeded"), ev(4, "run_running"), ev(5, "command_completed", "c"), ev(6, "run_failed")], [cmd("c")]);
-    const all = [project(f, 0, 3, defaultClassOf), project(f, 3, 6, defaultClassOf)];
+    const all = [project(f, 0, 3, eventClass), project(f, 3, 6, eventClass)];
     expect(named(all[0]!)).toEqual(["run_accepted#1", "command_dispatched#2", "run_succeeded#3", "mandate.tool", "mandate.run"]);
     expect(named(all[1]!)).toEqual(["run_running#4", "command_completed#5", "run_failed#6"]);
     // The command ended with the run, as the first end it had.
