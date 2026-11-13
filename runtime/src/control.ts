@@ -405,11 +405,19 @@ function boundaryVerifier(config: RuntimeConfig, sandbox: MxcAdapter, env: NodeJ
 
 /**
  * The adapters of a command that acts on runs without running a package, `mandate halt`: an operator's emergency
- * stop needs no model, no executor and no secret, so none is read. Nothing here calls out; an action whose outcome
- * is unknown is left for `mandate reconcile`. What holds sessions open outside the runtime and can revoke them
- * (`Adapters.revoke`) belongs here once the configuration names it.
+ * stop needs no model, no executor and no secret, so none is read, and none is refused: a halt works from any shell,
+ * whatever its environment holds (no `credential_in_environment`). Nothing here calls out except one thing: when the
+ * configuration names an egress proxy (`egress.admin`, with or without gateways), `revoke` goes to it over the
+ * admin channel, so the sessions of the halted scope are cut. The connection is made by the first `revoke` and only
+ * then, never by building the adapters; `egress.close` closes it. No session is opened. An action whose outcome is
+ * unknown is left for `mandate reconcile`.
+ *
+ * `timeoutMs` is how long the proxy may take to accept the connection and to answer `revoke`; a halt does not wait
+ * on a proxy that does not answer longer than that, and reports that revoking failed.
  */
-export function operatorAdapters(_config: RuntimeConfig): Adapters {
+export function operatorAdapters(config: RuntimeConfig, o: { timeoutMs?: number } = {}): Adapters {
+  const admin = config.egress?.admin;
+  const link = admin ? new EgressLink({ admin, timeoutMs: o.timeoutMs ?? OPERATOR_REVOKE_TIMEOUT_MS }) : undefined;
   return {
     agents: { run: async () => missing("agent adapter") },
     model: { infer: async () => missing("model"), upperBound: () => missing("model") },
@@ -418,8 +426,12 @@ export function operatorAdapters(_config: RuntimeConfig): Adapters {
     tools: {},
     clock: wallClock,
     random: Math.random,
+    ...(link ? { revoke: (scope) => link.revoke(scope), egress: { ready: async () => undefined, close: () => link.closeAll() } } : {}),
   };
 }
+
+/** How long `mandate halt` waits for the egress proxy to accept its connection, and again to answer `revoke`. */
+export const OPERATOR_REVOKE_TIMEOUT_MS = 10_000;
 
 /** A stand-in for an adapter the configuration leaves out: calling it stops the run for a person. */
 function missing(what: string): never {

@@ -29,7 +29,7 @@ the configuration and the CLI.
 | Sandbox egress on Linux through the proxy; `no_egress_proxy` and `egress_unavailable` for a package | PR 8 | implemented; enforced where the sandbox SDK reports it and the proxy answers; shown on the CI runner's Bubblewrap |
 | Sandbox egress on Windows | — | refused by name |
 | Views by role and the audit view; the OpenTelemetry projection | PR 9 | specified |
-| An independent journal verifier, `verify-journal`, in Rust | R3 | specified |
+| An independent journal verifier, `verify-journal`, in Rust | R3 | implemented (`crates/verify-journal`: every journal case, and a fresh export of a real run on CI) |
 
 Until a part lands, nothing it would enforce runs. A sandbox that needs
 outbound network runs only on a host that reaches its hosts through the
@@ -573,7 +573,9 @@ credential of its own from the environment.
   when it could not. A cancel calls it for its run once the cancel is
   recorded, wherever the run's sessions were opened; a proxy that did not
   revoke is reported to whoever cancelled, and the cancel stands. A halt
-  calls it for its tenant or all.
+  calls it for its tenant or all; `mandate halt` has it from `egress.admin`
+  alone, as "Halt" says, and `mandate cancel` from the same configuration
+  as every command that builds a runtime for a run.
 
 ### Sandbox egress
 
@@ -917,6 +919,24 @@ so what the runtime holds open outside itself (the egress proxy's sessions,
 sandboxes) is cut. A failure of any of these undoes nothing, since the runs
 have ended; it is reported (`HaltReport.revoke`, `problems`), and
 `mandate halt` exits 1.
+
+`mandate halt` revokes through the egress proxy whenever the configuration
+names one (`egress.admin`, with or without `gateways`; see
+[The control plane's gateways](#the-control-planes-gateways)). It sends
+`revoke { tenant }` or `revoke { all: true }` once, after the commit, and
+that cuts the sessions open at the proxy at that moment whose tenant it is
+(or all of them), whichever process opened them, and every later request on
+them is refused (`session_revoked`). A session opened after the revoke is
+not cut by it: the proxy's `revoke` does not prevent new sessions, and what
+stops new work in the scope is the halt itself, which the journal enforces.
+Without `egress.admin` there is nothing to revoke, and the report says so.
+The command holds no secret, opens no session and reads no credential from
+its environment, so a credential there does not refuse it (`credential_in_environment` is a refusal of the commands that run
+adapters). It connects only for the revoke: `--lift` and `--list` never reach
+the proxy, and the connection is closed when the command ends. The proxy has
+10 seconds to take the connection and 10 seconds to answer; a proxy that does
+neither is reported as a failed revoke (`egress_unavailable`, naming the
+proxy), the halt stands, and the exit is 1.
 
 `mandate halt` prints the halt's id, scope and reason, each run it ended
 with its tenant and state (and, for one left `attention_required`, that an
