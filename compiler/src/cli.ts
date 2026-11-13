@@ -27,7 +27,8 @@
 //   mandate key new | decision | verify-decision | approve-envelope | amend
 //                                          a member's key, a decision as its signed record, the approval
 //                                          of an envelope and the decision on its amendment (the runtime's CLI)
-//   mandate test <file>                    run the program's tests with their effect handlers (§6.4)
+//   mandate egress serve --config <file>   the reference egress proxy, which holds the secrets (spec/egress.md)
+//   mandate test <file>                   run the program's tests with their effect handlers (§6.4)
 //
 // <file> is .mdt text or .json canonical IR. `--module <file>` (repeatable)
 // loads a module the program imports, such as a system model (design doc 9
@@ -74,6 +75,7 @@ function usage(): never {
       "  key new [--out FILE] | decision <run> <digest> | verify-decision <record.json> --key <public key.pem> [--lock FILE]",
       "  approve-envelope <file> --key FILE [--member NAME] [--workflow W] [--lock <lock.json>] [--module <file>]…",
       "  amend <run> --revision N --key FILE [--member NAME] (approve | decline)",
+      "  egress serve --config <mandate.egress.json>   (the reference egress proxy)",
       "  test <file> [--json]",
       "",
     ].join("\n"),
@@ -337,7 +339,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "egress"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {
