@@ -1,7 +1,7 @@
 // The seam an egress denial is recorded through (spec/boundary.md "Violations and halt", "Sandbox egress"): the
-// agent loop calls `LoopIO.violation` with the kind. Nothing in the runtime produces `egress_denied` yet, so this
-// test stands in for the code that will: after each tool call, within its step, it records a denial as the proxy
-// would report it. What the interpreter gives the loop writes it once per step, counts it and holds the limit.
+// agent loop calls `LoopIO.violation` with the kind. Here a stand-in calls it after each tool call, within its step,
+// on a simulated host; what the interpreter gives the loop writes it once per step, counts it and holds the limit.
+// The sandbox host that reads a real proxy's denials into the step's result is sandbox-egress.test.ts.
 
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { Runtime } from "../src/runtime.js";

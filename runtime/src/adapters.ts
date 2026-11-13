@@ -350,9 +350,19 @@ export interface Adapters {
   /** Cuts what this runtime holds open outside itself for a run, a tenant or everything: sessions, sandboxes. */
   revoke?(scope: { run: string } | { tenant: string } | { all: true }): Promise<void>;
   /**
-   * The egress proxy the control plane's gateways go through (spec/boundary.md "The egress proxy"): `ready` refuses
-   * a start when the proxy does not answer or lacks a gateway's credential (`egress_unavailable`); `close` closes the
-   * sessions this runtime opened and its admin connection.
+   * The egress proxy the control plane's gateways and the sandboxes go through (spec/boundary.md "The egress proxy"):
+   * `ready` refuses a start when the proxy does not answer, or lacks a gateway's credential or one the package's lock
+   * binds (`egress_unavailable`); it asks the proxy only when a gateway is on or the package needs it. `close` closes
+   * the sessions this runtime opened and its admin connection.
    */
-  egress?: { ready(): Promise<void>; close(): Promise<void> };
+  egress?: { ready(need?: EgressNeed): Promise<void>; close(): Promise<void> };
+}
+
+/**
+ * What a package needs of the egress proxy: whether a local agent's sandbox reaches a host, and each credential its
+ * lock binds to an agent's requests to a host.
+ */
+export interface EgressNeed {
+  hosts: boolean;
+  credentials: Array<{ agent: string; host: string; credential: string }>;
 }

@@ -54,7 +54,7 @@ export interface Package {
 
 /**
  * The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes, `map` and `plan`; of
- * 0.5 the program as far as its lock asks nothing the runtime does not enforce yet; see `notRunYet`.
+ * 0.5 the program and every field of its lock; see `notRunYet`.
  */
 export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4", "mandate/0.5"];
 
@@ -65,10 +65,12 @@ export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "ma
  * So do a `map` and a `plan`, whose sub-programs name `agents` in their own budgets, as their claim on the
  * envelope's.
  *
- * With `lock`, the package's lock: what its format 0.5 asks that this runtime does not enforce yet, by its name,
- * `lock.egress` (spec/boundary.md), which is lifted by the change that enforces it. The rest is enforced: `isolation`
- * by each sandbox's requirement, which the sandbox adapter holds to what its host gives, and `host` by the check of
- * the host's tools before a run starts or resumes (fitness.ts).
+ * With `lock`, the package's lock: what it asks that this runtime does not enforce yet, by its name (`lock.<field>`),
+ * none today. Every field of format 0.5 is enforced (spec/boundary.md): `isolation` by each sandbox's requirement,
+ * which the sandbox adapter holds to what its host gives; `host` by the check of the host's tools before a run starts
+ * or resumes (fitness.ts); `egress` by the egress proxy, which alone puts a credential into a sandbox's requests: a
+ * run that needs it starts only where a proxy is named, and the adapter refuses by name a binding the proxy does not
+ * hold, or one on a host whose sandboxes do not reach the proxy.
  */
 export function notRunYet(program: Program, lock?: Lock): string[] {
   const found = new Set<string>();
@@ -85,11 +87,12 @@ export function notRunYet(program: Program, lock?: Lock): string[] {
   return [...found].sort();
 }
 
-/** Why each lock field of 0.5 that this runtime does not enforce yet is not, as a refusal names it. */
-const UNENFORCED = {
-  egress: "credentials for agents' requests, which go only through an egress proxy, and this runtime has none yet",
-} as const satisfies Partial<Record<(typeof LOCK_FIELDS_0_5)[number], string>>;
-type Unenforced = keyof typeof UNENFORCED;
+/**
+ * Why each lock field that this runtime does not enforce yet is not, as a refusal names it (`unsupported_lock`): a field
+ * a later lock format adds is refused here by its name until the change that enforces it. None today.
+ */
+const UNENFORCED: Partial<Record<(typeof LOCK_FIELDS_0_5)[number], string>> = {};
+type Unenforced = (typeof LOCK_FIELDS_0_5)[number];
 
 /** A 0.4 package: its program, or a module it was packaged with, is written in 0.4. Its decisions are always signed. */
 export function isSigned04(program: Program, modules: Modules = {}): boolean {

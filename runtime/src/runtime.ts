@@ -4,8 +4,8 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, capsOf, check, domainHash, hashProgram, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, workflowBounds, type DenialReport, type Envelope, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
-import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
+import { atLeast, capsOf, check, domainHash, hashProgram, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
+import type { Adapters, Cost, EgressNeed, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { recordProblem, type AttestationRule } from "./attestation.js";
@@ -31,6 +31,18 @@ export { buildPackage, isSigned04, notRunYet, RUNTIME_LANGUAGES, verifyPackage, 
 /** The roles that own an envelope in a program: who may approve its package. */
 function envelopeOwners(program: Program): Set<string> {
   return new Set(Object.values(program.defs).flatMap((d) => (d.kind === "workflow" && d.envelope?.owner !== undefined ? [d.envelope.owner] : [])));
+}
+
+/**
+ * What a package needs of the egress proxy (spec/boundary.md "Sandbox egress"): whether the sandbox of one of its
+ * local agents reaches a host, and each credential its lock binds, in the order agent, host.
+ */
+export function egressNeed(pkg: Package): EgressNeed {
+  const hosts = Object.values(sandboxRequirements(pkg.program, pkg.modules ?? {}, pkg.lock)).some((r) => r.network.hosts.length > 0);
+  const credentials = Object.entries(pkg.lock.egress ?? {})
+    .flatMap(([agent, bound]) => Object.entries(bound ?? {}).map(([host, credential]) => ({ agent, host, credential })))
+    .sort((a, b) => (a.agent < b.agent ? -1 : a.agent > b.agent ? 1 : a.host < b.host ? -1 : a.host > b.host ? 1 : 0));
+  return { hosts, credentials };
 }
 
 export interface StartOptions {
@@ -228,8 +240,14 @@ export class Runtime {
       const problems = schemaErrors(typeSchema(linked, p.type), input[p.name]!);
       if (problems.length) throw new Violation("input_mismatch", `Input '${p.name}' of ${o.workflow} does not fit its type: ${problems.join(", ")}.`);
     }
-    // With the control plane's gateways on, a proxy that does not answer, or lacks a gateway's credential, starts nothing.
-    await this.adapters.egress?.ready();
+    // A package whose lock binds credentials needs the egress proxy; with none configured it starts nothing. With the
+    // control plane's gateways on, or a package whose sandboxes reach hosts, a proxy that does not answer, or lacks a
+    // gateway's credential or one the lock binds, starts nothing either.
+    const need = egressNeed(o.pkg);
+    if (need.credentials.length && !this.adapters.egress) {
+      throw new Violation("no_egress_proxy", `The package's lock binds ${need.credentials.map((c) => `${c.credential} to ${c.agent}'s requests to ${c.host}`).join(", ")}; a credential is put in only by the egress proxy, and this runtime's configuration names none (egress.admin).`);
+    }
+    await this.adapters.egress?.ready(need);
     await this.validateBindings(linked, o.workflow);
     await this.validateExecutor(o.pkg);
     // A workflow with an envelope starts only once a member of its owner role approved this package (H03).
