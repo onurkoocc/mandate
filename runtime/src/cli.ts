@@ -132,6 +132,8 @@ export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
   let db: Db | undefined;
+  /** The runtime the command made: what its gateways opened at the proxy is closed when the command ends. */
+  let made: Runtime | undefined;
   try {
     const [cmd, ...rest] = argv;
     const a = parse(rest);
@@ -160,12 +162,14 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       const file = a.positional[0] ?? fail("run needs a program file");
       const workflow = str(a, "--workflow");
       const { program, lock, modules } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined, a.modules);
-      const rt = new Runtime(db, adaptersFor(config, linkedProgram(program, modules), lock, env), undefined, undefined, runtimeOptions(config, db));
+      // The run's id is chosen here, so that the gateways' sessions are opened for it (and a revocation of it cuts them).
+      const runId = typeof a.flags["--run-id"] === "string" ? a.flags["--run-id"] : randomUUID();
+      const rt = (made = new Runtime(db, adaptersFor(config, linkedProgram(program, modules), lock, env, undefined, { tenant: "default", run: runId }), undefined, undefined, runtimeOptions(config, db)));
       const run = await rt.startRun({
         pkg: buildPackage(program, lock, modules),
         workflow,
         input: input(str(a, "--input")),
-        ...(typeof a.flags["--run-id"] === "string" ? { runId: a.flags["--run-id"] } : {}),
+        runId,
         ...(typeof a.flags["--limit"] === "string" ? { limits: limits(a.flags["--limit"]) } : {}),
         ...(a.flags["--priority"] === "high" || a.flags["--priority"] === "normal" ? { priority: a.flags["--priority"] } : {}),
         ...(a.flags["--mode"] !== undefined ? { mode: runMode(a.flags["--mode"]) } : {}),
@@ -183,7 +187,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       const member = typeof a.flags["--member"] === "string" ? a.flags["--member"] : memberOf(lock, key.keyId);
       if (member === undefined) throw new Violation("invalid_decision", `unknown_key: the lock of ${file} lists key ${key.keyId} under no member.`);
       const pkg = buildPackage(program, lock, modules);
-      const rt = new Runtime(db, adaptersFor(config, linkedProgram(program, modules), lock, env), undefined, undefined, runtimeOptions(config, db));
+      const rt = (made = new Runtime(db, adaptersFor(config, linkedProgram(program, modules), lock, env), undefined, undefined, runtimeOptions(config, db)));
       const signed = signDecision(key, shownPackage(pkg.hash, owner), { kind: "envelope", member, at: new Date() });
       const decision = await rt.approveEnvelope(pkg, signed);
       out(json ? JSON.stringify({ package: pkg.hash, decision, member, role: owner, key: key.keyId, record: signed.record, signature: signed.signature }, null, 2) + "\n" : `package  ${pkg.hash}\napproved by ${member} as ${owner}\ndecision ${decision}\n`);
@@ -192,6 +196,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
 
     if (!runId) throw new Usage(`${cmd} needs a run id`);
     const { rt, lock } = await runtimeFor(db, config, runId, env);
+    made = rt;
     // Who decides: a member, by the key they sign with (the lock says whose it is), or in unsigned mode a name.
     const key = typeof a.flags["--key"] === "string" ? readDecisionKey(a.flags["--key"]) : undefined;
     const member = key ? (typeof a.flags["--member"] === "string" ? a.flags["--member"] : memberOf(lock, key.keyId)) : undefined;
@@ -310,6 +315,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     }
     throw e;
   } finally {
+    await made?.adapters.egress?.close();
     await db?.close();
   }
 }
@@ -508,9 +514,11 @@ async function deploy(a: Args, out: (s: string) => void, env: NodeJS.ProcessEnv)
 
 /** The runtime for a run's package, and the package's lock: it says which member a key belongs to. */
 async function runtimeFor(db: Db, config: RuntimeConfig, runId: string, env: NodeJS.ProcessEnv): Promise<{ rt: Runtime; lock: Lock }> {
-  const [row] = await db.query<{ program: Program; lock: Lock; modules: Modules | null }>("select p.program, p.lock, p.modules from runs r join packages p on p.package_hash = r.package_hash where r.run_id = $1", [runId]);
+  const [row] = await db.query<{ program: Program; lock: Lock; modules: Modules | null; tenant: string }>("select p.program, p.lock, p.modules, r.tenant from runs r join packages p on p.package_hash = r.package_hash where r.run_id = $1", [runId]);
   if (!row) throw new Violation("unknown_run", `No run ${runId}.`);
-  return { rt: new Runtime(db, adaptersFor(config, linkedProgram(row.program, row.modules ?? {}), row.lock, env), undefined, undefined, runtimeOptions(config, db)), lock: row.lock };
+  // The gateways' sessions, if any are opened, are for this run and its tenant.
+  const adapters = adaptersFor(config, linkedProgram(row.program, row.modules ?? {}), row.lock, env, undefined, { tenant: row.tenant, run: runId });
+  return { rt: new Runtime(db, adapters, undefined, undefined, runtimeOptions(config, db)), lock: row.lock };
 }
 
 /**
