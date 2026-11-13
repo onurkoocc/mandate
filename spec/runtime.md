@@ -855,7 +855,9 @@ written, and refuses starts and leases in its scope until it is lifted
   host that falls short (`unfit_host`): a tool missing or unreadable,
   below its least version, or a setuid `bwrap`. Nothing of the run is
   written. Every resume checks the host the same way before it takes the
-  lease, and an unfit host leaves the run as it was
+  lease, and an unfit host leaves the run as it was. With a scheduler,
+  `StartRun` does not read its own host's tools: the host that is checked
+  is the worker's, when it resumes the run
   ([`boundary.md`](boundary.md#host-fitness));
 - when the lock binds a credential, or the control plane's gateways are on,
   or, with a sandbox configured, a sandbox of the package reaches a host,
@@ -1149,8 +1151,25 @@ lease fence stops the old attempt from writing. An activity retry is never
 the business idempotency: commands and actions are deduplicated in
 PostgreSQL.
 
+The host that is checked against the lock's `host` is the worker's
+([`boundary.md`](boundary.md#host-fitness)). A worker whose host is unfit
+takes nothing and writes nothing (`unfit_host`). Its activity, `drive` or
+`expire`, is tried 3 times in all (`UNFIT_ATTEMPTS`), 1 s and then 2 s
+apart, so that a fit worker on the same task queue can take it. The
+attempts are counted as Temporal counts them, so one that a dead worker
+spent counts too. Then the activity fails without a retry and the workflow
+fails with it: its failure has the type `unfit_host` and the refusal as its
+message, with the activity's failure as its cause. The run stays as it
+was, and `mandate status` shows it so. A control call made meanwhile
+records its decision, and its wake finds no workflow, so nothing drives the
+run. Once a fit worker serves the queue, `TemporalDriver.start(runId)`
+starts the run's workflow again under the same id, which Temporal allows
+for a closed workflow, and the new execution resumes the run from its
+journal. A run whose workflow is still running is left as it is.
+
 With a `TemporalDriver`, the control API only records decisions:
-- `StartRun` starts the run's workflow.
+- `StartRun` starts the run's workflow. It does not read this host's
+  tools.
 - `SubmitInput`, `DecideAction`, `CancelRun`, `ReconcileAction` and `tick`
   record their decision in PostgreSQL and signal the workflow.
 
@@ -1164,7 +1183,9 @@ The same mechanisms are tested under Temporal against a local dev server:
 - a restart's backoff on a durable timer;
 - continue-as-new after several waits;
 - cancel;
-- reconciliation (R04).
+- reconciliation (R04);
+- a caller whose host is unfit, and a worker whose host is unfit, for
+  `drive` and for `expire`, with the run brought back by a fit worker.
 
 ## Not in this runtime yet
 

@@ -193,7 +193,8 @@ pull request was opened, for 0.23 USD.
       name a requirement whose level or no-sharing the host does not give
       (every host here gives `process`, shared). A run whose lock names
       least tool versions starts and resumes only on a host that meets them
-      (`unfit_host`). The attestation a check needs is read from the program
+      (`unfit_host`); under Temporal that host is the worker's, not the
+      caller's. The attestation a check needs is read from the program
       and the configuration, not from the record, and the processes the
       runtime starts get a filtered environment.
     - **The journal.** It is hash-chained, with an anchor signed at every

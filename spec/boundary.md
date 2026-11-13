@@ -340,15 +340,32 @@ What the MXC adapter does with it:
   be compared`, `could not be started (<code>)`, `gave no version within 5
   s`, `exited with code <n> on --version`, `was stopped by <signal> on
   --version`.
-- **When.** At `StartRun`, once the package is verified and before
-  anything else of the run: an unfit host claims no working copy and
-  writes no package, run or event. At every resume, before the lease is
-  taken: an unfit host takes no lease and writes nothing, and the run stays
-  as it was, for a fit host to resume. A control call that records an
-  answer or a decision and then resumes the run (`SubmitInput`,
-  `DecideAction`, …) keeps what it recorded; its resume is refused, and the
-  run moves on when a fit host resumes it. A run that has ended is not
-  checked, since resuming it runs nothing; nor is a replay.
+- **When.** At `StartRun` of a runtime that drives its runs itself, once
+  the package is verified and before anything else of the run: an unfit
+  host claims no working copy and writes no package, run or event. At every
+  resume, before the lease is taken: an unfit host takes no lease and
+  writes nothing, and the run stays as it was, for a fit host to resume. A
+  control call that records an answer or a decision and then resumes the
+  run (`SubmitInput`, `DecideAction`, …) keeps what it recorded; its resume
+  is refused, and the run moves on when a fit host resumes it. `tick`,
+  which expires a wait whose deadline has passed and resumes the run,
+  checks before it expires anything: on an unfit host the wait stays, for a
+  fit host to expire. A run that has ended is not checked, since resuming
+  it runs nothing; nor is a replay.
+- **With a scheduler.** With a driver such as Temporal's, the process that
+  calls `StartRun` only records the run and starts its workflow, and its
+  own tools are not read. The host that is checked is the worker's, when
+  its activity resumes the run or expires a wait. An unfit worker takes
+  nothing and writes nothing. Its activity is tried 3 times in all, 1 s and
+  then 2 s apart, so that a fit worker on the same task queue can take it;
+  then the workflow fails, without a retry, with a failure of type
+  `unfit_host` whose message is the refusal above. The run stays as it
+  was, and `mandate status` shows it so: `accepted`, or the wait it was
+  in. A control call made meanwhile records its decision, but the wake it
+  sends finds no workflow. Once a fit worker serves the queue, the run is
+  driven again by starting its workflow again, `TemporalDriver.start` with
+  the run id, as `StartRun` started it
+  ([`runtime.md`](runtime.md#temporal-scheduling-161)).
 - **No floor is built in.** Without `host` nothing is read and nothing
   changes. `host` applies to a package of any language.
 - **How the tools are read** is the runtime's `hostProbe` option, so tests
@@ -1378,7 +1395,7 @@ Refusals of the runtime that 0.5 adds:
 |---|---|
 | `unsupported_lock` | At load: the lock sets a field the runtime does not enforce yet, named; none today |
 | `unsupported_sandbox_profile` (E0902) | A requirement 0.2 asks for what the host cannot give: method limits or credentials on a host that does not reach its hosts through the egress proxy, an isolation level above the host's, no sharing on a host that may share; or a credential the proxy does not hold or does not bind to the host (`credential <name> for <host>`), a host that is not a host name, two credentials of one host or of one placeholder variable, a session not at `http://127.0.0.1:<port>` |
-| `unfit_host` | At a start or a resume, before the lease: a tool the lock names is missing, cannot be read, or is below the lock's least version, or the `bwrap` is setuid |
+| `unfit_host` | At a start without a scheduler, a resume or a wait's expiry, before the lease: a tool the lock names is missing, cannot be read, or is below the lock's least version, or the `bwrap` is setuid; under Temporal, also the type of the failure a run's workflow ends with once its activity was tried 3 times on unfit workers |
 | `credential_in_environment` | With a gateway on, its credential is in the runtime's environment |
 | `no_egress_proxy`, `egress_unavailable` | A package or a gateway needs the proxy and none is named, or it does not answer or lacks a credential; a sandbox that needs a host is planned while a configured proxy does not answer, or its session cannot be opened, renewed or asked what it denied, or lacks a placeholder |
 | `egress_denied` | Through the model gateway, the proxy refused the runtime's own request; the run stops for a person, the reason named. From a sandbox, the kind of the violation a denied tool call is |
