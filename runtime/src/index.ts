@@ -25,7 +25,8 @@ export { MxcHost, disallowed } from "./mxc.js";
 export { denialsIn, MIN_BUILD, WindowsMxcHost, windowsBuild, winQuote, type WindowsMxcHostOptions } from "./mxc-windows.js";
 export * from "./signals.js";
 export { runTests, type TestOptions, type TestResult } from "./testing.js";
-export { freshness, runDoc, runView, shadowDiff, type AsOf, type Freshness, type RunView, type ShadowRow } from "./views.js";
+export { auditDoc, freshness, programRoles, roleDoc, runDoc, runView, shadowDiff, type AsOf, type AuditView, type CommandView, type Exceptions, type Freshness, type RoleView, type RunView, type ShadowRow } from "./views.js";
+export { CLASS_HOLDS, CLASSES, commandClass, EVENT_CLASSES, eventClass, SECTION_CLASSES, sectionClass, shows, stepClass, TRACE_KINDS, WAIT_KINDS, type Audience, type ViewClass } from "./classes.js";
 export { bind, BROKER_ID, DeclaredReads, evaluate, SampleReads, type ReadSourceConfig, type SqlRunner } from "./broker.js";
 export * from "./sim.js";
 export * from "./values.js";
@@ -35,3 +36,4 @@ export { DENIAL_REASONS, defaultDialer, EgressError, EgressProxy, PLACEHOLDER, t
 export { isPublicAddress } from "./egress/addresses.js";
 export { serveAdmin, type AdminServer } from "./egress/admin.js";
 export { serveEgress, type EgressServer, type ServeOptions } from "./egress/main.js";
+export { eventSpanId as otelEventSpanId, modelFact, otelEndpoint, otelExport, project as projectOtel, spanId as otelSpanId, traceId as otelTraceId, OTEL_SCHEMA_URL, type ClassOf, type OtelOptions, type OtelReport, type OtlpBody, type OtlpSpan } from "./otel.js";

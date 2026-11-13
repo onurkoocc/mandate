@@ -28,7 +28,8 @@ the configuration and the CLI.
 | The control plane's adapters through gateways; `credential_in_environment` | PR 7 | implemented |
 | Sandbox egress on Linux through the proxy | PR 8 | specified; enforceable where the sandbox SDK reports it, shown on the CI runner |
 | Sandbox egress on Windows | — | refused by name |
-| Views by role and the audit view; the OpenTelemetry projection | PR 9 | specified |
+| Views by role and the audit view | PR 9 | implemented |
+| The OpenTelemetry projection | PR 9 | implemented |
 | An independent journal verifier, `verify-journal`, in Rust | R3 | implemented (`crates/verify-journal`: every journal case, and a fresh export of a real run on CI) |
 
 Until a part lands, nothing it would enforce runs. A 0.5 package whose lock
@@ -682,8 +683,9 @@ verification steps, the report and the exit codes) is
 | `unanchored_tail` | Events after the last anchor that holds; reported, and the status stays `verified` |
 
 - **Never on a read path.** The chain is checked by `verifyJournal` and the
-  verifiers only, never by `events()`, replay or a view: existing tests
-  change and delete events on purpose.
+  verifiers only, never by `events()`, replay, the run's view or a role's:
+  existing tests change and delete events on purpose. The audit view calls
+  `verifyJournal` as a step of its own and shows its report.
 - **Limits.** The chain is evidence against someone who holds the database
   but not the key. The tail after the last anchor can be cut until the next
   state change anchors it, and newer events can be cut with their anchors.
@@ -860,17 +862,37 @@ member's decision: the run's view lists no decision for it.
 
 ## Views by role and the audit view
 
-*Specified; implemented by PR 9.*
+*Implemented by PR 9 (`runtime/src/classes.ts`, `runtime/src/views.ts`).*
 
-- `mandate show <run> --role <R>`, for a role the program names: the
-  decisions asked of that role, the run's outcome and exceptions, and its
-  progress.
-- `mandate show <run> --audit`: everything, the event list, and the chain's
-  status as `verifyJournal` reports it.
-- With neither option, `mandate show` prints what it prints today, byte for
-  byte.
-- **Classes.** Each event and each section of a run's view is in one class,
-  assigned from its event type and its view section and nothing else:
+```sh
+mandate show <run> [--format md|html|json] --role <R>
+mandate show <run> [--format md|html|json] --audit
+```
+
+- `--role R` (`runView(rt, run, { role })`) shows the run as the role `R`
+  may see it: the decisions asked of `R`, how the run ended and what
+  stopped it, and its progress. `R` is a role the run's program names: a
+  `role` definition, or a role it names anywhere a role is named (an
+  envelope's owner, `human.approve(role: …)`, a component's owner, …),
+  with the modules it imports. Any other is refused, `unknown_role`, with
+  the roles the program names.
+- `--audit` (`runView(rt, run, { audit: true })`) shows everything: the
+  run's view whole, what the run was started with, each command's request
+  digest and result, every event, the halts that cover the run's tenant,
+  and the journal's chain as `Runtime.verifyJournal` reports it.
+- The two together are refused as a usage error. Each takes `--format`,
+  as `show` does.
+- With neither, `mandate show` and `runView(rt, run)` print what they
+  printed before, byte for byte (`views-default.test.ts` holds the digests
+  of the view tests' runs in each format).
+
+### Classes
+
+Each event is in one class by its type, each part of a run's view by its
+section, and each command by its kind, and by nothing else (INV-17): no
+projection reads an event's data, a section's content or a command's result
+to decide what may be shown. A type, a section or a command kind the table
+does not name is S4, which no role sees.
 
 | Class | Holds |
 |---|---|
@@ -880,39 +902,260 @@ member's decision: the run's view lists no decision for it.
 | S3 | A step's detail: its request and result |
 | S4 | A trace: an agent loop's turns, tool calls and outputs |
 
-- A role view shows S0 for that role and S1 and S2. The audit view shows
-  S0 to S4.
-- There is no masking by data class in 0.5 (INV-20 is a later release's).
+A role's view shows S1, S2, and S0 where it was asked of that role. The
+audit view shows S0 to S4. There is no masking by data class in 0.5 (INV-20
+is a later release's).
+
+**Events.** The class of every event type the runtime writes
+(`EVENT_CLASSES`). A test reads every place the runtime writes an event and
+fails on a type without a class, and on a class of a type nothing writes.
+
+| Class | Event types |
+|---|---|
+| S0 | `wait_opened`, `wait_expired`, `decision_received`, `input_received`, `decision_refused`, `criterion_approved`, `criterion_denied`, `governance_approved`, `governance_denied`, `action_authorized`, `envelope_approved`, `amendment_requested`, `package_amended`, `limits_raised`, `reconcile_requested` |
+| S1 | `run_succeeded`, `run_failed`, `run_cancelled`, `run_cancelling`, `run_attention_required`, `cancel_requested`, `lease_revoked`, `violation`, `budget_exceeded`, `guarantee_lowered` |
+| S2 | `run_accepted`, `run_running`, `run_waiting`, `lease_acquired`, `command_dispatched`, `command_completed`, `command_throttled`, `charge_pending`, `charge_settled`, `map_started`, `map_ended` |
+| S3 | `action_prepared`, `action_committed`, `action_confirmed`, `action_rejected`, `action_unknown_outcome`, `action_cancelled`, `action_would_apply`, `changeset_prepared`, `changeset_would_apply`, `changeset_simulated`, `changeset_committed`, `changeset_partial`, `changeset_failed` |
+| S4 | `program_submitted`, `program_refused`, `program_admitted`, `sandbox_stopped` |
+
+An event's class says which projections may draw on it. None shows an
+event's data whole except the audit view: a role's view takes from an event
+of its classes the fields its section names, and the OpenTelemetry
+projection takes none.
+
+**Sections.** A section is in the most restricted class of what it can
+hold. The run's result, a fault with its arguments and the `attention` of a
+run that needs a person can each hold a step's result, so each is S3 whole;
+what a role sees of them is in a section of its own, `exceptions`.
+
+| Section | Class | Holds |
+|---|---|---|
+| `format`, `kind`, `role`, `program`, `package`, `manifest`, `modules`, `as_of`; the program's architecture and authority | S2 | What names the run and the view |
+| `run` | S1 | The run's id, workflow, tenant and state |
+| `waiting` | S0 | The wait the run is in, whole, with its request |
+| `decisions` | S0 | Each decision a person made on the run |
+| `exceptions` | S1 | How the run ended and what stopped it (below) |
+| `exceptions.violations.detail` | S4 | What the agent asked for that was refused |
+| `budget` | S2 | The dimensions; each command's row in its step's class |
+| `envelope` | S2 | Its owner, deadline and what is left |
+| `envelope.amendments` | S0 | Its owner's decisions |
+| `maps` | S2 | Each map's items with their outcome: `Ok` or a fault's tag |
+| `result`, `error`, `attention`, `evidence`, `actions`, `changesets`, `input`, `steps` | S3 | A step's request or result, whole |
+| `plans`, `trace`, `events` | S4 | What a lead wrote; an agent loop's commands; every event with its data |
+| `halts`, `chain` | S1 | The audit view's own: the halts over the run's tenant; the journal's status |
+
+**Commands.** A command of kind `session`, `turn` or `tool` is a step of an
+agent loop: its trace, S4. One of kind `input`, `decision` or `amendment`
+waits for a person: S0, asked of the role its `wait_opened` names. Any
+other is a step: its row in the budget (id, kind, label, state, reservation
+and cost) is S2, its request and result S3.
+
+### A role's view
+
+The sections of the run's view in S1 and S2, as they are, and of S0 what
+was asked of the role:
+
+- **What it waits for**, whole, when the wait is asked of `R`: the role
+  its request names. What `R` is asked to decide on is shown to it as
+  `mandate status` shows it, the subject or the question included: the
+  program put that before `R`. This is the one place a role's view shows
+  content. A wait asked of another role, or of none, shows that the run
+  waits, and nothing else. A question of a program before 0.4 names no
+  role in its wait, so it is asked of no role this view can name.
+- **The decisions asked of `R`**: each decision whose wait was asked of
+  `R` (`wait_opened`), and each decision on no wait made in `R`'s role (the
+  envelope's approval, a cancel, a raise of the limits), with its member,
+  role and signature. An unsigned decision whose wait named no role is
+  asked of no role. A halt's cancel is no decision.
+- **Exceptions**, by the fields named and nothing else:
+  - the fault the run failed with, or that left it `attention_required`:
+    its tag, never its arguments;
+  - while it is `attention_required`, why: of `attention`, the code of the
+    invariant violation (`violation_limit` among them), the halt that left
+    an action open, a reason's code and the command it is about, whether
+    a change set stopped part applied, and each open action's operation,
+    effect and state. Never a message;
+  - each violation: its kind, delegation, agent, step and count, and its
+    event's sequence number and time. Never its `detail`, which names what
+    the agent asked for (a path, a command, what the proxy saw);
+  - the halt that ended the run, from `cancel_requested` and
+    `lease_revoked`: the halt's id, who halted, its reason, and the fence
+    revoked. The operator wrote the reason; no step did.
+- **Progress**: the budget's dimensions, and of its commands each one's
+  step that is not an agent loop's, nor a wait asked of another role; the
+  envelope's owner, deadline and what is left, with its amendments only
+  for the role that owns it; each map's items and outcomes.
+- Never the run's result or error whole, its evidence, its actions, its
+  change sets, its plans, its input, any command's result, the trace or
+  the events.
+
+### The audit view
+
+The run's view whole, kind `run_audit`, and:
+
+- `input`: what the run was started with;
+- `exceptions`, as a role's, with each violation's `detail`;
+- `steps` and `trace`: each command in command-id order, by its kind: its
+  label, state, request digest, and its result or error (`purged` when
+  retention took them);
+- `events`: every event the view reaches (`as_of`), each with its sequence
+  number, type, class, time, hash and data;
+- `halts`: every halt of the run's tenant or of every tenant, in force or
+  lifted, oldest first;
+- `chain`: `Runtime.verifyJournal`'s report (`verified`, `broken`,
+  `unchained` or `unreadable`), with its findings and how far the
+  signatures reach.
+
+**The read path stays free of the chain check.** The audit view verifies
+the chain as a step of its own, after everything it shows has been read.
+`events()`, replay, the default view and a role's view never do: they read
+the journal as it is, a journal tests change on purpose included.
 
 ## The OpenTelemetry projection
 
-*Specified; implemented by PR 9.*
+*Implemented (`runtime/src/otel.ts`, `runtime/test/otel.test.ts`).*
 
-- `mandate otel export --endpoint <url> [--run <R> | --tenant <T>] [--follow]`
+- `mandate otel export --endpoint <url> [--run <R> | --tenant <T>] [--follow] [--json]`
   runs outside every run: an export that fails does not touch one. The
-  journal stays the authority.
-- OTLP/HTTP with JSON bodies, written by hand: no new dependency.
+  journal stays the authority. It reads the database, takes no lease and
+  writes no event; the only table it writes is `otel_cursors`. With neither
+  `--run` nor `--tenant` it exports every run; the two together are a usage
+  error (exit 2).
+- OTLP/HTTP with JSON bodies, written by hand: no new dependency. A post is
+  `POST <url>/v1/traces` with `content-type: application/json`, and with
+  no other header: the export sends no credential, and there is no option
+  to give it one.
 - **No content, ever**: no argument, result, prompt, output, file or
   decision text leaves. What leaves is identifiers, types, classes, model
-  ids, counts, sequence numbers and hashes.
+  ids, counts, sequence numbers, hashes and times.
+- **An allow-list (INV-17, G24).** Every span is built from the fixed set
+  of fields below. Nothing is copied from an event's `data`, and the loader
+  reads two members of it only: the `command` it names, and the
+  `meta.locked` the model adapter reports, used only when the lock pins that
+  very model id. A new event type exports its type, class, sequence number
+  and hash, and nothing else, until a field is added for it here, on
+  purpose.
+- **The journal stays the authority; a collector is an outside witness of
+  sequence numbers and hashes.** Each event's sequence number and hash leave
+  promptly, once, and in order, whatever happens to the run's own span.
+- **Spans.** A run is a trace of three kinds of span, and none is ever sent
+  twice.
+  - An **event span** for every event of the journal: of no duration (its
+    start and end are the event's time), named by the event's type when the
+    type is shaped like one the runtime writes (lower-case letters, digits
+    and `_`, at most 48), else `mandate.event`. It is sent in the pass that
+    reads the event, in sequence order. Its parent is the command span of the
+    command the event's data names, when that is a command of the run, and
+    the run's span otherwise. It has no status.
+  - A **command span**, named `mandate.<kind>` (`infer`, `turn`, `tool`,
+    `delegate`, `read`, `time` and the rest), a child of the run's span. It is
+    sent once, in the pass that reads the event that ends it: the command's
+    first `command_completed` event or, for a command that never completed,
+    the event that ends the run. It starts at the command's first event and
+    ends at its ending event, and carries no span events. A completion that
+    comes after the run's end ends nothing: the span left with the run's.
+  - The **run span**, named `mandate.run`, with no parent. It is sent once, in
+    the pass that reads the event that ends the run, and spans from the run's
+    first event to it. The events that end a run are `run_succeeded`,
+    `run_failed` and `run_cancelled`, written when a run enters a state of
+    `TERMINAL` in `runtime/src/journal.ts`; a run a halt ended, and a
+    cancelled run, end with `run_cancelled`. `run_attention_required` and the
+    waiting states are not ends: a run leaves them. The first ending event is
+    the end: a finished run is not resumed, and a cancel and a halt leave one
+    as it is, but were a run to end again, its span is not sent again, and
+    the event of that second end is an event span.
+  - After a span was sent, nothing of it is sent again. An event that comes
+    after the run ended, a lease taken by resuming a finished run for one, or
+    a charge settled after its command completed, is its own event span with
+    its command's span, or the run's, as parent.
+  - Spans are of kind internal. While a run is open, its event spans and
+    the spans of its finished commands are in the collector and its own span
+    is not, so their parent id is not there yet; it arrives with the event
+    that ends the run, and a run that never ends never sends it.
 - **Identifiers.** The trace id is the first 16 bytes of
-  `sha256("mandate/otel-trace/0.1\n" ‖ run)`, a span's id the first 8 bytes
-  of `sha256("mandate/otel-span/0.1\n" ‖ run ‖ "\n" ‖ command)`. An export
-  run twice gives the same ids.
-- **Attributes.** GenAI: `gen_ai.operation.name`, and
-  `gen_ai.request.model`, the model the lock maps the call's tier to.
-  Mandate's own under `mandate.*`: the run, tenant, package, command,
-  event type, class, sequence number and hash. The semantic conventions'
-  schema URL is pinned.
-- **Resuming.** A cursor per endpoint and run (`otel_cursors`) records what
-  was exported, so an export resumes where it stopped.
+  `sha256("mandate/otel-trace/0.1\n" ‖ run)`, a command span's id the first 8
+  bytes of `sha256("mandate/otel-span/0.1\n" ‖ run ‖ "\n" ‖ command)`, an
+  event span's id the first 8 bytes of
+  `sha256("mandate/otel-event/0.1\n" ‖ run ‖ "\n" ‖ seq)`, with `seq` in
+  decimal, all as lower-case hex. The run span is the span of the empty
+  command, so its id is the first 8 bytes of
+  `sha256("mandate/otel-span/0.1\n" ‖ run ‖ "\n")`; no command has an empty
+  id. An export run twice gives the same ids, and the same bodies.
+- **Attributes.** GenAI: `gen_ai.operation.name` of a command span, `chat`
+  for `infer` and `turn`, `execute_tool` for `tool` and `invoke_agent` for
+  `delegate`, and none for the other kinds; and `gen_ai.request.model` of
+  an `infer` or a `turn`, the model the lock maps the call's tier to. A
+  call's tier is not in the journal. The model is the one the adapter
+  reported for the call when the lock pins it, else the model of the one
+  tier the program names, and absent when the program names several and
+  the adapter reported none, or the lock pins none. Mandate's own, under
+  `mandate.*`:
+
+  | Span | Attribute | Value |
+  |---|---|---|
+  | every span | `mandate.run`, `mandate.tenant` | The run and its tenant |
+  | every span | `mandate.package` | The hash of the package: the run's, or for a command and its events the one the command was first recorded under |
+  | event, command | `mandate.command` | The command's id, when it is shaped like one the runtime builds (letters, digits and `_ . : / @ # > [ ] -`, at most 200); otherwise `sha256:` and 16 hex digits of its hash. An event span has it when the event names a command of the run |
+  | command | `mandate.command.kind` | The command's kind |
+  | command, run | `mandate.span.events` | An integer: the events of the command, or of the run, up to the span's end |
+  | event | `mandate.event.type`, `mandate.event.class` | The event's type, and its class (S0 to S4) assigned from the type alone |
+  | event | `mandate.event.seq`, `mandate.event.hash` | The event's sequence number, an integer, and its hash, when it has one |
+
+  A command span has a status of OK or ERROR when it ended with its own
+  `command_completed` event and its row says `succeeded` or `failed`, and none
+  when it ended with the run. The run span has OK for `run_succeeded`, ERROR
+  for `run_failed`, and none for `run_cancelled`: a stopped run did not fail
+  and did not succeed. Times are unix nanoseconds as decimal strings,
+  integers are decimal strings, ids are lower-case hex. The resource is
+  `service.name` `mandate`; the scope is `mandate.otel` `0.1`. The semantic
+  conventions' schema URL is pinned, on the resource and on the scope:
+  `https://opentelemetry.io/schemas/1.37.0`.
+- **Resuming.** A cursor per endpoint and run (`otel_cursors`: the
+  endpoint, the run, the last sequence number exported and when) records
+  what was exported, so an export resumes where it stopped. An export
+  sends the events after the cursor, and a second one when nothing has been
+  written sends nothing. The endpoint is the key as the command normalises
+  it: no trailing slash.
+- **Batches.** The events after the cursor go in windows, each of at most
+  500 spans: its events, and the command and run spans that end with them,
+  at least one event. A body is a function of the journal and of its window,
+  the events after one sequence number up to another: their event spans,
+  and the command and run spans whose ending event is among them. A window
+  is one post, unless one event ends more spans than a post holds (the end
+  of a run with many commands open), and then it is several. The cursor
+  moves, in its own statement, after the collector has accepted the whole
+  window, and never back. An export is therefore at least once: a crash
+  between a post and the cursor, or a window of several posts that failed
+  after the first, sends identical bodies again.
+- **Failure.** A post that is not answered 2xx, a connection that fails, a
+  redirect (which is never followed, so the spans go where the operator said)
+  and a collector that does not answer within 10 seconds are
+  `otel_export_failed`: the command says so on stderr, naming the status or
+  the cause and never what was sent, and exits 1. The cursor stays where the
+  last accepted post left it; no run is touched. A 2xx that reports rejected
+  spans (`partialSuccess`) is accepted, and the count is reported: sending the
+  same spans again would be rejected the same way.
+- **The endpoint** is an `http://` or `https://` URL with a host. It has no
+  user or password, query or fragment, and does not end in `/v1/traces`,
+  which is added to it: each of these is a usage error (exit 2). `http` is
+  allowed, for a collector on a trusted network; what it carries is no
+  content.
+- **`--follow`** exports what there is, waits two seconds, and exports what
+  was written since, until SIGINT or SIGTERM, which stop it cleanly
+  (a post in flight is abandoned, its cursor not moved). A failed pass is
+  reported on stderr and tried again at the next; it exits 1 only when it was
+  stopped while the collector was failing, 0 otherwise. Runs of `--tenant`,
+  or of every tenant, begun after it started are exported too.
+- **The classes** are those of the role views: the export takes an event's
+  class from `eventClass` (`runtime/src/classes.ts`), by its type alone, and a
+  type the table does not name is S4.
 
 ## Invariants
 
 | Id | Invariant | Where 0.5 keeps it |
 |---|---|---|
 | INV-11 (refined) | An unsupported security requirement is never dropped silently: a method limit, an isolation floor, a credential binding or a least host version is enforced, or nothing it applies to starts | `unsupported_lock` at load; the adapter's refusals (E0902); `unfit_host`; E1803, also at load |
-| INV-17 | A projection (a role view, an OpenTelemetry export) is derived from event type and view section, never from content | The class table; the export's attributes |
+| INV-17 | A projection (a role view, an OpenTelemetry export) is derived from event type, view section and command kind, never from content | The class table (`runtime/src/classes.ts`); the export's attributes |
 | INV-23 | A secret never enters a sandbox, nor the runtime's environment when gateways are on; what enters is its placeholder | The proxy's configuration; `credential_in_environment` |
 | INV-24 | A sandbox reaches no host and uses no method its grant does not list | The proxy's data path; requirement 0.2; the denial reasons |
 | INV-25 | Every event of a chained run is covered by the chain, and every state change of it by a signed anchor | `events.hash`; `journal_anchors`; the verifier |
@@ -948,6 +1191,7 @@ Refusals of the runtime that 0.5 adds:
 | `halted` | A start, or the lease of a run that has not ended, in a halted scope |
 | `not_halted` | A lift of a scope where no halt is in force |
 | `invalid_lift` | A lift that does not say who lifts it |
+| `unknown_role` | `mandate show --role R`, or `runView` for a role, where `R` is no role the run's program names |
 
 Compile cases in [`conformance/`](../conformance/README.md):
 
