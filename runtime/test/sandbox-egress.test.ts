@@ -42,6 +42,7 @@ import { adminPath, http, OTHER_SECRET, portOf, SECRET, seenHeader, send, world 
 import { closeAll, world as runtimeWorld } from "./helpers.js";
 import { FakeManagedAgents } from "./fake-managed-agents.js";
 import { LOCK as MODELS_LOCK } from "./models.js";
+import { BEFORE_HTTP_SENTENCE_EXECUTOR } from "./tools-before-http-sentence.js";
 
 const net = (hosts: string[], methods?: string[]): CapVal => ({ ctor: "net.https", effect: "Net", write: false, scope: hosts, ...(methods ? { methods } : {}) });
 const FETCH: CapVal = { ctor: "exec", effect: "Exec", write: false, scope: ["fetch"] };
@@ -614,6 +615,17 @@ describe("sandbox egress in a run", () => {
     expect((await r.rt.verifyJournal("eg-reread")).status).toBe("verified");
   });
 
+  it("tells the model of the hosts it reaches only with http://, in the description of run, for an agent whose lock binds a credential or limits the methods", async () => {
+    const r = await egressRun(() => [toolUse("f", "finish", { result: "done" })]);
+    const ended = await r.rt.startRun({ pkg: r.pkg, workflow: "Fetch", input: { task: "t" }, runId: "eg-told", tenant: "acme" });
+    expect(ended.state, JSON.stringify(ended.attention ?? ended.error)).toBe("succeeded");
+    const tools = r.chat.calls[0]!.tools;
+    expect(tools.find((t) => t.name === "run")!.description).toBe(
+      "Run a command and get its exit code and output. Allowed: fetch … (further arguments may follow). Reach api.github.com with http:// URLs, not https://: the connection is made over TLS for you, and an https:// URL to such a host is refused and counted as a violation.",
+    );
+    expect(JSON.stringify(tools)).not.toContain("github\"");
+  });
+
   it("a cancel revokes the sandbox's session: the process's next request is denied, and that denial is no violation", async () => {
     let entered!: () => void;
     const inside = new Promise<void>((ok) => (entered = ok));
@@ -741,12 +753,12 @@ const BOUND_LOCK: Lock = {
  * A run of BOUND_SRC whose agent is bound to the fake Managed Agents: its turns are the fake's, scripted by `script`,
  * and each of its tools runs in an MxcHost of the runtime's own, with the fake SDK and the egress proxy.
  */
-async function executorRun(script: (n: number) => ReturnType<typeof toolUse>[]) {
+async function executorRun(script: (n: number) => ReturnType<typeof toolUse>[], src = BOUND_SRC) {
   const fake = new FakeManagedAgents((_messages, n) => script(n));
-  const program = check(BOUND_SRC, "mdt").program!;
+  const program = check(src, "mdt").program!;
   const binding = await deployManagedAgents({ program, lock: BOUND_LOCK, api: fake, now: () => 0 });
   const lock: Lock = { ...BOUND_LOCK, bindings: { "managed-agents": binding } };
-  const rw = await runtimeWorld(BOUND_SRC, { lock, decisions: { mode: "signed" } });
+  const rw = await runtimeWorld(src, { lock, decisions: { mode: "signed" } });
   const sdk = new EgressSdk();
   const host = new MxcHost({ sdk, egress: link() });
   const local = new SimChat(() => {
@@ -783,6 +795,22 @@ describe("sandbox egress for an agent bound to an executor", () => {
     const tool = await r.rt.journal.command("eg-bound", `${D}/step/0/tool/0`);
     expect((tool?.result as unknown as ExecResult).stdout).toBe("GET http://api.github.com/repos/acme/app 200 ok\n");
     expect(JSON.stringify(await r.rt.journal.events("eg-bound"))).not.toContain(SECRET);
+  });
+});
+
+describe("the tools of an agent bound to an executor, whose session is given them", () => {
+  const sessionTools = (r: Awaited<ReturnType<typeof executorRun>>): string => JSON.stringify(([...r.fake.sessions.values()][0]!.body["agent"] as { tools: unknown }).tools);
+
+  it("are byte for byte what they were before the sentence about http://, when its hosts are plain", async () => {
+    const r = await executorRun(() => [toolUse("f", "finish", { result: "done" })]);
+    expect((await r.rt.startRun({ pkg: r.pkg, workflow: "Fetch", input: { task: "t" }, runId: "eg-bound-plain", tenant: "acme" })).state).toBe("succeeded");
+    expect(sessionTools(r)).toBe(BEFORE_HTTP_SENTENCE_EXECUTOR);
+  });
+
+  it("tell it of a host whose methods are limited, which it reaches with http:// like any agent", async () => {
+    const r = await executorRun(() => [toolUse("f", "finish", { result: "done" })], RUN_SRC.replace("egress.run", "egress.bound").replace("tokens: 100k, spend: 1 USD", "tokens: 2M, spend: 20 USD").replace("spend: 2 USD }", "spend: 30 USD }"));
+    expect((await r.rt.startRun({ pkg: r.pkg, workflow: "Fetch", input: { task: "t" }, runId: "eg-bound-limited", tenant: "acme" })).state).toBe("succeeded");
+    expect(sessionTools(r)).toBe(BEFORE_HTTP_SENTENCE_EXECUTOR.replace("(further arguments may follow).", "(further arguments may follow). Reach api.github.com with http:// URLs, not https://: the connection is made over TLS for you, and an https:// URL to such a host is refused and counted as a violation."));
   });
 });
 
