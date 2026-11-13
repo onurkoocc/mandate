@@ -1,0 +1,12 @@
+{
+  "admin": "/run/mandate/egress.sock",
+  "listen": "127.0.0.1",
+  "credentials": {
+    "github": {
+      "env": "MANDATE_EGRESS_GITHUB",
+      "hosts": ["api.github.com"],
+      "header": "authorization",
+      "template": "Bearer {secret}"
+    }
+  }
+}
