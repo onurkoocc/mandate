@@ -21,6 +21,7 @@
 
 import { randomBytes } from "node:crypto";
 import { EgressClient } from "./egress/client.js";
+import { DENIAL_HEADER } from "./egress/proxy.js";
 import { Violation } from "./signals.js";
 
 export type GatewayName = "model" | "github";
@@ -38,8 +39,11 @@ export const GATEWAY_HEADERS: Record<GatewayName, { header: string; template: st
   github: { header: "authorization", template: "Bearer {secret}" },
 };
 
-/** The header a proxy's denial carries its reason in (spec/egress.md "Denials"). */
-export const DENIED_HEADER = "x-mandate-egress-denied";
+/**
+ * The header a proxy's denial carries its reason in (spec/egress.md "Denials"). A conforming proxy removes an
+ * upstream's, so a response that carries it was not sent upstream.
+ */
+export const DENIED_HEADER = DENIAL_HEADER;
 
 /** How long a gateway session is asked to live, and how long before its end it is replaced rather than used. */
 export const GATEWAY_TTL_MS = 3_600_000;
@@ -211,8 +215,13 @@ function withHeader(init: RequestInit | undefined, name: string, value: string):
   return h;
 }
 
+/**
+ * The URL a gateway's `fetch` is called with. A `Request` is refused: its method, headers and body would be lost, since
+ * the request sent on is built from `init`, and nothing in the runtime passes one.
+ */
 function urlOf(input: string | URL | Request): URL {
-  return new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+  if (typeof input !== "string" && !(input instanceof URL)) throw new TypeError("a gateway's fetch takes a URL and its init, not a Request");
+  return new URL(typeof input === "string" ? input : input.href);
 }
 
 /** Whether an error of `fetch` says the port did not take the connection. */

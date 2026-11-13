@@ -294,10 +294,14 @@ own adapters, reach a host. It holds the secrets; nothing else does.
   gateway's credential in its own environment, `credential_in_environment`,
   naming the variable and never its value: `CLAUDE_API_KEY` or
   `ANTHROPIC_API_KEY` for the model gateway, `MANDATE_GITHUB_TOKEN` for the
-  GitHub one. A variable that is set and empty holds nothing; on Windows a
-  name matches in any case. A runtime that can read a secret makes its
-  placeholder prove nothing. The verifier's process gets a placeholder and
-  a gateway's address only.
+  GitHub one. The refusal is per gateway: a gateway that is off refuses
+  nothing, so with only the model gateway on, `MANDATE_GITHUB_TOKEN` is
+  the GitHub adapter's as before. A variable set to the empty string holds
+  nothing and is not refused; on Windows a name matches in any case, as
+  Windows reads it. Through the model gateway, the SDK client is given no
+  token from `ANTHROPIC_AUTH_TOKEN`, which it would otherwise read itself.
+  A runtime that can read a secret makes its placeholder prove nothing.
+  The verifier's process gets a placeholder and a gateway's address only.
 - The proxy refuses a credential its own configuration does not bind to
   the host it is asked for: the root of the secrets is the proxy's
   configuration, not the lock and not the runtime.
@@ -390,6 +394,9 @@ closes.
   address a host resolved to is pinned for the request.
 - A redirect is not followed; it is returned.
 - The exact bytes of the secret are scrubbed from responses.
+- Only the proxy's own denials carry `x-mandate-egress-denied`: an
+  upstream's is removed, so a client can tell a request that was not sent
+  upstream from one the upstream answered.
 - Each denial is recorded with its reason:
 
 | Reason | When |
@@ -459,8 +466,10 @@ credential of its own from the environment.
   the cause may be a revocation the runtime was not told of. New work after
   a cancel or a halt is refused by the journal, not by the proxy.
 - **How a refusal surfaces.** A request the proxy denied (403, or 400
-  `malformed_request`, with `x-mandate-egress-denied`) was not sent
-  upstream. For the model and Managed Agents it is a violation,
+  `malformed_request`, with `x-mandate-egress-denied`, which the proxy
+  removes from every upstream answer) was not sent upstream. A gateway's
+  `fetch` takes a URL and its init, and refuses a `Request`, whose method,
+  headers and body it would not carry. For the model and Managed Agents it is a violation,
   `egress_denied`, with the reason: the run stops for a person, the call is
   not handed to the program, and it is not retried as a transient error.
   For GitHub it is not a definite answer: it says this request was not

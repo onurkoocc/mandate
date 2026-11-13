@@ -447,9 +447,16 @@ it, and is otherwise sent as the client sent it.
 
 The proxy does not follow redirects: a 3xx goes back to the client as the
 upstream sent it. It relays the status, the headers except the hop-by-hop
-ones and `content-length`, and the body, framed as `transfer-encoding:
-chunked` (none for `HEAD`, 1xx, 204 and 304). A body that is cut upstream
-reaches the client without its last chunk, so the client sees the cut.
+ones, `content-length` and `x-mandate-egress-denied`, and the body, framed
+as `transfer-encoding: chunked` (none for `HEAD`, 1xx, 204 and 304). A
+body that is cut upstream reaches the client without its last chunk, so
+the client sees the cut.
+
+`x-mandate-egress-denied` is the proxy's own: an upstream's is removed
+from its response, in every kind of session, so a response that carries
+it is a [denial](#denials), and its request was not sent upstream. A
+client may act on that, for example send the request again on a new
+session after `session_expired`.
 
 Every secret the proxy holds is **scrubbed** from the response: wherever
 its exact bytes appear in the status line, a header name or value, or the
@@ -489,7 +496,9 @@ connection: close
 ```
 
 The status is 400 for `malformed_request`, a request that could not be
-read in one way, and 403 for every other reason.
+read in one way, and 403 for every other reason. Only a denial carries
+`x-mandate-egress-denied`: the proxy removes the header from every
+upstream response ([Responses](#responses)).
 
 | Reason | When |
 |---|---|

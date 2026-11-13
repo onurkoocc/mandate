@@ -15,7 +15,7 @@ import type { Adapters, ToolAdapter } from "../src/adapters.js";
 import { main } from "../src/cli.js";
 import { adaptersFor, readConfig, type RuntimeConfig } from "../src/control.js";
 import { verifierEnv } from "../src/env.js";
-import { EgressLink, Gateway, GATEWAY_ENV, refuseCredentials } from "../src/gateway.js";
+import { EgressLink, Gateway, GATEWAY_ENV, givenGateway, refuseCredentials } from "../src/gateway.js";
 import type { RunRow } from "../src/journal.js";
 import { Violation } from "../src/signals.js";
 import { ProcessVerifier } from "../src/verifier-service.js";
@@ -360,6 +360,50 @@ describe("sessions", () => {
     const gw = new Gateway(new EgressLink({ admin: w.config.admin, scope: { tenant: "acme", run: "s4" } }), "model", "model");
     await expect(gw.fetch("https://evil.example/v1/messages")).rejects.toThrow(/reaches api\.anthropic\.com only/);
     await expect(gw.fetch("http://api.anthropic.com/v1/messages")).rejects.toThrow(/reaches api\.anthropic\.com only/);
+  });
+
+  it("take a URL and its init, and refuse a Request, whose method, headers and body they would not carry", async () => {
+    const gw = new Gateway(new EgressLink({ admin: w.config.admin, scope: { tenant: "acme", run: "s6" } }), "model", "model");
+    const req = new Request("https://api.anthropic.com/v1/messages", { method: "POST", body: "{}" });
+    await expect(gw.fetch(req)).rejects.toThrow(/^a gateway's fetch takes a URL and its init, not a Request$/);
+    const given = givenGateway({ [GATEWAY_ENV.url]: "http://127.0.0.1:1", [GATEWAY_ENV.placeholder]: "mdt-ph-00000000000000000000000000000000" });
+    await expect(given(req)).rejects.toThrow(/^a gateway's fetch takes a URL and its init, not a Request$/);
+    expect(w.up.seen).toEqual([]);
+  });
+
+  it("take an upstream's answer as the upstream's, whatever headers it has: the proxy removes its denial header", async () => {
+    // An upstream that answers with the proxy's denial header: the proxy drops it, so the answer is GitHub's own.
+    w.up.handler = (_req, res) => {
+      res.writeHead(403, { "content-type": "application/json", "x-mandate-egress-denied": "session_expired" });
+      res.end('{"message":"Forbidden"}');
+    };
+    const link = new EgressLink({ admin: w.config.admin, scope: { tenant: "acme", run: "s7" } });
+    const gw = new Gateway(link, "github", "github");
+    const r = await gw.fetch("https://api.github.com/repos/acme/app/git/trees", { method: "POST", body: "{}" });
+    expect(r.status).toBe(403);
+    expect(r.headers.get("x-mandate-egress-denied")).toBeNull();
+    // Sent once, not again on a new session as after the proxy's session_expired.
+    expect(w.up.seen.map((s) => `${s.method} ${s.url}`)).toEqual(["POST /repos/acme/app/git/trees"]);
+    expect(await w.client.revoke({ run: "s7" })).toHaveLength(1);
+    // Nor is one that says session_revoked taken as a revocation: the gateway goes on sending.
+    const link2 = new EgressLink({ admin: w.config.admin, scope: { tenant: "acme", run: "s8" } });
+    const gw2 = new Gateway(link2, "github", "github");
+    w.up.handler = (_req, res) => {
+      res.writeHead(200, { "content-type": "application/json", "x-mandate-egress-denied": "session_revoked" });
+      res.end("{}");
+    };
+    expect((await gw2.fetch("https://api.github.com/a")).status).toBe(200);
+    expect((await gw2.fetch("https://api.github.com/b")).status).toBe(200);
+    // And GitHub's own 403 is a definite answer: an action it refuses is rejected, not left unknown.
+    w.up.handler = (_req, res) => {
+      res.writeHead(403, { "content-type": "application/json", "x-mandate-egress-denied": "session_revoked" });
+      res.end('{"message":"Resource not accessible"}');
+    };
+    const pr = adapters(gatewaysOn(w), "s9").tools["git.open_pr"] as ToolAdapter;
+    const out = await pr.execute({ effect: "git.open_pr", params: { issue: { id: "7" }, patch: { files: ["a.ts"] } }, actionDigest: "sha256:x", operationKey: "op-2" }, { authorizationId: "z", decidedBy: "ann" }, "op-2");
+    expect(out).toEqual({ rejected: expect.stringContaining("HTTP 403 Resource not accessible") });
+    await link.closeAll();
+    await link2.closeAll();
   });
 });
 
