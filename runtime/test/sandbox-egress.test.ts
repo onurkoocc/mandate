@@ -30,6 +30,7 @@ import { serveAdmin, type AdminServer } from "../src/egress/admin.js";
 import { egressConfig } from "../src/egress/config.js";
 import { EgressProxy, type DenialReason, type SessionRequest } from "../src/egress/proxy.js";
 import { EgressLink } from "../src/gateway.js";
+import { deployManagedAgents, managedAgentsExecutor } from "../src/managed-agents.js";
 import { MxcHost, SANDBOX_SESSION_TTL_MS, type MxcContainerRequest, type MxcSdk } from "../src/mxc.js";
 import { WindowsMxcHost, type WindowsContainerRequest, type WindowsMxcSdk } from "../src/mxc-windows.js";
 import { Runtime } from "../src/runtime.js";
@@ -39,6 +40,7 @@ import { Violation } from "../src/signals.js";
 import { adapter, EgressSdk, fetcher, SUPPORTED } from "./egress-sdk.js";
 import { adminPath, http, OTHER_SECRET, portOf, SECRET, seenHeader, send, world as egressWorld, type World as EgressWorld } from "./egress-world.js";
 import { closeAll, world as runtimeWorld } from "./helpers.js";
+import { FakeManagedAgents } from "./fake-managed-agents.js";
 import { LOCK as MODELS_LOCK } from "./models.js";
 
 const net = (hosts: string[], methods?: string[]): CapVal => ({ ctor: "net.https", effect: "Net", write: false, scope: hosts, ...(methods ? { methods } : {}) });
@@ -722,6 +724,65 @@ workflow Fetch(task: Text) -> Inferred<Text>
     expect(JSON.stringify(ended.error)).toContain('"unsupported":["credential model for api.github.com"]');
     expect(r.chat.calls).toEqual([]);
     expect(r.sdk.spawned).toEqual([]);
+  });
+});
+
+// ── An agent bound to an executor ────────────────────────────────────────────
+
+/** RUN_SRC's agent with a host of any method: the lock cannot bind a credential to an agent bound to an executor (E1802), so it has none. */
+const BOUND_SRC = RUN_SRC.replace("egress.run", "egress.bound").replace(", methods: [GET]", "").replace("tokens: 100k, spend: 1 USD", "tokens: 2M, spend: 20 USD").replace("spend: 2 USD }", "spend: 30 USD }");
+const BOUND_LOCK: Lock = {
+  modules: {},
+  models: { standard: { provider: "anthropic", model: "claude-opus-5-5", effort: "high", max_input_tokens: 100_000, max_output_tokens: 128_000 } },
+  tariffs: { "claude-opus-5-5": { currency: "USD", as_of: "2026-10-10", micros_per_mtok: { input: 4_000_000, output: 20_000_000, cache_read: 200_000, cache_write: 5_000_000 } } },
+};
+
+/**
+ * A run of BOUND_SRC whose agent is bound to the fake Managed Agents: its turns are the fake's, scripted by `script`,
+ * and each of its tools runs in an MxcHost of the runtime's own, with the fake SDK and the egress proxy.
+ */
+async function executorRun(script: (n: number) => ReturnType<typeof toolUse>[]) {
+  const fake = new FakeManagedAgents((_messages, n) => script(n));
+  const program = check(BOUND_SRC, "mdt").program!;
+  const binding = await deployManagedAgents({ program, lock: BOUND_LOCK, api: fake, now: () => 0 });
+  const lock: Lock = { ...BOUND_LOCK, bindings: { "managed-agents": binding } };
+  const rw = await runtimeWorld(BOUND_SRC, { lock, decisions: { mode: "signed" } });
+  const sdk = new EgressSdk();
+  const host = new MxcHost({ sdk, egress: link() });
+  const local = new SimChat(() => {
+    throw new Error("a bound agent never talks to the local model");
+  });
+  rw.adapters.loop = { chat: local, sandbox: adapter(host), executor: managedAgentsExecutor({ binding, lock, api: fake, pollMs: 1, title: "test" }), stopPollMs: 60_000 };
+  const rt = new Runtime(rw.db, rw.adapters, rw.faults, undefined, { decisions: { mode: "signed" } });
+  return { ...rw, rt, fake, sdk, host, local };
+}
+
+describe("sandbox egress for an agent bound to an executor", () => {
+  it("runs its tools in the runtime's sandbox, which reaches its hosts through a proxy session of its own and carries no credential", async () => {
+    const r = await executorRun((n) => (n === 1 ? [run("GET http://api.github.com/repos/acme/app")] : [toolUse("f", "finish", { result: "done" })]));
+    const ended = await r.rt.startRun({ pkg: r.pkg, workflow: "Fetch", input: { task: "t" }, runId: "eg-bound", tenant: "acme" });
+    expect(ended.state, JSON.stringify(ended.attention ?? ended.error)).toBe("succeeded");
+
+    // The turns were the executor's, not the local model's; the tool's process ran here, in the runtime's sandbox.
+    expect(r.fake.sessions.size).toBe(1);
+    expect(r.local.calls).toEqual([]);
+    expect(r.sdk.spawned).toHaveLength(1);
+    expect(r.sdk.spawned[0]!.command).toBe("fetch GET http://api.github.com/repos/acme/app");
+
+    // The sandbox has a proxy session opened for it, for this run and tenant, for exactly the agent's host: any method, no credential.
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatchObject({ run: "eg-bound", tenant: "acme", command: D, kind: "forward", destinations: [{ host: "api.github.com", methods: null, credential: null }] });
+    expect(r.sdk.spawned[0]!.network.runtimeConfig?.networkProxy).toMatch(/^http:\/\//);
+    expect(closed).toEqual(opened.map((s) => s.session));
+
+    // The process's request went through that session to the upstream, and nothing put a credential in it: not in the sandbox's environment, not on the request.
+    const env = r.sdk.spawned[0]!.environment ?? {};
+    expect(Object.keys(env).filter((k) => k.startsWith("MANDATE_EGRESS_PLACEHOLDER_"))).toEqual([]);
+    expect(w.up.seen.map((s) => `${s.method} ${s.url}`)).toEqual(["GET /repos/acme/app"]);
+    expect(seenHeader(w.up.seen[0]!, "authorization")).toEqual([]);
+    const tool = await r.rt.journal.command("eg-bound", `${D}/step/0/tool/0`);
+    expect((tool?.result as unknown as ExecResult).stdout).toBe("GET http://api.github.com/repos/acme/app 200 ok\n");
+    expect(JSON.stringify(await r.rt.journal.events("eg-bound"))).not.toContain(SECRET);
   });
 });
 
