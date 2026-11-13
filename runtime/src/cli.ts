@@ -28,6 +28,8 @@
 //   mandate halt --list                                   every halt, in force or lifted
 //   mandate artifact <run> <blob:sha256:…>
 //   mandate show <run> [--format md|html|json]           the run's views (§15): status, evidence, cost, actions
+//   mandate show <run> --role R | --audit                 what a role of the program may see of it; or everything, with
+//                                                         its events and its chain's status (spec/boundary.md)
 //   mandate rotate-key                                    a new evidence key; the old one's public half stays trusted
 //   mandate denials <run>                                 what learning-mode sandboxes denied, for `mandate check --denials` (W0311)
 //   mandate test <program> [--json]                       run the program's tests (§6.4); needs no configuration
@@ -52,7 +54,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, printProgram, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, printProgram, toHtml, toMarkdown, type Doc, type Lock, type Modules, type Program } from "@mandate/compiler";
 import { adaptersFor, anthropicClient, connect, operatorAdapters, readConfig, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { deployManagedAgents, sdkApi } from "./managed-agents.js";
 import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type SignedDecision } from "./decisions.js";
@@ -65,7 +67,7 @@ import { draft, drift, scan, type RepoFacts } from "./onboard.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { runTests } from "./testing.js";
-import { runDoc, runView, shadowDiff } from "./views.js";
+import { auditDoc, roleDoc, runDoc, runView, shadowDiff } from "./views.js";
 import { isObj, show, type Obj, type Value } from "./values.js";
 
 interface Args {
@@ -79,7 +81,7 @@ interface Args {
   all: Record<string, string[]>;
 }
 
-const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role"]);
 const PAIRS = new Set(["--component", "--host", "--repo"]);
 
 function parse(argv: string[]): Args {
@@ -135,7 +137,7 @@ const USAGE = `usage:
   mandate journal verify <export.json> --key <public key.pem> [--key FILE]… [--json]
   mandate replay <run>
   mandate artifact <run> <blob:sha256:…>
-  mandate show <run> [--format md|html|json]
+  mandate show <run> [--format md|html|json] [--role R | --audit]
   mandate halt (--tenant T | --all) [--reason TEXT] [--by WHO] [--json]
   mandate halt --lift (--tenant T | --all) --by WHO
   mandate halt --list [--json]
@@ -295,8 +297,20 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       case "show": {
         const format = typeof a.flags["--format"] === "string" ? a.flags["--format"] : "md";
         if (!["md", "html", "json"].includes(format)) throw new Usage("--format is md, html or json");
-        const { view, program } = await runView(rt, runId);
-        out(format === "json" ? JSON.stringify(view, null, 2) + "\n" : format === "html" ? toHtml(runDoc(view, program)) : toMarkdown(runDoc(view, program)));
+        // A role's view or the audit view (spec/boundary.md "Views by role and the audit view"); with neither, as before.
+        const role = a.flags["--role"];
+        if (typeof role === "string" && a.flags["--audit"] !== undefined) throw new Usage("show takes --role R or --audit, not both");
+        const print = (view: object, doc: () => Doc): void => out(format === "json" ? JSON.stringify(view, null, 2) + "\n" : format === "html" ? toHtml(doc()) : toMarkdown(doc()));
+        if (typeof role === "string") {
+          const { view, program } = await runView(rt, runId, { role });
+          print(view, () => roleDoc(view, program));
+        } else if (a.flags["--audit"] !== undefined) {
+          const { view, program } = await runView(rt, runId, { audit: true });
+          print(view, () => auditDoc(view, program));
+        } else {
+          const { view, program } = await runView(rt, runId);
+          print(view, () => runDoc(view, program));
+        }
         return 0;
       }
       case "denials":
