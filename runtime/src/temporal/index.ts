@@ -10,8 +10,8 @@ import type { Driver, Runtime } from "../runtime.js";
 import { createActivities } from "./activities.js";
 import { WORKFLOW, wakeSignal, type Progress, type RunOptions } from "./workflows.js";
 
-export { createActivities, progress, type Activities } from "./activities.js";
-export { WORKFLOW, type Progress, type RunOptions } from "./workflows.js";
+export { createActivities, progress, UNFIT_ATTEMPTS, type Activities } from "./activities.js";
+export { UNFIT_HOST, WORKFLOW, type Progress, type RunOptions } from "./workflows.js";
 
 /** One Temporal workflow per run, identified by the run id. */
 export function workflowId(runId: string): string {
@@ -27,6 +27,10 @@ export class TemporalDriver implements Driver {
     readonly options: RunOptions = {},
   ) {}
 
+  /**
+   * Starts the run's workflow. One that is running is left as it is. One that has closed is started again, as
+   * Temporal allows by default: this is how a run whose workflow failed (`unfit_host`) is driven again.
+   */
   async start(runId: string): Promise<void> {
     try {
       await this.client.workflow.start(WORKFLOW, { args: [runId, this.options], taskQueue: this.taskQueue, workflowId: workflowId(runId) });
@@ -40,7 +44,8 @@ export class TemporalDriver implements Driver {
     try {
       await this.client.workflow.getHandle(workflowId(runId)).signal(wakeSignal);
     } catch (e) {
-      // The workflow already finished: the run is terminal and nothing needs waking.
+      // The workflow has closed: the run is terminal and nothing needs waking, or the workflow failed (unfit_host)
+      // with the run as it was, and only `start` drives it again.
       if (!(e instanceof WorkflowNotFoundError)) throw e;
     }
   }
