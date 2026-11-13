@@ -13,7 +13,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { ISOLATION_LEVELS, type IsolationLevel, type SandboxRequirement } from "@mandate/compiler";
 import type { AgentAdapter, DelegateRequest, Outcome } from "./adapters.js";
-import { validHost } from "./egress/config.js";
+import { CREDENTIAL_NAME, validHost } from "./egress/config.js";
 import { inside } from "./tools.js";
 
 export type SandboxMode = "enforcement" | "learning" | "permissive";
@@ -238,8 +238,9 @@ export class MxcAdapter {
     const bound = Object.entries(req.egress?.credentials ?? {});
     if (bound.length && !egress) unsupported.push(`credentials for outbound hosts: ${bound.map(([h]) => h).join(", ")}`);
     if (egress) {
-      // The proxy's configuration is the root of the secrets: a binding to a credential it does not hold is refused.
-      for (const [h, name] of bound) if (!egress.credentials.includes(name)) unsupported.push(`credential ${name} for ${h}`);
+      // The proxy's configuration is the root of the secrets: a binding to a credential it does not hold is refused,
+      // and so is one whose name is not a name a lock may bind, which no conforming proxy holds and no variable carries.
+      for (const [h, name] of bound) if (!CREDENTIAL_NAME.test(name) || !egress.credentials.includes(name)) unsupported.push(`credential ${name} for ${h}`);
       unsupported.push(...sharedVariables(bound.map(([, name]) => name)));
     }
     if (unsupported.length) return { unsupported };

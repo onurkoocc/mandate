@@ -291,13 +291,15 @@ describe("MxcHost and the egress proxy", () => {
     expect(sdk.spawned).toEqual([]);
   });
 
-  it("refuses by name two credentials of one sandbox whose placeholders would share a variable", async () => {
+  it("refuses by name two credentials of one sandbox whose placeholders would share a variable, and a name a lock may not bind", async () => {
     const host = new MxcHost({ sdk: new EgressSdk(), egress: link() });
-    const can = { ...(await host.probe()), egress: { credentials: ["gh-a", "gh_a"] } };
+    // A proxy that says it holds what no conforming proxy holds: the names are still held to the lock's rule.
+    const can = { ...(await host.probe()), egress: { credentials: ["gh-a", "gh_a", "gh=x"] } };
     const odd = new MxcAdapter({ host: { probe: async () => can } as never, schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true });
     expect(await odd.plan(req05([net(["api.github.com", "uploads.github.com"])], { "api.github.com": "gh-a", "uploads.github.com": "gh_a" }))).toEqual({
       unsupported: ["credentials gh-a and gh_a for one sandbox, whose placeholders would both be MANDATE_EGRESS_PLACEHOLDER_GH_A"],
     });
+    expect(await odd.plan(req05([net(["api.github.com"])], { "api.github.com": "gh=x" }))).toEqual({ unsupported: ["credential gh=x for api.github.com"] });
   });
 
   it("reads a host in lower case, and hosts that are one name are one destination", async () => {
@@ -774,7 +776,9 @@ describe.runIf(REAL)("sandbox egress through real Bubblewrap sandboxes (the CI r
       tlsSeen.length = 0;
       const r = await sh(handle, S.tunnel);
       expect(r.exitCode, told("tunnel", r)).toBe(0);
-      expect(r.stdout, told("tunnel", r)).toMatch(/HTTP\/1\.1 200 Connection Established[\s\S]*HTTP\/1\.1 200 [\s\S]*tunnel-ok/);
+      // The origin's own answer, over the sandbox's TLS; whether curl also prints the proxy's 200 to CONNECT is curl's to say.
+      expect(r.stdout, told("tunnel", r)).toMatch(/HTTP\/1\.1 200 [^\n]*\r?\n[\s\S]*tunnel-ok/);
+      expect(r.stdout, told("tunnel", r)).not.toMatch(/x-mandate-egress-denied/i);
       expect(tlsSeen, told("tunnel", r)).toEqual([{ url: "/hello", servername: "tunnel.test" }]);
       expect(r.egress_denials, told("tunnel", r)).toBeUndefined();
     } finally {

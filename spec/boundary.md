@@ -624,7 +624,8 @@ job shows it there on every run (`runtime/test/sandbox-egress.test.ts`).*
   old one is closed once nothing runs on it. A process that outlives its
   session has its later requests denied `session_expired`.
 - **Credentials.** The proxy's configuration is the root of the secrets. A
-  binding to a credential the proxy does not hold, by its `hello`, is
+  binding to a credential the proxy does not hold, by its `hello`, or whose
+  name is not one a lock may bind (`^[A-Za-z][A-Za-z0-9_-]{0,63}$`), is
   refused by name when the sandbox is planned, `credential <name> for
   <host>`; one it holds and does not bind to that host
   (`credential_not_allowed`) is refused the same way when the session is
