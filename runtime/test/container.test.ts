@@ -50,6 +50,12 @@ describe("ContainerHost against a fake Docker", () => {
   mkdirSync(src, { recursive: true });
   afterAll(() => rmSync(root, { recursive: true, force: true }));
 
+  it("reports the isolation it gives: a container shares the host's kernel, so process, on a shared host", async () => {
+    const docker = new FakeDocker();
+    docker.run = async (args) => ({ exitCode: 0, stdout: args[0] === "info" ? "linux\n" : "ok\n", stderr: "" });
+    expect(await new ContainerHost({ images: { npm: "node:22-slim" }, docker }).probe()).toMatchObject({ level: "process", co_tenancy: "shared" });
+  });
+
   it("runs the tool helpers inside the granted paths, in one container kept for the sandbox's life", async () => {
     const docker = new FakeDocker();
     const host = new ContainerHost({ images: { npm: "node:22-slim" }, docker });

@@ -93,7 +93,13 @@ refuses the requirement when any of these holds:
 - the host cannot enforce a timeout when one applies, or cannot turn off
   the desktop and the clipboard;
 - a model tier has no configured endpoint;
-- `unbounded` is not empty.
+- `unbounded` is not empty;
+- for a requirement 0.2: it limits methods, its `isolation.min` is above
+  the level the host reports, it forbids sharing and the host may share,
+  or it carries credentials ([`boundary.md`](boundary.md#levels)). The
+  probe reports the level (`process` when a host does not say) and
+  whether a sandbox may share its host (`shared` when it does not say).
+  Every host here reports `process` and `shared`.
 
 A refusal lists every missing guarantee. `learning` mode is allowed: it
 blocks like `enforcement` and also reports what it blocked.
@@ -292,8 +298,9 @@ repeat the Linux enforcement tests against a real AppContainer
 - **An outbound host allow-list.** MXC offers one through a proxy. It is
   not wired up, so a requirement with `net.https` hosts is refused. The
   egress proxy of 0.5 is how it will be ([`boundary.md`](boundary.md#the-egress-proxy)).
-- **What requirement 0.2 adds.** Method limits, an isolation level above
-  `process`, a sandbox that may not share its host, and credentials are
-  refused by the adapter by name, on every host, until a host enforces
-  them.
+- **What requirement 0.2 adds.** Method limits and credentials are refused
+  by the adapter by name, on every host, until a host enforces them. An
+  isolation level above `process` and a sandbox that may not share its
+  host are held to what the host reports; no host here gives either, so
+  both are refused by name on every host for now.
 - **An AX adapter.**
