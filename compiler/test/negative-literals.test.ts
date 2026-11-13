@@ -17,7 +17,7 @@ function program(language: string, value: unknown): Record<string, unknown> {
   return { language, module: "m", version: "0.1", defs: { x: { kind: "const", value } } };
 }
 
-const said = (p: unknown): [string, string, unknown][] => checkJson(p).diagnostics.map((d) => [d.code, d.at.path, d.facts]);
+const said = (p: unknown): [string, string | undefined, unknown][] => checkJson(p).diagnostics.map((d) => [d.code, d.at.path, d.facts]);
 
 describe("a negative literal in a 0.5 program is refused (E0104)", () => {
   it.each([
@@ -49,7 +49,7 @@ describe("a negative literal in a 0.5 program is refused (E0104)", () => {
       defs: { W: { kind: "workflow", body: [{ op: "let", name: "n", value: INT }] } },
     };
     // The workflow is not complete, so schema errors come too; the gate is the one that names the literal.
-    const found = said(p).filter(([, , facts]) => (facts as { op?: string }).op === "int");
+    const found = said(p).filter(([, , facts]) => (facts as { op?: string } | undefined)?.op === "int");
     expect(found).toEqual([["MDT-E0104", "/defs/W/body/0/value", { op: "int", language: "mandate/0.5" }]]);
   });
 
