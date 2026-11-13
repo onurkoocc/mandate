@@ -222,7 +222,10 @@ The host refuses by name what it does not support:
   proxy is configured, the SDK says it can hold a Bubblewrap sandbox to
   its proxy, and the proxy answers, all asked at every probe; then it
   reports `host_allow_list` and the credentials the proxy holds
-  ([`boundary.md`](boundary.md#sandbox-egress));
+  ([`boundary.md`](boundary.md#sandbox-egress)). A configured proxy that
+  does not answer, where the SDK can hold a sandbox to it, is not refused
+  by name: a sandbox that needs a host is `egress_unavailable`, and the
+  run stops for a person;
 - `learning` mode, because Bubblewrap has none;
 - a path at or under a runtime directory.
 
@@ -252,10 +255,13 @@ user namespaces allowed. The tests check that:
 With the egress proxy (`runtime/test/sandbox-egress.test.ts`, in the same
 job) they check that a sandbox's environment holds its placeholder and no
 secret; that an allowed request reaches its upstream with the secret put
-in by the proxy; that another host, a method not allowed, a tunnel to a
-host with a credential and a request around the proxy are denied, and are
-violations in a run's journal; and that an HTTPS tunnel to a host without
-a credential succeeds, with the sandbox's own TLS.
+in by the proxy; that another host, a method not allowed and a tunnel to
+a host with a credential are denied, and are violations in a run's
+journal; that a request around the proxy reaches neither the upstream's
+port on the sandbox's loopback nor that port at the address the sandbox
+sees its proxy at, where the session's port answers; and that an HTTPS
+tunnel to a host without a credential succeeds, with the sandbox's own
+TLS.
 
 ## The MXC host on Windows
 

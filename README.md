@@ -704,7 +704,9 @@ that names no proxy (`no_egress_proxy`).
 ([`spec/boundary.md`](spec/boundary.md#sandbox-egress)), against a fake
 MXC SDK whose processes send their requests to the in-process proxy: the
 host reports an outbound host list only while MXC's proxy enforcement is
-supported and the proxy answers; each sandbox's session has exactly its
+supported and the proxy answers, and a configured proxy that does not
+answer stops a run that needs a host for a person (`egress_unavailable`),
+to go on when it is resumed; each sandbox's session has exactly its
 hosts, methods and credentials, for its run and tenant, and closes with
 it; MXC gets the session's address and the placeholders, never a secret,
 and the upstream gets the secret; a credential the proxy does not hold or

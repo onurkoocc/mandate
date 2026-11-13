@@ -592,20 +592,30 @@ job shows it there on every run (`runtime/test/sandbox-egress.test.ts`).*
   credentials the proxy holds (`Enforceable.egress`), only when the SDK
   says `supported` and the proxy answers `hello`. Both are asked at every
   probe, so before every sandbox is planned: either can change while the
-  runtime runs. Otherwise it reports `deny_all`, and a requirement with
-  outbound hosts is refused by name, `an outbound host allow-list`, as
-  before 0.5; the host keeps why for the operator (`egressUnavailable`). A
-  host that does not report `egress` enforces no method limit and puts in
-  no credential, so the adapter refuses both by name there, whatever else
-  the host gives.
+  runtime runs. Where no proxy is configured, or the SDK cannot hold a
+  sandbox to one, it reports `deny_all`, and a requirement with outbound
+  hosts is refused by name, `an outbound host allow-list`, as before 0.5;
+  `create` asks the SDK again and refuses such a policy the same way.
+  Where a proxy is configured and the SDK can hold a sandbox to it, but
+  the proxy does not answer, nothing about the requirement or the host is
+  wrong: a requirement with an outbound host is `egress_unavailable`,
+  when it is planned and when its session is opened alike, and the run
+  stops for a person, to be resumed once the proxy answers. A requirement
+  with no outbound host is planned and run whatever the proxy's state.
+  What one sandbox's probe found decides nothing for another; the host
+  keeps why for the operator only (`egressUnavailable`). A host that does
+  not report `egress` enforces no method limit and puts in no credential,
+  so the adapter refuses both by name there, whatever else the host
+  gives.
 - **Hosts.** The proxy takes a host name in lower case and without a port
-  ([`egress.md`](egress.md#host-names)). Each outbound host of a
-  requirement is read in lower case; one that then is not a host name or
-  an IP address is refused by name, `an outbound host that is not a host
-  name the egress proxy takes: <host>`. Hosts that are one name in lower
-  case are one destination: the union of their methods (any method once
-  one of them allows any) and their credential; two different credentials
-  for one host are refused by name.
+  ([`egress.md`](egress.md#host-names)). A host with a character outside
+  ASCII is refused by name, since one may lower-case into an ASCII name it
+  is not; any other is read in lower case, and one that then is not a host
+  name or an IP address is refused by name, `an outbound host that is not
+  a host name the egress proxy takes: <host>`. Hosts that are one name in
+  lower case are one destination: the union of their methods (any method
+  once one of them allows any) and their credential; two different
+  credentials for one host are refused by name.
 - **A session per sandbox.** Creating a sandbox whose policy lists hosts
   opens a forward session ([`egress.md`](egress.md#forward-sessions))
   whose destinations are exactly those hosts, each with its methods, or
@@ -622,7 +632,10 @@ job shows it there on every run (`runtime/test/sandbox-egress.test.ts`).*
   life, for a process without a timeout). The new session has a new port
   and new placeholders, which that process and every later one get; the
   old one is closed once nothing runs on it. A process that outlives its
-  session has its later requests denied `session_expired`.
+  session has its later requests denied `session_expired`. A replaced
+  session is a new one: a revoke that lands just before the replacement
+  does not reach it, and the process is then ended by the cancel's own
+  stop (or a halt's fence), not by the proxy.
 - **Credentials.** The proxy's configuration is the root of the secrets. A
   binding to a credential the proxy does not hold, by its `hello`, or whose
   name is not one a lock may bind (`^[A-Za-z][A-Za-z0-9_-]{0,63}$`), is
@@ -652,35 +665,66 @@ job shows it there on every run (`runtime/test/sandbox-egress.test.ts`).*
   and the SDK sets the proxy variables itself. The runtime gives the SDK
   the session's loopback address and port, as the proxy answered them
   (`network.runtimeConfig.networkProxy`), and does not assume that the
-  sandbox's processes see the same address. A proxy whose sessions listen
-  on another address than `127.0.0.1` is refused by name, and its session
-  closed: a sandbox is shown to reach its proxy there only.
+  sandbox's processes see the same address. That address is
+  `http://127.0.0.1:<port>`, with nothing else in it: a session at any
+  other (another scheme or address, no port, a user, a path, a query, a
+  fragment, or what is not a URL) is closed and refused by name, since a
+  sandbox is shown to reach its proxy there only. A session answered
+  without a placeholder it was asked for is closed and is
+  `egress_unavailable`: the proxy does not answer in the protocol's
+  format.
 - **No crossing.** Two sandboxes with two proxy ports do not reach each
   other's proxy. That separation is the sandbox's network, not the proxy:
   on the host itself any local process can connect to any session's port,
   and there only the placeholder stands between it and the credential
   ([`egress.md`](egress.md), its limits).
 - **Denials are violations.** After a tool call's process ends, within its
-  step, the host reads what the proxy denied on the session since it last
-  asked (`denials`) into the process's result, `egress_denials`: the first
-  100 denials as the proxy reports them (`id`, `host`, `method`, `why`,
-  `path_digest`, `at`; never a path or a header), and how many more there
-  were (`more`), those the proxy did not keep included. The result is
-  journaled with its step. The agent loop then writes one violation for
-  the step, `egress_denied`, whose detail is that object, before the model
-  is told: one tool call is one attempt, however many requests it made, as
-  a refused tool call is. A resumed run finds the denials in the step's
-  recorded result, and the step's violation is not written or counted
-  again (INV-28). A denial whose reason is `session_revoked` or
+  step, the host reads what the proxy has recorded on the session since it
+  last asked (`denials`) into the process's result, `egress_denials`: the
+  first 100 denials as the proxy reports them (`id`, `host`, `method`,
+  `why`, `path_digest`, `at`; never a path or a header); how many more
+  there were (`more`), those the proxy did not keep included; and how many
+  of them all count as crossing the grant (`counted`). The host reads the
+  reason of every denial it pages past, so `counted` holds each denial,
+  listed or not, whose reason is not the session's end, and each the proxy
+  did not keep (it keeps at most 10 000 per session), whose reason is no
+  longer recorded. The result is journaled with its step. The agent loop
+  then writes one violation for the step, `egress_denied`, whose detail is
+  that object, before the model is told, when a listed denial or
+  `counted` says one crossed the grant: one tool call is one attempt,
+  however many requests it made, as a refused tool call is. The loop
+  decides from the recorded result alone and asks no proxy, so a resumed
+  run finds the same denials, and the step's violation is not written or
+  counted again (INV-28). A denial whose reason is `session_revoked` or
   `session_expired` says that the session ended (by a cancel, a halt or
   its expiry), not that a request reached outside the grant: a tool call
-  denied nothing else is no violation. A proxy that does not say what it
-  denied stops the run, `egress_unavailable`; a denial is never left
-  uncounted.
+  whose denials are all listed and all of these is no violation.
+- **What a process's result holds.** What the proxy has recorded by the
+  time the process ends is in that process's result. A denial it records
+  later, of a request still in flight when the process ended, is in the
+  result of the sandbox's next process, or in none if the sandbox is
+  destroyed first.
+- **A failed read.** When the proxy does not answer the read of a
+  session's denials, the step is left unfinished and the run stops for a
+  person, `egress_unavailable`; the sandbox and its session are gone. On
+  resume the step's process runs again, in a new sandbox, as after a
+  crash, so a request that the first process got through is sent again.
 - **Earlier programs.** With a proxy configured, the `net.https` hosts of a
   0.1 to 0.4 program are reached the same way: a requirement 0.1 has no
   methods and no credentials, so each of its hosts is a destination with
   any method and none, reached through a tunnel too.
+- **What is counted that the agent did not mean as crossing.** A denial is
+  counted for the sandbox whose session recorded it, whatever made the
+  request; these are limits, not exceptions:
+  - an `https://` request to a host with a credential or a method limit is
+    a `CONNECT`, which is denied (`connect_not_allowed`) and counted. The
+    runtime does not tell the model how its hosts are reached: a program's
+    own instructions to its agent have to say `http://` for such a host;
+  - anything that connects to a session's local port, which other local
+    processes on the host can (No crossing, above), has its denied
+    requests counted against that sandbox;
+  - a host the grant allows that resolves to a private, loopback or
+    metadata address is denied (`resolved_private`) and counted.
 - **What CI shows.** The `sandbox` job runs real Bubblewrap sandboxes held
   to an in-process proxy, with `curl` inside them, and the proxy's
   connections going to local servers through the resolver and dialer the
@@ -688,8 +732,10 @@ job shows it there on every run (`runtime/test/sandbox-egress.test.ts`).*
   proxy variables, and neither the secret nor the runtime's environment;
   an allowed request reaches the upstream with the secret put in, and the
   echoed secret comes back as the placeholder; another host, a method not
-  allowed and a tunnel to a host with a credential are denied, and so is
-  a request that bypasses the proxy; a run's denied tool calls are
+  allowed and a tunnel to a host with a credential are denied; a request
+  around the proxy reaches neither the upstream's port on the sandbox's
+  loopback nor that port at the address the sandbox sees its proxy at,
+  where the session's port does answer; a run's denied tool calls are
   violations in its journal; and an HTTPS tunnel to a local TLS server,
   whose certificate `openssl` makes when the test runs, succeeds, with the
   sandbox's own TLS.
@@ -801,7 +847,7 @@ was granted, and the runtime refused.
   | `delegate` | The delegation's command id |
   | `agent` | The agent's name |
   | `step` | Where it was refused: `<delegate>/step/<n>/tool/<k>` for a tool call; `<delegate>/step/<n>/plan/<i>` for step `i` of a plan submitted at turn `n` (`plan_execute`), which never runs; for an egress denial, the step of the tool call it was made in |
-  | `detail` | For `authority_denied`, the tool and the reason the model is told, `"<tool>: <reason>"`; for `egress_denied`, what the proxy reported it denied the process, `{ denials, more }` |
+  | `detail` | For `authority_denied`, the tool and the reason the model is told, `"<tool>: <reason>"`; for `egress_denied`, what the proxy reported it denied the process, `{ denials, more, counted }` |
   | `count` | The run's violations with this one |
 
 - **What is not one.** A tool call refused for its input: an argument
@@ -1013,10 +1059,10 @@ Refusals of the runtime that 0.5 adds:
 | Code | When |
 |---|---|
 | `unsupported_lock` | At load: the lock sets a field the runtime does not enforce yet, named; none today |
-| `unsupported_sandbox_profile` (E0902) | A requirement 0.2 asks for what the host cannot give: method limits or credentials on a host that does not reach its hosts through the egress proxy, an isolation level above the host's, no sharing on a host that may share; or a credential the proxy does not hold or does not bind to the host (`credential <name> for <host>`), a host that is not a host name, two credentials of one host or of one placeholder variable, a proxy that listens elsewhere than `127.0.0.1` |
+| `unsupported_sandbox_profile` (E0902) | A requirement 0.2 asks for what the host cannot give: method limits or credentials on a host that does not reach its hosts through the egress proxy, an isolation level above the host's, no sharing on a host that may share; or a credential the proxy does not hold or does not bind to the host (`credential <name> for <host>`), a host that is not a host name, two credentials of one host or of one placeholder variable, a session not at `http://127.0.0.1:<port>` |
 | `unfit_host` | At a start or a resume, before the lease: a tool the lock names is missing, cannot be read, or is below the lock's least version, or the `bwrap` is setuid |
 | `credential_in_environment` | With a gateway on, its credential is in the runtime's environment |
-| `no_egress_proxy`, `egress_unavailable` | A package or a gateway needs the proxy and none is named, or it does not answer or lacks a credential; a sandbox's session cannot be opened, renewed or asked what it denied |
+| `no_egress_proxy`, `egress_unavailable` | A package or a gateway needs the proxy and none is named, or it does not answer or lacks a credential; a sandbox that needs a host is planned while a configured proxy does not answer, or its session cannot be opened, renewed or asked what it denied, or lacks a placeholder |
 | `egress_denied` | Through the model gateway, the proxy refused the runtime's own request; the run stops for a person, the reason named. From a sandbox, the kind of the violation a denied tool call is |
 | `violation_limit` | The run reached its violation limit; it is `attention_required` |
 | `halted` | A start, or the lease of a run that has not ended, in a halted scope |
