@@ -22,7 +22,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AuthorizationContext, PreparedAction, PreparedFile, ToolAdapter, ToolContract } from "./adapters.js";
-import { GitHubError, opTag } from "./github.js";
+import { answerError, GitHubError, opTag } from "./github.js";
 import { inside } from "./paths.js";
 import { digest, isObj, type Obj, type Value } from "./values.js";
 
@@ -219,10 +219,7 @@ export class GitHubMerges implements ToolAdapter {
     }
     const text = await res.text();
     const parsed: unknown = text ? JSON.parse(text) : null;
-    if (res.status >= 300) {
-      const msg = isObj(parsed as Value) ? String((parsed as { message?: unknown }).message ?? "") : "";
-      throw new GitHubError(res.status, `${method} ${repo}${path}: HTTP ${res.status}${msg ? ` ${msg}` : ""}`);
-    }
+    if (res.status >= 300) throw answerError(`${method} ${repo}${path}`, res, parsed);
     return parsed;
   }
 }

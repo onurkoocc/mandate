@@ -349,4 +349,10 @@ export interface Adapters {
   random(): number;
   /** Cuts what this runtime holds open outside itself for a run, a tenant or everything: sessions, sandboxes. */
   revoke?(scope: { run: string } | { tenant: string } | { all: true }): Promise<void>;
+  /**
+   * The egress proxy the control plane's gateways go through (spec/boundary.md "The egress proxy"): `ready` refuses
+   * a start when the proxy does not answer or lacks a gateway's credential (`egress_unavailable`); `close` closes the
+   * sessions this runtime opened and its admin connection.
+   */
+  egress?: { ready(): Promise<void>; close(): Promise<void> };
 }
