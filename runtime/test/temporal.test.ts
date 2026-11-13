@@ -424,6 +424,17 @@ describe("under Temporal the host that is checked is the worker's (spec/boundary
     expect((failure as WorkflowFailedError).cause).toMatchObject({ type: "unfit_host", message: REFUSAL, nonRetryable: true });
   };
 
+  it("a control plane whose host is unfit starts the run, and a fit worker drives it to its end", async () => {
+    const controlHost = new FakeHost({ ...FIT, bwrap: { missing: true } });
+    const workerHost = new FakeHost(FIT);
+    const s = await scheduled(FIX, { lock, controlHost, workerHost });
+    expect((await s.control.startRun({ pkg: s.pkg, workflow: "Fix", input: ISSUE, runId: "h1" })).state).toBe("accepted");
+    expect(await s.serve(() => s.driver.result("h1"))).toEqual({ runId: "h1", state: "succeeded", wakeInMs: null });
+    // The control plane's tools were not read; the worker's were, once, before it took the lease.
+    expect(controlHost.asked).toEqual([]);
+    expect(workerHost.asked).toEqual(["bwrap", "node"]);
+  });
+
   it(`an unfit worker is tried ${ATTEMPTS} times, then the workflow fails with unfit_host, and the run is as it was`, async () => {
     const workerHost = new FakeHost(BELOW);
     const s = await scheduled(FIX, { lock, controlHost: new FakeHost(FIT), workerHost });

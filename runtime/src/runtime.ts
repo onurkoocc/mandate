@@ -229,7 +229,9 @@ export class Runtime {
       throw new Violation("signed_decisions_required", "A mandate/0.4 package does not run in unsigned mode: its decisions are signed records (spec/envelope.md). Take decisions.mode out of the runtime configuration.");
     }
     // A host below the lock's least versions starts nothing of the package: no workspace, no run, no event (unfit_host).
-    await checkFitness(o.pkg.lock, this.hostProbe);
+    // With a scheduler this process only records the run and starts its workflow; the worker that takes the run
+    // checks its own host when it resumes it.
+    if (!this.driver) await checkFitness(o.pkg.lock, this.hostProbe);
     const wf = o.pkg.program.defs[o.workflow];
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
     const linked = linkedProgram(o.pkg.program, o.pkg.modules);
