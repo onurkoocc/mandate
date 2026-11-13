@@ -943,12 +943,10 @@ the journal as it is, a journal tests change on purpose included.
     `run_failed` and `run_cancelled`, written when a run enters a state of
     `TERMINAL` in `runtime/src/journal.ts`; a run a halt ended, and a
     cancelled run, end with `run_cancelled`. `run_attention_required` and the
-    waiting states are not ends: a run leaves them. No path of the runtime
-    takes a run out of a terminal state (a finished run is not resumed; a
-    cancel and a halt leave one as it is), but nothing in the schema forbids
-    it, and a resume that races a cancel could. The first ending event is the
-    end: a run that ended again does not send its span again, and the
-    event of that end is an event span.
+    waiting states are not ends: a run leaves them. The first ending event is
+    the end: a finished run is not resumed, and a cancel and a halt leave one
+    as it is, but were a run to end again, its span is not sent again, and
+    the event of that second end is an event span.
   - After a span was sent, nothing of it is sent again. An event that comes
     after the run ended, a lease taken by resuming a finished run for one, or
     a charge settled after its command completed, is its own event span with
