@@ -30,10 +30,13 @@
 // that came from a model, a tool or a person's answer is shown as untrusted
 // plain content (G09).
 
-import { architecture, architectureBlocks, authority, authorityBlocks, check, governanceFiles, hashProgram, linkedProgram, printProgram, programRef, semanticDiff, VIEW_FORMAT, type Block, type Cell, type ComponentDef, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/compiler";
+import { architecture, architectureBlocks, authority, authorityBlocks, check, governanceFiles, hashProgram, linkedProgram, printProgram, programRef, rolesNamed, semanticDiff, VIEW_FORMAT, type Block, type Cell, type ComponentDef, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/compiler";
+import { eventClass, sectionClass, shows, stepClass, TRACE_KINDS, type Audience, type ViewClass } from "./classes.js";
 import { authorizationId } from "./decisions.js";
-import { costDims, type BudgetReport, type ChangesetRow, type EvidenceRow } from "./journal.js";
+import { costDims, type BudgetReport, type ChangesetRow, type EvidenceRow, type HaltRow } from "./journal.js";
+import type { JournalReport } from "./journal-chain.js";
 import type { Runtime } from "./runtime.js";
+import { Violation } from "./signals.js";
 import { covers, type ChangeKind } from "./specdiff.js";
 import { canonical, digest, isObj, show, type Obj, type Value } from "./values.js";
 
@@ -194,7 +197,227 @@ export interface Freshness {
   stale: boolean;
 }
 
-export async function runView(rt: Runtime, runId: string): Promise<{ view: RunView; program: Program }> {
+/**
+ * A run as one role sees it (spec/boundary.md "Views by role and the audit view"): the sections of the run's view in
+ * S1 and S2 as they are, and of S0 what was asked of this role; nothing of a step's request or result, or of a trace.
+ */
+export interface RoleView {
+  format: typeof VIEW_FORMAT;
+  kind: "run_role";
+  role: string;
+  program: ProgramRef;
+  package: string;
+  run: RunView["run"];
+  manifest: RunView["manifest"];
+  modules: RunView["modules"];
+  as_of: AsOf;
+  /** The wait the run is in, whole, when it is asked of this role; null otherwise. */
+  waiting: Value;
+  /** The decisions asked of this role, oldest first. */
+  decisions: DecisionView[];
+  exceptions: Exceptions;
+  /** The budget's dimensions, and of its commands each one's step that is not an agent loop's, nor a wait asked of another role. */
+  budget: BudgetReport;
+  /** The envelope, with its amendments only for the role that owns it. */
+  envelope: EnvelopeView | null;
+  maps: MapView[];
+}
+
+/** How the run ended, and what stopped or bent it (S1), by the fields named: no message, no fault argument. */
+export interface Exceptions {
+  /** The tag of the fault the run failed with, or that left it attention_required. */
+  fault: string | null;
+  /** Why the run needs a person, while it is attention_required. */
+  attention: {
+    /** The code of the invariant violation that stopped it, `violation_limit` among them. */
+    violation: string | null;
+    /** The halt that left an action open. */
+    halted: string | null;
+    /** The code of another reason, such as `delivery_unknown`. */
+    reason: string | null;
+    /** The command the reason is about. */
+    command: string | null;
+    /** A change set stopped with some of its members applied. */
+    changeset_partial: boolean;
+    /** The actions whose outcome is not final, by operation, effect and state. */
+    actions: Array<{ operation: string | null; effect: string | null; state: string | null }>;
+  } | null;
+  /** Each violation, in the order the journal took them. `detail`, which holds what the agent asked for, only in the audit view. */
+  violations: Array<{ seq: number; at: number; kind: string | null; delegate: string | null; agent: string | null; step: string | null; count: number; detail?: Value }>;
+  /** The halt that ended the run: its id, who halted and why, and the fence it revoked. */
+  halt: { halt: string; reason: string | null; by: string | null; fence: number | null; seq: number; at: number } | null;
+}
+
+/** One command of a run as the audit view shows it: its step, its request's digest and its result. */
+export interface CommandView {
+  command: string;
+  kind: string;
+  label: string | null;
+  state: string;
+  request_digest: string;
+  result: Value;
+  error: Value;
+  /** Retention purged its payloads (R14): the result and the error are gone. */
+  purged: boolean;
+}
+
+/** Everything of a run (spec/boundary.md "Views by role and the audit view"): S0 to S4, its events and its journal's status. */
+export interface AuditView extends Omit<RunView, "kind"> {
+  kind: "run_audit";
+  /** What the run was started with. */
+  input: Value;
+  exceptions: Exceptions;
+  /** Each command that is not an agent loop's, in command-id order. */
+  steps: CommandView[];
+  /** Each command of an agent loop: its sessions, turns and tool calls. */
+  trace: CommandView[];
+  /** Every event the view reaches, with its class, time, hash and data. */
+  events: Array<{ seq: number; type: string; class: ViewClass; at: number; hash: string | null; data: Value }>;
+  /** Every halt that covers the run's tenant, in force or lifted, oldest first. */
+  halts: HaltRow[];
+  /** The journal's chain, as `Runtime.verifyJournal` reports it when the view is made. */
+  chain: JournalReport;
+}
+
+/**
+ * A run's view (§15): with no audience as it always was; for `{ role }` what that role may see; for `{ audit: true }`
+ * everything, with the chain's status. Only the audit view verifies the chain, as a step of its own: the default view
+ * and a role's never read more than the journal's events and rows.
+ */
+export async function runView(rt: Runtime, runId: string): Promise<{ view: RunView; program: Program }>;
+export async function runView(rt: Runtime, runId: string, audience: { role: string }): Promise<{ view: RoleView; program: Program }>;
+export async function runView(rt: Runtime, runId: string, audience: { audit: true }): Promise<{ view: AuditView; program: Program }>;
+export async function runView(rt: Runtime, runId: string, audience?: Audience): Promise<{ view: RunView | RoleView | AuditView; program: Program }> {
+  const { view, program, modules } = await defaultView(rt, runId);
+  if (!audience) return { view, program };
+  if ("role" in audience) {
+    const named = programRoles(program, modules);
+    if (!named.includes(audience.role)) throw new Violation("unknown_role", `Run ${runId}'s program names no role ${audience.role}; it names ${named.length ? named.join(", ") : "none"}.`);
+  }
+  const events = await storedEvents(rt, runId, view.as_of.event);
+  if ("role" in audience) return { view: roleView(view, audience.role, events), program };
+  const run = await rt.getRun(runId);
+  const commands = await commandViews(rt, runId);
+  const halts = (await rt.halts()).filter((h) => h.tenant === null || h.tenant === view.run.tenant);
+  // The chain is checked here and nowhere else a view is made, after everything the view shows has been read.
+  const chain = await rt.verifyJournal(runId);
+  const audit: AuditView = {
+    ...view,
+    kind: "run_audit",
+    input: run.input,
+    exceptions: exceptionsOf(view, events, true),
+    steps: commands.filter((c) => !TRACE_KINDS.has(c.kind)),
+    trace: commands.filter((c) => TRACE_KINDS.has(c.kind)),
+    events: events.map((e) => ({ seq: e.seq, type: e.type, class: eventClass(e.type), at: e.at, hash: e.hash, data: e.data })),
+    halts,
+    chain,
+  };
+  return { view: audit, program };
+}
+
+/** The roles a program names: its role definitions and every place it names one, with the modules it imports (0.4 roles; earlier names). */
+export function programRoles(program: Program, modules: Modules): string[] {
+  const defs = linkedProgram(program, modules).defs;
+  return [...new Set([...Object.entries(defs).flatMap(([name, d]) => (d.kind === "role" ? [name] : [])), ...rolesNamed(defs)])].sort();
+}
+
+type Stored = { seq: number; type: string; data: Value; at: number; hash: string | null };
+
+/** The run's events through `through`, with their times and hashes, as they are stored. Nothing here checks the chain. */
+async function storedEvents(rt: Runtime, runId: string, through: number): Promise<Stored[]> {
+  const rows = await rt.db.query<{ seq: unknown; type: string; data: Value; at: unknown; hash: string | null }>("select seq, type, data, at, hash from events where run_id = $1 and seq <= $2 order by seq", [runId, through]);
+  return rows.map((r) => ({ seq: Number(r.seq), type: String(r.type), data: r.data, at: Number(r.at), hash: r.hash ?? null }));
+}
+
+async function commandViews(rt: Runtime, runId: string): Promise<CommandView[]> {
+  const rows = await rt.db.query<{ command_id: string; kind: string; label: string | null; state: string; request_digest: string; result: Value; error: Value; payload_purged: unknown }>(
+    "select command_id, kind, label, state, request_digest, result, error, payload_purged from commands where run_id = $1 order by command_id",
+    [runId],
+  );
+  return rows.map((r) => ({ command: r.command_id, kind: r.kind, label: r.label ?? null, state: r.state, request_digest: r.request_digest, result: r.result ?? null, error: r.error ?? null, purged: r.payload_purged === true }));
+}
+
+/** The role each wait was asked of, by its command, as `wait_opened` names it. */
+function waitRoles(events: Stored[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const e of events) {
+    if (e.type !== "wait_opened" || !isObj(e.data)) continue;
+    const request = isObj(e.data["request"] ?? null) ? (e.data["request"] as Obj) : {};
+    const role = text(request["role"]);
+    if (role !== null) out.set(String(e.data["command"]), role);
+  }
+  return out;
+}
+
+/** The role the run's wait is asked of. */
+function waitingRole(waiting: Value): string | null {
+  const w = isObj(waiting) ? waiting : {};
+  return text(isObj(w["request"] ?? null) ? (w["request"] as Obj)["role"] : undefined);
+}
+
+/**
+ * What a role sees of a run. Each section of the run's view goes by its class (classes.ts) and nothing else: one in
+ * S1 or S2 is shown whole; one in S0 shows what was asked of this role, row by row, by the role its wait or its
+ * decision names; one in S3 or S4 is not shown. What the run ended with and what stopped it is `exceptions`, made of
+ * the fields its section names.
+ */
+function roleView(v: RunView, role: string, events: Stored[]): RoleView {
+  const audience = { role };
+  const may = (section: string, askedOf?: string | null): boolean => shows(audience, sectionClass(section), askedOf);
+  const asked = waitRoles(events);
+  const askedOf = (d: DecisionView): string | null => (d.about !== null ? asked.get(d.about) : undefined) ?? d.role;
+  const out: Record<string, unknown> = { format: v.format, kind: "run_role", role };
+  for (const [section, value] of Object.entries(v)) if (section !== "format" && section !== "kind" && may(section)) out[section] = value;
+  out["waiting"] = may("waiting", waitingRole(v.waiting)) ? v.waiting : null;
+  out["decisions"] = v.decisions.filter((d) => may("decisions", askedOf(d)));
+  if (out["budget"]) out["budget"] = { dimensions: v.budget.dimensions, commands: v.budget.commands.filter((c) => shows(audience, stepClass(c.kind), asked.get(c.command))) };
+  if (v.envelope && out["envelope"]) out["envelope"] = { ...v.envelope, amendments: may("envelope.amendments", v.envelope.owner) ? v.envelope.amendments : [] };
+  // What stopped the run is drawn from the events of the classes the role sees, by their types.
+  if (may("exceptions")) out["exceptions"] = exceptionsOf(v, events.filter((e) => shows(audience, eventClass(e.type))), may("exceptions.violations.detail"));
+  const first = ROLE_ORDER.filter((k) => Object.hasOwn(out, k));
+  return Object.fromEntries([...first, ...Object.keys(out).filter((k) => !first.includes(k))].map((k) => [k, out[k]])) as unknown as RoleView;
+}
+
+/** The order of a role's view's sections, as a person reads them. */
+const ROLE_ORDER = ["format", "kind", "role", "program", "package", "run", "manifest", "modules", "as_of", "waiting", "decisions", "exceptions", "budget", "envelope", "maps"];
+
+/** A fault's tag: the name of what went wrong, never its arguments. */
+const tagOf = (v: Value | undefined): string | null => (isObj(v ?? null) ? text((v as Obj)["$tag"]) : null);
+
+/** How the run ended and what stopped it, from its state and the journal's S1 events, by the fields named. */
+function exceptionsOf(v: RunView, events: Stored[], detail: boolean): Exceptions {
+  const a = v.run.state === "attention_required" && isObj(v.attention) ? v.attention : undefined;
+  const open = a && Array.isArray(a["open_actions"]) ? (a["open_actions"].filter(isObj) as Obj[]) : [];
+  const single = a && typeof a["effect"] === "string" ? [a] : [];
+  const cancel = events.find((e) => e.type === "cancel_requested" && isObj(e.data) && typeof e.data["halt"] === "string");
+  const halt = cancel && isObj(cancel.data) ? String(cancel.data["halt"]) : undefined;
+  const revoked = halt === undefined ? undefined : events.find((e) => e.type === "lease_revoked" && isObj(e.data) && e.data["halt"] === halt);
+  return {
+    fault: tagOf(v.run.state === "failed" ? v.error : undefined) ?? tagOf(a?.["error"]),
+    attention: a
+      ? {
+          violation: text(a["violation"]),
+          halted: text(a["halted"]),
+          reason: text(a["reason"]),
+          command: text(a["command"]),
+          changeset_partial: Object.hasOwn(a, "changeset_partial"),
+          actions: [...open, ...single].map((x) => ({ operation: text(x["operation"]), effect: text(x["effect"]), state: text(x["state"]) })),
+        }
+      : null,
+    violations: events
+      .filter((e) => e.type === "violation")
+      .map((e) => {
+        const d = isObj(e.data) ? e.data : {};
+        return { seq: e.seq, at: e.at, kind: text(d["kind"]), delegate: text(d["delegate"]), agent: text(d["agent"]), step: text(d["step"]), count: Number(d["count"]), ...(detail ? { detail: d["detail"] ?? null } : {}) };
+      }),
+    halt:
+      cancel && halt !== undefined && isObj(cancel.data)
+        ? { halt, reason: text(cancel.data["reason"]), by: text(cancel.data["by"]), fence: revoked && isObj(revoked.data) && typeof revoked.data["fence"] === "number" ? revoked.data["fence"] : null, seq: cancel.seq, at: cancel.at }
+        : null,
+  };
+}
+
+async function defaultView(rt: Runtime, runId: string): Promise<{ view: RunView; program: Program; modules: Modules }> {
   // The view's position first: everything below is at least this new, and a later decision names this revision.
   const run = await rt.getRun(runId);
   const as_of = { revision: run.revision, event: await lastEvent(rt, runId) };
@@ -246,7 +469,7 @@ export async function runView(rt: Runtime, runId: string): Promise<{ view: RunVi
     plans: await planViews(rt, { tenant: run.tenant, runId }, events, commands),
     maps: mapViews(events, commands),
   };
-  return { view, program };
+  return { view, program, modules };
 }
 
 type Event = { seq: number; type: string; data: Value };
@@ -631,7 +854,16 @@ function money(dim: string, n: number): string {
 }
 
 function statusBlocks(v: RunView): Block[] {
-  const out: Block[] = [{ h: "Status" }, { p: `Run ${v.run.id} of ${v.run.workflow} is ${v.run.state} at revision ${v.as_of.revision} (event ${v.as_of.event}).` }];
+  const out: Block[] = [{ h: "Status" }, { p: `Run ${v.run.id} of ${v.run.workflow} is ${v.run.state} at revision ${v.as_of.revision} (event ${v.as_of.event}).` }, ...waitBlocks(v)];
+  if (v.run.state === "attention_required") out.push({ p: "Needs attention:" }, { code: JSON.stringify(v.attention, null, 2), untrusted: true });
+  if (v.run.state === "failed") out.push({ p: "Failed with:" }, { code: JSON.stringify(v.error, null, 2), untrusted: true });
+  if (v.run.state === "succeeded") out.push({ p: "Result:" }, { code: JSON.stringify(v.result, null, 2), untrusted: true });
+  return out;
+}
+
+/** What the run waits for, with the command that answers it at this revision. */
+function waitBlocks(v: Pick<RunView, "run" | "as_of" | "waiting">): Block[] {
+  const out: Block[] = [];
   const w = isObj(v.waiting) ? v.waiting : undefined;
   if (v.run.state === "waiting" && w) {
     const req = isObj(w["request"] ?? null) ? (w["request"] as Obj) : {};
@@ -660,9 +892,6 @@ function statusBlocks(v: RunView): Block[] {
       out.push({ code: show((req["question"] ?? req["escalation"] ?? null) as Value), untrusted: true });
     }
   }
-  if (v.run.state === "attention_required") out.push({ p: "Needs attention:" }, { code: JSON.stringify(v.attention, null, 2), untrusted: true });
-  if (v.run.state === "failed") out.push({ p: "Failed with:" }, { code: JSON.stringify(v.error, null, 2), untrusted: true });
-  if (v.run.state === "succeeded") out.push({ p: "Result:" }, { code: JSON.stringify(v.result, null, 2), untrusted: true });
   return out;
 }
 
@@ -687,7 +916,7 @@ function evidenceBlocks(v: RunView): Block[] {
   ];
 }
 
-function costBlocks(v: RunView): Block[] {
+function costBlocks(v: Pick<RunView, "budget">): Block[] {
   return [
     { h: "Cost" },
     { table: { head: ["Dimension", "Limit", "Settled", "Reserved", "Available"], rows: v.budget.dimensions.map((d) => [d.dimension, money(d.dimension, d.limit), money(d.dimension, d.settled), money(d.dimension, d.reserved), money(d.dimension, d.available)]) } },
@@ -753,7 +982,7 @@ const amounts = (r: Record<string, number>): string =>
     .map((d) => `${d}: ${money(d, r[d]!)}`)
     .join(", ") || "—";
 
-function decisionBlocks(v: RunView): Block[] {
+function decisionBlocks(v: Pick<RunView, "decisions">): Block[] {
   if (!v.decisions.length) return [];
   return [
     { h: "Decisions" },
@@ -774,7 +1003,7 @@ function decisionBlocks(v: RunView): Block[] {
   ];
 }
 
-function envelopeBlocks(v: RunView): Block[] {
+function envelopeBlocks(v: Pick<RunView, "envelope">): Block[] {
   const e = v.envelope;
   if (!e) return [];
   const until = e.deadline === null ? "It sets no time, so the run has no deadline" : `The run's deadline is ${new Date(e.deadline).toISOString()}, its start plus the envelope's time`;
@@ -833,7 +1062,7 @@ function planBlocks(v: RunView): Block[] {
   return out;
 }
 
-function mapBlocks(v: RunView): Block[] {
+function mapBlocks(v: Pick<RunView, "maps">): Block[] {
   const out: Block[] = [];
   for (const m of v.maps) {
     out.push({ h: `Map at ${m.node}` });
@@ -853,31 +1082,147 @@ function actionBlocks(v: RunView): Block[] {
 export function runDoc(v: RunView, program: Program): Doc {
   return {
     title: `Run ${v.run.id}: ${v.run.workflow}`,
-    meta: [
-      ["Program", v.program.hash],
-      ["Package", v.package],
-      ["Run", `${v.run.id} (tenant ${v.run.tenant})`],
-      ...(v.manifest.hash ? [["Started from", v.manifest.hash] as [string, string]] : []),
-      ["Mode", v.manifest.mode === "live" ? "live" : v.manifest.mode === "read_only" ? "read_only: real reads, effects prepared and never committed" : "design: sample reads, effects simulated"],
-      ...v.manifest.components.map((c) => [`Component ${c.name}`, `${c.repo} @ ${c.base}`] as [string, string]),
-      ...v.modules.map((m) => [`Module ${m.module}`, m.hash] as [string, string]),
-      ["As of", `revision ${v.as_of.revision}, event ${v.as_of.event}`],
-      ["View", `${VIEW_FORMAT}, generated from the program and the run's journal`],
-    ],
+    meta: metaOf(v, `${VIEW_FORMAT}, generated from the program and the run's journal`),
+    blocks: [...runBlocks(v), ...architectureBlocks(architecture(program)), ...authorityBlocks(authority(program))],
+  };
+}
+
+/** The sections of a run's view, in the order a person reads them. */
+function runBlocks(v: RunView): Block[] {
+  return [...statusBlocks(v), ...envelopeBlocks(v), ...planBlocks(v), ...mapBlocks(v), ...changesetBlocks(v), ...evidenceBlocks(v), ...decisionBlocks(v), ...costBlocks(v), ...actionBlocks(v)];
+}
+
+/** What a run's document shows, under which hashes, as of when. */
+function metaOf(v: Pick<RunView, "program" | "package" | "run" | "manifest" | "modules" | "as_of">, what: string): Array<[string, string]> {
+  return [
+    ["Program", v.program.hash],
+    ["Package", v.package],
+    ["Run", `${v.run.id} (tenant ${v.run.tenant})`],
+    ...(v.manifest.hash ? [["Started from", v.manifest.hash] as [string, string]] : []),
+    ["Mode", v.manifest.mode === "live" ? "live" : v.manifest.mode === "read_only" ? "read_only: real reads, effects prepared and never committed" : "design: sample reads, effects simulated"],
+    ...v.manifest.components.map((c) => [`Component ${c.name}`, `${c.repo} @ ${c.base}`] as [string, string]),
+    ...v.modules.map((m) => [`Module ${m.module}`, m.hash] as [string, string]),
+    ["As of", `revision ${v.as_of.revision}, event ${v.as_of.event}`],
+    ["View", what],
+  ];
+}
+
+/**
+ * A role's view as one document: the run's state, what it waits for when that is asked of the role, how it ended and
+ * what stopped it, the decisions asked of the role, the envelope, the maps and the cost, and the program's views.
+ */
+export function roleDoc(v: RoleView, program: Program): Doc {
+  const status: Block[] = [{ h: "Status" }, { p: `Run ${v.run.id} of ${v.run.workflow} is ${v.run.state} at revision ${v.as_of.revision} (event ${v.as_of.event}).` }];
+  if (v.run.state === "waiting") status.push(...(v.waiting === null ? [{ p: `It waits for nothing asked of ${v.role}.` }] : waitBlocks(v)));
+  return {
+    title: `Run ${v.run.id}: ${v.run.workflow}, as ${v.role} sees it`,
+    meta: metaOf(v, `${VIEW_FORMAT}, the view of the role ${v.role}: what was asked of it, how the run ended and what stopped it, and its progress`),
     blocks: [
-      ...statusBlocks(v),
+      ...status,
+      ...exceptionBlocks(v.exceptions),
       ...envelopeBlocks(v),
-      ...planBlocks(v),
       ...mapBlocks(v),
-      ...changesetBlocks(v),
-      ...evidenceBlocks(v),
       ...decisionBlocks(v),
       ...costBlocks(v),
-      ...actionBlocks(v),
       ...architectureBlocks(architecture(program)),
       ...authorityBlocks(authority(program)),
     ],
   };
+}
+
+/** The audit view as one document: the run's view whole, with its exceptions, halts, steps, trace, events and chain. */
+export function auditDoc(v: AuditView, program: Program): Doc {
+  return {
+    title: `Run ${v.run.id}: ${v.run.workflow}, audit`,
+    meta: metaOf(v, `${VIEW_FORMAT}, the audit view: everything the run's journal holds, its events, and its chain as verified when the view was made`),
+    blocks: [
+      ...chainBlocks(v.chain),
+      ...runBlocks({ ...v, kind: "run" }),
+      { h: "Input" },
+      { code: JSON.stringify(v.input, null, 2), untrusted: true },
+      ...exceptionBlocks(v.exceptions),
+      ...haltBlocks(v.halts),
+      ...commandBlocks("Steps", v.steps),
+      ...commandBlocks("Trace", v.trace),
+      ...eventBlocks(v.events),
+      ...architectureBlocks(architecture(program)),
+      ...authorityBlocks(authority(program)),
+    ],
+  };
+}
+
+function exceptionBlocks(x: Exceptions): Block[] {
+  const out: Block[] = [{ h: "Exceptions" }];
+  if (x.fault !== null) out.push({ p: `The fault: ${x.fault}.` });
+  if (x.attention) {
+    const a = x.attention;
+    const why = [
+      ...(a.violation !== null ? [`the invariant violation ${a.violation}`] : []),
+      ...(a.halted !== null ? [`the halt ${a.halted}, which left an action open`] : []),
+      ...(a.reason !== null ? [`${a.reason}${a.command !== null ? ` at ${a.command}` : ""}`] : []),
+      ...(a.changeset_partial ? ["a change set stopped with some of its members applied"] : []),
+    ];
+    out.push({ p: `It needs a person: ${why.join("; ") || "the reason has no code"}.` });
+    if (a.actions.length) out.push({ table: { head: ["Effect", "State", "Operation"], rows: a.actions.map((o) => [o.effect ?? "—", o.state ?? "—", o.operation === null ? "—" : mono(o.operation)]) } });
+  }
+  if (x.violations.length) {
+    const detail = x.violations.some((e) => "detail" in e);
+    out.push({
+      table: {
+        head: ["Seq", "Kind", "Agent", "Step", "Count", ...(detail ? ["Detail"] : [])],
+        rows: x.violations.map((e) => [String(e.seq), e.kind ?? "—", e.agent ?? "—", e.step === null ? "—" : mono(e.step), String(e.count), ...(detail ? [untrusted(e.detail ?? null)] : [])]),
+      },
+    });
+  }
+  if (x.halt) out.push({ p: `The run was halted by ${x.halt.halt}${x.halt.by !== null ? `, which ${x.halt.by} made` : ""}, at ${new Date(x.halt.at).toISOString()}; its lease was revoked${x.halt.fence !== null ? ` at fence ${x.halt.fence}` : ""}.` }, ...(x.halt.reason !== null ? [{ p: "The halt's reason:" }, { code: x.halt.reason, untrusted: true }] : []));
+  if (out.length === 1) out.push({ p: "No fault, violation or halt." });
+  return out;
+}
+
+const STATUS: Record<JournalReport["status"], string> = {
+  verified: "the chain holds and every state change is anchored",
+  broken: "the chain or its anchors do not hold",
+  unchained: "the run began before its journal was chained: nothing can be verified either way",
+  unreadable: "the export could not be read, so nothing is said about the journal",
+};
+
+function chainBlocks(r: JournalReport): Block[] {
+  const out: Block[] = [{ h: "Journal" }, { p: `${r.status}: ${STATUS[r.status]}. ${r.events === 1 ? "1 event" : `${r.events} events`}, verified when this view was made.` }];
+  if (r.status === "verified" && r.anchored_through !== null) out.push({ p: `Signed through event ${r.anchored_through} by ${r.signed_by.join(", ")}; ${r.unanchored === 1 ? "1 event" : `${r.unanchored} events`} after it covered by no signature.` });
+  if (r.findings.length) out.push({ table: { head: ["Finding", "Seq"], rows: r.findings.map((f) => [f.code, f.seq === undefined ? "—" : String(f.seq)]) } });
+  return out;
+}
+
+function haltBlocks(halts: HaltRow[]): Block[] {
+  if (!halts.length) return [{ h: "Halts" }, { p: "No halt covers the run's tenant." }];
+  const at = (n: number | null): string => (n === null ? "—" : new Date(n).toISOString());
+  return [
+    { h: "Halts" },
+    {
+      table: {
+        head: ["Halt", "Scope", "Halted by", "Halted at", "Reason", "Lifted by", "Lifted at"],
+        rows: halts.map((h) => [mono(h.halt_id), h.tenant === null ? "every tenant" : `tenant ${h.tenant}`, h.halted_by === null ? "—" : untrusted(h.halted_by), at(h.halted_at), h.reason === null ? "—" : untrusted(h.reason), h.lifted_by === null ? (h.lifted_at === null ? "in force" : "—") : untrusted(h.lifted_by), at(h.lifted_at)]),
+      },
+    },
+  ];
+}
+
+function commandBlocks(title: string, commands: CommandView[]): Block[] {
+  if (!commands.length) return [{ h: title }, { p: "None." }];
+  const out: Block[] = [{ h: title }, { table: { head: ["Command", "Kind", "Label", "State", "Request digest"], rows: commands.map((c) => [mono(c.command), c.kind, c.label ?? "—", c.state, mono(c.request_digest)]) } }];
+  for (const c of commands) {
+    if (c.purged) out.push({ p: `${c.command}: purged.` });
+    else if (c.error !== null) out.push({ p: `${c.command} failed with:` }, { code: JSON.stringify(c.error, null, 2), untrusted: true });
+    else if (c.result !== null) out.push({ p: `${c.command}:` }, { code: JSON.stringify(c.result, null, 2), untrusted: true });
+  }
+  return out;
+}
+
+function eventBlocks(events: AuditView["events"]): Block[] {
+  return [
+    { h: "Events" },
+    { table: { head: ["Seq", "Type", "Class", "Time", "Hash", "Data"], rows: events.map((e) => [String(e.seq), e.type, e.class, new Date(e.at).toISOString(), e.hash === null ? "—" : mono(e.hash), untrusted(e.data)]) } },
+  ];
 }
 
 /** One external action of a shadow comparison: the same node in two runs. */
