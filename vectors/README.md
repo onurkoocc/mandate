@@ -284,3 +284,20 @@ cases give E0140 for the format a field needs (`bindings` 0.3, `members` and
 `roles` 0.4, `host`, `isolation` and `egress` 0.5), a key under two members, a
 role that lists a member that is not in `members`, and a tier whose model has
 no tariff, in that order.
+
+## The golden output texts (`MANDATE_GOLDEN_OUT`)
+
+The golden file (`compiler/test/golden/outputs.json`) pins the output texts of
+24 programs by digest. When the environment variable `MANDATE_GOLDEN_OUT`
+names a directory, `compiler/test/golden.test.ts` also writes every text to
+`<dir>/<program path>/<output file name>`, for a job to compare with another
+compiler's texts by `diff -ru`: `<program path>` is the repository path of the
+program (`fixtures/fixbug/fixbug.mdt`, a directory for each program), and the
+output file name is the output's name with each space replaced by `_`:
+`check`, `check_--module`, `check_--lock`, `load`, `ir_--canonical`, `fmt`,
+`hash`, `view_--format_json`, `view_--format_md`, `view_--format_html`,
+`view_--against_itself`, `sandbox` (231 files; a program has only the outputs
+the golden file pins for it). The bytes are exactly those that are hashed (UTF-8,
+no newline added), and the directory is created. Nothing is written when the
+variable is not set, and nothing of these texts is committed. The Rust side
+writes the same layout. The texts come from `compiler/test/golden-outputs.ts`.
