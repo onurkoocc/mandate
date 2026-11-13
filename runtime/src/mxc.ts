@@ -94,8 +94,22 @@ const NOTHING: Enforceable = { backends: [], modes: [], filesystem: false, netwo
  */
 export const HOST_RUNTIME_DIRS: readonly string[] = ["/run", "/var/run"];
 
-/** Run by the probe in a sandbox with the masks: prints each entry it still finds in a runtime directory, then `end`. */
-export const MASK_CHECK = `find ${HOST_RUNTIME_DIRS.map((d) => `${d}/`).join(" ")} -mindepth 1 -maxdepth 1 2>/dev/null; echo end`;
+/**
+ * A shell line that lists `dirs`: one line per entry in each (dot entries
+ * too, and links whose target is missing), one line for each that is not a
+ * directory this shell can read and search, then `end`. It runs no program,
+ * only the shell's own `for`, `if`, `[` and `echo`, so it cannot fail to
+ * look because a program is missing; and a directory it cannot list is a
+ * line of its own, never silence. Where the masks hold, each runtime
+ * directory is an empty directory MXC made, and the output is `end` alone.
+ */
+export function maskCheck(dirs: readonly string[]): string {
+  const list = `for e in "$d"/* "$d"/.[!.]* "$d"/..?*; do if [ -e "$e" ] || [ -L "$e" ]; then echo "$e"; fi; done`;
+  return `for d in ${dirs.map(shellQuote).join(" ")}; do if [ -d "$d" ] && [ -r "$d" ] && [ -x "$d" ]; then ${list}; else echo "$d is not a directory this sandbox can list"; fi; done; echo end`;
+}
+
+/** Run by the probe in a sandbox with the masks: `maskCheck` of the runtime directories. */
+export const MASK_CHECK = maskCheck(HOST_RUNTIME_DIRS);
 
 /** Helpers the runtime's own tools start; the filesystem policy confines them. */
 const HELPERS = new Set(["cat", "ls", "grep"]);
@@ -211,8 +225,10 @@ export class MxcHost implements SandboxHost {
 
   /**
    * Starts one sandbox the way `execute` does, with nothing granted, and
-   * lists what it sees in the runtime directories: nothing, where the masks
-   * hold. Why they do not, or undefined.
+   * lists what it sees in the runtime directories (`MASK_CHECK`): nothing
+   * but `end`, where the masks hold. Anything else, an entry, a directory
+   * it could not list, a missing `end`, a failed exit, means they are not
+   * shown to hold. Why not, or undefined.
    */
   private async checkMasks(sdk: MxcSdk): Promise<string | undefined> {
     const no = "so a sandbox would see the host's runtime directories and the service sockets in them";
@@ -229,8 +245,8 @@ export class MxcHost implements SandboxHost {
     }
     const seen = r.stdout.split("\n").filter((l) => l && l !== "end");
     if (r.exitCode === 0 && r.stdout.endsWith("end\n") && !seen.length) return undefined;
-    const what = seen.length ? `a sandbox still sees ${seen.join(", ")}` : `the check exited ${r.exitCode}${r.timedOut ? " (timed out)" : ""}: ${r.stderr.trim() || r.stdout.trim()}`;
-    return `Bubblewrap here does not mask the host's runtime directories (${what}), ${no}`;
+    const what = seen.length ? `a sandbox with the masks lists ${seen.join("; ")}` : `the check exited ${r.exitCode}${r.timedOut ? " (timed out)" : ""}: ${r.stderr.trim() || r.stdout.trim()}`;
+    return `Bubblewrap here is not shown to mask the host's runtime directories (${what}), ${no}`;
   }
 
   /** Kills every process running in the sandbox (Bubblewrap's whole process tree goes with it) and starts no more. */
