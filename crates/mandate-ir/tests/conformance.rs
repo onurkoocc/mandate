@@ -52,8 +52,14 @@ const NEEDS_A_COMPILER: [&str; 6] = [
     "base",
 ];
 
+/// The repository root: `MANDATE_REPO` when it is set (`scripts/wasi-test.mjs`
+/// sets it, since the compile-time path does not exist under WASI), else the
+/// path from this crate's directory.
 fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    match std::env::var_os("MANDATE_REPO") {
+        Some(root) => PathBuf::from(root),
+        None => Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
+    }
 }
 
 /// Reads a case file with this crate's own reader.
