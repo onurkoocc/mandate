@@ -22,6 +22,8 @@ fn int_is_the_safe_integers() {
     assert_eq!(Int::new(9_007_199_254_740_992), None);
     assert_eq!(Int::new(i64::MIN), None);
     assert_eq!(Int::saturating(i64::MAX), Int::MAX);
+    // On a 32-bit target (wasm32) usize::MAX is below Int::MAX.
+    #[cfg(target_pointer_width = "64")]
     assert_eq!(Int::from_usize_saturating(usize::MAX), Int::MAX);
 }
 
