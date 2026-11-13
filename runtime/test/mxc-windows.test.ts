@@ -74,6 +74,12 @@ describe("WindowsMxcHost against a fake SDK", () => {
     expect(host.unavailable).toContain("older than 26100.9278");
   });
 
+  it("reports the isolation it gives, process on a shared host, for either backend", async () => {
+    for (const backend of ["process", "session"] as const) {
+      expect(await new WindowsMxcHost({ sdk: new FakeSdk(), build: NEW, backend }).probe()).toMatchObject({ level: "process", co_tenancy: "shared" });
+    }
+  });
+
   it("refuses session isolation by name: it cannot keep an agent off the network (INV-11)", async () => {
     const host = new WindowsMxcHost({ sdk: new FakeSdk(), build: NEW, backend: "session" });
     expect(await adapter(host, undefined, "session").plan(requirement({ read: ["C:/work/repo"] }))).toEqual({ unsupported: ["blocking outbound network"] });

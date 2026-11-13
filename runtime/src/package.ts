@@ -3,7 +3,7 @@
 // to before it runs it. It trusts nobody who built one, itself included: an
 // amended package (spec/envelope.md "Amendments") passes it like any other.
 
-import { atLeast, bindingChecks, canonicalize, check, checkAmendment, envelopeChanges, hashProgram, link, linkedProgram, LOCK_FIELDS_0_5, LOCK_FORMAT, modelTiers, packageHash, roleLockChecks, semanticDiff, validateLock, type AmendmentCheck, type AmendmentInput, type Change, type DiffView, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { atLeast, bindingChecks, canonicalize, check, checkAmendment, envelopeChanges, hashProgram, link, linkedProgram, LOCK_FIELDS_0_5, LOCK_FORMAT, modelTiers, packageHash, roleLockChecks, sandboxLockChecks, semanticDiff, validateLock, type AmendmentCheck, type AmendmentInput, type Change, type DiffView, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
 import { Violation } from "./signals.js";
 
 /** An amendment as the runtime checks it: with the lock of the run's package, which the amended package keeps. */
@@ -66,12 +66,13 @@ export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "ma
  * envelope's.
  *
  * With `lock`, the package's lock: what its format 0.5 asks that this runtime does not enforce yet, each by its
- * own name, `lock.host`, `lock.isolation` and `lock.egress` (spec/boundary.md). `host` applies to a package of
- * any language. Each is lifted by the change that enforces it.
+ * own name, `lock.host` and `lock.egress` (spec/boundary.md). `host` applies to a package of any language. Each is
+ * lifted by the change that enforces it. `isolation` is enforced: each sandbox's requirement carries its floors, and
+ * the sandbox adapter refuses a host that does not give them.
  */
 export function notRunYet(program: Program, lock?: Lock): string[] {
   const found = new Set<string>();
-  for (const field of LOCK_FIELDS_0_5) if (lock?.[field] !== undefined) found.add(`lock.${field}`);
+  for (const field of Object.keys(UNENFORCED) as Unenforced[]) if (lock?.[field] !== undefined) found.add(`lock.${field}`);
   const walk = (v: unknown, key: string, kept: unknown): void => {
     if (Array.isArray(v)) return v.forEach((x) => walk(x, key, kept));
     if (!v || typeof v !== "object") return;
@@ -84,12 +85,12 @@ export function notRunYet(program: Program, lock?: Lock): string[] {
   return [...found].sort();
 }
 
-/** Why each lock field of 0.5 is not enforced yet, as a refusal names it. */
-const UNENFORCED: Record<(typeof LOCK_FIELDS_0_5)[number], string> = {
+/** Why each lock field of 0.5 that this runtime does not enforce yet is not, as a refusal names it. */
+const UNENFORCED = {
   host: "the least versions of the host's tools, which this runtime does not check yet",
-  isolation: "isolation floors, which no sandbox host here reports a level for yet",
   egress: "credentials for agents' requests, which go only through an egress proxy, and this runtime has none yet",
-};
+} as const satisfies Partial<Record<(typeof LOCK_FIELDS_0_5)[number], string>>;
+type Unenforced = keyof typeof UNENFORCED;
 
 /** A 0.4 package: its program, or a module it was packaged with, is written in 0.4. Its decisions are always signed. */
 export function isSigned04(program: Program, modules: Modules = {}): boolean {
@@ -114,7 +115,7 @@ export function verifyPackage(pkg: Package): void {
     const later = all.filter((n) => !n.startsWith("lock."));
     if (later.length) throw new Violation("unsupported_language", `The package uses ${later.join(", ")} of mandate/0.4, which this runtime does not run yet (spec/envelope.md).`);
     // What the lock asks of the host and the sandboxes is enforced or not run with; never run on a best-effort basis.
-    const unenforced = all.filter((n) => n.startsWith("lock.")).map((n) => n.slice("lock.".length) as (typeof LOCK_FIELDS_0_5)[number]);
+    const unenforced = all.filter((n) => n.startsWith("lock.")).map((n) => n.slice("lock.".length) as Unenforced);
     if (unenforced.length) throw new Violation("unsupported_lock", `The package's lock sets ${unenforced.map((f) => `${f} (${UNENFORCED[f]})`).join(", ")}, which this runtime does not enforce yet (spec/boundary.md).`);
   }
   const programHash = hashProgram(pkg.program as unknown as Json).program;
@@ -140,6 +141,10 @@ export function verifyPackage(pkg: Package): void {
     const bad = validateLock({ lock: LOCK_FORMAT, ...pkg.lock });
     if (bad.length) throw new Violation("malformed_lock", `The package's lock is malformed: ${bad.map((d) => d.message).join(" ")}`);
   }
+  // What the lock asks of a sandbox applies to the program (E1802, E1803): a floor in the lock of a program whose
+  // requirements carry no isolation level would not be enforced, so it is not run with.
+  const misfit = sandboxLockChecks(linkedProgram(pkg.program, modules), pkg.lock).filter((d) => d.severity === "error");
+  if (misfit.length) throw new Violation("load_verification_failed", `The package's lock does not apply to its program: ${misfit.map((d) => `${d.code} ${d.message}`).join(" ")}`);
   if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings) {
     const missing = [...modelTiers(pkg.program)].filter((t) => !Object.hasOwn(pkg.lock.models ?? {}, t)).sort();
     if (missing.length) throw new Violation("unlocked_model_tier", `Model tiers are not locked: ${missing.join(", ")} (MDT-E0141).`);

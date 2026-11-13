@@ -188,6 +188,9 @@ export class WindowsMxcHost implements SandboxHost {
       exec: "args_prefix",
       timeout: true,
       ui: true,
+      // An AppContainer, or a session, is the user's own Windows, beside whatever else runs on it: `process`, shared.
+      level: "process",
+      co_tenancy: "shared",
     };
   }
 

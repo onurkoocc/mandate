@@ -158,6 +158,13 @@ describe("MxcHost against a fake SDK", () => {
     expect(planned).toEqual({ unsupported: ["an outbound host allow-list"] });
   });
 
+  it("reports the isolation it gives, process on a shared host, so a requirement that asks more is refused by name", async () => {
+    const host = new MxcHost({ sdk: new FakeSdk() });
+    expect(await host.probe()).toMatchObject({ level: "process", co_tenancy: "shared" });
+    const req = { ...requirement({ read: ["/work/repo"] }), format: "mandate/sandbox-requirement/0.2", isolation: { min: "user_kernel", co_tenancy: "forbidden", data_class: "internal", untrusted_network: false } } as SandboxRequirement;
+    expect(await adapter(host).plan(req)).toEqual({ unsupported: ["isolation user_kernel (this host gives process)", "co_tenancy forbidden (this host may share)"] });
+  });
+
   it("keeps the host's runtime directories out of every sandbox: each process's request masks them", async () => {
     const sdk = new FakeSdk();
     const host = new MxcHost({ sdk, baseline: ["/opt/node"] });
