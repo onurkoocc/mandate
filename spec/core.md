@@ -1,19 +1,19 @@
 # Mandate core, 0.1 to 0.5
 
-Mandate is a coordination and contract language for agents. Agents write
-programs. People review them through generated views. The compiler checks
+Mandate is a coordination and contract language for agents. People review
+programs through generated views, and the compiler checks
 authority, effects, budgets, contracts and delegation before anything runs.
 
 This page is the compact core of the language, for an agent's context
-(design doc 4, G8: under 8,000 tokens). It says what a program means; the
-other pages hold the detailed rules:
+(design doc 4, G8: under 8,000 tokens). The other pages hold the detailed
+rules:
 
-- [`ir.md`](ir.md) and [`ir.schema.json`](ir.schema.json): the IR, its schema and hashing;
+- [`ir.md`](ir.md) and [`ir.schema.json`](ir.schema.json): the IR and its schema;
 - [`checks.md`](checks.md): the static checks;
 - [`runtime.md`](runtime.md): execution;
 - [`sandbox.md`](sandbox.md): sandboxes;
-- [`views.md`](views.md): the views people review;
-- [`mcp.md`](mcp.md): the compiler as an MCP server for agents;
+- [`views.md`](views.md): the views;
+- [`mcp.md`](mcp.md): the compiler as an MCP server;
 - [`system.md`](system.md): the system model, change sets, boundary evidence, reads and run modes;
 - [`diagnostics.md`](diagnostics.md): diagnostic codes;
 - [`envelope.md`](envelope.md): 0.4: roles, signed decisions, envelopes, `map` and `plan`;
@@ -48,7 +48,7 @@ A program is one module: a canonical JSON IR document, closed by
 - The program hash is
   `SHA256("mandate/program/<v>\n" ‖ JCS(program))`, written
   `sha256:<hex>`, where `<v>` is the language version. Each definition is
-  hashed the same way under the domain `def`. A patch names the hash it was written against and is refused
+  hashed likewise under the domain `def`. A patch names the hash it was written against and is refused
   (`stale_base`) if the program has changed since.
 
 Definition kinds:
@@ -64,7 +64,7 @@ Definition kinds:
 | `agent` | A role, capabilities, a budget and skills; or a remote A2A binding |
 | `workflow` | An entry point: parameters, capabilities, budget, body, event handlers |
 | `contract` | Acceptance criteria over its parameters |
-| `component` | 0.3: a deployable unit of a system: repository, root, owner, build and test commands, interfaces it provides and consumes, its own governance-class file patterns |
+| `component` | 0.3: a deployable unit: repository, root, owner, build and test commands, interfaces it provides and consumes, its own governance-class file patterns |
 | `interface` | 0.3: a contract between components (`openapi`, `mcp_tools`, `oauth`, `event`, `db_schema`) and its spec file |
 | `environment` | 0.3: its data class, declared reads, and the weakest authorization each effect accepts there |
 | `role` | 0.4: a role people hold; the lock says who ([`envelope.md`](envelope.md)) |
@@ -84,7 +84,7 @@ currencies are never added implicitly. A duration is milliseconds. A
 <a id="paths"></a>A `Path` names a file relative to the root of a working copy, the same
 way on every host and executor (K68). It is one or more segments separated
 by `/`, none empty, `.` or `..`, with no `\`, no `:` (a Windows drive or
-stream) and no NUL. As a JSON Schema pattern (ECMA 262):
+alternate data stream) and no NUL. As a JSON Schema pattern (ECMA 262):
 
 ```text
 ^(S)(/(S))*$    S = [^/\\:\x00.][^/\\:\x00]* | \.[^/\\:\x00.][^/\\:\x00]* | \.\.[^/\\:\x00]+
@@ -148,7 +148,7 @@ A model asked to choose from a closed set returns
 - A policy function (`threshold`, `top_margin` or `abstain_if`) turns it
   into `Confident(T) | Uncertain`.
 - A `switch` on that result must handle `Uncertain`.
-- A raw decision cannot steer control flow.
+- A raw decision cannot steer control flow or reach a critical effect.
 
 ## 3. Effects
 
@@ -177,7 +177,7 @@ effects carry their declared name, e.g. `git.open_pr`.
 
 A capability is the authority to use an effect over a scope. A program
 cannot create authority. Capabilities are granted at the entry point,
-passed explicitly.
+passed explicitly, and can only shrink.
 
 | Constructor | Authorizes | Scope |
 |---|---|---|
@@ -249,7 +249,7 @@ use from above.
 
 ### 5.2 Faults and supervision
 
-Expected failures are values that a program can match: `Timeout`,
+Expected failures are values a program can match: `Timeout`,
 `BudgetExceeded`, `Throttled(retry_after)`, `SkillFailed(…)`, `Rejected(…)`,
 `PolicyDenied(…)` and `UnknownOutcome(…)`.
 
@@ -270,7 +270,8 @@ program: the run stops for a person (`attention_required`).
 - **Static.** The checker adds up what a workflow hands out and compares
   it with its own budget. Sequences and `par` add up money and
   tokens; `par` takes the longest time; `if` and `switch` take the larger
-  branch; `loop` multiplies by `max_iter`.
+  branch; `loop` multiplies by `max_iter`. Upper bounds are used, never
+  averages.
 - **Rate limits.** Shared token buckets limit model and tool calls per
   unit of time. An empty bucket or a provider's quota makes a call
   `Throttled`: it waits and is sent again, not counting as an attempt or
@@ -291,7 +292,7 @@ program: the run stops for a person (`attention_required`).
 contract FixAccepted(issue: Issue, pr: PullRequestDraft) {
   require issue.reproducible
   accept suite_green "The existing test suite passes" by test.suite(["unit", "integration"])
-  accept owner_approved "The code owner approved"     by human.approve(role: "code_owner")
+  accept owner_approved "The code owner approved" by human.approve(role: "code_owner")
 }
 ```
 
@@ -307,7 +308,7 @@ contract FixAccepted(issue: Issue, pr: PullRequestDraft) {
   is unmet.
 - **Evidence.** Each check records evidence, produced by the
   verifier and never by the agent. A met contract makes the value
-  `Verified<T, C>`, carrying the ids of its evidence.
+  `Verified<T, C>`, carrying its evidence ids.
 - **Unmet criteria.** They go to `on unmet(c)`, or else the verify fails
   with `Rejected`. An answer to an escalation is never `Verified`.
 
@@ -321,7 +322,7 @@ contract FixAccepted(issue: Issue, pr: PullRequestDraft) {
   people. Its result is recorded before the program sees it.
 - **Recovery and replay.** Recovery from a crash and replay both
   re-run the body against the record. A recorded command is never sent
-  again (INV-09).
+  again, and replay calls no adapter (INV-09).
 - **A changed request.** A recorded command found with a different request
   stops the run (`nondeterministic_replay`).
 - **Pinned package.** A run keeps its package. Before it starts,
@@ -336,8 +337,7 @@ A critical effect runs in three steps.
    covers the package, run, node, effect, adapter and its contract,
    parameters, evidence and business key.
 2. **Authorize.**
-   - Policy authorizes by default; a person must authorize an irreversible
-     effect.
+   - Policy authorizes by default; an irreversible effect needs a person.
    - A person's approval is bound to the digest they saw and holds only
      before the wait's deadline.
    - A model or a program cannot authorize.
@@ -354,8 +354,8 @@ On recovery, a dispatched action follows its retry class:
 | `reconcilable` | The system of record is asked first; sent again only with proof it was not applied |
 | `non_retryable` | Never sent again; the action becomes `unknown_outcome` |
 
-An unknown outcome waits for reconciliation, and no run ends cleanly while
-an action is unresolved (INV-12). Automatic
+An unknown outcome is never retried blindly. It waits for reconciliation,
+and no run ends cleanly while an action is unresolved (INV-12). Automatic
 compensation does not exist in 0.1; it is only offered to a person.
 
 ### 7.3 People and cancellation
@@ -382,7 +382,7 @@ isolation or in a permissive mode (INV-11).
 
 ## 8. Invariants
 
-Every conforming implementation keeps these:
+Implementations *must* keep these:
 
 | Id | Invariant | Where 0.1 keeps it |
 |---|---|---|
@@ -395,7 +395,7 @@ Every conforming implementation keeps these:
 | INV-07 | An unknown outcome is neither success nor failure until reconciled | `unknown_outcome` |
 | INV-08 | A budget covers the whole run | One ledger per run; atomic reservations |
 | INV-09 | Replay makes no model call and no external effect | Replay reads the record only |
-| INV-10 | Views of authority, effects and state come from the program and the record | Computed from the IR and the journal; they name the program hash and the revision they show |
+| INV-10 | Views of authority, effects and state come from the program and the record | Computed from the IR and the journal; they name the program hash and revision shown |
 | INV-11 | An unsupported security requirement is never dropped silently | Sandbox probe; E0902 |
 | INV-12 | No clean end while an external effect is unresolved | `attention_required` |
 | INV-13 | `Inferred` and `Untrusted` values do not reach a critical effect or an instruction unverified | R1, R4, R5; runtime check of `Verified` parameters |

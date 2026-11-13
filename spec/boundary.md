@@ -1111,9 +1111,10 @@ was asked of the role:
   its request names. What `R` is asked to decide on is shown to it as
   `mandate status` shows it, the subject or the question included: the
   program put that before `R`. This and the halt below (its reason and who
-  halted) are the two places a role's view shows what a person wrote. A wait asked of another role, or of none, shows that the run
-  waits, and nothing else. A question of a program before 0.4 names no
-  role in its wait, so it is asked of no role this view can name.
+  halted) are the two places a role's view shows content. A wait asked of
+  another role, or of none, shows that the run waits, and nothing else. A
+  question of a program before 0.4 names no role in its wait, so it is
+  asked of no role this view can name.
 - **The decisions asked of `R`**: each decision whose wait was asked of
   `R` (`wait_opened`), and each decision on no wait made in `R`'s role (the
   envelope's approval, a cancel, a raise of the limits), with its member,
