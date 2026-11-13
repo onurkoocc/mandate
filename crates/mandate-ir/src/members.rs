@@ -6,8 +6,8 @@
 //!
 //! An array index is the canonical decimal form of an integer from 0 to
 //! 2^32 − 2: `"0"`, `"10"` and `"4294967294"` are; `"007"`, `"-1"`, `"1.0"`
-//! and `"4294967295"` are not. [`crate::Map`] keeps its members here, so
-//! iterating one is iterating the object the
+//! and `"4294967295"` are not. [`crate::Map`] and [`crate::JsObject`] keep
+//! their members here, so iterating either is iterating the object the
 //! TypeScript compiler holds, whether it was built by `JSON.parse` or by
 //! assignments in the compiler.
 //!

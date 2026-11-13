@@ -35,10 +35,12 @@
 mod diag;
 mod hash;
 mod jcs;
+mod js_value;
 pub mod limits;
 mod members;
 mod number;
 mod reader;
+mod text;
 mod value;
 
 pub use diag::{Diagnostic, Location, Severity, Span, ptr_token};
@@ -46,6 +48,10 @@ pub use hash::{
     HashDomain, ProgramHashes, RUNTIME_HASH_VERSION, domain_hash, hash_program, package_hash,
 };
 pub use jcs::{canonicalize, compare_utf16, write_json_string};
+pub use js_value::{JsObject, JsValue, stringify, stringify_pretty};
 pub use number::{is_integer, is_safe_integer, number_to_string, write_number};
 pub use reader::{Parsed, parse, parse_bytes};
+pub use text::{
+    is_js_whitespace, sort_utf16, trim, trim_end, trim_start, unique_in_order, utf16_len,
+};
 pub use value::{Int, Map, Value};
