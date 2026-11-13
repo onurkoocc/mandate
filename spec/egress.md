@@ -1,9 +1,10 @@
 # Egress (0.5)
 
 **Status: the contract and a reference proxy are implemented in the
-TypeScript implementation. Nothing in the runtime uses them yet.** The
-runtime's adapters move behind the proxy in a later change, and sandboxes
-are connected to it after that.
+TypeScript implementation.** The runtime's own adapters go through it in
+gateway sessions when its configuration turns the gateways on
+([`boundary.md`](boundary.md#the-control-planes-gateways)); sandboxes are
+connected to it in a later change.
 
 Outbound traffic goes through one **egress proxy**, and the proxy holds the
 secrets. A sandbox, and the runtime's own HTTP clients, hold only
