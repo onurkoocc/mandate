@@ -189,7 +189,8 @@ pull request was opened, for 0.23 USD.
    only on a host that meets them (`unfit_host`); and views by role:
    `mandate show --role R` shows a run as one of its program's roles may
    see it, and `--audit` everything, with its events and the chain's
-   status. The rest is not enforced
+   status. `mandate otel export` posts a run's journal to an OpenTelemetry
+   collector as spans without content. The rest is not enforced
    yet, so nothing that needs it runs: the runtime refuses a package whose
    lock sets `egress`, by name, and the sandbox adapter refuses a
    requirement that limits methods or carries credentials.

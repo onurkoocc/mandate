@@ -29,7 +29,8 @@ the configuration and the CLI.
 | The control plane's adapters through gateways; `credential_in_environment` | PR 7 | specified |
 | Sandbox egress on Linux through the proxy | PR 8 | specified; enforceable where the sandbox SDK reports it, shown on the CI runner |
 | Sandbox egress on Windows | — | refused by name |
-| Views by role and the audit view; the OpenTelemetry projection | PR 9 | role and audit views implemented; the OpenTelemetry projection is a separate change |
+| Views by role and the audit view | PR 9 | implemented |
+| The OpenTelemetry projection | PR 9 | implemented |
 | An independent journal verifier, `verify-journal`, in Rust | R3 | implemented (`crates/verify-journal`: every journal case, and a fresh export of a real run on CI) |
 
 Until a part lands, nothing it would enforce runs. A 0.5 package whose lock
@@ -895,26 +896,110 @@ the journal as it is, a journal tests change on purpose included.
 
 ## The OpenTelemetry projection
 
-*Specified; implemented by PR 9.*
+*Implemented (`runtime/src/otel.ts`, `runtime/test/otel.test.ts`).*
 
-- `mandate otel export --endpoint <url> [--run <R> | --tenant <T>] [--follow]`
+- `mandate otel export --endpoint <url> [--run <R> | --tenant <T>] [--follow] [--json]`
   runs outside every run: an export that fails does not touch one. The
-  journal stays the authority.
-- OTLP/HTTP with JSON bodies, written by hand: no new dependency.
+  journal stays the authority. It reads the database, takes no lease and
+  writes no event; the only table it writes is `otel_cursors`. With neither
+  `--run` nor `--tenant` it exports every run; the two together are a usage
+  error (exit 2).
+- OTLP/HTTP with JSON bodies, written by hand: no new dependency. A post is
+  `POST <url>/v1/traces` with `content-type: application/json`, and with
+  no other header: the export sends no credential, and there is no option
+  to give it one.
 - **No content, ever**: no argument, result, prompt, output, file or
   decision text leaves. What leaves is identifiers, types, classes, model
-  ids, counts, sequence numbers and hashes.
+  ids, counts, sequence numbers, hashes and times.
+- **An allow-list (INV-17, G24).** Every span and span event is built from
+  the fixed set of fields below. Nothing is copied from an event's `data`,
+  and the loader reads two members of it only: the `command` it names, and
+  the `meta.locked` the model adapter reports, used only when the lock
+  pins that very model id. A new event type exports its type, class,
+  sequence number and hash, and nothing else, until a field is added for it
+  here, on purpose.
+- **Spans.** A run is a trace. Its spans are the run's own span, named
+  `mandate.run`, which has no parent, and one span for each command the
+  run has events about, named `mandate.<kind>` (`infer`, `turn`, `tool`,
+  `delegate`, `read`, `time` and the rest), whose parent is the run's
+  span. An event of the journal is a span event of the span it is about:
+  of the command's span when the event's data names a command of the run,
+  of the run's span otherwise. Spans are of kind internal. A span starts at
+  its first event and ends at its last event so far.
 - **Identifiers.** The trace id is the first 16 bytes of
   `sha256("mandate/otel-trace/0.1\n" ‖ run)`, a span's id the first 8 bytes
-  of `sha256("mandate/otel-span/0.1\n" ‖ run ‖ "\n" ‖ command)`. An export
-  run twice gives the same ids.
-- **Attributes.** GenAI: `gen_ai.operation.name`, and
-  `gen_ai.request.model`, the model the lock maps the call's tier to.
-  Mandate's own under `mandate.*`: the run, tenant, package, command,
-  event type, class, sequence number and hash. The semantic conventions'
-  schema URL is pinned.
-- **Resuming.** A cursor per endpoint and run (`otel_cursors`) records what
-  was exported, so an export resumes where it stopped.
+  of `sha256("mandate/otel-span/0.1\n" ‖ run ‖ "\n" ‖ command)`, both as
+  lower-case hex. The run's own span is the span of the empty command, so
+  its id is the first 8 bytes of `sha256("mandate/otel-span/0.1\n" ‖ run ‖ "\n")`;
+  no command has an empty id. An export run twice gives the same ids, and
+  the same bodies.
+- **Attributes.** GenAI: `gen_ai.operation.name` of a command span, `chat`
+  for `infer` and `turn`, `execute_tool` for `tool` and `invoke_agent` for
+  `delegate`, and none for the other kinds; and `gen_ai.request.model` of
+  an `infer` or a `turn`, the model the lock maps the call's tier to. A
+  call's tier is not in the journal. The model is the one the adapter
+  reported for the call when the lock pins it, else the model of the one
+  tier the program names, and absent when the program names several and
+  the adapter reported none, or the lock pins none. Mandate's own, under
+  `mandate.*`:
+
+  | Where | Attribute | Value |
+  |---|---|---|
+  | every span | `mandate.run`, `mandate.tenant` | The run and its tenant |
+  | every span | `mandate.package` | The hash of the package: the run's, or for a command the one it was first recorded under |
+  | every span | `mandate.span.events` | An integer: the events of the span so far |
+  | a command span | `mandate.command` | The command's id, when it is shaped like one the runtime builds (letters, digits and `_ . : / @ # > [ ] -`, at most 200); otherwise `sha256:` and 16 hex digits of its hash |
+  | a command span | `mandate.command.kind` | The command's kind |
+  | a span event | `mandate.event.type`, `mandate.event.class` | The event's type, and its class (S0 to S4) assigned from the type alone |
+  | a span event | `mandate.event.seq`, `mandate.event.hash` | The event's sequence number, an integer, and its hash, when it has one |
+
+  A span event is named by its type and is timed by the event's time.
+  A span has a status of OK or ERROR once it is known: the run's when its
+  `run_succeeded` or `run_failed` event is among the events up to the
+  body's last, a command's when its `command_completed` event is and its
+  row says `succeeded` or `failed`. Times are unix nanoseconds as decimal strings, integers are
+  decimal strings, ids are lower-case hex. The resource is `service.name`
+  `mandate`; the scope is `mandate.otel` `0.1`. The semantic conventions'
+  schema URL is pinned, on the resource and on the scope:
+  `https://opentelemetry.io/schemas/1.37.0`.
+- **Resuming.** A cursor per endpoint and run (`otel_cursors`: the
+  endpoint, the run, the last sequence number exported and when) records
+  what was exported, so an export resumes where it stopped. An export
+  sends the events after the cursor, and a second one when nothing has been
+  written sends nothing. The endpoint is the key as the command normalises
+  it: no trailing slash.
+- **Batches.** The events after the cursor go in posts of at most 500
+  events. A body holds the spans of its events in order, and the run's span
+  in each, so that a command's span has its parent in the same body.
+  A span that more events belong to is sent again, in a later body, with the
+  same id, the same start, the end of its last event so far and only the
+  events that body carries. The cursor moves, in its own statement, after
+  the collector has accepted the post, and never back. An export is
+  therefore at least once: a crash between the post and the cursor sends that
+  post again.
+- **Failure.** A post that is not answered 2xx, a connection that fails, a
+  redirect (which is never followed, so the spans go where the operator said)
+  and a collector that does not answer within 10 seconds are
+  `otel_export_failed`: the command says so on stderr, naming the status or
+  the cause and never what was sent, and exits 1. The cursor stays where the
+  last accepted post left it; no run is touched. A 2xx that reports rejected
+  spans (`partialSuccess`) is accepted, and the count is reported: sending the
+  same spans again would be rejected the same way.
+- **The endpoint** is an `http://` or `https://` URL with a host. It has no
+  user or password, query or fragment, and does not end in `/v1/traces`,
+  which is added to it: each of these is a usage error (exit 2). `http` is
+  allowed, for a collector on a trusted network; what it carries is no
+  content.
+- **`--follow`** exports what there is, waits two seconds, and exports what
+  was written since, until SIGINT or SIGTERM, which stop it cleanly
+  (a post in flight is abandoned, its cursor not moved). A failed pass is
+  reported on stderr and tried again at the next; it exits 1 only when it was
+  stopped while the collector was failing, 0 otherwise. Runs of `--tenant`,
+  or of every tenant, begun after it started are exported too.
+- **The classes** are given to the projection as a function from an event
+  type to its class. Until the table that assigns them for the role views
+  exists, `runtime/src/otel.ts` has a stand-in of its own, `defaultClassOf`,
+  which gives a type it does not name S4.
 
 ## Invariants
 
