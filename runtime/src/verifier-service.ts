@@ -95,7 +95,20 @@ export interface ProcessVerifierOptions {
   trusted: TrustedKeys;
   package: VerifierPackage;
   /** The process's whole environment (env.ts `verifierEnv`); without it, only what any program needs (`childEnv`). */
-  env?: NodeJS.ProcessEnv;
+  env?: NodeJS.ProcessEnv | ChildEnvSource;
+}
+
+/**
+ * An environment made when the process starts, such as one that carries a gateway session's address and placeholder
+ * (gateway.ts). `stale` says when the process is to be started again, with a new one, before the next request that
+ * finds it idle; `release` is called when the process it was made for is let go.
+ */
+export interface ChildEnvSource {
+  make(): Promise<{ env: NodeJS.ProcessEnv; stale?: () => boolean; release?: () => void }>;
+}
+
+function isSource(e: NodeJS.ProcessEnv | ChildEnvSource | undefined): e is ChildEnvSource {
+  return typeof (e as ChildEnvSource | undefined)?.make === "function";
 }
 
 /** The runtime's side: a VerifierAdapter whose checks run in another process and come back signed. */
@@ -103,6 +116,9 @@ export class ProcessVerifier implements VerifierAdapter {
   private child: ChildProcessWithoutNullStreams | undefined;
   private next = 1;
   private readonly pending = new Map<number, { resolve(v: Value): void; reject(e: Error): void }>();
+  /** A process being started from an environment source, and what the source made for the current process. */
+  private starting: Promise<ChildProcessWithoutNullStreams> | undefined;
+  private made: { stale?: () => boolean; release?: () => void } | undefined;
 
   constructor(private readonly o: ProcessVerifierOptions) {}
 
@@ -138,12 +154,34 @@ export class ProcessVerifier implements VerifierAdapter {
   close(): void {
     this.child?.stdin.end();
     this.child = undefined;
+    this.letGo();
   }
 
-  private start(): ChildProcessWithoutNullStreams {
+  /** Lets go of what the environment source made for the process that ended. */
+  private letGo(): void {
+    const made = this.made;
+    this.made = undefined;
+    made?.release?.();
+  }
+
+  /** The process to send to, from an environment source: started again, with a new environment, when idle and stale. */
+  private async fromSource(src: ChildEnvSource): Promise<ChildProcessWithoutNullStreams> {
+    if (this.child && !(this.pending.size === 0 && this.made?.stale?.())) return this.child;
+    if (this.child) this.close();
+    this.starting ??= src
+      .make()
+      .then((m) => {
+        this.made = m;
+        return this.start(m.env);
+      })
+      .finally(() => (this.starting = undefined));
+    return this.starting;
+  }
+
+  private start(env: NodeJS.ProcessEnv = childEnv()): ChildProcessWithoutNullStreams {
     const [cmd, ...args] = this.o.command;
     // Only what the caller gives, or what any program needs: never the runtime's whole environment (env.ts).
-    const child = spawn(cmd!, args, { stdio: ["pipe", "pipe", "pipe"], env: this.o.env ?? childEnv() });
+    const child = spawn(cmd!, args, { stdio: ["pipe", "pipe", "pipe"], env });
     const lines = createInterface({ input: child.stdout });
     lines.on("line", (line) => {
       let msg: { id?: number; result?: Value; error?: { message: string } };
@@ -162,7 +200,10 @@ export class ProcessVerifier implements VerifierAdapter {
     let stderr = "";
     child.stderr.on("data", (c) => (stderr = (stderr + String(c)).slice(-4000)));
     child.on("exit", (code) => {
-      if (this.child === child) this.child = undefined;
+      if (this.child === child) {
+        this.child = undefined;
+        this.letGo();
+      }
       for (const [, p] of this.pending) p.reject(new Error(`the verifier process exited (${code}): ${stderr.trim()}`));
       this.pending.clear();
     });
@@ -171,8 +212,9 @@ export class ProcessVerifier implements VerifierAdapter {
     return child;
   }
 
-  private call(method: string, params: Value): Promise<Value> {
-    const child = this.child ?? this.start();
+  private async call(method: string, params: Value): Promise<Value> {
+    const env = this.o.env;
+    const child = isSource(env) ? await this.fromSource(env) : (this.child ?? this.start(env));
     const id = this.next++;
     const answer = new Promise<Value>((resolve, reject) => this.pending.set(id, { resolve, reject }));
     this.send(child, method, params, id);

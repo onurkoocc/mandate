@@ -57,6 +57,19 @@ describe("a gateway session", () => {
     expect(w.dials).toEqual([{ host: "api.anthropic.com", address: "93.184.215.14", port: 443, tls: true }]);
   });
 
+  it("removes an upstream's denial header from its answer, as a forward session does", async () => {
+    w.up.handler = (_req, res) => {
+      res.writeHead(403, { "content-type": "application/json", "x-mandate-egress-denied": "session_expired" });
+      res.end("{}");
+    };
+    const g = await gateway();
+    const r = await send(g.port, http(["POST /v1/messages HTTP/1.1", "host: x", `x-api-key: ${g.ph}`, "content-length: 0"]));
+    expect(r.status).toBe(403);
+    expect(r.header("x-mandate-egress-denied")).toBeUndefined();
+    expect(w.up.seen).toHaveLength(1);
+    expect(await lastWhy(g.id)).toBeUndefined();
+  });
+
   it("has exactly one destination", async () => {
     await expect(
       w.client.openSession({ session: sid(), tenant: "acme", run: "r1", command: "c1", kind: "gateway", destinations: [{ host: "api.anthropic.com", methods: null, credential: "model" }, { host: "example.org", methods: null, credential: null }], ttl_ms: 1000 }),
