@@ -14,7 +14,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { main } from "../src/cli.js";
 import type { Db } from "../src/db.js";
-import { defaultClassOf, otelEndpoint, otelExport, project, spanId, traceId, type CommandFact, type EventFact, type OtelOptions, type OtlpBody, type OtlpSpan } from "../src/otel.js";
+import { defaultClassOf, eventSpanId, otelEndpoint, otelExport, project, spanId, traceId, windows, type CommandFact, type EventFact, type OtelOptions, type OtlpBody, type OtlpSpan } from "../src/otel.js";
 import { Runtime } from "../src/runtime.js";
 import { MxcAdapter } from "../src/sandbox.js";
 import { SimChat, SimModel, SimSandboxHost, toolUse, type SimTurn } from "../src/sim.js";
@@ -63,9 +63,19 @@ class Collector {
     return this.posts.flatMap((p) => p.body.resourceSpans.flatMap((r) => r.scopeSpans.flatMap((s) => s.spans)));
   }
 
-  /** The sequence numbers of the span events posted: those of one post in order, the posts in the order they came. */
+  /** The spans of one post. */
+  static spansOf(p: Post): OtlpSpan[] {
+    return p.body.resourceSpans.flatMap((r) => r.scopeSpans.flatMap((s) => s.spans));
+  }
+
+  /** The spans that are an event's: those with a sequence number. */
+  get eventSpans(): OtlpSpan[] {
+    return this.spans.filter((s) => attr(s.attributes, "mandate.event.seq") !== undefined);
+  }
+
+  /** The sequence numbers of the events posted, in the order they came. */
   get seqs(): number[] {
-    return this.posts.flatMap((p) => p.body.resourceSpans.flatMap((r) => r.scopeSpans.flatMap((s) => s.spans.flatMap((x) => x.events.map((e) => Number(attr(e.attributes, "mandate.event.seq")))))).sort((a, b) => a - b));
+    return this.eventSpans.map((s) => Number(attr(s.attributes, "mandate.event.seq")));
   }
 
   async stop(): Promise<void> {
@@ -223,17 +233,20 @@ describe("what leaves", () => {
     await answer(w);
     const c = await collector();
     await exporting(w, c);
-    const spanKeys = new Set(["traceId", "spanId", "parentSpanId", "name", "kind", "startTimeUnixNano", "endTimeUnixNano", "attributes", "events", "status"]);
-    const spanAttrs = new Set(["mandate.run", "mandate.tenant", "mandate.package", "mandate.command", "mandate.command.kind", "mandate.span.events", "gen_ai.operation.name", "gen_ai.request.model"]);
-    const eventAttrs = new Set(["mandate.event.type", "mandate.event.class", "mandate.event.seq", "mandate.event.hash"]);
+    const spanKeys = new Set(["traceId", "spanId", "parentSpanId", "name", "kind", "startTimeUnixNano", "endTimeUnixNano", "attributes", "status"]);
+    const spanAttrs = new Set(["mandate.run", "mandate.tenant", "mandate.package", "mandate.command", "mandate.command.kind", "mandate.span.events", "mandate.event.type", "mandate.event.class", "mandate.event.seq", "mandate.event.hash", "gen_ai.operation.name", "gen_ai.request.model"]);
     expect(c.spans.length).toBeGreaterThan(5);
     for (const s of c.spans) {
       expect(Object.keys(s).every((k) => spanKeys.has(k))).toBe(true);
       expect(s.attributes.map((a) => a.key).filter((k) => !spanAttrs.has(k))).toEqual([]);
-      for (const e of s.events) {
-        expect(Object.keys(e).sort()).toEqual(["attributes", "name", "timeUnixNano"]);
-        expect(e.attributes.map((a) => a.key).filter((k) => !eventAttrs.has(k))).toEqual([]);
-      }
+    }
+    // An event's span has the event's attributes and none of a command's or the run's own; no span but an event's has them.
+    for (const s of c.spans) {
+      const keys = s.attributes.map((a) => a.key);
+      const event = keys.includes("mandate.event.seq");
+      expect(keys.some((k) => k.startsWith("mandate.event.")), s.name).toBe(event);
+      expect(keys.includes("mandate.span.events"), s.name).toBe(!event);
+      if (event) expect(s.status).toBeUndefined();
     }
     for (const p of c.posts) {
       expect(Object.keys(p.body)).toEqual(["resourceSpans"]);
@@ -248,28 +261,38 @@ describe("what leaves", () => {
     const c = await collector();
     await exporting(w, c, { scope: { run: "fix" } });
     const rows = await w.db.query<{ seq: number; type: string; hash: string }>("select seq, type, hash from events where run_id = 'fix' order by seq");
-    const sent = c.spans.flatMap((s) => s.events.map((e) => ({ seq: Number(attr(e.attributes, "mandate.event.seq")), type: attr(e.attributes, "mandate.event.type"), hash: attr(e.attributes, "mandate.event.hash"), class: attr(e.attributes, "mandate.event.class"), name: e.name })));
-    expect(sent.map((e) => e.seq).sort((x, y) => x - y)).toEqual(rows.map((r) => Number(r.seq)));
-    for (const r of rows) {
-      const e = sent.find((x) => x.seq === Number(r.seq))!;
-      expect([e.type, e.name, e.hash]).toEqual([r.type, r.type, r.hash]);
-      expect(e.hash).toMatch(/^sha256:/);
-      expect(e.class).toBe(defaultClassOf(r.type));
+    // Every event is a span of its own, once, in order, of no duration, named by its type.
+    expect(c.seqs).toEqual(rows.map((r) => Number(r.seq)));
+    for (const [i, r] of rows.entries()) {
+      const s = c.eventSpans[i]!;
+      expect([attr(s.attributes, "mandate.event.type"), s.name, attr(s.attributes, "mandate.event.hash")]).toEqual([r.type, r.type, r.hash]);
+      expect(attr(s.attributes, "mandate.event.hash")).toMatch(/^sha256:/);
+      expect(attr(s.attributes, "mandate.event.class")).toBe(defaultClassOf(r.type));
+      expect(s.startTimeUnixNano).toBe(s.endTimeUnixNano);
+      expect(s.status).toBeUndefined();
+      expect([attr(s.attributes, "mandate.run"), attr(s.attributes, "mandate.tenant"), attr(s.attributes, "mandate.package")]).toEqual(["fix", "acme", w.pkg.hash]);
     }
-    const root = c.spans.find((s) => s.name === "mandate.run")!;
+    const roots = c.spans.filter((s) => s.name === "mandate.run");
+    expect(roots).toHaveLength(1);
+    const root = roots[0]!;
     expect(root.parentSpanId).toBeUndefined();
-    expect(attr(root.attributes, "mandate.run")).toBe("fix");
-    expect(attr(root.attributes, "mandate.tenant")).toBe("acme");
-    expect(attr(root.attributes, "mandate.package")).toBe(w.pkg.hash);
+    expect([attr(root.attributes, "mandate.run"), attr(root.attributes, "mandate.tenant"), attr(root.attributes, "mandate.package")]).toEqual(["fix", "acme", w.pkg.hash]);
     expect(root.status).toEqual({ code: 1 });
-    // The commands: the delegation, the model turns and the tool calls, each a child of the run's span.
-    const kinds = c.spans.filter((s) => s.name !== "mandate.run").map((s) => attr(s.attributes, "mandate.command.kind"));
+    expect(attr(root.attributes, "mandate.span.events")).toBe(String(rows.length));
+    // The commands: the delegation, the model turns and the tool calls, each a child of the run's span, once.
+    const commands = c.spans.filter((s) => attr(s.attributes, "mandate.command.kind") !== undefined);
+    const kinds = commands.map((s) => attr(s.attributes, "mandate.command.kind"));
     for (const k of ["delegate", "turn", "tool"]) expect(kinds).toContain(k);
-    for (const s of c.spans.filter((x) => x.name !== "mandate.run")) expect(s.parentSpanId).toBe(root.spanId);
+    for (const s of commands) expect(s.parentSpanId).toBe(root.spanId);
+    expect(new Set(commands.map((s) => s.spanId)).size).toBe(commands.length);
+    // An event's parent is its command's span when its data names one of the run, and the run's span otherwise.
+    const dispatched = c.eventSpans.find((s) => attr(s.attributes, "mandate.event.type") === "command_dispatched")!;
+    expect(commands.map((s) => s.spanId)).toContain(dispatched.parentSpanId);
+    expect(c.eventSpans.find((s) => attr(s.attributes, "mandate.event.type") === "run_accepted")!.parentSpanId).toBe(root.spanId);
     // The violation is an event of the run, with the class of an exception.
-    const violation = sent.filter((e) => e.type === "violation");
+    const violation = c.eventSpans.filter((s) => attr(s.attributes, "mandate.event.type") === "violation");
     expect(violation.length).toBeGreaterThan(0);
-    expect(violation.every((e) => e.class === "S1")).toBe(true);
+    expect(violation.every((s) => attr(s.attributes, "mandate.event.class") === "S1")).toBe(true);
   });
 
   it("names the GenAI operation of a command, and the model the lock maps the call's tier to", async () => {
@@ -301,9 +324,8 @@ describe("what leaves", () => {
     await fix(w);
     const c = await collector();
     await exporting(w, c, { classOf: (t) => `class-of-${t.length}` });
-    const classes = c.spans.flatMap((s) => s.events.map((e) => [attr(e.attributes, "mandate.event.type")!, attr(e.attributes, "mandate.event.class")!]));
-    expect(classes.length).toBeGreaterThan(5);
-    for (const [type, cls] of classes) expect(cls).toBe(`class-of-${type!.length}`);
+    expect(c.eventSpans.length).toBeGreaterThan(5);
+    for (const s of c.eventSpans) expect(attr(s.attributes, "mandate.event.class")).toBe(`class-of-${attr(s.attributes, "mandate.event.type")!.length}`);
   });
 
   it("sends a post of spans to <endpoint>/v1/traces with a JSON body, and no credential", async () => {
@@ -317,15 +339,29 @@ describe("what leaves", () => {
     }
   });
 
-  it("bounds a post: no post carries more events than the batch", async () => {
+  it("bounds a post: no post carries more spans than the batch, the events and the spans that end with them", async () => {
     await fix(w);
     const c = await collector();
     await exporting(w, c, { batch: 4 });
     const total = (await w.db.query("select seq from events where run_id = 'fix'")).length;
-    expect(c.posts.length).toBe(Math.ceil(total / 4));
-    for (const p of c.posts) expect(p.body.resourceSpans[0]!.scopeSpans[0]!.spans.reduce((n, s) => n + s.events.length, 0)).toBeLessThanOrEqual(4);
-    expect(c.seqs).toEqual([...c.seqs].sort((x, y) => x - y).filter((x, i, a) => a.indexOf(x) === i));
-    expect(c.seqs.length).toBe(total);
+    for (const p of c.posts) expect(Collector.spansOf(p).length).toBeLessThanOrEqual(4);
+    expect(c.posts.length).toBeGreaterThan(Math.ceil(total / 4) - 1);
+    expect(c.seqs).toEqual(Array.from({ length: total }, (_, i) => i + 1));
+  });
+
+  it("bounds a post when one event ends more spans than a post holds: the run's end ends every command left open", async () => {
+    await ask(w);
+    // The run ends with a command still open: its wait for the person. A batch of 2 cannot hold the end's three spans.
+    await w.rt.cancelRun("ask");
+    const c = await collector();
+    await exporting(w, c, { batch: 2 });
+    for (const p of c.posts) expect(Collector.spansOf(p).length).toBeLessThanOrEqual(2);
+    const ids = c.spans.map((s) => s.spanId);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(c.spans.filter((s) => s.name === "mandate.run")).toHaveLength(1);
+    const total = (await w.db.query("select seq from events where run_id = 'ask'")).length;
+    expect(c.seqs).toEqual(Array.from({ length: total }, (_, i) => i + 1));
+    expect((await cursors(w.db))[0]!.seq).toBe(total);
   });
 
   it("is the same body when exported twice to two endpoints, with the spec's ids", async () => {
@@ -342,40 +378,152 @@ describe("what leaves", () => {
     const spans = one.spans.filter((s) => attr(s.attributes, "mandate.run") === "ask");
     expect(spans.length).toBeGreaterThan(1);
     for (const s of spans) expect(s.traceId).toBe(hex("mandate/otel-trace/0.1\nask", 32));
-    const mine = spans.find((s) => attr(s.attributes, "mandate.command") === infer!.command_id)!;
+    const root = hex("mandate/otel-span/0.1\nask\n", 16);
+    // A command's span: its own id, a child of the run's span.
+    const mine = spans.find((s) => attr(s.attributes, "mandate.command") === infer!.command_id && attr(s.attributes, "mandate.command.kind") === "infer")!;
     expect(mine.spanId).toBe(hex(`mandate/otel-span/0.1\nask\n${infer!.command_id}`, 16));
-    expect(mine.parentSpanId).toBe(hex("mandate/otel-span/0.1\nask\n", 16));
-    expect(spans.find((s) => s.name === "mandate.run")!.spanId).toBe(hex("mandate/otel-span/0.1\nask\n", 16));
+    expect(mine.parentSpanId).toBe(root);
+    // An event's span: the id of its sequence number in decimal, a child of its command's span or of the run's.
+    const events = spans.filter((s) => attr(s.attributes, "mandate.event.seq") !== undefined);
+    expect(events.length).toBeGreaterThan(5);
+    for (const s of events) {
+      const seq = attr(s.attributes, "mandate.event.seq")!;
+      expect(s.spanId).toBe(hex(`mandate/otel-event/0.1\nask\n${seq}`, 16));
+      const command = attr(s.attributes, "mandate.command");
+      expect(s.parentSpanId).toBe(command === undefined ? root : hex(`mandate/otel-span/0.1\nask\n${command}`, 16));
+    }
     expect(mine.traceId).toMatch(/^[0-9a-f]{32}$/);
     expect(mine.spanId).toMatch(/^[0-9a-f]{16}$/);
     expect(traceId("ask")).toBe(mine.traceId);
     expect(spanId("ask", infer!.command_id)).toBe(mine.spanId);
+    expect(eventSpanId("ask", 3)).toBe(hex("mandate/otel-event/0.1\nask\n3", 16));
+    // The run's own span is the span of the empty command; the run is waiting, so it has not ended and is not sent yet.
+    expect(spanId("ask", "")).toBe(root);
+    expect(spans.some((s) => s.name === "mandate.run")).toBe(false);
   });
 
   it("writes times as unix nanoseconds, in decimal strings, from the events' times", async () => {
     await fix(w);
     const c = await collector();
     await exporting(w, c);
-    const [first] = await w.db.query<{ at: string }>("select at from events where run_id = 'fix' order by seq limit 1");
+    const rows = await w.db.query<{ seq: number; at: string }>("select seq, at from events where run_id = 'fix' order by seq");
     const root = c.spans.find((s) => s.name === "mandate.run")!;
-    expect(root.startTimeUnixNano).toBe((BigInt(first!.at) * 1_000_000n).toString());
+    expect(root.startTimeUnixNano).toBe((BigInt(rows[0]!.at) * 1_000_000n).toString());
+    expect(root.endTimeUnixNano).toBe((BigInt(rows.at(-1)!.at) * 1_000_000n).toString());
     for (const s of c.spans) {
       expect(s.startTimeUnixNano).toMatch(/^\d+$/);
       expect(BigInt(s.endTimeUnixNano) >= BigInt(s.startTimeUnixNano)).toBe(true);
     }
+    for (const s of c.eventSpans) expect(s.startTimeUnixNano).toBe((BigInt(rows[Number(attr(s.attributes, "mandate.event.seq")) - 1]!.at) * 1_000_000n).toString());
+  });
+});
+
+describe("no span is sent twice", () => {
+  /** The spans of every body, with the number of the body each was in. */
+  const placed = (c: Collector) => c.posts.flatMap((p, i) => Collector.spansOf(p).map((s) => ({ s, post: i })));
+
+  it("holds over a whole export in passes and small batches, on a run that waits for a person in the middle and then finishes", async () => {
+    await ask(w);
+    const c = await collector();
+    const sent = async (): Promise<void> => void (await exporting(w, c, { batch: 3 }));
+    await sent();
+    // The run waits: its events are out, and the commands that finished; the run's span is not.
+    expect(c.spans.some((s) => s.name === "mandate.run")).toBe(false);
+    expect(c.spans.some((s) => attr(s.attributes, "mandate.command.kind") === "infer")).toBe(true);
+    await sent();
+    expect(c.posts.length).toBeGreaterThan(0);
+    await answer(w);
+    await sent();
+    await sent();
+
+    const all = placed(c);
+    // Every span id in exactly one posted body, and once.
+    const ids = all.map(({ s }) => s.spanId);
+    expect(new Set(ids).size).toBe(ids.length);
+    // Every event's sequence number exactly once.
+    const events = await w.db.query<{ seq: number; type: string; data_command: string | null }>("select seq, type, data->>'command' as data_command from events where run_id = 'ask' order by seq");
+    expect(c.seqs).toEqual(events.map((e) => Number(e.seq)));
+    // The run's span once, in the body that holds the run's last event.
+    const last = events.length;
+    const bodyOf = (seq: number): number => all.find(({ s }) => attr(s.attributes, "mandate.event.seq") === String(seq))!.post;
+    const roots = all.filter(({ s }) => s.name === "mandate.run");
+    expect(roots).toHaveLength(1);
+    expect(roots[0]!.post).toBe(bodyOf(last));
+    expect(roots[0]!.s.spanId).toBe(spanId("ask", ""));
+    // A command's span in the body that holds the event that ends it: its completion.
+    const commands = all.filter(({ s }) => attr(s.attributes, "mandate.command.kind") !== undefined);
+    expect(commands.length).toBeGreaterThan(2);
+    const rows = await w.db.query<{ command_id: string }>("select command_id from commands where run_id = 'ask' order by command_id");
+    for (const { command_id: id } of rows) {
+      const done = events.find((e) => e.type === "command_completed" && e.data_command === id);
+      const at = commands.filter(({ s }) => s.spanId === spanId("ask", id));
+      expect(at, id).toHaveLength(1);
+      expect(at[0]!.post, id).toBe(bodyOf(done ? Number(done.seq) : last));
+    }
+    // Bodies hold at most the batch.
+    for (const p of c.posts) expect(Collector.spansOf(p).length).toBeLessThanOrEqual(3);
+  });
+
+  it("ends a cancelled run's trace: its span is sent, with no status", async () => {
+    await ask(w);
+    await w.rt.cancelRun("ask");
+    expect((await w.rt.getRun("ask")).state).toBe("cancelled");
+    const c = await collector();
+    await exporting(w, c);
+    const roots = c.spans.filter((s) => s.name === "mandate.run");
+    expect(roots).toHaveLength(1);
+    expect(roots[0]!.status).toBeUndefined();
+    expect(c.eventSpans.at(-1)!.name).toBe("run_cancelled");
+    // The command that was open ends with the run, with no status either.
+    const open = c.spans.filter((s) => attr(s.attributes, "mandate.command.kind") !== undefined && s.status === undefined);
+    expect(open.length).toBeGreaterThan(0);
+  });
+
+  it("ends a halted run's trace: its span is sent", async () => {
+    await ask(w);
+    const r = await w.rt.halt({ tenant: "acme" }, { reason: "drill", by: "ops" });
+    expect(r.ended.map((x) => [x.run, x.state])).toEqual([["ask", "cancelled"]]);
+    const c = await collector();
+    await exporting(w, c);
+    expect(c.spans.filter((s) => s.name === "mandate.run")).toHaveLength(1);
+    expect(c.eventSpans.map((s) => s.name)).toContain("cancel_requested");
+    expect(c.eventSpans.at(-1)!.name).toBe("run_cancelled");
+  });
+
+  it("sends an event after the run ended as its own span, and the run's span is not sent again", async () => {
+    await fix(w);
+    const c = await collector();
+    await exporting(w, c);
+    const before = c.spans.length;
+    expect(c.spans.filter((s) => s.name === "mandate.run")).toHaveLength(1);
+    // Resuming a finished run takes a lease, and writes the event of it: an event after the run's end.
+    const total = (await w.db.query("select seq from events where run_id = 'fix'")).length;
+    expect((await w.rt.resume("fix")).state).toBe("succeeded");
+    const events = await w.db.query<{ seq: number; type: string }>("select seq, type from events where run_id = 'fix' and seq > $1 order by seq", [total]);
+    expect(events.map((e) => e.type)).toEqual(["lease_acquired"]);
+    await exporting(w, c);
+    const late = c.spans.slice(before);
+    expect(late.map((s) => [s.name, attr(s.attributes, "mandate.event.seq")])).toEqual([["lease_acquired", String(total + 1)]]);
+    expect(late[0]!.parentSpanId).toBe(spanId("fix", ""));
+    expect(c.spans.filter((s) => s.name === "mandate.run")).toHaveLength(1);
   });
 });
 
 describe("the projection, given facts", () => {
   const facts = (events: EventFact[], commands: CommandFact[] = []) => ({ run: "r", tenant: "t", package: "sha256:p", events, commands, models: new Map() });
   const ev = (seq: number, type: string, command: string | null = null): EventFact => ({ seq, type, at: 1000 + seq, hash: `sha256:${seq}`, command, locked: null });
+  const cmd = (id: string, kind = "tool", state = "succeeded"): CommandFact => ({ id, kind, state, package: null });
+  const named = (spans: OtlpSpan[]): string[] => spans.map((s) => (s.name === "mandate.run" || s.name.startsWith("mandate.") ? `${s.name}` : `${s.name}#${attr(s.attributes, "mandate.event.seq")}`));
 
   it("sends a type it has never seen as its type, class, sequence number and hash, and nothing else", () => {
-    const body = project(facts([ev(1, "run_accepted"), ev(2, "an_event_added_next_year")]), 0, 2, defaultClassOf)!;
-    const [root] = body.resourceSpans[0]!.scopeSpans[0]!.spans;
-    const event = root!.events[1]!;
+    const spans = project(facts([ev(1, "run_accepted"), ev(2, "an_event_added_next_year")]), 0, 2, defaultClassOf);
+    const event = spans[1]!;
     expect(event.name).toBe("an_event_added_next_year");
+    expect(event.parentSpanId).toBe(spanId("r", ""));
     expect(event.attributes).toEqual([
+      { key: "mandate.run", value: { stringValue: "r" } },
+      { key: "mandate.tenant", value: { stringValue: "t" } },
+      { key: "mandate.package", value: { stringValue: "sha256:p" } },
       { key: "mandate.event.type", value: { stringValue: "an_event_added_next_year" } },
       { key: "mandate.event.class", value: { stringValue: "S4" } },
       { key: "mandate.event.seq", value: { intValue: "2" } },
@@ -383,23 +531,28 @@ describe("the projection, given facts", () => {
     ]);
   });
 
+  it("names an event's span by its type when the type is shaped like one, and mandate.event when it is not", () => {
+    const spans = project(facts([ev(1, "run_accepted"), ev(2, "Not A Type: with customer text")]), 0, 2, defaultClassOf);
+    expect(spans.map((s) => s.name)).toEqual(["run_accepted", "mandate.event"]);
+    expect(attr(spans[1]!.attributes as Attrs, "mandate.event.type")).toBe("Not A Type: with customer text");
+  });
+
   it("does not take a command id for an identifier unless it is shaped like one", () => {
     const hostile = "the customer's name is Jane Doe";
-    const body = project(facts([ev(1, "run_accepted"), ev(2, "command_dispatched", hostile)], [{ id: hostile, kind: "tool", state: "dispatched", package: null }]), 0, 2, defaultClassOf)!;
-    const text = JSON.stringify(body);
-    expect(text).not.toContain("Jane");
-    const span = body.resourceSpans[0]!.scopeSpans[0]!.spans[1]!;
-    expect(attr(span.attributes as Attrs, "mandate.command")).toMatch(/^sha256:[0-9a-f]{16}$/);
-    // The span's id is still the spec's, of the command as it is.
-    expect(span.spanId).toBe(spanId("r", hostile));
+    const spans = project(facts([ev(1, "run_accepted"), ev(2, "command_dispatched", hostile), ev(3, "command_completed", hostile)], [cmd(hostile)]), 0, 3, defaultClassOf);
+    expect(JSON.stringify(spans)).not.toContain("Jane");
+    for (const s of spans.filter((x) => attr(x.attributes as Attrs, "mandate.command") !== undefined)) expect(attr(s.attributes as Attrs, "mandate.command")).toMatch(/^sha256:[0-9a-f]{16}$/);
+    // The span's id is still the spec's, of the command as it is, and the event spans are its children.
+    const command = spans.find((s) => s.name === "mandate.tool")!;
+    expect(command.spanId).toBe(spanId("r", hostile));
+    expect(spans[1]!.parentSpanId).toBe(spanId("r", hostile));
   });
 
   it("takes the model an adapter reported only when the lock pins that model id, else the program's one tier's, else none", () => {
-    const command: CommandFact = { id: "main/0", kind: "turn", state: "dispatched", package: null };
     const model = (locked: string | null, known: { sole: string | null; ids: string[] }) => {
       const events = [ev(1, "run_accepted"), { ...ev(2, "command_completed", "main/0"), locked }];
-      const body = project({ ...facts(events, [command]), models: new Map([["sha256:p", { sole: known.sole, ids: new Set(known.ids) }]]) }, 0, 2, defaultClassOf)!;
-      return attr(body.resourceSpans[0]!.scopeSpans[0]!.spans[1]!.attributes as Attrs, "gen_ai.request.model");
+      const spans = project({ ...facts(events, [cmd("main/0", "turn", "dispatched")]), models: new Map([["sha256:p", { sole: known.sole, ids: new Set(known.ids) }]]) }, 0, 2, defaultClassOf);
+      return attr(spans.find((s) => s.name === "mandate.turn")!.attributes as Attrs, "gen_ai.request.model");
     };
     expect(model("claude-a", { sole: "claude-b", ids: ["claude-a", "claude-b", "claude-c"] })).toBe("claude-a");
     expect(model("a customer's secret text", { sole: "claude-b", ids: ["claude-b"] })).toBe("claude-b");
@@ -407,25 +560,68 @@ describe("the projection, given facts", () => {
     expect(model(null, { sole: null, ids: [] })).toBeUndefined();
   });
 
-  it("sends no body for no events, and an event after the range is not in it", () => {
-    expect(project(facts([ev(1, "run_accepted")]), 1, 1, defaultClassOf)).toBeUndefined();
-    const body = project(facts([ev(1, "run_accepted"), ev(2, "run_running"), ev(3, "run_failed")]), 0, 2, defaultClassOf)!;
-    const root = body.resourceSpans[0]!.scopeSpans[0]!.spans[0]!;
-    expect(root.events.map((e) => e.name)).toEqual(["run_accepted", "run_running"]);
-    expect(root.status).toBeUndefined();
-    expect(attr(root.attributes as Attrs, "mandate.span.events")).toBe("2");
+  it("sends nothing for a window with no events, and no span of the run or a command before the event that ends it", () => {
+    const f = facts([ev(1, "run_accepted"), ev(2, "command_dispatched", "c"), ev(3, "run_running")], [cmd("c")]);
+    expect(project(f, 3, 3, defaultClassOf)).toEqual([]);
+    expect(named(project(f, 0, 3, defaultClassOf))).toEqual(["run_accepted#1", "command_dispatched#2", "run_running#3"]);
   });
 
-  it("gives a span that continues in a later body the same id and start, and its end so far", () => {
-    const events = [ev(1, "run_accepted"), ev(2, "command_dispatched", "main/0"), ev(3, "command_completed", "main/0")];
-    const commands: CommandFact[] = [{ id: "main/0", kind: "tool", state: "succeeded", package: null }];
-    const early = project(facts(events, commands), 0, 2, defaultClassOf)!.resourceSpans[0]!.scopeSpans[0]!.spans[1]!;
-    const late = project(facts(events, commands), 2, 3, defaultClassOf)!.resourceSpans[0]!.scopeSpans[0]!.spans[1]!;
-    expect([late.spanId, late.startTimeUnixNano]).toEqual([early.spanId, early.startTimeUnixNano]);
-    expect(late.endTimeUnixNano > early.endTimeUnixNano).toBe(true);
-    expect(early.status).toBeUndefined();
-    expect(late.status).toEqual({ code: 1 });
-    expect(late.events.map((e) => e.name)).toEqual(["command_completed"]);
+  it("sends a command's span once, in the window of its completion, from its first event to it, with its status", () => {
+    const f = facts([ev(1, "run_accepted"), ev(2, "command_dispatched", "c"), ev(3, "command_throttled", "c"), ev(4, "command_completed", "c"), ev(5, "charge_settled", "c")], [cmd("c")]);
+    const [one, two, three] = [project(f, 0, 2, defaultClassOf), project(f, 2, 4, defaultClassOf), project(f, 4, 5, defaultClassOf)];
+    expect(named(one)).toEqual(["run_accepted#1", "command_dispatched#2"]);
+    expect(named(two)).toEqual(["command_throttled#3", "command_completed#4", "mandate.tool"]);
+    // After it went out, an event that names the command is its own span, with the command's span as parent.
+    expect(named(three)).toEqual(["charge_settled#5"]);
+    expect(three[0]!.parentSpanId).toBe(spanId("r", "c"));
+    const span = two[2]!;
+    expect([span.startTimeUnixNano, span.endTimeUnixNano, span.status]).toEqual([String(1002n * 1_000_000n), String(1004n * 1_000_000n), { code: 1 }]);
+    expect(attr(span.attributes as Attrs, "mandate.span.events")).toBe("3");
+    expect(two[0]!.parentSpanId).toBe(span.spanId);
+  });
+
+  it("ends a command that never completed with the run, and the run's span with the event that ends it", () => {
+    const f = facts([ev(1, "run_accepted"), ev(2, "command_dispatched", "c"), ev(3, "run_failed")], [cmd("c", "read", "dispatched")]);
+    expect(named(project(f, 0, 2, defaultClassOf))).toEqual(["run_accepted#1", "command_dispatched#2"]);
+    const end = project(f, 2, 3, defaultClassOf);
+    expect(named(end)).toEqual(["run_failed#3", "mandate.read", "mandate.run"]);
+    // No status for a command that did not complete; ERROR for a run that failed.
+    expect(end[1]!.status).toBeUndefined();
+    expect(end[2]!.status).toEqual({ code: 2 });
+    expect(end[2]!.parentSpanId).toBeUndefined();
+    expect(attr(end[2]!.attributes as Attrs, "mandate.span.events")).toBe("3");
+  });
+
+  it("ends a run with a terminal state and with no other: waiting, and attention required, are not ends", () => {
+    for (const state of ["accepted", "running", "waiting", "cancelling", "attention_required"]) {
+      expect(named(project(facts([ev(1, "run_accepted"), ev(2, `run_${state}`)]), 0, 2, defaultClassOf)).includes("mandate.run"), state).toBe(false);
+    }
+    const status = (type: string) => project(facts([ev(1, "run_accepted"), ev(2, type)]), 0, 2, defaultClassOf).find((s) => s.name === "mandate.run")?.status;
+    expect(status("run_succeeded")).toEqual({ code: 1 });
+    expect(status("run_failed")).toEqual({ code: 2 });
+    // A cancelled run was stopped: it ends, and its status is left unset.
+    expect(project(facts([ev(1, "run_accepted"), ev(2, "run_cancelled")]), 0, 2, defaultClassOf).filter((s) => s.name === "mandate.run")).toHaveLength(1);
+    expect(status("run_cancelled")).toBeUndefined();
+  });
+
+  it("sends the run's span once if the run were to end again, and a completion after the run's end is only an event", () => {
+    const f = facts([ev(1, "run_accepted"), ev(2, "command_dispatched", "c"), ev(3, "run_succeeded"), ev(4, "run_running"), ev(5, "command_completed", "c"), ev(6, "run_failed")], [cmd("c")]);
+    const all = [project(f, 0, 3, defaultClassOf), project(f, 3, 6, defaultClassOf)];
+    expect(named(all[0]!)).toEqual(["run_accepted#1", "command_dispatched#2", "run_succeeded#3", "mandate.tool", "mandate.run"]);
+    expect(named(all[1]!)).toEqual(["run_running#4", "command_completed#5", "run_failed#6"]);
+    // The command ended with the run, as the first end it had.
+    expect(all[0]![3]!.status).toBeUndefined();
+    expect(all[0]![4]!.status).toEqual({ code: 1 });
+  });
+
+  it("puts the windows of an export at most `batch` spans each, and one event at least", () => {
+    const f = facts([ev(1, "run_accepted"), ev(2, "command_dispatched", "a"), ev(3, "command_dispatched", "b"), ev(4, "run_succeeded")], [cmd("a", "read", "dispatched"), cmd("b", "read", "dispatched")]);
+    // The end of the run is three more spans than its event.
+    expect(windows(f, 0, 100)).toEqual([{ after: 0, upTo: 4 }]);
+    expect(windows(f, 0, 4)).toEqual([{ after: 0, upTo: 3 }, { after: 3, upTo: 4 }]);
+    expect(windows(f, 0, 1)).toEqual([{ after: 0, upTo: 1 }, { after: 1, upTo: 2 }, { after: 2, upTo: 3 }, { after: 3, upTo: 4 }]);
+    expect(windows(f, 2, 100)).toEqual([{ after: 2, upTo: 4 }]);
+    expect(windows(f, 4, 100)).toEqual([]);
   });
 });
 
@@ -452,11 +648,11 @@ describe("the cursor", () => {
     expect(Math.min(...fresh)).toBe(last + 1);
     // Every event once, in order.
     expect(c.seqs).toEqual(Array.from({ length: c.seqs.length }, (_, i) => i + 1));
-    expect(c.posts.slice(posts).every((p) => p.body.resourceSpans[0]!.scopeSpans[0]!.spans[0]!.name === "mandate.run")).toBe(true);
-    // The run's span ends later than it did, with the same id.
+    // The run's span went out once, with the event that ended the run, and not before.
     const roots = c.spans.filter((s) => s.name === "mandate.run");
-    expect(roots.at(-1)!.spanId).toBe(roots[0]!.spanId);
-    expect(roots.at(-1)!.status).toEqual({ code: 1 });
+    expect(roots).toHaveLength(1);
+    expect(roots[0]!.status).toEqual({ code: 1 });
+    expect(c.posts.slice(0, posts).some((p) => Collector.spansOf(p).some((s) => s.name === "mandate.run"))).toBe(false);
   });
 
   it("is kept for each endpoint and each run", async () => {
@@ -483,8 +679,8 @@ describe("the cursor", () => {
     c.answer = (req, res, post) => (++n === 2 ? res.writeHead(503).end("down") : accept(req, res, post));
     await expect(exporting(w, c, { batch: 4 })).rejects.toMatchObject({ code: "otel_export_failed", message: expect.stringContaining("503") });
     const [row] = await cursors(w.db);
-    expect(row!.seq).toBe(Math.max(...c.posts[0]!.body.resourceSpans[0]!.scopeSpans[0]!.spans.flatMap((s) => s.events.map((e) => Number(attr(e.attributes as Attrs, "mandate.event.seq"))))));
-    c.answer = accept;
+    const first = Collector.spansOf(c.posts[0]!).flatMap((s) => (attr(s.attributes, "mandate.event.seq") === undefined ? [] : [Number(attr(s.attributes, "mandate.event.seq"))]));
+    expect(row!.seq).toBe(Math.max(...first));    c.answer = accept;
     c.posts.length = 0;
     await exporting(w, c, { batch: 4 });
     const total = (await w.db.query("select seq from events where run_id = 'fix'")).length;
@@ -711,7 +907,7 @@ workflow Ask() -> Untrusted<Text>
     const c = await collector();
     const first = await mandate(["otel", "export", "--endpoint", c.url, "--run", "c1"]);
     expect(first.code, first.err).toBe(0);
-    expect(first.out).toMatch(/^run c1: events 1 to \d+ sent in 2 spans\n$/);
+    expect(first.out).toMatch(/^run c1: events 1 to (\d+) sent in \1 spans\n$/);
     expect(c.posts).toHaveLength(1);
     const again = await mandate(["otel", "export", "--endpoint", `${c.url}/`, "--run", "c1"]);
     expect([again.code, again.out]).toEqual([0, "nothing to export\n"]);

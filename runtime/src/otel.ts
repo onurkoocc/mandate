@@ -1,10 +1,14 @@
 // The OpenTelemetry projection of the run journal (spec/boundary.md "The OpenTelemetry projection"; INV-17, G24).
 //
-// A run is a trace. Its commands are spans, and so is the run itself; the journal's events are the span events of the
-// span they belong to. What leaves is built from a fixed set of fields, an allow-list: identifiers, types, classes,
-// model ids, counts, sequence numbers, hashes and times. Nothing is copied from an event's `data`, and the loader
-// reads one member of it only, the id of the command an event is about. A new event type exports its type, its class,
-// its sequence number and its hash until someone adds a field for it here, on purpose.
+// A run is a trace of three kinds of span, none of them sent twice. Every event of the journal is a span of its own, of
+// no duration, sent in the pass that reads it, in sequence order. A command's span is sent once, in the pass that reads
+// the event that ends it, and the run's span once, in the pass that reads the event that ends the run. A collector is
+// an outside witness of the journal's sequence numbers and hashes: they leave promptly, once, in order.
+//
+// What leaves is built from a fixed set of fields, an allow-list: identifiers, types, classes, model ids, counts,
+// sequence numbers, hashes and times. Nothing is copied from an event's `data`, and the loader reads two members of it
+// only, the id of the command an event is about and the model id an adapter reports. A new event type exports its
+// type, its class, its sequence number and its hash until someone adds a field for it here, on purpose.
 //
 // The export runs outside every run: it reads the database, takes no lease and writes no event. The one table it
 // writes is `otel_cursors`, which records for each endpoint and run the last sequence number that was exported.
@@ -15,6 +19,7 @@
 import { createHash } from "node:crypto";
 import { modelTiers, type Program } from "@mandate/compiler";
 import type { Db, Row, Tx } from "./db.js";
+import { TERMINAL } from "./journal.js";
 import { Violation } from "./signals.js";
 
 // ── the wire format ─────────────────────────────────────────────────────
@@ -36,12 +41,6 @@ const text = (key: string, value: string): OtlpAttribute => ({ key, value: { str
 /** An integer attribute: OTLP/JSON writes a 64-bit integer as a decimal string. */
 const int = (key: string, value: number): OtlpAttribute => ({ key, value: { intValue: String(value) } });
 
-interface OtlpEvent {
-  timeUnixNano: string;
-  name: string;
-  attributes: OtlpAttribute[];
-}
-
 export interface OtlpSpan {
   traceId: string;
   spanId: string;
@@ -52,7 +51,6 @@ export interface OtlpSpan {
   startTimeUnixNano: string;
   endTimeUnixNano: string;
   attributes: OtlpAttribute[];
-  events: OtlpEvent[];
   /** 1 is OK, 2 is ERROR. Absent while a span's outcome is not known. */
   status?: { code: 1 | 2 };
 }
@@ -66,7 +64,7 @@ export interface OtlpBody {
 }
 
 /** The request body for the spans of one run. */
-function body(spans: OtlpSpan[]): OtlpBody {
+export function body(spans: OtlpSpan[]): OtlpBody {
   return { resourceSpans: [{ resource: { attributes: [text("service.name", "mandate")] }, scopeSpans: [{ scope: { ...OTEL_SCOPE }, spans, schemaUrl: OTEL_SCHEMA_URL }], schemaUrl: OTEL_SCHEMA_URL }] };
 }
 
@@ -88,6 +86,11 @@ export function traceId(run: string): string {
  */
 export function spanId(run: string, command: string): string {
   return sha(`mandate/otel-span/0.1\n${run}\n${command}`).subarray(0, 8).toString("hex");
+}
+
+/** The id of the span of one event: the first 8 bytes of `sha256("mandate/otel-event/0.1\n" ‖ run ‖ "\n" ‖ seq in decimal)`. */
+export function eventSpanId(run: string, seq: number): string {
+  return sha(`mandate/otel-event/0.1\n${run}\n${seq}`).subarray(0, 8).toString("hex");
 }
 
 // ── the classes (spec/boundary.md, INV-17) ──────────────────────────────
@@ -222,59 +225,167 @@ const MODEL_CALLS = new Set(["infer", "turn"]);
 const SAFE_ID = /^[A-Za-z0-9_.:/@#>[\]-]{1,200}$/;
 const shown = (id: string): string => (SAFE_ID.test(id) ? id : `sha256:${sha(id).subarray(0, 8).toString("hex")}`);
 
+/** The kind of a command as a name and an attribute: a word the runtime wrote, else a stand-in. */
+const KIND = /^[a-z_]{1,32}$/;
+/** An event type as a span's name: the runtime's types are words in snake case; a type not shaped like one is named `mandate.event`. */
+const EVENT_NAME = /^[a-z][a-z0-9_]{0,47}$/;
+
 /**
- * The spans of one run for the events after `after` up to `upTo`, as one OTLP body, or none when there are no such
- * events. The run's span is always in it, so that a command's span has its parent in the same body.
- *
- * A span is sent again in a later body when later events belong to it: it has the same id, the same start, the
- * events of that body and the end of its last event so far, and `mandate.span.events`, the count of its events so
- * far, which grows. A body is a function of the journal and of the two sequence numbers, so one exported twice is
- * the same twice.
+ * The events that end a run: the one `setState` writes when a run enters a terminal state (`run_<state>`, for each state
+ * of `TERMINAL`): succeeded, failed, and cancelled, which is also how a run a halt ended, and a cancelled one, end.
+ * `attention_required` and the waiting states are not ends: a run leaves them.
  */
-export function project(f: RunFacts, after: number, upTo: number, classOf: ClassOf): OtlpBody | undefined {
-  const batch = f.events.filter((e) => e.seq > after && e.seq <= upTo);
-  if (!batch.length) return undefined;
+const RUN_ENDS: ReadonlySet<string> = new Set([...TERMINAL].map((s) => `run_${s}`));
+
+/** The sequence numbers at which spans end: the run's, and each command's. */
+export interface Endings {
+  /** The first event that ends the run, when the run has ended. A run that leaves a terminal state and ends again does not end twice. */
+  run: number | undefined;
+  /**
+   * For each command with events up to its end: the `command_completed` event that ends it, else the event that ends
+   * the run. A completion after the run's end is no end: the span went out with the run's.
+   */
+  commands: ReadonlyMap<string, number>;
+}
+
+/** Which event ends which span, from the journal alone. */
+export function endings(f: RunFacts): Endings {
+  const known = new Set(f.commands.map((c) => c.id));
+  const run = f.events.find((e) => RUN_ENDS.has(e.type))?.seq;
+  const first = new Map<string, number>();
+  const completed = new Map<string, number>();
+  for (const e of f.events) {
+    if (e.command === null || !known.has(e.command)) continue;
+    if (!first.has(e.command)) first.set(e.command, e.seq);
+    if (e.type === "command_completed" && !completed.has(e.command)) completed.set(e.command, e.seq);
+  }
+  const commands = new Map<string, number>();
+  for (const [id, began] of first) {
+    const done = completed.get(id);
+    const end = done !== undefined && (run === undefined || done <= run) ? done : run;
+    if (end !== undefined && began <= end) commands.set(id, end);
+  }
+  return { run, commands };
+}
+
+/**
+ * The spans of one run for the events after `after` up to `upTo`, in the order they are sent:
+ *
+ * - a span of its own for each event of the window, of no duration, in sequence order. Its parent is the span of the
+ *   command its data names, when that is a command of the run, and the run's span otherwise;
+ * - the span of each command whose ending event is in the window, by that event, from its first event to its end;
+ * - the run's span, when the event that ends the run is in the window, from the run's first event to it.
+ *
+ * Nothing is sent twice: a span of a command or of the run is in the window of its ending event and in no other, and
+ * an event after a span went out is only its own span, with that span's id as its parent. While a run is open its
+ * events and its finished commands are out and its own span is not, so their parent is not yet in the collector.
+ * The spans are a function of the journal and of the window: the same window gives the same spans.
+ */
+export function project(f: RunFacts, after: number, upTo: number, classOf: ClassOf): OtlpSpan[] {
   const commands = new Map(f.commands.map((c) => [c.id, c]));
   const trace = traceId(f.run);
   const root = spanId(f.run, "");
   const ownerOf = (e: EventFact): string => (e.command !== null && commands.has(e.command) ? e.command : "");
-  const upToNow = f.events.filter((e) => e.seq <= upTo);
   const common = (c: string): OtlpAttribute[] => [text("mandate.run", f.run), text("mandate.tenant", f.tenant), text("mandate.package", commands.get(c)?.package ?? f.package)];
+  const end = endings(f);
 
-  const span = (owner: string): OtlpSpan => {
-    const all = upToNow.filter((e) => ownerOf(e) === owner);
-    const mine = batch.filter((e) => ownerOf(e) === owner);
-    const first = (owner === "" ? upToNow[0] : all[0])!;
-    const last = owner === "" ? upToNow[upToNow.length - 1]! : all[all.length - 1]!;
-    const base = { traceId: trace, spanId: spanId(f.run, owner), kind: 1 as const, startTimeUnixNano: nanos(first.at), endTimeUnixNano: nanos(last.at) };
-    const events: OtlpEvent[] = mine.map((e) => ({
-      timeUnixNano: nanos(e.at),
-      name: e.type,
-      attributes: [text("mandate.event.type", e.type), text("mandate.event.class", classOf(e.type)), int("mandate.event.seq", e.seq), ...(e.hash !== null ? [text("mandate.event.hash", e.hash)] : [])],
-    }));
-    const count = int("mandate.span.events", owner === "" ? upToNow.length : all.length);
-    if (owner === "") {
-      const ended = upToNow.find((e) => e.type === "run_succeeded" || e.type === "run_failed");
-      return { ...base, name: "mandate.run", attributes: [...common(""), count], events, ...(ended ? { status: { code: ended.type === "run_succeeded" ? (1 as const) : (2 as const) } } : {}) };
+  const spans: OtlpSpan[] = f.events
+    .filter((e) => e.seq > after && e.seq <= upTo)
+    .map((e) => {
+      const owner = ownerOf(e);
+      return {
+        traceId: trace,
+        spanId: eventSpanId(f.run, e.seq),
+        parentSpanId: owner === "" ? root : spanId(f.run, owner),
+        name: EVENT_NAME.test(e.type) ? e.type : "mandate.event",
+        kind: 1 as const,
+        startTimeUnixNano: nanos(e.at),
+        endTimeUnixNano: nanos(e.at),
+        attributes: [
+          ...common(owner),
+          ...(owner !== "" ? [text("mandate.command", shown(owner))] : []),
+          text("mandate.event.type", e.type),
+          text("mandate.event.class", classOf(e.type)),
+          int("mandate.event.seq", e.seq),
+          ...(e.hash !== null ? [text("mandate.event.hash", e.hash)] : []),
+        ],
+      };
+    });
+
+  const closing = [...end.commands].filter(([, seq]) => seq > after && seq <= upTo).sort(([x, a], [y, b]) => a - b || (x < y ? -1 : 1));
+  const byOwner = new Map<string, EventFact[]>();
+  if (closing.length) {
+    for (const e of f.events) {
+      const owner = ownerOf(e);
+      if (owner !== "") byOwner.set(owner, [...(byOwner.get(owner) ?? []), e]);
     }
-    const c = commands.get(owner)!;
+  }
+  for (const [id, seq] of closing) {
+    const mine = (byOwner.get(id) ?? []).filter((e) => e.seq <= seq);
+    const ended = f.events.find((e) => e.seq === seq)!;
+    const c = commands.get(id)!;
     const op = OPERATIONS[c.kind];
     const known = f.models.get(c.package ?? f.package);
-    const locked = MODEL_CALLS.has(c.kind) ? all.find((e) => e.locked !== null && known?.ids.has(e.locked))?.locked ?? known?.sole ?? null : null;
-    const done = all.some((e) => e.type === "command_completed") && (c.state === "succeeded" || c.state === "failed");
-    return {
-      ...base,
+    const model = MODEL_CALLS.has(c.kind) ? (mine.find((e) => e.locked !== null && known?.ids.has(e.locked))?.locked ?? known?.sole ?? null) : null;
+    // A status only when the command itself completed, and its row says how.
+    const completed = ended.type === "command_completed" && (c.state === "succeeded" || c.state === "failed");
+    spans.push({
+      traceId: trace,
+      spanId: spanId(f.run, id),
       parentSpanId: root,
-      name: `mandate.${/^[a-z_]{1,32}$/.test(c.kind) ? c.kind : "command"}`,
-      attributes: [...common(owner), text("mandate.command", shown(owner)), text("mandate.command.kind", /^[a-z_]{1,32}$/.test(c.kind) ? c.kind : "other"), ...(op ? [text("gen_ai.operation.name", op)] : []), ...(locked !== null ? [text("gen_ai.request.model", locked)] : []), count],
-      events,
-      ...(done ? { status: { code: c.state === "succeeded" ? (1 as const) : (2 as const) } } : {}),
-    };
-  };
+      name: `mandate.${KIND.test(c.kind) ? c.kind : "command"}`,
+      kind: 1,
+      startTimeUnixNano: nanos(mine[0]!.at),
+      endTimeUnixNano: nanos(ended.at),
+      attributes: [...common(id), text("mandate.command", shown(id)), text("mandate.command.kind", KIND.test(c.kind) ? c.kind : "other"), ...(op ? [text("gen_ai.operation.name", op)] : []), ...(model !== null ? [text("gen_ai.request.model", model)] : []), int("mandate.span.events", mine.length)],
+      ...(completed ? { status: { code: c.state === "succeeded" ? (1 as const) : (2 as const) } } : {}),
+    });
+  }
 
-  // The commands in the order their first event of this body came, after the run's own span.
-  const owners = [...new Set(batch.map(ownerOf))].filter((o) => o !== "");
-  return body([span(""), ...owners.map(span)]);
+  if (end.run !== undefined && end.run > after && end.run <= upTo) {
+    const upToEnd = f.events.filter((e) => e.seq <= end.run!);
+    const last = upToEnd[upToEnd.length - 1]!;
+    // A cancelled run's status is left unset: it was stopped, which is not a failure of the run and not a success.
+    const status = last.type === "run_succeeded" ? 1 : last.type === "run_failed" ? 2 : undefined;
+    spans.push({
+      traceId: trace,
+      spanId: root,
+      name: "mandate.run",
+      kind: 1,
+      startTimeUnixNano: nanos(upToEnd[0]!.at),
+      endTimeUnixNano: nanos(last.at),
+      attributes: [...common(""), int("mandate.span.events", upToEnd.length)],
+      ...(status !== undefined ? { status: { code: status } } : {}),
+    });
+  }
+  return spans;
+}
+
+/**
+ * The windows an export goes in, from the cursor: runs of events, each holding at most `batch` spans (an event's own,
+ * and those that end with it), and at least one event. A window whose one event ends more spans than `batch` is posted
+ * in several bodies, the cursor moving after the last.
+ */
+export function windows(f: RunFacts, after: number, batch: number): Array<{ after: number; upTo: number }> {
+  const end = endings(f);
+  const ending = new Map<number, number>();
+  for (const seq of end.commands.values()) ending.set(seq, (ending.get(seq) ?? 0) + 1);
+  if (end.run !== undefined) ending.set(end.run, (ending.get(end.run) ?? 0) + 1);
+  const out: Array<{ after: number; upTo: number }> = [];
+  let from = after;
+  let count = 0;
+  for (const e of f.events) {
+    if (e.seq <= after) continue;
+    const spans = 1 + (ending.get(e.seq) ?? 0);
+    if (count > 0 && count + spans > batch) {
+      out.push({ after: from, upTo: e.seq - 1 });
+      from = e.seq - 1;
+      count = 0;
+    }
+    count += spans;
+  }
+  if (count > 0) out.push({ after: from, upTo: f.events[f.events.length - 1]!.seq });
+  return out;
 }
 
 // ── the endpoint ────────────────────────────────────────────────────────
@@ -342,7 +453,7 @@ export interface OtelOptions {
   intervalMs?: number;
   /** Stops a `follow`, and a post in flight. */
   signal?: AbortSignal;
-  /** The most events one post carries. */
+  /** The most spans one post carries: events, and the command and run spans that end with them. */
   batch?: number;
   /** How long one post may take, from sending to its answer read. */
   timeoutMs?: number;
@@ -411,24 +522,26 @@ export async function otelExport(db: Db, o: OtelOptions): Promise<OtelReport> {
       e.cursor = cursor;
       if (last <= cursor) continue;
       const facts = await read(db, run, packages);
-      const pending = facts.events.filter((x) => x.seq > cursor);
-      for (let i = 0; i < pending.length && !o.signal?.aborted; i += batch) {
-        const chunk = pending.slice(i, i + batch);
-        const from = chunk[0]!.seq;
-        const to = chunk[chunk.length - 1]!.seq;
-        const payload = project(facts, from - 1, to, classOf)!;
-        const sent = await post(o.endpoint, payload, o.timeoutMs ?? OTEL_TIMEOUT_MS, o.signal);
-        report.rejected += sent.rejected;
-        // The cursor moves only after the collector accepted the post, and never back: a second exporter that is ahead stays ahead.
+      for (const w of windows(facts, cursor, batch)) {
+        if (o.signal?.aborted) break;
+        const spans = project(facts, w.after, w.upTo, classOf);
+        const events = facts.events.filter((x) => x.seq > w.after && x.seq <= w.upTo).length;
+        // A window is one post unless one event ends more spans than a post carries; the cursor moves after the last.
+        for (let i = 0; i < spans.length; i += batch) {
+          const slice = spans.slice(i, i + batch);
+          const sent = await post(o.endpoint, body(slice), o.timeoutMs ?? OTEL_TIMEOUT_MS, o.signal);
+          report.rejected += sent.rejected;
+          e.posts += 1;
+          o.onPost?.({ run, from: w.after + 1, to: w.upTo, spans: slice.length });
+        }
+        // The cursor moves only after the collector accepted the window, and never back: a second exporter that is ahead stays ahead.
         await db.query(
           `insert into otel_cursors (endpoint, run_id, seq, at) values ($1, $2, $3, $4)
            on conflict (endpoint, run_id) do update set seq = excluded.seq, at = excluded.at where otel_cursors.seq < excluded.seq`,
-          [o.endpoint, run, to, (o.now ?? Date.now)()],
+          [o.endpoint, run, w.upTo, (o.now ?? Date.now)()],
         );
-        e.events += chunk.length;
-        e.posts += 1;
-        e.cursor = to;
-        o.onPost?.({ run, from, to, spans: payload.resourceSpans[0]!.scopeSpans[0]!.spans.length });
+        e.events += events;
+        e.cursor = w.upTo;
       }
     }
   };
