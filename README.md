@@ -186,7 +186,10 @@ pull request was opened, for 0.23 USD.
    may share, and the adapter refuses by name a requirement whose level or
    no-sharing the host does not give (every host here gives `process`,
    shared); a run whose lock names least tool versions starts and resumes
-   only on a host that meets them (`unfit_host`). The rest is not enforced
+   only on a host that meets them (`unfit_host`); and views by role:
+   `mandate show --role R` shows a run as one of its program's roles may
+   see it, and `--audit` everything, with its events and the chain's
+   status. The rest is not enforced
    yet, so nothing that needs it runs: the runtime refuses a package whose
    lock sets `egress`, by name, and the sandbox adapter refuses a
    requirement that limits methods or carries credentials.

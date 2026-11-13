@@ -84,6 +84,13 @@ describe("the class table", () => {
     expect(stale, "classes of event types the runtime does not write").toEqual([]);
   });
 
+  it("is the table spec/boundary.md gives", () => {
+    const spec = readFileSync(fileURLToPath(new URL("../../spec/boundary.md", import.meta.url)), "utf8");
+    const table = spec.slice(spec.indexOf("| Class | Event types |"), spec.indexOf("An event's class says"));
+    const written = Object.fromEntries([...table.matchAll(/^\| (S\d) \| (.+) \|$/gm)].flatMap((m) => [...m[2]!.matchAll(/`([a-z_]+)`/g)].map((t) => [t[1]!, m[1]!])));
+    expect(written).toEqual(EVENT_CLASSES);
+  });
+
   it("writes events in one place only", () => {
     const inserts = sources(SRC).flatMap(({ file, text }) => [...text.matchAll(/insert into events\b/g)].map(() => file));
     expect(inserts).toEqual(["journal.ts"]);

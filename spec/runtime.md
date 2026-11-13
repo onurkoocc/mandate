@@ -881,7 +881,7 @@ mandate halt --lift (--tenant T | --all) --by WHO
 mandate halt --list [--json]
 mandate replay <run>
 mandate artifact <run> <blob:sha256:…>
-mandate show <run> [--format md|html|json]
+mandate show <run> [--format md|html|json] [--role R | --audit]
 mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER/REPO]… [--name MODULE]
 mandate drift --module MODEL --component NAME=DIR… [--json]
 mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [--name PREFIX] [--harness-tokens N]
@@ -983,7 +983,10 @@ lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
 
 It also shows the budget table, the evidence with whether its signature
 holds, and the actions. `mandate show` prints the run's views
-([`views.md`](views.md)), as Markdown, a self-contained HTML page, or JSON.
+([`views.md`](views.md)), as Markdown, a self-contained HTML page, or JSON;
+with `--role R`, what a role of the program may see of the run, and with
+`--audit`, everything, with its events and its chain's status
+([`boundary.md`](boundary.md#views-by-role-and-the-audit-view)).
 
 **Decisions and revisions.** A decision names the revision the person saw.
 If the run has moved since, the decision is refused (`stale_revision`) and

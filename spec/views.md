@@ -168,7 +168,7 @@ added, that no budget was raised, when each holds.
 
 ## Views of a run
 
-`mandate show <run> [--format md|html|json]` (`runtime/src/views.ts`)
+`mandate show <run> [--format md|html|json] [--role R | --audit]` (`runtime/src/views.ts`)
 shows a run with the views of its program, under the program and package
 hashes:
 
@@ -258,6 +258,17 @@ program hash.
 
 In JSON the 0.4 parts are `decisions`, `envelope` (null without one),
 `plans` and `maps`. A run that has none of a part has no section for it.
+
+**By role, and for an audit** (0.5). `mandate show <run> --role R` shows
+the run as a role its program names may see it: what was asked of that
+role, how the run ended and what stopped it, and its progress; never a
+step's request or result, nor an agent loop's trace. `mandate show <run>
+--audit` shows the view above whole, with the run's input, each command's
+result, every event, the halts over its tenant, and the journal's chain as
+verified when the view is made. Each part is in a class by its event type,
+section or command kind alone ([`boundary.md`](boundary.md#views-by-role-and-the-audit-view)).
+Without either option the view is the one this section describes, byte for
+byte.
 
 Every run view names the revision and the last event it shows (`as_of`).
 `freshness(run, as_of)` says how many events the run has moved since. A

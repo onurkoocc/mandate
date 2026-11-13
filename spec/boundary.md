@@ -29,7 +29,7 @@ the configuration and the CLI.
 | The control plane's adapters through gateways; `credential_in_environment` | PR 7 | specified |
 | Sandbox egress on Linux through the proxy | PR 8 | specified; enforceable where the sandbox SDK reports it, shown on the CI runner |
 | Sandbox egress on Windows | — | refused by name |
-| Views by role and the audit view; the OpenTelemetry projection | PR 9 | specified |
+| Views by role and the audit view; the OpenTelemetry projection | PR 9 | role and audit views implemented; the OpenTelemetry projection is a separate change |
 | An independent journal verifier, `verify-journal`, in Rust | R3 | implemented (`crates/verify-journal`: every journal case, and a fresh export of a real run on CI) |
 
 Until a part lands, nothing it would enforce runs. A 0.5 package whose lock
@@ -583,8 +583,9 @@ verification steps, the report and the exit codes) is
 | `unanchored_tail` | Events after the last anchor that holds; reported, and the status stays `verified` |
 
 - **Never on a read path.** The chain is checked by `verifyJournal` and the
-  verifiers only, never by `events()`, replay or a view: existing tests
-  change and delete events on purpose.
+  verifiers only, never by `events()`, replay, the run's view or a role's:
+  existing tests change and delete events on purpose. The audit view calls
+  `verifyJournal` as a step of its own and shows its report.
 - **Limits.** The chain is evidence against someone who holds the database
   but not the key. The tail after the last anchor can be cut until the next
   state change anchors it, and newer events can be cut with their anchors.
@@ -743,17 +744,37 @@ member's decision: the run's view lists no decision for it.
 
 ## Views by role and the audit view
 
-*Specified; implemented by PR 9.*
+*Implemented by PR 9 (`runtime/src/classes.ts`, `runtime/src/views.ts`).*
 
-- `mandate show <run> --role <R>`, for a role the program names: the
-  decisions asked of that role, the run's outcome and exceptions, and its
-  progress.
-- `mandate show <run> --audit`: everything, the event list, and the chain's
-  status as `verifyJournal` reports it.
-- With neither option, `mandate show` prints what it prints today, byte for
-  byte.
-- **Classes.** Each event and each section of a run's view is in one class,
-  assigned from its event type and its view section and nothing else:
+```sh
+mandate show <run> [--format md|html|json] --role <R>
+mandate show <run> [--format md|html|json] --audit
+```
+
+- `--role R` (`runView(rt, run, { role })`) shows the run as the role `R`
+  may see it: the decisions asked of `R`, how the run ended and what
+  stopped it, and its progress. `R` is a role the run's program names: a
+  `role` definition, or a role it names anywhere a role is named (an
+  envelope's owner, `human.approve(role: …)`, a component's owner, …),
+  with the modules it imports. Any other is refused, `unknown_role`, with
+  the roles the program names.
+- `--audit` (`runView(rt, run, { audit: true })`) shows everything: the
+  run's view whole, what the run was started with, each command's request
+  digest and result, every event, the halts that cover the run's tenant,
+  and the journal's chain as `Runtime.verifyJournal` reports it.
+- The two together are refused as a usage error. Each takes `--format`,
+  as `show` does.
+- With neither, `mandate show` and `runView(rt, run)` print what they
+  printed before, byte for byte (`views-default.test.ts` holds the digests
+  of the view tests' runs in each format).
+
+### Classes
+
+Each event is in one class by its type, each part of a run's view by its
+section, and each command by its kind, and by nothing else (INV-17): no
+projection reads an event's data, a section's content or a command's result
+to decide what may be shown. A type, a section or a command kind the table
+does not name is S4, which no role sees.
 
 | Class | Holds |
 |---|---|
@@ -763,9 +784,114 @@ member's decision: the run's view lists no decision for it.
 | S3 | A step's detail: its request and result |
 | S4 | A trace: an agent loop's turns, tool calls and outputs |
 
-- A role view shows S0 for that role and S1 and S2. The audit view shows
-  S0 to S4.
-- There is no masking by data class in 0.5 (INV-20 is a later release's).
+A role's view shows S1, S2, and S0 where it was asked of that role. The
+audit view shows S0 to S4. There is no masking by data class in 0.5 (INV-20
+is a later release's).
+
+**Events.** The class of every event type the runtime writes
+(`EVENT_CLASSES`). A test reads every place the runtime writes an event and
+fails on a type without a class, and on a class of a type nothing writes.
+
+| Class | Event types |
+|---|---|
+| S0 | `wait_opened`, `wait_expired`, `decision_received`, `input_received`, `decision_refused`, `criterion_approved`, `criterion_denied`, `governance_approved`, `governance_denied`, `action_authorized`, `envelope_approved`, `amendment_requested`, `package_amended`, `limits_raised`, `reconcile_requested` |
+| S1 | `run_succeeded`, `run_failed`, `run_cancelled`, `run_cancelling`, `run_attention_required`, `cancel_requested`, `lease_revoked`, `violation`, `budget_exceeded`, `guarantee_lowered` |
+| S2 | `run_accepted`, `run_running`, `run_waiting`, `lease_acquired`, `command_dispatched`, `command_completed`, `command_throttled`, `charge_pending`, `charge_settled`, `map_started`, `map_ended` |
+| S3 | `action_prepared`, `action_committed`, `action_confirmed`, `action_rejected`, `action_unknown_outcome`, `action_cancelled`, `action_would_apply`, `changeset_prepared`, `changeset_would_apply`, `changeset_simulated`, `changeset_committed`, `changeset_partial`, `changeset_failed` |
+| S4 | `program_submitted`, `program_refused`, `program_admitted`, `sandbox_stopped` |
+
+An event's class says which projections may draw on it. None shows an
+event's data whole except the audit view: a role's view takes from an event
+of its classes the fields its section names, and the OpenTelemetry
+projection takes none.
+
+**Sections.** A section is in the most restricted class of what it can
+hold. The run's result, a fault with its arguments and the `attention` of a
+run that needs a person can each hold a step's result, so each is S3 whole;
+what a role sees of them is in a section of its own, `exceptions`.
+
+| Section | Class | Holds |
+|---|---|---|
+| `format`, `kind`, `role`, `program`, `package`, `manifest`, `modules`, `as_of`; the program's architecture and authority | S2 | What names the run and the view |
+| `run` | S1 | The run's id, workflow, tenant and state |
+| `waiting` | S0 | The wait the run is in, whole, with its request |
+| `decisions` | S0 | Each decision a person made on the run |
+| `exceptions` | S1 | How the run ended and what stopped it (below) |
+| `exceptions.violations.detail` | S4 | What the agent asked for that was refused |
+| `budget` | S2 | The dimensions; each command's row in its step's class |
+| `envelope` | S2 | Its owner, deadline and what is left |
+| `envelope.amendments` | S0 | Its owner's decisions |
+| `maps` | S2 | Each map's items with their outcome: `Ok` or a fault's tag |
+| `result`, `error`, `attention`, `evidence`, `actions`, `changesets`, `input`, `steps` | S3 | A step's request or result, whole |
+| `plans`, `trace`, `events` | S4 | What a lead wrote; an agent loop's commands; every event with its data |
+| `halts`, `chain` | S1 | The audit view's own: the halts over the run's tenant; the journal's status |
+
+**Commands.** A command of kind `session`, `turn` or `tool` is a step of an
+agent loop: its trace, S4. One of kind `input`, `decision` or `amendment`
+waits for a person: S0, asked of the role its `wait_opened` names. Any
+other is a step: its row in the budget (id, kind, label, state, reservation
+and cost) is S2, its request and result S3.
+
+### A role's view
+
+The sections of the run's view in S1 and S2, as they are, and of S0 what
+was asked of the role:
+
+- **What it waits for**, whole, when the wait is asked of `R`: the role
+  its request names. What `R` is asked to decide on is shown to it as
+  `mandate status` shows it, the subject or the question included: the
+  program put that before `R`. This is the one place a role's view shows
+  content. A wait asked of another role, or of none, shows that the run
+  waits, and nothing else. A question of a program before 0.4 names no
+  role in its wait, so it is asked of no role this view can name.
+- **The decisions asked of `R`**: each decision whose wait was asked of
+  `R` (`wait_opened`), and each decision on no wait made in `R`'s role (the
+  envelope's approval, a cancel, a raise of the limits), with its member,
+  role and signature. An unsigned decision whose wait named no role is
+  asked of no role. A halt's cancel is no decision.
+- **Exceptions**, by the fields named and nothing else:
+  - the fault the run failed with, or that left it `attention_required`:
+    its tag, never its arguments;
+  - while it is `attention_required`, why: of `attention`, the code of the
+    invariant violation (`violation_limit` among them), the halt that left
+    an action open, a reason's code and the command it is about, whether
+    a change set stopped part applied, and each open action's operation,
+    effect and state. Never a message;
+  - each violation: its kind, delegation, agent, step and count, and its
+    event's sequence number and time. Never its `detail`, which names what
+    the agent asked for (a path, a command, what the proxy saw);
+  - the halt that ended the run, from `cancel_requested` and
+    `lease_revoked`: the halt's id, who halted, its reason, and the fence
+    revoked. The operator wrote the reason; no step did.
+- **Progress**: the budget's dimensions, and of its commands each one's
+  step that is not an agent loop's, nor a wait asked of another role; the
+  envelope's owner, deadline and what is left, with its amendments only
+  for the role that owns it; each map's items and outcomes.
+- Never the run's result or error whole, its evidence, its actions, its
+  change sets, its plans, its input, any command's result, the trace or
+  the events.
+
+### The audit view
+
+The run's view whole, kind `run_audit`, and:
+
+- `input`: what the run was started with;
+- `exceptions`, as a role's, with each violation's `detail`;
+- `steps` and `trace`: each command in command-id order, by its kind: its
+  label, state, request digest, and its result or error (`purged` when
+  retention took them);
+- `events`: every event the view reaches (`as_of`), each with its sequence
+  number, type, class, time, hash and data;
+- `halts`: every halt of the run's tenant or of every tenant, in force or
+  lifted, oldest first;
+- `chain`: `Runtime.verifyJournal`'s report (`verified`, `broken`,
+  `unchained` or `unreadable`), with its findings and how far the
+  signatures reach.
+
+**The read path stays free of the chain check.** The audit view verifies
+the chain as a step of its own, after everything it shows has been read.
+`events()`, replay, the default view and a role's view never do: they read
+the journal as it is, a journal tests change on purpose included.
 
 ## The OpenTelemetry projection
 
@@ -795,7 +921,7 @@ member's decision: the run's view lists no decision for it.
 | Id | Invariant | Where 0.5 keeps it |
 |---|---|---|
 | INV-11 (refined) | An unsupported security requirement is never dropped silently: a method limit, an isolation floor, a credential binding or a least host version is enforced, or nothing it applies to starts | `unsupported_lock` at load; the adapter's refusals (E0902); `unfit_host`; E1803, also at load |
-| INV-17 | A projection (a role view, an OpenTelemetry export) is derived from event type and view section, never from content | The class table; the export's attributes |
+| INV-17 | A projection (a role view, an OpenTelemetry export) is derived from event type, view section and command kind, never from content | The class table (`runtime/src/classes.ts`); the export's attributes |
 | INV-23 | A secret never enters a sandbox, nor the runtime's environment when gateways are on; what enters is its placeholder | The proxy's configuration; `credential_in_environment` |
 | INV-24 | A sandbox reaches no host and uses no method its grant does not list | The proxy's data path; requirement 0.2; the denial reasons |
 | INV-25 | Every event of a chained run is covered by the chain, and every state change of it by a signed anchor | `events.hash`; `journal_anchors`; the verifier |
@@ -830,6 +956,7 @@ Refusals of the runtime that 0.5 adds:
 | `halted` | A start, or the lease of a run that has not ended, in a halted scope |
 | `not_halted` | A lift of a scope where no halt is in force |
 | `invalid_lift` | A lift that does not say who lifts it |
+| `unknown_role` | `mandate show --role R`, or `runView` for a role, where `R` is no role the run's program names |
 
 Compile cases in [`conformance/`](../conformance/README.md):
 
