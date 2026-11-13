@@ -36,6 +36,7 @@ import { globRegExp, requirementFor, type CapVal } from "@mandate/compiler";
 import type { CheckBinding, CheckLog, CheckResult, CheckSubject, SystemFacts, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { sha256Of } from "./artifacts.js";
 import { childEnv, DOCKER_ENV } from "./env.js";
+import { denialOf } from "./gateway.js";
 import { PathRefused, realEntries, writeWithin } from "./paths.js";
 import { MxcAdapter } from "./sandbox.js";
 import { covers, diffMigrations, diffSpec, type ChangeKind } from "./specdiff.js";
@@ -605,6 +606,8 @@ export class GitHubCi implements CiSource {
     const res = await (this.o.fetch ?? fetch)(`${this.o.apiUrl ?? "https://api.github.com"}/repos/${repo}/actions/runs?head_sha=${encodeURIComponent(commit)}&per_page=50`, {
       headers: { accept: "application/vnd.github+json", authorization: `Bearer ${this.o.token}`, "x-github-api-version": "2022-11-28" },
     });
+    const denied = denialOf(res.headers);
+    if (denied) throw new Error(`egress_denied: ${denied}: the egress proxy refused the github gateway's request for ${repo}'s CI runs`);
     if (res.status !== 200) throw new Error(`GitHub answered ${res.status} for ${repo}'s CI runs`);
     const runs = ((await res.json()) as { workflow_runs?: Array<{ id: number; name?: string; path?: string; status: string; conclusion: string | null; html_url: string; created_at: string }> }).workflow_runs ?? [];
     const run = runs

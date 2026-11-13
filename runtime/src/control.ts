@@ -33,6 +33,10 @@
 //     "onboard":  { "hosts": { "auth": "auth" }, "extraRead": { "core": ["/root/.m2"] } }
 //                 // onboarding evidence (B7): test.system_specs, test.consumes, test.commands
 //                 // where each component of a system model comes from (B3); checked out at its root
+//     "egress":   { "admin": "/run/mandate/egress.sock", "gateways": { "model": "anthropic", "github": "github" } }
+//                 // the egress proxy the operator runs (spec/boundary.md "The egress proxy"), and the credential each
+//                 // gateway sends: with a gateway on, its adapters send through the proxy with a placeholder, and
+//                 // its secret (CLAUDE_API_KEY, ANTHROPIC_API_KEY; MANDATE_GITHUB_TOKEN) may not be in the environment
 //   }
 
 import { execFileSync } from "node:child_process";
@@ -64,7 +68,9 @@ import { wallClock } from "./sim.js";
 import { Violation } from "./signals.js";
 import { SandboxVerifier, type VerifierConfig } from "./verifier.js";
 import { GitWorkspace, type ComponentSource } from "./workspace.js";
-import { ProcessVerifier } from "./verifier-service.js";
+import { ProcessVerifier, type ChildEnvSource } from "./verifier-service.js";
+import { CREDENTIAL_NAME, isPipe } from "./egress/config.js";
+import { EgressLink, Gateway, GATEWAY_HOSTS, givenGateway, refuseCredentials, type EgressScope, type GatewayName } from "./gateway.js";
 
 export interface RuntimeConfig {
   database: string;
@@ -110,12 +116,20 @@ export interface RuntimeConfig {
   onboard?: OnboardConfig;
   /** Where each component of a system model is cloned from, and the ref a run starts from (design doc 9 §12, B3). */
   workspace?: { components: Record<string, ComponentSource> };
+  /**
+   * The egress proxy (spec/boundary.md "The egress proxy"): `admin` is its admin channel, a Unix socket (relative to
+   * the file) or a named pipe; `gateways` names the credential each of the control plane's gateways sends, as the
+   * proxy's configuration names it.
+   */
+  egress?: { admin?: string; gateways?: Partial<Record<GatewayName, string>> };
   /** The configuration file itself, so a verifier process can read it too. */
   file?: string;
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "evidence", "rateLimits", "decisions", "plan", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard"],
+  "": ["database", "artifacts", "evidence", "rateLimits", "decisions", "plan", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard", "egress"],
+  egress: ["admin", "gateways"],
+  "egress.gateways": ["model", "github"],
   plan: ["checkMs"],
   executor: ["managed-agents"],
   "executor.managed-agents": ["pollMs", "maxTurnMs"],
@@ -194,6 +208,16 @@ export function readConfig(file: string): RuntimeConfig {
     if (vp.trusted !== undefined && (!Array.isArray(vp.trusted) || !vp.trusted.every((t) => typeof t === "string"))) throw new Violation("bad_config", `${file}: "verifier.process.trusted" is a list of files`);
     config.verifier.process = { key: at((vp.key as string | undefined) ?? ".mandate/verifier.key"), ...(vp.trusted ? { trusted: (vp.trusted as string[]).map(at) } : {}) };
   }
+  if (c["egress"] !== undefined) {
+    const eg = c["egress"] as { admin?: unknown; gateways?: unknown };
+    if (!eg || typeof eg !== "object" || Array.isArray(eg)) throw new Violation("bad_config", `${file}: "egress" is { "admin", "gateways" }`);
+    if (eg.admin !== undefined && (typeof eg.admin !== "string" || eg.admin === "")) throw new Violation("bad_config", `${file}: "egress.admin" is the egress proxy's admin socket or named pipe`);
+    if (eg.gateways !== undefined && (!eg.gateways || typeof eg.gateways !== "object" || Array.isArray(eg.gateways))) throw new Violation("bad_config", `${file}: "egress.gateways" is { "model", "github" }`);
+    for (const [g, name] of Object.entries((eg.gateways ?? {}) as Record<string, unknown>)) {
+      if (typeof name !== "string" || !CREDENTIAL_NAME.test(name)) throw new Violation("bad_config", `${file}: "egress.gateways.${g}" is the name of a credential the egress proxy holds (${CREDENTIAL_NAME.source})`);
+    }
+    if (typeof eg.admin === "string" && !isPipe(eg.admin)) config.egress!.admin = at(eg.admin);
+  }
   config.file = resolve(file);
   return config;
 }
@@ -271,25 +295,52 @@ export function verifierKeys(config: RuntimeConfig, main: string[] = [process.ex
 export function localVerifier(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv = process.env): VerifierAdapter {
   const sandbox = sandboxFor(config);
   if (!config.verifier || !sandbox) return { check: async () => missing("verifier") };
-  return new SandboxVerifier(config.verifier, sandbox, modelFor(config, program, lock, env));
+  // With the model gateway on, the runtime gave this process a session's address and placeholder, and no key.
+  const gateways = config.egress?.gateways ?? {};
+  refuseCredentials(gateways, env);
+  return new SandboxVerifier(config.verifier, sandbox, modelFor(config, program, lock, env, gateways.model !== undefined ? givenGateway(env) : undefined));
 }
 
-function modelFor(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv): AnthropicModel | undefined {
+/** The Anthropic API's own address, which a gateway's `fetch` sends to its session instead. */
+const ANTHROPIC_API = "https://api.anthropic.com";
+
+/**
+ * What an adapter holds in place of a secret behind a gateway: no secret, and not the placeholder either, which
+ * changes with each session; the gateway's `fetch` puts the current session's placeholder in the header.
+ */
+export const GATEWAY_STAND_IN = "mandate-egress-gateway";
+
+function modelFor(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv, gateway?: typeof fetch): AnthropicModel | undefined {
   if (!config.model) return undefined;
+  if (gateway) {
+    const workspaceId = workspaceOf(env);
+    return new AnthropicModel({ lock, program, apiKey: GATEWAY_STAND_IN, baseURL: ANTHROPIC_API, fetch: gateway, ...(workspaceId ? { workspaceId } : {}) });
+  }
   const { apiKey, workspaceId } = anthropicCredentials(env, "model.provider is anthropic");
   return new AnthropicModel({ lock, program, apiKey, ...(workspaceId ? { workspaceId } : {}) });
+}
+
+function workspaceOf(env: NodeJS.ProcessEnv): string | undefined {
+  return env["CLAUDE_WORKSPACE_ID"] ?? env["anthropic-workspace-id"];
 }
 
 /** The Anthropic API key and workspace, from the environment only (K7). */
 export function anthropicCredentials(env: NodeJS.ProcessEnv, why: string): { apiKey: string; workspaceId?: string } {
   const apiKey = env["CLAUDE_API_KEY"] ?? env["ANTHROPIC_API_KEY"];
   if (!apiKey) throw new Violation("no_credentials", `${why}, but neither CLAUDE_API_KEY nor ANTHROPIC_API_KEY is set.`);
-  const workspaceId = env["CLAUDE_WORKSPACE_ID"] ?? env["anthropic-workspace-id"];
+  const workspaceId = workspaceOf(env);
   return { apiKey, ...(workspaceId ? { workspaceId } : {}) };
 }
 
-/** An SDK client for the Anthropic API, with the workspace header when the key needs one. */
-export function anthropicClient(env: NodeJS.ProcessEnv, why: string): Anthropic {
+/**
+ * An SDK client for the Anthropic API, with the workspace header when the key needs one. Through a model gateway,
+ * it holds no key: it sends with the gateway's `fetch`.
+ */
+export function anthropicClient(env: NodeJS.ProcessEnv, why: string, gateway?: typeof fetch): Anthropic {
+  if (gateway) {
+    const workspaceId = workspaceOf(env);
+    return new Anthropic({ apiKey: GATEWAY_STAND_IN, authToken: null, baseURL: ANTHROPIC_API, fetch: gateway, ...(workspaceId ? { defaultHeaders: { "anthropic-workspace-id": workspaceId } } : {}) });
+  }
   const { apiKey, workspaceId } = anthropicCredentials(env, why);
   return new Anthropic({ apiKey, ...(workspaceId ? { defaultHeaders: { "anthropic-workspace-id": workspaceId } } : {}) });
 }
@@ -300,11 +351,11 @@ export function anthropicClient(env: NodeJS.ProcessEnv, why: string): Anthropic 
  * run then refuses to start (no_executor), and a bound agent never runs
  * anywhere else.
  */
-function executorFor(config: RuntimeConfig, lock: Lock, env: NodeJS.ProcessEnv): Executor | undefined {
+function executorFor(config: RuntimeConfig, lock: Lock, env: NodeJS.ProcessEnv, gateway?: typeof fetch): Executor | undefined {
   const binding = lock.bindings?.["managed-agents"];
   const c = config.executor?.["managed-agents"];
   if (!binding || !c) return undefined;
-  const api = sdkApi(anthropicClient(env, "executor.managed-agents is configured"));
+  const api = sdkApi(anthropicClient(env, "executor.managed-agents is configured", gateway));
   return managedAgentsExecutor({ binding, lock, api, ...(c.pollMs ? { pollMs: c.pollMs } : {}), ...(c.maxTurnMs ? { maxTurnMs: c.maxTurnMs } : {}) });
 }
 
@@ -330,10 +381,10 @@ function brokerFor(config: RuntimeConfig, env: NodeJS.ProcessEnv): DeclaredReads
   return new DeclaredReads(sources);
 }
 
-function boundaryVerifier(config: RuntimeConfig, sandbox: MxcAdapter, env: NodeJS.ProcessEnv, inner: VerifierAdapter | undefined): BoundaryVerifier {
+function boundaryVerifier(config: RuntimeConfig, sandbox: MxcAdapter, env: NodeJS.ProcessEnv, inner: VerifierAdapter | undefined, github?: typeof fetch): BoundaryVerifier {
   const b = config.boundary!;
-  const token = env["MANDATE_GITHUB_TOKEN"];
-  const ci = b.ci && token ? { ci: { ...(b.ci.mode ? { mode: b.ci.mode } : {}), source: new GitHubCi({ token, ...(b.ci.workflow ? { workflow: b.ci.workflow } : {}) }) } } : {};
+  const token = github ? GATEWAY_STAND_IN : env["MANDATE_GITHUB_TOKEN"];
+  const ci = b.ci && token ? { ci: { ...(b.ci.mode ? { mode: b.ci.mode } : {}), source: new GitHubCi({ token, ...(b.ci.workflow ? { workflow: b.ci.workflow } : {}), ...(github ? { fetch: github } : {}) }) } } : {};
   if (b.ci && !token) throw new Violation("no_credentials", "boundary.ci reads GitHub Actions, but MANDATE_GITHUB_TOKEN is not set.");
   return new BoundaryVerifier({ ...(b.integration ? { integration: b.integration } : {}), ...(b.pinned ? { pinned: b.pinned } : {}), ...(b.extraRead ? { extraRead: b.extraRead } : {}), ...(b.timeoutMs ? { timeoutMs: b.timeoutMs } : {}), ...ci }, sandbox, realDocker, inner);
 }
@@ -343,32 +394,94 @@ function missing(what: string): never {
   throw new Violation("no_adapter", `The runtime configuration has no ${what}.`);
 }
 
+/** The egress proxy behind the control plane's gateways, as the configuration names it. */
+interface EgressSetup {
+  link: EgressLink;
+  gateways: Partial<Record<GatewayName, string>>;
+  on: GatewayName[];
+  model?: Gateway;
+  github?: Gateway;
+}
+
+/**
+ * The runtime's link to the egress proxy and its gateways; none without `egress.admin`. A gateway asked for without a
+ * proxy is `no_egress_proxy`; a gateway's secret in the runtime's environment is `credential_in_environment`.
+ * Nothing here reaches the proxy: a session is opened at a gateway's first request.
+ */
+function egressFor(config: RuntimeConfig, env: NodeJS.ProcessEnv, scope: EgressScope | undefined): EgressSetup | undefined {
+  const eg = config.egress;
+  if (!eg) return undefined;
+  const gateways = eg.gateways ?? {};
+  const on = (["model", "github"] as const).filter((g) => gateways[g] !== undefined);
+  if (!eg.admin) {
+    if (on.length) throw new Violation("no_egress_proxy", `egress.gateways turns on the ${on.join(" and ")} gateway, and egress.admin names no egress proxy.`);
+    return undefined;
+  }
+  refuseCredentials(gateways, env);
+  const link = new EgressLink({ admin: eg.admin, ...(scope ? { scope } : {}) });
+  return {
+    link,
+    gateways,
+    on,
+    ...(gateways.model !== undefined ? { model: new Gateway(link, "model", gateways.model) } : {}),
+    ...(gateways.github !== undefined ? { github: new Gateway(link, "github", gateways.github) } : {}),
+  };
+}
+
+/**
+ * The verifier process's environment. With the model gateway on and a model configured, it is made when the process
+ * starts: a gateway session of its own, opened for it, whose address and placeholder are all it gets of the model's
+ * credential. The process is started again with a new session before a check that finds it idle with its session
+ * near its end.
+ */
+function verifierEnvFor(config: RuntimeConfig, env: NodeJS.ProcessEnv, egress: EgressSetup | undefined): NodeJS.ProcessEnv | ChildEnvSource {
+  const credential = egress?.gateways.model;
+  if (!config.model || !egress || credential === undefined) return verifierEnv({ model: !!config.model }, env);
+  const link = egress.link;
+  return {
+    make: async () => {
+      const s = await link.open("verifier.model", GATEWAY_HOSTS.model, credential);
+      return {
+        env: verifierEnv({ model: true, gateway: { url: s.base_url, placeholder: s.placeholder } }, env),
+        stale: () => s.expiresAt - link.now() <= link.renewMs,
+        release: () => void link.close(s.session),
+      };
+    },
+  };
+}
+
 /**
  * The adapters for a package. The model adapter needs the program and its
  * lock; secrets are read from the environment here and nowhere else (K7, K18).
  * A verifier process is started with `main` (the program and its arguments)
  * and gets only the variables env.ts `verifierEnv` lets through.
+ *
+ * With `egress` configured, `scope` names the run (and its tenant) the
+ * gateways' sessions are opened for, so that revoking the run or the tenant
+ * cuts them; a gateway adapter holds no secret and sends through the proxy.
  */
-export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv = process.env, main: string[] = [process.execPath, VERIFIER_MAIN]): Adapters {
-  const model = modelFor(config, program, lock, env);
+export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv = process.env, main: string[] = [process.execPath, VERIFIER_MAIN], scope?: EgressScope): Adapters {
+  const egress = egressFor(config, env, scope);
+  const model = modelFor(config, program, lock, env, egress?.model?.fetch);
   const tools: Record<string, ToolAdapter> = {};
   if (config.github) {
-    const token = env["MANDATE_GITHUB_TOKEN"];
+    const token = egress?.github ? GATEWAY_STAND_IN : env["MANDATE_GITHUB_TOKEN"];
     if (!token) throw new Violation("no_credentials", "github is configured, but MANDATE_GITHUB_TOKEN is not set.");
     const base = config.github.base ? { base: config.github.base } : {};
-    if (config.github.repo && config.github.workdir) tools["git.open_pr"] = new GitHubPullRequests({ token, repo: config.github.repo, workdir: config.github.workdir, ...base });
-    if (config.github.repos?.length) tools["git.merge"] = new GitHubMerges({ token, repos: config.github.repos, ...base });
+    const via = egress?.github ? { fetch: egress.github.fetch } : {};
+    if (config.github.repo && config.github.workdir) tools["git.open_pr"] = new GitHubPullRequests({ token, repo: config.github.repo, workdir: config.github.workdir, ...base, ...via });
+    if (config.github.repos?.length) tools["git.merge"] = new GitHubMerges({ token, repos: config.github.repos, ...base, ...via });
   }
   const sandbox = sandboxFor(config);
-  const executor = executorFor(config, lock, env);
+  const executor = executorFor(config, lock, env, egress?.model?.fetch);
   const own = config.verifier?.process
-    ? new ProcessVerifier({ command: [...main, "--config", config.file!], trusted: verifierKeys(config, main), package: { program, lock }, env: verifierEnv({ model: !!config.model }, env) })
+    ? new ProcessVerifier({ command: [...main, "--config", config.file!], trusted: verifierKeys(config, main), package: { program, lock }, env: verifierEnvFor(config, env, egress) })
     : config.verifier && sandbox
       ? new SandboxVerifier(config.verifier, sandbox, model)
       : undefined;
   // Boundary checks need the run's working copies, so they run in this process; other checks go to the verifier above.
   // inProcessMethods says which methods these two answer, from the same conditions.
-  const boundary = runsBoundary(config) && sandbox ? boundaryVerifier(config, sandbox, env, own) : undefined;
+  const boundary = runsBoundary(config) && sandbox ? boundaryVerifier(config, sandbox, env, own, egress?.github?.fetch) : undefined;
   const onboard = runsOnboard(config) ? new OnboardVerifier(config.onboard!, sandbox, boundary ?? own) : undefined;
   return {
     agents: { run: async () => missing("agent adapter: agents run as agent loops, which need model and sandbox") },
@@ -385,5 +498,19 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
     ...(config.samples ? { samples: new SampleReads(JSON.parse(readFileSync(config.samples, "utf8")) as Record<string, Value[]>) } : {}),
     clock: wallClock,
     random: Math.random,
+    ...(egress ? egressAdapters(egress) : {}),
+  };
+}
+
+/** What the runtime does with the proxy itself: check it before a start, revoke through it, and close what it opened. */
+function egressAdapters(egress: EgressSetup): Pick<Adapters, "revoke" | "egress"> {
+  return {
+    revoke: (scope) => egress.link.revoke(scope),
+    egress: {
+      ready: async () => {
+        if (egress.on.length) await egress.link.ready(egress.gateways);
+      },
+      close: () => egress.link.closeAll(),
+    },
   };
 }

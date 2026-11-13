@@ -27,6 +27,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AuthorizationContext, PreparedAction, PreparedFile, ToolAdapter, ToolContract } from "./adapters.js";
+import { denialOf } from "./gateway.js";
 import { inside } from "./paths.js";
 import { digest, isObj, type Value } from "./values.js";
 
@@ -51,13 +52,27 @@ export class GitHubError extends Error {
   constructor(
     readonly status: number | undefined,
     message: string,
+    /** The egress proxy's reason, when it refused the request rather than GitHub (gateway.ts). */
+    readonly egress?: string,
   ) {
     super(message);
   }
-  /** A status that says the request was not applied; anything else (5xx, 429, no answer) leaves it unknown. */
+  /**
+   * A status that says the request was not applied; anything else (5xx, 429, no answer) leaves it unknown. A refusal
+   * of the egress proxy is not GitHub's answer: it says this request was not sent, and nothing of those an operation
+   * sent before it, so it leaves the operation unknown, to be reconciled.
+   */
   get definite(): boolean {
-    return this.status !== undefined && this.status >= 400 && this.status < 500 && this.status !== 429;
+    return this.egress === undefined && this.status !== undefined && this.status >= 400 && this.status < 500 && this.status !== 429;
   }
+}
+
+/** The error of a GitHub answer that is not a success: GitHub's own, or the egress proxy's refusal, named. */
+export function answerError(what: string, res: Response, body: unknown): GitHubError {
+  const why = denialOf(res.headers);
+  if (why) return new GitHubError(res.status, `${what}: egress_denied: ${why}: the egress proxy refused the github gateway's request`, why);
+  const msg = isObj(body as Value) ? String((body as { message?: unknown }).message ?? "") : "";
+  return new GitHubError(res.status, `${what}: HTTP ${res.status}${msg ? ` ${msg}` : ""}`);
 }
 
 export class GitHubPullRequests implements ToolAdapter {
@@ -233,10 +248,7 @@ export class GitHubPullRequests implements ToolAdapter {
     }
     const text = await res.text();
     const parsed: Http = { status: res.status, body: text ? JSON.parse(text) : null };
-    if (res.status >= 300) {
-      const msg = isObj(parsed.body as Value) ? String((parsed.body as { message?: unknown }).message ?? "") : "";
-      throw new GitHubError(res.status, `${method} ${path}: HTTP ${res.status}${msg ? ` ${msg}` : ""}`);
-    }
+    if (res.status >= 300) throw answerError(`${method} ${path}`, res, parsed.body);
     return parsed.body;
   }
 }
