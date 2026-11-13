@@ -394,11 +394,11 @@ own adapters, reach a host. It holds the secrets; nothing else does.
   fails (`replay_called_adapter`), so no adapter is ever called in it. `run`,
   `approve-envelope`, `approve`, `decline`, `answer`, `reconcile`,
   `raise-limits`, `amend` and `cancel` are refused. For `cancel` the message
-  says what to do instead: it asks the run's adapters to stop an action whose
-  outcome is unknown, so it cannot run beside the secret, and `mandate halt
-  --tenant T` (a halt names a tenant, not a run) ends the runs of the run's
-  tenant without an adapter, or `mandate cancel` is run from an environment
-  without the secret. The refusal is per gateway: a gateway that is off refuses
+  says what to do instead: it asks an adapter to stop an action whose
+  outcome is unknown, so it cannot run beside the secret. `mandate cancel` is
+  run from an environment without the secret; from this one, `mandate halt
+  --tenant T` stops every open run of the run's tenant without an adapter (a
+  halt names a tenant, not a run). The refusal is per gateway: a gateway that is off refuses
   nothing, so with only the model gateway on, `MANDATE_GITHUB_TOKEN` is
   the GitHub adapter's as before. A variable set to the empty string holds
   nothing and is not refused; on Windows a name matches in any case, as
@@ -964,11 +964,11 @@ its environment, so a credential there does not refuse it
 (`credential_in_environment` is a refusal of the commands that run
 adapters, and `mandate cancel`, which asks one, is among them: with the
 secret in the environment, `mandate halt --tenant T` is the way to stop the
-runs of a tenant). It connects only for the revoke: `--lift` and `--list` never reach
-the proxy, and the connection is closed when the command ends. The proxy has
-10 seconds to take the connection and 10 seconds to answer; a proxy that does
-neither is reported as a failed revoke (`egress_unavailable`, naming the
-proxy), the halt stands, and the exit is 1.
+runs of a tenant). It connects only for the revoke: `--lift` and `--list`
+never reach the proxy, and the connection is closed when the command ends.
+The proxy has 10 seconds to take the connection and 10 seconds to answer; a
+proxy that does neither is reported as a failed revoke (`egress_unavailable`,
+naming the proxy), the halt stands, and the exit is 1.
 
 `mandate halt` prints the halt's id, scope and reason, each run it ended
 with its tenant and state (and, for one left `attention_required`, that an

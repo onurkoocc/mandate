@@ -90,7 +90,7 @@ export function refuseCredentials(gateways: Partial<Record<GatewayName, string>>
  */
 export function credentialAdvice(command: string, run: string, tenant: string): string | undefined {
   if (command !== "cancel") return undefined;
-  return `cancel asks the run's adapters to stop an action whose outcome is unknown, and no adapter runs in a process that holds the secret. To stop run ${run} from this environment use mandate halt --tenant ${tenant}, which ends every open run of the tenant without an adapter (mandate halt --lift --tenant ${tenant} --by <you> lifts it); or run mandate cancel ${run} from an environment without the secret.`;
+  return `cancel asks an adapter to stop an action whose outcome is unknown, and no adapter runs in a process that holds the secret. Run mandate cancel ${run} from an environment without the secret. From this environment, mandate halt --tenant ${tenant} stops every open run of the tenant, this one among them, without an adapter.`;
 }
 
 interface Session {
