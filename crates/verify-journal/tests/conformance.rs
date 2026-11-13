@@ -24,11 +24,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use mandate_ir::{Value, canonicalize, parse_bytes};
+use mandate_testkit::repo;
 use verify_journal::{PublicKey, Report, public_keys_in, verify_export};
-
-fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
 
 fn read_ir(path: &Path) -> Value {
     let bytes = fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
