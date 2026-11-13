@@ -26,6 +26,7 @@ export { denialsIn, MIN_BUILD, WindowsMxcHost, windowsBuild, winQuote, type Wind
 export * from "./signals.js";
 export { runTests, type TestOptions, type TestResult } from "./testing.js";
 export { freshness, runDoc, runView, shadowDiff, type AsOf, type Freshness, type RunView, type ShadowRow } from "./views.js";
+export { CLASS_HOLDS, CLASSES, commandClass, EVENT_CLASSES, eventClass, SECTION_CLASSES, sectionClass, shows, stepClass, TRACE_KINDS, WAIT_KINDS, type Audience, type ViewClass } from "./classes.js";
 export { bind, BROKER_ID, DeclaredReads, evaluate, SampleReads, type ReadSourceConfig, type SqlRunner } from "./broker.js";
 export * from "./sim.js";
 export * from "./values.js";
