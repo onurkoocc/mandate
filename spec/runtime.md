@@ -31,7 +31,8 @@ Two database drivers share one interface (`runtime/src/db.ts`):
 | `packages` | Content-addressed packages: program, lock, and the imported modules it was checked with |
 | `runs` | State, revision, lease fence, cancel flag, waiting / attention / result / error / summary; the manifest and its hash R |
 | `workspace_claims` | Which run holds each component's working copy (B3) |
-| `events` | The run's append-only event log |
+| `events` | The run's append-only event log; in a chained run each event's `hash` ([`journal.md`](journal.md)) |
+| `journal_anchors` | The anchor signed at each state change of a chained run: the state event's seq, hash and time, the key id and the signature ([`journal.md`](journal.md#anchors)) |
 | `commands` | One row per nondeterministic step: request digest, state, result or error, cost |
 | `budgets` | Limit and settled amount per dimension (`tokens`, `steps`, `spend:<currency>`) |
 | `reservations` | Upper-bound reservations per command and dimension |
@@ -810,6 +811,7 @@ an accepted message is still a no-op.
 | `CancelRun` | `cancelRun` |
 | `ReconcileAction` | `reconcileAction` |
 | `ReplayRun` | `replayRun` (adapters that refuse every call) |
+| (journal) | `exportJournal` and `verifyJournal`: the run's chained journal as an outsider checks it, and that check under the runtime's trusted keys ([`journal.md`](journal.md)) |
 | (governance) | `raiseLimits`: a person raises the run's limits after `budget_exceeded` |
 
 `tick` expires decision waits whose deadline passed. `settleCharge` records
@@ -849,6 +851,9 @@ mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend
 mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
 mandate decision <run> <digest>
 mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
+mandate journal export <run> [--out FILE]
+mandate journal key [--out FILE]
+mandate journal verify <export.json> --key <public key.pem> [--key FILE]… [--json]
 mandate replay <run>
 mandate artifact <run> <blob:sha256:…>
 mandate show <run> [--format md|html|json]
@@ -859,6 +864,16 @@ mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [-
 
 `deploy` writes an executor binding into the lock; it needs
 `CLAUDE_API_KEY` and no configuration ([`executors.md`](executors.md)).
+
+`journal export` writes a run's chained journal with its manifest and
+package, as one snapshot, and `journal key` the public keys its anchors are
+verified against: every key the runtime trusts, read and never made.
+`journal verify` checks an export with those keys alone and, like
+`verify-decision`, reads no configuration and no database. It exits 0 when
+the journal is verified, 1 when it is broken or unchained, and 2 when nothing
+could be checked ([`journal.md`](journal.md#the-report)). A run id or a tenant
+that is not well-formed Unicode, or holds U+0000, is refused at the start
+(`invalid_run_id`, `invalid_tenant`).
 
 `--limit` takes `spend`, `tokens`, `steps` and, for a workflow with an
 envelope, `agents`, separated by commas. `approve-envelope` signs a

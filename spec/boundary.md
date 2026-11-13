@@ -22,7 +22,7 @@ the configuration and the CLI.
 | Sandbox requirement 0.2, for a 0.5 program; a 0.5 parent's sub-programs in 0.5 | PR 2 | implemented. No host enforces what it adds beyond 0.1, so the MXC adapter refuses a requirement that asks for any of it, by name |
 | At load, a lock that sets `host`, `isolation` or `egress` is refused, each by its name (`unsupported_lock`) | PR 2 | implemented; each name is lifted by the change that enforces it |
 | The attestation a check needs is read from the program, not the record; child processes get a filtered environment (B20) | PR 1 (#34) | implemented (INV-27; [`runtime.md`](runtime.md)) |
-| The chained journal: event hashes, signed anchors, export, verification (J01–J08) | PR 3 | specified |
+| The chained journal: event hashes, signed anchors, export, verification (J01–J16) | PR 3 | implemented ([`journal.md`](journal.md)) |
 | Isolation levels of hosts; host fitness (`unfit_host`) | PR 4 | specified |
 | Violations and the violation limit; a hard halt | PR 5 | specified |
 | The reference egress proxy and its admin channel ([`egress.md`](egress.md)) | PR 6 | implemented; the control plane's gateways use it, and sandboxes will from PR 8 |
@@ -548,13 +548,15 @@ What PR 8 is held to. It was shown by an experiment on GitHub's
 
 ## The chained journal
 
-*Specified; implemented by PR 3, and checked independently by R3.*
+*Implemented by PR 3; checked independently by R3.*
 
-This section states the rules. The byte-exact contract of the event hash,
-the anchor, the export and the verification report is spec/journal.md,
-which lands with PR 3.
+This section states the rules. The byte-exact contract an independent
+verifier is written from (the canonical form, the event hash, the anchor
+statement and what is signed, the export, how an export is read, the
+verification steps, the report and the exit codes) is
+[`journal.md`](journal.md).
 
-- **Event hash.** Each event of a run has a hash:
+- **Event hash.** Each event of a chained run has a hash:
   `events.hash = digest("event", { run, seq, type, data, at, prev })`,
   where `digest(domain, v) = sha256("mandate/<domain>/0.1\n" ‖ canonical(v))`
   is the runtime's ([`values.ts`](../runtime/src/values.ts)), `data` is in
@@ -563,43 +565,56 @@ which lands with PR 3.
 - **Chained runs.** A run is chained when its first event has a hash. A
   run begun before the upgrade stays unchained, and is reported so; it is
   never chained after the fact.
-- **Anchors.** At every change of a run's state, in the same transaction,
-  the runtime signs an anchor with its evidence signer and keeps it in a
-  table of its own (`journal_anchors`), not among the events:
-  `{ "format": "mandate/journal-anchor/0.1", run, seq, hash, at }`.
+- **Anchors.** At every change of a run's state, its creation included, in
+  the same transaction, the runtime signs an anchor with its evidence key
+  and keeps it in a table of its own (`journal_anchors`), not among the
+  events: `{ "format": "mandate/journal-anchor/0.1", run, seq, hash, at }`.
 - **Export.** `mandate journal export <run> [--out <file>]` writes
-  `mandate/journal-export/0.1`: `run`, `tenant`, `manifest`,
-  `manifest_hash`, `package`, `events [{ seq, type, data, at, hash }]`,
-  `anchors`, and `key_ids`, which are advisory. It does not carry decision
-  or evidence records. `mandate journal key [--out <file>]` writes the
-  public key that signs anchors.
-- **Verification.** `Runtime.verifyJournal` and `verify-journal` read an
-  export and a key and write `mandate/journal-verification/0.1`: a
-  `status` of `verified`, `broken` or `unchained`, and its problems, each
-  with a code and, where it has one, a `seq`:
+  `mandate/journal-export/0.1`, one snapshot of the run: `run`, `tenant`,
+  `manifest_hash`, `manifest`, `package`,
+  `events [{ seq, type, data, at, hash }]`, `anchors`, and `keys`, the key
+  ids that signed them, which are advisory. It does not carry decision or
+  evidence records. `mandate journal key [--out <file>]` writes the public
+  keys the runtime trusts, which anchors are verified against; it never
+  makes a key.
+- **Verification.** `Runtime.verifyJournal`, `mandate journal verify` and
+  `verify-journal` read an export and public keys and write
+  `mandate/journal-verification/0.1`: a `status`, how far the signatures
+  reach (`anchored_through`, the events after it), and the findings, each
+  with a code and, where it has one, a `seq`.
 
-| Problem | When |
+| Status | Means |
 |---|---|
-| `malformed_export` | The export does not match its format |
-| `seq_gap` | A sequence number is missing or repeated |
+| `verified` | The chain holds, every state event is anchored, and the signatures cover the events through `anchored_through` |
+| `broken` | The export was read, and the chain or the anchors do not hold |
+| `unchained` | No event has a hash and nothing is anchored: a run begun before the upgrade; nothing is said either way |
+| `unreadable` | The export could not be read, or is beyond the limits every verifier holds to; nothing is said about the journal |
+
+| Finding | When |
+|---|---|
+| `malformed_export` | The export is not JSON by the reading rules, or does not have its shape (`unreadable`) |
+| `export_over_limit` | The export is larger than 64 MiB or nests deeper than 256 (`unreadable`) |
+| `seq_gap` | The events are not numbered 1, 2, 3, … in the export's order |
 | `hash_missing` | An event of a chained run has no hash |
 | `chain_broken` | An event's hash is not the digest of its content and its predecessor's hash |
-| `manifest_mismatch` | The manifest does not hash to `manifest_hash` |
-| `package_mismatch` | The package is not the one the run names |
-| `anchor_signature_invalid` | An anchor's signature does not verify |
+| `manifest_mismatch` | The manifest is not the one the first event names |
+| `package_mismatch` | The package is not the one the first event names |
 | `anchor_unknown_key` | An anchor is signed by a key the verifier was not given |
-| `anchor_mismatch` | An anchor names a hash other than its event's |
-| `anchor_beyond_end` | An anchor names an event the export does not have: the tail was cut |
-| `unanchored_tail` | Events after the last anchor; reported, and the status stays `verified` |
+| `anchor_signature_invalid` | An anchor's signature does not verify |
+| `anchor_beyond_end` | An anchor names an event past the last one: the tail was cut |
+| `anchor_mismatch` | An anchor names a hash or a time other than its event's |
+| `anchor_missing` | A state event has no anchor |
+| `unanchored_tail` | Events after the last anchor that holds; reported, and the status stays `verified` |
 
 - **Never on a read path.** The chain is checked by `verifyJournal` and the
-  verifier only, never by `events()`, replay or a view: existing tests
+  verifiers only, never by `events()`, replay or a view: existing tests
   change and delete events on purpose.
 - **Limits.** The chain is evidence against someone who holds the database
   but not the key. The tail after the last anchor can be cut until the next
-  state change anchors it. Someone who holds both the key and the database
-  can rewrite the journal. The export and the OpenTelemetry projection,
-  once they have left, are the outside witnesses.
+  state change anchors it, and newer events can be cut with their anchors.
+  Someone who holds both the key and the database can rewrite the journal.
+  Anchors bind the run id, not the database. The export and the
+  OpenTelemetry projection, once they have left, are the outside witnesses.
 
 ## Violations and halt
 
@@ -753,14 +768,22 @@ shared with `verify-journal`:
 
 | Case | Rule | Problem |
 |---|---|---|
-| J01 | An untouched chained run verifies | — |
+| J01 | A closed chained run verifies, also over fractions, exponents, escapes and keys whose UTF-16 and code point orders differ | — (`verified`) |
 | J02 | An event changed after it was written | `chain_broken` at its `seq` |
-| J03 | An event deleted | `seq_gap` |
-| J04 | The tail cut | `anchor_beyond_end`; after the last anchor only, `unanchored_tail` |
-| J05 | An anchor's signature, or its key | `anchor_signature_invalid`, `anchor_unknown_key` |
-| J06 | An anchor that names another hash | `anchor_mismatch` |
-| J07 | A manifest or a package other than the run's | `manifest_mismatch`, `package_mismatch` |
-| J08 | A run begun before the upgrade; an event without a hash; an export that is not one | `unchained`, `hash_missing`, `malformed_export` |
+| J03 | An event deleted | `seq_gap`, `chain_broken` |
+| J04 | The tail cut while its anchors stay | `anchor_beyond_end`, `unanchored_tail` |
+| J05 | An open run with events after its last anchor | `unanchored_tail` (`verified`) |
+| J06 | An anchor signed by another key, one whose signature does not verify | `anchor_unknown_key`, `anchor_signature_invalid` |
+| J07 | A manifest and a package other than the run's | `manifest_mismatch`, `package_mismatch` |
+| J08 | A run begun before the upgrade | — (`unchained`) |
+| J09 | The same values spelled otherwise | — (`verified`) |
+| J10 | An event without its hash | `hash_missing`, `chain_broken` |
+| J11 | An anchor that names another hash | `anchor_mismatch` |
+| J12 | A state event without its anchor | `anchor_missing` |
+| J13 | Events moved in the export | `seq_gap`, `chain_broken` |
+| J14 | Two events with one seq; the anchor names the first | `seq_gap`, `chain_broken` |
+| J15 | An export that is not one | `malformed_export` (`unreadable`) |
+| J16 | A run whose data nests deeper than a verifier reads | `export_over_limit` (`unreadable`) |
 
 The letters P, T and L are kept for later releases.
 

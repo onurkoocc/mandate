@@ -16,6 +16,7 @@ import type { Cost, Outcome } from "./adapters.js";
 import { decisionId, type SignedDecision, type StoredDecision } from "./decisions.js";
 import type { EvidenceRecord } from "./evidence.js";
 import { num, type Db, type Row, type Tx } from "./db.js";
+import { ANCHOR_FORMAT, anchorStatement, eventHash, type AnchorSigner } from "./journal-chain.js";
 import { Cancelled, Fault, StaleFence, Violation } from "./signals.js";
 import type { Obj, Value } from "./values.js";
 
@@ -169,6 +170,8 @@ export class Journal {
   constructor(
     readonly db: Db,
     private readonly now: () => number,
+    /** Signs the anchor of each state change (spec/journal.md "Anchors"); without one, nothing is anchored. */
+    private readonly signer?: AnchorSigner,
   ) {}
 
   // ── runs and events ───────────────────────────────────────────────────
@@ -182,9 +185,35 @@ export class Journal {
     return run;
   }
 
-  async event(tx: Tx, runId: string, type: string, data: Value): Promise<void> {
-    const [r] = await tx.query<Row>("select coalesce(max(seq), 0) + 1 as seq from events where run_id = $1", [runId]);
-    await tx.query("insert into events (run_id, seq, type, data, at) values ($1, $2, $3, $4, $5)", [runId, num(r?.["seq"]), type, json(data), this.now()]);
+  /**
+   * Appends an event to the run's journal: one read of the run's last event and one insert. Every caller holds the
+   * run's row lock (`lock`), or writes in the transaction that creates the run, so two appends to one run never
+   * interleave between the read and the insert. Returns what was written.
+   *
+   * The event of a chained run carries its hash (spec/journal.md), over its data as the database gives it back:
+   * what `JSON.stringify` writes, read with `JSON.parse`. A run is chained when its first event has a hash, so a
+   * new run is, and a run begun before the journal was chained, whose last event has none, stays as it was.
+   */
+  async event(tx: Tx, runId: string, type: string, data: Value): Promise<{ seq: number; at: number; hash: string | null }> {
+    const [last] = await tx.query<Row>("select seq, hash from events where run_id = $1 order by seq desc limit 1", [runId]);
+    const seq = last ? num(last["seq"]) + 1 : 1;
+    const prev = last ? ((last["hash"] ?? null) as string | null) : null;
+    const at = this.now();
+    const text = json(data);
+    const hash = !last || prev !== null ? eventHash({ run: runId, seq, type, data: JSON.parse(text) as Value, at, prev }) : null;
+    await tx.query("insert into events (run_id, seq, type, data, at, hash) values ($1, $2, $3, $4, $5, $6)", [runId, seq, type, text, at, hash]);
+    return { seq, at, hash };
+  }
+
+  /**
+   * Anchors a chained run at the state event just written (spec/journal.md "Anchors"): the runtime's evidence key
+   * signs the event's seq, hash and time, in the transaction that wrote it. An anchor is a row of its own, never an
+   * event. An unchained run, whose event has no hash, has nothing to anchor.
+   */
+  private async anchor(tx: Tx, runId: string, e: { seq: number; at: number; hash: string | null }): Promise<void> {
+    if (e.hash === null || !this.signer) return;
+    const sig = this.signer(ANCHOR_FORMAT, anchorStatement(runId, e.seq, e.hash, e.at));
+    await tx.query("insert into journal_anchors (run_id, seq, hash, at, key_id, signature) values ($1, $2, $3, $4, $5, $6)", [runId, e.seq, e.hash, e.at, sig.key_id, sig.signature]);
   }
 
   /**
@@ -266,7 +295,8 @@ export class Journal {
     for (const [dim, limit] of Object.entries(r.limits)) {
       await tx.query("insert into budgets (run_id, dimension, limit_value) values ($1, $2, $3)", [r.runId, dim, limit]);
     }
-    await this.event(tx, r.runId, "run_accepted", { workflow: r.workflow, package: r.packageHash, limits: r.limits, manifest: r.manifestHash });
+    // The run's first state is anchored like every later one, so a chained run has an anchor from its first event on.
+    await this.anchor(tx, r.runId, await this.event(tx, r.runId, "run_accepted", { workflow: r.workflow, package: r.packageHash, limits: r.limits, manifest: r.manifestHash }));
   }
 
   /** Takes the run's lease for a new worker: the fence goes up, so older workers' writes are refused (R06). */
@@ -291,7 +321,7 @@ export class Journal {
          revision = revision + 1, updated_at = $8 where run_id = $1`,
       [runId, state, json(fields.waiting ?? null), json(fields.attention ?? null), json(fields.result ?? null), json(fields.error ?? null), fields.summary === undefined ? null : json(fields.summary), this.now()],
     );
-    await this.event(tx, runId, `run_${state}`, { ...fields } as Value);
+    await this.anchor(tx, runId, await this.event(tx, runId, `run_${state}`, { ...fields } as Value));
     // A finished run gives its components' working copies back (B3).
     if (TERMINAL.has(state)) await tx.query("delete from workspace_claims where run_id = $1", [runId]);
   }

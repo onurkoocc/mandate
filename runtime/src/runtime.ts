@@ -18,6 +18,7 @@ import { Faults } from "./faults.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
 import { costDims, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type Limits, type RunRow } from "./journal.js";
+import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
 import { buildPackage, isSigned04, verifyPackage, type Package } from "./package.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
@@ -166,10 +167,12 @@ export class Runtime {
     readonly driver?: Driver,
     options: RuntimeOptions = {},
   ) {
-    this.journal = new Journal(db, () => adapters.clock.now());
+    this.signer = options.signer ?? EvidenceSigner.generate();
+    // The evidence key signs the journal's anchors too (spec/journal.md); the journal itself holds no key.
+    const signer = this.signer;
+    this.journal = new Journal(db, () => adapters.clock.now(), (format, statement) => signer.signStatement(format, statement));
     this.faults = faults ?? new Faults();
     this.artifacts = options.artifacts ?? new ArtifactStore(db, new MemoryBlobs(), () => adapters.clock.now());
-    this.signer = options.signer ?? EvidenceSigner.generate();
     this.trusted = new TrustedKeys([this.signer.publicKey, ...(options.trustedKeys ?? [])]);
     this.verifiers = options.trustedVerifiers ?? new TrustedKeys();
     this.inProcess = new Set(options.inProcessMethods ?? []);
@@ -184,6 +187,10 @@ export class Runtime {
   // ── StartRun / resume ─────────────────────────────────────────────────
 
   async startRun(o: StartOptions): Promise<RunRow> {
+    // The run id and the tenant are text columns: what is not well-formed Unicode, or holds U+0000, would be stored
+    // as something else, and the run would live under a name it was not started with (spec/journal.md).
+    if (o.runId !== undefined && (o.runId === "" || !storable(o.runId))) throw new Violation("invalid_run_id", "A run id is non-empty, well-formed Unicode without U+0000; this one would be stored as another, or as none.");
+    if (o.tenant !== undefined && !storable(o.tenant)) throw new Violation("invalid_tenant", "A tenant is well-formed Unicode without U+0000; this one would be stored as another.");
     verifyPackage(o.pkg);
     if (this.decisionMode === "unsigned" && isSigned04(o.pkg.program, o.pkg.modules)) {
       throw new Violation("signed_decisions_required", "A mandate/0.4 package does not run in unsigned mode: its decisions are signed records (spec/envelope.md). Take decisions.mode out of the runtime configuration.");
@@ -463,7 +470,7 @@ export class Runtime {
     let opened = last !== null;
     try {
       for (;;) {
-        if (!opened) await this.write(runId, fence, (tx) => this.journal.event(tx, runId, "budget_exceeded", { episode, detail: e.value() }));
+        if (!opened) await this.write(runId, fence, async (tx) => void (await this.journal.event(tx, runId, "budget_exceeded", { episode, detail: e.value() })));
         try {
           await interp.onBudgetExceeded(run.workflow, run.input as Obj, episode);
         } catch (s) {
@@ -712,6 +719,21 @@ export class Runtime {
   async artifactList(runId: string): Promise<ArtifactRef[]> {
     const run = await this.journal.run(runId);
     return this.artifacts.list({ tenant: run.tenant, runId });
+  }
+
+  // ── the chained journal (spec/journal.md) ─────────────────────────────
+
+  /** The run's journal as an outsider checks it: events, anchors, the manifest and the package (`mandate journal export`). */
+  exportJournal(runId: string): Promise<JournalExport> {
+    return exportJournal(this.db, runId);
+  }
+
+  /**
+   * Verifies the run's journal as an outsider would: its export, as the bytes `mandate journal export` writes, under
+   * the keys this runtime trusts, its own and those rotated out. Nothing here is read from the database but the export.
+   */
+  async verifyJournal(runId: string): Promise<JournalReport> {
+    return verifyExport(JSON.stringify(await this.exportJournal(runId)), this.trusted.publicKeys());
   }
 
   // ── SubmitInput / DecideAction ────────────────────────────────────────
@@ -1152,6 +1174,11 @@ function refusedEvent(e: Refused, msg: Message | undefined): Value {
     key: r?.key ?? null,
     ...(msg ? { sender: msg.sender, message: msg.messageId } : {}),
   };
+}
+
+/** Whether a text column keeps `s` as it is: well-formed UTF-16 (no lone surrogate) and no U+0000. */
+function storable(s: string): boolean {
+  return (s as unknown as { isWellFormed(): boolean }).isWellFormed() && !s.includes(String.fromCharCode(0));
 }
 
 function minLimits(a: Record<string, number>, b: Record<string, number>): Record<string, number> {
