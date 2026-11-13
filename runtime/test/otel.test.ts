@@ -193,6 +193,19 @@ const collector = async (): Promise<Collector> => {
   return c;
 };
 
+/**
+ * Waits until a run's cursor has reached `seq`: the exporter has had the collector's answer and written it down. A
+ * collector that has the post is not that; a stop that lands in between abandons the post. A cursor once written stays.
+ */
+async function cursorAt(db: Db, run: string, seq: number): Promise<void> {
+  for (let i = 0; i < 2500; i++) {
+    const [c] = await db.query<{ seq: number }>("select seq from otel_cursors where run_id = $1", [run]);
+    if (c && Number(c.seq) >= seq) return;
+    await new Promise((r) => setTimeout(r, 2));
+  }
+  throw new Error(`timed out waiting for the cursor of ${run} to reach ${seq}`);
+}
+
 afterEach(async () => {
   await Promise.all(collectors.map((c) => c.stop()));
   collectors = [];
@@ -791,6 +804,8 @@ describe("--follow", () => {
     const first = c.seqs.length;
     await answer(w);
     await until(() => c.spans.some((s) => s.name === "mandate.run" && s.status?.code === 1), "the events written later");
+    // The collector has a post when it is in `posts`; the exporter writes the cursor once it has read the answer. A stop before that abandons the post.
+    await cursorAt(w.db, "ask", c.seqs.length);
     stop.abort();
     const report = await running;
     expect(report.failed).toBeUndefined();
@@ -845,12 +860,14 @@ describe("--follow", () => {
     await until(() => failures.length >= 2, "two failed passes");
     expect(await cursors(w.db)).toEqual([]);
     c.answer = accept;
-    const failed = c.posts.length;
-    await until(() => c.posts.length > failed, "a post after the collector's return");
+    const total = (await w.db.query("select seq from events where run_id = 'ask'")).length;
+    // The collector having the post is not the exporter having the answer: a stop in between abandons the post and leaves
+    // the failure of the earlier pass in the report. The cursor reaches the run's last seq only after the answer, and
+    // nothing in the pass that wrote it can throw after that, so the stop comes when that pass can no longer fail.
+    await cursorAt(w.db, "ask", total);
     stop.abort();
     const report = await running;
     expect(report.failed).toBeUndefined();
-    const total = (await w.db.query("select seq from events where run_id = 'ask'")).length;
     expect(await cursors(w.db)).toEqual([{ endpoint: otelEndpoint(c.url), run_id: "ask", seq: total }]);
   });
 });
@@ -890,13 +907,13 @@ workflow Ask() -> Untrusted<Text>
   );
   writeFileSync(join(dir, "mandate.runtime.json"), JSON.stringify({ database: `pglite:${join(dir, "db").replaceAll("\\", "/")}`, decisions: { mode: "unsigned" } }));
 
-  async function mandate(args: string[]): Promise<{ code: number; out: string; err: string }> {
+  async function mandate(args: string[], seen?: (out: string) => void): Promise<{ code: number; out: string; err: string }> {
     let out = "";
     let err = "";
     const write = process.stderr.write.bind(process.stderr);
     process.stderr.write = ((s: string) => ((err += s), true)) as typeof process.stderr.write;
     try {
-      const code = await main([...args, "--config", join(dir, "mandate.runtime.json")], (s) => (out += s), {});
+      const code = await main([...args, "--config", join(dir, "mandate.runtime.json")], (s) => ((out += s), seen?.(out)), {});
       return { code, out, err };
     } finally {
       process.stderr.write = write;
@@ -935,10 +952,11 @@ workflow Ask() -> Untrusted<Text>
   it("follows until SIGINT, then stops and exits 0", async () => {
     await mandate(["run", join(dir, "ask.mdt"), "--workflow", "Ask", "--input", "{}", "--run-id", "c3"]);
     const c = await collector();
-    const running = mandate(["otel", "export", "--endpoint", c.url, "--run", "c3", "--follow"]);
-    await until(() => c.posts.length > 0, "the first post");
-    // The collector has the post; the command writes the cursor once it has read the answer. A stop before that abandons the post.
-    await new Promise((r) => setTimeout(r, 500));
+    let said = false;
+    const running = mandate(["otel", "export", "--endpoint", c.url, "--run", "c3", "--follow"], (out) => (said = out.includes(" sent ")));
+    // The collector having the post is not the command having the answer: a stop before that abandons the post and the
+    // report is empty. The command says what it sent only after the answer, and writes its cursor with no wait a stop could cut.
+    await until(() => said, "the command's report of the post");
     process.emit("SIGINT");
     const r = await running;
     expect([r.code, r.err]).toEqual([0, ""]);
