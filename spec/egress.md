@@ -16,7 +16,9 @@ This page is the contract. An organisation may put its own proxy in this
 place; a proxy that does what this page says is conforming. The reference
 proxy (`mandate egress serve`, `runtime/src/egress/`) implements it, and
 is a reference implementation, not a hardened production proxy (see
-[Limits](#limits)).
+[Limits](#limits)). How the proxy fits the release (who starts it, what the
+runtime and the sandboxes do with it) is
+[`boundary.md`](boundary.md#the-egress-proxy).
 
 | Part | Where |
 |---|---|
