@@ -1,16 +1,18 @@
-// What the compiler says about every program written before 0.4 is pinned
+// What the compiler says about every program in the repository is pinned
 // here, by digest: a 0.1 to 0.3 program reads, checks, hashes, prints and
 // shows exactly as it did. A later version adds to the language; it does not
-// change what an earlier program means. The 0.5 fixture is pinned beside them,
-// so what 0.5 says of it changes only with a reason too.
+// change what an earlier program means. The programs of 0.4 and 0.5 (the
+// MigrateAll example with its domain module, and the three fixtures of
+// fixtures/boundary) are pinned beside them, so what the compiler says of
+// them changes only with a reason too. A Rust compiler must give these same
+// digests (release 0.5).
 //
 // The digests are in golden/outputs.json. A change to one of them is a change
 // to an earlier version's behavior and needs a reason in the commit that
 // makes it. To write the file again: MANDATE_UPDATE_GOLDEN=1 npm test.
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { check, kindOf, load, loadModules } from "../src/check.js";
 import { canonicalize } from "../src/json/jcs.js";
@@ -21,11 +23,11 @@ import { printProgram } from "../src/print/printer.js";
 import { sandboxRequirements } from "../src/target/sandbox.js";
 import { toHtml, toMarkdown } from "../src/views/doc.js";
 import { architecture, authority, cost, programDoc, semanticDiff } from "../src/views/views.js";
-import { readRepo, repoRoot, syntaxFixtures } from "./helpers.js";
+import { lockFileOf, readRepo, repoRoot, syntaxFixtures } from "./helpers.js";
 
 const GOLDEN = `${repoRoot}compiler/test/golden/outputs.json`;
 
-/** Every program in the repository written in 0.1 to 0.3, and the 0.5 fixture. */
+/** Every program in the repository. */
 const PROGRAMS = [
   "fixtures/fixbug/fixbug.mdt",
   "fixtures/fixbug/fixbug.ir.json",
@@ -38,23 +40,37 @@ const PROGRAMS = [
   "fixtures/system/onboard.mdt",
   "fixtures/system/repos.mdt",
   ...syntaxFixtures(),
+  // 0.4 (spec/envelope.md): the types its MigrateAll example uses, and the example.
+  "fixtures/envelope/domain.mdt",
+  "fixtures/envelope/migrate-all.mdt",
   // 0.5 (spec/boundary.md): methods, sandbox requirement 0.2 and lock 0.5.
   "fixtures/boundary/fetch.mdt",
+  "fixtures/boundary/reach.mdt",
 ];
 
 /** The system models the task programs import, as `--module` gives them. */
 const MODULE_FILES = ["fixtures/system/acme.system.mdt", "fixtures/system/repos.mdt"];
 
-function modules(): Modules {
-  const { modules, problems } = loadModules(MODULE_FILES.map((file) => ({ file, text: readRepo(file), kind: kindOf(file) })));
+/**
+ * The modules a program is given, where they are not MODULE_FILES. MigrateAll imports company.domain, which is
+ * not among them. Eight earlier programs (fixbug and seven syntax fixtures) also import from a module called
+ * company.domain, which is opaque to them when it is not given. With fixtures/envelope/domain.mdt in the shared
+ * list they would find it, and not the names they use (E0120): 50 of their digests change, and those are not to.
+ */
+const MODULE_FILES_OF: Record<string, string[]> = {
+  "fixtures/envelope/migrate-all.mdt": ["fixtures/envelope/domain.mdt"],
+};
+
+function modulesOf(files: string[]): Modules {
+  const { modules, problems } = loadModules(files.map((file) => ({ file, text: readRepo(file), kind: kindOf(file) })));
   expect(problems).toEqual([]);
   return modules;
 }
 
 function lockOf(file: string): Lock | undefined {
-  const path = `${dirname(repoRoot + file)}/mandate.lock.json`;
-  if (!existsSync(path)) return undefined;
-  const parsed = parseStrictJson(readFileSync(path, "utf8"));
+  const path = lockFileOf(file);
+  if (!path) return undefined;
+  const parsed = parseStrictJson(readRepo(path));
   if (!parsed.ok) throw new Error(`${path} is not strict JSON`);
   return parsed.value.value as unknown as Lock;
 }
@@ -97,17 +113,18 @@ function outputs(file: string, mods: Modules): Record<string, string> {
 }
 
 function digests(): Record<string, Record<string, string>> {
-  const mods = modules();
+  const shared = modulesOf(MODULE_FILES);
   const all: Record<string, Record<string, string>> = {};
   for (const file of PROGRAMS) {
     const row: Record<string, string> = {};
-    for (const [name, text] of Object.entries(outputs(file, mods))) row[name] = `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
+    const own = MODULE_FILES_OF[file];
+    for (const [name, text] of Object.entries(outputs(file, own ? modulesOf(own) : shared))) row[name] = `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
     all[file] = row;
   }
   return all;
 }
 
-describe("programs of 0.1 to 0.3", () => {
+describe("every program in the repository", () => {
   const now = digests();
 
   if (process.env["MANDATE_UPDATE_GOLDEN"] === "1") {

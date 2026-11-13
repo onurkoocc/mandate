@@ -67,6 +67,7 @@ pins, named after its path with `/` as `.`:
 `{ format: "mandate/vectors/program/0.1", source, kind, language,
 canonical, hashes: { program, defs }, lock?, package?, ir }`. `ir` is the
 program's IR in the compiler's member order; `canonical` is its canonical
-text. Where the program's directory has a `mandate.lock.json`, `lock` is
-that lock as a package carries it (without its `lock` field) and `package`
-the package hash.
+text. Where the program has a lock, `lock` is that lock as a package
+carries it (without its `lock` field) and `package` the package hash. A
+program's lock is `<name>.lock.json` beside it when that exists
+(`reach.mdt` has `reach.lock.json`), else `mandate.lock.json` beside it.
