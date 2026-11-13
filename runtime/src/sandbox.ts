@@ -11,7 +11,7 @@
 
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { SandboxRequirement } from "@mandate/compiler";
+import { ISOLATION_LEVELS, type IsolationLevel, type SandboxRequirement } from "@mandate/compiler";
 import type { AgentAdapter, DelegateRequest, Outcome } from "./adapters.js";
 import { inside } from "./tools.js";
 
@@ -37,6 +37,16 @@ export interface Enforceable {
    * path at or under one is refused by name, not dropped.
    */
   hidden?: string[];
+  /**
+   * The isolation level a sandbox of this host gives (spec/boundary.md "Isolation level and host fitness"),
+   * `process` when the host does not say. A host reports what it gives, never more.
+   */
+  level?: IsolationLevel;
+  /**
+   * Whether a sandbox of this host may share the machine with other tenants' work, `shared` when the host does not
+   * say. Only a host that can promise that nothing else runs beside a sandbox reports `exclusive`.
+   */
+  co_tenancy?: "shared" | "exclusive";
 }
 
 /** One process run inside a sandbox (§16.1 `Execute`): an argument vector, never a shell line. */
@@ -159,12 +169,18 @@ export class MxcAdapter {
     else if (req.exec.some((x) => x.args_prefix) && can.exec !== "args_prefix") unsupported.push("argument-prefix limits on commands");
     if (timeoutMs !== null && !can.timeout) unsupported.push("a timeout");
     if (!can.ui) unsupported.push("turning off desktop and clipboard access");
-    // What a 0.2 requirement asks beyond 0.1 is not enforced by any host yet (spec/boundary.md): it is refused by
-    // name, never dropped. A requirement without it (process, sharing allowed, no limits, no credentials) passes.
+    // What a 0.2 requirement asks beyond 0.1 (spec/boundary.md). Method limits and credentials are enforced by no
+    // host yet, so they are refused by name, never dropped. The isolation level and sharing are held against what
+    // the host reports: a level below `min`, or a host that may share where sharing is forbidden, is refused by
+    // name, and a weaker level is never chosen silently. A 0.1 requirement has none of these fields.
     const limited = Object.keys(req.network.methods ?? {});
     if (limited.length) unsupported.push(`method limits on outbound hosts: ${limited.join(", ")}`);
-    if (req.isolation && req.isolation.min !== "process") unsupported.push(`isolation ${req.isolation.min} (this host gives process)`);
-    if (req.isolation?.co_tenancy === "forbidden") unsupported.push("co_tenancy forbidden (this host may share)");
+    if (req.isolation) {
+      const level = can.level ?? "process";
+      const need = rank(req.isolation.min);
+      if (need < 0 || rank(level) < need) unsupported.push(`isolation ${req.isolation.min} (this host gives ${level})`);
+      if (req.isolation.co_tenancy === "forbidden" && (can.co_tenancy ?? "shared") !== "exclusive") unsupported.push("co_tenancy forbidden (this host may share)");
+    }
     const credentials = Object.keys(req.egress?.credentials ?? {});
     if (credentials.length) unsupported.push(`credentials for outbound hosts: ${credentials.join(", ")}`);
     if (unsupported.length) return { unsupported };
@@ -183,6 +199,11 @@ export class MxcAdapter {
       },
     };
   }
+}
+
+/** A level's place, weakest first; -1 for a name this runtime does not know, which no host gives and no floor is. */
+function rank(level: string): number {
+  return ISOLATION_LEVELS.indexOf(level as IsolationLevel);
 }
 
 /** The first of `hidden` that `p` is or lies under, compared by path segment. */

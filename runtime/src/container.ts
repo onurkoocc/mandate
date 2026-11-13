@@ -90,7 +90,8 @@ export class ContainerHost implements SandboxHost {
   async probe(): Promise<Enforceable> {
     const r = await this.docker.run(["info", "--format", "{{.OSType}}"]);
     if (r.exitCode !== 0 || !r.stdout.includes("linux")) return NOTHING;
-    return { backends: ["container"], modes: ["enforcement"], filesystem: true, network: "deny_all", exec: "args_prefix", timeout: true, ui: true };
+    // A container shares the host's kernel with every other container on the engine: `process`, shared.
+    return { backends: ["container"], modes: ["enforcement"], filesystem: true, network: "deny_all", exec: "args_prefix", timeout: true, ui: true, level: "process", co_tenancy: "shared" };
   }
 
   async create(policy: MxcPolicy): Promise<string> {

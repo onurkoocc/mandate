@@ -34,8 +34,6 @@ describe("a sandbox requirement 0.2 on today's hosts", () => {
 
   it.each([
     ["method limits", [net(["GET"])], {}, "method limits on outbound hosts: api.github.com"],
-    ["an isolation floor", [read], { isolation: { floor: { public: "user_kernel" } } }, "isolation user_kernel (this host gives process)"],
-    ["a sandbox that may not share its host", [read], { isolation: { co_tenancy: { public: "forbidden" } } }, "co_tenancy forbidden (this host may share)"],
     ["credentials", [net()], { egress: { Reader: { "api.github.com": "github" } } }, "credentials for outbound hosts: api.github.com"],
   ])("that asks for %s is refused by name, on a host that enforces all of 0.1", async (_what, caps, lock, line) => {
     const planned = await adapter().plan(requirementFor(subject, caps, 60_000, { ...v05, lock: { modules: {}, ...lock } as Lock }));
@@ -75,8 +73,6 @@ describe("a 0.5 package", () => {
   const fetchProgram = (): Program => check(FETCH, "mdt", { lock: LOCK05 }).program!;
 
   it.each([
-    ["host", { host: packaged.host }, "host (the least versions of the host's tools, which this runtime does not check yet)"],
-    ["isolation", { isolation: packaged.isolation }, "isolation (isolation floors, which no sandbox host here reports a level for yet)"],
     ["egress", { egress: packaged.egress }, "egress (credentials for agents' requests, which go only through an egress proxy, and this runtime has none yet)"],
   ])("whose lock sets %s is refused at load, by that name, until the runtime enforces it", (name, field, said) => {
     const lock = { modules: {}, models: packaged.models, tariffs: packaged.tariffs, ...field } as Lock;
@@ -87,18 +83,13 @@ describe("a 0.5 package", () => {
     expect((e as Violation).message).toBe(`unsupported_lock: The package's lock sets ${said}, which this runtime does not enforce yet (spec/boundary.md).`);
   });
 
-  it("whose lock sets all three is refused naming each; without them it is accepted", () => {
-    expect(notRunYet(fetchProgram(), packaged)).toEqual(["lock.egress", "lock.host", "lock.isolation"]);
-    expect((refusal(fetchProgram(), packaged) as Violation).message).toMatch(/^unsupported_lock: The package's lock sets egress \(.*\), host \(.*\), isolation \(.*\), which/);
+  it("whose lock sets all three is refused naming the one it does not enforce yet; without it it is accepted", () => {
+    expect(notRunYet(fetchProgram(), packaged)).toEqual(["lock.egress"]);
+    expect((refusal(fetchProgram(), packaged) as Violation).message).toMatch(/^unsupported_lock: The package's lock sets egress \(.*\), which this runtime/);
+    const { egress: _egress, ...enforced } = packaged;
+    expect(refusal(fetchProgram(), enforced as Lock)).toBeUndefined();
     expect(refusal(fetchProgram(), { modules: {}, models: packaged.models, tariffs: packaged.tariffs } as Lock)).toBeUndefined();
     expect(notRunYet(fetchProgram())).toEqual([]);
-  });
-
-  it("is not the only one: a package of any language whose lock sets host is refused too", () => {
-    const old = check(FETCH.replace("mandate @ 0.5", "mandate @ 0.2"), "mdt").program!;
-    expect(old.language).toBe("mandate/0.2");
-    expect(refusal(old, { modules: {}, host: { node: "22.23.4" } })).toMatchObject({ code: "unsupported_lock" });
-    expect(refusal(old, { modules: {} })).toBeUndefined();
   });
 
   it("is not reached into by an earlier one: a 0.4 package that imports a 0.5 method limit is refused at load (MDT-E1804)", () => {
