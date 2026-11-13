@@ -194,9 +194,15 @@ nothing, so every agent is refused by name (G05). The probe then starts
 one sandbox with the masks and nothing granted, and lists what it finds in
 the runtime directories; the Bubblewrap backend does not report the
 capability (`filesystemDeniedPaths`), so it is checked, once per host.
-Where anything is found, or the sandbox does not start, the host enforces
-neither the path lists nor the network, and every agent is refused by
-name. Nothing falls back to a weaker isolation.
+The listing uses only the shell's own commands (`for`, `if`, `[`,
+`echo`), so it depends on no program inside the sandbox. It prints each
+entry it finds, dot entries included, and a line for each runtime
+directory it cannot read and search, then a closing `end`. The masks hold
+only when the output is that `end` alone and the shell exits 0. Anything
+else (an entry, a directory it could not list, a missing `end`, a failed
+exit, a sandbox that does not start) leaves the host enforcing neither the
+path lists nor the network, and every agent is refused by name. Nothing
+falls back to a weaker isolation.
 
 The host refuses by name what it does not support:
 
