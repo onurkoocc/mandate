@@ -12,8 +12,12 @@
 //! an ECMAScript string. Columns count code units, and a message that quotes
 //! "the character found" quotes one code unit. When that unit is half of a
 //! surrogate pair, the TypeScript message holds a lone surrogate, which a Rust
-//! string cannot; this reader writes U+FFFD there, which is what the
-//! TypeScript message becomes when it is written out as UTF-8.
+//! string cannot; this reader writes U+FFFD there. That is exact for the text
+//! form of the diagnostic (`formatDiagnostic`), which is what the TypeScript
+//! message becomes when it is written out as UTF-8. It is not exact for the
+//! JSON outputs: `JSON.stringify` writes the lone surrogate as an escape such
+//! as `\ud83d`, and [`crate::stringify`] writes U+FFFD. Inputs of this kind
+//! are a listed exception of the acceptance gate, not a difference to fix.
 
 use std::collections::{BTreeMap, HashSet};
 

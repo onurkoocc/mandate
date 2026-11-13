@@ -30,6 +30,12 @@ ported phase reinvents it:
 `tests/js.rs` checks these against `tests/data/js-semantics.json`, which
 `node scripts/js-semantics.mjs` writes from what Node gives.
 
+One known difference: a Rust string cannot hold a lone surrogate, so where
+the reader's message quotes half of a surrogate pair it holds U+FFFD. The
+text form of such a diagnostic is what TypeScript's becomes in UTF-8, but its
+JSON differs (`JSON.stringify` writes `\ud83d`, `stringify` writes U+FFFD);
+such inputs are a listed exception of the acceptance gate.
+
 The crate reads no file, environment variable or clock and starts no process;
 `crates/mandate-testkit/tests/authority.rs` holds it to that. Its one
 dependency is `sha2`. `cargo test` checks it against the vectors in

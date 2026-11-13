@@ -23,6 +23,18 @@
 //! string operations that count UTF-16 code units or use ECMAScript white
 //! space ([`utf16_len`], [`compare_utf16`], [`sort_utf16`], [`trim`]).
 //!
+//! Known differences, and a trap for porters:
+//!
+//! - A Rust string cannot hold a lone surrogate. Where the reader's message
+//!   quotes half of a surrogate pair, it holds U+FFFD: the text form of the
+//!   diagnostic is what TypeScript's becomes in UTF-8, but in JSON output
+//!   TypeScript writes an escape such as `\ud83d` and [`stringify`] writes
+//!   U+FFFD. Such inputs are a listed exception of the acceptance gate.
+//! - In TypeScript `o["__proto__"] = v` on a plain `{}` sets the prototype
+//!   and adds no member (on an object made by `Object.create(null)`, as the
+//!   JSON reader's are, it adds one); [`JsObject::insert`] and [`Map::insert`]
+//!   always add one, so check how the TypeScript object was made.
+//!
 //! The crate reads no file, environment variable or clock and starts no
 //! process (a test in `mandate-testkit` holds it to that), and it builds for
 //! `wasm32-wasip1`. The vectors in the repository's `vectors/` directory are
