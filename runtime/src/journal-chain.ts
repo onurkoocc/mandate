@@ -15,7 +15,7 @@
 
 import { createPublicKey, verify, type KeyObject } from "node:crypto";
 import { hashProgram, packageHash, type Json } from "@mandate/compiler";
-import type { Db, Row } from "./db.js";
+import type { Db, Row, Tx } from "./db.js";
 import { keyIdOf } from "./evidence.js";
 import { Violation } from "./signals.js";
 import { canonical, digest, isObj, type Obj, type Value } from "./values.js";
@@ -94,13 +94,27 @@ export interface JournalExport {
   keys: string[];
 }
 
-/** Reads a run's journal out of the database as it is: nothing is checked here, and nothing is left out. */
-export async function exportJournal(db: Db, runId: string): Promise<JournalExport> {
+/**
+ * Reads a run's journal out of the database as it is: nothing is checked here, and nothing is left out. Everything
+ * is read in one transaction at REPEATABLE READ, so the export is one snapshot: an event or a state change committed
+ * while it is read is in all of it or in none of it. It takes no lock, so no writer waits for it. `between` is a seam
+ * for tests: it runs after the events are read and before the anchors are.
+ */
+export async function exportJournal(db: Db, runId: string, o: { between?: () => Promise<void> | void } = {}): Promise<JournalExport> {
+  return db.tx(async (tx) => {
+    // The first statement of the transaction, as PostgreSQL requires: every read after it sees one snapshot.
+    await tx.query("set transaction isolation level repeatable read");
+    return snapshot(tx, runId, o.between);
+  });
+}
+
+async function snapshot(db: Tx, runId: string, between: (() => Promise<void> | void) | undefined): Promise<JournalExport> {
   const [run] = await db.query<Row>("select tenant, package_hash, manifest, manifest_hash from runs where run_id = $1", [runId]);
   if (!run) throw new Violation("unknown_run", `No run '${runId}'.`);
   const events = (await db.query<Row>("select seq, type, data, at, hash from events where run_id = $1 order by seq", [runId])).map(
     (r): ExportedEvent => ({ seq: Number(r["seq"]), type: String(r["type"]), data: (r["data"] ?? null) as Value, at: Number(r["at"]), hash: (r["hash"] ?? null) as string | null }),
   );
+  await between?.();
   const anchors = (await db.query<Row>("select seq, hash, at, key_id, signature from journal_anchors where run_id = $1 order by seq", [runId])).map(
     (r): ExportedAnchor => ({ seq: Number(r["seq"]), hash: String(r["hash"]), at: Number(r["at"]), key_id: String(r["key_id"]), signature: String(r["signature"]) }),
   );
@@ -125,28 +139,40 @@ export async function exportJournal(db: Db, runId: string): Promise<JournalExpor
 
 // ── reading an export (spec/journal.md "Reading an export") ─────────────
 
-/** The largest export a verifier reads, in bytes of UTF-8, and the deepest nesting of arrays and objects in it. */
-export const EXPORT_LIMITS = { bytes: 64 * 1024 * 1024, depth: 128 } as const;
+/**
+ * The largest export every verifier reads, in bytes of UTF-8, and the deepest nesting of arrays and objects in it,
+ * the outermost object counting as one (spec/journal.md "Reading an export"). Part of the contract: a journal beyond
+ * them is `unreadable` for every verifier alike, and nothing is said about it. The runtime writes such a journal as
+ * any other; `mandate journal export` says when what it wrote is beyond them.
+ */
+export const EXPORT_LIMITS = { bytes: 64 * 1024 * 1024, depth: 256 } as const;
 
-class Malformed extends Error {}
+class Malformed extends Error {
+  constructor(
+    message: string,
+    readonly over = false,
+  ) {
+    super(message);
+  }
+}
 
 /**
  * Strict JSON (RFC 8259) for an export: UTF-8 without a byte order mark; no duplicate member names; no lone
  * surrogate, escaped or not; every number finite as a double; at most `EXPORT_LIMITS`. A number may have a
  * fraction or an exponent: event data holds whatever a run journaled. It is read as `JSON.parse` reads it.
  */
-export function parseExportJson(input: Uint8Array | string): { ok: true; value: unknown } | { ok: false; problem: string } {
+export function parseExportJson(input: Uint8Array | string): { ok: true; value: unknown } | { ok: false; problem: string; over: boolean } {
   let pos = 0;
-  const fail = (what: string): never => {
-    throw new Malformed(`${what} at offset ${pos}`);
+  const fail = (what: string, over = false): never => {
+    throw new Malformed(`${what} at offset ${pos}`, over);
   };
   try {
     let text: string;
     if (typeof input === "string") {
-      if (Buffer.byteLength(input, "utf8") > EXPORT_LIMITS.bytes) fail(`an export larger than ${EXPORT_LIMITS.bytes} bytes`);
+      if (Buffer.byteLength(input, "utf8") > EXPORT_LIMITS.bytes) fail(`an export larger than ${EXPORT_LIMITS.bytes} bytes`, true);
       text = input;
     } else {
-      if (input.byteLength > EXPORT_LIMITS.bytes) fail(`an export larger than ${EXPORT_LIMITS.bytes} bytes`);
+      if (input.byteLength > EXPORT_LIMITS.bytes) fail(`an export larger than ${EXPORT_LIMITS.bytes} bytes`, true);
       try {
         text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(input);
       } catch {
@@ -217,7 +243,7 @@ export function parseExportJson(input: Uint8Array | string): { ok: true; value: 
       ws();
       const c = text[pos];
       if (c === "[" || c === "{") {
-        if (depth >= EXPORT_LIMITS.depth) fail(`nesting deeper than ${EXPORT_LIMITS.depth}`);
+        if (depth >= EXPORT_LIMITS.depth) fail(`nesting deeper than ${EXPORT_LIMITS.depth}`, true);
         pos++;
         ws();
         if (c === "[") {
@@ -279,7 +305,7 @@ export function parseExportJson(input: Uint8Array | string): { ok: true; value: 
     if (pos !== text.length) fail("content after the value");
     return { ok: true, value: v };
   } catch (e) {
-    if (e instanceof Malformed) return { ok: false, problem: e.message };
+    if (e instanceof Malformed) return { ok: false, problem: e.message, over: e.over };
     throw e;
   }
 }
@@ -293,11 +319,11 @@ const isSeq = (v: unknown): v is number => Number.isSafeInteger(v) && (v as numb
 const isStr = (v: unknown): v is string => typeof v === "string";
 
 /** An export read and held to its shape (spec/journal.md "The export"), or the first thing wrong with it. */
-export function readExport(input: Uint8Array | string): { ok: true; value: JournalExport } | { ok: false; problem: string } {
+export function readExport(input: Uint8Array | string): { ok: true; value: JournalExport } | { ok: false; problem: string; over: boolean } {
   const parsed = parseExportJson(input);
   if (!parsed.ok) return parsed;
   const x = parsed.value;
-  const bad = (problem: string) => ({ ok: false as const, problem });
+  const bad = (problem: string) => ({ ok: false as const, problem, over: false });
   if (!closed(x, ["format", "run", "tenant", "manifest_hash", "manifest", "package", "events", "anchors", "keys"])) return bad(`the export does not have exactly the members of ${JOURNAL_EXPORT_FORMAT}`);
   if (x["format"] !== JOURNAL_EXPORT_FORMAT) return bad(`the format is not ${JOURNAL_EXPORT_FORMAT}`);
   if (!isStr(x["run"]) || x["run"] === "" || !isStr(x["tenant"])) return bad("run is not a run id, or tenant is not a string");
@@ -329,6 +355,7 @@ export const JOURNAL_REPORT_FORMAT = "mandate/journal-verification/0.1";
 
 export type FindingCode =
   | "malformed_export"
+  | "export_over_limit"
   | "seq_gap"
   | "hash_missing"
   | "chain_broken"
@@ -351,12 +378,13 @@ export interface JournalFinding {
  * every state event is anchored by a key given, and signatures cover the events through `anchored_through`; the
  * `unanchored` events after it are covered by none. `broken`: any finding but `unanchored_tail`. `unchained`: no
  * event has a hash and nothing is anchored, as for a run begun before the journal was chained; it says nothing
- * either way.
+ * either way. `unreadable`: the export could not be read (`malformed_export`) or is beyond what every verifier reads
+ * (`export_over_limit`); nothing is said about the journal.
  */
 export interface JournalReport {
   format: typeof JOURNAL_REPORT_FORMAT;
   run: string | null;
-  status: "verified" | "broken" | "unchained";
+  status: "verified" | "broken" | "unchained" | "unreadable";
   events: number;
   last_seq: number | null;
   anchored_through: number | null;
@@ -395,9 +423,17 @@ export function publicKeysIn(pem: string): KeyObject[] {
  * "Verification"). It reads nothing else: no database, no configuration. Everything in the export is untrusted.
  */
 export function verifyExport(input: Uint8Array | string, keys: ReadonlyArray<KeyObject | string>): JournalReport {
+  // The keys are the caller's: one that is not an ed25519 key is a wrong argument, not a finding about the journal.
+  const byId = new Map<string, KeyObject>();
+  for (const k of keys) {
+    const given = typeof k === "string" ? createPublicKey(k) : k;
+    const key = given.type === "private" ? createPublicKey(given) : given;
+    if (key.type !== "public" || key.asymmetricKeyType !== "ed25519") throw new TypeError(`A journal key is an ed25519 public key, not ${key.asymmetricKeyType ?? key.type}.`);
+    byId.set(keyIdOf(key), key);
+  }
   const report = (r: Omit<JournalReport, "format">): JournalReport => ({ format: JOURNAL_REPORT_FORMAT, ...r });
   const read = readExport(input);
-  if (!read.ok) return report({ run: null, status: "broken", events: 0, last_seq: null, anchored_through: null, unanchored: 0, signed_by: [], findings: [{ code: "malformed_export" }] });
+  if (!read.ok) return report({ run: null, status: "unreadable", events: 0, last_seq: null, anchored_through: null, unanchored: 0, signed_by: [], findings: [{ code: read.over ? "export_over_limit" : "malformed_export" }] });
   const x = read.value;
   const { run, events, anchors } = x;
   const last = events[events.length - 1]!.seq;
@@ -420,17 +456,27 @@ export function verifyExport(input: Uint8Array | string, keys: ReadonlyArray<Key
   const first = events[0]!;
   const accepted = first.seq === 1 && first.type === "run_accepted" && isObj(first.data) ? first.data : undefined;
   const m = x.manifest;
-  if (!accepted || !isObj(m) || digest("run", m) !== accepted["manifest"] || x.manifest_hash !== accepted["manifest"] || m["tenant"] !== x.tenant || m["package"] !== accepted["package"]) {
+  const named = (v: Value | undefined): v is string => typeof v === "string";
+  if (
+    !accepted ||
+    !isObj(m) ||
+    !named(accepted["manifest"]) ||
+    digest("run", m) !== accepted["manifest"] ||
+    x.manifest_hash !== accepted["manifest"] ||
+    !named(m["tenant"]) ||
+    m["tenant"] !== x.tenant ||
+    !named(m["package"]) ||
+    !named(accepted["package"]) ||
+    m["package"] !== accepted["package"]
+  ) {
     findings.push({ code: "manifest_mismatch" });
   }
   if (!accepted || !packageHolds(x.package, accepted["package"])) findings.push({ code: "package_mismatch" });
   // 4. Each anchor: a key given, a signature by it over the statement, and the event it names, as it is.
-  const byId = new Map<string, KeyObject>();
-  for (const k of keys) {
-    const key = typeof k === "string" ? createPublicKey(k) : k;
-    byId.set(keyIdOf(key), key);
-  }
   const max = events.reduce((n, e) => Math.max(n, e.seq), 0);
+  // The event an anchor names is the first one with its seq in the export's order.
+  const bySeq = new Map<number, ExportedEvent>();
+  for (const e of events) if (!bySeq.has(e.seq)) bySeq.set(e.seq, e);
   let through: number | null = null;
   const signers = new Set<string>();
   for (const a of anchors) {
@@ -438,7 +484,7 @@ export function verifyExport(input: Uint8Array | string, keys: ReadonlyArray<Key
     const signed = key !== undefined && anchorSigned(key, run, a);
     if (!key) findings.push({ code: "anchor_unknown_key", seq: a.seq });
     else if (!signed) findings.push({ code: "anchor_signature_invalid", seq: a.seq });
-    const e = events.find((x) => x.seq === a.seq);
+    const e = bySeq.get(a.seq);
     const matches = e !== undefined && e.hash === a.hash && e.at === a.at;
     if (a.seq > max) findings.push({ code: "anchor_beyond_end", seq: a.seq });
     else if (!matches) findings.push({ code: "anchor_mismatch", seq: a.seq });
@@ -461,7 +507,7 @@ export function verifyExport(input: Uint8Array | string, keys: ReadonlyArray<Key
 /** Whether the package hashes to `named`: its program and lock (`packageHash`), and each module to its pin in the lock. */
 function packageHolds(p: JournalExport["package"], named: Value | undefined): boolean {
   try {
-    if (p.hash !== named || packageHash(hashProgram(p.program as Json).program, p.lock as object) !== named) return false;
+    if (typeof named !== "string" || p.hash !== named || packageHash(hashProgram(p.program as Json).program, p.lock as object) !== named) return false;
     const lock = p.lock as Obj;
     const pins = isObj(lock["modules"] ?? null) ? (lock["modules"] as Obj) : {};
     return Object.entries(p.modules as Obj).every(([name, m]) => isObj(m) && m["module"] === name && Object.hasOwn(pins, name) && hashProgram(m as Json).program === pins[name]);

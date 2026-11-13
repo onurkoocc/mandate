@@ -187,6 +187,10 @@ export class Runtime {
   // ── StartRun / resume ─────────────────────────────────────────────────
 
   async startRun(o: StartOptions): Promise<RunRow> {
+    // The run id and the tenant are text columns: what is not well-formed Unicode, or holds U+0000, would be stored
+    // as something else, and the run would live under a name it was not started with (spec/journal.md).
+    if (o.runId !== undefined && (o.runId === "" || !storable(o.runId))) throw new Violation("invalid_run_id", "A run id is non-empty, well-formed Unicode without U+0000; this one would be stored as another, or as none.");
+    if (o.tenant !== undefined && !storable(o.tenant)) throw new Violation("invalid_tenant", "A tenant is well-formed Unicode without U+0000; this one would be stored as another.");
     verifyPackage(o.pkg);
     if (this.decisionMode === "unsigned" && isSigned04(o.pkg.program, o.pkg.modules)) {
       throw new Violation("signed_decisions_required", "A mandate/0.4 package does not run in unsigned mode: its decisions are signed records (spec/envelope.md). Take decisions.mode out of the runtime configuration.");
@@ -1158,6 +1162,11 @@ function refusedEvent(e: Refused, msg: Message | undefined): Value {
     key: r?.key ?? null,
     ...(msg ? { sender: msg.sender, message: msg.messageId } : {}),
   };
+}
+
+/** Whether a text column keeps `s` as it is: well-formed UTF-16 (no lone surrogate) and no U+0000. */
+function storable(s: string): boolean {
+  return (s as unknown as { isWellFormed(): boolean }).isWellFormed() && !s.includes(String.fromCharCode(0));
 }
 
 function minLimits(a: Record<string, number>, b: Record<string, number>): Record<string, number> {

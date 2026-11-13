@@ -2,12 +2,17 @@
 // is exported from the database, the public keys from the configuration, and
 // the export is verified from those files alone.
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { generateKeyPairSync } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { main } from "../src/cli.js";
+import { EvidenceSigner, keyIdOf } from "../src/evidence.js";
+import { EXPORT_LIMITS, publicKeysIn } from "../src/journal-chain.js";
 import { openDb } from "../src/db.js";
+import { Journal } from "../src/journal.js";
+import type { Value } from "../src/values.js";
 import type { JournalExport, JournalReport } from "../src/journal-chain.js";
 
 const dir = mkdtempSync(join(tmpdir(), "mandate-journal-"));
@@ -108,19 +113,92 @@ describe("mandate journal (spec/journal.md)", () => {
     expect((await mandate(["journal", "verify", file("j1.json"), "--key", file("new.pub.pem"), "--key", file("cp.pub.pem")], false)).code).toBe(0);
   });
 
-  it("refuses to verify without a key, or with a file that holds none", async () => {
+  it("exits 2 when nothing could be checked: no key, a missing or unreadable file, a file that holds no key", async () => {
     expect((await mandate(["journal", "verify", file("j1.json")], false)).code).toBe(2);
     expect((await mandate(["journal", "verify", file("missing.json"), "--key", file("cp.pub.pem")], false)).code).toBe(2);
     writeFileSync(file("not-a-key.pem"), "hello\n");
     const bad = await mandate(["journal", "verify", file("j1.json"), "--key", file("not-a-key.pem")], false);
-    expect([bad.code, bad.err]).toEqual([1, expect.stringContaining("bad_journal_key")]);
+    expect([bad.code, bad.err]).toEqual([2, expect.stringContaining("holds no public key")]);
+    expect((await mandate(["journal", "verify", file("j1.json"), "--key", file("missing.pem")], false)).code).toBe(2);
+    // A directory where the export should be is no export.
+    const dirAsFile = await mandate(["journal", "verify", dir, "--key", file("cp.pub.pem")], false);
+    expect([dirAsFile.code, dirAsFile.err]).toEqual([2, expect.stringContaining("is not a file")]);
     expect((await mandate(["journal", "frobnicate"])).code).toBe(2);
   });
 
-  it("reports an export it cannot read as malformed, with what is wrong", async () => {
+  it("reports an export it cannot read as unreadable, with what is wrong, and exits 2", async () => {
     writeFileSync(file("dup.json"), readFileSync(file("j1.json"), "utf8").replace('"tenant": "default"', '"tenant": "default", "tenant": "x"'));
     const r = await mandate(["journal", "verify", file("dup.json"), "--key", file("cp.pub.pem")], false);
-    expect(r.code).toBe(1);
+    expect(r.code).toBe(2);
+    expect(r.out).toContain("unreadable: ");
     expect(r.out).toContain('malformed_export: the export is not a journal export (a duplicate member "tenant"');
+  });
+
+  it("never writes over the evidence key, and journal key writes a new file only", async () => {
+    const key = join(dir, ".mandate", "evidence.key");
+    const before = readFileSync(key, "utf8");
+    for (const what of [["journal", "key"], ["journal", "export", "j1"]]) {
+      const r = await mandate([...what, "--out", key]);
+      expect([r.code, r.err]).toEqual([2, expect.stringContaining("is the evidence key")]);
+    }
+    expect(readFileSync(key, "utf8")).toBe(before);
+    const again = await mandate(["journal", "key", "--out", file("cp.pub.pem")]);
+    expect([again.code, again.err]).toEqual([2, expect.stringContaining("exists")]);
+  });
+
+  it("never makes a key: with none, journal key says so and writes nothing", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "mandate-journal-nokey-"));
+    try {
+      writeFileSync(join(empty, "mandate.runtime.json"), JSON.stringify({ database: "pglite:db" }));
+      let err = "";
+      const write = process.stderr.write.bind(process.stderr);
+      process.stderr.write = ((s: string) => ((err += s), true)) as typeof process.stderr.write;
+      let code: number;
+      try {
+        code = await main(["journal", "key", "--config", join(empty, "mandate.runtime.json")], () => undefined, {});
+      } finally {
+        process.stderr.write = write;
+      }
+      expect([code, err]).toEqual([1, expect.stringContaining("no_evidence_key")]);
+      expect(existsSync(join(empty, ".mandate", "evidence.key"))).toBe(false);
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it("writes every key the runtime trusts, also one the configuration names as a private key", async () => {
+    const own = mkdtempSync(join(tmpdir(), "mandate-journal-trusted-"));
+    try {
+      const signer = EvidenceSigner.createIn(join(own, ".mandate", "evidence.key"));
+      const other = generateKeyPairSync("ed25519");
+      writeFileSync(join(own, "other.key"), other.privateKey.export({ type: "pkcs8", format: "pem" }) as string);
+      writeFileSync(join(own, "mandate.runtime.json"), JSON.stringify({ database: "pglite:db", evidence: { trusted: ["other.key"] } }));
+      let text = "";
+      expect(await main(["journal", "key", "--config", join(own, "mandate.runtime.json")], (x) => (text += x), {})).toBe(0);
+      const written = publicKeysIn(text).map((k) => keyIdOf(k));
+      expect(written).toEqual([signer.keyId, keyIdOf(other.publicKey)]);
+      expect(text).not.toContain("PRIVATE");
+    } finally {
+      rmSync(own, { recursive: true, force: true });
+    }
+  });
+
+  it("says on stderr when an export is beyond what a verifier reads, and writes it all the same", async () => {
+    const db = await openDb(`pglite:${file("db")}`);
+    try {
+      const journal = new Journal(db, () => Date.now());
+      let deep: Value = [];
+      for (let i = 0; i < EXPORT_LIMITS.depth; i++) deep = [deep];
+      await db.tx(async (tx) => {
+        await journal.lock(tx, "j1");
+        await journal.event(tx, "j1", "probe", { deep });
+      });
+    } finally {
+      await db.close();
+    }
+    const r = await mandate(["journal", "export", "j1", "--out", file("deep.json")]);
+    expect([r.code, r.err]).toEqual([0, expect.stringContaining("beyond what a verifier reads")]);
+    const v = await mandate(["journal", "verify", file("deep.json"), "--key", file("cp.pub.pem")], false);
+    expect([v.code, v.out]).toEqual([2, expect.stringContaining("export_over_limit")]);
   });
 });
