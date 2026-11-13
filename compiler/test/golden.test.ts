@@ -2,7 +2,7 @@
 // here, by digest: a 0.1 to 0.3 program reads, checks, hashes, prints and
 // shows exactly as it did. A later version adds to the language; it does not
 // change what an earlier program means. The programs of 0.4 and 0.5 (the
-// MigrateAll example with its domain module, and the three fixtures of
+// MigrateAll example with its domain module, and the two programs of
 // fixtures/boundary) are pinned beside them, so what the compiler says of
 // them changes only with a reason too. A Rust compiler must give these same
 // digests (release 0.5).
@@ -53,8 +53,8 @@ const MODULE_FILES = ["fixtures/system/acme.system.mdt", "fixtures/system/repos.
 
 /**
  * The modules a program is given, where they are not MODULE_FILES. MigrateAll imports company.domain, which is
- * not among them. Eight earlier programs (fixbug and seven syntax fixtures) also import from a module called
- * company.domain, which is opaque to them when it is not given. With fixtures/envelope/domain.mdt in the shared
+ * not among them. Earlier programs (the fixbug fixtures and several syntax fixtures) also import from a module
+ * called company.domain, which is opaque to them when it is not given. With fixtures/envelope/domain.mdt in the shared
  * list they would find it, and not the names they use (E0120): 50 of their digests change, and those are not to.
  */
 const MODULE_FILES_OF: Record<string, string[]> = {

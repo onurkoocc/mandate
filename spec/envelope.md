@@ -370,7 +370,10 @@ workflow MigrateAll(repos: List<Repo>) -> Inferred<Summary>
 `Moved` is there for the sub-programs. `git.merge` takes a verified value
 and, being irreversible, one a person approved (E0405), and a sub-program
 may use its parent's contracts but define none (E1705): without a contract in
-the parent, nothing a lead plans could ever merge.
+the parent, nothing a lead plans could ever merge. Its two `static` criteria
+read the summary, which exists only in a run, so they are run-time checks
+and `mandate check` says so of each with a warning (W0601); the example has
+no other diagnostic.
 
 ### What it declares
 
