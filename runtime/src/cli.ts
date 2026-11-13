@@ -31,6 +31,8 @@
 //   mandate drift --module model --component name=dir…    where a system model and the working copies disagree; no configuration
 //   mandate deploy <program> --target managed-agents      deploy the agents to Claude Managed Agents and write the binding
 //                                                         into the lock (K45); CLAUDE_API_KEY; no configuration
+//   mandate egress serve --config mandate.egress.json     the reference egress proxy (spec/egress.md): it holds the
+//                                                         secrets and runs until signalled; no runtime configuration
 //
 // Every command reads `mandate.runtime.json` (or --config). A decision names
 // the revision the person saw in `status`: if the run has moved since, it is
@@ -52,6 +54,7 @@ import { deployManagedAgents, sdkApi } from "./managed-agents.js";
 import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type SignedDecision } from "./decisions.js";
 import { EvidenceSigner, keyIdOf, TrustedKeys } from "./evidence.js";
 import { openDb, type Db } from "./db.js";
+import { serveUntilSignalled } from "./egress/main.js";
 import { costDims, type Limits, type RunRow } from "./journal.js";
 import { exportJournal, parseExportJson, publicKeysIn, readExport, verifyExport, type FindingCode } from "./journal-chain.js";
 import { draft, drift, scan, type RepoFacts } from "./onboard.js";
@@ -135,10 +138,11 @@ const USAGE = `usage:
   mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER/REPO]… [--name MODULE]
   mandate drift --module MODEL --component NAME=DIR… [--host HOST=NAME]… [--json]
   mandate deploy <program> --target managed-agents [--lock FILE] [--module FILE]… [--agents A,B] [--name PREFIX] [--harness-tokens N]
+  mandate egress serve [--config FILE (default ./mandate.egress.json)]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -155,6 +159,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     if (cmd === "key") return keyNew(a, out);
     if (cmd === "verify-decision") return verifyDecision(a, out);
     if (cmd === "journal" && a.positional[0] === "verify") return journalVerify(a, out);
+    if (cmd === "egress") return await egress(a, out, env);
     if (!existsSync(configFile)) throw new Usage(`no runtime configuration at ${configFile} (see spec/runtime.md, "Control CLI")`);
     const config = readConfig(configFile);
     db = await connect(config);
@@ -714,6 +719,19 @@ function journalVerify(a: Args, out: (s: string) => void): number {
     out(lines.join("\n") + "\n");
   }
   return r.status === "verified" ? 0 : r.status === "unreadable" ? 2 : 1;
+}
+
+/**
+ * `mandate egress serve`: the reference egress proxy, started by the operator in an environment that holds the
+ * secrets its configuration names. It reads no runtime configuration and opens no database. It prints one line when
+ * it is ready and serves until SIGINT or SIGTERM; then it closes its sessions and removes its socket.
+ */
+async function egress(a: Args, out: (s: string) => void, env: NodeJS.ProcessEnv): Promise<number> {
+  if (a.positional[0] !== "serve" || a.positional.length !== 1) throw new Usage("egress takes serve: mandate egress serve --config mandate.egress.json");
+  const file = typeof a.flags["--config"] === "string" ? a.flags["--config"] : "mandate.egress.json";
+  if (!existsSync(file)) throw new Usage(`no egress configuration at ${file} (see spec/egress.md, "Configuration")`);
+  await serveUntilSignalled({ config: file, env }, out);
+  return 0;
 }
 
 function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {
