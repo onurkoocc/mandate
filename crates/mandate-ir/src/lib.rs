@@ -24,7 +24,8 @@
 //! space ([`utf16_len`], [`compare_utf16`], [`sort_utf16`], [`trim`]).
 //!
 //! The crate reads no file, environment variable or clock and starts no
-//! process, and it builds for `wasm32-wasip1`. The vectors in the repository's `vectors/` directory are
+//! process (a test in `mandate-testkit` holds it to that), and it builds for
+//! `wasm32-wasip1`. The vectors in the repository's `vectors/` directory are
 //! written by the TypeScript implementation and read by this crate's tests.
 //!
 //! ```
