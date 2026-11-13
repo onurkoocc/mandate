@@ -1,0 +1,11 @@
+{
+  "format": "mandate/journal-verification/0.1",
+  "run": "j08",
+  "status": "unchained",
+  "events": 9,
+  "last_seq": 9,
+  "anchored_through": null,
+  "unanchored": 9,
+  "signed_by": [],
+  "findings": []
+}

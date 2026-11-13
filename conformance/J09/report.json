@@ -1,0 +1,13 @@
+{
+  "format": "mandate/journal-verification/0.1",
+  "run": "j09",
+  "status": "verified",
+  "events": 10,
+  "last_seq": 10,
+  "anchored_through": 10,
+  "unanchored": 0,
+  "signed_by": [
+    "sha256:3d2bca5f638235fc480da7dff11659f9fdbfcce0a6619bbfbab4d0bd3e3b8a70"
+  ],
+  "findings": []
+}

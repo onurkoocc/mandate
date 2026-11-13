@@ -1,0 +1,18 @@
+{
+  "format": "mandate/journal-verification/0.1",
+  "run": "j05",
+  "status": "verified",
+  "events": 6,
+  "last_seq": 6,
+  "anchored_through": 5,
+  "unanchored": 1,
+  "signed_by": [
+    "sha256:7d9a715d54798f352d67158798008a9a77ed657497d937e8b306a862e61532fe"
+  ],
+  "findings": [
+    {
+      "code": "unanchored_tail",
+      "seq": 6
+    }
+  ]
+}

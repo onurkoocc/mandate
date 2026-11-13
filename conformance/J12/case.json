@@ -1,0 +1,18 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "J12",
+  "kind": "journal",
+  "title": "A state event whose anchor was removed from the database is anchor_missing, and the run is broken, not clean.",
+  "spec": [
+    "spec/journal.md#verification",
+    "spec/journal.md#conformance-cases"
+  ],
+  "journal": {
+    "export": "export.json",
+    "keys": [
+      "key.pem"
+    ],
+    "report": "report.json"
+  }
+}

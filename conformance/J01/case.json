@@ -1,0 +1,18 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "J01",
+  "kind": "journal",
+  "title": "A closed run whose chain holds and whose anchors cover every event verifies, also over data with fractions, exponents, escapes and keys that sort differently by UTF-16 code units and by code points.",
+  "spec": [
+    "spec/journal.md#verification",
+    "spec/journal.md#conformance-cases"
+  ],
+  "journal": {
+    "export": "export.json",
+    "keys": [
+      "key.pem"
+    ],
+    "report": "report.json"
+  }
+}

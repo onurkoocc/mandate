@@ -1,0 +1,15 @@
+{
+  "format": "mandate/journal-verification/0.1",
+  "run": null,
+  "status": "unreadable",
+  "events": 0,
+  "last_seq": null,
+  "anchored_through": null,
+  "unanchored": 0,
+  "signed_by": [],
+  "findings": [
+    {
+      "code": "malformed_export"
+    }
+  ]
+}

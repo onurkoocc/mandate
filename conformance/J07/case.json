@@ -1,0 +1,18 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "J07",
+  "kind": "journal",
+  "title": "A manifest and a package edited in the database are not the ones the first event names.",
+  "spec": [
+    "spec/journal.md#verification",
+    "spec/journal.md#conformance-cases"
+  ],
+  "journal": {
+    "export": "export.json",
+    "keys": [
+      "key.pem"
+    ],
+    "report": "report.json"
+  }
+}

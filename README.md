@@ -591,6 +591,30 @@ These cases from §25 are covered:
 | H03 | A run of an envelope workflow does not start without an approval of its package hash by a member of the envelope's owner role | `envelope`, `cli-envelope` |
 | H04 | Evidence for `human.approve` whose decision record was changed after signing shows as invalid, and a `Verified` value resting on it is refused | `decisions` |
 | H05 | A changed member, key or role binding in the lock is a new package and shows as a governance change | `lock-diff` (compiler) |
+| J01 | A closed run's journal verifies from its export and the public key alone, also over fractions, exponents and keys that sort differently by UTF-16 code units and by code points | `journal-verify`, `cli-journal`, `journal-hash` (and the case `J01`) |
+| J02 | An event edited in the database breaks the chain at that event | `journal-verify`, `cli-journal` (and the case `J02`) |
+| J03 | An event deleted from the database leaves a gap and breaks the chain after it | `journal-verify` (and the case `J03`) |
+| J04 | A tail cut from the database while its anchors stay names events past the last one | `journal-verify` (and the case `J04`) |
+| J05 | An open run with events after its last anchor verifies, and the report says no signature covers them | `journal-verify` (and the case `J05`) |
+| J06 | An anchor by a key not given, or whose signature does not verify, is refused | `journal-verify`, `cli-journal` (and the case `J06`) |
+| J07 | A manifest or a package that is not the one the first event names is refused | `journal-verify` (and the case `J07`) |
+| J08 | A run begun before the chain is reported unchained, never verified | `journal-verify`, `journal-hash` (and the case `J08`) |
+| J09 | An export spelled otherwise, with the same values, verifies: the verifier hashes values, not spellings | the case `J09` |
+| J10 | An event whose hash was removed is `hash_missing` | `journal-verify` (and the case `J10`) |
+| J11 | An anchor over a hash its event does not have is `anchor_mismatch`, however its signature holds | `journal-verify` (and the case `J11`) |
+| J12 | A state event without its anchor is `anchor_missing`: removing anchors never makes a run clean | `journal-verify` (and the case `J12`) |
+| J13 | Events moved in the export are `seq_gap` and `chain_broken` | the case `J13` |
+| J14 | An anchor names the first event with its seq in the export's order | `journal-verify` (and the case `J14`) |
+| J15 | An export that is not JSON by the rules is `unreadable`, never `broken` | `journal-verify`, `cli-journal` (and the case `J15`) |
+| J16 | A run nested deeper than a verifier reads is journaled, and its export is `unreadable` | `journal-verify`, `cli-journal` (and the case `J16`) |
+
+The journal is chained ([`spec/journal.md`](spec/journal.md)): each event
+carries a hash over its contents and the one before it, and the evidence key
+signs an anchor at every state change. `mandate journal export` writes a
+run's journal with its manifest and package, `mandate journal key` the
+public keys, and `mandate journal verify` checks the export with those
+alone. J01–J16 are also cases in `conformance/` that any verifier can run.
+It is evidence against someone who holds the database but not the key.
 
 `map.test.ts` also runs the map of the migration example
 (`fixtures/envelope/migrate-all.mdt`) over 24 repositories: 24 migrators,

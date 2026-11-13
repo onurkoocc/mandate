@@ -1,0 +1,288 @@
+{
+  "format": "mandate/journal-export/0.1",
+  "run": "j01",
+  "tenant": "default",
+  "manifest_hash": "sha256:5b5310093d4af60accd6eefd4241a4ef6d582e84699075941db952dd6b4d6f88",
+  "manifest": {
+    "mode": "live",
+    "input": "sha256:e221f983f79ca73765378fb7c03e8c6b1e54322f4f93d9d85ee1f41bb467b4f7",
+    "format": "mandate/run-manifest/0.1",
+    "tenant": "default",
+    "package": "sha256:21ab6c643b0ed47e329eefa47508fdc237e5bbfa6346f23303d067a667c6ea94",
+    "workflow": "Ask",
+    "components": {}
+  },
+  "package": {
+    "hash": "sha256:21ab6c643b0ed47e329eefa47508fdc237e5bbfa6346f23303d067a667c6ea94",
+    "program": {
+      "defs": {
+        "Ask": {
+          "body": [
+            {
+              "op": "expr",
+              "value": {
+                "op": "call",
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "Ship it? Ünïcödé 😀"
+                    }
+                  }
+                ],
+                "callee": {
+                  "of": {
+                    "op": "var",
+                    "name": "human"
+                  },
+                  "op": "field",
+                  "name": "ask"
+                }
+              }
+            }
+          ],
+          "caps": [
+            {
+              "op": "var",
+              "name": "Note"
+            }
+          ],
+          "kind": "workflow",
+          "budget": {
+            "spend": {
+              "micros": 1000000,
+              "currency": "USD"
+            }
+          },
+          "params": [],
+          "returns": {
+            "ref": "Untrusted",
+            "args": [
+              {
+                "ref": "Text"
+              }
+            ]
+          }
+        },
+        "Note": {
+          "kind": "capability",
+          "value": {
+            "op": "call",
+            "args": [
+              {
+                "value": {
+                  "op": "text",
+                  "value": "/tmp/notes"
+                }
+              }
+            ],
+            "callee": {
+              "of": {
+                "op": "var",
+                "name": "fs"
+              },
+              "op": "field",
+              "name": "read"
+            }
+          }
+        }
+      },
+      "uses": [
+        {
+          "names": [
+            "fs",
+            "human"
+          ],
+          "module": "std"
+        }
+      ],
+      "module": "conformance.journal",
+      "version": "0.1",
+      "language": "mandate/0.2"
+    },
+    "lock": {
+      "modules": {}
+    },
+    "modules": {}
+  },
+  "events": [
+    {
+      "seq": 1,
+      "type": "run_accepted",
+      "data": {
+        "limits": {
+          "spend:USD": 1000000
+        },
+        "package": "sha256:21ab6c643b0ed47e329eefa47508fdc237e5bbfa6346f23303d067a667c6ea94",
+        "manifest": "sha256:5b5310093d4af60accd6eefd4241a4ef6d582e84699075941db952dd6b4d6f88",
+        "workflow": "Ask"
+      },
+      "at": 1800000000000,
+      "hash": "sha256:a20895efe8b70118e3074537f76c885c1ce690179b7a53d4269434b3ade07ef4"
+    },
+    {
+      "seq": 2,
+      "type": "lease_acquired",
+      "data": {
+        "fence": 1
+      },
+      "at": 1800000000000,
+      "hash": "sha256:f527d457ae29d99bbb9ed0f02580bbc9e9d3b440e8e017beea0a64ec95221b59"
+    },
+    {
+      "seq": 3,
+      "type": "run_running",
+      "data": {},
+      "at": 1800000000000,
+      "hash": "sha256:6f12b98aad8e04e84aa0126256902e4634db9af9b28ce0b50cbf6b577e19ac79"
+    },
+    {
+      "seq": 4,
+      "type": "wait_opened",
+      "data": {
+        "kind": "input",
+        "command": "/defs/Ask/body/0/value",
+        "request": {
+          "question": "Ship it? Ünïcödé 😀"
+        }
+      },
+      "at": 1800000000000,
+      "hash": "sha256:4b1598a440ed53f39e68d09cb154e6d4460dde781565ed46d49b2c85752333f2"
+    },
+    {
+      "seq": 5,
+      "type": "run_waiting",
+      "data": {
+        "waiting": {
+          "kind": "input",
+          "command": "/defs/Ask/body/0/value",
+          "request": {
+            "question": "Ship it? Ünïcödé 😀"
+          }
+        }
+      },
+      "at": 1800000000000,
+      "hash": "sha256:41e5e66720e0948b5e5f71c4c54c54477afe546199878ab2aa3997760e363c0b"
+    },
+    {
+      "seq": 6,
+      "type": "probe",
+      "data": {
+        "order": {
+          "": 0,
+          "B": 2,
+          "a": 1,
+          "z": {},
+          "aa": [],
+          "￿": "U+FFFF sorts after an astral character by UTF-16 code units",
+          "😀": "an astral character"
+        },
+        "numbers": [
+          0,
+          0,
+          1,
+          -1,
+          0.1,
+          0.5,
+          0.3333333333333333,
+          1e+21,
+          1e-7,
+          123456789012345680000,
+          5e-324,
+          1.7976931348623157e+308,
+          -2.5e-8,
+          9007199254740991,
+          9007199254740992,
+          1e+300
+        ],
+        "strings": [
+          "",
+          "é",
+          "é",
+          "😀",
+          " ",
+          "quote \" backslash \\ slash / tab \t newline \n",
+          "\u001f"
+        ]
+      },
+      "at": 1800000001250,
+      "hash": "sha256:e44ff7e5d89138b1257f26e53311b61559be7f7ebe52cf2e1f7d6911f4271014"
+    },
+    {
+      "seq": 7,
+      "type": "input_received",
+      "data": {
+        "sender": "Ünal 😀",
+        "command": "/defs/Ask/body/0/value",
+        "message": "j01-answer"
+      },
+      "at": 1800000001250,
+      "hash": "sha256:b44092ac7fc41bbb516270c255d912341d9eb8ce5cedf609e973d97e9126be7c"
+    },
+    {
+      "seq": 8,
+      "type": "lease_acquired",
+      "data": {
+        "fence": 2
+      },
+      "at": 1800000001250,
+      "hash": "sha256:9421b495aa35a175f35dd76d85d42566f8c25c3dc6f02cae85bc1aae67b6105f"
+    },
+    {
+      "seq": 9,
+      "type": "run_running",
+      "data": {},
+      "at": 1800000001250,
+      "hash": "sha256:82228939e350ab3a7a67d779f19a95f7b35187d44d2209df5a7374b87f18fb12"
+    },
+    {
+      "seq": 10,
+      "type": "run_succeeded",
+      "data": {
+        "result": "yes"
+      },
+      "at": 1800000001250,
+      "hash": "sha256:2dea612c6052ad08c72b0aa48bee8f533edefe82a9614cfe4c77234ebae23b77"
+    }
+  ],
+  "anchors": [
+    {
+      "seq": 1,
+      "hash": "sha256:a20895efe8b70118e3074537f76c885c1ce690179b7a53d4269434b3ade07ef4",
+      "at": 1800000000000,
+      "key_id": "sha256:3618a166e442537509dd80413e0be76c9fc6fb11a27410c60e33c4fa0c957fc5",
+      "signature": "ed25519:8q6p8WTQaqWfjSCQp9RK5uuwNLsvl2TtFJSlZVv0BeKmBi49+svOtGC7LUT1arkN/8OngpYhprQdISjns5kPAg=="
+    },
+    {
+      "seq": 3,
+      "hash": "sha256:6f12b98aad8e04e84aa0126256902e4634db9af9b28ce0b50cbf6b577e19ac79",
+      "at": 1800000000000,
+      "key_id": "sha256:3618a166e442537509dd80413e0be76c9fc6fb11a27410c60e33c4fa0c957fc5",
+      "signature": "ed25519:BrVk2r8wVMzV7Y5Xbv5fSUQ50GOySOrNiAO9kU3PUUxVecbBMExfYonCjThJlW2TaW0Jcwd60YikgbkBOiWpAw=="
+    },
+    {
+      "seq": 5,
+      "hash": "sha256:41e5e66720e0948b5e5f71c4c54c54477afe546199878ab2aa3997760e363c0b",
+      "at": 1800000000000,
+      "key_id": "sha256:3618a166e442537509dd80413e0be76c9fc6fb11a27410c60e33c4fa0c957fc5",
+      "signature": "ed25519:wqfj5LDwKkQw+5MSA88VQ5dqDuVvZQIUwxfCcB+eF1yLwFuidtU9gYKOuYBwCZf/QuM0AbDPqQYfstRkUYINBw=="
+    },
+    {
+      "seq": 9,
+      "hash": "sha256:82228939e350ab3a7a67d779f19a95f7b35187d44d2209df5a7374b87f18fb12",
+      "at": 1800000001250,
+      "key_id": "sha256:3618a166e442537509dd80413e0be76c9fc6fb11a27410c60e33c4fa0c957fc5",
+      "signature": "ed25519:HZNlNuehpayp1M3TsmDyrtV3l1av97HVGutv0GZ8mC7Ox7kqLKyAXplhIPVig43W5NUbwTR3TYaptaIy8WNuBA=="
+    },
+    {
+      "seq": 10,
+      "hash": "sha256:2dea612c6052ad08c72b0aa48bee8f533edefe82a9614cfe4c77234ebae23b77",
+      "at": 1800000001250,
+      "key_id": "sha256:3618a166e442537509dd80413e0be76c9fc6fb11a27410c60e33c4fa0c957fc5",
+      "signature": "ed25519:76iCsX6jGa3OkLejL7FyLwpCmMgDd1uEvluNWinWrZSN6ak45sAs826KtRlE3WdVbQFyhyWFfcBG/HX2GXabAA=="
+    }
+  ],
+  "keys": [
+    "sha256:3618a166e442537509dd80413e0be76c9fc6fb11a27410c60e33c4fa0c957fc5"
+  ]
+}

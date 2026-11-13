@@ -1,0 +1,26 @@
+{
+  "format": "mandate/journal-verification/0.1",
+  "run": "j04",
+  "status": "broken",
+  "events": 6,
+  "last_seq": 6,
+  "anchored_through": 5,
+  "unanchored": 1,
+  "signed_by": [
+    "sha256:0160660f054364eb9a47d1979720c3d9a4db07c2bca64769f9bd220476d3937b"
+  ],
+  "findings": [
+    {
+      "code": "anchor_beyond_end",
+      "seq": 8
+    },
+    {
+      "code": "anchor_beyond_end",
+      "seq": 9
+    },
+    {
+      "code": "unanchored_tail",
+      "seq": 6
+    }
+  ]
+}
