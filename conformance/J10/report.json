@@ -1,0 +1,22 @@
+{
+  "format": "mandate/journal-verification/0.1",
+  "run": "j10",
+  "status": "broken",
+  "events": 9,
+  "last_seq": 9,
+  "anchored_through": 9,
+  "unanchored": 0,
+  "signed_by": [
+    "sha256:af660bd9d7a7f348db4f134484c27e7744e5f740df4ec78df31650ff40260db4"
+  ],
+  "findings": [
+    {
+      "code": "hash_missing",
+      "seq": 4
+    },
+    {
+      "code": "chain_broken",
+      "seq": 5
+    }
+  ]
+}

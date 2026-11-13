@@ -185,4 +185,9 @@ export class TrustedKeys {
   ids(): string[] {
     return [...this.keys.keys()].sort();
   }
+
+  /** The public keys, in key id order. */
+  publicKeys(): KeyObject[] {
+    return this.ids().map((id) => this.keys.get(id)!);
+  }
 }

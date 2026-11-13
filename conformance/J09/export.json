@@ -1,0 +1,259 @@
+{
+	"keys":  [
+		"sha256:3d2bca5f638235fc480da7dff11659f9fdbfcce0a6619bbfbab4d0bd3e3b8a70"
+	],
+	"anchors":  [
+		{
+			"signature":  "ed25519:vY0+yHUWewfW8+PdMQ0Czotg6fwq2P6+IaifS1hpT2ckPo9t8t9P1sOWWpXDr6J8k6Mkf2jkTgqRfk5EGX9MBg==",
+			"key_id":  "sha256:3d2bca5f638235fc480da7dff11659f9fdbfcce0a6619bbfbab4d0bd3e3b8a70",
+			"at":  180000000000e1,
+			"hash":  "sha256:385e1d28d9ba3970b95343ceea25e747979194f782a5f3a30e308b81b6e32026",
+			"seq":  1.0
+		},
+		{
+			"signature":  "ed25519:HkF12yYrZ21ixYBjXOtXUHvFExhtHwzyo5kaeOiR4ZS5vDvozBaH/S4RzxXQYknoUA+2aKXejJcj/tsjYPPnCQ==",
+			"key_id":  "sha256:3d2bca5f638235fc480da7dff11659f9fdbfcce0a6619bbfbab4d0bd3e3b8a70",
+			"at":  1800000000000,
+			"hash":  "sha256:da5c906b8f688a046bce2bffb5619f9c2038597016ef3564d035d0a081da18cb",
+			"seq":  3
+		},
+		{
+			"signature":  "ed25519:nAKMlxji+hW/7/XfvZR7N5Z/Je5eo3K0QA5YfvhubfI4FdlWkJocHp0rETEOGijfRVPX026NiEv6XboOPQLgDg==",
+			"key_id":  "sha256:3d2bca5f638235fc480da7dff11659f9fdbfcce0a6619bbfbab4d0bd3e3b8a70",
+			"at":  1800000000000,
+			"hash":  "sha256:1b08eedc7a7eb364fa7258d455b2bca8dbadb2597c8fdc30a9c5ae6f5252d578",
+			"seq":  5
+		},
+		{
+			"signature":  "ed25519:P3EN0k3eTg7tfv3NTlu4vD7ngfpBgN9TTnCL8bcJZFCxwikVuTRHIpOOr8tKpLQDoYwJBT/v+kyPP0pYz//iDw==",
+			"key_id":  "sha256:3d2bca5f638235fc480da7dff11659f9fdbfcce0a6619bbfbab4d0bd3e3b8a70",
+			"at":  1800000001250,
+			"hash":  "sha256:3563b81323a17b9c2d6b3c89377b04829600f7d1c29b6aa08fcc0585f80a6249",
+			"seq":  9
+		},
+		{
+			"signature":  "ed25519:YntjslUSceI8XTVBuuIu1KVTwz7soQTV+WotiQYPPDJeUmmPzxo8F1AgVJfk+h6sGLME2r+gOZ3cFtOxFqYSDQ==",
+			"key_id":  "sha256:3d2bca5f638235fc480da7dff11659f9fdbfcce0a6619bbfbab4d0bd3e3b8a70",
+			"at":  1800000001250,
+			"hash":  "sha256:ce107a1dc0bbbc7dc1eb1ee1c236ddc247f5cce276cf1c689618513fda5fc91c",
+			"seq":  10
+		}
+	],
+	"events":  [
+		{
+			"hash":  "sha256:385e1d28d9ba3970b95343ceea25e747979194f782a5f3a30e308b81b6e32026",
+			"at":  1800000000000,
+			"data":  {
+				"workflow":  "Ask",
+				"manifest":  "sha256:5b5310093d4af60accd6eefd4241a4ef6d582e84699075941db952dd6b4d6f88",
+				"package":  "sha256:21ab6c643b0ed47e329eefa47508fdc237e5bbfa6346f23303d067a667c6ea94",
+				"limits":  {
+					"spend:USD":  1000000
+				}
+			},
+			"type":  "run_accepted",
+			"seq":  1
+		},
+		{
+			"hash":  "sha256:19e2803b11e0e52a31912dd951b80e14434f3160acadb9c9f365d554266af3f0",
+			"at":  1800000000000,
+			"data":  {
+				"fence":  1
+			},
+			"type":  "lease_acquired",
+			"seq":  2
+		},
+		{
+			"hash":  "sha256:da5c906b8f688a046bce2bffb5619f9c2038597016ef3564d035d0a081da18cb",
+			"at":  1800000000000,
+			"data":  {},
+			"type":  "run_running",
+			"seq":  3
+		},
+		{
+			"hash":  "sha256:f421049822a77cd74e1b29d4f11f20fed4015d67aad649087b04ff99ae73aab7",
+			"at":  1800000000000,
+			"data":  {
+				"request":  {
+					"question":  "Ship it? Ünïcödé 😀"
+				},
+				"command":  "/defs/Ask/body/0/value",
+				"kind":  "input"
+			},
+			"type":  "wait_opened",
+			"seq":  4
+		},
+		{
+			"hash":  "sha256:1b08eedc7a7eb364fa7258d455b2bca8dbadb2597c8fdc30a9c5ae6f5252d578",
+			"at":  1800000000000,
+			"data":  {
+				"waiting":  {
+					"request":  {
+						"question":  "Ship it? Ünïcödé 😀"
+					},
+					"command":  "/defs/Ask/body/0/value",
+					"kind":  "input"
+				}
+			},
+			"type":  "run_waiting",
+			"seq":  5
+		},
+		{
+			"hash":  "sha256:4363428a3805036cfe91865d57dcd7a9093f7b31956f771c732934a2fbc3d27a",
+			"at":  1800000001250,
+			"data":  {
+				"j09_negzero":  -0,
+				"j09_tenth":  0.10,
+				"j09_slash":  "a\/b",
+				"j09_zero":  1e-400,
+				"j09_one":  1.0e0,
+				"j09_big":  1E21,
+				"j09_e":  "\u00e9"
+			},
+			"type":  "probe",
+			"seq":  6
+		},
+		{
+			"hash":  "sha256:40c95ad1c4f1ca781260dd2c2e4ccbc24a6ceaf82300a934585d43d238fd9a56",
+			"at":  1800000001250,
+			"data":  {
+				"message":  "j09-answer",
+				"command":  "/defs/Ask/body/0/value",
+				"sender":  "ann"
+			},
+			"type":  "input_received",
+			"seq":  7
+		},
+		{
+			"hash":  "sha256:13662ac7b202f93661a04844a63a5f43777141221ae007847fe2f9dfcb2d9238",
+			"at":  1800000001250,
+			"data":  {
+				"fence":  2
+			},
+			"type":  "lease_acquired",
+			"seq":  8
+		},
+		{
+			"hash":  "sha256:3563b81323a17b9c2d6b3c89377b04829600f7d1c29b6aa08fcc0585f80a6249",
+			"at":  1800000001250,
+			"data":  {},
+			"type":  "run_running",
+			"seq":  9
+		},
+		{
+			"hash":  "sha256:ce107a1dc0bbbc7dc1eb1ee1c236ddc247f5cce276cf1c689618513fda5fc91c",
+			"at":  1800000001250,
+			"data":  {
+				"result":  "yes"
+			},
+			"type":  "run_succeeded",
+			"seq":  10
+		}
+	],
+	"package":  {
+		"modules":  {},
+		"lock":  {
+			"modules":  {}
+		},
+		"program":  {
+			"language":  "mandate/0.2",
+			"version":  "0.1",
+			"module":  "conformance.journal",
+			"uses":  [
+				{
+					"module":  "std",
+					"names":  [
+						"fs",
+						"human"
+					]
+				}
+			],
+			"defs":  {
+				"Note":  {
+					"value":  {
+						"callee":  {
+							"name":  "read",
+							"op":  "field",
+							"of":  {
+								"name":  "fs",
+								"op":  "var"
+							}
+						},
+						"args":  [
+							{
+								"value":  {
+									"value":  "/tmp/notes",
+									"op":  "text"
+								}
+							}
+						],
+						"op":  "call"
+					},
+					"kind":  "capability"
+				},
+				"Ask":  {
+					"returns":  {
+						"args":  [
+							{
+								"ref":  "Text"
+							}
+						],
+						"ref":  "Untrusted"
+					},
+					"params":  [],
+					"budget":  {
+						"spend":  {
+							"currency":  "USD",
+							"micros":  1000000
+						}
+					},
+					"kind":  "workflow",
+					"caps":  [
+						{
+							"name":  "Note",
+							"op":  "var"
+						}
+					],
+					"body":  [
+						{
+							"value":  {
+								"callee":  {
+									"name":  "ask",
+									"op":  "field",
+									"of":  {
+										"name":  "human",
+										"op":  "var"
+									}
+								},
+								"args":  [
+									{
+										"value":  {
+											"value":  "Ship it? Ünïcödé 😀",
+											"op":  "text"
+										}
+									}
+								],
+								"op":  "call"
+							},
+							"op":  "expr"
+						}
+					]
+				}
+			}
+		},
+		"hash":  "sha256:21ab6c643b0ed47e329eefa47508fdc237e5bbfa6346f23303d067a667c6ea94"
+	},
+	"manifest":  {
+		"components":  {},
+		"workflow":  "Ask",
+		"package":  "sha256:21ab6c643b0ed47e329eefa47508fdc237e5bbfa6346f23303d067a667c6ea94",
+		"tenant":  "default",
+		"format":  "mandate/run-manifest/0.1",
+		"input":  "sha256:e221f983f79ca73765378fb7c03e8c6b1e54322f4f93d9d85ee1f41bb467b4f7",
+		"mode":  "live"
+	},
+	"manifest_hash":  "sha256:5b5310093d4af60accd6eefd4241a4ef6d582e84699075941db952dd6b4d6f88",
+	"tenant":  "default",
+	"run":  "j09",
+	"format":  "mandate/journal-export/0.1"
+}

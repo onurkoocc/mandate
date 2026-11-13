@@ -207,13 +207,22 @@ export function trustedKeysDir(config: RuntimeConfig): string {
   return join(dirname(config.evidence.key), "trusted-keys");
 }
 
+/**
+ * The public keys, as PEM text, whose evidence and anchors this runtime trusts besides its own key: the keys rotated
+ * out (`mandate rotate-key`) and the files the configuration names. A file may hold a private key; its public half
+ * is trusted (`TrustedKeys`).
+ */
+export function trustedKeyTexts(config: RuntimeConfig): string[] {
+  return [...EvidenceSigner.trustedIn(trustedKeysDir(config)), ...(config.evidence.trusted ?? []).map((f) => readFileSync(f, "utf8"))];
+}
+
 /** The runtime's own stores: artifacts over the configured directory, and the evidence key. */
 export function runtimeOptions(config: RuntimeConfig, db: Db): RuntimeOptions {
   return {
     artifacts: new ArtifactStore(db, new DirBlobs(config.artifacts)),
     signer: EvidenceSigner.loadOrCreate(config.evidence.key),
     // Keys rotated out (`mandate rotate-key`) and keys the configuration names: their evidence still counts.
-    trustedKeys: [...EvidenceSigner.trustedIn(trustedKeysDir(config)), ...(config.evidence.trusted ?? []).map((f) => readFileSync(f, "utf8"))],
+    trustedKeys: trustedKeyTexts(config),
     ...(config.rateLimits ? { rateLimits: config.rateLimits } : {}),
     ...(config.verifier?.process ? { trustedVerifiers: verifierKeys(config), inProcessMethods: inProcessMethods(config) } : {}),
     // The members' public keys; a file that is not the key its name says stops every command (bad_decision_key).

@@ -1,0 +1,20 @@
+{
+  "format": "mandate/journal-verification/0.1",
+  "run": "j07",
+  "status": "broken",
+  "events": 9,
+  "last_seq": 9,
+  "anchored_through": 9,
+  "unanchored": 0,
+  "signed_by": [
+    "sha256:fb0d58b96485948ab5c2d92eb68caa64436f5cbf055085b5ed260c6258b49c0e"
+  ],
+  "findings": [
+    {
+      "code": "manifest_mismatch"
+    },
+    {
+      "code": "package_mismatch"
+    }
+  ]
+}
