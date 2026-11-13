@@ -811,11 +811,14 @@ A run that no worker is driving (`accepted`, `waiting`,
 `attention_required`) is ended by the cancel itself, which takes its lease
 as a halt does: the fence goes up when the cancel is recorded and again
 when the run is ended, and the run's state and actions are read again under
-its row lock before it is ended. A resume that comes meanwhile (a person's
-answer, a decision, a timer, another worker) writes nothing, and a run that
-ended meanwhile is left as it ended, so a cancelled run ends once, with one
-`run_cancelled`, and does not leave `cancelled`. A `running` run keeps its
-worker, which ends the run itself at its next dispatch.
+its row lock before it is ended. A worker that took the lease before the
+cancel was recorded writes nothing more. One that takes it while the cancel
+asks an adapter to stop an action (for a person's answer, a decision, a
+timer) dispatches nothing, since the cancel is recorded, and writes nothing
+once the cancel has ended the run. A run that such a worker ended first is
+left as it ended, whatever that end is. So a run ends once, and a cancelled
+run does not leave `cancelled`. A `running` run keeps its worker, which
+ends the run itself at its next dispatch.
 
 A halt is the hard stop of a tenant, or of every tenant: it ends each of
 their open runs at once, `cancelled` or, with an action open,

@@ -1098,9 +1098,9 @@ export class Runtime {
   /**
    * Cancellation is an event, not erasure (§8.9). It is ordered against
    * dispatch on the run's row: a dispatch after it is refused (R08); one
-   * before it is followed to its real result (R09). A run ends once: a
-   * resume that comes while the cancel ends an idle run writes nothing
-   * (`closeCancelled`).
+   * before it is followed to its real result (R09). A run ends once: the
+   * cancel that ends an idle run takes its lease, and leaves a run that
+   * ended meanwhile as it ended (`closeCancelled`).
    */
   async cancelRun(runId: string, signed?: SignedDecision): Promise<RunRow> {
     const loaded = signed === undefined ? undefined : await this.loaded((await this.journal.run(runId)).package_hash);
