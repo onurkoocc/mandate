@@ -40,6 +40,6 @@ pub use diag::{Diagnostic, Location, Severity, Span, ptr_token};
 pub use hash::{
     HashDomain, ProgramHashes, RUNTIME_HASH_VERSION, domain_hash, hash_program, package_hash,
 };
-pub use jcs::{canonicalize, compare_utf16};
+pub use jcs::{canonicalize, compare_utf16, write_json_string};
 pub use reader::{Parsed, parse, parse_bytes};
 pub use value::{Int, Map, Value};
