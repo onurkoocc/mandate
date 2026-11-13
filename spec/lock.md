@@ -115,8 +115,8 @@ they mean is in [`boundary.md`](boundary.md#lock-05).
   - `MDT-W0504`: every agent loop's declared budget covers its upper bound.
   - `MDT-E0903`–`MDT-E0905`: an executor binding still fits the program
     and the lock ([`executors.md`](executors.md)).
-  - `MDT-E1802`: an `egress` binding names a local agent that no executor
-    runs, and a host its `net.https` capabilities hold.
+  - `MDT-E1802`: every `egress` binding names a local agent that no executor
+    runs, and a host that agent's own `net.https` capabilities hold.
   - `MDT-E1803`: `isolation` and `egress` are only in a lock checked with a
     0.5 program.
 - **The runtime.** It refuses to load a package whose lock pins models but is

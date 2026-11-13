@@ -154,7 +154,9 @@ is an argument vector, never a shell line.
 
 With `modelsInControlPlane` set, the model calls are made by the runtime,
 so a model capability asks the sandbox for no network (BACKLOG K7). An
-agent with no `net.https` capability then has none at all.
+agent with no `net.https` capability then has none at all, and one with
+hosts reaches them only on a host that holds its sandbox to the egress proxy
+([`boundary.md`](boundary.md#sandbox-egress)).
 
 ## The MXC host on Linux
 
@@ -170,6 +172,12 @@ with its Bubblewrap backend (BACKLOG K16). Each process runs in its own
 | Commands | Checked by the host before a process starts. Either a helper the runtime's tools use (`cat`, `ls`, `grep`, the `write_file` script) on a path inside the policy, or an allowed command with an allowed argument prefix. Bubblewrap cannot limit commands inside the sandbox |
 | Environment | None of the runtime's: the process gets MXC's default `PATH` and `TERM`, so no API key or token reaches it. With an egress session, also the proxy variables MXC sets and the session's placeholders, `MANDATE_EGRESS_PLACEHOLDER_<NAME>`, never a secret |
 | Time | The policy's timeout, per process |
+
+The host reports isolation level `process` and `shared`: a Bubblewrap sandbox
+is a set of namespaces on the host's own kernel, beside whatever else runs
+on it. A requirement 0.2 whose `isolation.min` is above `process`, or that
+forbids sharing, is therefore refused by name
+([`boundary.md`](boundary.md#levels)).
 
 A unix socket is a file, not a network route, so the network policy does
 not govern it. A process that can connect to a service's socket can ask
@@ -292,6 +300,11 @@ container of its own:
   26100.9278 or later, and session isolation 26100.9550 (design doc 4,
   §7.3). On an older build the host enforces nothing, and every agent is
   refused by name (G05).
+- **Level, sharing and the proxy.** Whichever backend, the host reports
+  isolation level `process` and `shared`, and it is given no egress proxy:
+  a requirement with outbound hosts, method limits or credentials is refused
+  by name ([`boundary.md`](boundary.md#sandbox-egress);
+  `runtime/test/sandbox-egress.test.ts`).
 - **Session isolation** is refused by name for agents
   (`blocking outbound network`), because MXC requires a session's egress
   to be allowed. It is never run with the network open (INV-11).
