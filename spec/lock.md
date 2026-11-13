@@ -83,7 +83,11 @@ These are reported as `MDT-E0140` too.
 }
 ```
 
-- `host` names `node`, `bwrap` or both, each `major[.minor[.patch]]`.
+- `host` names `node`, `bwrap` or both, each `major[.minor[.patch]]`,
+  decimal numbers without leading zeros. The runtime compares the
+  versions it finds on the host with them by number, a missing component
+  reading as 0; how it reads a found version, and its suffix, is in
+  [`boundary.md`](boundary.md#host-fitness).
 - A floor is one of `process`, `user_kernel`, `microvm`, `dedicated_host`,
   for a data class (`floor`) or for a sandbox that reaches any host
   (`untrusted_network`). `co_tenancy` is `allowed` or `forbidden`.
@@ -117,9 +121,12 @@ they mean is in [`boundary.md`](boundary.md#lock-05).
     0.5 program.
 - **The runtime.** It refuses to load a package whose lock pins models but is
   malformed (`malformed_lock`) or leaves a named tier unlocked
-  (`unlocked_model_tier`). Until it enforces them, it refuses a package
-  whose lock sets `host`, `isolation` or `egress`, each by its name
-  (`unsupported_lock`). Its model adapter sends each tier's model and
+  (`unlocked_model_tier`). Until it enforces it, it refuses a package
+  whose lock sets `egress`, by its name (`unsupported_lock`). It holds
+  every sandbox of a 0.5 program to the lock's `isolation`, refusing an
+  agent whose host gives less (E0902), and checks E1803 again at load. It
+  starts or resumes a run whose lock sets `host` only on a host that
+  meets it (`unfit_host`). Its model adapter sends each tier's model and
   effort, and prices every call from the tariff. A lock without `models` is
   for simulated models: the Anthropic adapter refuses to run without one.
 

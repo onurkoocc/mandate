@@ -176,13 +176,18 @@ pull request was opened, for 0.23 USD.
    some methods (E1801), and narrows by them, and which an earlier
    program cannot import without the limit (E1804); lock format 0.5 with `host`,
    `isolation` and `egress` (E1802, E1803), whose changes `view --against`
-   shows; and sandbox requirement 0.2 for a 0.5 program. The reference
-   egress proxy exists, and the runtime's own model and GitHub adapters can
-   go through it, holding placeholders. The rest is not enforced yet, so
-   nothing that needs it runs: the runtime refuses a
-   package whose lock sets `host`, `isolation` or `egress`, by name, and the
-   sandbox adapter refuses a requirement that limits methods, asks for more
-   than process isolation, or carries credentials.
+   shows; and sandbox requirement 0.2 for a 0.5 program. Of the runtime,
+   isolation levels and host fitness: a sandbox host reports the level it
+   gives and whether it may share, and the adapter refuses by name a
+   requirement whose level or no-sharing the host does not give (every
+   host here gives `process`, shared); a run whose lock names least tool
+   versions starts and resumes only on a host that meets them
+   (`unfit_host`). The reference egress proxy exists, and the runtime's
+   own model and GitHub adapters can go through it, holding placeholders.
+   The rest is not enforced yet, so nothing that needs it
+   runs: the runtime refuses a package whose lock sets `egress`, by name,
+   and the sandbox adapter refuses a requirement that limits methods or
+   carries credentials.
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
@@ -194,12 +199,12 @@ spec/        core spec, IR schema and rules, static checks, diagnostic codes, ru
              executors, views, the compiler's MCP server
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
-crates/      the Rust implementation, started: mandate-ir (below)
+crates/      the Rust implementation, started: mandate-ir and verify-journal (below)
 fixtures/    the tests' programs: fixbug/ is the design document's §20 workflow,
              fixbug-target/ the same workflow bound to a seeded test project,
              system/ a fictional system's model (Acme) and programs over it,
              envelope/ the 0.4 migration, boundary/ a 0.5 agent that may only GET
-conformance/ language-independent compile cases
+conformance/ language-independent compile and journal cases
 vectors/     what the TypeScript reader, canonical text and hashes give, for
              other implementations to match
 ```
@@ -207,8 +212,9 @@ vectors/     what the TypeScript reader, canonical text and hashes give, for
 ## Rust
 
 The repository is also a Cargo workspace (`Cargo.toml`, `crates/`), the
-start of a Rust implementation. It has one crate today,
-[`crates/mandate-ir`](crates/mandate-ir/README.md). It reads IR with the
+start of a Rust implementation. It has two crates today.
+
+[`crates/mandate-ir`](crates/mandate-ir/README.md) reads IR with the
 strict JSON reader (same limits, diagnostic codes, messages, JSON Pointers
 and UTF-16 columns), writes its canonical text (RFC 8785) and computes the
 program, definition and package hashes, byte for byte as the TypeScript
@@ -217,9 +223,26 @@ validation and no checks in Rust yet. It runs the conformance cases that need
 only the reader and the hashes (`crates/mandate-ir/tests/conformance.rs`) and
 counts the rest as skipped.
 
-The two are held together by the files in [`vectors/`](vectors/README.md).
-`compiler/test/vectors.test.ts` writes them and fails when the committed
-ones differ; the Rust tests read them and need no Node.
+`crates/verify-journal` verifies an exported run journal from the file and
+public keys alone, written from [`spec/journal.md`](spec/journal.md) rather
+than from the TypeScript: the export's reading rules and limits, the
+canonical form of runtime values (numbers as ECMAScript writes them), the
+event hashes, Ed25519 anchors and the package hashes (through `mandate-ir`).
+It prints the same report as `mandate journal verify --json`, byte for byte,
+and exits as it does (0 verified, 1 broken or unchained, 2 nothing checked).
+It runs every journal case (J01–J16), and CI also has it verify a fresh
+export of a real run of the TypeScript runtime, and the same export with one
+event changed. Its one dependency beyond `sha2` is `ed25519-compact` (pure
+Rust, no dependencies of its own, no build script).
+
+```sh
+cargo run -p verify-journal -- run.json --key cp.pub.pem
+```
+
+The crates and the TypeScript are held together by the files in
+[`vectors/`](vectors/README.md) and the cases in `conformance/`.
+`compiler/test/vectors.test.ts` writes the vectors and fails when the
+committed ones differ; the Rust tests read them and need no Node.
 
 ```sh
 cargo test
@@ -227,7 +250,8 @@ MANDATE_UPDATE_VECTORS=1 npm test   # write vectors/ again after a change
 ```
 
 The toolchain is pinned in `rust-toolchain.toml`; CI runs `cargo fmt
---check`, `cargo clippy -- -D warnings` and `cargo test`.
+--check`, `cargo clippy -- -D warnings`, `cargo test` and the fresh export
+check (`runtime/scripts/journal-fresh.mjs`).
 
 ## Using the compiler
 
@@ -585,6 +609,8 @@ These cases from §25 are covered:
 | G12 | A remote agent without idempotent delivery: refused if required, else sent at most once | `gate4` |
 | G13 | One authorization is consumed by one commit; a second is refused | `gate4`, `effects` |
 | G14 | A path an agent names that leaves the working copy, is absolute or is not portable is refused: as a model's answer, a skill's result or a run's input by its type, and where the runtime uses it, without following a link | `gate4`, `loop` (the type); `paths`, `verifier`, `boundary` (the use site) |
+| G19 | A host below the lock's least tool versions, with a tool it cannot read, or with a setuid `bwrap`, starts and resumes nothing of the package: refused before the lease, and the run is left as it was | `fitness`, `mxc` (the runner's Bubblewrap, CI job `sandbox`) |
+| G20 | A requirement whose isolation level or no-sharing the host does not give is refused by name, and the agent is not started | `isolation`, `mxc`, `mxc-windows`, `container` |
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
 | V14 | A throttled call waits and is sent again; no restart is counted and no BudgetExceeded is raised | `supervision`, `anthropic` |
 | V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |
@@ -629,7 +655,10 @@ carries a hash over its contents and the one before it, and the evidence key
 signs an anchor at every state change. `mandate journal export` writes a
 run's journal with its manifest and package, `mandate journal key` the
 public keys, and `mandate journal verify` checks the export with those
-alone. J01–J16 are also cases in `conformance/` that any verifier can run.
+alone. J01–J16 are also cases in `conformance/` that any verifier can run;
+the Rust verifier, `crates/verify-journal`, runs every one of them
+(`crates/verify-journal/tests/conformance.rs`), so what each row says of a
+verifier holds for two implementations.
 It is evidence against someone who holds the database but not the key.
 
 `map.test.ts` also runs the map of the migration example
@@ -654,11 +683,24 @@ approved and an unanswered amendment; and decisions whose stored record
 was changed or removed.
 
 `fail-closed.test.ts` holds what 0.5 asks and this runtime does not
-enforce yet to its refusals: a lock's `host`, `isolation` and `egress`,
-each refused at load by its name; a requirement 0.2 that limits methods,
-asks for more than process isolation, forbids sharing or carries
-credentials, refused by the adapter on a host that enforces all of 0.1;
-and a 0.5 run whose agent may only GET, which is not started.
+enforce yet to its refusals: a lock's `egress`, refused at load by its
+name; a requirement 0.2 that limits methods or carries credentials,
+refused by the adapter on a host that enforces all of 0.1; and a 0.5 run
+whose agent may only GET, which is not started.
+
+`isolation.test.ts` holds a requirement 0.2's `isolation` to the level and
+sharing a host reports: a level above the host's, or no sharing on a host
+that may share, is refused by name and the agent is not started; what the
+host gives is planned with the policy of 0.1, byte for byte; a 0.1
+requirement is planned as before whatever the host reports; and a lock's
+`isolation` with a program before 0.5 is refused at load (E1803).
+`fitness.test.ts` holds a lock's `host` to the host's tools, read through
+a probe the test gives: versions compared by number, a suffix read as just
+below its numbers, what cannot be compared refused; each `unfit_host` text;
+a start on an unfit host that writes nothing, and a resume that takes no
+lease and leaves the run as it was. On Linux it also runs the real probe
+against stand-ins for `bwrap`: its environment, its 5 second limit, an
+error exit, and the setuid bit.
 
 ## Live runs
 

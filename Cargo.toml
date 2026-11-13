@@ -25,3 +25,11 @@ expect_used = "warn"
 panic = "warn"
 indexing_slicing = "warn"
 arithmetic_side_effects = "warn"
+
+# The tests of verify-journal check thousands of signatures and hashes; these
+# two are optimised in test builds too, so that they run in seconds.
+[profile.dev.package.ed25519-compact]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3

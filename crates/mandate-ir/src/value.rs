@@ -6,6 +6,7 @@
 //! members with the same name ([`Map`]). Every value of this type therefore
 //! has exactly one canonical text, and [`crate::canonicalize`] cannot fail.
 
+use std::collections::HashSet;
 use std::fmt;
 
 /// A value of the IR domain.
@@ -182,6 +183,18 @@ impl Map {
                 None
             }
         }
+    }
+
+    /// An object of these members, in this order; `None` when two have the
+    /// same name. Unlike inserting them one by one, it takes time linear in
+    /// their number, for objects read from large untrusted input.
+    #[must_use]
+    pub fn from_entries(entries: Vec<(String, Value)>) -> Option<Map> {
+        let unique = {
+            let mut seen: HashSet<&str> = HashSet::with_capacity(entries.len());
+            entries.iter().all(|(k, _)| seen.insert(k.as_str()))
+        };
+        unique.then_some(Map { entries })
     }
 
     /// Appends a member whose name the caller knows is not present yet.

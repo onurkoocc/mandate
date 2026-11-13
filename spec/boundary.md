@@ -2,10 +2,12 @@
 
 **Status: in progress.** The page specifies release 0.5 so that the
 TypeScript implementation, and later the Rust one, are held to the same
-rules and cases. Its compile-time surface is implemented, with the
-runtime's refusals of what it does not enforce yet, and so are the
-reference egress proxy and the control plane's gateways through it. Each part that is not
-lands with the change named in the table, which refines its section here.
+rules and cases. Its compile-time surface is implemented, and of the
+runtime the chained journal, the isolation levels of hosts, host fitness,
+the reference egress proxy, and the control plane's gateways through it; what
+the runtime does not enforce yet, it refuses by name. Each part that is
+not implemented lands with the change named in the table, which refines
+its section here.
 
 **A note on the name.** Release 0.5 is called Boundary. In the code and in
 the earlier specs, "boundary" already means *boundary evidence*: the
@@ -19,18 +21,18 @@ the configuration and the CLI.
 |---|---|---|
 | Language 0.5: `net.https(…, methods: […])`, E1801, E1804, its views and diff | PR 2 | implemented |
 | Lock 0.5: `host`, `isolation`, `egress`; E1802, E1803; their changes in `view --against` | PR 2 | implemented |
-| Sandbox requirement 0.2, for a 0.5 program; a 0.5 parent's sub-programs in 0.5 | PR 2 | implemented. No host enforces what it adds beyond 0.1, so the MXC adapter refuses a requirement that asks for any of it, by name |
-| At load, a lock that sets `host`, `isolation` or `egress` is refused, each by its name (`unsupported_lock`) | PR 2 | implemented; each name is lifted by the change that enforces it |
+| Sandbox requirement 0.2, for a 0.5 program; a 0.5 parent's sub-programs in 0.5 | PR 2 | implemented. The MXC adapter holds its `isolation` to what the host reports (PR 4), and refuses method limits and credentials, which no host enforces yet, by name |
+| At load, a lock that sets `egress` is refused by its name (`unsupported_lock`) | PR 2 | implemented; `host` and `isolation`, refused the same way before, were lifted by PR 4, which enforces them; `egress` is lifted by the change that enforces it |
 | The attestation a check needs is read from the program, not the record; child processes get a filtered environment (B20) | PR 1 (#34) | implemented (INV-27; [`runtime.md`](runtime.md)) |
 | The chained journal: event hashes, signed anchors, export, verification (J01–J16) | PR 3 | implemented ([`journal.md`](journal.md)) |
-| Isolation levels of hosts; host fitness (`unfit_host`) | PR 4 | specified |
+| Isolation levels of hosts; host fitness (`unfit_host`) | PR 4 | implemented; shown on the CI runner's Bubblewrap |
 | Violations and the violation limit; a hard halt | PR 5 | specified |
 | The reference egress proxy and its admin channel ([`egress.md`](egress.md)) | PR 6 | implemented; the control plane's gateways use it, and sandboxes will from PR 8 |
 | The control plane's adapters through gateways; `credential_in_environment` | PR 7 | implemented |
 | Sandbox egress on Linux through the proxy | PR 8 | specified; enforceable where the sandbox SDK reports it, shown on the CI runner |
 | Sandbox egress on Windows | — | refused by name |
 | Views by role and the audit view; the OpenTelemetry projection | PR 9 | specified |
-| An independent journal verifier, `verify-journal`, in Rust | R3 | specified |
+| An independent journal verifier, `verify-journal`, in Rust | R3 | implemented (`crates/verify-journal`: every journal case, and a fresh export of a real run on CI) |
 
 Until a part lands, nothing it would enforce runs. A 0.5 package whose lock
 asks nothing of it runs as far as today's hosts allow: a sandbox that needs
@@ -142,7 +144,7 @@ and exist only in format 0.5: in a 0.2 to 0.4 lock each is E0140, as
 
 | Field | Says |
 |---|---|
-| `host` | The least versions of `node` and `bwrap` on the runtime's host, as `major[.minor[.patch]]`, compared by number. When `bwrap` is given, a setuid `bwrap` is unfit too. At least one tool |
+| `host` | The least versions of `node` and `bwrap` on the runtime's host, as `major[.minor[.patch]]`, compared by number ([host fitness](#host-fitness)). When `bwrap` is given, a setuid `bwrap` is unfit too. At least one tool |
 | `isolation.floor` | Per data class, the least isolation level of a sandbox whose models may receive data of that class or a more sensitive one |
 | `isolation.untrusted_network` | The least isolation level of a sandbox that reaches any host |
 | `isolation.co_tenancy` | Per data class, `forbidden` when a sandbox with data of that class or a more sensitive one may not share its host with other tenants; `allowed`, or no entry, says nothing |
@@ -180,7 +182,8 @@ With the lock, `mandate check` also reports:
 - **E1803** when `isolation` or `egress` is in a lock checked with a
   program of 0.1 to 0.4. Only a 0.5 program has requirement 0.2, so the
   field would not apply, silently. `host` applies to a program of any
-  version.
+  version. The runtime checks E1803 again at load, so it refuses such a
+  package too (`load_verification_failed`).
 
 `mandate view --against` (with `--against-lock`) compares what the two
 locks ask, after their members and roles. Floors and sharing are compared
@@ -238,38 +241,111 @@ Every field of 0.1 is in its place and means what it meant. The new ones:
 delegation's requirement is built the same way from what it was granted,
 with the package's lock.
 
-What the MXC adapter does with it, until the changes below land:
+What the MXC adapter does with it:
 
 - a requirement that asks nothing beyond 0.1 (`process`, sharing allowed,
-  no method limits, no credentials) gives the policy the 0.1 requirement
-  gives, byte for byte (`MxcPolicy` has no new field);
-- anything else is refused by name, among the requirement's other
-  refusals: `method limits on outbound hosts: <hosts>`, `isolation <min>
-  (this host gives process)`, `co_tenancy forbidden (this host may
-  share)`, `credentials for outbound hosts: <hosts>`.
+  no method limits, no credentials), or whose level and sharing the host
+  gives, gets the policy the 0.1 requirement gets, byte for byte
+  (`MxcPolicy` has no new field);
+- `isolation` is held to what the host reports, and refused by name where
+  the host gives less ([below](#isolation-level-and-host-fitness));
+- method limits and credentials, which no host enforces yet, are refused
+  by name, among the requirement's other refusals: `method limits on
+  outbound hosts: <hosts>`, `credentials for outbound hosts: <hosts>`.
 
 ## Isolation level and host fitness
 
-*Specified; implemented by PR 4.*
+*Implemented by PR 4.*
 
-- **Levels.** A sandbox host reports the level it gives (`Enforceable.level`,
-  `process` when it does not say) and whether its sandboxes may share their
-  host (`co_tenancy`, `shared` when it does not say). The three hosts of
-  today report `process` and `shared`. No new backend comes with 0.5.
-- **Refusal.** For a 0.2 requirement, the adapter adds to its list of what
-  the host cannot enforce `isolation <min> (this host gives <level>)` when
-  the host's level is below `isolation.min`, and `co_tenancy forbidden
-  (this host shares)`. The path is the one every unenforceable requirement
-  takes: `PolicyDenied(unsupported_sandbox_profile)`, E0902. A weaker level
-  is never chosen silently.
-- **Host fitness.** `StartRun` and every resume check the host against the
-  lock's `host` before they take the lease: the Node version of the
-  runtime's process; `bwrap --version`, run with an empty environment and a
-  5 second limit; and, when `host.bwrap` is given, that the `bwrap` binary
-  is not setuid. A host that falls short is refused, `unfit_host`, naming
-  the tool, the version found and the version asked. Nothing has started.
-- **CI.** The `sandbox` job shows that the real host passes a low floor
-  and fails `99.0`.
+### Levels
+
+- **What a host reports.** A sandbox host's probe reports the level its
+  sandboxes give (`Enforceable.level`, `process` when it does not say)
+  and whether they may share the machine with other tenants' work
+  (`Enforceable.co_tenancy`, `shared` or `exclusive`, `shared` when it
+  does not say). A host reports what it gives, never more.
+- **The hosts of today** (`MxcHost` with Bubblewrap, `WindowsMxcHost` with
+  an AppContainer or a session, `ContainerHost`) report `process` and
+  `shared`: each runs a sandbox on the host's own kernel, beside whatever
+  else runs there. No new backend comes with 0.5.
+- **Refusal.** For a requirement 0.2, the adapter adds to its list of what
+  the host cannot enforce, after the reasons a 0.1 requirement can have
+  and the method limits, and before the credentials:
+  - `isolation <min> (this host gives <level>)` when the host's level is
+    below `isolation.min`, in the order `process`, `user_kernel`,
+    `microvm`, `dedicated_host`, or when either is a level the runtime
+    does not know;
+  - `co_tenancy forbidden (this host may share)` when `isolation.co_tenancy`
+    is `forbidden` and the host does not report `exclusive`.
+
+  The path is the one every unenforceable requirement takes:
+  `PolicyDenied(unsupported_sandbox_profile)`, E0902, and the agent is not
+  started. A weaker level is never chosen silently. A requirement 0.1 has
+  no `isolation`, and is planned as before, whatever the host reports.
+- **At load.** A lock's `isolation` no longer refuses a package. It applies
+  only to a 0.5 program, whose requirements carry it: the runtime checks
+  E1803 again at load, and refuses the package of an earlier program whose
+  lock sets it (`load_verification_failed`), since the floor would not
+  hold.
+
+### Host fitness
+
+- **What is read.** When the package's lock has `host`, the runtime reads
+  each tool it names, and only those:
+  - `node`: the version of the runtime's own process;
+  - `bwrap`: the first executable file named `bwrap` on the runtime's
+    `PATH`, the one the sandbox SDK starts. It is asked `bwrap --version`,
+    with the filtered environment of every process the runtime starts
+    (none of the runtime's secrets; [`runtime.md`](runtime.md)) and a 5
+    second limit, and is expected to print `bubblewrap <version>`. A
+    `bwrap` whose file has the setuid bit is unfit whatever its version,
+    and is not started.
+- **What a version is.** One to four decimal components without leading
+  zeros, separated by dots. A missing component reads as 0, so `22.23` and
+  `22.23.0` are the same. Versions are compared component by component as
+  numbers, never as text: `0.10` is above `0.9`. A version found on the
+  host may end in a suffix that starts with `-`, `+` or `~` (a
+  pre-release, a build, a distribution's revision). Whether a suffix puts
+  it before or after its numbers cannot be known, so it reads as just
+  below them: `0.11.0-rc1`, like `0.11.0+deb1`, meets `0.10` and not
+  `0.11.0`. A least version in the lock has no suffix
+  ([`lock.schema.json`](lock.schema.json)).
+- **Unfit.** A tool that is not found, cannot be started, gives no version
+  within the limit, exits with an error, prints what is not a version that
+  can be compared, or is below the lock's least version. And a setuid
+  `bwrap`, once the lock names a least `bwrap`.
+- **Refusal.** `unfit_host`, naming each tool that falls short, what was
+  found and what the lock asks, in the order `bwrap`, `node`:
+
+  ```
+  unfit_host: This host does not meet the package's lock: bwrap: 0.9.0 found, the lock asks 0.11.0 or later, not setuid. Nothing of the package runs here (spec/boundary.md).
+  ```
+
+  A tool's part is `<tool>: <found>, the lock asks <least> or later`,
+  followed by `, not setuid` for `bwrap`, and parts are joined by `; `.
+  `<found>` is one of `<version> found`, `not found on the runtime's PATH`,
+  `<path> is setuid`, `printed "<output>", which is not a version that can
+  be compared`, `could not be started (<code>)`, `gave no version within 5
+  s`, `exited with code <n> on --version`.
+- **When.** At `StartRun`, once the package is verified and before
+  anything else of the run: an unfit host claims no working copy and
+  writes no package, run or event. At every resume, before the lease is
+  taken: an unfit host takes no lease and writes nothing, and the run stays
+  as it was, for a fit host to resume. A control call that records an
+  answer or a decision and then resumes the run (`SubmitInput`,
+  `DecideAction`, …) keeps what it recorded; its resume is refused, and the
+  run moves on when a fit host resumes it. A run that has ended is not
+  checked, since resuming it runs nothing; nor is a replay.
+- **No floor is built in.** Without `host` nothing is read and nothing
+  changes. `host` applies to a package of any language.
+- **How the tools are read** is the runtime's `hostProbe` option, so tests
+  give their own and need no `bwrap`.
+- **CI.** The `sandbox` job reads the runner's real `bwrap`: a lock that
+  asks `bwrap` 0.1 and `node` 22 starts a run, and one that asks `bwrap`
+  99.0 is refused, `unfit_host`, naming the version found.
+- **Limits.** The host is read when a run starts or resumes, not while it
+  runs. What is read is the `bwrap` on the runtime's `PATH`; a sandbox SDK
+  configured to start another one is not covered.
 
 ## The egress proxy
 
@@ -698,7 +774,7 @@ verification steps, the report and the exit codes) is
 
 | Id | Invariant | Where 0.5 keeps it |
 |---|---|---|
-| INV-11 (refined) | An unsupported security requirement is never dropped silently: a method limit, an isolation floor, a credential binding or a least host version is enforced, or nothing it applies to starts | `unsupported_lock` at load; the adapter's refusals (E0902); `unfit_host`; E1803 |
+| INV-11 (refined) | An unsupported security requirement is never dropped silently: a method limit, an isolation floor, a credential binding or a least host version is enforced, or nothing it applies to starts | `unsupported_lock` at load; the adapter's refusals (E0902); `unfit_host`; E1803, also at load |
 | INV-17 | A projection (a role view, an OpenTelemetry export) is derived from event type and view section, never from content | The class table; the export's attributes |
 | INV-23 | A secret never enters a sandbox, nor the runtime's environment when gateways are on; what enters is its placeholder | The proxy's configuration; `credential_in_environment` |
 | INV-24 | A sandbox reaches no host and uses no method its grant does not list | The proxy's data path; requirement 0.2; the denial reasons |
@@ -725,9 +801,9 @@ Refusals of the runtime that 0.5 adds:
 
 | Code | When |
 |---|---|
-| `unsupported_lock` | At load: the lock sets `host`, `isolation` or `egress`, named, before the change that enforces it |
-| `unsupported_sandbox_profile` (E0902) | A requirement 0.2 asks for what the host cannot give: method limits, an isolation level, no sharing, credentials |
-| `unfit_host` | The host is below the lock's least versions, or its `bwrap` is setuid |
+| `unsupported_lock` | At load: the lock sets `egress`, named, before the change that enforces it |
+| `unsupported_sandbox_profile` (E0902) | A requirement 0.2 asks for what the host cannot give: method limits, an isolation level above the host's, no sharing on a host that may share, credentials |
+| `unfit_host` | At a start or a resume, before the lease: a tool the lock names is missing, cannot be read, or is below the lock's least version, or the `bwrap` is setuid |
 | `credential_in_environment` | With a gateway on, its credential is in the runtime's environment |
 | `no_egress_proxy`, `egress_unavailable` | A package or a gateway needs the proxy and none is named, or it does not answer or lacks a credential |
 | `egress_denied` | Through the model gateway, the proxy refused the runtime's own request; the run stops for a person, the reason named |
