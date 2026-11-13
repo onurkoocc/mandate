@@ -329,7 +329,7 @@ uses `text`; the members stay in the format for a compiler that gives one.
 `{ "format": "mandate/vectors/diagnostics/conformance/0.1", "part": N, "parts":
 M, "cases": [ … ] }`. The cases are in one order across the parts, by `name` in
 UTF-16 order. There is one vector for every `compile` case of `conformance/`
-(123; the 16 `journal` cases are about the runtime's verifier and have none).
+(125; the 16 `journal` cases are about the runtime's verifier and have none).
 A case:
 
 - `name`: the case's `id`, which is its directory `conformance/<name>/`;

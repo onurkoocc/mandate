@@ -1,0 +1,16 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0108",
+  "kind": "compile",
+  "title": "IR that is not well-formed JSON, here an object with a trailing comma, is refused rather than repaired.",
+  "spec": ["spec/ir.md#reading-ir"],
+  "input": {
+    "text": "{\"language\":\"mandate/0.1\",\"module\":\"m\",\"version\":\"0.1\",\"defs\":{},}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E0108", "path": "" }]
+  }
+}
