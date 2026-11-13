@@ -781,10 +781,11 @@ written, and refuses starts and leases in its scope until it is lifted
 - refuses a language version it does not run, and of 0.4 `agents` in a
   budget that is not an envelope's, which it does not run yet
   (`unsupported_language`; [`envelope.md`](envelope.md));
-- refuses a package whose lock sets `egress`, by its name, until it
-  enforces it (`unsupported_lock`; [`boundary.md`](boundary.md#lock-05)),
-  and one whose lock sets `isolation` or `egress` for a program of 0.1 to
-  0.4, which they would not apply to (`load_verification_failed`, E1803);
+- refuses a package whose lock sets a field it does not enforce yet, by
+  its name (`unsupported_lock`; none today:
+  [`boundary.md`](boundary.md#lock-05)), and one whose lock sets
+  `isolation` or `egress` for a program of 0.1 to 0.4, which they would
+  not apply to (`load_verification_failed`, E1803);
 - when the lock sets `host`, reads the host's tools it names and refuses a
   host that falls short (`unfit_host`): a tool missing or unreadable,
   below its least version, or a setuid `bwrap`. Nothing of the run is
@@ -975,7 +976,9 @@ lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
   egress proxy and turns the control plane's gateways on: the model and
   GitHub adapters then hold placeholders, the proxy holds the secrets, and
   the gateway's secret may not be in the runtime's environment. See
-  [`boundary.md`](boundary.md#the-control-planes-gateways).
+  [`boundary.md`](boundary.md#the-control-planes-gateways). With `admin`,
+  a sandbox on Linux reaches its agent's hosts through the proxy, in a
+  forward session of its own ([`boundary.md`](boundary.md#sandbox-egress)).
 - **Missing adapters.** An adapter the configuration leaves out is refused
   when a run reaches it, and never simulated.
 - **Strict reading.** Unknown fields in the file are an error.
