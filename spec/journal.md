@@ -16,7 +16,7 @@ byte for byte, how an outsider checks it:
   chain holds, and what the signatures cover.
 
 It is written so a second implementation of the verifier can be built from
-it and from the cases J01–J08 alone. Where it says "the reference", it
+it and from the cases J01–J16 alone. Where it says "the reference", it
 means the TypeScript runtime.
 
 ## What it proves, and what it does not
@@ -51,6 +51,17 @@ It is not more than that:
   chain covers; its content is not in the export and is not checked.
 - **Decisions and evidence are not in the export.** They carry signatures of
   their own (`mandate verify-decision`, [`envelope.md`](envelope.md)).
+- **Anchors bind the run id, not the database.** An anchor names its run by
+  id and nothing else. Where one key signs for two databases (two
+  environments, say) and a run id occurs in both, the whole genuine journal
+  of one run can be shown for the other, and it verifies. Give each
+  environment its own evidence key, or run ids that never repeat.
+- **Every runtime that writes to a database writes the chain.** An event
+  appended to a chained run by a runtime that does not hash it has no hash,
+  and the run is `hash_missing` from there on.
+- **The keys a runtime trusts for evidence are the keys it trusts for
+  anchors:** its own, those rotated out, and those its configuration names
+  under `evidence.trusted`. `mandate journal key` writes exactly these.
 
 ## The canonical form of a runtime value
 
@@ -119,7 +130,11 @@ An event of a chained run has a hash:
 hash = digest("event", { "run": run, "seq": seq, "type": type, "data": data, "at": at, "prev": prev })
 ```
 
-- `run`: the run id, a string.
+- `run`: the run id, a string, as the run was started with it. A run id is
+  non-empty, well-formed Unicode and holds no U+0000, or the run does not
+  start (`invalid_run_id`); so is a tenant, which the manifest check
+  compares (`invalid_tenant`). The database keeps both as text, which
+  would store anything else as another string, or not at all.
 - `seq`: the event's number, an integer from 1.
 - `type`: the event's type, a string such as `run_accepted`.
 - `data`: the event's data, a JSON value, **as the database gives it back**.
@@ -209,6 +224,12 @@ with the runtime's evidence key, the key that signs evidence records
   public key. A public key is written as PEM: `-----BEGIN PUBLIC KEY-----`,
   the base64 of that DER in lines of 64 characters, `-----END PUBLIC KEY-----`.
 
+- **Verifying a signature** is RFC 8032 §5.1.7, and S must be below L, the
+  order of the base point. A verifier may also refuse non-canonical
+  encodings of R or A, and points of small order. A conforming runtime signs
+  with Ed25519 as RFC 8032 §5.1.6 does, which gives none of them, so no
+  report of a journal it signed depends on that choice.
+
 The anchor row holds the run, `seq`, `hash`, `at`, `key_id` and `signature`.
 A key rotated out (`mandate rotate-key`) stays trusted, so anchors it signed
 still verify; `mandate journal key` writes it with the current one.
@@ -217,7 +238,10 @@ still verify; `mandate journal key` writes it with the current one.
 
 `mandate journal export <run>` and `Runtime.exportJournal(run)` read a run's
 journal out of the database as it is, checking nothing, into one JSON
-document. Its members:
+document. It is one snapshot: everything is read in one transaction at
+REPEATABLE READ, so an event or a state change committed while it is read
+is in all of the export or in none of it, and no writer waits for it. Its
+members:
 
 | Member | Value |
 |---|---|
@@ -237,23 +261,53 @@ values, so neither the layout nor the order of members matters.
 
 `mandate journal key [--out FILE]` writes the public keys anchors are
 verified against, as PEM blocks one after another: the evidence key's own
-first, then the keys rotated out and the keys the configuration names under
-`evidence.trusted`, by key id.
+first, then every other key the runtime trusts, by key id: the keys rotated
+out and the keys the configuration names under `evidence.trusted` (of a file
+that holds a private key, its public half). It reads the evidence key and
+never makes one: without it, it refuses (`no_evidence_key`). It writes
+`--out` as a new file only. Neither `journal key --out` nor
+`journal export --out` writes to the evidence key's own path.
+
+When what `journal export` wrote is beyond the limits below, it says so on
+stderr, and writes it all the same: a runtime journals any run, and only a
+verifier stops at the limits.
 
 ## Reading an export
 
-A verifier reads an export as untrusted bytes. Anything that does not meet
-these rules is `malformed_export`, and nothing else in it is read:
+**Values, not spellings.** Every rule in this document is about the value
+read, never about how it is spelled. A number is the double it reads as:
+`1`, `1.0`, `1e0` and `10e-1` are the integer 1, and `0`, `-0`, `0.0` and
+`1e-400` are zero. Where a rule asks for an integer it asks that the value
+be one, however written. -0 is the integer zero everywhere, whose canonical
+form is `0`, except in the IR's canonical form (step 4 of verification),
+which refuses it. A string is its code points once its escapes are read:
+`"é"` and `"\u00e9"`, `"/"` and `"\/"` are the same string. Member order
+and white space mean nothing. Case J09 is an export spelled otherwise.
+
+A verifier reads an export as untrusted bytes, by these rules. An export
+larger or deeper than rules 1 and 4 allow is `export_over_limit`; one that
+breaks any other rule is `malformed_export`. Either way the report is
+`unreadable`, and nothing else in the export is read. The size is checked
+first, then that the whole is UTF-8, then the JSON text from its start, then
+the shape: the first rule broken in that order is the one reported, so an
+export that nests too deep before it is malformed is `export_over_limit`.
+
+The limits are part of the contract. Every verifier reads every export
+within them and reports any beyond them as `export_over_limit`, so every
+verifier gives the same report for the same export. They do not limit what a
+runtime journals.
 
 1. At most 64 MiB (67108864 bytes).
 2. UTF-8, without a byte order mark.
 3. One JSON text (RFC 8259): whitespace only space, tab, line feed and
    carriage return; no comments, no trailing commas, no leading zeros, no
    `+` sign, nothing after the value.
-4. At most 128 arrays and objects nested in one another, the outermost
-   object counting as one.
-5. No object with two members of the same name. A name such as
-   `__proto__` is a member like any other.
+4. At most 256 arrays and objects nested in one another, the outermost
+   object counting as one. The export puts three levels above an event's
+   data, so data may nest 253 deep.
+5. No object with two members of the same name. Names are compared once
+   their escapes are read: `"a"` and `"\u0061"` are the same name. A name
+   such as `__proto__` is a member like any other.
 6. In strings, the escapes of RFC 8259 only. A lone surrogate, escaped
    (`\ud800` without a low surrogate escape after it) or not, is refused.
    An unescaped code point below U+0020 is refused.
@@ -278,10 +332,13 @@ these rules is `malformed_export`, and nothing else in it is read:
 `mandate journal verify <export> --key <pem>…` and the reference's
 `verifyExport(bytes, keys)` take the export and the public keys and nothing
 else: no configuration, no database. `Runtime.verifyJournal(run)` is the
-same over the export's bytes and the keys the runtime trusts.
+same over the export's bytes and the keys the runtime trusts. The keys
+given are Ed25519 public keys; a private key stands for its public half.
+Anything else is the caller's error, not a finding about the journal: the
+reference throws, and `mandate journal verify` stops with exit 2.
 
-Read the export (above). Then, with `events` and `anchors` in the order the
-export gives them:
+Read the export (above); if it cannot be read, the report is `unreadable`.
+Then, with `events` and `anchors` in the order the export gives them:
 
 0. **Unchained.** If no event has a hash and there is no anchor, the report
    is `unchained` with no findings, and nothing more is checked. Otherwise
@@ -298,19 +355,26 @@ export gives them:
 3. **The manifest.** Let *accepted* be the first event when its `seq` is 1,
    its `type` is `run_accepted` and its `data` is an object. `manifest_mismatch`
    unless there is an *accepted*, `manifest` is an object,
-   `digest("run", manifest)` equals *accepted*'s `data.manifest`,
-   `manifest_hash` equals it too, `manifest.tenant` equals `tenant`, and
-   `manifest.package` equals *accepted*'s `data.package`.
-4. **The package.** `package_mismatch` unless there is an *accepted*, and
-   `package.hash`, and the package hash recomputed from `program` and
-   `lock`, both equal *accepted*'s `data.package`, and each module in
+   *accepted*'s `data.manifest` is a string, `digest("run", manifest)`
+   equals it, `manifest_hash` equals it too, `manifest.tenant` is a string
+   equal to `tenant`, and `manifest.package` and *accepted*'s
+   `data.package` are both strings, and equal.
+4. **The package.** `package_mismatch` unless there is an *accepted*, its
+   `data.package` is a string, and `package.hash`, and the package hash
+   recomputed from `program` and `lock`, both equal it, and each module in
    `modules` has `module` equal to its name and hashes to the pin
-   `lock.modules[name]`. The package hash is
-   `digest("package", { "program": P, "lock": lock })`, with `P` the program
-   hash (`mandate/program/<v>`, [`ir.md`](ir.md#hashing)); a module's hash is
-   its program hash. These use the IR's canonical form, which admits only
-   integers of magnitude up to 2^53 - 1 (no -0): a program or lock with
-   another number is a mismatch.
+   `lock.modules[name]`. The hashes here are over the IR's canonical form
+   ([`ir.md`](ir.md#hashing)), which is the canonical form above with one
+   difference: it admits only integers of magnitude up to 2^53 - 1, and not
+   -0, so a program, module or lock with another number is a mismatch.
+   - The program hash `P` is `sha256:` and the hex SHA-256 of
+     `mandate/program/<v>`, a line feed, and the program's canonical form.
+     `<v>` is what follows `mandate/` in the program's `language` when
+     `language` is a string that begins with `mandate/` (`mandate/0.4` gives
+     `0.4`, and anything after the prefix is taken as it is), and `0.1`
+     otherwise. A module's hash is its program hash, by its own `language`.
+   - The package hash is the same over `mandate/package/0.1` and the
+     canonical form of `{ "program": P, "lock": lock }`: the `0.1` always.
 5. **Anchors.** For each anchor, in order:
    - if no key given has its `key_id`: `anchor_unknown_key`;
    - otherwise, if its `signature` is not a canonical `ed25519:` signature
@@ -319,8 +383,8 @@ export gives them:
      `anchor_signature_invalid`;
    - then, if its `seq` is greater than every event's: `anchor_beyond_end`
      (the tail was cut);
-   - otherwise, if no event has its `seq`, or the first that does has
-     another `hash` or `at`: `anchor_mismatch`.
+   - otherwise, if no event has its `seq`, or the first that does, in the
+     export's order, has another `hash` or `at`: `anchor_mismatch`.
 
    Each at the anchor's seq. An anchor **holds** when its key was given,
    its signature verifies and it matches its event. `anchored_through` is
@@ -332,10 +396,22 @@ export gives them:
    a chained run was anchored in the transaction that wrote it.
 7. **The tail.** The events whose `seq` is greater than `anchored_through`
    (all of them when it is `null`) are covered by no signature. If there
-   are any: `unanchored_tail` at the first one's seq.
+   are any: `unanchored_tail` at the seq of the first of them in the
+   export's order.
 
 The status is `broken` when there is any finding but `unanchored_tail`, and
-`verified` otherwise.
+`verified` otherwise. So `broken` means exactly: the export was read, and
+the chain or the anchors do not hold.
+
+**"The first" is by the export's order.** The event an anchor names (step 5)
+and the event the tail starts at (step 7) are the first in the order the
+export lists its events, not the one with the smallest seq. With events
+listed with the seqs `[1, 2, 5, 3, 4]` and anchors that hold at seqs 1 and
+3, `anchored_through` is 3; the events after it are those with seqs 5 and 4,
+and `unanchored_tail` is at seq 5, listed third, not at 4. An anchor at seq 5
+names the third event; with two events of seq 5, it names the one listed
+first. Step 1 gives `seq_gap` at 3, where seq 5 stands. Cases J13 and J14
+hold this.
 
 ### Why the tail is not broken
 
@@ -368,21 +444,31 @@ last state change; anything before it is covered.
 | Member | Value |
 |---|---|
 | `format` | `"mandate/journal-verification/0.1"` |
-| `run` | The export's run id; `null` for a malformed export |
-| `status` | `"verified"`, `"broken"` or `"unchained"` |
-| `events` | How many events the export has; 0 for a malformed export |
-| `last_seq` | The seq of the export's last event; `null` for a malformed export |
-| `anchored_through` | The greatest seq of an anchor that holds; `null` when none does, and for an unchained or malformed export. Only in a `verified` report does it say the events through it are as signed: in a `broken` one it says which anchors hold, not that the chain under them does |
-| `unanchored` | How many events have a seq greater than `anchored_through` (all of them when it is `null`); 0 for a malformed export |
+| `run` | The export's run id; `null` for an unreadable export |
+| `status` | `"verified"`, `"broken"`, `"unchained"` or `"unreadable"` |
+| `events` | How many events the export has; 0 for an unreadable export |
+| `last_seq` | The seq of the export's last event; `null` for an unreadable export |
+| `anchored_through` | The greatest seq of an anchor that holds; `null` when none does, and for an unchained or unreadable export. Only in a `verified` report does it say the events through it are as signed: in a `broken` one it says which anchors hold, not that the chain under them does |
+| `unanchored` | How many events have a seq greater than `anchored_through` (all of them when it is `null`); 0 for an unreadable export |
 | `signed_by` | The key ids of the anchors that hold, sorted |
 | `findings` | `{ "code", "seq"? }` each, in the order the steps above find them |
 
-A malformed export's report has the one finding `malformed_export` and the
-status `broken`. The findings:
+The statuses:
+
+| Status | Means |
+|---|---|
+| `verified` | The export was read; the chain holds from seq 1, every state event is anchored, and the anchors that hold cover the events through `anchored_through` |
+| `broken` | The export was read, and the chain or the anchors do not hold |
+| `unchained` | The export was read; no event has a hash and nothing is anchored, so nothing is said either way |
+| `unreadable` | The export could not be read (`malformed_export`) or is beyond the limits (`export_over_limit`); nothing is said about the journal |
+
+An unreadable export's report has one finding, `malformed_export` or
+`export_over_limit`. The findings, in the order the steps find them:
 
 | Code | Seq | Means |
 |---|---|---|
-| `malformed_export` | none | The export cannot be read, or does not have the shape above |
+| `malformed_export` | none | The export is not JSON by the rules above, or does not have the shape above (status `unreadable`) |
+| `export_over_limit` | none | The export is larger or nests deeper than every verifier reads (status `unreadable`) |
 | `seq_gap` | the first position whose event has another seq | An event was removed or moved |
 | `hash_missing` | the event's | An event of a chained run has no hash |
 | `chain_broken` | the event's | The event's hash is not that of its contents and the hash before it |
@@ -396,10 +482,15 @@ status `broken`. The findings:
 | `unanchored_tail` | the first event after `anchored_through` | No signature covers the events from here on |
 
 `mandate journal verify` prints the status, each finding with what it
-means, and for a verified journal how far the signatures reach; `--json` prints the report. It
-exits 0 when the status is `verified`, 1 when it is `broken` or
-`unchained`, and 2 on a usage error. A `--key` file may hold several PEM
-blocks, and `--key` may be given more than once.
+means, and for a verified journal how far the signatures reach; `--json`
+prints the report. A `--key` file may hold several PEM blocks, and `--key`
+may be given more than once. Its exit status:
+
+| Exit | When |
+|---|---|
+| 0 | `verified` |
+| 1 | `broken` or `unchained`: the journal was checked, and is not verified |
+| 2 | Nothing could be checked: a usage error; an export or key file that is missing, is a directory or cannot be read; a key file that holds no Ed25519 public key; or an `unreadable` export |
 
 ## Storage
 
@@ -413,7 +504,7 @@ upgraded in place, and its runs stay unchained.
 
 ## Conformance cases
 
-`conformance/J01`–`J08` ([`conformance/README.md`](../conformance/README.md#a-journal-case))
+`conformance/J01`–`J16` ([`conformance/README.md`](../conformance/README.md#a-journal-case))
 each hold an export, the public key it is verified against and the report.
 A verifier conforms when it gives each report exactly. They come from real
 runs on PGlite (`runtime/scripts/journal-cases.mjs`).
@@ -428,3 +519,11 @@ runs on PGlite (`runtime/scripts/journal-cases.mjs`).
 | J06 | An anchor by a key not given and one whose signature does not verify | `broken`: `anchor_signature_invalid`, `anchor_unknown_key` |
 | J07 | A manifest and a package not the ones the first event names | `broken`: `manifest_mismatch`, `package_mismatch` |
 | J08 | A run begun before the chain | `unchained` |
+| J09 | An export spelled otherwise, the same values (exponents, trailing zeros, -0, a number below the smallest double, escapes, member order, white space) | `verified` |
+| J10 | An event's hash removed | `broken`: `hash_missing`, `chain_broken` |
+| J11 | An anchor the runtime's key signed over a hash its event does not have | `broken`: `anchor_mismatch` |
+| J12 | A state event's anchor removed | `broken`: `anchor_missing` |
+| J13 | Events moved in the export, seqs `[1, 2, 5, 3, 4, …]` | `broken`: `seq_gap`, `chain_broken` |
+| J14 | A second event with the last seq after the genuine one; the anchor names the first | `broken`: `seq_gap`, `chain_broken` |
+| J15 | An export with a duplicate member | `unreadable`: `malformed_export` |
+| J16 | A run whose data nests deeper than a verifier reads | `unreadable`: `export_over_limit` |

@@ -866,10 +866,14 @@ mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [-
 `CLAUDE_API_KEY` and no configuration ([`executors.md`](executors.md)).
 
 `journal export` writes a run's chained journal with its manifest and
-package, and `journal key` the public keys its anchors are verified against.
+package, as one snapshot, and `journal key` the public keys its anchors are
+verified against: every key the runtime trusts, read and never made.
 `journal verify` checks an export with those keys alone and, like
-`verify-decision`, reads no configuration and no database; it exits 0 only
-when the journal is verified ([`journal.md`](journal.md)).
+`verify-decision`, reads no configuration and no database. It exits 0 when
+the journal is verified, 1 when it is broken or unchained, and 2 when nothing
+could be checked ([`journal.md`](journal.md#the-report)). A run id or a tenant
+that is not well-formed Unicode, or holds U+0000, is refused at the start
+(`invalid_run_id`, `invalid_tenant`).
 
 `--limit` takes `spend`, `tokens`, `steps` and, for a workflow with an
 envelope, `agents`, separated by commas. `approve-envelope` signs a

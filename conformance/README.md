@@ -5,7 +5,7 @@ these modules and this lock, gives these diagnostics. The files here are meant t
 be read by any implementation. The TypeScript reference compiler reads them in
 `compiler/test/cases.test.ts`; the Rust compiler will read the same files.
 
-A journal case (J01–J08) is a claim about a journal verifier instead: this export
+A journal case (J01–J16) is a claim about a journal verifier instead: this export
 of a run's journal, under these public keys, gives this report (spec/journal.md).
 
 ## Layout
@@ -146,14 +146,22 @@ public keys are committed.
 
 | Case | What the export shows | Status |
 |---|---|---|
-| J01 | A closed run, also over data with fractions, exponents, -0, escapes and keys that sort differently by UTF-16 code units and by code points | verified |
+| J01 | A closed run, also over data with fractions, exponents, escapes and keys that sort differently by UTF-16 code units and by code points | verified |
 | J02 | An event's data edited in the database | broken: `chain_broken` |
 | J03 | An event deleted | broken: `seq_gap`, `chain_broken` |
-| J04 | The tail cut while its anchors stay | broken: `anchor_beyond_end` |
+| J04 | The tail cut while its anchors stay | broken: `anchor_beyond_end`, `unanchored_tail` |
 | J05 | An open run with events after its last anchor | verified, `unanchored_tail` |
 | J06 | An anchor signed by another key, one whose signature does not verify | broken: `anchor_unknown_key`, `anchor_signature_invalid` |
 | J07 | The manifest and the package edited | broken: `manifest_mismatch`, `package_mismatch` |
 | J08 | A run begun before the journal was chained | unchained |
+| J09 | The export of a closed run spelled otherwise: `1E21`, `0.10`, `-0`, `1e-400`, `1.0`, escapes, members in another order, tabs | verified |
+| J10 | An event's hash removed in the database | broken: `hash_missing`, `chain_broken` |
+| J11 | An anchor the runtime's key signed over a hash its event does not have | broken: `anchor_mismatch` |
+| J12 | A state event's anchor removed | broken: `anchor_missing` |
+| J13 | Events moved in the export, seqs `[1, 2, 5, 3, 4, …]` | broken: `seq_gap`, `chain_broken` |
+| J14 | A second event with the last seq after the genuine one: the anchor names the first in the export's order | broken: `seq_gap`, `chain_broken` |
+| J15 | An export with a duplicate member | unreadable: `malformed_export` |
+| J16 | A run whose data nests deeper than a verifier reads | unreadable: `export_over_limit` |
 
 All paths are relative to the case directory and must stay inside the
 repository. A path may go up into the repository to share a fixture, as V03 does.
