@@ -198,7 +198,9 @@ Takes exactly one of `session`, `run`, `tenant` (each a string) or `all`
 (`true`). Revokes every session open at that moment that matches, and
 answers `{ "revoked": [ids] }`, sorted, with every matching session that is
 still known, including one already revoked. A revocation does not prevent
-new sessions; refusing new work is the runtime's part.
+new sessions, and a session opened after it is not cut by it; refusing new
+work is the runtime's part, which is why a runtime revokes after it has made
+the scope refuse new work (a halt does).
 
 ### `denials`
 

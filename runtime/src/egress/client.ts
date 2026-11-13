@@ -44,15 +44,27 @@ export class EgressClient {
     socket.on("close", lost);
   }
 
-  /** Connects to the admin channel at `path`: a Unix socket, or a named pipe on Windows. */
+  /**
+   * Connects to the admin channel at `path`: a Unix socket, or a named pipe on Windows. A proxy that does not take the
+   * connection within `timeoutMs` (one whose backlog is full takes none) is `egress_unavailable`, so no caller waits for it.
+   */
   static connect(path: string, o: EgressClientOptions = {}): Promise<EgressClient> {
+    const timeoutMs = o.timeoutMs ?? 10_000;
     return new Promise((ok, fail) => {
       const socket = connect({ path });
+      const timer = setTimeout(() => {
+        socket.destroy();
+        fail(new EgressError("egress_unavailable", `the egress proxy at ${path} did not take the connection within ${timeoutMs} ms`));
+      }, timeoutMs);
       socket.once("connect", () => {
+        clearTimeout(timer);
         socket.removeAllListeners("error");
-        ok(new EgressClient(socket, o.timeoutMs ?? 10_000));
+        ok(new EgressClient(socket, timeoutMs));
       });
-      socket.once("error", (e) => fail(new EgressError("egress_unavailable", `cannot reach the egress proxy at ${path}: ${e.message}`)));
+      socket.once("error", (e) => {
+        clearTimeout(timer);
+        fail(new EgressError("egress_unavailable", `cannot reach the egress proxy at ${path}: ${e.message}`));
+      });
     });
   }
 
