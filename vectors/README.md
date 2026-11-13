@@ -301,3 +301,121 @@ the golden file pins for it). The bytes are exactly those that are hashed (UTF-8
 no newline added), and the directory is created. Nothing is written when the
 variable is not set, and nothing of these texts is committed. The Rust side
 writes the same layout. The texts come from `compiler/test/golden-outputs.ts`.
+
+## diagnostics/
+
+The whole result of the compiler for the inputs the repository already has: every
+conformance case that runs a compiler, and the checks of every golden program. A
+conformance case today states only codes and paths; these files state the rest
+(`ok`, `hashes`, and for each diagnostic its `severity`, `message`, `at` with
+`span`, `docs`, `facts` and `repair`, every member in the compiler's order, the
+diagnostics in the compiler's order). They are written by
+`compiler/test/diagnostic-vectors.test.ts`, which fails when a file differs from
+what the compiler gives now; the same command (`MANDATE_UPDATE_VECTORS=1 npm
+test`) writes them again. The files are within the limits of the reader (ASCII,
+each under 900 KB and split into numbered parts when a file would pass 800 KB,
+nesting up to 64, integers only, no duplicate key, no lone surrogate); the test
+asserts all of it. The inputs are not copied: a vector names them, and the Rust
+test reads the same files of `conformance/` and `fixtures/`.
+
+A result is a value in the compiler's member order, not text. The exception is a
+result that holds a number that is not an integer (a cost, a ratio), which JSON
+integers cannot carry: it is stored as its exact text under `text` (a vector) or
+in `texts` (a program) instead. No result today holds such a number, so no vector
+uses `text`; the members stay in the format for a compiler that gives one.
+
+### conformance-N.json
+
+`{ "format": "mandate/vectors/diagnostics/conformance/0.1", "part": N, "parts":
+M, "cases": [ … ] }`. The cases are in one order across the parts, by `name` in
+UTF-16 order. There is one vector for every `compile` case of `conformance/`
+(123; the 16 `journal` cases are about the runtime's verifier and have none).
+A case:
+
+- `name`: the case's `id`, which is its directory `conformance/<name>/`;
+- `kind`: `"compile"`;
+- `door`: which function of the compiler the case goes through (below);
+- `input`: `{ "file", "kind" }`, the case's own `input` (a path relative to the
+  case directory, `kind` `mdt` or `json`), or `{ "inline": true, "kind" }` when the
+  source is the `input.text` of `case.json`;
+- `modules`: the case's `modules`, paths relative to the case directory, in order
+  (empty when it has none);
+- `lock`: the case's `lock` path, or `null`;
+- `uses`: which of `patch`, `base`, `subprogram` and `amendment` of `case.json`
+  feed the door, in that order (the vector does not copy them);
+- `result`: what the door returns, as below. Or `text` in its place (above).
+
+The doors, with what they are called with and what each result holds:
+
+- `check`: `check(input, kind, { modules, lock })`. `modules` are loaded together
+  with `loadModules` (each against the others; they must load), `lock` is the
+  parsed lock file. Result `{ ok, hashes?, diagnostics }`: `hashes` (`{ program,
+  defs }`) only when `ok`. (The IR and the spans a check also returns are not
+  stored.)
+- `check_patched` (`uses: ["patch"]`): the input is loaded and must load without
+  errors; the case's RFC 6902 `patch` (`add`, `replace`, `remove`) is applied to its
+  IR and the patched IR, as JSON text, is checked as `check` with `kind` `json`
+  (so spans are those of that text). Result as `check`.
+- `apply_ops` (`uses: ["patch", "base"]`): the input is loaded as above;
+  `applyOps(program, base, patch)` is called. If it gives no program the result is
+  `{ ok: false, diagnostics }` with one diagnostic (E0130 for a stale `base`,
+  E0131 for an operation that cannot be applied); otherwise the program is
+  written as JSON text and checked as `check_patched`. Result as `check` where
+  the patched program was checked.
+- `check_subprogram` (`uses: ["subprogram"]`): the input (with `modules`) is the
+  parent, which must check without errors. `checkSubprogram` is given the parent,
+  the modules, `workflow`, `number` (1 if not given), `base` (the program hash of the
+  skeleton `<parent module>.plan_<number>`), `ops` (one `add` at `/defs/<name>`
+  for each definition of the `defs` module, in order, then the case's `patch`),
+  `lead` (`public` if not given) and `room` (`left`, `time_left_ms`, `writes`, each
+  write with its capability constructor's effect). Result `{ ok, diagnostics,
+  program?, hash?, workflow? }`: the last three only when `ok`.
+- `check_amendment` (`uses: ["amendment"]`): the input is the run's program, which
+  must check without errors; the new envelope is the envelope of the case's
+  workflow with the case's patch applied. `checkAmendment` returns `{ ok,
+  diagnostics, program?, hash? }`; `program` and `hash` only when `ok`. The case's
+  `hashes.program` is `hash`.
+
+`kind` is `compile` for all: a `run` case would fail the compiler's test run, and
+there is none today.
+
+The test asserts, for every case, that the stored result satisfies the case's own
+`expect` under the rule of `conformance/README.md` (`ok`; the diagnostics one to
+one by code and path, facts as a subset; `hashes`), and that the files and paths a
+vector names exist.
+
+### golden-N.json
+
+`{ "format": "mandate/vectors/diagnostics/golden/0.1", "part": N, "parts": M,
+"programs": [ … ] }`, one vector for each program of `compiler/test/golden/outputs.json`
+(21), by `program` in UTF-16 order. A program:
+
+- `program`: its repository path;
+- `modules`: the module files it is given (repository paths, in the order they are
+  loaded together with `loadModules`): `fixtures/system/acme.system.mdt` and
+  `fixtures/system/repos.mdt`, except `fixtures/envelope/migrate-all.mdt`, which is
+  given `fixtures/envelope/domain.mdt` only;
+- `lock`: the lock it is checked with (repository path), or `null`: `<name>.lock.json`
+  beside the program when that exists, else `mandate.lock.json` beside it;
+- `results`: members `check` (`check(program, kind)`, no modules, no lock),
+  `check_module` (`{ modules }`), `check_lock` (`{ modules, lock }`, only where `lock`
+  is not `null`) and `load` (`load(program, kind)`). Each of the first three is `{
+  ok, hashes?, diagnostics }`, the value of the golden output of the same name
+  (`check`, `check --module`, `check --lock`); `load` is the array of diagnostics
+  alone (output `load`). The kind is `json` for a file ending `.json`, else `mdt`;
+- `texts`: `{}`, or, for a result with a number that is not an integer, that
+  result's name with its exact text. A name is then in `texts` and not in `results`.
+
+The text the golden test hashes for each of the four outputs is exactly the
+pretty form of the stored value (`JSON.stringify(value, null, 2)` and a newline),
+so its sha256 is the digest in the golden file; the test asserts it.
+
+### summary.json
+
+`{ format, conformance_cases, conformance_by_door, golden_results, diagnostics,
+by_code, codes_in_no_result }`: the counts the test asserts. `conformance_by_door`
+counts the cases by door; `golden_results` the stored results of the golden
+programs; `diagnostics` every diagnostic of every stored result (a diagnostic
+that a `check` and a `check_module` both give is counted twice); `by_code` the
+diagnostics by code, for the codes that occur; `codes_in_no_result` the codes of
+`compiler/src/codes.ts` that occur in no stored result.
