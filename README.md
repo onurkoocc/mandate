@@ -181,8 +181,10 @@ pull request was opened, for 0.23 USD.
    refused for its authority is a `violation` event, once per step, and a
    run stops at its limit (3 for a 0.5 package); `mandate halt` ends every
    open run of a tenant, or of all, in one transaction, and refuses their
-   starts and resumes until `mandate halt --lift`. The rest of the
-   compile-time surface is not enforced yet, so nothing that needs it runs: the runtime refuses a
+   starts and resumes until `mandate halt --lift`. The reference
+   egress proxy exists, and the runtime's own model and GitHub adapters can
+   go through it, holding placeholders. The rest is not enforced yet, so
+   nothing that needs it runs: the runtime refuses a
    package whose lock sets `host`, `isolation` or `egress`, by name, and the
    sandbox adapter refuses a requirement that limits methods, asks for more
    than process isolation, or carries credentials.
@@ -456,7 +458,8 @@ signs for another part, or in the old format, does not meet the
 criterion. Evidence made before the verifier had a process of its own, or
 attested before 0.2, shows as invalid once it has. The verifier process
 gets none of the runtime's secrets, and the model's key only when the
-configuration has a model. `audience.test.ts` lands a change set on
+configuration has a model and no model gateway (with one, a gateway
+session's address and placeholder). `audience.test.ts` lands a change set on
 boundary checks the runtime makes itself with a verifier key trusted, and
 `child-env.test.ts` checks that `docker` gets none of the runtime's
 secrets.
@@ -479,11 +482,31 @@ egress proxy of 0.5 ([`spec/egress.md`](spec/egress.md)). The operator
 starts it with the secrets in its own environment; a session gets
 placeholders, and the proxy swaps one for its secret only in the
 configured header, toward the hosts its configuration binds the credential
-to, over TLS. It needs no database and no runtime configuration, and
-nothing in the runtime uses it yet. `egress-*.test.ts` check each of its
-rules against an in-process upstream; on Linux with `openssl`,
-`egress-tls.test.ts` also goes through real TLS with a certificate made
-when it runs.
+to, over TLS. It needs no database and no runtime configuration.
+`egress-*.test.ts` check each of its rules against an in-process upstream;
+on Linux with `openssl`, `egress-tls.test.ts` also goes through real TLS
+with a certificate made when it runs.
+
+The runtime's own adapters go through it when `mandate.runtime.json` turns
+its gateways on:
+
+```json
+"egress": { "admin": "/run/mandate/egress.sock", "gateways": { "model": "anthropic", "github": "github" } }
+```
+
+Each gateway names the credential the proxy holds for it: for `model`,
+sent in `x-api-key` as `{secret}`, toward `api.anthropic.com`; for
+`github`, in `authorization` as `Bearer {secret}`, toward `api.github.com`.
+The model adapter, the Managed Agents executor, `git.open_pr`, `git.merge`
+and the boundary verifier's CI source then hold a placeholder, never the
+secret, and the runtime refuses to start while the gateway's secret is in
+its own environment (`credential_in_environment`: `CLAUDE_API_KEY` or
+`ANTHROPIC_API_KEY`; `MANDATE_GITHUB_TOKEN`). The verifier process gets a
+session of its own and its placeholder. A start is refused when the proxy
+does not answer or lacks a gateway's credential (`egress_unavailable`); a
+cancelled run's sessions are revoked; `status`, `show` and `replay` never
+reach the proxy. `egress-gateways.test.ts` checks it against the
+in-process proxy and upstream ([`spec/boundary.md`](spec/boundary.md#the-control-planes-gateways)).
 
 `github.test.ts` checks the `git.open_pr` adapter for GitHub against an
 in-memory GitHub:

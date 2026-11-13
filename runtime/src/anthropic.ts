@@ -19,6 +19,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Lock, ModelLock, Program, Tariff } from "@mandate/compiler";
 import type { ChatModel, Cost, InferRequest, ModelAdapter, Outcome, TurnBound, TurnRequest } from "./adapters.js";
+import { denialOf } from "./gateway.js";
 import { typeSchema } from "./schema.js";
 import { Fault, Violation } from "./signals.js";
 import { canonical, show, type Value } from "./values.js";
@@ -40,6 +41,9 @@ export interface AnthropicOptions {
   apiKey?: string;
   /** Sent as `anthropic-workspace-id`; needed when the key is not scoped to a workspace. */
   workspaceId?: string;
+  /** The API's address, and the `fetch` the SDK client sends with: a model gateway's (gateway.ts), when one is on. */
+  baseURL?: string;
+  fetch?: typeof fetch;
 }
 
 type Usage = Pick<Anthropic.Usage, "input_tokens" | "output_tokens" | "cache_creation_input_tokens" | "cache_read_input_tokens">;
@@ -78,6 +82,9 @@ export class AnthropicModel implements ModelAdapter, ChatModel {
       new Anthropic({
         ...(o.apiKey ? { apiKey: o.apiKey } : {}),
         ...(o.workspaceId ? { defaultHeaders: { "anthropic-workspace-id": o.workspaceId } } : {}),
+        ...(o.baseURL ? { baseURL: o.baseURL } : {}),
+        // Through a gateway the client reads no credential of its own from the environment (ANTHROPIC_AUTH_TOKEN).
+        ...(o.fetch ? { fetch: o.fetch, authToken: null } : {}),
       });
   }
 
@@ -249,6 +256,14 @@ function retryAfterMs(headers: unknown): number {
 }
 
 export function failure(e: unknown): Outcome {
+  // Through a gateway (gateway.ts): a request the egress proxy refused was not sent upstream, and a refusal of the
+  // gateway itself is not the provider's error. Neither is handed to the program or retried as a transient error:
+  // the run stops for a person, with the reason named.
+  if (e instanceof Anthropic.APIError) {
+    const why = denialOf(e.headers);
+    if (why) throw new Violation("egress_denied", `${why}: the egress proxy refused the model gateway's request (HTTP ${e.status ?? "?"})`);
+  }
+  if (e instanceof Anthropic.APIConnectionError && (e as { cause?: unknown }).cause instanceof Violation) throw (e as { cause: Violation }).cause;
   if (e instanceof Anthropic.APIConnectionError) return { error: { tag: "Timeout", args: [e.message] }, cost: "unknown" };
   if (e instanceof Anthropic.APIError) {
     // Over quota or overloaded: not now (§8.6). The runtime waits retry-after and sends the same call again.

@@ -217,6 +217,8 @@ export class Runtime {
       const problems = schemaErrors(typeSchema(linked, p.type), input[p.name]!);
       if (problems.length) throw new Violation("input_mismatch", `Input '${p.name}' of ${o.workflow} does not fit its type: ${problems.join(", ")}.`);
     }
+    // With the control plane's gateways on, a proxy that does not answer, or lacks a gateway's credential, starts nothing.
+    await this.adapters.egress?.ready();
     await this.validateBindings(linked, o.workflow);
     await this.validateExecutor(o.pkg);
     // A workflow with an envelope starts only once a member of its owner role approved this package (H03).
@@ -1076,7 +1078,17 @@ export class Runtime {
     }
     if (idle) await this.closeCancelled(runId);
     if (this.driver) await this.driver.wake(runId);
-    return this.journal.run(runId);
+    const row = await this.journal.run(runId);
+    // What the run holds open outside the runtime (its gateway sessions, wherever they were opened) is cut. The
+    // cancel is recorded whatever the proxy says; a proxy that did not revoke is reported to the caller.
+    if (this.adapters.revoke) {
+      try {
+        await this.adapters.revoke({ run: runId });
+      } catch (e) {
+        throw new Violation("egress_unavailable", `run ${runId} is cancelled, and its egress sessions were not revoked: ${(e as Error).message}`);
+      }
+    }
+    return row;
   }
 
   /**
