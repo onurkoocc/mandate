@@ -18,10 +18,14 @@
 //   not answer is never taken as a reason to open another session either.
 // - The verifier's process gets a session of its own, and only its address
 //   and placeholder (`GATEWAY_ENV`); it cannot open one.
+//
+// The same link opens the forward sessions of sandboxes (spec/boundary.md
+// "Sandbox egress"), one per sandbox, for the run the sandbox is for; the
+// sandbox host (mxc.ts) holds them, and reads what each denied.
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { EgressClient } from "./egress/client.js";
-import { DENIAL_HEADER } from "./egress/proxy.js";
+import { DENIAL_HEADER, EgressError, type Denial, type Destination } from "./egress/proxy.js";
 import { Violation } from "./signals.js";
 
 export type GatewayName = "model" | "github";
@@ -87,6 +91,22 @@ interface Session {
   retired: boolean;
 }
 
+/** A sandbox's forward session: the proxy's own address for it, its placeholders by credential, and when it expires. */
+export interface ForwardSession {
+  session: string;
+  proxy_url: string;
+  placeholders: Record<string, string>;
+  expiresAt: number;
+}
+
+/**
+ * What a session's `command` says: the command id, which the proxy takes as up to 256 characters; a longer one, as a
+ * deep sub-program's can be, is named by its digest.
+ */
+function sessionCommand(command: string): string {
+  return command.length <= 256 ? command : `sha256:${createHash("sha256").update(command).digest("hex")}`;
+}
+
 export interface EgressLinkOptions {
   /** The admin channel: a Unix socket or a named pipe. */
   admin: string;
@@ -145,19 +165,55 @@ export class EgressLink {
     }
   }
 
-  /**
-   * Whether the proxy can serve these gateways: it answers `hello` in the protocol's format and holds each credential
-   * they send. Otherwise `egress_unavailable`, naming the proxy and the credential.
-   */
-  async ready(credentials: Partial<Record<GatewayName, string>>): Promise<void> {
-    let held: string[];
+  /** The names of the credentials the proxy holds, as it answers `hello`; `egress_unavailable` when it does not answer in the protocol's format. */
+  async credentials(): Promise<string[]> {
     try {
-      held = (await this.call((c) => c.hello())).credentials;
+      return (await this.call((c) => c.hello())).credentials;
     } catch (e) {
       throw this.unavailable(e);
     }
+  }
+
+  /**
+   * Whether the proxy can serve these gateways and a package's sandboxes: it answers `hello` in the protocol's format
+   * and holds each credential a gateway sends and each one the package's lock binds. Otherwise `egress_unavailable`,
+   * naming the proxy and the credential.
+   */
+  async ready(credentials: Partial<Record<GatewayName, string>>, bound: ReadonlyArray<{ agent: string; host: string; credential: string }> = []): Promise<void> {
+    const held = await this.credentials();
     for (const [g, name] of Object.entries(credentials)) {
       if (name !== undefined && !held.includes(name)) throw new Violation("egress_unavailable", `the egress proxy at ${this.o.admin} holds no credential ${name}, which the ${g} gateway sends`);
+    }
+    for (const b of bound) {
+      if (!held.includes(b.credential)) throw new Violation("egress_unavailable", `the egress proxy at ${this.o.admin} holds no credential ${b.credential}, which the package's lock binds to ${b.agent}'s requests to ${b.host}`);
+    }
+  }
+
+  /**
+   * Opens a forward session for one sandbox (spec/egress.md "Forward sessions"): exactly `destinations`, for the run,
+   * tenant and command of `owner`, so that `revoke { run }` and `revoke { tenant }` cut it. A credential the proxy
+   * does not hold, or does not bind to the host (`unknown_credential`, `credential_not_allowed`), rejects with the
+   * proxy's `EgressError`, for the caller to refuse by name; any other failure is `egress_unavailable`.
+   */
+  async openForward(owner: EgressScope & { command: string }, destinations: Destination[], ttlMs: number): Promise<ForwardSession> {
+    const session = `sbx.${randomBytes(8).toString("hex")}`;
+    const at = this.now();
+    try {
+      const s = await this.call((c) => c.openSession({ session, tenant: owner.tenant, run: owner.run, command: sessionCommand(owner.command), kind: "forward", destinations, ttl_ms: ttlMs }));
+      this.open_.add(session);
+      return { session, proxy_url: s.proxy_url, placeholders: s.placeholders, expiresAt: at + ttlMs };
+    } catch (e) {
+      if (e instanceof EgressError && (e.code === "unknown_credential" || e.code === "credential_not_allowed")) throw e;
+      throw this.unavailable(e);
+    }
+  }
+
+  /** A page of what a session denied, after the denial `after`; `egress_unavailable` when the proxy does not say. */
+  async denials(session: string, after: number, limit: number): Promise<{ denials: Denial[]; dropped: number }> {
+    try {
+      return await this.call((c) => c.denials(session, { after, limit }));
+    } catch (e) {
+      throw new Violation("egress_unavailable", `the egress proxy at ${this.o.admin} did not say what it denied session ${session}: ${(e as Error).message}`);
     }
   }
 
