@@ -10,7 +10,7 @@ import type { Clock, ModelAdapter } from "../src/adapters.js";
 import { openDb, type Db } from "../src/db.js";
 import { Faults } from "../src/faults.js";
 import { buildPackage, Runtime, type Lock, type Package, type RuntimeOptions, type StartOptions } from "../src/runtime.js";
-import { simulate, type Sim, type SimAgents, type SimModel, type SimReads, type SimTool, type SimVerifier } from "../src/sim.js";
+import { deferred, simulate, type Sim, type SimAgents, type SimModel, type SimReads, type SimTool, type SimVerifier } from "../src/sim.js";
 import { WorkerChecker } from "../src/plan.js";
 
 const here = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
@@ -107,6 +107,28 @@ export async function until(cond: () => boolean, what: string): Promise<void> {
     await new Promise((r) => setTimeout(r, 2));
   }
   throw new Error(`timed out waiting for ${what}`);
+}
+
+/**
+ * Fixes the order in which commands reach the budget ledger: the dispatch of each command in `ids` waits until the
+ * one before it has been dispatched or refused. The branches of a `par` start together and nothing orders their
+ * dispatches (spec/runtime.md "Branch results"): PGlite's one connection takes them in the order they were sent, a
+ * PostgreSQL server's pool of connections in any order. A test whose outcome depends on which branch reserves first
+ * says which with this.
+ */
+export function dispatchOrder(w: World, ids: string[]): void {
+  const journal = w.rt.journal;
+  const dispatched = ids.map(() => deferred<void>());
+  const dispatch = journal.dispatch.bind(journal);
+  journal.dispatch = async (...args: Parameters<typeof dispatch>) => {
+    const i = ids.indexOf(args[2].id);
+    if (i > 0) await dispatched[i - 1]!.promise;
+    try {
+      return await dispatch(...args);
+    } finally {
+      if (i >= 0) dispatched[i]!.resolve();
+    }
+  };
 }
 
 /** Starts a run with a fixed id, so a test can resume it after a crash. */
