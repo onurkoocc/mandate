@@ -16,12 +16,14 @@ environment.
   (both digests and the start of the actual text).
 - `run_gate(title, pending, items, check)`: the pending-list rule. Every item
   not matched by a pattern of `pending` must pass; an item on the list that
-  passes is an error, and so is a pattern that matches no item. Every item
-  is evaluated, none may panic, and the gate prints
-  `<title>: ran N, passed M, pending K`.
+  passes is an error, and so is a pattern that matches no item, a name given
+  twice, and a gate of no items. Every item is evaluated, none may panic,
+  and the gate prints `<title>: ran N, passed M, pending K`.
 
 Every function returns its failure as text instead of panicking: under WASI
-a panic aborts the whole test executable.
+a panic aborts the whole test executable. Its types are for integration
+tests: a unit test inside a crate's `src` that used them would see two copies
+of `mandate-ir`.
 
 Its tests are two gates of the whole workspace:
 

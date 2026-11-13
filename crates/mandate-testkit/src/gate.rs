@@ -44,7 +44,8 @@ fn glob_match(pattern: &str, name: &str) -> bool {
 ///
 /// The line and every problem, one a line: each item not on the list that
 /// fails (with what `check` said), each item on the list that passes, each
-/// entry of the list that names no item, and each name given twice.
+/// entry of the list that names no item, each name given twice (the second
+/// item is not run or counted), and a gate of no items at all.
 pub fn run_gate<T>(
     title: &str,
     pending: &[&str],
@@ -56,11 +57,15 @@ pub fn run_gate<T>(
     let mut problems: Vec<String> = Vec::new();
     let (mut ran, mut passed, mut still): (usize, usize, usize) = (0, 0, 0);
     for (name, item) in items {
-        ran = ran.saturating_add(1);
         if !names.insert(name.clone()) {
-            problems.push(format!("{name}: the gate names this item twice"));
+            // Two items with one name cannot both be reported; the second is
+            // not run, and the gate fails.
+            problems.push(format!(
+                "{name}: the gate names this item twice; the second is not run"
+            ));
             continue;
         }
+        ran = ran.saturating_add(1);
         let mut listed: Option<&str> = None;
         for (pattern, used) in pending.iter().zip(used.iter_mut()) {
             if glob_match(pattern, &name) {
@@ -84,6 +89,10 @@ pub fn run_gate<T>(
         if !used {
             problems.push(format!("the pending entry {pattern:?} names no item"));
         }
+    }
+    if ran == 0 {
+        // A gate that ran nothing shows nothing.
+        problems.push("the gate ran no item".to_owned());
     }
     let line = format!("{title}: ran {ran}, passed {passed}, pending {still}");
     println!("{line}");

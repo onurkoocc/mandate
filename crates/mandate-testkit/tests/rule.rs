@@ -52,11 +52,25 @@ fn an_entry_that_names_no_item_is_an_error() {
 
 #[test]
 fn a_name_given_twice_is_an_error() {
-    let items = [("x", ()), ("x", ())].map(|(n, t)| (n.to_owned(), t));
+    let items = [("x", ()), ("y", ()), ("x", ())].map(|(n, t)| (n.to_owned(), t));
     let report = run_gate("twice", &[], items, |()| Ok(())).unwrap_err();
     assert!(
-        report.contains("x: the gate names this item twice"),
+        report.starts_with("twice: ran 2, passed 2, pending 0\n1 problem(s):\n"),
         "{report}"
+    );
+    assert!(
+        report.contains("x: the gate names this item twice; the second is not run"),
+        "{report}"
+    );
+}
+
+#[test]
+fn a_gate_of_no_items_fails() {
+    let items: [(String, ()); 0] = [];
+    let report = run_gate("empty", &[], items, |()| Ok(())).unwrap_err();
+    assert_eq!(
+        report,
+        "empty: ran 0, passed 0, pending 0\n1 problem(s):\nthe gate ran no item"
     );
 }
 

@@ -9,6 +9,11 @@
 //! the library crates may not. Every function returns its failures as text
 //! instead of panicking: under `scripts/wasi-test.mjs` a panic aborts the
 //! whole test executable, so a test collects what failed and fails once.
+//!
+//! Its types are for integration tests (a crate's `tests/`). A unit test
+//! inside a crate's `src` that used them would see two copies of
+//! `mandate-ir`, the one the crate under test is and the one this crate
+//! links, whose types do not match.
 
 #![forbid(unsafe_code)]
 
