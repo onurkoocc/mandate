@@ -147,7 +147,7 @@ describe("the configuration", () => {
   });
 
   it("without egress, builds the adapters as before: the key from the environment, no revocation, no proxy", () => {
-    const a = adaptersFor(configWith({ model: { provider: "anthropic" } }), PROGRAM, LOCK, { CLAUDE_API_KEY: "sk-ant-made-up" });
+    const a = adaptersFor(configWith({ model: { provider: "anthropic" } }), PROGRAM, LOCK, { CLAUDE_API_KEY: "made-up" });
     expect(a.revoke).toBeUndefined();
     expect(a.egress).toBeUndefined();
     expect(() => adaptersFor(configWith({ model: { provider: "anthropic" } }), PROGRAM, LOCK, {})).toThrow(/no_credentials/);
@@ -461,8 +461,8 @@ describe("the verifier's process", () => {
   });
 
   it("without the gateway, gets the model's key as before", () => {
-    const from = { PATH: "/usr/bin", CLAUDE_API_KEY: "sk-ant-made-up", CLAUDE_WORKSPACE_ID: "w" };
-    expect(verifierEnv({ model: true }, from)["CLAUDE_API_KEY"]).toBe("sk-ant-made-up");
+    const from = { PATH: "/usr/bin", CLAUDE_API_KEY: "made-up", CLAUDE_WORKSPACE_ID: "w" };
+    expect(verifierEnv({ model: true }, from)["CLAUDE_API_KEY"]).toBe("made-up");
     const gw = verifierEnv({ model: true, gateway: { url: "http://127.0.0.1:1", placeholder: "mdt-ph-0" } }, from);
     expect(gw).toEqual({ PATH: "/usr/bin", CLAUDE_WORKSPACE_ID: "w", [GATEWAY_ENV.url]: "http://127.0.0.1:1", [GATEWAY_ENV.placeholder]: "mdt-ph-0" });
   });
@@ -508,10 +508,10 @@ describe("replay and the views", () => {
     const started = await mandate({}, "run", join(dir, "ship.mdt"), "--workflow", "Go", "--input", "{}", "--run-id", "c1");
     expect(started.code, started.err).toBe(0);
     expect(started.out).toContain("waiting");
-    const refused = await mandate({ MANDATE_GITHUB_TOKEN: "sk-ant-made-up-77" }, "status", "c1");
+    const refused = await mandate({ MANDATE_GITHUB_TOKEN: "made-up" }, "status", "c1");
     expect(refused.code).toBe(1);
     expect(refused.err).toContain("credential_in_environment");
-    expect(refused.err).not.toContain("sk-ant-made-up-77");
+    expect(refused.err).not.toContain("made-up");
     await own.close();
     for (const cmd of ["status", "show", "replay"]) {
       const r = await mandate({}, cmd, "c1");
