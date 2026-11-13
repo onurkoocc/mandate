@@ -125,10 +125,11 @@ describe("Acme's incident review, read_only (B6)", () => {
     const seen = agents.calls[0]!.args;
     expect((seen[0] as Obj[]).map((l) => l["trace_id"])).toEqual(["t1"]);
     expect((seen[3] as Obj[])[0]!["full_name"]).toEqual({ $masked: "confidential" });
-    // No customer's name, phone or email anywhere in what the run recorded.
+    // No customer's name, phone or email anywhere in what the run recorded. Digests and the run's id are random hex,
+    // which holds any four digits now and then, so they are taken out before the phone's last digits are looked for.
     const recorded = JSON.stringify([await w.db.query("select * from commands where run_id = $1", [run.run_id]), await w.db.query("select * from events where run_id = $1", [run.run_id])]);
     expect(recorded).not.toContain("Ayşe");
-    expect(recorded).not.toContain("4821");
+    expect(recorded.replace(/sha256:[0-9a-f]{64}|[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/g, "")).not.toContain("4821");
     expect(await w.db.query("select * from actions where run_id = $1", [run.run_id])).toEqual([]);
     // Replay reads the journal: the refusing adapters would stop it if it asked the broker.
     expect(await rt.replayRun(run.run_id)).toMatchObject({ status: "complete" });
