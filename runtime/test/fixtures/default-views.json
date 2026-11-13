@@ -1,0 +1,37 @@
+{
+  "cancelled": {
+    "md": "sha256:c2f6ef2eadcf9e4caadea4a38c12e9bfe5db9ca6fcb1f0df69bfcc69db5ecaea",
+    "html": "sha256:4754dd516f3dca89fb3891ad0bd740dbe1fdda96f55bd6c3b9964cd1d1d6d541",
+    "json": "sha256:c24320395377bf01ce6bd254ef1ea2657a088a21330d058dc8341b0d7e1b18a5"
+  },
+  "decided late": {
+    "md": "sha256:d1e9bcb124b109a144a5bb11853385833fc53748ea9675cb0e1507751326d68e",
+    "html": "sha256:3eb5a74c62e833d384a0b1f38b9af3267e1316fdfcc227d6ae376f39e179663d",
+    "json": "sha256:b23529f4fa709ed98afda458184d1c91463ec00f7cee4b1f5d4082c90c8b8dac"
+  },
+  "envelope": {
+    "md": "sha256:e593bdb361288edddc0c5ea69a33584bf641e0b9acbdea8d420224ba158a3bcb",
+    "html": "sha256:67b566d7e240a104d25130a91786bfd66445a51d369df47f759f3c4b484f51af",
+    "json": "sha256:ee2d61849ecd571144c04e5d34d967c50b3574acb1b9478f77f132d262d53ab3"
+  },
+  "halted": {
+    "md": "sha256:5fe4e3e6f538d94a4e31f6664f21d748f8af0f7f9be947cbdc0930a1b96754e8",
+    "html": "sha256:c12473aaaa7b74815edfc57852f3d8edbc108854e184457e802968d76391aa45",
+    "json": "sha256:2985d49d9ca44b11ed81c0ba3c6368154a5701f642a4d3538c943a46b481eae1"
+  },
+  "unsigned decisions": {
+    "md": "sha256:e74117faacd7a19e3f2ae2004b99ef00dfbbd0d20fee934c316eb345bae664f2",
+    "html": "sha256:1744c3bd43355dcde11c6e5c304e7c9fa8dee330a9c8fe636bd795b198b151cf",
+    "json": "sha256:6a850b21dedadfe46a31e487c420bc893a1d55493eb3245bba8acbc74d99a24e"
+  },
+  "violation limit": {
+    "md": "sha256:2cbc2022f4d5b5ae46b16560f32c7c6e101a95d76bc57d1c34eb66350319aa5c",
+    "html": "sha256:7a7042b1ae8c085f12c5074b9d4eddd45c30565321aa8993e70136925cf5b104",
+    "json": "sha256:c12a1c23e0c9872dfe26f0dfd09a01f2d7227325f26b2a6c3eef0be160ee9f2e"
+  },
+  "waiting for the owner": {
+    "md": "sha256:da9979f684db022b713524aa16bf2b6669360f886f6b7e334150f904e465d947",
+    "html": "sha256:2ef403b15d0388b4e090bc9d7364affafe401ee7b4aa08fd380eba4134cfad0b",
+    "json": "sha256:872a3511be45372f0b1c0d10c41063c4d8f091fd1bd2be6a80d146576d05bada"
+  }
+}
