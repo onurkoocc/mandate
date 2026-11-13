@@ -1,0 +1,167 @@
+//! The canonical form of a runtime value and its digest (spec/journal.md
+//! "The canonical form of a runtime value"): RFC 8785 over doubles, as the
+//! reference's `canonical` in `runtime/src/values.ts` writes it.
+//!
+//! Strings and member names are written as [`mandate_ir::write_json_string`]
+//! writes them and members are sorted by [`mandate_ir::compare_utf16`]: those
+//! rules are the IR's too. Numbers are not: the IR admits only safe integers,
+//! and a runtime value holds any double, written as ECMAScript's
+//! `Number::toString` writes it ([`write_number`]).
+
+use std::fmt::Write as _;
+
+use mandate_ir::{compare_utf16, write_json_string};
+use sha2::{Digest, Sha256};
+
+use crate::json::Json;
+
+/// The canonical form of `value`.
+#[must_use]
+pub fn canonical(value: &Json) -> String {
+    let mut out = String::new();
+    write_canonical(&mut out, value);
+    out
+}
+
+/// Appends the canonical form of `value` to `out`. It recurses once per level
+/// of nesting; a value read from an export is at most
+/// [`crate::read::EXPORT_DEPTH`] deep.
+pub fn write_canonical(out: &mut String, value: &Json) {
+    match value {
+        Json::Null => out.push_str("null"),
+        Json::Bool(true) => out.push_str("true"),
+        Json::Bool(false) => out.push_str("false"),
+        Json::Number(x) => write_number(out, *x),
+        Json::String(s) => write_json_string(out, s),
+        Json::Array(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_canonical(out, item);
+            }
+            out.push(']');
+        }
+        Json::Object(members) => {
+            let mut sorted: Vec<&(String, Json)> = members.iter().collect();
+            sorted.sort_by(|a, b| compare_utf16(&a.0, &b.0));
+            out.push('{');
+            for (i, (name, item)) in sorted.into_iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_json_string(out, name);
+                out.push(':');
+                write_canonical(out, item);
+            }
+            out.push('}');
+        }
+    }
+}
+
+/// `x` as ECMAScript's `Number::toString` writes it (ECMA-262
+/// §6.1.6.1.20, RFC 8785 §3.2.2.3).
+#[must_use]
+pub fn number_to_string(x: f64) -> String {
+    let mut out = String::new();
+    write_number(&mut out, x);
+    out
+}
+
+/// Appends `x` as ECMAScript's `Number::toString` writes it: `0` for both
+/// zeros; otherwise the shortest digits that read back as `x` (the closer to
+/// `x` of two), as an integer up to 21 digits, as a decimal fraction down to
+/// `0.000001`, and in exponent form beyond those. A value that is not finite,
+/// which a read export never holds, is written `null`, as `JSON.stringify`
+/// writes it.
+pub fn write_number(out: &mut String, x: f64) {
+    if !x.is_finite() {
+        out.push_str("null");
+        return;
+    }
+    if x == 0.0 {
+        out.push('0');
+        return;
+    }
+    if x < 0.0 {
+        out.push('-');
+    }
+    // Rust's exponent form of a double is its shortest round-trip digits,
+    // the one closest to it when two are as short (`{:e}` of core's
+    // flt2dec, Grisu with a Dragon4 fallback): `1e21`, `1.2345e-7`.
+    let sci = format!("{:e}", x.abs());
+    let (mantissa, exponent) = sci.split_once('e').unwrap_or((sci.as_str(), "0"));
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    let e: i64 = exponent.parse().unwrap_or(0);
+    // In the spec's terms: s is `digits`, k its length, x = s × 10^(n−k).
+    let k = i64::try_from(digits.len()).unwrap_or(i64::MAX);
+    let n = e.saturating_add(1);
+    if (k..=21).contains(&n) {
+        out.push_str(&digits);
+        for _ in 0..n.saturating_sub(k) {
+            out.push('0');
+        }
+    } else if (1..=21).contains(&n) {
+        let (int, frac) = digits
+            .split_at_checked(usize::try_from(n).unwrap_or(0))
+            .unwrap_or((digits.as_str(), ""));
+        out.push_str(int);
+        out.push('.');
+        out.push_str(frac);
+    } else if (-5..=0).contains(&n) {
+        out.push_str("0.");
+        for _ in 0..n.saturating_neg() {
+            out.push('0');
+        }
+        out.push_str(&digits);
+    } else {
+        let (first, rest) = digits.split_at_checked(1).unwrap_or((digits.as_str(), ""));
+        out.push_str(first);
+        if !rest.is_empty() {
+            out.push('.');
+            out.push_str(rest);
+        }
+        let power = n.saturating_sub(1);
+        out.push('e');
+        out.push(if power < 0 { '-' } else { '+' });
+        // Writing to a String cannot fail.
+        let _ = write!(out, "{}", power.unsigned_abs());
+    }
+}
+
+/// `sha256:` and the lowercase hex SHA-256 of the parts, one after another.
+#[must_use]
+pub fn sha256_tagged(parts: &[&[u8]]) -> String {
+    let mut h = Sha256::new();
+    for part in parts {
+        h.update(part);
+    }
+    let digest = h.finalize();
+    let mut out = String::with_capacity(71);
+    out.push_str("sha256:");
+    for byte in digest.iter() {
+        // Writing to a String cannot fail.
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+/// The digest of `value` in the domain `domain`: `sha256:` and the hex
+/// SHA-256 of `mandate/<domain>/0.1`, a line feed, and the canonical form
+/// (`digest` in `runtime/src/values.ts`).
+#[must_use]
+pub fn digest(domain: &str, value: &Json) -> String {
+    digest_of_canonical(domain, &canonical(value))
+}
+
+/// As [`digest`], over a canonical form already written.
+#[must_use]
+pub fn digest_of_canonical(domain: &str, canonical: &str) -> String {
+    sha256_tagged(&[
+        b"mandate/",
+        domain.as_bytes(),
+        b"/0.1\n",
+        canonical.as_bytes(),
+    ])
+}
