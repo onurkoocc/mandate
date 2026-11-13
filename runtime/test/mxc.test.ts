@@ -8,7 +8,9 @@
 // after installing bubblewrap and enabling user namespaces). It checks the
 // blocking itself: a write outside the granted paths does not reach the host,
 // a read outside them sees nothing, no host can be reached, and no unix
-// socket of the host can be connected to (G05, G07).
+// socket of the host can be connected to (G05, G07). And the host's own
+// bwrap is read for a lock's `host`: a low least version starts a run, 99.0
+// refuses it (G19).
 
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -23,7 +25,8 @@ import { HOST_RUNTIME_DIRS, MASK_CHECK, MxcHost, shellQuote, type MxcContainerRe
 import { MxcAdapter, type MxcPolicy } from "../src/sandbox.js";
 import { SimChat, toolUse } from "../src/sim.js";
 import { WRITE_SCRIPT } from "../src/tools.js";
-import { closeAll, world } from "./helpers.js";
+import { closeAll, LOCK, world } from "./helpers.js";
+import { ASK, ISSUE } from "./programs.js";
 
 function requirement(o: { read?: string[]; write?: string[]; exec?: Array<{ command: string; args_prefix?: string[][] }>; hosts?: string[] } = {}): SandboxRequirement {
   const caps = [
@@ -593,5 +596,35 @@ workflow Fix(task: Text) -> Inferred<Text>
     expect(second).toContain("a.ts");
     expect(JSON.stringify(chat.calls[2]!.messages.at(-1))).toContain("outside what you may write");
     rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe.runIf(REAL)("host fitness against this host's Bubblewrap (G19)", () => {
+  afterAll(closeAll);
+  /** What this host's bwrap says it is, read here the way an operator would. */
+  const found = (): string => {
+    const out = execFileSync("bwrap", ["--version"], { encoding: "utf8" });
+    const m = /^bubblewrap (\S+)\n?$/.exec(out);
+    if (!m) throw new Error(`bwrap --version printed ${JSON.stringify(out)}`);
+    return m[1]!;
+  };
+
+  it("starts a run whose lock asks a least bwrap and Node this host meets", async () => {
+    const w = await world(ASK, { lock: { ...LOCK, host: { bwrap: "0.1", node: "22" } } });
+    const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Ask", input: ISSUE, runId: "fit-real" });
+    expect(run.state, JSON.stringify(run.attention ?? run.error)).toBe("waiting");
+  });
+
+  it("refuses a run whose lock asks bwrap 99.0, naming the version this host has, and starts nothing", async () => {
+    const version = found();
+    const w = await world(ASK, { lock: { ...LOCK, host: { bwrap: "99.0" } } });
+    const refused = await w.rt.startRun({ pkg: w.pkg, workflow: "Ask", input: ISSUE, runId: "unfit-real" }).then(
+      () => undefined,
+      (e: unknown) => e as { code?: string; message?: string },
+    );
+    expect(refused?.code).toBe("unfit_host");
+    expect(refused?.message).toBe(`unfit_host: This host does not meet the package's lock: bwrap: ${version} found, the lock asks 99.0 or later, not setuid. Nothing of the package runs here (spec/boundary.md).`);
+    const [row] = await w.db.query<{ n: number }>("select count(*)::int as n from runs where run_id = $1", ["unfit-real"]);
+    expect(row!.n).toBe(0);
   });
 });
