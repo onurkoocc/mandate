@@ -911,28 +911,61 @@ the journal as it is, a journal tests change on purpose included.
 - **No content, ever**: no argument, result, prompt, output, file or
   decision text leaves. What leaves is identifiers, types, classes, model
   ids, counts, sequence numbers, hashes and times.
-- **An allow-list (INV-17, G24).** Every span and span event is built from
-  the fixed set of fields below. Nothing is copied from an event's `data`,
-  and the loader reads two members of it only: the `command` it names, and
-  the `meta.locked` the model adapter reports, used only when the lock
-  pins that very model id. A new event type exports its type, class,
-  sequence number and hash, and nothing else, until a field is added for it
-  here, on purpose.
-- **Spans.** A run is a trace. Its spans are the run's own span, named
-  `mandate.run`, which has no parent, and one span for each command the
-  run has events about, named `mandate.<kind>` (`infer`, `turn`, `tool`,
-  `delegate`, `read`, `time` and the rest), whose parent is the run's
-  span. An event of the journal is a span event of the span it is about:
-  of the command's span when the event's data names a command of the run,
-  of the run's span otherwise. Spans are of kind internal. A span starts at
-  its first event and ends at its last event so far.
+- **An allow-list (INV-17, G24).** Every span is built from the fixed set
+  of fields below. Nothing is copied from an event's `data`, and the loader
+  reads two members of it only: the `command` it names, and the
+  `meta.locked` the model adapter reports, used only when the lock pins that
+  very model id. A new event type exports its type, class, sequence number
+  and hash, and nothing else, until a field is added for it here, on
+  purpose.
+- **The journal stays the authority; a collector is an outside witness of
+  sequence numbers and hashes.** Each event's sequence number and hash leave
+  promptly, once, and in order, whatever happens to the run's own span.
+- **Spans.** A run is a trace of three kinds of span, and none is ever sent
+  twice.
+  - An **event span** for every event of the journal: of no duration (its
+    start and end are the event's time), named by the event's type when the
+    type is shaped like one the runtime writes (lower-case letters, digits
+    and `_`, at most 48), else `mandate.event`. It is sent in the pass that
+    reads the event, in sequence order. Its parent is the command span of the
+    command the event's data names, when that is a command of the run, and
+    the run's span otherwise. It has no status.
+  - A **command span**, named `mandate.<kind>` (`infer`, `turn`, `tool`,
+    `delegate`, `read`, `time` and the rest), a child of the run's span. It is
+    sent once, in the pass that reads the event that ends it: the command's
+    first `command_completed` event or, for a command that never completed,
+    the event that ends the run. It starts at the command's first event and
+    ends at its ending event, and carries no span events. A completion that
+    comes after the run's end ends nothing: the span left with the run's.
+  - The **run span**, named `mandate.run`, with no parent. It is sent once, in
+    the pass that reads the event that ends the run, and spans from the run's
+    first event to it. The events that end a run are `run_succeeded`,
+    `run_failed` and `run_cancelled`, written when a run enters a state of
+    `TERMINAL` in `runtime/src/journal.ts`; a run a halt ended, and a
+    cancelled run, end with `run_cancelled`. `run_attention_required` and the
+    waiting states are not ends: a run leaves them. No path of the runtime
+    takes a run out of a terminal state (a finished run is not resumed; a
+    cancel and a halt leave one as it is), but nothing in the schema forbids
+    it, and a resume that races a cancel could. The first ending event is the
+    end: a run that ended again does not send its span again, and the
+    event of that end is an event span.
+  - After a span was sent, nothing of it is sent again. An event that comes
+    after the run ended, a lease taken by resuming a finished run for one, or
+    a charge settled after its command completed, is its own event span with
+    its command's span, or the run's, as parent.
+  - Spans are of kind internal. While a run is open, its event spans and
+    the spans of its finished commands are in the collector and its own span
+    is not, so their parent id is not there yet; it arrives with the event
+    that ends the run, and a run that never ends never sends it.
 - **Identifiers.** The trace id is the first 16 bytes of
-  `sha256("mandate/otel-trace/0.1\n" ‖ run)`, a span's id the first 8 bytes
-  of `sha256("mandate/otel-span/0.1\n" ‖ run ‖ "\n" ‖ command)`, both as
-  lower-case hex. The run's own span is the span of the empty command, so
-  its id is the first 8 bytes of `sha256("mandate/otel-span/0.1\n" ‖ run ‖ "\n")`;
-  no command has an empty id. An export run twice gives the same ids, and
-  the same bodies.
+  `sha256("mandate/otel-trace/0.1\n" ‖ run)`, a command span's id the first 8
+  bytes of `sha256("mandate/otel-span/0.1\n" ‖ run ‖ "\n" ‖ command)`, an
+  event span's id the first 8 bytes of
+  `sha256("mandate/otel-event/0.1\n" ‖ run ‖ "\n" ‖ seq)`, with `seq` in
+  decimal, all as lower-case hex. The run span is the span of the empty
+  command, so its id is the first 8 bytes of
+  `sha256("mandate/otel-span/0.1\n" ‖ run ‖ "\n")`; no command has an empty
+  id. An export run twice gives the same ids, and the same bodies.
 - **Attributes.** GenAI: `gen_ai.operation.name` of a command span, `chat`
   for `infer` and `turn`, `execute_tool` for `tool` and `invoke_agent` for
   `delegate`, and none for the other kinds; and `gen_ai.request.model` of
@@ -943,24 +976,24 @@ the journal as it is, a journal tests change on purpose included.
   the adapter reported none, or the lock pins none. Mandate's own, under
   `mandate.*`:
 
-  | Where | Attribute | Value |
+  | Span | Attribute | Value |
   |---|---|---|
   | every span | `mandate.run`, `mandate.tenant` | The run and its tenant |
-  | every span | `mandate.package` | The hash of the package: the run's, or for a command the one it was first recorded under |
-  | every span | `mandate.span.events` | An integer: the events of the span so far |
-  | a command span | `mandate.command` | The command's id, when it is shaped like one the runtime builds (letters, digits and `_ . : / @ # > [ ] -`, at most 200); otherwise `sha256:` and 16 hex digits of its hash |
-  | a command span | `mandate.command.kind` | The command's kind |
-  | a span event | `mandate.event.type`, `mandate.event.class` | The event's type, and its class (S0 to S4) assigned from the type alone |
-  | a span event | `mandate.event.seq`, `mandate.event.hash` | The event's sequence number, an integer, and its hash, when it has one |
+  | every span | `mandate.package` | The hash of the package: the run's, or for a command and its events the one the command was first recorded under |
+  | event, command | `mandate.command` | The command's id, when it is shaped like one the runtime builds (letters, digits and `_ . : / @ # > [ ] -`, at most 200); otherwise `sha256:` and 16 hex digits of its hash. An event span has it when the event names a command of the run |
+  | command | `mandate.command.kind` | The command's kind |
+  | command, run | `mandate.span.events` | An integer: the events of the command, or of the run, up to the span's end |
+  | event | `mandate.event.type`, `mandate.event.class` | The event's type, and its class (S0 to S4) assigned from the type alone |
+  | event | `mandate.event.seq`, `mandate.event.hash` | The event's sequence number, an integer, and its hash, when it has one |
 
-  A span event is named by its type and is timed by the event's time.
-  A span has a status of OK or ERROR once it is known: the run's when its
-  `run_succeeded` or `run_failed` event is among the events up to the
-  body's last, a command's when its `command_completed` event is and its
-  row says `succeeded` or `failed`. Times are unix nanoseconds as decimal strings, integers are
-  decimal strings, ids are lower-case hex. The resource is `service.name`
-  `mandate`; the scope is `mandate.otel` `0.1`. The semantic conventions'
-  schema URL is pinned, on the resource and on the scope:
+  A command span has a status of OK or ERROR when it ended with its own
+  `command_completed` event and its row says `succeeded` or `failed`, and none
+  when it ended with the run. The run span has OK for `run_succeeded`, ERROR
+  for `run_failed`, and none for `run_cancelled`: a stopped run did not fail
+  and did not succeed. Times are unix nanoseconds as decimal strings,
+  integers are decimal strings, ids are lower-case hex. The resource is
+  `service.name` `mandate`; the scope is `mandate.otel` `0.1`. The semantic
+  conventions' schema URL is pinned, on the resource and on the scope:
   `https://opentelemetry.io/schemas/1.37.0`.
 - **Resuming.** A cursor per endpoint and run (`otel_cursors`: the
   endpoint, the run, the last sequence number exported and when) records
@@ -968,15 +1001,17 @@ the journal as it is, a journal tests change on purpose included.
   sends the events after the cursor, and a second one when nothing has been
   written sends nothing. The endpoint is the key as the command normalises
   it: no trailing slash.
-- **Batches.** The events after the cursor go in posts of at most 500
-  events. A body holds the spans of its events in order, and the run's span
-  in each, so that a command's span has its parent in the same body.
-  A span that more events belong to is sent again, in a later body, with the
-  same id, the same start, the end of its last event so far and only the
-  events that body carries. The cursor moves, in its own statement, after
-  the collector has accepted the post, and never back. An export is
-  therefore at least once: a crash between the post and the cursor sends that
-  post again.
+- **Batches.** The events after the cursor go in windows, each of at most
+  500 spans: its events, and the command and run spans that end with them,
+  at least one event. A body is a function of the journal and of its window,
+  the events after one sequence number up to another: their event spans,
+  and the command and run spans whose ending event is among them. A window
+  is one post, unless one event ends more spans than a post holds (the end
+  of a run with many commands open), and then it is several. The cursor
+  moves, in its own statement, after the collector has accepted the whole
+  window, and never back. An export is therefore at least once: a crash
+  between a post and the cursor, or a window of several posts that failed
+  after the first, sends identical bodies again.
 - **Failure.** A post that is not answered 2xx, a connection that fails, a
   redirect (which is never followed, so the spans go where the operator said)
   and a collector that does not answer within 10 seconds are
