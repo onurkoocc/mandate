@@ -13,6 +13,7 @@
 //                 // the members' public keys, <key id>.pem each (spec/envelope.md "Signed decisions"); default directory and mode.
 //                 // "unsigned" takes --by NAME on a decision, as before 0.4; a 0.4 package does not start in it
 //     "plan":     { "checkMs": 2000 }      // the longest a lead's sub-program may take to check (spec/envelope.md "Limits"); default
+//     "violations": { "limit": 3 }         // violations that stop a run (spec/boundary.md); 3 for a 0.5 package unless set, none before 0.5
 
 //     "model":    { "provider": "anthropic" },                  // CLAUDE_API_KEY, CLAUDE_WORKSPACE_ID
 //     "executor": { "managed-agents": { "pollMs": 1000, "maxTurnMs": 3600000 } }
@@ -92,6 +93,11 @@ export interface RuntimeConfig {
   decisions: { keys: string; mode: "signed" | "unsigned" };
   /** How long the check of a lead's sub-program may take, in milliseconds (spec/envelope.md "Limits"); 2000 unless it says. */
   plan?: { checkMs?: number };
+  /**
+   * How many violations stop a run (spec/boundary.md "Violations and halt"): 3 for a 0.5 package unless it says;
+   * an earlier package's run stops only when it says.
+   */
+  violations?: { limit?: number };
   model?: { provider: "anthropic" };
   /** Executors the lock may bind agents to (K45): Claude Managed Agents. Their agents' tools still run in `sandbox` (K79). */
   executor?: { "managed-agents"?: { pollMs?: number; maxTurnMs?: number } };
@@ -127,10 +133,11 @@ export interface RuntimeConfig {
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "evidence", "rateLimits", "decisions", "plan", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard", "egress"],
+  "": ["database", "artifacts", "evidence", "rateLimits", "decisions", "plan", "violations", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard", "egress"],
   egress: ["admin", "gateways"],
   "egress.gateways": ["model", "github"],
   plan: ["checkMs"],
+  violations: ["limit"],
   executor: ["managed-agents"],
   "executor.managed-agents": ["pollMs", "maxTurnMs"],
   boundary: ["integration", "ci", "pinned", "extraRead", "timeoutMs"],
@@ -174,6 +181,9 @@ export function readConfig(file: string): RuntimeConfig {
   config.decisions = { keys: at((dc.keys as string | undefined) ?? ".mandate/decision-keys"), mode: dc.mode ?? "signed" };
   const checkMs = (c["plan"] as { checkMs?: unknown } | undefined)?.checkMs;
   if (checkMs !== undefined && (!Number.isInteger(checkMs) || (checkMs as number) < 1)) throw new Violation("bad_config", `${file}: "plan.checkMs" is a whole number of milliseconds, at least 1`);
+  const limit = (c["violations"] as { limit?: unknown } | undefined)?.limit;
+  if (c["violations"] !== undefined && (typeof c["violations"] !== "object" || c["violations"] === null || Array.isArray(c["violations"]))) throw new Violation("bad_config", `${file}: "violations" is { "limit": n }`);
+  if (limit !== undefined && (!Number.isInteger(limit) || (limit as number) < 1)) throw new Violation("bad_config", `${file}: "violations.limit" is a whole number of violations, at least 1`);
   for (const [k, b] of Object.entries((c["rateLimits"] ?? {}) as Record<string, Record<string, unknown>>)) {
     const keys = Object.keys(b ?? {});
     if (!/^(model|model:[a-z0-9_]+|tool)$/.test(k) || keys.some((x) => !["capacity", "perSecond", "queue", "reserve"].includes(x)) || typeof b["capacity"] !== "number" || typeof b["perSecond"] !== "number") {
@@ -252,6 +262,7 @@ export function runtimeOptions(config: RuntimeConfig, db: Db): RuntimeOptions {
     // The members' public keys; a file that is not the key its name says stops every command (bad_decision_key).
     decisions: { mode: config.decisions.mode, keys: decisionKeysIn(config.decisions.keys) },
     ...(config.plan?.checkMs !== undefined ? { plan: { checkMs: config.plan.checkMs } } : {}),
+    ...(config.violations?.limit !== undefined ? { violations: { limit: config.violations.limit } } : {}),
   };
 }
 
@@ -387,6 +398,24 @@ function boundaryVerifier(config: RuntimeConfig, sandbox: MxcAdapter, env: NodeJ
   const ci = b.ci && token ? { ci: { ...(b.ci.mode ? { mode: b.ci.mode } : {}), source: new GitHubCi({ token, ...(b.ci.workflow ? { workflow: b.ci.workflow } : {}), ...(github ? { fetch: github } : {}) }) } } : {};
   if (b.ci && !token) throw new Violation("no_credentials", "boundary.ci reads GitHub Actions, but MANDATE_GITHUB_TOKEN is not set.");
   return new BoundaryVerifier({ ...(b.integration ? { integration: b.integration } : {}), ...(b.pinned ? { pinned: b.pinned } : {}), ...(b.extraRead ? { extraRead: b.extraRead } : {}), ...(b.timeoutMs ? { timeoutMs: b.timeoutMs } : {}), ...ci }, sandbox, realDocker, inner);
+}
+
+/**
+ * The adapters of a command that acts on runs without running a package, `mandate halt`: an operator's emergency
+ * stop needs no model, no executor and no secret, so none is read. Nothing here calls out; an action whose outcome
+ * is unknown is left for `mandate reconcile`. What holds sessions open outside the runtime and can revoke them
+ * (`Adapters.revoke`) belongs here once the configuration names it.
+ */
+export function operatorAdapters(_config: RuntimeConfig): Adapters {
+  return {
+    agents: { run: async () => missing("agent adapter") },
+    model: { infer: async () => missing("model"), upperBound: () => missing("model") },
+    verifier: { check: async () => missing("verifier") },
+    reads: { call: async () => missing("reader") },
+    tools: {},
+    clock: wallClock,
+    random: Math.random,
+  };
 }
 
 /** A stand-in for an adapter the configuration leaves out: calling it stops the run for a person. */

@@ -2,12 +2,9 @@
 
 **Status: in progress.** The page specifies release 0.5 so that the
 TypeScript implementation, and later the Rust one, are held to the same
-rules and cases. Its compile-time surface is implemented, and of the
-runtime the chained journal, the isolation levels of hosts, host fitness,
-the reference egress proxy, and the control plane's gateways through it; what
-the runtime does not enforce yet, it refuses by name. Each part that is
-not implemented lands with the change named in the table, which refines
-its section here.
+rules and cases. What the table says is implemented is, with the
+runtime's refusals of what it does not enforce yet. Each part that is not
+lands with the change named in the table, which refines its section here.
 
 **A note on the name.** Release 0.5 is called Boundary. In the code and in
 the earlier specs, "boundary" already means *boundary evidence*: the
@@ -26,7 +23,7 @@ the configuration and the CLI.
 | The attestation a check needs is read from the program, not the record; child processes get a filtered environment (B20) | PR 1 (#34) | implemented (INV-27; [`runtime.md`](runtime.md)) |
 | The chained journal: event hashes, signed anchors, export, verification (J01–J16) | PR 3 | implemented ([`journal.md`](journal.md)) |
 | Isolation levels of hosts; host fitness (`unfit_host`) | PR 4 | implemented; shown on the CI runner's Bubblewrap |
-| Violations and the violation limit; a hard halt | PR 5 | specified |
+| Violations and the violation limit; a hard halt | PR 5 | implemented; `egress_denied` is written by PR 8, through the same seam |
 | The reference egress proxy and its admin channel ([`egress.md`](egress.md)) | PR 6 | implemented; the control plane's gateways use it, and sandboxes will from PR 8 |
 | The control plane's adapters through gateways; `credential_in_environment` | PR 7 | implemented |
 | Sandbox egress on Linux through the proxy | PR 8 | specified; enforceable where the sandbox SDK reports it, shown on the CI runner |
@@ -694,32 +691,152 @@ verification steps, the report and the exit codes) is
 
 ## Violations and halt
 
-*Specified; implemented by PR 5.*
+*Implemented by PR 5.*
 
-- **A violation** is a `violation` event, `{ kind, delegate, agent, step,
-  detail, count }`, written once per step: a resumed run that computes the
-  same refusal again does not write it again. It is written for a tool
-  call refused for an authority reason (`authority_denied`; not for
-  malformed input, and not for the interpreter's `PolicyDenied`, which is
-  the program's error, not the agent's attempt) and for an egress denial
-  (`egress_denied`). `count` is the run's count with it.
-- **The limit** is checked only when a new violation is written: by default
-  3, configured as `violations.limit`. It applies to a 0.5 package, and to
-  an older one only when configured. Reaching it stops the run as
-  `attention_required` with `violation_limit`; a resumed run stops again at
-  its next new violation.
-- **Halt is hard.** `mandate halt --tenant <T> | --all [--reason <text>]`
-  records a halt (`halts`) and, for every open run in its scope, in one
-  transaction: locks the run, records that it was cancelled and its lease
-  revoked, drops the lease and ends the run, `cancelled`, or
-  `attention_required` when an action is open (INV-12). A second pass ends
-  runs that started meanwhile. A result in flight cannot be written: its
-  worker no longer holds the lease. Adapters and the proxy are told to
-  revoke.
-- **In a halted scope** `StartRun` and every resume are refused, `halted`.
-- **Lifting.** `mandate halt --lift --tenant <T> | --all --by <who>` is not
-  signed; it is recorded with `--by`. Lifting brings no run back.
-- A soft stop is what it was: `cancel`.
+### Violations
+
+A violation is the journal's record that an agent tried to cross what it
+was granted, and the runtime refused.
+
+- **The event.** `violation`, `{ kind, delegate, agent, step, detail,
+  count }`:
+
+  | Field | Holds |
+  |---|---|
+  | `kind` | `authority_denied`: a tool call the runtime refused because the grant does not give what it asks, a path outside what the agent may read or write, a command or an argument prefix it may not run, a working copy it was not given. `egress_denied`: a request the egress proxy denied, written by sandbox egress through the same seam |
+  | `delegate` | The delegation's command id |
+  | `agent` | The agent's name |
+  | `step` | Where it was refused: `<delegate>/step/<n>/tool/<k>` for a tool call; `<delegate>/step/<n>/plan/<i>` for step `i` of a plan submitted at turn `n` (`plan_execute`), which never runs; for an egress denial, the step of the tool call it was made in |
+  | `detail` | For `authority_denied`, the tool and the reason the model is told, `"<tool>: <reason>"`; for `egress_denied`, what the proxy reports |
+  | `count` | The run's violations with this one |
+
+- **What is not one.** A tool call refused for its input: an argument
+  missing or of the wrong type, a working copy it must name and did not,
+  arguments outside the tool's schema, a tool the agent does not have. It
+  is only repaired, as before. Nor is the interpreter's `PolicyDenied`
+  (a sandbox the host cannot enforce, a scope outside a capability): that
+  is the program's error, not the agent's attempt. A call outside the
+  grant and malformed besides is `authority_denied`: the grant is checked
+  first.
+- **Once per step (INV-28).** It is written under the run's row lock and
+  the worker's fence, only when the run has no violation at that `step`,
+  and `count` is taken under the same lock. A resumed run that comes to the
+  same refusal again writes and counts nothing; a replay writes nothing.
+- **When.** Before the model is told, and before the refusal counts as one
+  of the loop's repairs (`MAX_REPAIRS`).
+- **Every language.** It is written for a package of every language
+  version.
+- **The limit.** `violations.limit` in the runtime's configuration, a whole
+  number, at least 1. A 0.5 package's run has the limit 3 when the
+  configuration names none; an earlier package's run has a limit only
+  when the configuration names one. The package is the run's package at
+  the time, its amended one after an amendment.
+- **Reaching it.** The limit is checked only when a new violation is
+  written: when its `count` is the limit or more, the run stops,
+  `attention_required` with `{ "violation": "violation_limit", "message" }`.
+  The delegation is left in flight, as after a crash. A resumed run comes to
+  its earlier violations again without counting them, goes on, and stops
+  again at its next new one.
+
+### Halt
+
+A halt is the operator's hard stop of a tenant, or of every tenant
+(`--all`). `cancel`, the soft stop of one run, is what it was.
+
+`mandate halt (--tenant <T> | --all) [--reason <text>] [--by <who>]`
+(`Runtime.halt`) does this **in one transaction**:
+
+1. It takes the halt lock of its scope, exclusive (see "The race" below).
+2. It records the halt in `halts`: its id `halt-<uuid>`, the tenant (none
+   for every tenant), the reason, who halted when `--by` says, and when.
+3. For every run of the scope that has not ended (`accepted`, `running`,
+   `waiting` for anything, a timer included, `cancelling`,
+   `attention_required`), in run id order, it locks the run and
+   - sets its cancel flag;
+   - drops its lease: the fence goes up, so a worker that was driving the
+     run writes nothing after this, a result in flight included (each of
+     its writes checks the fence, R06);
+   - writes `cancel_requested { halt, reason, by }` (`reason` and `by` when
+     given) and `lease_revoked { halt, fence }`, `fence` being the one
+     revoked;
+   - ends the run `cancelled`, with the summary
+     `{ effects_completed_before_or_during_cancel, halt }`, or
+     `attention_required`, with `{ halted, open_actions }`, while an action
+     is dispatched or its outcome is unknown (INV-12). Each state change is
+     anchored as any other, so a halted run's journal verifies.
+4. A second sweep ends any run of the scope the first did not end.
+
+A run inside a lead's sub-program is one run: the sub-program's commands
+run under the run's lease, and end with it.
+
+**After the commit**, as a cancel does, an action whose outcome is unknown
+is asked to stop (`Cancel`), and a run whose actions are all resolved by
+that ends `cancelled`. The scheduler is woken for each run that ended, and
+`Adapters.revoke` is called with the scope, `{ tenant }` or `{ all: true }`,
+so what the runtime holds open outside itself (the egress proxy's sessions,
+sandboxes) is cut. A failure of any of these undoes nothing, since the runs
+have ended; it is reported (`HaltReport.revoke`, `problems`), and
+`mandate halt` exits 1.
+
+`mandate halt` prints the halt's id, scope and reason, each run it ended
+with its tenant and state (and, for one left `attention_required`, that an
+action is open), the command that lifts the halt, and whether revoking was
+done, failed, or had nothing to revoke. `--json` prints the report.
+
+**In a halted scope** (a halt of the tenant, or of every tenant, that was
+not lifted):
+
+- `StartRun` is refused, `halted`, before anything is prepared, and again
+  in the transaction that would create the run. No run is created.
+- Every lease is refused, `halted`, for a run that has not ended: `resume`,
+  a scheduler's worker, the drive after a decision. It is refused in the
+  transaction that would take the lease, before the fence goes up, so
+  nothing is written. A run that has ended is leased as before, and finds
+  itself ended.
+- A reconciliation of an action of a run the halt left
+  `attention_required` records what the system of record says; once no
+  action of the run is open, the run ends `cancelled`. It is not driven.
+- A Temporal worker reports such a run as it is, and does not retry.
+
+**The race between a start and a halt is closed** for this runtime. A
+start takes, in the transaction that creates its run, and a lease, in the
+transaction that takes it, the halt lock of every tenant and the halt lock
+of the run's tenant, both shared, before any row lock, and then read the
+halt in force. A halt takes the lock of its scope, exclusive, before it
+records anything. So a start or a lease either committed before the halt
+had its lock, and the halt's sweep, which reads after that, ends its run;
+or it waits for the halt to commit, then reads the halt and is refused. On
+PostgreSQL these are advisory transaction locks:
+`pg_advisory_xact_lock(1835296876, 0)` for every tenant and
+`pg_advisory_xact_lock(1835296884, hashtext(<tenant>))` for one (`_shared`
+for a start or a lease). The second sweep is for a writer that takes no
+such lock, a runtime of an earlier version during an upgrade: it ends what
+that writer committed before the sweep read, and nothing the writer does
+after the halt's transaction.
+
+**Lifting.** `mandate halt --lift (--tenant <T> | --all) --by <who>`
+(`Runtime.liftHalt`) is not signed. It records `lifted_by` and `lifted_at`
+on every halt in force of exactly that scope: a lift of every tenant leaves
+a tenant's own halt in force, and a lift of a tenant leaves a halt of every
+tenant in force (the command says the tenant is still halted, and by
+which). A lift where none is in force is refused, `not_halted`; one that
+does not say who, `invalid_lift`. **Lifting brings no run back**: a run the
+halt ended stays ended. One it left `attention_required` keeps its cancel
+flag: resumed after the lift, it goes on as a cancelled run does, and no
+command or action is dispatched for it again (R08).
+
+`mandate halt --list [--json]` lists every halt, in force or lifted.
+
+**Views.** A halt's `cancel_requested` is an operator's stop, not a
+member's decision: the run's view lists no decision for it.
+
+### Events
+
+| Event | Data |
+|---|---|
+| `violation` | kind, delegate, agent, step, detail, count (above) |
+| `cancel_requested` | Written by a halt with `halt`, the halt's id, and `reason` and `by` when given. Written by a cancel as before |
+| `lease_revoked` | `halt`, and `fence`, the fence the halt revoked |
 
 ## Views by role and the audit view
 
@@ -779,7 +896,7 @@ verification steps, the report and the exit codes) is
 | INV-23 | A secret never enters a sandbox, nor the runtime's environment when gateways are on; what enters is its placeholder | The proxy's configuration; `credential_in_environment` |
 | INV-24 | A sandbox reaches no host and uses no method its grant does not list | The proxy's data path; requirement 0.2; the denial reasons |
 | INV-25 | Every event of a chained run is covered by the chain, and every state change of it by a signed anchor | `events.hash`; `journal_anchors`; the verifier |
-| INV-26 | A halted scope starts and resumes nothing, and no result in flight at the halt is written | `halts`; the lease; `halted` |
+| INV-26 | A halted scope starts and resumes nothing, and no result in flight at the halt is written | `halts`; the halt lock a start and a lease take; the fence; `halted` |
 | INV-27 | Whether a check needs an attestation is read from the program and the configuration, never from the record being checked | B20 |
 | INV-28 | A violation is counted once: a replay or a resume never counts it again | One `violation` event per step |
 | INV-29 | A floor, a least version and a credential binding come from the lock alone, inside the package hash: changing one is a new package | Lock 0.5; no built-in floor |
@@ -808,7 +925,9 @@ Refusals of the runtime that 0.5 adds:
 | `no_egress_proxy`, `egress_unavailable` | A package or a gateway needs the proxy and none is named, or it does not answer or lacks a credential |
 | `egress_denied` | Through the model gateway, the proxy refused the runtime's own request; the run stops for a person, the reason named |
 | `violation_limit` | The run reached its violation limit; it is `attention_required` |
-| `halted` | A start or a resume in a halted scope |
+| `halted` | A start, or the lease of a run that has not ended, in a halted scope |
+| `not_halted` | A lift of a scope where no halt is in force |
+| `invalid_lift` | A lift that does not say who lifts it |
 
 Compile cases in [`conformance/`](../conformance/README.md):
 
@@ -879,7 +998,10 @@ The letters P, T and L are kept for later releases.
   `report` and notifications (0.7).
 - **What stays open.** MXC's proxy enforcement is shown on CI's Ubuntu
   runner and nowhere else yet, and a tunnel through it is not; a host is
-  said to support sandbox egress only where a test shows it. The race between a start and a halt is narrowed by the second
-  pass and the check at resume, not closed. Someone who holds the
+  said to support sandbox egress only where a test shows it. The race
+  between a start and a halt is closed by the halt lock for runtimes that
+  take it; a writer that does not, a runtime of an earlier version, is
+  caught only by the halt's second sweep, and only for what it wrote
+  before the sweep. Someone who holds the
   runtime's key and its database can rewrite the journal. Linux sandbox
   tests, PostgreSQL, Node 22 and 24, and Rust run on CI.

@@ -71,3 +71,51 @@ describe("grep", () => {
     expect(r).toMatchObject({ argv: expect.arrayContaining(["grep", "-rnIE", "--exclude-dir=node_modules", "--exclude-dir=.git", "--", "MCP_RESOURCE|MCP_AUDIENCE", "/work/api"]) });
   });
 });
+
+describe("a refusal's kind (spec/boundary.md \"Violations and halt\")", () => {
+  const grant = [
+    { ctor: "fs.read", scope: ["/work/repo"] },
+    { ctor: "fs.write", scope: ["/work/repo/src"] },
+    { ctor: "exec", scope: ["mvn"], argsPrefix: [["-q", "test"]] },
+  ] as unknown as CapVal[];
+  const tools = toolsFor(grant, { type: "string" });
+  const kind = (name: string, input: Record<string, unknown>): string => {
+    const r = commandFor(tools, name, input);
+    return r instanceof Denied ? r.kind : "runs";
+  };
+
+  it("is authority when the call asks for what the grant does not give", () => {
+    expect(kind("read_file", { path: "/etc/passwd" })).toBe("authority");
+    expect(kind("list_dir", { path: "/work" })).toBe("authority");
+    expect(kind("grep", { pattern: "x", path: "/" })).toBe("authority");
+    expect(kind("write_file", { path: "/work/repo/README.md", content: "x" })).toBe("authority");
+    expect(kind("run", { command: "rm", args: ["-rf", "/"] })).toBe("authority");
+    expect(kind("run", { command: "mvn", args: ["deploy"] })).toBe("authority");
+    expect(kind("run", { command: "mvn", args: ["-q", "test"], cwd: "/tmp" })).toBe("authority");
+    // Outside the grant is checked first: a call out of scope and malformed besides asks for what it may not have.
+    expect(kind("write_file", { path: "/etc/x" })).toBe("authority");
+  });
+
+  it("is malformed when the input is not one the tool takes", () => {
+    expect(kind("read_file", {})).toBe("malformed");
+    expect(kind("read_file", { path: "" })).toBe("malformed");
+    expect(kind("grep", { path: "/work/repo" })).toBe("malformed");
+    expect(kind("write_file", { path: "src/a.ts" })).toBe("malformed");
+    expect(kind("run", { command: "mvn" })).toBe("malformed");
+    expect(kind("run", { command: 1, args: [] })).toBe("malformed");
+    expect(kind("teleport", {})).toBe("malformed");
+  });
+
+  it("leaves a call the grant gives to run", () => {
+    expect(kind("read_file", { path: "src/a.ts" })).toBe("runs");
+    expect(kind("run", { command: "mvn", args: ["-q", "test", "-o"] })).toBe("runs");
+  });
+
+  it("is malformed when a command allowed in several working copies names none, and authority when it names another", () => {
+    const two = toolsFor(grants(`capability R = component.read(web, api)
+capability TW = component.exec(web, test)
+capability TA = component.exec(api, test)`, ["R", "TW", "TA"]), { type: "string" });
+    expect(commandFor(two, "run", { command: "npm", args: ["test"] })).toMatchObject({ kind: "malformed" });
+    expect(commandFor(two, "run", { command: "npm", args: ["test"], cwd: "/work" })).toMatchObject({ kind: "authority" });
+  });
+});

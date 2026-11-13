@@ -37,6 +37,7 @@
 
 import type { CapVal, LoopStrategy, Param, Program, Progress, SandboxRequirement, TypeExpr } from "@mandate/compiler";
 import type { ChatModel, Cost, Outcome, ToolSpec, TurnRequest } from "./adapters.js";
+import type { ViolationKind } from "./journal.js";
 import type { ExecRequest, ExecResult, MxcAdapter } from "./sandbox.js";
 import { schemaErrors, typeSchema, type JsonSchema } from "./schema.js";
 import { Fault } from "./signals.js";
@@ -93,6 +94,13 @@ export interface LoopIO {
    * what the model is shown. It runs in the runtime, not in the sandbox.
    */
   extra?(id: string, name: string, input: Record<string, unknown>, label: string): Promise<{ content: string; is_error?: boolean }>;
+  /**
+   * Records a violation at the step `step` of this delegation (spec/boundary.md "Violations and halt"): a tool call
+   * refused for an authority reason (`authority_denied`), or a request the egress proxy denied (`egress_denied`).
+   * Once for a step: a resumed loop that is refused again at the same step records and counts nothing. Throws
+   * `Violation("violation_limit")` when a new violation reaches the run's limit, which stops the run.
+   */
+  violation?(kind: ViolationKind, step: string, detail: Value): Promise<void>;
 }
 
 type Block = { [k: string]: Value };
@@ -287,7 +295,7 @@ class Loop {
         continue;
       }
       const steps = Array.isArray(use.input["steps"]) ? (use.input["steps"] as unknown[]) : [];
-      const problems = this.checkPlan(steps);
+      const problems = await this.checkPlan(steps, `step/${n}`);
       if (problems.length) {
         this.repair(problems[0]!.kind, problems.map((p) => p.text).join("; "));
         this.answer([error(use.id, `The plan was not run:\n${problems.map((p) => `- ${p.text}`).join("\n")}`), ...others]);
@@ -318,16 +326,20 @@ class Loop {
     }
   }
 
-  private checkPlan(steps: unknown[]): Array<{ kind: string; text: string }> {
+  /**
+   * The problems of a submitted plan, at the turn `where`. A step outside the grant is a violation of that step of
+   * the plan (`<where>/plan/<i>`), though the plan never runs: the agent asked for it.
+   */
+  private async checkPlan(steps: unknown[], where: string): Promise<Array<{ kind: string; text: string }>> {
     const problems: Array<{ kind: string; text: string }> = [];
     const left = this.stepsLeft();
     if (!steps.length) problems.push({ kind: "InvalidArguments", text: "the plan has no steps" });
-    steps.forEach((raw, i) => {
+    for (const [i, raw] of steps.entries()) {
       const s = isObj(raw as Value) ? (raw as { tool?: unknown; input?: unknown }) : {};
       const name = typeof s.tool === "string" ? s.tool : "";
       if (!this.tools.names.has(name)) {
         problems.push({ kind: "InvalidTool", text: `step ${i}: there is no tool ${JSON.stringify(s.tool)}; you have ${[...this.tools.names].join(", ")}` });
-        return;
+        continue;
       }
       const input = isObj((s.input ?? null) as Value) ? (s.input as Record<string, unknown>) : {};
       const spec = this.tools.specs.find((t) => t.name === name)!;
@@ -335,9 +347,12 @@ class Loop {
       if (errs.length) problems.push({ kind: "InvalidArguments", text: `step ${i} (${name}): ${errs.join(", ")}` });
       else if (!this.task.extra?.some((t) => t.name === name)) {
         const cmd = commandFor(this.tools, name, input);
-        if (cmd instanceof Denied) problems.push({ kind: "InvalidArguments", text: `step ${i} (${name}): ${cmd.reason}` });
+        if (cmd instanceof Denied) {
+          if (cmd.kind === "authority") await this.io.violation?.("authority_denied", `${this.task.id}/${where}/plan/${i}`, `${name}: ${cmd.reason}`);
+          problems.push({ kind: "InvalidArguments", text: `step ${i} (${name}): ${cmd.reason}` });
+        }
       }
-    });
+    }
     if (left !== undefined && steps.length > left) problems.push({ kind: "InvalidArguments", text: `the plan has ${steps.length} steps and the agent's budget leaves ${left}` });
     return problems;
   }
@@ -414,6 +429,9 @@ class Loop {
     }
     const cmd = commandFor(this.tools, u.name, u.input);
     if (cmd instanceof Denied) {
+      // A call outside the grant is an attempt to cross it, and is recorded before the model is told (spec/boundary.md
+      // "Violations and halt"). A malformed one is only repaired.
+      if (cmd.kind === "authority") await this.io.violation?.("authority_denied", `${t.id}/${where}`, `${u.name}: ${cmd.reason}`);
       this.repair("InvalidArguments", `${u.name}: ${cmd.reason}`);
       return { block: error(u.id, `Refused: ${cmd.reason}`), observedNew: false };
     }

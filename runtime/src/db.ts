@@ -192,6 +192,16 @@ create table if not exists journal_anchors (
   signature text not null,
   primary key (run_id, seq)
 );
+create table if not exists halts (
+  halt_id text primary key,
+  tenant text,
+  reason text,
+  halted_by text,
+  halted_at bigint not null,
+  lifted_by text,
+  lifted_at bigint
+);
+create index if not exists runs_tenant_state on runs (tenant, state);
 `;
 
 /** Opens PostgreSQL at `url`, or an in-process PGlite database when `url` is absent. */

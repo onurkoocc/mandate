@@ -7,6 +7,7 @@
 import { Context } from "@temporalio/activity";
 import type { RunRow } from "../journal.js";
 import type { Runtime } from "../runtime.js";
+import { Violation } from "../signals.js";
 import { isObj } from "../values.js";
 import type { Progress } from "./workflows.js";
 
@@ -28,7 +29,17 @@ export function createActivities(rt: Runtime): Activities {
     }
   };
   return {
-    drive: (runId) => heartbeating(() => rt.resume(runId)),
+    // A run in a halted scope is not resumed (spec/boundary.md "Violations and halt"). That is where it stays until the
+    // halt is lifted, not a failure to retry: the run is reported as it is, and its workflow parks or ends with it.
+    drive: (runId) =>
+      heartbeating(async () => {
+        try {
+          return await rt.resume(runId);
+        } catch (e) {
+          if (e instanceof Violation && e.code === "halted") return rt.getRun(runId);
+          throw e;
+        }
+      }),
     expire: (runId) => heartbeating(() => rt.tick(runId)),
   };
 }
