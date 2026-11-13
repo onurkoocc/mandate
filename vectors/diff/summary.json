@@ -518,8 +518,8 @@
     {
       "kind": "budget.spend.currency_changed",
       "section": "G",
-      "cases": 3,
-      "first_case": "agent-budget-limit-removed"
+      "cases": 1,
+      "first_case": "agent-budget-currency-changed"
     },
     {
       "kind": "budget.skill_raised",
@@ -1066,8 +1066,8 @@
     {
       "kind": "envelope.budget.currency_changed",
       "section": "E",
-      "cases": 3,
-      "first_case": "envelope-budget-limits-removed"
+      "cases": 1,
+      "first_case": "envelope-budget-currency-changed"
     },
     {
       "kind": "envelope.spawn.max_concurrent_changed",

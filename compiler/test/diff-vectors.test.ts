@@ -392,7 +392,7 @@ function rows(): Row[] {
     row(`budget.${dim}.limit_added`, "B", (c) => !!plainBudget(c) && plainBudget(c)![2] === "no limit");
   }
   row("budget.spend.currency_changed", "G", (c) => {
-    const r = /^~ \S+\.budget\.spend: \S+ (\S+) → \S+ (\S+)$/.exec(c.text);
+    const r = /^~ \S+\.budget\.spend: \S+ ([A-Z]{3}) → \S+ ([A-Z]{3})$/.exec(c.text);
     return !!r && r[1] !== r[2];
   });
   row("budget.skill_raised", "G", re(/^~ \w+\.\w+\.budget\.\w+: \d/));
@@ -470,7 +470,7 @@ function rows(): Row[] {
     row(`envelope.budget.${dim}.limit_added`, "E", re(new RegExp(`^~ \\S+\\.envelope\\.budget\\.${dim}: no limit → `)), never);
   }
   row("envelope.budget.currency_changed", "E", (c) => {
-    const r = /^~ \S+\.envelope\.budget\.spend: \S+ (\S+) → \S+ (\S+)$/.exec(c.text);
+    const r = /^~ \S+\.envelope\.budget\.spend: \S+ ([A-Z]{3}) → \S+ ([A-Z]{3})$/.exec(c.text);
     return !!r && r[1] !== r[2];
   });
   row("envelope.spawn.max_concurrent_changed", "E", re(/^~ \S+\.envelope\.spawn\.max_concurrent: \d+ → \d+$/));
