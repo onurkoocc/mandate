@@ -99,6 +99,24 @@ const SINCE: Record<"kinds" | "ops" | "agentFields" | "workflowFields" | "budget
   budgetFields: { agents: "mandate/0.4" },
 };
 
+/**
+ * An int, dec or money literal below zero. The text form of such a literal is
+ * a minus sign and a positive literal, which reads back as `unary neg`, so the
+ * IR and its text would hash differently. From 0.5 the IR refuses it.
+ */
+function negativeLiteral(v: { [k: string]: Json }): boolean {
+  switch (v["op"]) {
+    case "int":
+      return typeof v["value"] === "number" && v["value"] < 0;
+    case "dec":
+      return typeof v["value"] === "string" && v["value"].startsWith("-");
+    case "money":
+      return typeof v["micros"] === "number" && v["micros"] < 0;
+    default:
+      return false;
+  }
+}
+
 /** The definitions and expressions of `defs` that are newer than `lang`. */
 function newerConstructs(defs: { [k: string]: Json }, lang: LanguageVersion, at: (p: string) => { path: string; span?: Span }): Diagnostic[] {
   const out: Diagnostic[] = [];
@@ -111,6 +129,9 @@ function newerConstructs(defs: { [k: string]: Json }, lang: LanguageVersion, at:
     else if (v && typeof v === "object") {
       const since = newer(SINCE.ops, v["op"]);
       if (since) out.push(diag("E0104", `'${String(v["op"])}' is a ${since} expression; this program is ${lang}.`, at(path), { facts: { op: v["op"]!, language: lang } }));
+      if (atLeast(lang, "mandate/0.5") && negativeLiteral(v)) {
+        out.push(diag("E0104", `A negative '${String(v["op"])}' literal is not allowed in ${lang}: from mandate/0.5 a negative literal is written as the negation of a positive one (unary neg).`, at(path), { facts: { op: v["op"]!, language: lang } }));
+      }
       for (const [k, x] of Object.entries(v)) {
         // Every budget is written under `budget`: a workflow's, an agent's, a skill's, a delegation's.
         if (k === "budget" && x && typeof x === "object" && !Array.isArray(x)) {
