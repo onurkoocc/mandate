@@ -20,7 +20,11 @@ use verify_journal::verify::anchor_message;
 use verify_journal::{Json, canonical, digest, event_hash, number_to_string, read_json};
 
 fn numbers() -> Json {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/numbers.json");
+    // MANDATE_REPO is set by scripts/wasi-test.mjs, where the compile-time path does not exist.
+    let path = match std::env::var_os("MANDATE_REPO") {
+        Some(root) => Path::new(&root).join("crates/verify-journal/tests/data/numbers.json"),
+        None => Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/numbers.json"),
+    };
     read_json(&fs::read(path).expect("numbers.json")).expect("numbers.json reads")
 }
 
