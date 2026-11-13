@@ -768,21 +768,18 @@ describe.runIf(REAL)("sandbox egress through real Bubblewrap sandboxes (the CI r
   const tlsSeen: Array<{ url: string; servername: string | false | null | undefined }> = [];
   const port = (s: HttpServer | HttpsServer): number => (s.address() as { port: number }).port;
 
-  // What the sandbox runs: curl, which honours the proxy variables the SDK sets; -i prints the status line.
+  // What the sandbox runs: curl, which honours the proxy variables the SDK sets; -i prints the status line. The
+  // scripts are fixed text, as an exec capability's argument prefixes are, so they are made once the servers listen.
   const CURL = "curl -sS -i --max-time 20";
   const AUTH = `-H "authorization: Bearer $${placeholderVariable("github")}"`;
-  const S = {
-    get: `${CURL} ${AUTH} http://cred.test/repos/acme/app`,
-    post: `${CURL} -X POST -d x ${AUTH} http://cred.test/repos/acme/app/issues`,
-    other: `${CURL} http://other.test/`,
-    tunnel: `${CURL} --cacert ${cert} https://tunnel.test/hello`,
-    connectCred: `${CURL} https://cred.test/`,
-    direct: `curl -sS --max-time 5 --noproxy '*' http://cred.test/`,
-  };
-  const SH: CapVal = { ctor: "exec", effect: "Exec", write: false, scope: ["sh"], argsPrefix: Object.values(S).map((s) => ["-c", s]) };
+  /** The address the sandbox sees the proxy at, and its port, read from the proxy variable the SDK set. */
+  const AT = 'h=${http_proxy#http://}; h=${h%%:*}; p=${http_proxy##*:}; p=${p%/}; echo "proxy is at $h:$p"; ';
+  const DIRECT = "curl -sS --max-time 5 --noproxy '*' -o /dev/null -w 'status=%{http_code}' ";
+  let S: Record<"get" | "post" | "other" | "tunnel" | "connectCred" | "directLoopback" | "directGateway" | "proxyPortDirect", string>;
+  const shell = (): CapVal => ({ ctor: "exec", effect: "Exec", write: false, scope: ["sh"], argsPrefix: Object.values(S).map((s) => ["-c", s]) });
   const ENV: CapVal = { ctor: "exec", effect: "Exec", write: false, scope: ["env"] };
   const realReq = () =>
-    requirementFor({ agent: "Fetcher", def: "sha256:real" }, [net(["cred.test"], ["GET"]), net(["tunnel.test"]), { ctor: "fs.read", effect: "Fs.Read", write: false, scope: [dir] } as CapVal, SH, ENV, MODEL], 60_000, {
+    requirementFor({ agent: "Fetcher", def: "sha256:real" }, [net(["cred.test"], ["GET"]), net(["tunnel.test"]), { ctor: "fs.read", effect: "Fs.Read", write: false, scope: [dir] } as CapVal, shell(), ENV, MODEL], 60_000, {
       language: "mandate/0.5",
       lock: { modules: {}, egress: { Fetcher: { "cred.test": "github" } } },
     });
@@ -809,6 +806,19 @@ describe.runIf(REAL)("sandbox egress through real Bubblewrap sandboxes (the CI r
     });
     await new Promise<void>((ok) => upstream.listen(0, "127.0.0.1", ok));
     await new Promise<void>((ok) => tls.listen(0, "127.0.0.1", ok));
+    const up = port(upstream);
+    S = {
+      get: `${CURL} ${AUTH} http://cred.test/repos/acme/app`,
+      post: `${CURL} -X POST -d x ${AUTH} http://cred.test/repos/acme/app/issues`,
+      other: `${CURL} http://other.test/`,
+      tunnel: `${CURL} --cacert ${cert} https://tunnel.test/hello`,
+      connectCred: `${CURL} https://cred.test/`,
+      // Around the proxy: the upstream's own port on the sandbox's loopback, and on the address it sees the proxy at.
+      directLoopback: `${DIRECT}http://127.0.0.1:${up}/direct-loopback`,
+      directGateway: `${AT}${DIRECT}"http://$h:${up}/direct-gateway"`,
+      // The control: the same address, the session's port, answers (400: a forward session takes absolute-form only).
+      proxyPortDirect: `${AT}${DIRECT}"http://$h:$p/direct-proxy"`,
+    };
     const config = egressConfig({ admin: where.path, credentials: { github: { env: "MANDATE_EGRESS_GITHUB", hosts: ["cred.test"], header: "authorization", template: "Bearer {secret}" } } }, "test", dir);
     proxy = new EgressProxy({
       config,
@@ -877,7 +887,7 @@ describe.runIf(REAL)("sandbox egress through real Bubblewrap sandboxes (the CI r
     }
   });
 
-  it("denies another host, a method not allowed, a tunnel to a host with a credential; and the proxy is the only way out", async () => {
+  it("denies another host, a method not allowed, a tunnel to a host with a credential", async () => {
     const { handle } = await open(host, realReq());
     try {
       upSeen.length = 0;
@@ -889,8 +899,28 @@ describe.runIf(REAL)("sandbox egress through real Bubblewrap sandboxes (the CI r
       const tunnel = await sh(handle, S.connectCred);
       expect(tunnel.exitCode, told("connect to cred.test", tunnel)).not.toBe(0);
       expect(tunnel.egress_denials?.denials.map((d) => [d.host, d.method, d.why]), told("connect to cred.test", tunnel)).toEqual([["cred.test", "CONNECT", "connect_not_allowed"]]);
-      const direct = await sh(handle, S.direct);
-      expect(direct.exitCode, told("direct", direct)).not.toBe(0);
+      expect(upSeen).toEqual([]);
+    } finally {
+      await host.destroy(handle);
+    }
+  });
+
+  it("reaches nothing around the proxy: not the upstream's port on the sandbox's loopback, nor on the address it sees the proxy at, where only the session's port answers", async () => {
+    const { handle } = await open(host, realReq());
+    try {
+      upSeen.length = 0;
+      // The control: from inside, the proxy's address and port as the proxy variable gives them do answer, the
+      // proxy itself, 400 to a request that is not in the form its session takes.
+      const control = await sh(handle, S.proxyPortDirect);
+      expect(control.stdout, told("the session's port, directly", control)).toMatch(/^proxy is at [0-9.]+:\d+\n[\s\S]*status=400$/);
+      expect(control.egress_denials?.denials.map((d) => d.why), told("the session's port, directly", control)).toEqual(["malformed_request"]);
+      const loopback = await sh(handle, S.directLoopback);
+      expect(loopback.exitCode, told("the upstream's port on the sandbox's loopback", loopback)).not.toBe(0);
+      expect(loopback.stdout, told("the upstream's port on the sandbox's loopback", loopback)).not.toMatch(/status=[1-9]/);
+      const gateway = await sh(handle, S.directGateway);
+      expect(gateway.stdout, told("the upstream's port at the proxy's address", gateway)).toMatch(/^proxy is at [0-9.]+:\d+\n/);
+      expect(gateway.exitCode, told("the upstream's port at the proxy's address", gateway)).not.toBe(0);
+      expect(gateway.stdout, told("the upstream's port at the proxy's address", gateway)).not.toMatch(/status=[1-9]/);
       expect(upSeen).toEqual([]);
     } finally {
       await host.destroy(handle);
