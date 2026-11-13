@@ -98,9 +98,20 @@ export function toolsFor(grants: CapVal[], result: JsonSchema): AgentTools {
   return { scope, specs, names, cwd: scope.read[0] };
 }
 
-/** A tool call the runtime refuses without running it, with the reason the model is told. */
+/**
+ * Why a tool call is refused: `authority`, the call asks for what the grant does not give (a path outside what the
+ * agent may read or write, a command or argument prefix it may not run, a working copy it was not given); or
+ * `malformed`, its input is not one the tool takes (an argument missing or of the wrong type, a choice it must make
+ * and did not, a tool there is not). Only the first is an attempt to cross what the agent was granted.
+ */
+export type DenialKind = "authority" | "malformed";
+
+/** A tool call the runtime refuses without running it, with the reason the model is told and its kind. */
 export class Denied {
-  constructor(readonly reason: string) {}
+  constructor(
+    readonly reason: string,
+    readonly kind: DenialKind,
+  ) {}
 }
 
 /**
@@ -111,7 +122,7 @@ export function commandFor(tools: AgentTools, name: string, input: Record<string
   const s = tools.scope;
   const path = (): string | Denied => {
     const p = input["path"];
-    if (typeof p !== "string" || !p) return new Denied("path must be a non-empty string");
+    if (typeof p !== "string" || !p) return new Denied("path must be a non-empty string", "malformed");
     return norm(posix.isAbsolute(p) ? p : posix.join(tools.cwd ?? "/", p));
   };
   switch (name) {
@@ -120,46 +131,46 @@ export function commandFor(tools: AgentTools, name: string, input: Record<string
     case "grep": {
       const p = path();
       if (p instanceof Denied) return p;
-      if (!inside(p, s.read)) return new Denied(`${p} is outside what you may read (${s.read.join(", ")})`);
+      if (!inside(p, s.read)) return new Denied(`${p} is outside what you may read (${s.read.join(", ")})`, "authority");
       if (name === "read_file") return { argv: ["cat", "--", p] };
       if (name === "list_dir") return { argv: ["ls", "-1Ap", "--", p] };
       const pattern = input["pattern"];
-      if (typeof pattern !== "string") return new Denied("pattern must be a string");
+      if (typeof pattern !== "string") return new Denied("pattern must be a string", "malformed");
       return { argv: ["grep", "-rnIE", ...GREP_SKIP.map((d) => `--exclude-dir=${d}`), "--", pattern, p] };
     }
     case "write_file": {
       const p = path();
       if (p instanceof Denied) return p;
-      if (!inside(p, s.write)) return new Denied(`${p} is outside what you may write (${s.write.join(", ")})`);
+      if (!inside(p, s.write)) return new Denied(`${p} is outside what you may write (${s.write.join(", ")})`, "authority");
       const content = input["content"];
-      if (typeof content !== "string") return new Denied("content must be a string");
+      if (typeof content !== "string") return new Denied("content must be a string", "malformed");
       return { argv: ["sh", "-c", WRITE_SCRIPT, "sh", p], stdin: content };
     }
     case "run": {
       const command = input["command"];
       const args = input["args"];
-      if (typeof command !== "string" || !Array.isArray(args) || !args.every((a) => typeof a === "string")) return new Denied("command must be a string and args a list of strings");
+      if (typeof command !== "string" || !Array.isArray(args) || !args.every((a) => typeof a === "string")) return new Denied("command must be a string and args a list of strings", "malformed");
       const allowed = s.exec.filter((e) => e.command === command);
-      if (!allowed.length) return new Denied(`${command} is not a command you may run (${s.exec.map((e) => e.command).join(", ")})`);
+      if (!allowed.length) return new Denied(`${command} is not a command you may run (${s.exec.map((e) => e.command).join(", ")})`, "authority");
       const fits = allowed.filter((e) => !e.argsPrefix || e.argsPrefix.some((p) => p.every((x, i) => args[i] === x)));
-      if (!fits.length) return new Denied(`${[command, ...args].join(" ")} does not start with an allowed argument prefix`);
+      if (!fits.length) return new Denied(`${[command, ...args].join(" ")} does not start with an allowed argument prefix`, "authority");
       // A component's command runs in that component's root; with several, the call names which.
       const roots = [...new Set(fits.flatMap((e) => (e.root ? [e.root] : [])))];
       const asked = input["cwd"];
       let cwd = tools.cwd;
       if (typeof asked === "string" && asked) {
         const c = norm(posix.isAbsolute(asked) ? asked : posix.join(tools.cwd ?? "/", asked));
-        if (!roots.includes(c)) return new Denied(`${command} may run in ${roots.length ? roots.join(", ") : "its default working directory"}, not ${c}`);
+        if (!roots.includes(c)) return new Denied(`${command} may run in ${roots.length ? roots.join(", ") : "its default working directory"}, not ${c}`, "authority");
         cwd = c;
       } else if (roots.length === 1) {
         cwd = roots[0];
       } else if (roots.length > 1) {
-        return new Denied(`${command} is allowed in several working copies; name one with cwd: ${roots.join(", ")}`);
+        return new Denied(`${command} is allowed in several working copies; name one with cwd: ${roots.join(", ")}`, "malformed");
       }
       return { argv: [command, ...(args as string[])], ...(cwd ? { cwd } : {}) };
     }
   }
-  return new Denied(`there is no tool ${name}`);
+  return new Denied(`there is no tool ${name}`, "malformed");
 }
 
 /** What the model is told a tool did. `grep` finding nothing is not an error. */
