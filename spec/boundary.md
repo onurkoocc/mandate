@@ -942,12 +942,14 @@ run under the run's lease, and end with it.
 
 **After the commit**, as a cancel does, an action whose outcome is unknown
 is asked to stop (`Cancel`), and a run whose actions are all resolved by
-that ends `cancelled`. The scheduler is woken for each run that ended, and
-`Adapters.revoke` is called with the scope, `{ tenant }` or `{ all: true }`,
-so what the runtime holds open outside itself (the egress proxy's sessions,
-sandboxes) is cut. A failure of any of these undoes nothing, since the runs
-have ended; it is reported (`HaltReport.revoke`, `problems`), and
-`mandate halt` exits 1.
+that ends `cancelled`. A cancel of a run the halt left `attention_required`
+leaves it as the halt left it while an action is open, and ends it
+`cancelled`, with the halt's summary, once none is. The scheduler is woken
+for each run that ended, and `Adapters.revoke` is called with the scope,
+`{ tenant }` or `{ all: true }`, so what the runtime holds open outside
+itself (the egress proxy's sessions, sandboxes) is cut. A failure of any of
+these undoes nothing, since the runs have ended; it is reported
+(`HaltReport.revoke`, `problems`), and `mandate halt` exits 1.
 
 `mandate halt` revokes through the egress proxy whenever the configuration
 names one (`egress.admin`, with or without `gateways`; see

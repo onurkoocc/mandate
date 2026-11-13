@@ -585,7 +585,8 @@ export class Runtime {
    * Ends a cancelled run, from its actions as they are in the transaction that writes the state (`cancelTarget`). A
    * worker ends its own run, under its lease (`fence`). Without one, the cancel ends a run it found idle, as a halt
    * does (`endHalted`): under the row lock it reads the run again and leaves a run that has ended meanwhile as it
-   * ended, so a run ends once; and it raises the fence, so a worker that took the lease since writes nothing more.
+   * ended, so a run ends once; and it raises the fence, so a worker that took the lease since writes nothing more. A
+   * run a halt left for an open action is the halt's: it ends `cancelled` once none is open, as `closeHalted` ends it.
    */
   private async closeCancelled(runId: string, fence?: number): Promise<void> {
     if (fence !== undefined) {
@@ -599,8 +600,11 @@ export class Runtime {
       const run = await this.journal.lock(tx, runId);
       if (TERMINAL.has(run.state)) return;
       const actions = await this.actionsIn(tx, runId);
+      const halted = isObj(run.attention) ? run.attention["halted"] : undefined;
+      const target = typeof halted === "string" ? haltTarget(actions, halted) : cancelTarget(actions);
+      if (typeof halted === "string" && target.state !== "cancelled") return;
       await tx.query("update runs set fence = fence + 1 where run_id = $1", [runId]);
-      const { state, ...fields } = cancelTarget(actions);
+      const { state, ...fields } = target;
       await this.journal.setState(tx, runId, state, fields);
     });
   }

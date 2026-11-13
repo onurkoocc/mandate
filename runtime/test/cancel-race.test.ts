@@ -328,6 +328,35 @@ describe("the other interleavings", () => {
     await cancelledOnce(w, "halted");
   });
 
+  it("a cancel of a run that a halt left for its open action: the cancel's adapter call resolves it, and the run ends cancelled as the halt ends it", async () => {
+    let w!: World;
+    let halted: Awaited<ReturnType<World["rt"]["halt"]>> | undefined;
+    // The halt's own call to the adapter gets no answer; the cancel's, which began before the halt, proves it.
+    const tool = stoppable(async () => {
+      halted = await w.rt.halt({ tenant: "default" });
+    }, "unknown");
+    w = await world(PROGRAM, { tools: [tool] });
+    await unknownOutcome(w, "open");
+    const cancelled = await w.rt.cancelRun("open");
+    expect(halted!.ended).toEqual([{ run: "open", tenant: "default", state: "attention_required" }]);
+    expect(cancelled.summary).toEqual({ effects_completed_before_or_during_cancel: [], halt: halted!.halt.halt_id });
+    await cancelledOnce(w, "open");
+  });
+
+  it("a cancel after a halt that left the run for an action still open leaves it as the halt left it, for a reconciliation to end", async () => {
+    const w = await world(PROGRAM, { tools: [new SimTool("git.comment", "non_retryable").then("timeout")] });
+    await unknownOutcome(w, "after");
+    const r = await w.rt.halt({ tenant: "default" });
+    const left = await w.rt.getRun("after");
+    expect(left.attention).toMatchObject({ halted: r.halt.halt_id });
+    const cancelled = await w.rt.cancelRun("after");
+    expect(cancelled).toMatchObject({ state: "attention_required", attention: left.attention });
+    // The halt's way out stays open: a reconciliation that finds the comment was never posted ends the run.
+    const [action] = await w.rt.journal.actions("after");
+    expect((await w.rt.reconcileAction("after", action!.operation_key)).state).toBe("cancelled");
+    await cancelledOnce(w, "after");
+  });
+
   it("a cancel while a worker is in the middle of a dispatch: the worker keeps its lease and ends the run itself", async () => {
     const held = deferred<void>();
     const agents = new SimAgents().on("Worker.fix", async () => {
