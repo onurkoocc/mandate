@@ -13,6 +13,7 @@ export { GitHubMerges, type GitHubMergeOptions } from "./github-merge.js";
 export { ContainerHost } from "./container.js";
 export { criterionMethods, declaredMethods, partMethod } from "./criteria.js";
 export { childEnv } from "./env.js";
+export { checkFitness, HOST_TOOLS, hostShortfalls, meets, parseVersion, systemProbe, VERSION_TIMEOUT_MS, versionIn, type HostProbe, type HostTool, type ToolReading, type Version } from "./fitness.js";
 export { BOUNDARY_HANDLER, BOUNDARY_METHODS, BoundaryVerifier, GitHubCi, leaks, measure, realDocker, snapshot, type BoundaryConfig, type CiConfig, type CiRun, type CiSource, type Docker, type IntegrationConfig } from "./boundary.js";
 export { covers, diffEvent, diffMcpTools, diffMigrations, diffOauth, diffOpenApi, diffSpec, type ChangeKind, type SpecChange } from "./specdiff.js";
 export { GitWorkspace, type ComponentSource, type WorkspaceAdapter, type WorkspaceComponent } from "./workspace.js";

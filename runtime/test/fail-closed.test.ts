@@ -73,7 +73,6 @@ describe("a 0.5 package", () => {
   const fetchProgram = (): Program => check(FETCH, "mdt", { lock: LOCK05 }).program!;
 
   it.each([
-    ["host", { host: packaged.host }, "host (the least versions of the host's tools, which this runtime does not check yet)"],
     ["egress", { egress: packaged.egress }, "egress (credentials for agents' requests, which go only through an egress proxy, and this runtime has none yet)"],
   ])("whose lock sets %s is refused at load, by that name, until the runtime enforces it", (name, field, said) => {
     const lock = { modules: {}, models: packaged.models, tariffs: packaged.tariffs, ...field } as Lock;
@@ -84,18 +83,13 @@ describe("a 0.5 package", () => {
     expect((e as Violation).message).toBe(`unsupported_lock: The package's lock sets ${said}, which this runtime does not enforce yet (spec/boundary.md).`);
   });
 
-  it("whose lock sets all three is refused naming each it does not enforce yet; without them it is accepted", () => {
-    expect(notRunYet(fetchProgram(), packaged)).toEqual(["lock.egress", "lock.host"]);
-    expect((refusal(fetchProgram(), packaged) as Violation).message).toMatch(/^unsupported_lock: The package's lock sets egress \(.*\), host \(.*\), which/);
+  it("whose lock sets all three is refused naming the one it does not enforce yet; without it it is accepted", () => {
+    expect(notRunYet(fetchProgram(), packaged)).toEqual(["lock.egress"]);
+    expect((refusal(fetchProgram(), packaged) as Violation).message).toMatch(/^unsupported_lock: The package's lock sets egress \(.*\), which this runtime/);
+    const { egress: _egress, ...enforced } = packaged;
+    expect(refusal(fetchProgram(), enforced as Lock)).toBeUndefined();
     expect(refusal(fetchProgram(), { modules: {}, models: packaged.models, tariffs: packaged.tariffs } as Lock)).toBeUndefined();
     expect(notRunYet(fetchProgram())).toEqual([]);
-  });
-
-  it("is not the only one: a package of any language whose lock sets host is refused too", () => {
-    const old = check(FETCH.replace("mandate @ 0.5", "mandate @ 0.2"), "mdt").program!;
-    expect(old.language).toBe("mandate/0.2");
-    expect(refusal(old, { modules: {}, host: { node: "22.23.4" } })).toMatchObject({ code: "unsupported_lock" });
-    expect(refusal(old, { modules: {} })).toBeUndefined();
   });
 
   it("is not reached into by an earlier one: a 0.4 package that imports a 0.5 method limit is refused at load (MDT-E1804)", () => {

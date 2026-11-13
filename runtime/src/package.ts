@@ -65,10 +65,10 @@ export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "ma
  * So do a `map` and a `plan`, whose sub-programs name `agents` in their own budgets, as their claim on the
  * envelope's.
  *
- * With `lock`, the package's lock: what its format 0.5 asks that this runtime does not enforce yet, each by its
- * own name, `lock.host` and `lock.egress` (spec/boundary.md). `host` applies to a package of any language. Each is
- * lifted by the change that enforces it. `isolation` is enforced: each sandbox's requirement carries its floors, and
- * the sandbox adapter refuses a host that does not give them.
+ * With `lock`, the package's lock: what its format 0.5 asks that this runtime does not enforce yet, by its name,
+ * `lock.egress` (spec/boundary.md), which is lifted by the change that enforces it. The rest is enforced: `isolation`
+ * by each sandbox's requirement, which the sandbox adapter holds to what its host gives, and `host` by the check of
+ * the host's tools before a run starts or resumes (fitness.ts).
  */
 export function notRunYet(program: Program, lock?: Lock): string[] {
   const found = new Set<string>();
@@ -87,7 +87,6 @@ export function notRunYet(program: Program, lock?: Lock): string[] {
 
 /** Why each lock field of 0.5 that this runtime does not enforce yet is not, as a refusal names it. */
 const UNENFORCED = {
-  host: "the least versions of the host's tools, which this runtime does not check yet",
   egress: "credentials for agents' requests, which go only through an egress proxy, and this runtime has none yet",
 } as const satisfies Partial<Record<(typeof LOCK_FIELDS_0_5)[number], string>>;
 type Unenforced = keyof typeof UNENFORCED;
