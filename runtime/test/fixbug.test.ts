@@ -4,10 +4,14 @@
 
 import { afterAll, describe, expect, it } from "vitest";
 import { deferred, SimTool, SimVerifier } from "../src/sim.js";
-import { closeAll, until, world, type World } from "./helpers.js";
+import { closeAll, dispatchOrder, until, world, type World } from "./helpers.js";
 import { BUG, FIXBUG, fixbugAgents, RESERVED, RESULTS, USD, waitOf } from "./fixbug.js";
 
 afterAll(closeAll);
+
+/** The delegations of FixBug's `par`: Implementer's and TestWriter's. */
+const PATCH = "/defs/FixBug/body/2/branches/patch";
+const TESTS = "/defs/FixBug/body/2/branches/tests";
 
 const OWNER = { sender: "carol", messageId: "approve-1" };
 
@@ -170,12 +174,19 @@ describe("FixBug runs end to end", () => {
     expect(pr.prepares).toHaveLength(0);
   });
 
-  it("a caller limit below the agents' budgets stops at budget_exceeded before the PR", async () => {
+  // Implementer and TestWriter start together, and nothing orders their dispatches: the fault the run stops with is
+  // the one of the branch whose reservation reached the ledger first (fail_fast). Each order is pinned here.
+  it.each([
+    ["Implementer", [PATCH, TESTS], RESERVED["Implementer.apply"]!],
+    ["TestWriter", [TESTS, PATCH], RESERVED["TestWriter.regression"]!],
+  ])("a caller limit below the agents' budgets stops at budget_exceeded before the PR, with %s's fault when it reserves first", async (_first, order, requested) => {
     const w = await fixbug();
+    dispatchOrder(w, order);
     const run = await w.rt.startRun({ pkg: w.pkg, workflow: "FixBug", input: BUG, runId: "fb4", limits: { spend: { micros: 12 * USD, currency: "USD" } } });
-    // 3 USD settled by Explorer and Planner; Implementer needs 17.6 USD reserved and 9 USD at most are left.
+    // 3 USD settled by Explorer and Planner and 9 USD at most are left: neither Implementer's 17.6 USD nor TestWriter's
+    // 10.56 USD fits.
     expect(run.state).toBe("waiting");
-    expect(run.waiting).toMatchObject({ kind: "budget_exceeded", handler: true, episode: 0, detail: { $tag: "BudgetExceeded", $args: [{ dimension: "spend:USD", requested: 17_600_000 }] } });
+    expect(run.waiting).toMatchObject({ kind: "budget_exceeded", handler: true, episode: 0, detail: { $tag: "BudgetExceeded", $args: [{ dimension: "spend:USD", requested }] } });
     // The workflow's handler asks a person.
     expect(waitOf(run.waiting)).toEqual({ command: "/defs/FixBug/on/0@0/then/then", request: { question: "Budget exceeded. Continue or cancel?" } });
     expect(w.agents.count("Implementer.apply")).toBe(0);

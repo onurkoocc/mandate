@@ -422,9 +422,11 @@ describe("spawn.max_concurrent", () => {
       arrived++;
       peak = Math.max(peak, inFlight);
       await gather();
-      const [c] = await w.db.query<{ n: number }>("select count(*) as n from commands where kind = 'delegate' and state = 'dispatched'");
-      const [r] = await w.db.query<{ n: number }>("select coalesce(sum(amount), 0) as n from reservations where dimension = 'agents' and state = 'active'");
-      seen.push({ dispatched: Number(c!.n), reserved: Number(r!.n) });
+      // One statement, so both are read from one snapshot: between two, another delegation may settle.
+      const [now] = await w.db.query<{ c: number; r: number }>(
+        "select (select count(*) from commands where kind = 'delegate' and state = 'dispatched') as c, (select coalesce(sum(amount), 0) from reservations where dimension = 'agents' and state = 'active') as r",
+      );
+      seen.push({ dispatched: Number(now!.c), reserved: Number(now!.r) });
       inFlight--;
       return { ok: s, cost: { steps: 1 } };
     };
