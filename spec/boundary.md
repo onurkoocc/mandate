@@ -32,7 +32,7 @@ the configuration and the CLI.
 | Sandbox egress on Linux through the proxy | PR 8 | specified; enforceable where the sandbox SDK reports it, shown on the CI runner |
 | Sandbox egress on Windows | — | refused by name |
 | Views by role and the audit view; the OpenTelemetry projection | PR 9 | specified |
-| An independent journal verifier, `verify-journal`, in Rust | R3 | specified |
+| An independent journal verifier, `verify-journal`, in Rust | R3 | implemented (`crates/verify-journal`: every journal case, and a fresh export of a real run on CI) |
 
 Until a part lands, nothing it would enforce runs. A 0.5 package whose lock
 asks nothing of it runs as far as today's hosts allow: a sandbox that needs

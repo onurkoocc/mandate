@@ -135,8 +135,11 @@ A case of `kind: "journal"` checks a verifier of a run's chained journal
 The verifier reads the export's bytes and the keys, and nothing else. Its report
 is compared with `report` as JSON values, exactly: every member, the findings
 in their order. The TypeScript verifier runs the cases in
-`runtime/test/journal-cases.test.ts`; the compiler's case test only checks
-that the files are there.
+`runtime/test/journal-cases.test.ts`, and the Rust verifier, written from
+the spec alone, in `crates/verify-journal/tests/conformance.rs`; the
+compiler's case test only checks that the files are there. A case gives no
+exit status: it is the one the report's status means (0 `verified`, 1
+`broken` or `unchained`, 2 `unreadable`), and the Rust runner checks it too.
 
 The cases come from real runs on PGlite, written by
 `runtime/scripts/journal-cases.mjs` (`npm run build`, then
@@ -223,7 +226,19 @@ there: a diagnostic's message (V01, V20), its source position (S01, S02, S03),
 the `repair` patch it offers (S03), and that applying a patch leaves the program
 it was given as it was (S12).
 
-## What the Rust crate runs
+## What the Rust crates run
+
+| Implementation | Runs | Where |
+|---|---|---|
+| TypeScript compiler | every `compile` case | `compiler/test/cases.test.ts` |
+| TypeScript runtime | every `journal` case | `runtime/test/journal-cases.test.ts` |
+| Rust `mandate-ir` | the `compile` cases that need only the reader and the hashes (below) | `crates/mandate-ir/tests/conformance.rs` |
+| Rust `verify-journal` | every `journal` case, through its library and its binary | `crates/verify-journal/tests/conformance.rs` |
+
+`crates/verify-journal/tests/conformance.rs` finds the journal cases by
+their `kind`, verifies each export under its keys, and compares the report
+with the case's as JSON values, and the binary's output with the report file
+byte for byte; it prints how many it ran.
 
 `crates/mandate-ir/tests/conformance.rs` runs, with the Rust crate alone, the
 cases that need only the strict JSON reader and the hashes, and counts the rest

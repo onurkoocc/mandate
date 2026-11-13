@@ -108,6 +108,38 @@ jobs:
         run: rustup toolchain install
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
-      # --nocapture so that the log shows how many conformance cases the crate ran and skipped.
+      # --nocapture so that the log shows how many conformance cases the crates ran and skipped.
       - name: Rust tests, against the vectors the TypeScript compiler writes and the conformance cases
         run: cargo test --locked -- --nocapture
+      # The Rust verifier against the TypeScript runtime on a run made now: a
+      # fresh export of a real run (PGlite, in process) must be verified, and
+      # the same export with one event changed must be chain_broken at that
+      # event, each with the report the TypeScript verifier gives, byte for byte.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Build verify-journal
+        run: cargo build --locked -p verify-journal
+      - name: verify-journal verifies a fresh export of a real run, and finds one event changed
+        run: |
+          fresh="$RUNNER_TEMP/fresh"
+          node runtime/scripts/journal-fresh.mjs "$fresh"
+          verify() { cargo run --locked --quiet -p verify-journal -- "$@"; }
+
+          code=0
+          verify "$fresh/export.json" --key "$fresh/key.pem" > "$fresh/rust-report.json" || code=$?
+          cat "$fresh/rust-report.json"
+          if [ "$code" -ne 0 ]; then echo "::error::the fresh export: exit $code, not 0"; exit 1; fi
+          grep -q '^  "status": "verified",$' "$fresh/rust-report.json"
+          cmp "$fresh/report.json" "$fresh/rust-report.json"
+
+          code=0
+          verify "$fresh/tampered.json" --key "$fresh/key.pem" > "$fresh/rust-tampered.json" || code=$?
+          cat "$fresh/rust-tampered.json"
+          if [ "$code" -ne 1 ]; then echo "::error::the tampered export: exit $code, not 1"; exit 1; fi
+          seq="$(cat "$fresh/tampered-seq")"
+          grep -A1 '"code": "chain_broken",' "$fresh/rust-tampered.json" | grep -q "\"seq\": $seq\$"
+          cmp "$fresh/tampered-report.json" "$fresh/rust-tampered.json"
