@@ -192,12 +192,12 @@ spec/        core spec, IR schema and rules, static checks, diagnostic codes, ru
              executors, views, the compiler's MCP server
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
-crates/      the Rust implementation, started: mandate-ir (below)
+crates/      the Rust implementation, started: mandate-ir and verify-journal (below)
 fixtures/    the tests' programs: fixbug/ is the design document's §20 workflow,
              fixbug-target/ the same workflow bound to a seeded test project,
              system/ a fictional system's model (Acme) and programs over it,
              envelope/ the 0.4 migration, boundary/ a 0.5 agent that may only GET
-conformance/ language-independent compile cases
+conformance/ language-independent compile and journal cases
 vectors/     what the TypeScript reader, canonical text and hashes give, for
              other implementations to match
 ```
@@ -205,8 +205,9 @@ vectors/     what the TypeScript reader, canonical text and hashes give, for
 ## Rust
 
 The repository is also a Cargo workspace (`Cargo.toml`, `crates/`), the
-start of a Rust implementation. It has one crate today,
-[`crates/mandate-ir`](crates/mandate-ir/README.md). It reads IR with the
+start of a Rust implementation. It has two crates today.
+
+[`crates/mandate-ir`](crates/mandate-ir/README.md) reads IR with the
 strict JSON reader (same limits, diagnostic codes, messages, JSON Pointers
 and UTF-16 columns), writes its canonical text (RFC 8785) and computes the
 program, definition and package hashes, byte for byte as the TypeScript
@@ -215,9 +216,26 @@ validation and no checks in Rust yet. It runs the conformance cases that need
 only the reader and the hashes (`crates/mandate-ir/tests/conformance.rs`) and
 counts the rest as skipped.
 
-The two are held together by the files in [`vectors/`](vectors/README.md).
-`compiler/test/vectors.test.ts` writes them and fails when the committed
-ones differ; the Rust tests read them and need no Node.
+`crates/verify-journal` verifies an exported run journal from the file and
+public keys alone, written from [`spec/journal.md`](spec/journal.md) rather
+than from the TypeScript: the export's reading rules and limits, the
+canonical form of runtime values (numbers as ECMAScript writes them), the
+event hashes, Ed25519 anchors and the package hashes (through `mandate-ir`).
+It prints the same report as `mandate journal verify --json`, byte for byte,
+and exits as it does (0 verified, 1 broken or unchained, 2 nothing checked).
+It runs every journal case (J01–J16), and CI also has it verify a fresh
+export of a real run of the TypeScript runtime, and the same export with one
+event changed. Its one dependency beyond `sha2` is `ed25519-compact` (pure
+Rust, no dependencies of its own, no build script).
+
+```sh
+cargo run -p verify-journal -- run.json --key cp.pub.pem
+```
+
+The crates and the TypeScript are held together by the files in
+[`vectors/`](vectors/README.md) and the cases in `conformance/`.
+`compiler/test/vectors.test.ts` writes the vectors and fails when the
+committed ones differ; the Rust tests read them and need no Node.
 
 ```sh
 cargo test
@@ -225,7 +243,8 @@ MANDATE_UPDATE_VECTORS=1 npm test   # write vectors/ again after a change
 ```
 
 The toolchain is pinned in `rust-toolchain.toml`; CI runs `cargo fmt
---check`, `cargo clippy -- -D warnings` and `cargo test`.
+--check`, `cargo clippy -- -D warnings`, `cargo test` and the fresh export
+check (`runtime/scripts/journal-fresh.mjs`).
 
 ## Using the compiler
 
@@ -595,7 +614,10 @@ carries a hash over its contents and the one before it, and the evidence key
 signs an anchor at every state change. `mandate journal export` writes a
 run's journal with its manifest and package, `mandate journal key` the
 public keys, and `mandate journal verify` checks the export with those
-alone. J01–J16 are also cases in `conformance/` that any verifier can run.
+alone. J01–J16 are also cases in `conformance/` that any verifier can run;
+the Rust verifier, `crates/verify-journal`, runs every one of them
+(`crates/verify-journal/tests/conformance.rs`), so what each row says of a
+verifier holds for two implementations.
 It is evidence against someone who holds the database but not the key.
 
 `map.test.ts` also runs the map of the migration example
