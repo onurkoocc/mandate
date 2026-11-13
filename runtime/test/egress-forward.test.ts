@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { isPublicAddress } from "../src/egress/addresses.js";
-import { scrubBytes } from "../src/egress/http1.js";
+import { Scrubber, scrubBytes } from "../src/egress/http1.js";
 import { PLACEHOLDER, type Destination } from "../src/egress/proxy.js";
 import { http, OTHER_SECRET, portOf, SECRET, seenHeader, send, sid, world, type Response, type World } from "./egress-world.js";
 
@@ -135,6 +135,32 @@ describe("the credential swap", () => {
     }
   });
 
+  it("replaces the longer of two secrets that begin at the same byte, whole and split at every point", async () => {
+    const short = Buffer.from("prefix-secret-01");
+    const long = Buffer.from("prefix-secret-01-and-more");
+    const pairs = [
+      { secret: short, replacement: Buffer.from("S") },
+      { secret: long, replacement: Buffer.from("L") },
+    ];
+    const text = Buffer.from(`a ${long} b ${short} c ${long}`);
+    const keep = long.length - 1;
+    expect(scrubBytes(text, pairs, 0).out.toString()).toBe("a L b S c L");
+    for (let cut = 0; cut <= text.length; cut++) {
+      const a = scrubBytes(text.subarray(0, cut), pairs, keep);
+      const b = scrubBytes(Buffer.concat([a.rest, text.subarray(cut)]), pairs, 0);
+      expect(Buffer.concat([a.out, b.out]).toString(), `cut at ${cut}`).toBe("a L b S c L");
+    }
+    // The stream does the same with the chunks a body arrives in.
+    const scrubber = new Scrubber(pairs);
+    const out: Buffer[] = [];
+    scrubber.on("data", (c: Buffer) => out.push(c));
+    const done = new Promise((ok) => scrubber.on("end", ok));
+    for (let i = 0; i < text.length; i += 3) scrubber.write(text.subarray(i, i + 3));
+    scrubber.end();
+    await done;
+    expect(Buffer.concat(out).toString()).toBe("a L b S c L");
+  });
+
   it("asks upstream for the identity encoding, and refuses a coded response it cannot scrub", async () => {
     w.up.handler = (_req, res) => {
       res.writeHead(200, { "content-encoding": "gzip" });
@@ -181,6 +207,11 @@ describe("where a placeholder may be", () => {
     const b = await session();
     await denied(await send(a.port, get("http://api.github.com/x", [`authorization: Bearer ${b.ph["github"]}`])), a.id, "placeholder_misuse");
     expect(await denials(b.id)).toEqual([]);
+  });
+
+  it("is a denial in the configured header when Connection names that header, which would drop it unsent", async () => {
+    const s = await session();
+    await denied(await send(s.port, get("http://api.github.com/x", ["connection: authorization", `authorization: Bearer ${s.ph["github"]}`])), s.id, "placeholder_misuse", "Connection header names");
   });
 
   it("is a denial in a CONNECT", async () => {
@@ -452,5 +483,27 @@ describe("the denials a session records", () => {
     expect(d?.why).toBe("placeholder_misuse");
     expect(d?.host).toBeNull();
     expect(JSON.stringify(d)).not.toMatch(PLACEHOLDER);
+  });
+});
+
+describe("a dial that is too slow", () => {
+  it("is answered 504, and the stream it gives after the timeout is destroyed, not left to nobody", async () => {
+    const slow = await world({ dialTimeoutMs: 100 });
+    try {
+      slow.dialDelayMs = 300;
+      const id = sid();
+      const s = await slow.client.openSession({ session: id, tenant: "acme", run: "r1", command: "c1", kind: "forward", destinations: [OPEN], ttl_ms: 60_000 });
+      const r = await send(portOf(s.proxy_url), get("http://registry.npmjs.org/x"));
+      expect(r.status).toBe(504);
+      expect(JSON.parse(r.body)).toMatchObject({ error: "egress_upstream" });
+      // The dial completes later; what it gave is destroyed as soon as it comes, and never used.
+      await new Promise((ok) => setTimeout(ok, 500));
+      expect(slow.dialed).toHaveLength(1);
+      expect(slow.dialed[0]!.destroyed).toBe(true);
+      expect(slow.up.seen).toEqual([]);
+      expect((await slow.client.denials(id)).denials).toEqual([]);
+    } finally {
+      await slow.close();
+    }
   });
 });

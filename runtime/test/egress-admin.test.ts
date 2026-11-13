@@ -118,6 +118,8 @@ describe("open_session", () => {
     const s = await open();
     await expect(w.client.openSession({ session: s.id, tenant: "acme", run: "r1", command: "c1", kind: "forward", destinations: [OPEN], ttl_ms: 1000 })).rejects.toMatchObject({ code: "session_exists" });
     await expect(open({ destinations: [{ host: "API.github.com", methods: null, credential: null }] })).rejects.toMatchObject({ code: "bad_request" });
+    // A host name's labels are letters, digits and hyphens: an underscore is refused.
+    await expect(open({ destinations: [{ host: "a_b.example", methods: null, credential: null }] })).rejects.toMatchObject({ code: "bad_request" });
     await expect(open({ destinations: [OPEN, OPEN] })).rejects.toMatchObject({ code: "bad_request" });
     await expect(open({ destinations: [{ host: "x.example", methods: [], credential: null }] })).rejects.toMatchObject({ code: "bad_request" });
     await expect(open({ destinations: [] })).rejects.toMatchObject({ code: "bad_request" });
@@ -152,6 +154,32 @@ describe("the lines of the admin channel", () => {
       s.write("x".repeat(1024 * 1024 + 10));
     });
     expect(answer).toContain("line_too_long");
+  });
+
+  it("answers at most 64 pending requests on one connection, then too_many_pending, and closes", async () => {
+    const lines = await new Promise<Record<string, unknown>[]>((ok) => {
+      const s = connect({ path: w.admin.path });
+      let buf = "";
+      s.setEncoding("utf8");
+      s.on("data", (c: string) => (buf += c));
+      s.on("close", () => ok(buf.trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>)));
+      s.on("error", () => {});
+      // Written at once, so the proxy reads far more lines than it has answered.
+      s.write(Array.from({ length: 2000 }, (_, i) => `{"id":${i + 1},"op":"hello"}\n`).join(""));
+    });
+    const last = lines.at(-1)!;
+    expect(last).toMatchObject({ id: null, ok: false, error: { code: "too_many_pending" } });
+    const answered = lines.slice(0, -1);
+    expect(answered.length).toBeGreaterThanOrEqual(64);
+    expect(answered.length).toBeLessThan(2000);
+    expect(answered.map((l) => l["id"])).toEqual(answered.map((_, i) => i + 1));
+    expect(answered.every((l) => l["ok"] === true)).toBe(true);
+  });
+
+  it("is used by a client that keeps its own calls within that bound, however many it is given at once", async () => {
+    const answers = await Promise.all(Array.from({ length: 300 }, () => w.client.hello()));
+    expect(answers).toHaveLength(300);
+    expect(new Set(answers.map((h) => h.format))).toEqual(new Set(["mandate/egress/0.1"]));
   });
 });
 

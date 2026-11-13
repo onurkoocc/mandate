@@ -50,11 +50,15 @@ const RESERVED_HEADERS = new Set(["host", "content-length", "transfer-encoding",
 export const MIN_SECRET_BYTES = 8;
 export const MAX_SECRET_BYTES = 8192;
 
-/** A host name as a destination or a credential names it: lower case labels, or an IP address. */
+/**
+ * A host name as a destination, a credential or a request names it: labels of lower case letters, digits and
+ * hyphens, not starting or ending with a hyphen, at most 63 characters each and 253 in all (RFC 1123); or an IP
+ * address. An underscore, which DNS allows in names that are not host names, is refused.
+ */
 export function validHost(h: unknown): h is string {
   if (typeof h !== "string" || h.length === 0 || h.length > 253) return false;
   if (isIP(h)) return h === h.toLowerCase();
-  return h.split(".").every((l) => /^[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?$/.test(l));
+  return h.split(".").every((l) => /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(l));
 }
 
 /** Whether `a` is an address on the loopback interface. */

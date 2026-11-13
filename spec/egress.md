@@ -80,7 +80,7 @@ here, is an error, not a field ignored.
 | `listen` | A loopback IP address (`127.0.0.0/8` or `::1`), default `127.0.0.1`. Every session listens on its own port of it. A name such as `localhost` is refused |
 | `credentials` | The secrets the proxy holds, by name. A name is lower case letters, digits, `_` and `-`, starting with a letter. Default none |
 | `credentials.<name>.env` | The environment variable of the proxy's own process that holds the secret |
-| `credentials.<name>.hosts` | The only hosts the secret may be sent to: a non-empty list of distinct host names in lower case, or IP addresses, without a port |
+| `credentials.<name>.hosts` | The only hosts the secret may be sent to: a non-empty list of distinct host names or IP addresses, without a port ([Host names](#host-names)) |
 | `credentials.<name>.header` | The request header the secret is sent in, in lower case. It cannot be a header the proxy sets or removes itself: `host`, `content-length`, `transfer-encoding`, `connection`, `keep-alive`, `proxy-connection`, `proxy-authorization`, `proxy-authenticate`, `te`, `trailer`, `upgrade`, `expect`, `accept-encoding`, `http2-settings` |
 | `credentials.<name>.template` | The header's value, with `{secret}` exactly once where the secret goes, such as `Bearer {secret}` or `{secret}`. Printable ASCII, without leading or trailing spaces |
 | `allow_private` | Whether a destination may resolve to a private, loopback, link-local or metadata address ([Resolution](#resolution-and-pinning)). Default `false`. For tests and private upstreams only |
@@ -91,15 +91,35 @@ without spaces (`!` to `~`). A value outside that is refused at start
 (`egress_secret_invalid`): it could not be sent as a header value, and a
 shorter one would be scrubbed out of ordinary text in every response.
 
+### Host names
+
+Wherever this page says host name (a credential's `hosts`, a
+destination's `host`, the host a request names), it is a name of dot-separated
+labels, each of lower case letters, digits and hyphens, not starting or
+ending with a hyphen, at most 63 characters, and at most 253 in all
+(RFC 1123). An underscore is refused, though DNS allows one in names that are
+not host names. An IP address is written as such: IPv4 dotted, IPv6 in lower
+case, without brackets in the configuration and in a destination.
+
 ## Admin channel
 
 The admin channel is a Unix socket, or a named pipe on Windows, at
 `admin`. Each direction carries one JSON object per line, UTF-8, ended by
-`\n`. A line is at most 1 MiB; a longer one is answered with
-`line_too_long` and the connection is closed. A request carries an `id` (a
-string of at most 128 characters, or a whole number) and an `op`; the
-response carries the same `id`. Requests on one connection are answered in
-order.
+`\n`. A request carries an `id` (a string of at most 128 characters, or a
+whole number) and an `op`. The response carries the request's `id`
+unchanged, as the same JSON string or the same number, and a client
+matches answers to requests by it; `EgressClient` sends whole numbers.
+Requests on one connection are answered in order.
+
+At most **64** requests on one connection wait for their answers at once. A
+request line past that is not read: the client gets the answers to the
+requests before it, then one line `{"id": null, "ok": false, "error":
+{"code": "too_many_pending", …}}`, and the connection closes. A line is at
+most 1 MiB; a longer one ends the connection the same way, with
+`line_too_long`. A client keeps at most 64 requests unanswered on one
+connection; `EgressClient` holds a call past that until an answer frees a
+slot, and a call that timed out keeps its slot until its answer comes,
+since the proxy still counts it.
 
 ```json
 {"id": 1, "op": "hello"}
@@ -124,7 +144,7 @@ proxy holds, sorted. A client refuses a proxy that answers another format.
 ```json
 {
   "id": 3, "op": "open_session",
-  "session": "run-17/delegate-3",
+  "session": "run-17.delegate-3",
   "tenant": "acme", "run": "run-17", "command": "cmd-42",
   "kind": "forward",
   "destinations": [
@@ -140,10 +160,10 @@ Every field is required.
 | Field | Meaning |
 |---|---|
 | `session` | The session's id, chosen by the caller: 1 to 128 letters, digits and `.` `_` `:` `-`. An id already in use is `session_exists` |
-| `tenant`, `run`, `command` | Who the session is for: non-empty strings of at most 256 characters without control characters. `revoke` selects by `tenant` and `run` |
+| `tenant`, `run`, `command` | Who the session is for: strings of 1 to 256 UTF-16 code units, of any characters but the control characters U+0000 to U+001F and U+007F. `revoke` selects by `tenant` and `run` |
 | `kind` | `forward` (an HTTP/1.1 forward proxy, for a sandbox) or `gateway` (a base URL, for a client that takes one) |
 | `destinations` | 1 to 256 destinations; a `gateway` session has exactly one. A host appears once |
-| `destinations[].host` | A host name in lower case, or an IP address, without a port |
+| `destinations[].host` | A host name, or an IP address, without a port ([Host names](#host-names)) |
 | `destinations[].methods` | A non-empty list of distinct method names, compared exactly; or `null`, any method |
 | `destinations[].credential` | The name of a credential to send toward this host, or `null` |
 | `ttl_ms` | How long the session lives, in milliseconds: 1 to 2147483647 |
@@ -195,7 +215,8 @@ under [Denials](#denials).
 | `credential_not_allowed` | A destination binds a credential to a host the configuration does not list for it |
 | `listen_failed` | The session's port could not be opened |
 | `proxy_closed` | The proxy is stopping |
-| `line_too_long` | A line is longer than 1 MiB; the connection is closed |
+| `line_too_long` | A line is longer than 1 MiB; the requests before it are answered, then this, and the connection closes |
+| `too_many_pending` | A line came while 64 requests on the connection waited for their answers; the requests before it are answered, then this, and the connection closes |
 | `internal_error` | Anything else; the message says no more |
 
 ### Who may use it
@@ -328,8 +349,10 @@ Every other rule on this page holds for it as for a forward session.
 
 The target host comes from the request target: the absolute-form URL's
 host, the `CONNECT` authority's host, or a gateway session's destination.
-It is compared, in lower case, with the session's destinations exactly: no
-wildcard, no trailing-dot or IDNA folding. A host that is not one of them
+It is read in lower case; one that is not a host name or an IP address
+([Host names](#host-names)) is `malformed_request`. It is compared with the
+session's destinations exactly: no wildcard, no trailing-dot or IDNA
+folding. A host that is not one of them
 is `host_not_allowed`. A method that is not one of its destination's
 `methods` is `method_not_allowed`; `null` allows every method.
 
@@ -350,7 +373,10 @@ hold:
 - its target host is a destination of the session that names a credential;
 - the request has that credential's configured `header` exactly once;
 - that header's value is exactly the credential's `template` with **this
-  session's** placeholder for that credential in place of `{secret}`.
+  session's** placeholder for that credential in place of `{secret}`;
+- the request's `Connection` header does not name that header. If it did,
+  the header would be dropped as hop-by-hop after the swap, and the request
+  would go out without the credential and nothing would say so.
 
 The header is then sent upstream with the secret in the placeholder's
 place. Any text of the placeholder's form seen anywhere else in the request
@@ -358,7 +384,7 @@ target or in a header name or value, whether this session's placeholder,
 another session's, or one of no session, is `placeholder_misuse`. That
 covers a placeholder in another header, in the URL or the host, in the
 configured header with any other value, in a repeated configured header,
-in a request to a destination with no credential or with another
+in a configured header that `Connection` names, in a request to a destination with no credential or with another
 credential, and in a `CONNECT`.
 
 A request to a credentialed destination that carries no placeholder is
@@ -424,7 +450,8 @@ body, they are replaced by the session's placeholder for that credential,
 or by `mdt-redacted` when the session has none. In the body this holds
 across chunk boundaries: the proxy holds back the last bytes of what it has
 read, fewer than the longest secret, until the next bytes show whether they
-begin one.
+begin one. Where two secrets begin at the same byte, one a prefix of the
+other, the longer is replaced.
 
 The proxy asks for `accept-encoding: identity` so that it can see the
 bytes. A response with a `content-encoding` other than `identity`, or a
@@ -433,10 +460,12 @@ Only the exact bytes are caught: a secret the upstream transformed or
 encoded (base64, percent-encoding, split by markup, in a compressed body it
 was sent despite the request) is not.
 
-A request that was allowed but could not be carried out (a name that does
-not resolve, an upstream that cannot be reached or whose certificate does
-not verify, an upstream that fails) is answered 502 with `{"error":
-"egress_upstream", "detail": …}`, and is not a denial.
+A request that was allowed but could not be carried out is answered with
+`{"error": "egress_upstream", "detail": …}`, and is not a denial: 504 when
+the upstream connection is not made within 30 seconds (a connection that
+completes later is closed at once, unused), and 502 for the rest: a name
+that does not resolve, an upstream that cannot be reached or whose
+certificate does not verify, an upstream that fails.
 
 ## Denials
 

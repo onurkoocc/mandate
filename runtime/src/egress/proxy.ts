@@ -116,6 +116,8 @@ export interface EgressProxyOptions {
    * test cannot listen on 443.
    */
   upstreamPort?: number;
+  /** How long a dial may take before the request is answered 504; 30 seconds unless a test shortens it. */
+  dialTimeoutMs?: number;
   now?: () => Date;
 }
 
@@ -164,6 +166,7 @@ export class EgressProxy {
   private readonly dial: Dialer;
   private readonly lingerMs: number;
   private readonly upstreamPort: number;
+  private readonly dialTimeoutMs: number;
   private readonly now: () => Date;
   private readonly sessions = new Map<string, Session>();
   private nextDenial = 1;
@@ -177,6 +180,7 @@ export class EgressProxy {
     this.dial = o.dial ?? defaultDialer(o.ca);
     this.lingerMs = o.lingerMs ?? LINGER_MS;
     this.upstreamPort = o.upstreamPort ?? 443;
+    this.dialTimeoutMs = o.dialTimeoutMs ?? DIAL_TIMEOUT_MS;
     this.now = o.now ?? (() => new Date());
   }
 
@@ -204,6 +208,8 @@ export class EgressProxy {
         server.once("error", fail);
         server.listen({ host: this.config.listen, port: 0, exclusive: true }, () => {
           server.off("error", fail);
+          // An error once it listens (a failed accept) is the one connection's, not the process's to die of.
+          server.on("error", () => {});
           ok();
         });
       });
@@ -339,9 +345,16 @@ export class EgressProxy {
     }
     const address = addresses[0]!.address;
     let upstream: Duplex;
+    const dialing = this.dial({ host: v.host, address, port: this.upstreamPort, tls: !("tunnel" in v) });
     try {
-      upstream = await withTimeout(this.dial({ host: v.host, address, port: this.upstreamPort, tls: !("tunnel" in v) }), DIAL_TIMEOUT_MS);
+      upstream = await withTimeout(dialing, this.dialTimeoutMs);
     } catch (e) {
+      // A dial that completes after its timeout belongs to nobody: what it gives is destroyed when it comes.
+      dialing.then(
+        (late) => late.destroy(),
+        () => {},
+      );
+      if (e instanceof DialTimeout) return this.fail(socket, 504, `${v.host} did not connect within ${this.dialTimeoutMs} ms`);
       return this.fail(socket, 502, `could not reach ${v.host}: ${(e as { code?: string }).code ?? "connection failed"}`);
     }
     if (!this.track(s, upstream) || s.state !== "open") {
@@ -389,6 +402,9 @@ export class EgressProxy {
       const expected = cred.template.replace("{secret}", s.placeholders.get(credName)!);
       if (at.length === 1 && headers[at[0]!]![1] === expected) swap = { index: at[0]!, value: cred.template.replace("{secret}", this.secrets.get(credName)!.toString("latin1")) };
     }
+    // A Connection header that names the configured header would drop it as hop-by-hop after the swap, so the
+    // request would go out without the credential and nothing would say so.
+    if (swap && cred && conn.includes(cred.header)) return deny("placeholder_misuse", "the Connection header names the header the placeholder is in, so it would not be sent");
     if (PLACEHOLDER.test(head.target) || headers.some(([n, v], i) => i !== swap?.index && (PLACEHOLDER.test(n) || PLACEHOLDER.test(v)))) return deny("placeholder_misuse", "a placeholder outside the one header it may be sent in");
 
     if (!dest) return deny("host_not_allowed", `${shown ?? "the host"} is not one of the session's destinations`);
@@ -565,6 +581,8 @@ export class EgressProxy {
     for (const p of pairs) head = head.split(p.secret.toString("latin1")).join(p.replacement.toString("latin1"));
     socket.write(Buffer.from(head, "latin1"));
     if (!hasBody) {
+      // No body, so no pipeline to take an error: one that comes now only cuts the upstream.
+      res.on("error", () => upstream.destroy());
       res.resume();
       res.once("end", () => upstream.destroy());
       socket.end();
@@ -620,9 +638,12 @@ function headerValues(raw: string[], name: string): string[] {
   return out;
 }
 
+/** A dial that did not complete in time. */
+class DialTimeout extends Error {}
+
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((ok, fail) => {
-    const t = setTimeout(() => fail(Object.assign(new Error("timed out"), { code: "ETIMEDOUT" })), ms);
+    const t = setTimeout(() => fail(new DialTimeout("timed out")), ms);
     p.then(
       (v) => (clearTimeout(t), ok(v)),
       (e: unknown) => (clearTimeout(t), fail(e)),

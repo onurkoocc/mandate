@@ -187,23 +187,28 @@ export class Scrubber extends Transform {
   }
 }
 
-/** Scrubs `buf`; the last `keep` unexamined bytes are returned as `rest` instead of being written out. */
+/**
+ * Scrubs `buf`; the last `keep` bytes are returned as `rest` instead of being examined, unless a match before them
+ * reaches into them. Where two secrets begin at the same byte (one a prefix of the other), the longer is replaced.
+ */
 export function scrubBytes(buf: Buffer, pairs: { secret: Buffer; replacement: Buffer }[], keep: number): { out: Buffer; rest: Buffer } {
   const parts: Buffer[] = [];
+  // A match is taken only where it begins before the held-back bytes: there, every secret that could begin at the
+  // same byte fits in `buf`, so the longest is known. One that begins later waits for the bytes that follow.
+  const limit = buf.length - keep;
   let at = 0;
   for (;;) {
     let best = -1;
     let which: { secret: Buffer; replacement: Buffer } | undefined;
     for (const p of pairs) {
       const i = buf.indexOf(p.secret, at);
-      if (i >= 0 && (best < 0 || i < best)) [best, which] = [i, p];
+      if (i >= 0 && (best < 0 || i < best || (i === best && p.secret.length > which!.secret.length))) [best, which] = [i, p];
     }
-    if (best < 0 || !which) break;
+    if (best < 0 || best >= limit || !which) break;
     parts.push(buf.subarray(at, best), which.replacement);
     at = best + which.secret.length;
   }
-  // A secret that begins in the last `keep` bytes would have been found had it ended inside `buf`.
-  const cut = Math.max(at, buf.length - keep);
+  const cut = Math.max(at, limit);
   parts.push(buf.subarray(at, cut));
   return { out: Buffer.concat(parts), rest: buf.subarray(cut) };
 }

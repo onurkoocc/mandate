@@ -17,6 +17,8 @@ import { EGRESS_FORMAT, isPipe } from "./config.js";
 import { EgressError, type Destination, type EgressProxy, type RevokeScope, type SessionRequest } from "./proxy.js";
 
 export const MAX_LINE_BYTES = 1024 * 1024;
+/** Requests one connection may have waiting for their answers; past it the connection is answered once and closed. */
+export const MAX_PENDING = 64;
 
 /** The fields each operation takes, besides `id` and `op`; which are required is checked by the operation. */
 const FIELDS: Record<string, string[]> = {
@@ -48,7 +50,11 @@ export async function serveAdmin(proxy: EgressProxy, path: string): Promise<Admi
     // Bound under a umask of 0177, the socket is never more than owner read and write, not even before the chmod.
     const old = pipe ? undefined : setUmask(0o177);
     try {
-      server.listen({ path, exclusive: true }, ok);
+      server.listen({ path, exclusive: true }, () => {
+        // An error once it listens (a failed accept) is that connection's, not the process's to die of.
+        server.on("error", () => {});
+        ok();
+      });
     } finally {
       if (old !== undefined) process.umask(old);
     }
@@ -100,12 +106,26 @@ async function clearStale(path: string): Promise<void> {
   unlinkSync(path);
 }
 
-/** Reads requests line by line and answers each in order. */
+/**
+ * Reads requests line by line and answers each in order. At most `MAX_PENDING` requests wait for their answers at
+ * once: a line past that is not read; the requests before it are answered, then one `too_many_pending` line, and the
+ * connection closes. A line longer than `MAX_LINE_BYTES` ends the connection the same way, with `line_too_long`.
+ */
 function serveConnection(proxy: EgressProxy, socket: Socket): void {
   let buf: Buffer = Buffer.alloc(0);
   let queue = Promise.resolve();
+  let pending = 0;
+  let closing = false;
   socket.on("error", () => socket.destroy());
+  const stop = (code: string, message: string): void => {
+    closing = true;
+    buf = Buffer.alloc(0);
+    queue = queue.then(() => {
+      if (!socket.destroyed) socket.end(JSON.stringify({ id: null, ok: false, error: { code, message } }) + "\n");
+    });
+  };
   socket.on("data", (chunk: Buffer) => {
+    if (closing) return;
     buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
     for (;;) {
       const nl = buf.indexOf(0x0a);
@@ -113,15 +133,15 @@ function serveConnection(proxy: EgressProxy, socket: Socket): void {
       const line = buf.subarray(0, nl).toString("utf8").replace(/\r$/, "");
       buf = buf.subarray(nl + 1);
       if (line.trim() === "") continue;
+      if (pending >= MAX_PENDING) return stop("too_many_pending", `at most ${MAX_PENDING} requests may wait for their answers on one connection`);
+      pending++;
       queue = queue.then(async () => {
         const answer = await respond(proxy, line);
+        pending--;
         if (!socket.destroyed) socket.write(JSON.stringify(answer) + "\n");
       });
     }
-    if (buf.length > MAX_LINE_BYTES) {
-      socket.end(JSON.stringify({ id: null, ok: false, error: { code: "line_too_long", message: `a request line is at most ${MAX_LINE_BYTES} bytes` } }) + "\n");
-      socket.destroy();
-    }
+    if (buf.length > MAX_LINE_BYTES) stop("line_too_long", `a request line is at most ${MAX_LINE_BYTES} bytes`);
   });
 }
 

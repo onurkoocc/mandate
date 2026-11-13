@@ -64,6 +64,10 @@ export interface World {
   client: EgressClient;
   up: Upstream;
   dials: DialRequest[];
+  /** The streams the fake dialer gave, in order, including one given after the proxy stopped waiting. */
+  dialed: Socket[];
+  /** How long the fake dialer waits before it connects. */
+  dialDelayMs: number;
   resolved: string[];
   /** host → addresses; a host not in it resolves to a public documentation-free address. */
   dns: Map<string, string[] | (() => string[])>;
@@ -84,7 +88,7 @@ export const CONFIG = {
   },
 };
 
-export async function world(o: { allow_private?: boolean; lingerMs?: number } = {}): Promise<World> {
+export async function world(o: { allow_private?: boolean; lingerMs?: number; dialTimeoutMs?: number } = {}): Promise<World> {
   const up = await upstream();
   const where = adminPath();
   const config = egressConfig({ admin: where.path, ...CONFIG, ...(o.allow_private ? { allow_private: true } : {}) }, "test", tmpdir());
@@ -107,23 +111,28 @@ export async function world(o: { allow_private?: boolean; lingerMs?: number } = 
     // Whatever address it is asked for, the fake dialer reaches the in-process upstream, and remembers what it was asked.
     dial: async (r) => {
       dials.push(r);
+      if (w.dialDelayMs) await new Promise((ok) => setTimeout(ok, w.dialDelayMs));
       return new Promise((ok, fail) => {
         const s = connect({ host: "127.0.0.1", port: up.port });
+        w.dialed.push(s);
         s.once("connect", () => ok(s));
         s.once("error", fail);
       });
     },
     ...(o.lingerMs !== undefined ? { lingerMs: o.lingerMs } : {}),
+    ...(o.dialTimeoutMs !== undefined ? { dialTimeoutMs: o.dialTimeoutMs } : {}),
   });
   const admin = await serveAdmin(proxy, where.path);
   const client = await EgressClient.connect(where.path);
-  return {
+  const w: World = {
     config,
     proxy,
     admin,
     client,
     up,
     dials,
+    dialed: [],
+    dialDelayMs: 0,
     resolved,
     dns,
     async close() {
@@ -135,6 +144,7 @@ export async function world(o: { allow_private?: boolean; lingerMs?: number } = 
       where.cleanup();
     },
   };
+  return w;
 }
 
 let n = 0;

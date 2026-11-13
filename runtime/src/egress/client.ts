@@ -7,6 +7,9 @@ import { connect, type Socket } from "node:net";
 import { EGRESS_FORMAT } from "./config.js";
 import { EgressError, type Denial, type OpenedSession, type RevokeScope, type SessionRequest } from "./proxy.js";
 
+/** The most requests the client leaves unanswered on its connection; a proxy holds at least this many pending. */
+export const MAX_IN_FLIGHT = 64;
+
 export interface Hello {
   format: string;
   /** The names of the credentials the proxy holds. */
@@ -24,7 +27,10 @@ export interface EgressClientOptions {
 export class EgressClient {
   private nextId = 1;
   private buf = "";
-  private readonly pending = new Map<number, { ok: (v: unknown) => void; fail: (e: Error) => void; timer: NodeJS.Timeout }>();
+  /** Calls waiting for their answers, by their id as JSON: an answer matches the id exactly as it was sent. */
+  private readonly pending = new Map<string, { ok: (v: unknown) => void; fail: (e: Error) => void; timer: NodeJS.Timeout; settled: boolean }>();
+  /** Calls waiting for a slot (`MAX_IN_FLIGHT`). */
+  private readonly waiting: (() => void)[] = [];
   private gone: Error | undefined;
 
   private constructor(
@@ -82,15 +88,27 @@ export class EgressClient {
     this.socket.destroy();
   }
 
-  private call(op: string, fields: Record<string, unknown>): Promise<unknown> {
-    if (this.gone) return Promise.reject(this.gone);
+  /**
+   * Sends one request. At most `MAX_IN_FLIGHT` are unanswered at once, the most a proxy holds pending on one
+   * connection; a call past that waits here for a slot. A call that timed out keeps its slot until the proxy answers
+   * it, since the proxy still counts it.
+   */
+  private async call(op: string, fields: Record<string, unknown>): Promise<unknown> {
+    while (this.pending.size >= MAX_IN_FLIGHT && !this.gone) await new Promise<void>((ok) => this.waiting.push(ok));
+    if (this.gone) throw this.gone;
     const id = this.nextId++;
+    const key = JSON.stringify(id);
     return new Promise((ok, fail) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        fail(new EgressError("egress_unavailable", `the egress proxy did not answer ${op} within ${this.timeoutMs} ms`));
-      }, this.timeoutMs);
-      this.pending.set(id, { ok, fail, timer });
+      const entry = {
+        ok,
+        fail,
+        settled: false,
+        timer: setTimeout(() => {
+          entry.settled = true;
+          fail(new EgressError("egress_unavailable", `the egress proxy did not answer ${op} within ${this.timeoutMs} ms`));
+        }, this.timeoutMs),
+      };
+      this.pending.set(key, entry);
       this.socket.write(JSON.stringify({ id, op, ...fields }) + "\n");
     });
   }
@@ -108,10 +126,13 @@ export class EgressClient {
       } catch {
         return this.lose(new EgressError("egress_unavailable", "the egress proxy answered with a line that is not JSON"));
       }
-      const p = typeof msg.id === "number" ? this.pending.get(msg.id) : undefined;
+      const key = typeof msg.id === "number" || typeof msg.id === "string" ? JSON.stringify(msg.id) : undefined;
+      const p = key !== undefined ? this.pending.get(key) : undefined;
       if (!p) continue;
-      this.pending.delete(msg.id as number);
+      this.pending.delete(key!);
+      this.waiting.shift()?.();
       clearTimeout(p.timer);
+      if (p.settled) continue;
       if (msg.ok === true) p.ok(msg.result);
       else p.fail(new EgressError(String(msg.error?.code ?? "egress_error"), String(msg.error?.message ?? "the egress proxy refused the request")));
     }
@@ -122,9 +143,10 @@ export class EgressClient {
     this.gone = e;
     for (const p of this.pending.values()) {
       clearTimeout(p.timer);
-      p.fail(e);
+      if (!p.settled) p.fail(e);
     }
     this.pending.clear();
+    for (const w of this.waiting.splice(0)) w();
     this.socket.destroy();
   }
 }
