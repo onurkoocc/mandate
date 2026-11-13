@@ -394,6 +394,19 @@ describe("the projection, given facts", () => {
     expect(span.spanId).toBe(spanId("r", hostile));
   });
 
+  it("takes the model an adapter reported only when the lock pins that model id, else the program's one tier's, else none", () => {
+    const command: CommandFact = { id: "main/0", kind: "turn", state: "dispatched", package: null };
+    const model = (locked: string | null, known: { sole: string | null; ids: string[] }) => {
+      const events = [ev(1, "run_accepted"), { ...ev(2, "command_completed", "main/0"), locked }];
+      const body = project({ ...facts(events, [command]), models: new Map([["sha256:p", { sole: known.sole, ids: new Set(known.ids) }]]) }, 0, 2, defaultClassOf)!;
+      return attr(body.resourceSpans[0]!.scopeSpans[0]!.spans[1]!.attributes as Attrs, "gen_ai.request.model");
+    };
+    expect(model("claude-a", { sole: "claude-b", ids: ["claude-a", "claude-b", "claude-c"] })).toBe("claude-a");
+    expect(model("a customer's secret text", { sole: "claude-b", ids: ["claude-b"] })).toBe("claude-b");
+    expect(model("a customer's secret text", { sole: null, ids: ["claude-b", "claude-c"] })).toBeUndefined();
+    expect(model(null, { sole: null, ids: [] })).toBeUndefined();
+  });
+
   it("sends no body for no events, and an event after the range is not in it", () => {
     expect(project(facts([ev(1, "run_accepted")]), 1, 1, defaultClassOf)).toBeUndefined();
     const body = project(facts([ev(1, "run_accepted"), ev(2, "run_running"), ev(3, "run_failed")]), 0, 2, defaultClassOf)!;
