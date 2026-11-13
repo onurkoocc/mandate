@@ -186,15 +186,19 @@ pull request was opened, for 0.23 USD.
    may share, and the adapter refuses by name a requirement whose level or
    no-sharing the host does not give (every host here gives `process`,
    shared); a run whose lock names least tool versions starts and resumes
-   only on a host that meets them (`unfit_host`). The reference egress
-   proxy exists, and the runtime's own model and GitHub adapters can go
-   through it, holding placeholders. A sandbox on Linux reaches its
-   agent's hosts through it, and only those, with the methods its
-   capability allows: the sandbox sees placeholders, the proxy puts the
-   secret the lock's `egress` binds in on the way out, and what the proxy
-   denies a tool call is a violation. A host that does not reach the proxy
-   (Windows, or Linux without MXC's proxy enforcement) refuses by name a
-   requirement with hosts, method limits or credentials.
+   only on a host that meets them (`unfit_host`); and views by role:
+   `mandate show --role R` shows a run as one of its program's roles may
+   see it, and `--audit` everything, with its events and the chain's
+   status. `mandate otel export` posts a run's journal to an OpenTelemetry
+   collector as spans without content. The reference egress proxy exists,
+   and the runtime's own model and GitHub adapters can go through it,
+   holding placeholders. A sandbox on Linux reaches its agent's hosts
+   through it, and only those, with the methods its capability allows:
+   the sandbox sees placeholders, the proxy puts the secret the lock's
+   `egress` binds in on the way out, and what the proxy denies a tool
+   call is a violation. A host that does not reach the proxy (Windows, or
+   Linux without MXC's proxy enforcement) refuses by name a requirement
+   with hosts, method limits or credentials.
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.

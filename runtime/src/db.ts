@@ -201,6 +201,13 @@ create table if not exists halts (
   lifted_by text,
   lifted_at bigint
 );
+create table if not exists otel_cursors (
+  endpoint text not null,
+  run_id text not null,
+  seq integer not null,
+  at bigint not null,
+  primary key (endpoint, run_id)
+);
 create index if not exists runs_tenant_state on runs (tenant, state);
 `;
 
