@@ -91,9 +91,10 @@ alternate data stream) and no NUL. As a JSON Schema pattern (ECMA 262):
 ```
 
 - A model's answer of a type containing `Path` is checked against this
-  rule like the rest of its schema, and so is a Path in a run's input
-  (`input_mismatch`). A model's value that breaks it is refused, and the
-  model is asked again or the call is `Rejected` (G14).
+  rule like the rest of its schema. A value that breaks it is refused, and
+  the model is asked again or the call is `Rejected` (G14).
+- A run's input is checked against its workflow's parameter types, a Path
+  in it included (`input_mismatch`).
 - A text literal is a `Path` where one is expected if it keeps the rule,
   else it does not check (E0204, V20). Any other `Text` is not a Path.
 - The runtime checks each path where it uses one, against the working
