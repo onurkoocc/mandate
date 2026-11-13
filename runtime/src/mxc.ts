@@ -62,7 +62,7 @@ import { realpathSync } from "node:fs";
 import { validHost } from "./egress/config.js";
 import { EgressError, type Destination } from "./egress/proxy.js";
 import type { EgressLink, ForwardSession } from "./gateway.js";
-import { EGRESS_DENIALS_KEPT, hiddenUnder, makeWritable, placeholderVariable, SandboxRefused, type EgressDenial, type Enforceable, type ExecRequest, type ExecResult, type MxcPolicy, type SandboxHost, type SandboxOwner } from "./sandbox.js";
+import { EGRESS_DENIALS_KEPT, hiddenUnder, makeWritable, placeholderVariable, SandboxRefused, SESSION_ENDED, type EgressDenial, type Enforceable, type ExecRequest, type ExecResult, type MxcPolicy, type SandboxHost, type SandboxOwner } from "./sandbox.js";
 import { Violation } from "./signals.js";
 import { inside, WRITE_SCRIPT } from "./tools.js";
 
@@ -193,10 +193,8 @@ export class MxcHost implements SandboxHost {
   private readonly sessions = new Map<string, Egress>();
   /** Why the last probe found nothing enforceable, for the operator. */
   unavailable: string | undefined;
-  /** Why the last probe found that sandboxes cannot reach hosts through the egress proxy (undefined: they can), for the operator. */
+  /** Why the last probe found that sandboxes cannot reach hosts through the egress proxy (undefined: they can), for the operator only. */
   egressUnavailable: string | undefined;
-  /** Whether the last probe reported that sandboxes reach hosts through the egress proxy. */
-  private reaching = false;
   /** Why the masks do not hold on this host (undefined: they do), checked once. */
   private masking: Promise<string | undefined> | undefined;
 
@@ -218,11 +216,11 @@ export class MxcHost implements SandboxHost {
 
   async probe(): Promise<Enforceable> {
     const sdk = await this.load();
-    if (!sdk) return this.reached(NOTHING);
+    if (!sdk) return NOTHING;
     const p = sdk.getPlatformSupport();
     if (!p.isSupported || !p.availableMethods.includes("bubblewrap")) {
       this.unavailable = p.unavailableReasons?.["bubblewrap"] ?? p.reason ?? `bubblewrap is not among ${p.availableMethods.join(", ") || "no backends"}`;
-      return this.reached(NOTHING);
+      return NOTHING;
     }
     // A Bubblewrap sandbox is a set of namespaces on the host's own kernel, beside whatever else runs on it: `process`, shared.
     const enforcing: Enforceable = { backends: ["process"], modes: ["enforcement"], filesystem: true, network: "deny_all", exec: "args_prefix", timeout: true, ui: true, hidden: [...HOST_RUNTIME_DIRS], level: "process", co_tenancy: "shared" };
@@ -231,49 +229,51 @@ export class MxcHost implements SandboxHost {
     const why = shown ? `the baseline path ${shown} leads to ${exposedBy(shown)}, which no sandbox may see` : await (this.masking ??= this.checkMasks(sdk));
     if (why) {
       this.unavailable = why;
-      return this.reached({ ...enforcing, filesystem: false, network: "none" });
+      return { ...enforcing, filesystem: false, network: "none" };
     }
     this.unavailable = undefined;
-    const held = await this.reach(p.bubblewrapNetwork);
-    return this.reached(held ? { ...enforcing, network: "host_allow_list", egress: { credentials: held } } : enforcing);
-  }
-
-  /** What a probe reports, remembered for `create`: a sandbox reaches hosts only where the last probe said it could. */
-  private reached(can: Enforceable): Enforceable {
-    this.reaching = can.egress !== undefined;
-    return can;
+    const r = await this.reach(p.bubblewrapNetwork);
+    if ("credentials" in r) return { ...enforcing, network: "host_allow_list", egress: { credentials: r.credentials } };
+    // A proxy that is configured, on a host that can hold a sandbox to it, and does not answer: nothing about a
+    // requirement or the host is wrong, so a sandbox that needs hosts is `egress_unavailable`, not refused by name.
+    return "down" in r ? { ...enforcing, egressDown: r.down } : enforcing;
   }
 
   /**
-   * Whether this host's sandboxes can reach hosts through the egress proxy now, and the credentials it holds: only
-   * when the SDK says it can hold a Bubblewrap sandbox to its proxy, and the proxy answers `hello`. Asked at every
-   * probe, since either can change while the runtime runs. Why not, in `egressUnavailable`.
+   * Whether this host's sandboxes can reach hosts through the egress proxy now: with the credentials the proxy holds,
+   * only when the SDK says it can hold a Bubblewrap sandbox to its proxy and the proxy answers `hello`; `down`, when it
+   * could and the configured proxy does not answer; `cannot`, when there is no proxy or the SDK cannot hold a sandbox
+   * to one. Asked at every probe, since either can change while the runtime runs; what it found is the probe's answer
+   * to the plan that asked, and `egressUnavailable` keeps why for the operator, deciding nothing.
    */
-  private async reach(net: ReturnType<MxcSdk["getPlatformSupport"]>["bubblewrapNetwork"]): Promise<string[] | undefined> {
+  private async reach(net: ReturnType<MxcSdk["getPlatformSupport"]>["bubblewrapNetwork"]): Promise<{ credentials: string[] } | { down: string } | { cannot: string }> {
+    const said = (r: { cannot: string }) => ((this.egressUnavailable = r.cannot), r);
     const link = this.o.egress;
-    if (!link) {
-      this.egressUnavailable = "the runtime's configuration names no egress proxy (egress.admin)";
-      return undefined;
-    }
-    if (net?.proxyEnforcement !== "supported") {
-      this.egressUnavailable = `MXC cannot hold a Bubblewrap sandbox to its proxy on this host: ${net ? `proxyEnforcement is ${net.proxyEnforcement}${net.warnings.length ? ` (${net.warnings.join("; ")})` : ""}` : "it does not report bubblewrapNetwork"}`;
-      return undefined;
-    }
+    if (!link) return said({ cannot: "the runtime's configuration names no egress proxy (egress.admin)" });
+    const cannot = cannotHold(net);
+    if (cannot) return said({ cannot });
     try {
-      const held = await link.credentials();
+      const credentials = await link.credentials();
       this.egressUnavailable = undefined;
-      return held;
+      return { credentials };
     } catch (e) {
+      // The link's refusal is `egress_unavailable` already; what is kept is why, for the plan to stop the run with.
+      const why = e instanceof Violation && e.message.startsWith(`${e.code}: `) ? e.message.slice(e.code.length + 2) : (e as Error).message;
       this.egressUnavailable = (e as Error).message;
-      return undefined;
+      return { down: why };
     }
   }
 
   async create(policy: MxcPolicy, owner?: SandboxOwner): Promise<string> {
     // MxcAdapter only plans what the probe said it can enforce; a policy that asks for more is a bug, not a fallback.
     const outbound = policy.network.allowOutbound || policy.network.allowedHosts.length > 0;
-    // Where the last probe did not find the proxy, a host is refused by name, as the adapter refuses it.
-    if (outbound && !(this.o.egress && this.reaching)) throw new SandboxRefused(["an outbound host allow-list"]);
+    // A host that cannot hold this sandbox to a proxy now, as the SDK says at this moment, is refused by name, as the
+    // adapter refuses it. Nothing another sandbox's probe saw decides it; a proxy that does not answer is found when
+    // the session is opened, `egress_unavailable`.
+    if (outbound) {
+      const cannot = this.o.egress ? cannotHold((await this.load())?.getPlatformSupport().bubblewrapNetwork) : "no egress proxy";
+      if (cannot) throw new SandboxRefused(["an outbound host allow-list"]);
+    }
     if (outbound && !owner) throw new Error("MxcHost: a sandbox that reaches hosts has an egress session for its run, and this one was created for none.");
     if (policy.mode !== "enforcement") throw new Error(`MxcHost: Bubblewrap has no ${policy.mode} mode.`);
     for (const p of [...policy.filesystem.readOnly, ...policy.filesystem.readWrite]) {
@@ -291,8 +291,9 @@ export class MxcHost implements SandboxHost {
   /**
    * Opens a sandbox's session: one destination per host of the policy, with its methods and its credential. A
    * credential the proxy does not hold for the host is refused by name (E0902); the proxy's configuration says which
-   * secret may go where. A session the proxy listens for on another address than 127.0.0.1 is closed and refused by
-   * name: a Bubblewrap sandbox is shown to reach its proxy on the host's 127.0.0.1 only.
+   * secret may go where. A session whose address is not `http://127.0.0.1:<port>` is closed and refused by name: a
+   * Bubblewrap sandbox is shown to reach its proxy there only. A proxy that does not answer, or answers a session
+   * without a placeholder it was asked for, is `egress_unavailable`, and a session it opened is closed first.
    */
   private async open(policy: MxcPolicy, owner: SandboxOwner, ttlMs: number): Promise<Egress> {
     const link = this.o.egress!;
@@ -310,15 +311,17 @@ export class MxcHost implements SandboxHost {
       const named = bound.filter((d) => e.message.includes(d.credential) && (e.code === "unknown_credential" || e.message.includes(d.host)));
       throw new SandboxRefused((named.length ? named : bound).map((d) => `credential ${d.credential} for ${d.host}`));
     }
-    const at = new URL(s.proxy_url).hostname;
-    const env: Record<string, string> = {};
-    for (const d of destinations) if (d.credential !== null) env[placeholderVariable(d.credential)] = s.placeholders[d.credential] ?? "";
-    const missing = destinations.find((d) => d.credential !== null && !s.placeholders[d.credential]);
-    if (at !== "127.0.0.1" || missing) {
+    // What the SDK is given is `http://127.0.0.1:<port>` and nothing else: no other scheme, address, user, path, query
+    // or fragment. The session is closed before anything else is said of it, so a session refused here is not left open.
+    const port = typeof s.proxy_url === "string" ? /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/?$/.exec(s.proxy_url)?.[1] : undefined;
+    const missing = destinations.find((d) => d.credential !== null && typeof s.placeholders?.[d.credential] !== "string");
+    if (port === undefined || Number(port) > 65535 || missing) {
       await link.close(s.session);
-      if (missing) throw new Error(`MxcHost: the egress proxy gave no placeholder for ${missing.credential}`);
-      throw new SandboxRefused([`an egress proxy whose sessions listen on ${at} (a Bubblewrap sandbox is shown to reach 127.0.0.1 only)`]);
+      if (port === undefined || Number(port) > 65535) throw new SandboxRefused([`an egress proxy whose session is at ${JSON.stringify(s.proxy_url)} (a Bubblewrap sandbox is shown to reach its proxy at http://127.0.0.1:<port> only)`]);
+      throw new Violation("egress_unavailable", `the egress proxy at ${link.o.admin} gave session ${s.session} no placeholder for ${missing!.credential}: it does not answer in the protocol's format`);
     }
+    const env: Record<string, string> = {};
+    for (const d of destinations) if (d.credential !== null) env[placeholderVariable(d.credential)] = s.placeholders[d.credential]!;
     return { ...s, owner, destinations, env, after: 0, dropped: 0, inflight: 0, retired: false };
   }
 
@@ -345,28 +348,33 @@ export class MxcHost implements SandboxHost {
   }
 
   /**
-   * What the proxy denied on a session since it was last asked: the first `EGRESS_DENIALS_KEPT`, and how many more,
-   * those it did not keep included. A proxy that does not say stops the run (`egress_unavailable`): a denial is not
-   * left uncounted.
+   * What the proxy has recorded on a session since it was last asked: the first `EGRESS_DENIALS_KEPT` denials, how
+   * many more, those it did not keep included, and how many of them all count as crossing the grant. The host reads
+   * every denial's reason, those it pages past too: one that only says the session ended does not count, and one the
+   * proxy did not keep, whose reason is gone, does. A proxy that does not answer stops the run (`egress_unavailable`).
    */
   private async denied(s: Egress): Promise<ExecResult["egress_denials"]> {
     const link = this.o.egress!;
     const kept: EgressDenial[] = [];
     let more = 0;
+    let counted = 0;
     let dropped = s.dropped;
     for (;;) {
       const page = await link.denials(s.session, s.after, DENIALS_PAGE);
       for (const d of page.denials) {
         if (kept.length < EGRESS_DENIALS_KEPT) kept.push({ id: d.id, host: d.host, method: d.method, why: d.why, path_digest: d.path_digest, at: d.at });
         else more++;
+        if (!SESSION_ENDED.has(d.why)) counted++;
         s.after = Math.max(s.after, d.id);
       }
       dropped = page.dropped;
       if (page.denials.length < DENIALS_PAGE) break;
     }
-    more += Math.max(0, dropped - s.dropped);
+    const unkept = Math.max(0, dropped - s.dropped);
     s.dropped = dropped;
-    return kept.length || more ? { denials: kept, more } : undefined;
+    more += unkept;
+    counted += unkept;
+    return kept.length || more ? { denials: kept, more, counted } : undefined;
   }
 
   async execute(handle: string, req: ExecRequest): Promise<ExecResult> {
@@ -474,6 +482,12 @@ export class MxcHost implements SandboxHost {
     this.policies.delete(handle);
     return "destroyed";
   }
+}
+
+/** Why MXC cannot hold a Bubblewrap sandbox to its proxy on this host, as the SDK reports it; undefined when it says it can. */
+function cannotHold(net: { proxyEnforcement: string; warnings: string[] } | undefined): string | undefined {
+  if (net?.proxyEnforcement === "supported") return undefined;
+  return `MXC cannot hold a Bubblewrap sandbox to its proxy on this host: ${net ? `proxyEnforcement is ${net.proxyEnforcement}${net.warnings.length ? ` (${net.warnings.join("; ")})` : ""}` : "it does not report bubblewrapNetwork"}`;
 }
 
 /** `o[k]` when `k` is a key of `o` itself. */

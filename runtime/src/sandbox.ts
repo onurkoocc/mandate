@@ -14,6 +14,7 @@ import { dirname } from "node:path";
 import { ISOLATION_LEVELS, type IsolationLevel, type SandboxRequirement } from "@mandate/compiler";
 import type { AgentAdapter, DelegateRequest, Outcome } from "./adapters.js";
 import { CREDENTIAL_NAME, validHost } from "./egress/config.js";
+import { Violation } from "./signals.js";
 import { inside } from "./tools.js";
 
 export type SandboxMode = "enforcement" | "learning" | "permissive";
@@ -54,6 +55,13 @@ export interface Enforceable {
    * the proxy holds. A host without it enforces no method limit and puts in no credential.
    */
   egress?: { credentials: string[] };
+  /**
+   * Set when the host would reach hosts through the egress proxy it is configured with, and can hold a sandbox to it,
+   * but the proxy does not answer: why. A requirement that reaches a host is then `egress_unavailable`, which stops
+   * the run for a person and lets it resume once the proxy answers; it is not refused by name, since nothing about the
+   * requirement or the host is wrong. A requirement that reaches none is planned as if it were not set.
+   */
+  egressDown?: string;
 }
 
 /** Whose a sandbox is: the run, its tenant and the command it runs for. Its egress session is opened for them, so revoking the run or the tenant cuts it. */
@@ -90,9 +98,11 @@ export interface ExecResult {
   stopped?: boolean;
   /**
    * What the egress proxy denied the sandbox while the process ran (spec/boundary.md "Sandbox egress"): the first
-   * `EGRESS_DENIALS_KEPT` denials, oldest first, and how many more there were. Absent when it denied nothing.
+   * `EGRESS_DENIALS_KEPT` denials, oldest first; how many more there were, those the proxy did not keep included; and
+   * how many of them all, listed or not, are counted as crossing the grant: each whose reason is not the session's
+   * end, and each the proxy did not keep, whose reason is not recorded. Absent when it denied nothing.
    */
-  egress_denials?: { denials: EgressDenial[]; more: number };
+  egress_denials?: { denials: EgressDenial[]; more: number; counted: number };
 }
 
 /** The most denials one process's result lists; the rest are counted. */
@@ -190,7 +200,10 @@ export class MxcAdapter {
 
   constructor(readonly o: MxcOptions) {}
 
-  /** Probes the host, then translates the requirement, or lists what the host cannot enforce. */
+  /**
+   * Probes the host, then translates the requirement, or lists what the host cannot enforce. A requirement that
+   * reaches a host, on a host whose egress proxy does not answer, is `egress_unavailable` (`Enforceable.egressDown`).
+   */
   async plan(req: SandboxRequirement): Promise<Planned> {
     const can = await this.o.host.probe();
     const isolation = this.o.isolation ?? "process";
@@ -204,6 +217,8 @@ export class MxcAdapter {
       else modelHosts.push(...hosts);
     }
     const hosts = [...new Set([...req.network.hosts, ...modelHosts])].sort();
+    // Not a refusal by name: the outage may pass, and the run stops for a person, to resume once the proxy answers.
+    if (hosts.length && can.egressDown !== undefined) throw new Violation("egress_unavailable", can.egressDown);
     for (const u of req.unbounded) unsupported.push(`capability without a static scope: ${u}`);
     for (const p of [...req.filesystem.read, ...req.filesystem.write]) {
       const root = hiddenUnder(p, can.hidden ?? []);
@@ -264,16 +279,18 @@ export class MxcAdapter {
 /**
  * The policy's network for a sandbox that reaches `hosts` through an egress proxy, and what keeps it from being one.
  * The proxy takes a host name in lower case without a port (spec/egress.md "Host names"), so each host is read in
- * lower case, and one that is not a host name or an IP address then is refused by name. Hosts that are one name in
- * lower case are one destination: the union of their methods, any method once one of them allows any, and their
- * credential, which two different ones cannot share.
+ * lower case, and one that has a character outside ASCII, or is not a host name or an IP address then, is refused by
+ * name. Hosts that are one name in lower case are one destination: the union of their methods, any method once one
+ * of them allows any, and their credential, which two different ones cannot share.
  */
 function destinations(req: SandboxRequirement, hosts: string[]): { network: MxcPolicy["network"]; unsupported: string[] } {
   const unsupported: string[] = [];
   const dest = new Map<string, { methods: Set<string> | null; credential: string | undefined }>();
   for (const h of hosts) {
+    // Lower case is ASCII's: a character outside it may lower-case into ASCII (U+212A KELVIN SIGN to `k`), so a host
+    // with one is refused before it is read in lower case, never taken for the ASCII name it would become.
     const name = h.toLowerCase();
-    if (!validHost(name)) {
+    if (/[^\x00-\x7f]/.test(h) || !validHost(name)) {
       unsupported.push(`an outbound host that is not a host name the egress proxy takes: ${h}`);
       continue;
     }

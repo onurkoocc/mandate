@@ -463,14 +463,17 @@ class Loop {
    * What the egress proxy denied a tool call's process, as its step's result holds it, is one violation of that step
    * (spec/boundary.md "Sandbox egress"), written before the model is told. Its detail is what the proxy reported. A
    * denial that only says the session ended (a cancel or a halt revoked it, or it expired) is not an attempt to cross
-   * the grant, and a process denied nothing else is none. The result is journaled with its denials, so a resumed loop
-   * finds them again and the step's violation is not written or counted twice (INV-28).
+   * the grant, and a process denied nothing else is none; a denial that is not listed counts by the host's `counted`,
+   * which knows the reasons it paged past, and, where a host gives none, counts whatever its reason. The decision is
+   * read from the step's result alone, which is journaled, so a resumed loop finds the same denials, asks no proxy,
+   * and the step's violation is not written or counted twice (INV-28).
    */
   private async egressDenied(step: string, exec: Value): Promise<void> {
     const d = isObj(exec) ? exec["egress_denials"] : undefined;
     if (d === undefined || !isObj(d) || !Array.isArray(d["denials"])) return;
-    const counted = d["denials"].some((x) => isObj(x) && !SESSION_ENDED.has(String(x["why"])));
-    if (counted) await this.io.violation?.("egress_denied", step, d);
+    const listed = d["denials"].some((x) => isObj(x) && !SESSION_ENDED.has(String(x["why"])));
+    const byCount = typeof d["counted"] === "number" ? d["counted"] > 0 : Number(d["more"]) > 0;
+    if (listed || byCount) await this.io.violation?.("egress_denied", step, d);
   }
 
   /**

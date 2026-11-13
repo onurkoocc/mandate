@@ -29,7 +29,7 @@ import type { Adapters } from "../src/adapters.js";
 import { adaptersFor, readConfig, type RuntimeConfig } from "../src/control.js";
 import { serveAdmin, type AdminServer } from "../src/egress/admin.js";
 import { egressConfig } from "../src/egress/config.js";
-import { EgressProxy, type SessionRequest } from "../src/egress/proxy.js";
+import { EgressProxy, type DenialReason, type SessionRequest } from "../src/egress/proxy.js";
 import { EgressLink } from "../src/gateway.js";
 import { MASK_CHECK, MxcHost, SANDBOX_SESSION_TTL_MS, type MxcContainerRequest, type MxcSdk } from "../src/mxc.js";
 import { WindowsMxcHost, type WindowsContainerRequest, type WindowsMxcSdk } from "../src/mxc-windows.js";
@@ -177,17 +177,65 @@ describe("MxcHost and the egress proxy", () => {
     sdk.support = SUPPORTED;
     expect(await host.probe()).toMatchObject({ network: "host_allow_list" });
 
-    const silent = new MxcHost({ sdk, egress: link({ admin: adminPath().path }) });
-    expect(await silent.probe()).toMatchObject({ network: "deny_all" });
-    expect(silent.egressUnavailable).toMatch(/^egress_unavailable: the egress proxy at /);
-    expect(await adapter(silent).plan(req05([net(["api.github.com"])]))).toEqual({ unsupported: ["an outbound host allow-list"] });
-
     const none = new MxcHost({ sdk });
     expect(await none.probe()).toMatchObject({ network: "deny_all" });
     expect(none.egressUnavailable).toContain("names no egress proxy (egress.admin)");
-    // A policy with a host on a host whose last probe found no proxy is refused by name, not created.
-    const planned = await adapter(host).plan(req05([net(["api.github.com"])]));
-    await expect(none.create((planned as { policy: MxcPolicy }).policy, OWNER)).rejects.toMatchObject({ unsupported: ["an outbound host allow-list"] });
+    expect(await adapter(none).plan(req05([net(["api.github.com"])]))).toEqual({ unsupported: ["an outbound host allow-list"] });
+  });
+
+  it("refuses a host by name at create too where it cannot hold a sandbox to a proxy, as the SDK says then", async () => {
+    const sdk = new EgressSdk();
+    const host = new MxcHost({ sdk, egress: link() });
+    const { policy } = (await adapter(host).plan(req05([net(["api.github.com"])]))) as { policy: MxcPolicy };
+    // No proxy configured: refused by name, never created.
+    await expect(new MxcHost({ sdk }).create(policy, OWNER)).rejects.toMatchObject({ unsupported: ["an outbound host allow-list"] });
+    // The SDK no longer holds a sandbox to its proxy between the plan and the create: the same.
+    sdk.support = { ...SUPPORTED, bubblewrapNetwork: { proxyEnforcement: "unsupported", warnings: ["iptables is missing"] } };
+    await expect(host.create(policy, OWNER)).rejects.toMatchObject({ unsupported: ["an outbound host allow-list"] });
+    expect(opened).toEqual([]);
+  });
+
+  it("stops at a configured proxy that does not answer, egress_unavailable, at plan and at create, for a sandbox that needs a host and for no other", async () => {
+    const where = adminPath();
+    const sdk = new EgressSdk();
+    const host = new MxcHost({ sdk, egress: link({ admin: where.path }) });
+    // Nothing listens: a sandbox that needs a host stops the run for a person; one that needs none is planned and runs.
+    const can = await host.probe();
+    expect(can).toMatchObject({ network: "deny_all", egressDown: expect.stringMatching(/^the egress proxy at /) });
+    expect(host.egressUnavailable).toMatch(/^egress_unavailable: the egress proxy at /);
+    await expect(adapter(host).plan(req05([net(["api.github.com"])]))).rejects.toMatchObject({ code: "egress_unavailable" });
+    const quiet = (await adapter(host).plan(req05([]))) as { policy: MxcPolicy };
+    expect(quiet.policy.network).toEqual({ allowOutbound: false, allowedHosts: [] });
+    const handle = await host.create(quiet.policy, OWNER);
+    expect((await host.execute(handle, { argv: ["fetch"] })).exitCode).toBe(7);
+    await host.destroy(handle);
+
+    // It answers: planned. It stops answering before the sandbox is created: egress_unavailable, nothing left open.
+    const admin = await serveAdmin(w.proxy, where.path);
+    const planned = (await adapter(host).plan(req05([net(["api.github.com"])]))) as { policy: MxcPolicy };
+    expect(planned.policy.network.allowedHosts).toEqual(["api.github.com"]);
+    await admin.close();
+    await expect(host.create(planned.policy, OWNER)).rejects.toMatchObject({ code: "egress_unavailable" });
+    expect(opened).toEqual([]);
+    where.cleanup();
+  });
+
+  it("lets no probe of one sandbox decide another's create: a proxy silent for a moment does not refuse a sandbox planned before", async () => {
+    const where = adminPath();
+    const admin = await serveAdmin(w.proxy, where.path);
+    const sdk = new EgressSdk();
+    const host = new MxcHost({ sdk, egress: link({ admin: where.path }) });
+    const first = (await adapter(host).plan(req05([net(["api.github.com"])]))) as { policy: MxcPolicy };
+    // Another delegation's probe, while the proxy is gone for a moment, finds it down.
+    await admin.close();
+    await expect(adapter(host).plan(req05([net(["registry.npmjs.org"])]))).rejects.toMatchObject({ code: "egress_unavailable" });
+    // It is back when the first sandbox is created: the first is created, its session opened.
+    const again = await serveAdmin(w.proxy, where.path);
+    const handle = await host.create(first.policy, OWNER);
+    expect(opened.map((s) => s.destinations.map((d) => d.host))).toEqual([["api.github.com"]]);
+    await host.destroy(handle);
+    await again.close();
+    where.cleanup();
   });
 
   it("opens one forward session per sandbox for exactly its hosts, methods and credentials, for its run and tenant, and closes it when the sandbox is destroyed", async () => {
@@ -263,6 +311,7 @@ describe("MxcHost and the egress proxy", () => {
     expect(r.egress_denials).toEqual({
       denials: [denial("api.github.com", "POST", "method_not_allowed"), denial("evil.example", "GET", "host_not_allowed"), denial("evil.example", "GET", "placeholder_misuse")],
       more: 0,
+      counted: 3,
     });
     // A denial carries a digest of the path, never the path, and no placeholder; nothing of a denied request went upstream.
     expect(JSON.stringify(r.egress_denials)).not.toMatch(/secret-path|leak|mdt-ph-/);
@@ -273,6 +322,24 @@ describe("MxcHost and the egress proxy", () => {
     const lots = await host.execute(handle, { argv: ["fetch", ...many] });
     expect(lots.egress_denials?.denials).toHaveLength(EGRESS_DENIALS_KEPT);
     expect(lots.egress_denials?.more).toBe(7);
+    expect(lots.egress_denials?.counted).toBe(EGRESS_DENIALS_KEPT + 7);
+    await host.destroy(handle);
+  });
+
+  it("counts what it pages past by its reason, and what the proxy did not keep, whose reason is gone, as crossing the grant", async () => {
+    const l = link();
+    const host = new MxcHost({ sdk: new EgressSdk(), egress: l });
+    const { handle } = await open(host, req05([net(["api.github.com"])]));
+    const d = (id: number, why: DenialReason) => ({ id, host: "evil.example", method: "GET", why, path_digest: null, at: "2026-11-13T00:00:00.000Z" });
+    // The proxy's store was full: it recorded nothing more, and counts what it dropped.
+    vi.spyOn(l, "denials").mockResolvedValueOnce({ denials: [], dropped: 4 });
+    expect((await host.execute(handle, { argv: ["fetch"] })).egress_denials).toEqual({ denials: [], more: 4, counted: 4 });
+    // The first 100 only say the session ended; one the host paged past did cross the grant.
+    vi.spyOn(l, "denials").mockResolvedValueOnce({ denials: [...Array.from({ length: EGRESS_DENIALS_KEPT }, (_, i) => d(100 + i, "session_revoked")), d(300, "host_not_allowed")], dropped: 4 });
+    expect((await host.execute(handle, { argv: ["fetch"] })).egress_denials).toMatchObject({ more: 1, counted: 1 });
+    // All listed, all the session's end: none counted.
+    vi.spyOn(l, "denials").mockResolvedValueOnce({ denials: [d(400, "session_revoked"), d(401, "session_expired")], dropped: 4 });
+    expect((await host.execute(handle, { argv: ["fetch"] })).egress_denials).toMatchObject({ more: 0, counted: 0 });
     await host.destroy(handle);
   });
 
@@ -283,6 +350,9 @@ describe("MxcHost and the egress proxy", () => {
     expect(await adapter(host).plan(req05([net(["api.github.com:443", "*.github.com"])]))).toEqual({
       unsupported: ["an outbound host that is not a host name the egress proxy takes: *.github.com", "an outbound host that is not a host name the egress proxy takes: api.github.com:443"],
     });
+    // A character outside ASCII that lower-cases into ASCII (U+212A KELVIN SIGN to "k") is not read as the ASCII name.
+    expect("Kube.example".toLowerCase()).toBe("kube.example");
+    expect(await adapter(host).plan(req05([net(["Kube.example"])]))).toEqual({ unsupported: ["an outbound host that is not a host name the egress proxy takes: Kube.example"] });
     // The proxy holds `github`, for api.github.com and uploads.github.com only: which secret may go where is its configuration's to say.
     const planned = await adapter(host).plan(req05([net(["api.example.com"])], { "api.example.com": "github" }));
     expect("policy" in planned).toBe(true);
@@ -356,23 +426,55 @@ describe("MxcHost and the egress proxy", () => {
     expect(closed).toEqual([opened[0]!.session, opened[1]!.session]);
   });
 
-  it("stops what it is doing when the proxy does not say what it denied: a denial is never left uncounted (egress_unavailable)", async () => {
-    const l = link();
-    const host = new MxcHost({ sdk: new EgressSdk(), egress: l });
-    const { handle } = await open(host, req05([net(["api.github.com"])]));
-    vi.spyOn(l, "denials").mockRejectedValueOnce(new Violation("egress_unavailable", "the egress proxy at test did not say what it denied session s: gone"));
-    await expect(host.execute(handle, { argv: ["fetch", "GET", "http://evil.example/"] })).rejects.toThrow(/^egress_unavailable: /);
+  it("stops the run when the proxy does not say what it denied (egress_unavailable): the session is unknown to it, or its admin channel is gone", async () => {
+    // The session was closed at the proxy while the process ran: the proxy answers unknown_session.
+    const sdk = new EgressSdk();
+    sdk.programs.set("gone", async () => {
+      await w.proxy.closeSession(opened.at(-1)!.session);
+      return { stdout: "" };
+    });
+    const host = new MxcHost({ sdk, egress: link() });
+    const { handle } = await open(host, req05([net(["api.github.com"]), { ...FETCH, scope: ["gone"] }]));
+    await expect(host.execute(handle, { argv: ["gone"] })).rejects.toThrow(/^egress_unavailable: the egress proxy at .* did not say what it denied session sbx\.[0-9a-f]+: unknown_session: /);
     await host.destroy(handle);
+
+    // The admin channel closed between the process and the read.
+    const where = adminPath();
+    const admin = await serveAdmin(w.proxy, where.path);
+    const cut = new EgressSdk();
+    cut.programs.set("cut", async () => {
+      await admin.close();
+      return { stdout: "" };
+    });
+    const other = new MxcHost({ sdk: cut, egress: link({ admin: where.path }) });
+    const sbx = await open(other, req05([net(["api.github.com"]), { ...FETCH, scope: ["cut"] }]));
+    await expect(other.execute(sbx.handle, { argv: ["cut"] })).rejects.toThrow(/^egress_unavailable: the egress proxy at .* did not say what it denied session /);
+    await other.destroy(sbx.handle);
+    await w.proxy.closeSession(opened.at(-1)!.session).catch(() => undefined);
+    where.cleanup();
   });
 
-  it("refuses by name a proxy whose sessions listen on another address than 127.0.0.1, and closes the session", async () => {
+  it("gives MXC no session address but http://127.0.0.1:<port>: any other is refused by name, and the session closed first", async () => {
     const l = link();
     const host = new MxcHost({ sdk: new EgressSdk(), egress: l });
     const planned = (await adapter(host).plan(req05([net(["api.github.com"])]))) as { policy: MxcPolicy };
-    vi.spyOn(l, "openForward").mockResolvedValueOnce({ session: "sbx.elsewhere", proxy_url: "http://[::1]:4100", placeholders: {}, expiresAt: Date.now() + 60_000 });
-    const closing = vi.spyOn(l, "close");
-    await expect(host.create(planned.policy, OWNER)).rejects.toMatchObject({ unsupported: ["an egress proxy whose sessions listen on [::1] (a Bubblewrap sandbox is shown to reach 127.0.0.1 only)"] });
-    expect(closing).toHaveBeenCalledWith("sbx.elsewhere");
+    const real = l.openForward.bind(l);
+    for (const url of ["http://[::1]:4100", "https://127.0.0.1:4100", "http://127.0.0.1", "http://user@127.0.0.1:4100", "http://127.0.0.1:4100/x", "http://127.0.0.1:4100/?q=1", "http://127.0.0.1:4100#f", "http://127.0.0.1:70000", "not a url"]) {
+      closed.length = 0;
+      vi.spyOn(l, "openForward").mockImplementationOnce(async (...a) => ({ ...(await real(...a)), proxy_url: url }));
+      await expect(host.create(planned.policy, OWNER), url).rejects.toMatchObject({ unsupported: [`an egress proxy whose session is at ${JSON.stringify(url)} (a Bubblewrap sandbox is shown to reach its proxy at http://127.0.0.1:<port> only)`] });
+      expect(closed, url).toEqual([opened.at(-1)!.session]);
+    }
+  });
+
+  it("stops at a proxy whose session lacks a placeholder it was asked for (egress_unavailable), and closes the session first", async () => {
+    const l = link();
+    const host = new MxcHost({ sdk: new EgressSdk(), egress: l });
+    const planned = (await adapter(host).plan(req05([net(["api.github.com"])], { "api.github.com": "github" }))) as { policy: MxcPolicy };
+    const real = l.openForward.bind(l);
+    vi.spyOn(l, "openForward").mockImplementationOnce(async (...a) => ({ ...(await real(...a)), placeholders: {} }));
+    await expect(host.create(planned.policy, OWNER)).rejects.toThrow(/^egress_unavailable: the egress proxy at .* gave session sbx\.[0-9a-f]+ no placeholder for github: it does not answer in the protocol's format$/);
+    expect(closed).toEqual([opened[0]!.session]);
   });
 });
 
@@ -453,10 +555,11 @@ const D = "/defs/Fetch/body/0/value";
 const run = (...requests: string[]) => toolUse(`t${requests.length}-${requests.join("").length}`, "run", { command: "fetch", args: requests.flatMap((r) => r.split(" ")) });
 
 /** A run of RUN_SRC whose agent's tools run in an MxcHost with the fake SDK, and whose egress adapters are the configuration's. */
-async function egressRun(script: (n: number) => ReturnType<typeof toolUse>[], o: { limit?: number; lock?: Lock; sdk?: EgressSdk; egress?: boolean } = {}) {
+async function egressRun(script: (n: number) => ReturnType<typeof toolUse>[], o: { limit?: number; lock?: Lock; sdk?: EgressSdk; egress?: boolean; admin?: string } = {}) {
   const rw = await runtimeWorld(RUN_SRC, { lock: o.lock ?? LOCK_BOUND, decisions: { mode: "signed" } });
   const sdk = o.sdk ?? new EgressSdk();
-  const host = new MxcHost({ sdk, egress: link() });
+  const hostLink = link(o.admin ? { admin: o.admin } : {});
+  const host = new MxcHost({ sdk, egress: hostLink });
   const chat = new SimChat((_r, n) => script(n));
   rw.adapters.loop = { chat, sandbox: adapter(host), stopPollMs: 60_000 };
   if (o.egress !== false) {
@@ -465,7 +568,7 @@ async function egressRun(script: (n: number) => ReturnType<typeof toolUse>[], o:
   }
   const rt = new Runtime(rw.db, rw.adapters, rw.faults, undefined, { decisions: { mode: "signed" }, ...(o.limit !== undefined ? { violations: { limit: o.limit } } : {}) });
   const violations = async (runId: string) => (await rt.journal.events(runId)).filter((e) => e.type === "violation").map((e) => e.data);
-  return { ...rw, rt, sdk, host, chat, violations };
+  return { ...rw, rt, sdk, host, hostLink, chat, violations };
 }
 
 describe("sandbox egress in a run", () => {
@@ -486,8 +589,8 @@ describe("sandbox egress in a run", () => {
     expect(stopped.attention).toMatchObject({ violation: "violation_limit" });
     const denial = (host: string, method: string, why: string) => ({ id: expect.any(Number), host, method, why, path_digest: expect.stringMatching(/^sha256:/), at: expect.any(String) });
     expect(await r.violations("eg-run")).toEqual([
-      { kind: "egress_denied", delegate: D, agent: "Fetcher", step: `${D}/step/1/tool/0`, detail: { denials: [denial("api.github.com", "POST", "method_not_allowed"), denial("evil.example", "GET", "host_not_allowed")], more: 0 }, count: 1 },
-      { kind: "egress_denied", delegate: D, agent: "Fetcher", step: `${D}/step/2/tool/0`, detail: { denials: [denial("api.github.com", "DELETE", "method_not_allowed")], more: 0 }, count: 2 },
+      { kind: "egress_denied", delegate: D, agent: "Fetcher", step: `${D}/step/1/tool/0`, detail: { denials: [denial("api.github.com", "POST", "method_not_allowed"), denial("evil.example", "GET", "host_not_allowed")], more: 0, counted: 2 }, count: 1 },
+      { kind: "egress_denied", delegate: D, agent: "Fetcher", step: `${D}/step/2/tool/0`, detail: { denials: [denial("api.github.com", "DELETE", "method_not_allowed")], more: 0, counted: 1 }, count: 2 },
     ]);
     // The allowed GET went upstream with the secret; the model was told what the process printed, never the secret.
     expect(w.up.seen.map((s) => `${s.method} ${s.url} ${seenHeader(s, "authorization")[0]}`)).toEqual([`GET /repos/acme/app Bearer ${SECRET}`]);
@@ -505,6 +608,30 @@ describe("sandbox egress in a run", () => {
     ]);
     expect(closed).toEqual(opened.map((s) => s.session));
     expect((await r.rt.verifyJournal("eg-run")).status).toBe("verified");
+  });
+
+  it("counts a tool call whose denials the proxy did not keep: a violation of its step, from the step's result alone", async () => {
+    const r = await egressRun((n) => (n === 1 ? [run("GET http://evil.example/a")] : [toolUse("f", "finish", { result: "done" })]));
+    // The session's store is full: the proxy kept none of this process's denials, and counts them as dropped.
+    vi.spyOn(r.hostLink, "denials").mockResolvedValueOnce({ denials: [], dropped: 6 });
+    const ended = await r.rt.startRun({ pkg: r.pkg, workflow: "Fetch", input: { task: "t" }, runId: "eg-dropped", tenant: "acme" });
+    expect(ended.state, JSON.stringify(ended.attention ?? ended.error)).toBe("succeeded");
+    expect(await r.violations("eg-dropped")).toEqual([{ kind: "egress_denied", delegate: D, agent: "Fetcher", step: `${D}/step/0/tool/0`, detail: { denials: [], more: 6, counted: 6 }, count: 1 }]);
+  });
+
+  it("stops a run whose configured proxy does not answer for a person (egress_unavailable), and goes on when it is resumed once the proxy answers", async () => {
+    const where = adminPath();
+    const r = await egressRun((n) => (n === 1 ? [run("GET http://api.github.com/repos/acme/app")] : [toolUse("f", "finish", { result: "done" })]), { admin: where.path });
+    const stopped = await r.rt.startRun({ pkg: r.pkg, workflow: "Fetch", input: { task: "t" }, runId: "eg-down", tenant: "acme" });
+    expect(stopped.state).toBe("attention_required");
+    expect(stopped.attention).toMatchObject({ violation: "egress_unavailable", message: expect.stringMatching(/^egress_unavailable: the egress proxy at /) });
+    expect(r.chat.calls).toEqual([]);
+    const admin = await serveAdmin(w.proxy, where.path);
+    const resumed = await r.rt.resume("eg-down");
+    expect(resumed.state, JSON.stringify(resumed.attention ?? resumed.error)).toBe("succeeded");
+    expect(w.up.seen.map((s) => s.url)).toEqual(["/repos/acme/app"]);
+    await admin.close();
+    where.cleanup();
   });
 
   it("a cancel revokes the sandbox's session: the process's next request is denied, and that denial is no violation", async () => {
