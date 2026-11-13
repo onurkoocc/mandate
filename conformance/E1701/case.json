@@ -11,6 +11,10 @@
   "patch": [{ "op": "remove", "path": "/defs/MigrateAll/envelope/owner" }],
   "expect": {
     "ok": false,
-    "diagnostics": [{ "code": "MDT-E1701", "path": "/defs/MigrateAll/envelope", "facts": { "missing": ["owner"] } }]
+    "diagnostics": [
+      { "code": "MDT-E1701", "path": "/defs/MigrateAll/envelope", "facts": { "missing": ["owner"] } },
+      { "code": "MDT-W0601", "path": "/defs/Moved/accept/moved/by/static" },
+      { "code": "MDT-W0601", "path": "/defs/Moved/accept/nothing_left/by/static" }
+    ]
   }
 }

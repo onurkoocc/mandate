@@ -1,0 +1,66 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "fixtures/envelope/domain.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.4",
+  "canonical": "{\"defs\":{\"Repo\":{\"kind\":\"type\",\"type\":{\"record\":{\"name\":{\"ref\":\"Text\"},\"root\":{\"ref\":\"Path\"}}}},\"Summary\":{\"kind\":\"type\",\"type\":{\"record\":{\"left\":{\"args\":[{\"ref\":\"Text\"}],\"ref\":\"List\"},\"migrated\":{\"args\":[{\"ref\":\"Text\"}],\"ref\":\"List\"},\"notes\":{\"ref\":\"Text\"}}}}},\"language\":\"mandate/0.4\",\"module\":\"company.domain\",\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0",
+    "defs": [
+      [
+        "Repo",
+        "sha256:37eaa39d1b3ed5e773debf00b22d102ed1a59d290afb3a4e14539a629fe60711"
+      ],
+      [
+        "Summary",
+        "sha256:04582001ebad7328899dfa71488f3dcc1c541c2835c6d1cba492ce6424933def"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.4",
+    "module": "company.domain",
+    "version": "0.1",
+    "defs": {
+      "Repo": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "name": {
+              "ref": "Text"
+            },
+            "root": {
+              "ref": "Path"
+            }
+          }
+        }
+      },
+      "Summary": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "migrated": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ]
+            },
+            "left": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ]
+            },
+            "notes": {
+              "ref": "Text"
+            }
+          }
+        }
+      }
+    }
+  }
+}

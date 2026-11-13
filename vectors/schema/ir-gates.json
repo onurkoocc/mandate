@@ -1,0 +1,1723 @@
+{
+  "format": "mandate/vectors/schema/ir-gates/0.1",
+  "cases": [
+    {
+      "name": "SINCE.kinds.component in mandate/0.5",
+      "rule": "kinds.component",
+      "since": "mandate/0.3",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"component\",\n      \"repo\": \"acme/core\",\n      \"root\": \"/work/core\",\n      \"lang\": \"other\",\n      \"owner\": \"unassigned\"\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.kinds.component in mandate/0.3",
+      "rule": "kinds.component",
+      "since": "mandate/0.3",
+      "language": "mandate/0.3",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"component\",\n      \"repo\": \"acme/core\",\n      \"root\": \"/work/core\",\n      \"lang\": \"other\",\n      \"owner\": \"unassigned\"\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.kinds.component in mandate/0.1",
+      "rule": "kinds.component",
+      "since": "mandate/0.3",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"component\",\n      \"repo\": \"acme/core\",\n      \"root\": \"/work/core\",\n      \"lang\": \"other\",\n      \"owner\": \"unassigned\"\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Gate: 'component' is a mandate/0.3 definition; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/kind",
+            "span": [7, 15, 7, 26]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "kind": "component",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.kinds.component in mandate/0.2",
+      "rule": "kinds.component",
+      "since": "mandate/0.3",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"component\",\n      \"repo\": \"acme/core\",\n      \"root\": \"/work/core\",\n      \"lang\": \"other\",\n      \"owner\": \"unassigned\"\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Gate: 'component' is a mandate/0.3 definition; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/kind",
+            "span": [7, 15, 7, 26]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "kind": "component",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.kinds.interface in mandate/0.5",
+      "rule": "kinds.interface",
+      "since": "mandate/0.3",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"interface\",\n      \"protocol\": \"openapi\",\n      \"spec\": \"docs/openapi.json\"\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.kinds.interface in mandate/0.3",
+      "rule": "kinds.interface",
+      "since": "mandate/0.3",
+      "language": "mandate/0.3",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"interface\",\n      \"protocol\": \"openapi\",\n      \"spec\": \"docs/openapi.json\"\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.kinds.interface in mandate/0.1",
+      "rule": "kinds.interface",
+      "since": "mandate/0.3",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"interface\",\n      \"protocol\": \"openapi\",\n      \"spec\": \"docs/openapi.json\"\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Gate: 'interface' is a mandate/0.3 definition; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/kind",
+            "span": [7, 15, 7, 26]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "kind": "interface",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.kinds.interface in mandate/0.2",
+      "rule": "kinds.interface",
+      "since": "mandate/0.3",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"interface\",\n      \"protocol\": \"openapi\",\n      \"spec\": \"docs/openapi.json\"\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Gate: 'interface' is a mandate/0.3 definition; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/kind",
+            "span": [7, 15, 7, 26]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "kind": "interface",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.kinds.environment in mandate/0.5",
+      "rule": "kinds.environment",
+      "since": "mandate/0.3",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"environment\",\n      \"class\": \"internal\"\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.kinds.environment in mandate/0.3",
+      "rule": "kinds.environment",
+      "since": "mandate/0.3",
+      "language": "mandate/0.3",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"environment\",\n      \"class\": \"internal\"\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.kinds.environment in mandate/0.1",
+      "rule": "kinds.environment",
+      "since": "mandate/0.3",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"environment\",\n      \"class\": \"internal\"\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Gate: 'environment' is a mandate/0.3 definition; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/kind",
+            "span": [7, 15, 7, 28]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "kind": "environment",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.kinds.environment in mandate/0.2",
+      "rule": "kinds.environment",
+      "since": "mandate/0.3",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"environment\",\n      \"class\": \"internal\"\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Gate: 'environment' is a mandate/0.3 definition; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/kind",
+            "span": [7, 15, 7, 28]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "kind": "environment",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.kinds.role in mandate/0.5",
+      "rule": "kinds.role",
+      "since": "mandate/0.4",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"role\",\n      \"description\": \"Platform lead\"\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.kinds.role in mandate/0.4",
+      "rule": "kinds.role",
+      "since": "mandate/0.4",
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"role\",\n      \"description\": \"Platform lead\"\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.kinds.role in mandate/0.1",
+      "rule": "kinds.role",
+      "since": "mandate/0.4",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"role\",\n      \"description\": \"Platform lead\"\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Gate: 'role' is a mandate/0.4 definition; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/kind",
+            "span": [7, 15, 7, 21]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "kind": "role",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.kinds.role in mandate/0.2",
+      "rule": "kinds.role",
+      "since": "mandate/0.4",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"role\",\n      \"description\": \"Platform lead\"\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Gate: 'role' is a mandate/0.4 definition; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/kind",
+            "span": [7, 15, 7, 21]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "kind": "role",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.kinds.role in mandate/0.3",
+      "rule": "kinds.role",
+      "since": "mandate/0.4",
+      "language": "mandate/0.3",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"role\",\n      \"description\": \"Platform lead\"\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Gate: 'role' is a mandate/0.4 definition; this program is mandate/0.3.",
+          "at": {
+            "path": "/defs/Gate/kind",
+            "span": [7, 15, 7, 21]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "kind": "role",
+            "language": "mandate/0.3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.ops.changeset in mandate/0.5",
+      "rule": "ops.changeset",
+      "since": "mandate/0.3",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"changeset\",\n        \"plan\": {\n          \"op\": \"var\",\n          \"name\": \"p\"\n        },\n        \"members\": {\n          \"core\": {\n            \"effect\": \"git.merge\",\n            \"args\": []\n          }\n        },\n        \"order\": [\n          \"core\"\n        ],\n        \"approver\": \"architect\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.ops.changeset in mandate/0.3",
+      "rule": "ops.changeset",
+      "since": "mandate/0.3",
+      "language": "mandate/0.3",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"changeset\",\n        \"plan\": {\n          \"op\": \"var\",\n          \"name\": \"p\"\n        },\n        \"members\": {\n          \"core\": {\n            \"effect\": \"git.merge\",\n            \"args\": []\n          }\n        },\n        \"order\": [\n          \"core\"\n        ],\n        \"approver\": \"architect\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.ops.changeset in mandate/0.1",
+      "rule": "ops.changeset",
+      "since": "mandate/0.3",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"changeset\",\n        \"plan\": {\n          \"op\": \"var\",\n          \"name\": \"p\"\n        },\n        \"members\": {\n          \"core\": {\n            \"effect\": \"git.merge\",\n            \"args\": []\n          }\n        },\n        \"order\": [\n          \"core\"\n        ],\n        \"approver\": \"architect\"\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'changeset' is a mandate/0.3 expression; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/value",
+            "span": [8, 16, 24, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "changeset",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.ops.changeset in mandate/0.2",
+      "rule": "ops.changeset",
+      "since": "mandate/0.3",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"changeset\",\n        \"plan\": {\n          \"op\": \"var\",\n          \"name\": \"p\"\n        },\n        \"members\": {\n          \"core\": {\n            \"effect\": \"git.merge\",\n            \"args\": []\n          }\n        },\n        \"order\": [\n          \"core\"\n        ],\n        \"approver\": \"architect\"\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'changeset' is a mandate/0.3 expression; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/value",
+            "span": [8, 16, 24, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "changeset",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.ops.map in mandate/0.5",
+      "rule": "ops.map",
+      "since": "mandate/0.4",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"map\",\n        \"bind\": \"r\",\n        \"over\": {\n          \"op\": \"var\",\n          \"name\": \"rs\"\n        },\n        \"body\": []\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.ops.map in mandate/0.4",
+      "rule": "ops.map",
+      "since": "mandate/0.4",
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"map\",\n        \"bind\": \"r\",\n        \"over\": {\n          \"op\": \"var\",\n          \"name\": \"rs\"\n        },\n        \"body\": []\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.ops.map in mandate/0.1",
+      "rule": "ops.map",
+      "since": "mandate/0.4",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"map\",\n        \"bind\": \"r\",\n        \"over\": {\n          \"op\": \"var\",\n          \"name\": \"rs\"\n        },\n        \"body\": []\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'map' is a mandate/0.4 expression; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/value",
+            "span": [8, 16, 16, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "map",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.ops.map in mandate/0.2",
+      "rule": "ops.map",
+      "since": "mandate/0.4",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"map\",\n        \"bind\": \"r\",\n        \"over\": {\n          \"op\": \"var\",\n          \"name\": \"rs\"\n        },\n        \"body\": []\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'map' is a mandate/0.4 expression; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/value",
+            "span": [8, 16, 16, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "map",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.ops.map in mandate/0.3",
+      "rule": "ops.map",
+      "since": "mandate/0.4",
+      "language": "mandate/0.3",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"map\",\n        \"bind\": \"r\",\n        \"over\": {\n          \"op\": \"var\",\n          \"name\": \"rs\"\n        },\n        \"body\": []\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'map' is a mandate/0.4 expression; this program is mandate/0.3.",
+          "at": {
+            "path": "/defs/Gate/value",
+            "span": [8, 16, 16, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "map",
+            "language": "mandate/0.3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.ops.plan in mandate/0.5",
+      "rule": "ops.plan",
+      "since": "mandate/0.4",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"plan\",\n        \"agent\": \"Lead\",\n        \"skill\": \"finish\",\n        \"args\": []\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.ops.plan in mandate/0.4",
+      "rule": "ops.plan",
+      "since": "mandate/0.4",
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"plan\",\n        \"agent\": \"Lead\",\n        \"skill\": \"finish\",\n        \"args\": []\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.ops.plan in mandate/0.1",
+      "rule": "ops.plan",
+      "since": "mandate/0.4",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"plan\",\n        \"agent\": \"Lead\",\n        \"skill\": \"finish\",\n        \"args\": []\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'plan' is a mandate/0.4 expression; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/value",
+            "span": [8, 16, 13, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "plan",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.ops.plan in mandate/0.2",
+      "rule": "ops.plan",
+      "since": "mandate/0.4",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"plan\",\n        \"agent\": \"Lead\",\n        \"skill\": \"finish\",\n        \"args\": []\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'plan' is a mandate/0.4 expression; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/value",
+            "span": [8, 16, 13, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "plan",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.ops.plan in mandate/0.3",
+      "rule": "ops.plan",
+      "since": "mandate/0.4",
+      "language": "mandate/0.3",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"plan\",\n        \"agent\": \"Lead\",\n        \"skill\": \"finish\",\n        \"args\": []\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'plan' is a mandate/0.4 expression; this program is mandate/0.3.",
+          "at": {
+            "path": "/defs/Gate/value",
+            "span": [8, 16, 13, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "plan",
+            "language": "mandate/0.3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.agentFields.loop in mandate/0.5",
+      "rule": "agentFields.loop",
+      "since": "mandate/0.2",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"loop\": \"react\"\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.agentFields.loop in mandate/0.2",
+      "rule": "agentFields.loop",
+      "since": "mandate/0.2",
+      "language": "mandate/0.2",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"loop\": \"react\"\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.agentFields.loop in mandate/0.1",
+      "rule": "agentFields.loop",
+      "since": "mandate/0.2",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"loop\": \"react\"\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Agent Gate: 'loop' is a mandate/0.2 field; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/loop",
+            "span": [10, 15, 10, 22]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "loop",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.agentFields.progress in mandate/0.5",
+      "rule": "agentFields.progress",
+      "since": "mandate/0.2",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"progress\": {\n        \"window\": 4,\n        \"repeats\": 2\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.agentFields.progress in mandate/0.2",
+      "rule": "agentFields.progress",
+      "since": "mandate/0.2",
+      "language": "mandate/0.2",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"progress\": {\n        \"window\": 4,\n        \"repeats\": 2\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.agentFields.progress in mandate/0.1",
+      "rule": "agentFields.progress",
+      "since": "mandate/0.2",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"progress\": {\n        \"window\": 4,\n        \"repeats\": 2\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Agent Gate: 'progress' is a mandate/0.2 field; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/progress",
+            "span": [10, 19, 13, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "progress",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.workflowFields.envelope in mandate/0.5",
+      "rule": "workflowFields.envelope",
+      "since": "mandate/0.4",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"envelope\": {\n        \"owner\": \"lead\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.workflowFields.envelope in mandate/0.4",
+      "rule": "workflowFields.envelope",
+      "since": "mandate/0.4",
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"envelope\": {\n        \"owner\": \"lead\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.workflowFields.envelope in mandate/0.1",
+      "rule": "workflowFields.envelope",
+      "since": "mandate/0.4",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"envelope\": {\n        \"owner\": \"lead\"\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Workflow Gate: 'envelope' is a mandate/0.4 field; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/envelope",
+            "span": [14, 19, 16, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "envelope",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.workflowFields.envelope in mandate/0.2",
+      "rule": "workflowFields.envelope",
+      "since": "mandate/0.4",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"envelope\": {\n        \"owner\": \"lead\"\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Workflow Gate: 'envelope' is a mandate/0.4 field; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/envelope",
+            "span": [14, 19, 16, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "envelope",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.workflowFields.envelope in mandate/0.3",
+      "rule": "workflowFields.envelope",
+      "since": "mandate/0.4",
+      "language": "mandate/0.3",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"envelope\": {\n        \"owner\": \"lead\"\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Workflow Gate: 'envelope' is a mandate/0.4 field; this program is mandate/0.3.",
+          "at": {
+            "path": "/defs/Gate/envelope",
+            "span": [14, 19, 16, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "envelope",
+            "language": "mandate/0.3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (workflow budget) in mandate/0.5",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"budget\": {\n        \"agents\": 3\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.budgetFields.agents (workflow budget) in mandate/0.4",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"budget\": {\n        \"agents\": 3\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.budgetFields.agents (workflow budget) in mandate/0.1",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"budget\": {\n        \"agents\": 3\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/budget/agents",
+            "span": [15, 19, 15, 20]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (workflow budget) in mandate/0.2",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"budget\": {\n        \"agents\": 3\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/budget/agents",
+            "span": [15, 19, 15, 20]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (workflow budget) in mandate/0.3",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.3",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"budget\": {\n        \"agents\": 3\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.3.",
+          "at": {
+            "path": "/defs/Gate/budget/agents",
+            "span": [15, 19, 15, 20]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (agent budget) in mandate/0.5",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"budget\": {\n        \"agents\": 3\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.budgetFields.agents (agent budget) in mandate/0.4",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"budget\": {\n        \"agents\": 3\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.budgetFields.agents (agent budget) in mandate/0.1",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"budget\": {\n        \"agents\": 3\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/budget/agents",
+            "span": [11, 19, 11, 20]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (agent budget) in mandate/0.2",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"budget\": {\n        \"agents\": 3\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/budget/agents",
+            "span": [11, 19, 11, 20]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (agent budget) in mandate/0.3",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.3",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"budget\": {\n        \"agents\": 3\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.3.",
+          "at": {
+            "path": "/defs/Gate/budget/agents",
+            "span": [11, 19, 11, 20]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (skill budget) in mandate/0.5",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {\n        \"run\": {\n          \"params\": [],\n          \"returns\": {\n            \"ref\": \"Bool\"\n          },\n          \"effects\": [],\n          \"budget\": {\n            \"agents\": 3\n          }\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.budgetFields.agents (skill budget) in mandate/0.4",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {\n        \"run\": {\n          \"params\": [],\n          \"returns\": {\n            \"ref\": \"Bool\"\n          },\n          \"effects\": [],\n          \"budget\": {\n            \"agents\": 3\n          }\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.budgetFields.agents (skill budget) in mandate/0.1",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {\n        \"run\": {\n          \"params\": [],\n          \"returns\": {\n            \"ref\": \"Bool\"\n          },\n          \"effects\": [],\n          \"budget\": {\n            \"agents\": 3\n          }\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/skills/run/budget/agents",
+            "span": [17, 23, 17, 24]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (skill budget) in mandate/0.2",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {\n        \"run\": {\n          \"params\": [],\n          \"returns\": {\n            \"ref\": \"Bool\"\n          },\n          \"effects\": [],\n          \"budget\": {\n            \"agents\": 3\n          }\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/skills/run/budget/agents",
+            "span": [17, 23, 17, 24]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (skill budget) in mandate/0.3",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.3",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {\n        \"run\": {\n          \"params\": [],\n          \"returns\": {\n            \"ref\": \"Bool\"\n          },\n          \"effects\": [],\n          \"budget\": {\n            \"agents\": 3\n          }\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.3.",
+          "at": {
+            "path": "/defs/Gate/skills/run/budget/agents",
+            "span": [17, 23, 17, 24]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (delegation budget) in mandate/0.5",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"delegate\",\n        \"agent\": \"Worker\",\n        \"skill\": \"go\",\n        \"args\": [],\n        \"budget\": {\n          \"agents\": 3\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.budgetFields.agents (delegation budget) in mandate/0.4",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"delegate\",\n        \"agent\": \"Worker\",\n        \"skill\": \"go\",\n        \"args\": [],\n        \"budget\": {\n          \"agents\": 3\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.budgetFields.agents (delegation budget) in mandate/0.1",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"delegate\",\n        \"agent\": \"Worker\",\n        \"skill\": \"go\",\n        \"args\": [],\n        \"budget\": {\n          \"agents\": 3\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/value/budget/agents",
+            "span": [14, 21, 14, 22]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (delegation budget) in mandate/0.2",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"delegate\",\n        \"agent\": \"Worker\",\n        \"skill\": \"go\",\n        \"args\": [],\n        \"budget\": {\n          \"agents\": 3\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/value/budget/agents",
+            "span": [14, 21, 14, 22]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (delegation budget) in mandate/0.3",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.3",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"delegate\",\n        \"agent\": \"Worker\",\n        \"skill\": \"go\",\n        \"args\": [],\n        \"budget\": {\n          \"agents\": 3\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.3.",
+          "at": {
+            "path": "/defs/Gate/value/budget/agents",
+            "span": [14, 21, 14, 22]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (envelope budget) in mandate/0.5",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"envelope\": {\n        \"budget\": {\n          \"agents\": 3\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.budgetFields.agents (envelope budget) in mandate/0.4",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"envelope\": {\n        \"budget\": {\n          \"agents\": 3\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "SINCE.budgetFields.agents (envelope budget) in mandate/0.1",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"envelope\": {\n        \"budget\": {\n          \"agents\": 3\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Workflow Gate: 'envelope' is a mandate/0.4 field; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/envelope",
+            "span": [14, 19, 18, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "envelope",
+            "language": "mandate/0.1"
+          }
+        },
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/envelope/budget/agents",
+            "span": [16, 21, 16, 22]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (envelope budget) in mandate/0.2",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"envelope\": {\n        \"budget\": {\n          \"agents\": 3\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Workflow Gate: 'envelope' is a mandate/0.4 field; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/envelope",
+            "span": [14, 19, 18, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "envelope",
+            "language": "mandate/0.2"
+          }
+        },
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.2.",
+          "at": {
+            "path": "/defs/Gate/envelope/budget/agents",
+            "span": [16, 21, 16, 22]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "SINCE.budgetFields.agents (envelope budget) in mandate/0.3",
+      "rule": "budgetFields.agents",
+      "since": "mandate/0.4",
+      "language": "mandate/0.3",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"workflow\",\n      \"params\": [],\n      \"returns\": {\n        \"ref\": \"Bool\"\n      },\n      \"caps\": [],\n      \"body\": [],\n      \"envelope\": {\n        \"budget\": {\n          \"agents\": 3\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Workflow Gate: 'envelope' is a mandate/0.4 field; this program is mandate/0.3.",
+          "at": {
+            "path": "/defs/Gate/envelope",
+            "span": [14, 19, 18, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "envelope",
+            "language": "mandate/0.3"
+          }
+        },
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.3.",
+          "at": {
+            "path": "/defs/Gate/envelope/budget/agents",
+            "span": [16, 21, 16, 22]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "agents",
+            "language": "mandate/0.3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "agent progress.repeats over progress.window: repeats equal to window in mandate/0.5",
+      "rule": "agent progress.repeats over progress.window",
+      "since": null,
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"progress\": {\n        \"window\": 4,\n        \"repeats\": 4\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "agent progress.repeats over progress.window: repeats equal to window in mandate/0.2",
+      "rule": "agent progress.repeats over progress.window",
+      "since": null,
+      "language": "mandate/0.2",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"progress\": {\n        \"window\": 4,\n        \"repeats\": 4\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "agent progress.repeats over progress.window: repeats 5 over window 4 in mandate/0.5",
+      "rule": "agent progress.repeats over progress.window",
+      "since": null,
+      "language": "mandate/0.5",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"progress\": {\n        \"window\": 4,\n        \"repeats\": 5\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Agent Gate: progress.repeats (5) cannot be more than progress.window (4).",
+          "at": {
+            "path": "/defs/Gate/progress",
+            "span": [10, 19, 13, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "window": 4,
+            "repeats": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "agent progress.repeats over progress.window: repeats 5 over window 4 in mandate/0.4",
+      "rule": "agent progress.repeats over progress.window",
+      "since": null,
+      "language": "mandate/0.4",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"progress\": {\n        \"window\": 4,\n        \"repeats\": 5\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Agent Gate: progress.repeats (5) cannot be more than progress.window (4).",
+          "at": {
+            "path": "/defs/Gate/progress",
+            "span": [10, 19, 13, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "window": 4,
+            "repeats": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "agent progress.repeats over progress.window: repeats 5 over window 4 in mandate/0.2",
+      "rule": "agent progress.repeats over progress.window",
+      "since": null,
+      "language": "mandate/0.2",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"progress\": {\n        \"window\": 4,\n        \"repeats\": 5\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Agent Gate: progress.repeats (5) cannot be more than progress.window (4).",
+          "at": {
+            "path": "/defs/Gate/progress",
+            "span": [10, 19, 13, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "window": 4,
+            "repeats": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "agent progress.repeats over progress.window: repeats 5 over window 4 in mandate/0.1",
+      "rule": "agent progress.repeats over progress.window",
+      "since": null,
+      "language": "mandate/0.1",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"agent\",\n      \"caps\": [],\n      \"skills\": {},\n      \"progress\": {\n        \"window\": 4,\n        \"repeats\": 5\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Agent Gate: 'progress' is a mandate/0.2 field; this program is mandate/0.1.",
+          "at": {
+            "path": "/defs/Gate/progress",
+            "span": [10, 19, 13, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "field": "progress",
+            "language": "mandate/0.1"
+          }
+        },
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "Agent Gate: progress.repeats (5) cannot be more than progress.window (4).",
+          "at": {
+            "path": "/defs/Gate/progress",
+            "span": [10, 19, 13, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "window": 4,
+            "repeats": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "negative int literal: 1 in mandate/0.1",
+      "rule": "negative int literal",
+      "since": null,
+      "language": "mandate/0.1",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"int\",\n        \"value\": 1\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative int literal: 1 in mandate/0.2",
+      "rule": "negative int literal",
+      "since": null,
+      "language": "mandate/0.2",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"int\",\n        \"value\": 1\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative int literal: 1 in mandate/0.3",
+      "rule": "negative int literal",
+      "since": null,
+      "language": "mandate/0.3",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"int\",\n        \"value\": 1\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative int literal: 1 in mandate/0.4",
+      "rule": "negative int literal",
+      "since": null,
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"int\",\n        \"value\": 1\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative int literal: 1 in mandate/0.5",
+      "rule": "negative int literal",
+      "since": null,
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"int\",\n        \"value\": 1\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative int literal: -1 in mandate/0.1",
+      "rule": "negative int literal",
+      "since": null,
+      "language": "mandate/0.1",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"int\",\n        \"value\": -1\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative int literal: -1 in mandate/0.2",
+      "rule": "negative int literal",
+      "since": null,
+      "language": "mandate/0.2",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"int\",\n        \"value\": -1\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative int literal: -1 in mandate/0.3",
+      "rule": "negative int literal",
+      "since": null,
+      "language": "mandate/0.3",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"int\",\n        \"value\": -1\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative int literal: -1 in mandate/0.4",
+      "rule": "negative int literal",
+      "since": null,
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"int\",\n        \"value\": -1\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative int literal: -1 in mandate/0.5",
+      "rule": "negative int literal",
+      "since": null,
+      "language": "mandate/0.5",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"int\",\n        \"value\": -1\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "A negative 'int' literal is not allowed in mandate/0.5: from mandate/0.5 a negative literal is written as the negation of a positive one (unary neg).",
+          "at": {
+            "path": "/defs/Gate/value",
+            "span": [8, 16, 11, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "int",
+            "language": "mandate/0.5"
+          }
+        }
+      ]
+    },
+    {
+      "name": "negative dec literal: 1.5 in mandate/0.1",
+      "rule": "negative dec literal",
+      "since": null,
+      "language": "mandate/0.1",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"dec\",\n        \"value\": \"1.5\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative dec literal: 1.5 in mandate/0.2",
+      "rule": "negative dec literal",
+      "since": null,
+      "language": "mandate/0.2",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"dec\",\n        \"value\": \"1.5\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative dec literal: 1.5 in mandate/0.3",
+      "rule": "negative dec literal",
+      "since": null,
+      "language": "mandate/0.3",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"dec\",\n        \"value\": \"1.5\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative dec literal: 1.5 in mandate/0.4",
+      "rule": "negative dec literal",
+      "since": null,
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"dec\",\n        \"value\": \"1.5\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative dec literal: 1.5 in mandate/0.5",
+      "rule": "negative dec literal",
+      "since": null,
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"dec\",\n        \"value\": \"1.5\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative dec literal: -1.5 in mandate/0.1",
+      "rule": "negative dec literal",
+      "since": null,
+      "language": "mandate/0.1",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"dec\",\n        \"value\": \"-1.5\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative dec literal: -1.5 in mandate/0.2",
+      "rule": "negative dec literal",
+      "since": null,
+      "language": "mandate/0.2",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"dec\",\n        \"value\": \"-1.5\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative dec literal: -1.5 in mandate/0.3",
+      "rule": "negative dec literal",
+      "since": null,
+      "language": "mandate/0.3",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"dec\",\n        \"value\": \"-1.5\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative dec literal: -1.5 in mandate/0.4",
+      "rule": "negative dec literal",
+      "since": null,
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"dec\",\n        \"value\": \"-1.5\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative dec literal: -1.5 in mandate/0.5",
+      "rule": "negative dec literal",
+      "since": null,
+      "language": "mandate/0.5",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"dec\",\n        \"value\": \"-1.5\"\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "A negative 'dec' literal is not allowed in mandate/0.5: from mandate/0.5 a negative literal is written as the negation of a positive one (unary neg).",
+          "at": {
+            "path": "/defs/Gate/value",
+            "span": [8, 16, 11, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "dec",
+            "language": "mandate/0.5"
+          }
+        }
+      ]
+    },
+    {
+      "name": "negative dec literal: -0.0, which is zero but starts with a minus sign in mandate/0.4",
+      "rule": "negative dec literal",
+      "since": null,
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"dec\",\n        \"value\": \"-0.0\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative dec literal: -0.0, which is zero but starts with a minus sign in mandate/0.5",
+      "rule": "negative dec literal",
+      "since": null,
+      "language": "mandate/0.5",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"dec\",\n        \"value\": \"-0.0\"\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "A negative 'dec' literal is not allowed in mandate/0.5: from mandate/0.5 a negative literal is written as the negation of a positive one (unary neg).",
+          "at": {
+            "path": "/defs/Gate/value",
+            "span": [8, 16, 11, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "dec",
+            "language": "mandate/0.5"
+          }
+        }
+      ]
+    },
+    {
+      "name": "negative money literal: 1 micro in mandate/0.1",
+      "rule": "negative money literal",
+      "since": null,
+      "language": "mandate/0.1",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"money\",\n        \"micros\": 1,\n        \"currency\": \"USD\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative money literal: 1 micro in mandate/0.2",
+      "rule": "negative money literal",
+      "since": null,
+      "language": "mandate/0.2",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"money\",\n        \"micros\": 1,\n        \"currency\": \"USD\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative money literal: 1 micro in mandate/0.3",
+      "rule": "negative money literal",
+      "since": null,
+      "language": "mandate/0.3",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"money\",\n        \"micros\": 1,\n        \"currency\": \"USD\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative money literal: 1 micro in mandate/0.4",
+      "rule": "negative money literal",
+      "since": null,
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"money\",\n        \"micros\": 1,\n        \"currency\": \"USD\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative money literal: 1 micro in mandate/0.5",
+      "rule": "negative money literal",
+      "since": null,
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"money\",\n        \"micros\": 1,\n        \"currency\": \"USD\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative money literal: -1 micro in mandate/0.1",
+      "rule": "negative money literal",
+      "since": null,
+      "language": "mandate/0.1",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.1\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"money\",\n        \"micros\": -1,\n        \"currency\": \"USD\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative money literal: -1 micro in mandate/0.2",
+      "rule": "negative money literal",
+      "since": null,
+      "language": "mandate/0.2",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.2\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"money\",\n        \"micros\": -1,\n        \"currency\": \"USD\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative money literal: -1 micro in mandate/0.3",
+      "rule": "negative money literal",
+      "since": null,
+      "language": "mandate/0.3",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.3\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"money\",\n        \"micros\": -1,\n        \"currency\": \"USD\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative money literal: -1 micro in mandate/0.4",
+      "rule": "negative money literal",
+      "since": null,
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"money\",\n        \"micros\": -1,\n        \"currency\": \"USD\"\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative money literal: -1 micro in mandate/0.5",
+      "rule": "negative money literal",
+      "since": null,
+      "language": "mandate/0.5",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"money\",\n        \"micros\": -1,\n        \"currency\": \"USD\"\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "A negative 'money' literal is not allowed in mandate/0.5: from mandate/0.5 a negative literal is written as the negation of a positive one (unary neg).",
+          "at": {
+            "path": "/defs/Gate/value",
+            "span": [8, 16, 12, 8]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "money",
+            "language": "mandate/0.5"
+          }
+        }
+      ]
+    },
+    {
+      "name": "negative literal, written as a negation and deep in an expression: unary neg of 1 in mandate/0.5",
+      "rule": "negative literal, written as a negation and deep in an expression",
+      "since": null,
+      "language": "mandate/0.5",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"unary\",\n        \"uop\": \"neg\",\n        \"of\": {\n          \"op\": \"int\",\n          \"value\": 1\n        }\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative literal, written as a negation and deep in an expression: -3 as an operand in a list in mandate/0.4",
+      "rule": "negative literal, written as a negation and deep in an expression",
+      "since": null,
+      "language": "mandate/0.4",
+      "verdict": "accepted",
+      "input": "{\n  \"language\": \"mandate/0.4\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"list\",\n        \"items\": [\n          {\n            \"op\": \"binary\",\n            \"bop\": \"+\",\n            \"left\": {\n              \"op\": \"int\",\n              \"value\": 2\n            },\n            \"right\": {\n              \"op\": \"int\",\n              \"value\": -3\n            }\n          }\n        ]\n      }\n    }\n  }\n}",
+      "diagnostics": []
+    },
+    {
+      "name": "negative literal, written as a negation and deep in an expression: -3 as an operand in a list in mandate/0.5",
+      "rule": "negative literal, written as a negation and deep in an expression",
+      "since": null,
+      "language": "mandate/0.5",
+      "verdict": "refused",
+      "input": "{\n  \"language\": \"mandate/0.5\",\n  \"module\": \"vectors.gate\",\n  \"version\": \"0.1\",\n  \"defs\": {\n    \"Gate\": {\n      \"kind\": \"const\",\n      \"value\": {\n        \"op\": \"list\",\n        \"items\": [\n          {\n            \"op\": \"binary\",\n            \"bop\": \"+\",\n            \"left\": {\n              \"op\": \"int\",\n              \"value\": 2\n            },\n            \"right\": {\n              \"op\": \"int\",\n              \"value\": -3\n            }\n          }\n        ]\n      }\n    }\n  }\n}",
+      "diagnostics": [
+        {
+          "code": "MDT-E0104",
+          "severity": "error",
+          "message": "A negative 'int' literal is not allowed in mandate/0.5: from mandate/0.5 a negative literal is written as the negation of a positive one (unary neg).",
+          "at": {
+            "path": "/defs/Gate/value/items/0/right",
+            "span": [18, 22, 21, 14]
+          },
+          "docs": "mandate explain MDT-E0104",
+          "facts": {
+            "op": "int",
+            "language": "mandate/0.5"
+          }
+        }
+      ]
+    }
+  ]
+}

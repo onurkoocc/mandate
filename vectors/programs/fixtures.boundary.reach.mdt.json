@@ -1,0 +1,379 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "fixtures/boundary/reach.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.5",
+  "canonical": "{\"defs\":{\"Environ\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"commands\",\"value\":{\"items\":[{\"op\":\"text\",\"value\":\"env\"}],\"op\":\"list\"}}],\"callee\":{\"name\":\"exec\",\"op\":\"var\"},\"op\":\"call\"}},\"GitHubRead\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"hosts\",\"value\":{\"items\":[{\"op\":\"text\",\"value\":\"api.github.com\"}],\"op\":\"list\"}},{\"name\":\"methods\",\"value\":{\"items\":[{\"name\":\"GET\",\"op\":\"var\"}],\"op\":\"list\"}}],\"callee\":{\"name\":\"https\",\"of\":{\"name\":\"net\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"ModelStd\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"tier\",\"value\":{\"name\":\"standard\",\"op\":\"var\"}},{\"name\":\"max_class\",\"value\":{\"name\":\"internal\",\"op\":\"var\"}}],\"callee\":{\"name\":\"infer\",\"of\":{\"name\":\"model\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"Probe\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"commands\",\"value\":{\"items\":[{\"op\":\"text\",\"value\":\"sh\"}],\"op\":\"list\"}},{\"name\":\"args_prefix\",\"value\":{\"items\":[{\"items\":[{\"op\":\"text\",\"value\":\"-c\"},{\"op\":\"text\",\"value\":\"curl -sS -i --max-time 20 -H \\\"authorization: Bearer $MANDATE_EGRESS_PLACEHOLDER_GITHUB\\\" http://api.github.com/repos/acme/app/issues/1\"}],\"op\":\"list\"},{\"items\":[{\"op\":\"text\",\"value\":\"-c\"},{\"op\":\"text\",\"value\":\"curl -sS -i --max-time 20 http://example.org/\"}],\"op\":\"list\"}],\"op\":\"list\"}}],\"callee\":{\"name\":\"exec\",\"op\":\"var\"},\"op\":\"call\"}},\"Reach\":{\"body\":[{\"op\":\"expr\",\"value\":{\"agent\":\"Reacher\",\"args\":[{\"value\":{\"name\":\"task\",\"op\":\"var\"}}],\"op\":\"delegate\",\"skill\":\"reach\"}}],\"budget\":{\"spend\":{\"currency\":\"USD\",\"micros\":8000000}},\"caps\":[{\"name\":\"Environ\",\"op\":\"var\"},{\"name\":\"GitHubRead\",\"op\":\"var\"},{\"name\":\"ModelStd\",\"op\":\"var\"},{\"name\":\"Probe\",\"op\":\"var\"}],\"kind\":\"workflow\",\"params\":[{\"name\":\"task\",\"type\":{\"ref\":\"Text\"}}],\"returns\":{\"args\":[{\"ref\":\"Text\"}],\"ref\":\"Inferred\"}},\"Reacher\":{\"budget\":{\"spend\":{\"currency\":\"USD\",\"micros\":6000000},\"steps\":6,\"tokens\":900000},\"caps\":[{\"name\":\"Environ\",\"op\":\"var\"},{\"name\":\"GitHubRead\",\"op\":\"var\"},{\"name\":\"ModelStd\",\"op\":\"var\"},{\"name\":\"Probe\",\"op\":\"var\"}],\"kind\":\"agent\",\"role\":\"Runs env, then each of its two fixed curl scripts through sh -c, and says what each printed.\",\"skills\":{\"reach\":{\"effects\":[{\"effect\":\"Exec\"},{\"effect\":\"Model\"},{\"effect\":\"Net\"}],\"params\":[{\"name\":\"task\",\"type\":{\"ref\":\"Text\"}}],\"returns\":{\"args\":[{\"ref\":\"Text\"}],\"ref\":\"Inferred\"}}}},\"operator\":{\"description\":\"Reads the run's view of what its agent reached\",\"kind\":\"role\"}},\"language\":\"mandate/0.5\",\"module\":\"example.reach\",\"uses\":[{\"module\":\"std\",\"names\":[\"exec\",\"model\",\"net\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:f3d5f8cebc9c29c3e8a5e58e0bea2f277c14e500f369d2a473dbb1b00692a53b",
+    "defs": [
+      [
+        "Environ",
+        "sha256:42a765d5d54c40965b7aaaed20d51d18e14881ae6bc040c2bec66ae3a72b750b"
+      ],
+      [
+        "GitHubRead",
+        "sha256:9f31ffd285728bed1fa2f316d201e084bc0fd6d18aae3bb715dc56e7a85db6a1"
+      ],
+      [
+        "ModelStd",
+        "sha256:920cc23eac16b562bbe8e63ff8ef93b3baff8bedb989c74a5153e99b2286e978"
+      ],
+      [
+        "Probe",
+        "sha256:73c5a28b14414938eb8e248d7b2fa2c5567db4f960be54218ac3466a4791f22d"
+      ],
+      [
+        "Reach",
+        "sha256:bb1def60fbd244af57afda204d9d16f09f3ca60f862167d6136469c46dc1b3bd"
+      ],
+      [
+        "Reacher",
+        "sha256:daef609d572d7b2a695024734a930844778187aa49d0cc2c9b0294d8dea63810"
+      ],
+      [
+        "operator",
+        "sha256:52bb5a45d226567707762add0dbc8636dd4d986b197eaa3248a3695447f5bccf"
+      ]
+    ]
+  },
+  "lock": {
+    "modules": {},
+    "models": {
+      "standard": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "effort": "high",
+        "max_input_tokens": 128000,
+        "max_output_tokens": 12000
+      }
+    },
+    "tariffs": {
+      "claude-opus-5-5": {
+        "currency": "USD",
+        "as_of": "2026-10-09",
+        "micros_per_mtok": {
+          "input": 4000000,
+          "output": 20000000,
+          "cache_read": 200000,
+          "cache_write": 5000000
+        }
+      }
+    },
+    "host": {
+      "node": "22",
+      "bwrap": "0.1"
+    },
+    "isolation": {
+      "floor": {
+        "confidential": "user_kernel",
+        "restricted": "microvm"
+      },
+      "untrusted_network": "process",
+      "co_tenancy": {
+        "restricted": "forbidden"
+      }
+    },
+    "egress": {
+      "Reacher": {
+        "api.github.com": "github"
+      }
+    }
+  },
+  "package": "sha256:b704edd5ca258cf4bb6652f16a1d734cdd9d3f3362db6ea731780a14a1742df9",
+  "ir": {
+    "language": "mandate/0.5",
+    "module": "example.reach",
+    "version": "0.1",
+    "defs": {
+      "operator": {
+        "kind": "role",
+        "description": "Reads the run's view of what its agent reached"
+      },
+      "GitHubRead": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "net"
+            },
+            "name": "https"
+          },
+          "args": [
+            {
+              "name": "hosts",
+              "value": {
+                "op": "list",
+                "items": [
+                  {
+                    "op": "text",
+                    "value": "api.github.com"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "methods",
+              "value": {
+                "op": "list",
+                "items": [
+                  {
+                    "op": "var",
+                    "name": "GET"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "Probe": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "var",
+            "name": "exec"
+          },
+          "args": [
+            {
+              "name": "commands",
+              "value": {
+                "op": "list",
+                "items": [
+                  {
+                    "op": "text",
+                    "value": "sh"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "args_prefix",
+              "value": {
+                "op": "list",
+                "items": [
+                  {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "text",
+                        "value": "-c"
+                      },
+                      {
+                        "op": "text",
+                        "value": "curl -sS -i --max-time 20 -H \"authorization: Bearer $MANDATE_EGRESS_PLACEHOLDER_GITHUB\" http://api.github.com/repos/acme/app/issues/1"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "text",
+                        "value": "-c"
+                      },
+                      {
+                        "op": "text",
+                        "value": "curl -sS -i --max-time 20 http://example.org/"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "Environ": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "var",
+            "name": "exec"
+          },
+          "args": [
+            {
+              "name": "commands",
+              "value": {
+                "op": "list",
+                "items": [
+                  {
+                    "op": "text",
+                    "value": "env"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "ModelStd": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "model"
+            },
+            "name": "infer"
+          },
+          "args": [
+            {
+              "name": "tier",
+              "value": {
+                "op": "var",
+                "name": "standard"
+              }
+            },
+            {
+              "name": "max_class",
+              "value": {
+                "op": "var",
+                "name": "internal"
+              }
+            }
+          ]
+        }
+      },
+      "Reacher": {
+        "kind": "agent",
+        "caps": [
+          {
+            "op": "var",
+            "name": "Environ"
+          },
+          {
+            "op": "var",
+            "name": "GitHubRead"
+          },
+          {
+            "op": "var",
+            "name": "ModelStd"
+          },
+          {
+            "op": "var",
+            "name": "Probe"
+          }
+        ],
+        "skills": {
+          "reach": {
+            "params": [
+              {
+                "name": "task",
+                "type": {
+                  "ref": "Text"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "Inferred",
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ]
+            },
+            "effects": [
+              {
+                "effect": "Exec"
+              },
+              {
+                "effect": "Model"
+              },
+              {
+                "effect": "Net"
+              }
+            ]
+          }
+        },
+        "role": "Runs env, then each of its two fixed curl scripts through sh -c, and says what each printed.",
+        "budget": {
+          "tokens": 900000,
+          "spend": {
+            "micros": 6000000,
+            "currency": "USD"
+          },
+          "steps": 6
+        }
+      },
+      "Reach": {
+        "kind": "workflow",
+        "params": [
+          {
+            "name": "task",
+            "type": {
+              "ref": "Text"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Inferred",
+          "args": [
+            {
+              "ref": "Text"
+            }
+          ]
+        },
+        "caps": [
+          {
+            "op": "var",
+            "name": "Environ"
+          },
+          {
+            "op": "var",
+            "name": "GitHubRead"
+          },
+          {
+            "op": "var",
+            "name": "ModelStd"
+          },
+          {
+            "op": "var",
+            "name": "Probe"
+          }
+        ],
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "delegate",
+              "agent": "Reacher",
+              "skill": "reach",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "task"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "budget": {
+          "spend": {
+            "micros": 8000000,
+            "currency": "USD"
+          }
+        }
+      }
+    },
+    "uses": [
+      {
+        "module": "std",
+        "names": [
+          "exec",
+          "model",
+          "net"
+        ]
+      }
+    ]
+  }
+}

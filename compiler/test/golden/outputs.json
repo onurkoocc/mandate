@@ -218,6 +218,32 @@
     "view --against itself": "sha256:7a2cda80561fad18f014a8e91be80b60866822da66321843b8f073568d941318",
     "sandbox": "sha256:d0c68f89b5fbfc49ef3fb75f9dc3019040b23f7fe8d1d57a5ce927143f55ca54"
   },
+  "fixtures/envelope/domain.mdt": {
+    "check": "sha256:84352f8cec0ab94105a54ff3b64fe4a46f2d054254bbd1635fe5c8ee73f2cf48",
+    "check --module": "sha256:84352f8cec0ab94105a54ff3b64fe4a46f2d054254bbd1635fe5c8ee73f2cf48",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:5ea8ec2c7a5755345fc1a9fedbcffd2d1f549eea1ed379266aac2451d0026e7f",
+    "fmt": "sha256:1f28de9c7df122455d6be63ee815068123f342a2d479c717218d6572e01a5fa9",
+    "hash": "sha256:93d33a68ab37c11e338a32e663e3623a6c036b0d8ae4d9f254dbe9e626085512",
+    "view --format json": "sha256:ef7c3f85a1ee77119630a82740c05b20ec70dd1161071b56b18bf34391abca84",
+    "view --format md": "sha256:62a833975d55976d71ee4368119a8346fe4f4c6bd2ea07c61168269bd47028a8",
+    "view --format html": "sha256:9a8fdad86dc9533297ebfa18ddc5f2353372480a6d7b1171ec1474adbfda4882",
+    "view --against itself": "sha256:d542750b766d2fe2fea9874cbde37ad17b21e322c98e1db5d523af051ea1822b",
+    "sandbox": "sha256:fa4daa4cd9e8dcdd7877ac2f7b93217fcc43d9d255ec5cf80bfdd3c56ddbfe63"
+  },
+  "fixtures/envelope/migrate-all.mdt": {
+    "check": "sha256:f61c2975629a3abbbf9a9692aeb120fa188e7bf9551af9a78f9a83bf1ef234b0",
+    "check --module": "sha256:f61c2975629a3abbbf9a9692aeb120fa188e7bf9551af9a78f9a83bf1ef234b0",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:c4b33d9ca625e289b76ea5a46a68b9d46ef3a8993aa5751eb008e4ae9e4a1d35",
+    "fmt": "sha256:13c5579a93b2fc728d5ffcec717815473bef80f1622870a6404f7b9c934c07a7",
+    "hash": "sha256:dbecacd1dda2d2e7e84ac0d5449a9173c9ae06a3c3792c5bd3a49b512b00d9ca",
+    "view --format json": "sha256:db02495fd4e1e71da5a6358072c03cfc9a61a94ba1d3fa8c33bc9a2004c3977d",
+    "view --format md": "sha256:faaf504d1e1d23d27fe1f840a169d9b0e85b216982159cfc0e85af1314301147",
+    "view --format html": "sha256:02f98e59dfba7d956a5d93056da3bb8427b0917af5b250643b57275309810324",
+    "view --against itself": "sha256:cfdade7a27fb32f9c059ad12aa4c5cb536097193cbec0cdb900a5506509ba22b",
+    "sandbox": "sha256:c0a39cff72ced635df22d5b430a043e08e0af275099421d86871bc7d1bf212b0"
+  },
   "fixtures/boundary/fetch.mdt": {
     "check": "sha256:d30845cd530b0b0e22e037a78d0a7a3f0539d69b3dc8ad24f8f6fe9206f11e3f",
     "check --module": "sha256:d30845cd530b0b0e22e037a78d0a7a3f0539d69b3dc8ad24f8f6fe9206f11e3f",
@@ -231,5 +257,19 @@
     "view --format html": "sha256:06ac9acc8b598e387abc4b5e08b423b9df2f00c5328d1a7ddd548f8ef2d11f9a",
     "view --against itself": "sha256:5e0fefc03de85f3626f812cc4133a0b7c1b662c1fd0863f631b25e802db79466",
     "sandbox": "sha256:625dfccbb36cd16316bb02b746aff542ddb3b9cc229f46ed34ab7d4436690812"
+  },
+  "fixtures/boundary/reach.mdt": {
+    "check": "sha256:1b80ad9c538c9afadeac3434d851dae93ccf513ddf211781ebf5375120f68d6a",
+    "check --module": "sha256:1b80ad9c538c9afadeac3434d851dae93ccf513ddf211781ebf5375120f68d6a",
+    "check --lock": "sha256:1b80ad9c538c9afadeac3434d851dae93ccf513ddf211781ebf5375120f68d6a",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:95e927f692c656d084ac317aec869b71f8d494cf8d22e718079e4fec9295da5f",
+    "fmt": "sha256:c67c8a09a6f9cccb4814137da12c896708241e7fd5e71d3e9ab534a4ab928d08",
+    "hash": "sha256:0acdfeb6310145add8348f5b774da5b5a6c2febfe8d7f8071b330467bf5801bd",
+    "view --format json": "sha256:214bc03ba82fb4c1a2332c3ff234fd52630c0c08d61e420c5bd9c2c5e767b6d2",
+    "view --format md": "sha256:e1014d829ed12f03f45ee7b665284b0bb017c29af2b61e08e1e6c9f6964332bc",
+    "view --format html": "sha256:86e2fdf8b821be0c3f8fd89497673f1f5c411eb42fbd28f4b43f73974fe2286f",
+    "view --against itself": "sha256:90d5350d24f58aaa5f556518784712e09de86acf0b0d5f14cc74005484e267cf",
+    "sandbox": "sha256:a7ac95c6f55b2838a95bab4d914b8ff753332ab7fe3d4b8e494e8cb61a9c2630"
   }
 }

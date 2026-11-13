@@ -1,0 +1,5108 @@
+{
+  "format": "mandate/vectors/diagnostics/conformance/0.1",
+  "part": 1,
+  "parts": 1,
+  "cases": [
+    {
+      "name": "E0104",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/envelope/migrate-all.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/envelope/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "platform_lead: 'role' is a mandate/0.4 definition; this program is mandate/0.3.",
+            "at": {
+              "path": "/defs/platform_lead/kind",
+              "span": [1, 105, 1, 111]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "kind": "role",
+              "language": "mandate/0.3"
+            }
+          },
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "release_manager: 'role' is a mandate/0.4 definition; this program is mandate/0.3.",
+            "at": {
+              "path": "/defs/release_manager/kind",
+              "span": [1, 169, 1, 175]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "kind": "role",
+              "language": "mandate/0.3"
+            }
+          },
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Workflow MigrateAll: 'envelope' is a mandate/0.4 field; this program is mandate/0.3.",
+            "at": {
+              "path": "/defs/MigrateAll/envelope",
+              "span": [1, 4145, 1, 4547]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "field": "envelope",
+              "language": "mandate/0.3"
+            }
+          },
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "'map' is a mandate/0.4 expression; this program is mandate/0.3.",
+            "at": {
+              "path": "/defs/MigrateAll/body/0/value",
+              "span": [1, 3588, 1, 3979]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "op": "map",
+              "language": "mandate/0.3"
+            }
+          },
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "'plan' is a mandate/0.4 expression; this program is mandate/0.3.",
+            "at": {
+              "path": "/defs/MigrateAll/body/1/value",
+              "span": [1, 4002, 1, 4131]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "op": "plan",
+              "language": "mandate/0.3"
+            }
+          },
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "'agents' is a mandate/0.4 budget field; this program is mandate/0.3.",
+            "at": {
+              "path": "/defs/MigrateAll/envelope/budget/agents",
+              "span": [1, 4447, 1, 4450]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "field": "agents",
+              "language": "mandate/0.3"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0104a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "A negative 'int' literal is not allowed in mandate/0.5: from mandate/0.5 a negative literal is written as the negation of a positive one (unary neg).",
+            "at": {
+              "path": "/defs/Debt/value",
+              "span": [1, 95, 1, 118]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "op": "int",
+              "language": "mandate/0.5"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0104b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "A negative 'money' literal is not allowed in mandate/0.5: from mandate/0.5 a negative literal is written as the negation of a positive one (unary neg).",
+            "at": {
+              "path": "/defs/Refund/value",
+              "span": [1, 97, 1, 146]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "op": "money",
+              "language": "mandate/0.5"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0104c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:363d99a713aeb50ae4fe76a59a08481bf29dc8fcb366f32a7fa49370457303f5",
+          "defs": {
+            "Debt": "sha256:3ad4c39793a44b20fece5de23960e50a45ce170f90d707884226f44bb2b4384f",
+            "Refund": "sha256:aa6faaaa066d5ee4ac642f5bda2554c47b45b864ccbd22dde20d436f8aebfd2f"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "E0220",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "A.s receives confidential data, and W's envelope allows at most internal in a delegation (spawn.max_class).",
+            "at": {
+              "path": "/defs/W/body/1/value",
+              "span": [1, 2232, 1, 2316]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "internal",
+              "by": "envelope"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0220a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E0220/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "A.s receives confidential data inside via, and W's envelope allows at most internal in a delegation (spawn.max_class).",
+            "at": {
+              "path": "/defs/W/body/1/value",
+              "span": [1, 2232, 1, 2323]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "internal",
+              "by": "envelope",
+              "via": "via"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0220b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E0220/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "A.s receives confidential data inside Outer.wrap, which W reaches, and W's envelope allows at most internal in the run (spawn.max_class).",
+            "at": {
+              "path": "/defs/Outer/skills/wrap/body/0/value",
+              "span": [1, 1222, 1, 1353]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "internal",
+              "by": "envelope",
+              "workflow": "W",
+              "skill": "Outer.wrap"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0320a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1702/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0320",
+            "severity": "error",
+            "message": "Every item of this map can write /work (W = fs.write(\"/work\")), and par 2 runs them side by side. Hand each item its own scope with the map's 'with caps', narrowed by 'x' (C5).",
+            "at": {
+              "path": "/defs/Run/body/0/value",
+              "span": [1, 1251, 1, 1467]
+            },
+            "docs": "mandate explain MDT-E0320",
+            "facts": {
+              "par": 2,
+              "capability": "W = fs.write(\"/work\")",
+              "by_item": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0501a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/envelope/migrate-all.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/envelope/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0501",
+            "severity": "error",
+            "message": "The budgets MigrateAll hands out exceed its own budget (agents).",
+            "at": {
+              "path": "/defs/MigrateAll/envelope/budget",
+              "span": [1, 4337, 1, 4451]
+            },
+            "docs": "mandate explain MDT-E0501",
+            "facts": {
+              "agents": {
+                "limit": 150,
+                "declared_by_children": 151
+              },
+              "breakdown": [
+                {
+                  "from": "Migrator.migrate \u00d7150",
+                  "at": "/defs/MigrateAll/body/0/value/body/0/value",
+                  "budget": {
+                    "spend": "0.5 USD",
+                    "tokens": 400000,
+                    "time_ms": 1200000,
+                    "steps": 12,
+                    "agents": 1
+                  }
+                },
+                {
+                  "from": "Lead.finish",
+                  "at": "/defs/MigrateAll/body/1/value",
+                  "budget": {
+                    "spend": "10 USD",
+                    "tokens": 2000000,
+                    "steps": 40,
+                    "agents": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/moved/by/static",
+              "span": [1, 1521, 1, 1715]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/nothing_left/by/static",
+              "span": [1, 1807, 1, 1997]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0501b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1702/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0501",
+            "severity": "error",
+            "message": "One item of this map hands out more than the map's budget for an item (steps).",
+            "at": {
+              "path": "/defs/Run/body/0/value/budget",
+              "span": [1, 1624, 1, 1635]
+            },
+            "docs": "mandate explain MDT-E0501",
+            "facts": {
+              "steps": {
+                "limit": 4,
+                "declared_by_children": 5
+              },
+              "breakdown": [
+                {
+                  "from": "Writer.w",
+                  "at": "/defs/Run/body/0/value/body/0/value",
+                  "budget": {
+                    "steps": 5,
+                    "agents": 1
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0701",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0701",
+            "severity": "error",
+            "message": "Reader does not hold GitHubAny = net.https(\"api.github.com\"); 'with caps' can only narrow what the agent already holds (C2).",
+            "at": {
+              "path": "/defs/Summarize/body/0/value/caps/0",
+              "span": [1, 1349, 1, 1380]
+            },
+            "docs": "mandate explain MDT-E0701",
+            "facts": {
+              "capability": "GitHubAny = net.https(\"api.github.com\")",
+              "agent": [
+                "GitHubRead = net.https(\"api.github.com\", methods: [GET])",
+                "ModelStd = model.infer"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1501",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/envelope/migrate-all.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/envelope/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1501",
+            "severity": "error",
+            "message": "An envelope's owner names the role 'platform_led', but 'platform_led' is not a role this module defines or imports. Define it: role platform_led \"\u2026\" (spec/envelope.md).",
+            "at": {
+              "path": "/defs/MigrateAll/envelope/owner",
+              "span": [1, 4154, 1, 4168]
+            },
+            "docs": "mandate explain MDT-E1501",
+            "facts": {
+              "role": "platform_led",
+              "where": "an envelope's owner",
+              "roles": [
+                "platform_lead",
+                "release_manager"
+              ],
+              "did_you_mean": "platform_lead"
+            },
+            "repair": [
+              {
+                "id": "r1",
+                "summary": "Use 'platform_lead'",
+                "patch": [
+                  {
+                    "op": "replace",
+                    "path": "/defs/MigrateAll/envelope/owner",
+                    "value": "platform_lead"
+                  }
+                ],
+                "risk": "low"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1502",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/envelope/migrate-all.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/envelope/domain.mdt"
+      ],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/moved/by/static",
+              "span": [25, 15, 25, 35]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/nothing_left/by/static",
+              "span": [27, 15, 27, 31]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E1502",
+            "severity": "error",
+            "message": "Role release_manager has no member in the lock file, so nobody could decide for it.",
+            "at": {
+              "path": "/defs/MigrateAll/envelope/approve/git.merge"
+            },
+            "docs": "mandate explain MDT-E1502",
+            "facts": {
+              "role": "release_manager",
+              "lock": "mandate/lock/0.4",
+              "bound": [
+                "platform_lead"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1503",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1503",
+            "severity": "error",
+            "message": "distinct_from names 'accountant', but no approval earlier in criterion Approved.two_people asks that role (spec/envelope.md \"distinct_from\").",
+            "at": {
+              "path": "/defs/Approved/accept/two_people/by/all/1/call/args/1/value",
+              "span": [18, 95, 18, 105]
+            },
+            "docs": "mandate explain MDT-E1503",
+            "facts": {
+              "distinct_from": "accountant",
+              "approved_earlier": [
+                "finance_lead"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1701",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/envelope/migrate-all.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/envelope/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1701",
+            "severity": "error",
+            "message": "MigrateAll's envelope does not give owner. An envelope names its owner, its caps and a budget with agents: they are what a person approves (spec/envelope.md \"What it declares\").",
+            "at": {
+              "path": "/defs/MigrateAll/envelope",
+              "span": [1, 4145, 1, 4523]
+            },
+            "docs": "mandate explain MDT-E1701",
+            "facts": {
+              "missing": [
+                "owner"
+              ]
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/moved/by/static",
+              "span": [1, 1521, 1, 1715]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/nothing_left/by/static",
+              "span": [1, 1807, 1, 1997]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1701a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/envelope/migrate-all.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/envelope/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1701",
+            "severity": "error",
+            "message": "MigrateAll has an envelope and caps of its own. The envelope's caps take their place: write them there.",
+            "at": {
+              "path": "/defs/MigrateAll/caps",
+              "span": [1, 3543, 1, 3575]
+            },
+            "docs": "mandate explain MDT-E1701",
+            "facts": {
+              "field": "caps"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/moved/by/static",
+              "span": [1, 1521, 1, 1715]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/nothing_left/by/static",
+              "span": [1, 1807, 1, 1997]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1702",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1702",
+            "severity": "error",
+            "message": "A map says how many elements it accepts at most: add 'max n'. Only in the body of a workflow with an envelope may it be left out (spec/envelope.md \"map\").",
+            "at": {
+              "path": "/defs/Run/body/0/value",
+              "span": [1, 1298, 1, 1675]
+            },
+            "docs": "mandate explain MDT-E1702",
+            "facts": {
+              "envelope": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1702a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1702/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1702",
+            "severity": "error",
+            "message": "This map has no 'max', and its body starts no delegation, so the envelope's agents do not bound it: add 'max n' (spec/envelope.md \"map\").",
+            "at": {
+              "path": "/defs/Run/body/0/value",
+              "span": [1, 1251, 1, 1575]
+            },
+            "docs": "mandate explain MDT-E1702",
+            "facts": {
+              "envelope": true,
+              "delegates": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1703",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1702/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1703",
+            "severity": "error",
+            "message": "par 8 runs more items at once than the envelope lets delegations be in flight (spawn.max_concurrent: 4) (spec/envelope.md \"map\").",
+            "at": {
+              "path": "/defs/Run/body/0/value/par",
+              "span": [1, 1444, 1, 1445]
+            },
+            "docs": "mandate explain MDT-E1703",
+            "facts": {
+              "par": 8,
+              "max_concurrent": 4
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1704",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/envelope/migrate-all.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/envelope/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1704",
+            "severity": "error",
+            "message": "MigrateAll's envelope asks release_manager to approve 'fs.write_text', which is not a critical effect. Only an effect that goes through prepare \u2192 authorize \u2192 commit is authorized by anyone.",
+            "at": {
+              "path": "/defs/MigrateAll/envelope/approve/fs.write_text",
+              "span": [1, 4562, 1, 4579]
+            },
+            "docs": "mandate explain MDT-E1704",
+            "facts": {
+              "effect": "fs.write_text",
+              "role": "release_manager",
+              "critical": false
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/moved/by/static",
+              "span": [1, 1521, 1, 1715]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/nothing_left/by/static",
+              "span": [1, 1807, 1, 1997]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1704a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/envelope/migrate-all.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/envelope/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1704",
+            "severity": "error",
+            "message": "MigrateAll's envelope asks release_manager to approve 'git.merge', but no capability in the envelope's caps covers it, so nothing in the run can do it.",
+            "at": {
+              "path": "/defs/MigrateAll/envelope/approve/git.merge",
+              "span": [1, 4500, 1, 4517]
+            },
+            "docs": "mandate explain MDT-E1704",
+            "facts": {
+              "effect": "git.merge",
+              "role": "release_manager",
+              "critical": true,
+              "available": [
+                "Build = exec(\"npm\")",
+                "ModelStd = model.infer",
+                "RepoRead = fs.read(\"/work/repos\")",
+                "SrcWrite = fs.write(\"/work/repos\")"
+              ]
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/moved/by/static",
+              "span": [1, 1521, 1, 1715]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/nothing_left/by/static",
+              "span": [1, 1807, 1, 1997]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1705",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1705",
+            "severity": "error",
+            "message": "A sub-program's workflow takes no parameters ('Fix' takes 1): nothing calls it with arguments. Write the values it works on into the sub-program.",
+            "at": {
+              "path": "/defs/Fix/params"
+            },
+            "docs": "mandate explain MDT-E1705",
+            "facts": {
+              "def": "Fix",
+              "kind": "parameters",
+              "params": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1705a",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1705",
+            "severity": "error",
+            "message": "A sub-program cannot 'plan': only the program a person approved starts a lead (spec/envelope.md \"The sub-program\").",
+            "at": {
+              "path": "/defs/Fix/body/0/value"
+            },
+            "docs": "mandate explain MDT-E1705",
+            "facts": {
+              "def": "Fix",
+              "kind": "plan"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1706",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1706",
+            "severity": "error",
+            "message": "Fix asks for Wa = fs.write(\"/work/a\"), and fs.write(\"/work/a/src\") is still held by a part of the run that has not ended. Two parts of a run do not write the same place at once (C5).",
+            "at": {
+              "path": "/defs/Fix/caps/2"
+            },
+            "docs": "mandate explain MDT-E1706",
+            "facts": {
+              "dimension": "write_scope",
+              "capability": "Wa = fs.write(\"/work/a\")",
+              "in_flight": "fs.write(\"/work/a/src\")"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1706a",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1706",
+            "severity": "error",
+            "message": "Fix's budget names no agents. A sub-program reserves what it may use of the envelope in every dimension the run is limited in.",
+            "at": {
+              "path": "/defs/Fix/budget"
+            },
+            "docs": "mandate explain MDT-E1706",
+            "facts": {
+              "dimension": "agents",
+              "asked": null,
+              "left": 10
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1706b",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1706",
+            "severity": "error",
+            "message": "Quiet.note receives internal data, but its model capability allows at most public (\u00a75.5). The lead received internal data, and a sub-program is its output.",
+            "at": {
+              "path": "/defs/Fix/body/0/value",
+              "span": [1, 815, 1, 909]
+            },
+            "docs": "mandate explain MDT-E1706",
+            "facts": {
+              "dimension": "data_class",
+              "data_class": "internal",
+              "allowed": "public",
+              "by": "lead",
+              "lead": "internal"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1707",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/envelope/migrate-all.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/envelope/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1707",
+            "severity": "error",
+            "message": "'plan \u2026 within envelope' stands only in the body of a workflow with an envelope, and MigrateAll has no envelope (spec/envelope.md \"plan\").",
+            "at": {
+              "path": "/defs/MigrateAll/body/1/value",
+              "span": [1, 4122, 1, 4251]
+            },
+            "docs": "mandate explain MDT-E1707",
+            "facts": {
+              "def": "MigrateAll",
+              "kind": "workflow",
+              "envelope": false
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/moved/by/static",
+              "span": [1, 1521, 1, 1715]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Moved/accept/nothing_left/by/static",
+              "span": [1, 1807, 1, 1997]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1708",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1702/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1708",
+            "severity": "error",
+            "message": "'human step' waits for a person inside a map's body, once for each item. Ask once about the list, after the map (spec/envelope.md \"map\").",
+            "at": {
+              "path": "/defs/Run/body/0/value/body/0/value",
+              "span": [1, 1338, 1, 1555]
+            },
+            "docs": "mandate explain MDT-E1708",
+            "facts": {
+              "map": "/defs/Run/body/0/value",
+              "kind": "person",
+              "what": "human step"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1708a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1702/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1708",
+            "severity": "error",
+            "message": "The critical effect git.comment runs inside a map's body, where each item's would be authorized on its own. Run it after the map, or land a batch with a change set (spec/envelope.md \"map\").",
+            "at": {
+              "path": "/defs/Run/body/0/value/body/0/value",
+              "span": [1, 1338, 1, 1564]
+            },
+            "docs": "mandate explain MDT-E1708",
+            "facts": {
+              "map": "/defs/Run/body/0/value",
+              "kind": "critical_effect",
+              "what": "git.comment"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1709",
+      "kind": "compile",
+      "door": "check_amendment",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "amendment"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1709",
+            "severity": "error",
+            "message": "The amendment gives 50000 tokens, and the envelope gives 100000. An amendment only raises a budget.",
+            "at": {
+              "path": "/defs/Run/envelope/budget/tokens"
+            },
+            "docs": "mandate explain MDT-E1709",
+            "facts": {
+              "dimension": "tokens",
+              "was": 100000,
+              "asked": 50000
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1709a",
+      "kind": "compile",
+      "door": "check_amendment",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "amendment"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1709",
+            "severity": "error",
+            "message": "The amendment leaves out W = fs.write(\"/work\"), which the envelope holds. An amendment only widens: what ran under the envelope must still lie inside it.",
+            "at": {
+              "path": "/defs/Run/envelope/caps"
+            },
+            "docs": "mandate explain MDT-E1709",
+            "facts": {
+              "dimension": "capability",
+              "capability": "W = fs.write(\"/work\")",
+              "asked": [
+                "High = model.infer",
+                "M = model.infer",
+                "Merge = git.pr(\"company/backend\")",
+                "Public = model.infer",
+                "R = fs.read(\"/work\")"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1709b",
+      "kind": "compile",
+      "door": "check_amendment",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "amendment"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1709",
+            "severity": "error",
+            "message": "The amendment's budget names no time, and the envelope gives 3600000. An amendment names every dimension the envelope names.",
+            "at": {
+              "path": "/defs/Run/envelope/budget"
+            },
+            "docs": "mandate explain MDT-E1709",
+            "facts": {
+              "dimension": "time",
+              "was": 3600000,
+              "asked": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1709c",
+      "kind": "compile",
+      "door": "check_amendment",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "amendment"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1709",
+            "severity": "error",
+            "message": "The amendment allows 2 delegations at once, and the envelope allows 4. An amendment only raises it.",
+            "at": {
+              "path": "/defs/Run/envelope/spawn/max_concurrent"
+            },
+            "docs": "mandate explain MDT-E1709",
+            "facts": {
+              "dimension": "max_concurrent",
+              "was": 4,
+              "asked": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1801",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1801",
+            "severity": "error",
+            "message": "Unknown method FETCH; net.https allows GET, HEAD, POST, PUT, PATCH or DELETE.",
+            "at": {
+              "path": "/defs/GitHubRead/value/args/1/value/items/0",
+              "span": [1, 345, 1, 372]
+            },
+            "docs": "mandate explain MDT-E1801",
+            "facts": {
+              "found": "FETCH",
+              "expected": [
+                "GET",
+                "HEAD",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1801a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1801",
+            "severity": "error",
+            "message": "A method is written as a bare name, such as GET, not \"GET\"; net.https allows GET, HEAD, POST, PUT, PATCH or DELETE.",
+            "at": {
+              "path": "/defs/GitHubRead/value/args/1/value/items/0",
+              "span": [1, 345, 1, 372]
+            },
+            "docs": "mandate explain MDT-E1801",
+            "facts": {
+              "found": "GET",
+              "expected": [
+                "GET",
+                "HEAD",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1801b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1801",
+            "severity": "error",
+            "message": "methods lists at least one method; without methods, net.https allows any method.",
+            "at": {
+              "path": "/defs/GitHubRead/value/args/1/value",
+              "span": [1, 323, 1, 347]
+            },
+            "docs": "mandate explain MDT-E1801",
+            "facts": {
+              "found": null,
+              "expected": [
+                "GET",
+                "HEAD",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1801c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:781a61284d6508f07ad8381299fad87900978dc773eb3a1081f9d302dfd8ea61",
+          "defs": {
+            "GitHubRead": "sha256:9f31ffd285728bed1fa2f316d201e084bc0fd6d18aae3bb715dc56e7a85db6a1",
+            "ModelStd": "sha256:dec1a608583bd1d8fb262cba0481b869988df1be27636a3b0c23f3927fb05054",
+            "Reader": "sha256:3cdfeb5e2e7e9188f96070898db97e36a9eaeb96b9d7db4f10d7469a5ba3b456",
+            "Summarize": "sha256:0fe9ded8d4a7949c8f29eaa2630dcf37168c93991e88aa8ad248130367ba0923"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "E1801d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:e5b9df953154b777256f67714a0b777c6b17c31f0cef46dcba09692cc6a20798",
+          "defs": {
+            "GitHubRead": "sha256:6a21807c0f205b43549464f78bfd2520b905166f90aa95d733525f8c956febb0",
+            "ModelStd": "sha256:dec1a608583bd1d8fb262cba0481b869988df1be27636a3b0c23f3927fb05054",
+            "Reader": "sha256:3cdfeb5e2e7e9188f96070898db97e36a9eaeb96b9d7db4f10d7469a5ba3b456",
+            "Summarize": "sha256:0fe9ded8d4a7949c8f29eaa2630dcf37168c93991e88aa8ad248130367ba0923"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "E1801e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:9b4c0adb2a063da43f237055523bb40e68bc8bb227fe3d47be7a8653dfac2157",
+          "defs": {
+            "GitHubRead": "sha256:764aa6ab5c7a9dab5304a4c76ba28bc1b04ebeb88aa9eb4304b5cb94af37f37c",
+            "ModelStd": "sha256:5e9569c1386d09caaf062340d6289d8538a8b8d8e3c88a3d38226d504d3e4a9f",
+            "Reader": "sha256:e7bc4db4e855c621c54769bb3cc1297994fc055ed2d8bce1d25dea18aea63768",
+            "Summarize": "sha256:ca08e20e6c7db6f97b824e1c6b9803e2ea0e15adee2475b69aeba444ee9e48dd"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "E1802",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1802",
+            "severity": "error",
+            "message": "The lock binds credential github to Reader's requests to uploads.github.com, a host none of Reader's net.https capabilities holds.",
+            "at": {
+              "path": "/egress/Reader/uploads.github.com"
+            },
+            "docs": "mandate explain MDT-E1802",
+            "facts": {
+              "agent": "Reader",
+              "reason": "host_not_held",
+              "host": "uploads.github.com",
+              "credential": "github",
+              "held": [
+                "api.github.com"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1802a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1802",
+            "severity": "error",
+            "message": "The lock binds credentials to the requests of Summarize, which is not an agent of the program. A credential is bound only to an agent that runs in the runtime's sandbox, whose requests go through the egress proxy.",
+            "at": {
+              "path": "/egress/Summarize"
+            },
+            "docs": "mandate explain MDT-E1802",
+            "facts": {
+              "agent": "Summarize",
+              "reason": "not_an_agent",
+              "hosts": [
+                "api.github.com"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1802b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1802",
+            "severity": "error",
+            "message": "The lock binds credentials to the requests of Partner, a remote agent. A credential is bound only to an agent that runs in the runtime's sandbox, whose requests go through the egress proxy.",
+            "at": {
+              "path": "/egress/Partner"
+            },
+            "docs": "mandate explain MDT-E1802",
+            "facts": {
+              "agent": "Partner",
+              "reason": "remote",
+              "hosts": [
+                "api.github.com"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1802c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1802",
+            "severity": "error",
+            "message": "The lock binds credentials to the requests of Reader, an agent the lock binds to Managed Agents. A credential is bound only to an agent that runs in the runtime's sandbox, whose requests go through the egress proxy.",
+            "at": {
+              "path": "/egress/Reader"
+            },
+            "docs": "mandate explain MDT-E1802",
+            "facts": {
+              "agent": "Reader",
+              "reason": "executor",
+              "hosts": [
+                "api.github.com"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1802d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:781a61284d6508f07ad8381299fad87900978dc773eb3a1081f9d302dfd8ea61",
+          "defs": {
+            "GitHubRead": "sha256:9f31ffd285728bed1fa2f316d201e084bc0fd6d18aae3bb715dc56e7a85db6a1",
+            "ModelStd": "sha256:dec1a608583bd1d8fb262cba0481b869988df1be27636a3b0c23f3927fb05054",
+            "Reader": "sha256:3cdfeb5e2e7e9188f96070898db97e36a9eaeb96b9d7db4f10d7469a5ba3b456",
+            "Summarize": "sha256:0fe9ded8d4a7949c8f29eaa2630dcf37168c93991e88aa8ad248130367ba0923"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "E1803",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/boundary/fetch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1803",
+            "severity": "error",
+            "message": "Lock field isolation applies to a program of mandate/0.5 or later. This program is mandate/0.4: its sandbox requirements have no isolation level, so isolation would not apply. Write the program in mandate/0.5, or take isolation out of the lock.",
+            "at": {
+              "path": "/isolation"
+            },
+            "docs": "mandate explain MDT-E1803",
+            "facts": {
+              "field": "isolation",
+              "language": "mandate/0.4"
+            }
+          },
+          {
+            "code": "MDT-E1803",
+            "severity": "error",
+            "message": "Lock field egress applies to a program of mandate/0.5 or later. This program is mandate/0.4: its sandbox requirements have no credentials, so egress would not apply. Write the program in mandate/0.5, or take egress out of the lock.",
+            "at": {
+              "path": "/egress"
+            },
+            "docs": "mandate explain MDT-E1803",
+            "facts": {
+              "field": "egress",
+              "language": "mandate/0.4"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1804",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "github.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1804",
+            "severity": "error",
+            "message": "GitHubRead, imported from example.github, holds a net.https capability that allows only some methods, as mandate/0.5 reads it. This program is mandate/0.4, which would read it without the limit, allowing any method. Write the program in mandate/0.5 or later.",
+            "at": {
+              "path": "/uses/0",
+              "span": [6, 1, 6, 32]
+            },
+            "docs": "mandate explain MDT-E1804",
+            "facts": {
+              "definition": "GitHubRead",
+              "module": "example.github",
+              "module_language": "mandate/0.5",
+              "language": "mandate/0.4"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1804a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1804/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1804/github.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:0c611577d36052db68eac3fb89882a1cf1083a0c9b4b872dd16c6134cd532e3c",
+          "defs": {
+            "Read": "sha256:7cd2c46375d05cb732f11d96d46a570d6c4be9d168538e3d02b9aef24682a8f3",
+            "Reader": "sha256:a203c467005d906b5839d2d76b3045185a7cdd93201cc39e45f1eab1bad5dc64"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "N01",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "Fix holds Mine = fs.write(\"/etc\") but neither its body nor its delegates use it.",
+            "at": {
+              "path": "/defs/Fix/caps/1",
+              "span": [1, 634, 1, 660]
+            },
+            "docs": "mandate explain MDT-W0310"
+          },
+          {
+            "code": "MDT-E1706",
+            "severity": "error",
+            "message": "Fix asks for Mine = fs.write(\"/etc\"), which lies inside no capability of the envelope. A sub-program holds only what the envelope's owner approved (C2).",
+            "at": {
+              "path": "/defs/Fix/caps/1"
+            },
+            "docs": "mandate explain MDT-E1706",
+            "facts": {
+              "dimension": "capability",
+              "capability": "Mine = fs.write(\"/etc\")",
+              "envelope": [
+                "High = model.infer",
+                "M = model.infer",
+                "Merge = git.pr(\"company/backend\")",
+                "Public = model.infer",
+                "R = fs.read(\"/work\")",
+                "W = fs.write(\"/work\")"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "N01a",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1706",
+            "severity": "error",
+            "message": "Fix asks for 50001 tokens, and the envelope has 50000 left.",
+            "at": {
+              "path": "/defs/Fix/budget/tokens"
+            },
+            "docs": "mandate explain MDT-E1706",
+            "facts": {
+              "dimension": "tokens",
+              "asked": 50001,
+              "left": 50000
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "N01b",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.4",
+          "module": "example.parent.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.parent"
+            }
+          ],
+          "defs": {
+            "Wa": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "W"
+                  },
+                  "name": "narrow"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work/a"
+                    }
+                  }
+                ]
+              }
+            },
+            "Fix": {
+              "kind": "workflow",
+              "params": [],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "Text"
+                  }
+                ]
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                },
+                {
+                  "op": "var",
+                  "name": "Wa"
+                }
+              ],
+              "body": [
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "delegate",
+                    "agent": "Worker",
+                    "skill": "fix",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "record",
+                          "type": "Item",
+                          "fields": {
+                            "name": {
+                              "op": "text",
+                              "value": "a"
+                            }
+                          }
+                        }
+                      }
+                    ],
+                    "caps": [
+                      {
+                        "op": "var",
+                        "name": "Wa"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "budget": {
+                "tokens": 50001,
+                "time": {
+                  "ms": 600000
+                },
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 10,
+                "agents": 2
+              }
+            }
+          }
+        },
+        "hash": "sha256:b64d4b88e3343d5f8b9ff906c91e987668d33de53d6ddd3e8c7689a66804ec38",
+        "workflow": "Fix"
+      }
+    },
+    {
+      "name": "N04",
+      "kind": "compile",
+      "door": "check_amendment",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "amendment"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.4",
+          "module": "example.parent",
+          "version": "0.1",
+          "defs": {
+            "owner_role": {
+              "kind": "role",
+              "description": "Owner"
+            },
+            "release": {
+              "kind": "role",
+              "description": "Release manager"
+            },
+            "Item": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "name": {
+                    "ref": "Text"
+                  }
+                }
+              }
+            },
+            "Secret": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "body": {
+                    "ref": "Text"
+                  }
+                }
+              },
+              "class": "confidential"
+            },
+            "M": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "model"
+                  },
+                  "name": "infer"
+                },
+                "args": [
+                  {
+                    "name": "tier",
+                    "value": {
+                      "op": "var",
+                      "name": "standard"
+                    }
+                  }
+                ]
+              }
+            },
+            "Public": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "model"
+                  },
+                  "name": "infer"
+                },
+                "args": [
+                  {
+                    "name": "tier",
+                    "value": {
+                      "op": "var",
+                      "name": "small"
+                    }
+                  },
+                  {
+                    "name": "max_class",
+                    "value": {
+                      "op": "var",
+                      "name": "public"
+                    }
+                  }
+                ]
+              }
+            },
+            "High": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "model"
+                  },
+                  "name": "infer"
+                },
+                "args": [
+                  {
+                    "name": "tier",
+                    "value": {
+                      "op": "var",
+                      "name": "premium"
+                    }
+                  },
+                  {
+                    "name": "max_class",
+                    "value": {
+                      "op": "var",
+                      "name": "confidential"
+                    }
+                  }
+                ]
+              }
+            },
+            "R": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "read"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work"
+                    }
+                  }
+                ]
+              }
+            },
+            "W": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "write"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work"
+                    }
+                  }
+                ]
+              }
+            },
+            "Merge": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "git"
+                  },
+                  "name": "pr"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "company/backend"
+                    }
+                  }
+                ]
+              }
+            },
+            "Worker": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                },
+                {
+                  "op": "var",
+                  "name": "W"
+                }
+              ],
+              "skills": {
+                "fix": {
+                  "params": [
+                    {
+                      "name": "i",
+                      "type": {
+                        "ref": "Item"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Fs.Write"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Fixes one item.",
+              "budget": {
+                "tokens": 1000,
+                "spend": {
+                  "micros": 1000000,
+                  "currency": "USD"
+                },
+                "steps": 5
+              }
+            },
+            "Lead": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "High"
+                },
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "skills": {
+                "finish": {
+                  "params": [
+                    {
+                      "name": "items",
+                      "type": {
+                        "ref": "List",
+                        "args": [
+                          {
+                            "ref": "Item"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                },
+                "study": {
+                  "params": [
+                    {
+                      "name": "s",
+                      "type": {
+                        "ref": "Secret"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Plans what is left.",
+              "budget": {
+                "tokens": 5000,
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 20
+              }
+            },
+            "label": {
+              "kind": "fn",
+              "params": [
+                {
+                  "name": "i",
+                  "type": {
+                    "ref": "Item"
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "Text"
+              },
+              "body": [
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "field",
+                    "of": {
+                      "op": "var",
+                      "name": "i"
+                    },
+                    "name": "name"
+                  }
+                }
+              ]
+            },
+            "Run": {
+              "kind": "workflow",
+              "params": [
+                {
+                  "name": "items",
+                  "type": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Item"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "secret",
+                  "type": {
+                    "ref": "Secret"
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "Text"
+                  }
+                ]
+              },
+              "caps": [],
+              "body": [
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "plan",
+                    "agent": "Lead",
+                    "skill": "finish",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "items"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "envelope": {
+                "owner": "owner_role",
+                "caps": [
+                  {
+                    "op": "var",
+                    "name": "High"
+                  },
+                  {
+                    "op": "var",
+                    "name": "M"
+                  },
+                  {
+                    "op": "var",
+                    "name": "Merge"
+                  },
+                  {
+                    "op": "var",
+                    "name": "Public"
+                  },
+                  {
+                    "op": "var",
+                    "name": "R"
+                  },
+                  {
+                    "op": "var",
+                    "name": "W"
+                  }
+                ],
+                "budget": {
+                  "tokens": 200000,
+                  "time": {
+                    "ms": 3600000
+                  },
+                  "spend": {
+                    "micros": 20000000,
+                    "currency": "USD"
+                  },
+                  "steps": 200,
+                  "agents": 40
+                },
+                "spawn": {
+                  "max_concurrent": 4
+                },
+                "approve": {
+                  "git.merge": "release"
+                }
+              }
+            }
+          },
+          "uses": [
+            {
+              "module": "example.domain",
+              "names": [
+                "Ticket"
+              ]
+            },
+            {
+              "module": "std",
+              "names": [
+                "exec",
+                "fs",
+                "git",
+                "human",
+                "model"
+              ]
+            }
+          ]
+        },
+        "hash": "sha256:08343fbe46df6b0a292dcf2a13a6ba59e8db6db57f4f6134d2e898a3f4cb353a"
+      }
+    },
+    {
+      "name": "N09",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1705",
+            "severity": "error",
+            "message": "A sub-program cannot define a contract ('Fine'). It defines only types, constants, capabilities, functions, local agents and one workflow; the rest belongs to the program a person approved (spec/envelope.md \"The sub-program\").",
+            "at": {
+              "path": "/defs/Fine"
+            },
+            "docs": "mandate explain MDT-E1705",
+            "facts": {
+              "def": "Fine",
+              "kind": "contract"
+            }
+          },
+          {
+            "code": "MDT-E1705",
+            "severity": "error",
+            "message": "A sub-program cannot define an effect ('Publish'). It defines only types, constants, capabilities, functions, local agents and one workflow; the rest belongs to the program a person approved (spec/envelope.md \"The sub-program\").",
+            "at": {
+              "path": "/defs/Publish"
+            },
+            "docs": "mandate explain MDT-E1705",
+            "facts": {
+              "def": "Publish",
+              "kind": "effect"
+            }
+          },
+          {
+            "code": "MDT-E1705",
+            "severity": "error",
+            "message": "A sub-program cannot define a role ('helper'). It defines only types, constants, capabilities, functions, local agents and one workflow; the rest belongs to the program a person approved (spec/envelope.md \"The sub-program\").",
+            "at": {
+              "path": "/defs/helper"
+            },
+            "docs": "mandate explain MDT-E1705",
+            "facts": {
+              "def": "helper",
+              "kind": "role"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S01",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.ir.json",
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0102",
+            "severity": "error",
+            "message": "Duplicate object key \"defs\". Duplicate keys are rejected before schema validation.",
+            "at": {
+              "path": "/defs",
+              "span": [1, 66, 1, 72]
+            },
+            "docs": "mandate explain MDT-E0102",
+            "facts": {
+              "key": "defs"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S02a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0103",
+            "severity": "error",
+            "message": "Unsupported language version \"mandate/0.9\"; this compiler reads \"mandate/0.1\" or \"mandate/0.2\" or \"mandate/0.3\" or \"mandate/0.4\" or \"mandate/0.5\". Use an explicit migration instead of loading it as-is.",
+            "at": {
+              "path": "/language",
+              "span": [1, 13, 1, 26]
+            },
+            "docs": "mandate explain MDT-E0103",
+            "facts": {
+              "expected": [
+                "mandate/0.1",
+                "mandate/0.2",
+                "mandate/0.3",
+                "mandate/0.4",
+                "mandate/0.5"
+              ],
+              "found": "mandate/0.9"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S02b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0103",
+            "severity": "error",
+            "message": "Missing \"language\" field; expected \"mandate/0.1\" or \"mandate/0.2\" or \"mandate/0.3\" or \"mandate/0.4\" or \"mandate/0.5\".",
+            "at": {
+              "path": "/language",
+              "span": [1, 1, 1, 103]
+            },
+            "docs": "mandate explain MDT-E0103",
+            "facts": {
+              "expected": [
+                "mandate/0.1",
+                "mandate/0.2",
+                "mandate/0.3",
+                "mandate/0.4",
+                "mandate/0.5"
+              ],
+              "found": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S02c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Unknown field \"extensions\". The IR schema is closed; unknown fields are rejected, not ignored.",
+            "at": {
+              "path": "/extensions",
+              "span": [1, 141, 1, 143]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "additionalProperties",
+              "schema_path": "#/additionalProperties"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S02d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Unknown field \"extra\". The IR schema is closed; unknown fields are rejected, not ignored.",
+            "at": {
+              "path": "/defs/G/value/extra",
+              "span": [1, 139, 1, 140]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "additionalProperties",
+              "schema_path": "#/oneOf/2/additionalProperties"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S02e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Unknown or missing tag: value of tag \"kind\" must be in oneOf.",
+            "at": {
+              "path": "/defs/X",
+              "span": [1, 82, 1, 98]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "discriminator",
+              "schema_path": "#/discriminator"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S03a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown type 'Pathh'.",
+            "at": {
+              "path": "/defs/Finding/type/record/file/ref",
+              "span": [3, 24, 3, 29]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Pathh",
+              "expected": "type",
+              "did_you_mean": "Path"
+            },
+            "repair": [
+              {
+                "id": "r1",
+                "summary": "Use 'Path'",
+                "patch": [
+                  {
+                    "op": "replace",
+                    "path": "/defs/Finding/type/record/file/ref",
+                    "value": "Path"
+                  }
+                ],
+                "risk": "low"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "S03b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown name 'fs'.",
+            "at": {
+              "path": "/defs/Read/value/callee/of",
+              "span": [3, 19, 3, 21]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "fs",
+              "expected": "value"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown capability 'Writ'.",
+            "at": {
+              "path": "/defs/A/caps/1",
+              "span": [5, 14, 5, 18]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Writ",
+              "expected": "capability"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Agent 'A' has no skill 'goo'.",
+            "at": {
+              "path": "/defs/W/body/0/value/skill",
+              "span": [11, 11, 11, 32]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "goo",
+              "expected": "skill",
+              "did_you_mean": "go"
+            },
+            "repair": [
+              {
+                "id": "r1",
+                "summary": "Use 'go'",
+                "patch": [
+                  {
+                    "op": "replace",
+                    "path": "/defs/W/body/0/value/skill",
+                    "value": "go"
+                  }
+                ],
+                "risk": "low"
+              }
+            ]
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown agent 'B'.",
+            "at": {
+              "path": "/defs/W/body/1/value/agent",
+              "span": [12, 11, 12, 31]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "B",
+              "expected": "agent",
+              "did_you_mean": "A"
+            },
+            "repair": [
+              {
+                "id": "r1",
+                "summary": "Use 'A'",
+                "patch": [
+                  {
+                    "op": "replace",
+                    "path": "/defs/W/body/1/value/agent",
+                    "value": "A"
+                  }
+                ],
+                "risk": "low"
+              }
+            ]
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown contract 'Missing'.",
+            "at": {
+              "path": "/defs/W/body/2/value/contract",
+              "span": [13, 11, 13, 42]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Missing",
+              "expected": "contract"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown name 'isue'.",
+            "at": {
+              "path": "/defs/W/body/3/value",
+              "span": [14, 3, 14, 7]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "isue",
+              "expected": "value",
+              "did_you_mean": "issue"
+            },
+            "repair": [
+              {
+                "id": "r1",
+                "summary": "Use 'issue'",
+                "patch": [
+                  {
+                    "op": "replace",
+                    "path": "/defs/W/body/3/value",
+                    "value": {
+                      "op": "var",
+                      "name": "issue"
+                    }
+                  }
+                ],
+                "risk": "low"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "S03c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown capability 'A'.",
+            "at": {
+              "path": "/defs/W/caps/0",
+              "span": [7, 8, 7, 9]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "A",
+              "expected": "capability"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown name 'x'.",
+            "at": {
+              "path": "/defs/W/body/0/branches/y/args/0/value",
+              "span": [11, 23, 11, 24]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "x",
+              "expected": "value"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S03d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown effect 'nope'.",
+            "at": {
+              "path": "/defs/prod/authorize/nope",
+              "span": [5, 1, 8, 2]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "nope",
+              "expected": "effect"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown effect 'nope'.",
+            "at": {
+              "path": "/defs/W/body/0/value/name",
+              "span": [12, 3, 12, 17]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "nope",
+              "expected": "effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S03e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown effect 'toString'.",
+            "at": {
+              "path": "/defs/prod/authorize/toString",
+              "span": [5, 1, 8, 2]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "toString",
+              "expected": "effect"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown effect 'toString'.",
+            "at": {
+              "path": "/defs/W/body/0/value/name",
+              "span": [12, 3, 12, 21]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "toString",
+              "expected": "effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S03f",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown effect 'constructor'.",
+            "at": {
+              "path": "/defs/prod/authorize/constructor",
+              "span": [5, 1, 8, 2]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "constructor",
+              "expected": "effect"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown effect 'constructor'.",
+            "at": {
+              "path": "/defs/W/body/0/value/name",
+              "span": [12, 3, 12, 24]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "constructor",
+              "expected": "effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S03g",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown effect 'hasOwnProperty'.",
+            "at": {
+              "path": "/defs/prod/authorize/hasOwnProperty",
+              "span": [5, 1, 8, 2]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "hasOwnProperty",
+              "expected": "effect"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown effect 'hasOwnProperty'.",
+            "at": {
+              "path": "/defs/W/body/0/value/name",
+              "span": [12, 3, 12, 27]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "hasOwnProperty",
+              "expected": "effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S03h",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown effect 'valueOf'.",
+            "at": {
+              "path": "/defs/prod/authorize/valueOf",
+              "span": [5, 1, 8, 2]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "valueOf",
+              "expected": "effect"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown effect 'valueOf'.",
+            "at": {
+              "path": "/defs/W/body/0/value/name",
+              "span": [12, 3, 12, 20]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "valueOf",
+              "expected": "effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S03i",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown type 'Txt'.",
+            "at": {
+              "path": "/defs/Greeting/type/ref",
+              "span": [1, 118, 1, 123]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Txt",
+              "expected": "type",
+              "did_you_mean": "Text"
+            },
+            "repair": [
+              {
+                "id": "r1",
+                "summary": "Use 'Text'",
+                "patch": [
+                  {
+                    "op": "replace",
+                    "path": "/defs/Greeting/type/ref",
+                    "value": "Text"
+                  }
+                ],
+                "risk": "low"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "S04a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0502",
+            "severity": "error",
+            "message": "Recursive call cycle even \u2192 odd \u2192 even; static node and budget bounds need an acyclic call graph.",
+            "at": {
+              "path": "/defs/even",
+              "span": [2, 1, 2, 39]
+            },
+            "docs": "mandate explain MDT-E0502",
+            "facts": {
+              "cycle": [
+                "even",
+                "odd"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S05a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0230",
+            "severity": "error",
+            "message": "Switch does not handle Question.",
+            "at": {
+              "path": "/defs/label/body/0/value",
+              "span": [4, 3, 7, 4]
+            },
+            "docs": "mandate explain MDT-E0230",
+            "facts": {
+              "missing": [
+                "Question"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S05b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:c9369fc6a71860d98eb28549dde769c816f0a59f780b83c3119b7443b2e52d1d",
+          "defs": {
+            "Kind": "sha256:8d75b60f4eaf02b95b4dd7989f4ddf861567b3630308a4e0b34acbf22ad0b4f8",
+            "label": "sha256:61cbe2f563ffd864b9513719f41dbc1ef8f2d87ed80dae4bbacc7f05d8112a27"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S06a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0502",
+            "severity": "error",
+            "message": "A loop needs 'max_iter' or 'until' (\u00a78.6).",
+            "at": {
+              "path": "/defs/spin/body/0",
+              "span": [3, 3, 5, 4]
+            },
+            "docs": "mandate explain MDT-E0502"
+          }
+        ]
+      }
+    },
+    {
+      "name": "S06b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:d13b989fc7e46fb2ee905ae97e4d3e3e2e2698222771f43d089ad9ccf1b86a32",
+          "defs": {
+            "spin": "sha256:08fad9c391c97d859f941baa729ba6eb58b98ebb0dbd5f364a3d1ddb22e96654"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S07a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0408",
+            "severity": "error",
+            "message": "The critical effect git.comment runs inside a fn. External writes happen only in a workflow, through prepare \u2192 authorize \u2192 commit (\u00a78.8, S07).",
+            "at": {
+              "path": "/defs/note/body/0/value",
+              "span": [5, 3, 5, 59]
+            },
+            "docs": "mandate explain MDT-E0408"
+          }
+        ]
+      }
+    },
+    {
+      "name": "S07b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0408",
+            "severity": "error",
+            "message": "Skill 'Bot.ship' declares the critical effect 'git.open_pr'. External writes happen only in a workflow's commit step, never inside a delegated task.",
+            "at": {
+              "path": "/defs/Bot/skills/ship/effects/0",
+              "span": [8, 63, 8, 74]
+            },
+            "docs": "mandate explain MDT-E0408"
+          },
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "Bot holds PR = git.pr(\"company/backend\") but no skill uses it.",
+            "at": {
+              "path": "/defs/Bot/caps/0",
+              "span": [6, 8, 6, 10]
+            },
+            "docs": "mandate explain MDT-W0310"
+          }
+        ]
+      }
+    },
+    {
+      "name": "S08a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "Skill 'A.prove' cannot return Evidence; a model cannot produce Evidence (\u00a75.2, S08).",
+            "at": {
+              "path": "/defs/A/skills/prove/returns",
+              "span": [8, 28, 8, 42]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Evidence"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S08b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "Authorization cannot be constructed by a program; only the runtime produces it (\u00a75.2, S08).",
+            "at": {
+              "path": "/defs/forge/body/0/value/type",
+              "span": [4, 11, 4, 37]
+            },
+            "docs": "mandate explain MDT-E0213"
+          }
+        ]
+      }
+    },
+    {
+      "name": "S08c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "A model cannot produce Receipt; infer only yields Inferred values (\u00a75.2, S08).",
+            "at": {
+              "path": "/defs/fake/body/0/value/type",
+              "span": [3, 9, 3, 22]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Receipt"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S08d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "Host code cannot produce Verified; only the runtime does (\u00a712.3).",
+            "at": {
+              "path": "/defs/check/returns",
+              "span": [3, 38, 3, 53]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Verified"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S10a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:11b50a8b87aa05d94d937b1d90addf941d840778a416dbf29c1a4480b19c5a90",
+          "defs": {
+            "A": "sha256:6a949c33eea8dae5ec8d708b23e3341664216c04419b1df4f533364c4f434f0a",
+            "B": "sha256:d7894df280e35a730c249427607f6f48f0357f8d38cdadcb6392710892ff8a93"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S10b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:11b50a8b87aa05d94d937b1d90addf941d840778a416dbf29c1a4480b19c5a90",
+          "defs": {
+            "A": "sha256:6a949c33eea8dae5ec8d708b23e3341664216c04419b1df4f533364c4f434f0a",
+            "B": "sha256:d7894df280e35a730c249427607f6f48f0357f8d38cdadcb6392710892ff8a93"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S10c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:e487ef0797464c32304cdfda10bafe7cf6c05ef0814d3e6441c9b66f5f9fecea",
+          "defs": {
+            "A": "sha256:f3a581979f922d07eca4f01c8eff22d2bf950b8e68070553f66edeb67cb28c6e",
+            "M": "sha256:226f2d7856eeb5b4e6717ec71baec503c5a6a5ba9ea3ac2c41564b31382f78e2",
+            "R": "sha256:ccd1d3970abc97635fb9c778b8e7b6b965b76c762a1c838c266af1804842fec7",
+            "T": "sha256:f8a83ed4e3ab00626694ba0ce762417e1607dca3e5cd7c7326a4705a71fe5ddf"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S10d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:e487ef0797464c32304cdfda10bafe7cf6c05ef0814d3e6441c9b66f5f9fecea",
+          "defs": {
+            "A": "sha256:f3a581979f922d07eca4f01c8eff22d2bf950b8e68070553f66edeb67cb28c6e",
+            "M": "sha256:226f2d7856eeb5b4e6717ec71baec503c5a6a5ba9ea3ac2c41564b31382f78e2",
+            "R": "sha256:ccd1d3970abc97635fb9c778b8e7b6b965b76c762a1c838c266af1804842fec7",
+            "T": "sha256:f8a83ed4e3ab00626694ba0ce762417e1607dca3e5cd7c7326a4705a71fe5ddf"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S11a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.ir.json",
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:4d68acfb5ce6c273986b1f5af3c0f05b07167f6302212d8aa1a06e452c6d52ac",
+          "defs": {
+            "G": "sha256:e3689f6ba47e96cd4135be31816ac19347d59542e0023766885562081892796e"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S11b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.ir.json",
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:f7fb5a0572391d61a485f5ac3dacc1b6732044799b375241b4b7d6c303e0b0ab",
+          "defs": {
+            "G": "sha256:af2fdd48b987139f27fa76cb1dfc8d5f0ff6145ecde733366dbf9efbab04594a"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S11c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.ir.json",
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0107",
+            "severity": "error",
+            "message": "String contains a lone surrogate; it has no canonical (JCS) encoding.",
+            "at": {
+              "span": [1, 135, 1, 136],
+              "path": "/defs/G/value/value"
+            },
+            "docs": "mandate explain MDT-E0107"
+          }
+        ]
+      }
+    },
+    {
+      "name": "S11d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0106",
+            "severity": "error",
+            "message": "Number 1.0 is not an integer. IR numbers are integers; write decimals as strings and money as integer micro-units.",
+            "at": {
+              "span": [1, 112, 1, 113],
+              "path": "/defs/N/value/value"
+            },
+            "docs": "mandate explain MDT-E0106",
+            "facts": {
+              "lexeme": "1.0"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S11e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0106",
+            "severity": "error",
+            "message": "Number 1e3 is not an integer. IR numbers are integers; write decimals as strings and money as integer micro-units.",
+            "at": {
+              "span": [1, 112, 1, 113],
+              "path": "/defs/N/value/value"
+            },
+            "docs": "mandate explain MDT-E0106",
+            "facts": {
+              "lexeme": "1e3"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S11f",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0106",
+            "severity": "error",
+            "message": "Number 0.1 is not an integer. IR numbers are integers; write decimals as strings and money as integer micro-units.",
+            "at": {
+              "span": [1, 112, 1, 113],
+              "path": "/defs/N/value/value"
+            },
+            "docs": "mandate explain MDT-E0106",
+            "facts": {
+              "lexeme": "0.1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S11g",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0106",
+            "severity": "error",
+            "message": "Integer 9007199254740992 is outside \u00b1(2^53\u22121).",
+            "at": {
+              "span": [1, 112, 1, 113],
+              "path": "/defs/N/value/value"
+            },
+            "docs": "mandate explain MDT-E0106",
+            "facts": {
+              "lexeme": "9007199254740992"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S11h",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0106",
+            "severity": "error",
+            "message": "Integer -9007199254740992 is outside \u00b1(2^53\u22121).",
+            "at": {
+              "span": [1, 112, 1, 113],
+              "path": "/defs/N/value/value"
+            },
+            "docs": "mandate explain MDT-E0106",
+            "facts": {
+              "lexeme": "-9007199254740992"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S11i",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0106",
+            "severity": "error",
+            "message": "Negative zero is not allowed; write 0.",
+            "at": {
+              "span": [1, 112, 1, 113],
+              "path": "/defs/N/value/value"
+            },
+            "docs": "mandate explain MDT-E0106",
+            "facts": {
+              "lexeme": "-0"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S11j",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0101",
+            "severity": "error",
+            "message": "Non-ASCII character '\u00dc' outside a string. Identifiers are ASCII.",
+            "at": {
+              "span": [2, 6, 2, 7]
+            },
+            "docs": "mandate explain MDT-E0101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "S11k",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Value does not match ^[A-Za-z_][A-Za-z0-9_]*$ (names are ASCII identifiers).",
+            "at": {
+              "path": "/defs/f/params/0/name",
+              "span": [1, 113, 1, 119]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "pattern",
+              "schema_path": "#/$defs/Name/pattern"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S11l",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:e545604837e5c8262fa3bc3cf241d51e027c47355a9afc277c01d8254a374fda",
+          "defs": {
+            "x": "sha256:9457a80f2b322e77057d8082699d23c7051c39732f60d6f9c64b23cd79958efc"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S11m",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:e545604837e5c8262fa3bc3cf241d51e027c47355a9afc277c01d8254a374fda",
+          "defs": {
+            "x": "sha256:9457a80f2b322e77057d8082699d23c7051c39732f60d6f9c64b23cd79958efc"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S12a",
+      "kind": "compile",
+      "door": "apply_ops",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch",
+        "base"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0130",
+            "severity": "error",
+            "message": "stale_base: the patch was written against an older version of the program.",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E0130",
+            "facts": {
+              "base": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "current": "sha256:de7fd275a70b581fb60d4486cad1c4f16857b61daa4a7024fed523ee1dc05a25"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S12b",
+      "kind": "compile",
+      "door": "apply_ops",
+      "input": {
+        "file": "../S12a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch",
+        "base"
+      ],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:1747427d463ce4f756a8002ebf70e19194e38f7132f840293b68e07862c97b7e",
+          "defs": {
+            "T": "sha256:6a949c33eea8dae5ec8d708b23e3341664216c04419b1df4f533364c4f434f0a",
+            "U": "sha256:d7894df280e35a730c249427607f6f48f0357f8d38cdadcb6392710892ff8a93"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S12c",
+      "kind": "compile",
+      "door": "apply_ops",
+      "input": {
+        "file": "../S12a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch",
+        "base"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown type 'Txt'.",
+            "at": {
+              "path": "/defs/T/type/ref",
+              "span": [1, 97, 1, 102]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Txt",
+              "expected": "type",
+              "did_you_mean": "Text"
+            },
+            "repair": [
+              {
+                "id": "r1",
+                "summary": "Use 'Text'",
+                "patch": [
+                  {
+                    "op": "replace",
+                    "path": "/defs/T/type/ref",
+                    "value": "Text"
+                  }
+                ],
+                "risk": "low"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "S12d",
+      "kind": "compile",
+      "door": "apply_ops",
+      "input": {
+        "file": "../S12a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch",
+        "base"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0131",
+            "severity": "error",
+            "message": "Patch operation 0 (remove /defs/Nope) failed: no member 'Nope'",
+            "at": {
+              "path": "/defs/Nope"
+            },
+            "docs": "mandate explain MDT-E0131",
+            "facts": {
+              "index": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "V01a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/fixbug/fixbug.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "FixAccepted.no_blocking_review: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/FixAccepted/accept/no_blocking_review/by/all/0/static",
+              "span": [1, 3539, 1, 3669]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "FixAccepted.scope_respected: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/FixAccepted/accept/scope_respected/by/static",
+              "span": [1, 2957, 1, 3162]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Expected Verified<?> but got Inferred<PullRequestDraft>; verify the value first.",
+            "at": {
+              "path": "/defs/FixBug/body/6/value/args/0/value",
+              "span": [1, 8620, 1, 8647]
+            },
+            "docs": "mandate explain MDT-E0210"
+          }
+        ]
+      }
+    },
+    {
+      "name": "V01b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/fixbug/fixbug.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "FixAccepted.no_blocking_review: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/FixAccepted/accept/no_blocking_review/by/all/0/static",
+              "span": [1, 3539, 1, 3669]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "FixAccepted.scope_respected: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/FixAccepted/accept/scope_respected/by/static",
+              "span": [1, 2957, 1, 3162]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Expected Verified<?> but got Inferred<Review>; verify the value first.",
+            "at": {
+              "path": "/defs/FixBug/body/6/value/args/0/value",
+              "span": [1, 8620, 1, 8648]
+            },
+            "docs": "mandate explain MDT-E0210"
+          }
+        ]
+      }
+    },
+    {
+      "name": "V01c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Model output of type Inferred<Text> cannot be used where Text is expected; verify it first.",
+            "at": {
+              "path": "/defs/W/body/1/value/args/1/value",
+              "span": [15, 25, 15, 29]
+            },
+            "docs": "mandate explain MDT-E0210"
+          }
+        ]
+      }
+    },
+    {
+      "name": "V01d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Model output of type Inferred<Text> cannot be used where Text is expected; verify it first.",
+            "at": {
+              "path": "/defs/W/body/1/value/args/1/value",
+              "span": [15, 25, 15, 29]
+            },
+            "docs": "mandate explain MDT-E0210"
+          }
+        ]
+      }
+    },
+    {
+      "name": "V01e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "A holds M = model.infer but no skill uses it.",
+            "at": {
+              "path": "/defs/A/caps/0",
+              "span": [7, 8, 7, 9]
+            },
+            "docs": "mandate explain MDT-W0310"
+          },
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Model output of type Inferred<Text> cannot be used where Text is expected; verify it first.",
+            "at": {
+              "path": "/defs/W/body/1/value/args/1/value",
+              "span": [15, 25, 15, 29]
+            },
+            "docs": "mandate explain MDT-E0210"
+          }
+        ]
+      }
+    },
+    {
+      "name": "V02a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0215",
+            "severity": "error",
+            "message": "Untrusted content cannot appear in the instruction part of a prompt; pass it as data with quote(\u2026) (R5, \u00a75.4).",
+            "at": {
+              "path": "/defs/summarize/body/1/value/from/parts/1/expr",
+              "span": [7, 6, 7, 9]
+            },
+            "docs": "mandate explain MDT-E0215",
+            "facts": {
+              "level": "untrusted"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "V02b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../V02a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:f8ce699f29e920ff273df1fd6c4a9b6ea383d315fcff00b759b5acc8ae45adc3",
+          "defs": {
+            "summarize": "sha256:ce7e963a087caa2279cfdf4520053dfbc018ad698e9519c3252fc17dd47e47c7"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "V03",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../compiler/test/fixtures/syntax/supervision.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0320",
+            "severity": "error",
+            "message": "par branches 'patch' and 'tests' can both write /work/repo/src, /work/repo/test / /work/repo/test; write scopes in a par block must be disjoint (C5).",
+            "at": {
+              "path": "/defs/Split/body/0/branches/tests",
+              "span": [1, 2500, 1, 2851]
+            },
+            "docs": "mandate explain MDT-E0320",
+            "facts": {
+              "branches": [
+                "patch",
+                "tests"
+              ],
+              "left": "RepoWrite = fs.write(\"/work/repo/src\", \"/work/repo/test\")",
+              "right": "RepoWrite = fs.write(\"/work/repo/test\")"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "V03b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../compiler/test/fixtures/syntax/supervision.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:fe1597fd6b4279c7382a3d494a63c57a1c80d596fc96b77331adcc58381803bc",
+          "defs": {
+            "Implementer": "sha256:136bcd1dc71983d9e0cc6ebad5f401b0c46a38012ff7ab44895f33497ff64f51",
+            "Model": "sha256:226f2d7856eeb5b4e6717ec71baec503c5a6a5ba9ea3ac2c41564b31382f78e2",
+            "PR": "sha256:6350191de26e50e57b0bdd8ca43dcb66da795eacf1b9fcd4207bce62c4bce842",
+            "Ready": "sha256:43514537e10eb1e55082ec5dd78f46a6c72cafde580328ee57780f27446ebca4",
+            "RepoWrite": "sha256:8e4d0693565380c80263c01dd998e69736f5b0924f7a2c8c11015561db0864dd",
+            "Split": "sha256:0573f7478c8588e7a6cf6552a855065fe70e979b21b65aa7f7ffe2d19cf2abbd",
+            "TestWriter": "sha256:fcf2c18e5847049129f847d99245c0eb939174c9a0257f71345d69e2752c55cd"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "V03c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../compiler/test/fixtures/syntax/supervision.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:0ae9a6f7e848f00cc276c39fbd9b220bd300f704d9df9228127e7d458d2b498e",
+          "defs": {
+            "Implementer": "sha256:136bcd1dc71983d9e0cc6ebad5f401b0c46a38012ff7ab44895f33497ff64f51",
+            "Model": "sha256:226f2d7856eeb5b4e6717ec71baec503c5a6a5ba9ea3ac2c41564b31382f78e2",
+            "PR": "sha256:6350191de26e50e57b0bdd8ca43dcb66da795eacf1b9fcd4207bce62c4bce842",
+            "Ready": "sha256:43514537e10eb1e55082ec5dd78f46a6c72cafde580328ee57780f27446ebca4",
+            "RepoWrite": "sha256:a88cbbfa235d990f8cc78903a8b589068687670448cd8936b2c2de5a55372eb6",
+            "Split": "sha256:28b40395f0b92830424792ae254cea0880e7d36e2ced0ac64e67f6cfa8d5f066",
+            "TestWriter": "sha256:fcf2c18e5847049129f847d99245c0eb939174c9a0257f71345d69e2752c55cd"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "V03d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../compiler/test/fixtures/syntax/supervision.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0305",
+            "severity": "error",
+            "message": "narrow(\"/work\") is not inside RepoWrite = fs.write(\"/work/repo/src\", \"/work/repo/test\"); capabilities can only be narrowed.",
+            "at": {
+              "path": "/defs/Split/body/0/branches/patch/caps/0",
+              "span": [1, 2316, 1, 2455]
+            },
+            "docs": "mandate explain MDT-E0305",
+            "facts": {
+              "base": "RepoWrite = fs.write(\"/work/repo/src\", \"/work/repo/test\")",
+              "requested": [
+                "/work"
+              ]
+            }
+          },
+          {
+            "code": "MDT-E0320",
+            "severity": "error",
+            "message": "par branches 'patch' and 'tests' can both write /work/repo/src, /work/repo/test / /work/repo/test; write scopes in a par block must be disjoint (C5).",
+            "at": {
+              "path": "/defs/Split/body/0/branches/tests",
+              "span": [1, 2608, 1, 2959]
+            },
+            "docs": "mandate explain MDT-E0320",
+            "facts": {
+              "branches": [
+                "patch",
+                "tests"
+              ],
+              "left": "RepoWrite = fs.write(\"/work/repo/src\", \"/work/repo/test\")",
+              "right": "RepoWrite = fs.write(\"/work/repo/test\")"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "V04a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "Summarizer.summarize receives restricted data, but its model capability allows at most internal (\u00a75.5).",
+            "at": {
+              "path": "/defs/Summarize/body/0/value",
+              "span": [13, 3, 13, 35]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "restricted",
+              "allowed": "internal"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "V04b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../V04a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:32a4143bf8684cbaa8072d717592340b16b53e552905273bc591a6dae4d8cc9a",
+          "defs": {
+            "M": "sha256:f3fde994f3b0f52e0966959260dba83afc59a620e6274c33e696880a9098b633",
+            "Record": "sha256:a1a184a1f1b840a84ab45fff386db5f1183796b02507d365701ca607cb3678cf",
+            "Summarize": "sha256:e1bdbfeee569723e5bc4e400e1d4822cd262a7729871a1193eb2186d4ac899fb",
+            "Summarizer": "sha256:65f76735e17e7bc1e4454bd895bc1954790d385edabd06e07f19ff8502858e87"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "V04c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "restricted data is sent to a model whose capability allows at most internal.",
+            "at": {
+              "path": "/defs/Greet/body/1/value",
+              "span": [9, 3, 9, 40]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "restricted",
+              "allowed": "internal"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "V05a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0711",
+            "severity": "error",
+            "message": "Dynamic spawn is not available in 0.1; use delegate, par, or a bounded map (\u00a79.1, V05).",
+            "at": {
+              "path": "/defs/W/body/0/value",
+              "span": [13, 11, 13, 23]
+            },
+            "docs": "mandate explain MDT-E0711"
+          },
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "W holds M = model.infer but neither its body nor its delegates use it.",
+            "at": {
+              "path": "/defs/W/caps/0",
+              "span": [11, 8, 11, 9]
+            },
+            "docs": "mandate explain MDT-W0310"
+          }
+        ]
+      }
+    },
+    {
+      "name": "V06a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0712",
+            "severity": "error",
+            "message": "UnknownOutcome can only be handled with reconcile; restarting could repeat an external effect (\u00a78.7, V06).",
+            "at": {
+              "path": "/defs/W/body/1/then",
+              "span": [9, 31, 9, 38]
+            },
+            "docs": "mandate explain MDT-E0712"
+          }
+        ]
+      }
+    },
+    {
+      "name": "V06b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:ade9eb0775fc9689e30c127052b435543636e5be4d197aab86d26caf94ab2d75",
+          "defs": {
+            "PR": "sha256:6350191de26e50e57b0bdd8ca43dcb66da795eacf1b9fcd4207bce62c4bce842",
+            "W": "sha256:4bcc34060f46a98a2764389e475b1b69a34632c0c29a51c43fbf18117d88a9ab"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "V07a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../compiler/test/fixtures/syntax/decision.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0230",
+            "severity": "error",
+            "message": "A switch on a decision outcome must handle Uncertain (D2).",
+            "at": {
+              "path": "/defs/HandleRequest/body/1/value",
+              "span": [1, 1924, 1, 2469]
+            },
+            "docs": "mandate explain MDT-E0230",
+            "facts": {
+              "missing": [
+                "Uncertain"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "V08a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Model output of type Inferred<Decision<Kind>> cannot be used where Text is expected; verify it first.",
+            "at": {
+              "path": "/defs/W/body/1/value/args/1/value",
+              "span": [14, 25, 14, 26]
+            },
+            "docs": "mandate explain MDT-E0210"
+          }
+        ]
+      }
+    },
+    {
+      "name": "V20a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:faba3e305a28f4503f1412215ecd2e58f1cb9f77c9dfca055e166f82fb17ae76",
+          "defs": {
+            "a0": "sha256:9ea252f57b3e70a0cb56fd67a380118beed7245f24035fcf0f240e2358688ec1",
+            "a1": "sha256:d1740c071132a2add49b065390d00fc3cacaf9bd77800745b53376b6303ca1e8",
+            "a2": "sha256:1089ca0aa713c09802983d2ed355b1a2e3071b932e0677f29b6e7c156428c7cf",
+            "a3": "sha256:1dc5e7325659710e290932703054088a0c954e344e22a118dea7c9184ec13314",
+            "a4": "sha256:5043f87ea6c003c7974d5beeb6a4ade8d21a062aa196f726c2b4d3b10f1eec4d",
+            "open": "sha256:319ea6c460747c7e3149c1ad5bb808ed01fdeb9ad1090122b75f4ba844de2219"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "V20b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0204",
+            "severity": "error",
+            "message": "\"../x\" is not a Path: it has a `.` or `..` segment. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.",
+            "at": {
+              "path": "/defs/a0/value/args/0/value",
+              "span": [3, 15, 3, 21]
+            },
+            "docs": "mandate explain MDT-E0204"
+          },
+          {
+            "code": "MDT-E0204",
+            "severity": "error",
+            "message": "\"src/../../x\" is not a Path: it has a `.` or `..` segment. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.",
+            "at": {
+              "path": "/defs/a1/value/args/0/value",
+              "span": [4, 15, 4, 28]
+            },
+            "docs": "mandate explain MDT-E0204"
+          },
+          {
+            "code": "MDT-E0204",
+            "severity": "error",
+            "message": "\"/etc/passwd\" is not a Path: it is absolute. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.",
+            "at": {
+              "path": "/defs/a2/value/args/0/value",
+              "span": [5, 15, 5, 28]
+            },
+            "docs": "mandate explain MDT-E0204"
+          },
+          {
+            "code": "MDT-E0204",
+            "severity": "error",
+            "message": "\"C:/Windows\" is not a Path: it contains `:` (a drive or a stream). A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.",
+            "at": {
+              "path": "/defs/a3/value/args/0/value",
+              "span": [6, 15, 6, 27]
+            },
+            "docs": "mandate explain MDT-E0204"
+          },
+          {
+            "code": "MDT-E0204",
+            "severity": "error",
+            "message": "\"src\\\\a.ts\" is not a Path: it contains `\\`; use `/`. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.",
+            "at": {
+              "path": "/defs/a4/value/args/0/value",
+              "span": [7, 15, 7, 26]
+            },
+            "docs": "mandate explain MDT-E0204"
+          },
+          {
+            "code": "MDT-E0204",
+            "severity": "error",
+            "message": "\"a//b\" is not a Path: it has an empty segment. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.",
+            "at": {
+              "path": "/defs/a5/value/args/0/value",
+              "span": [8, 15, 8, 21]
+            },
+            "docs": "mandate explain MDT-E0204"
+          },
+          {
+            "code": "MDT-E0204",
+            "severity": "error",
+            "message": "\"./a\" is not a Path: it has a `.` or `..` segment. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.",
+            "at": {
+              "path": "/defs/a6/value/args/0/value",
+              "span": [9, 15, 9, 20]
+            },
+            "docs": "mandate explain MDT-E0204"
+          },
+          {
+            "code": "MDT-E0204",
+            "severity": "error",
+            "message": "\"a/\" is not a Path: it has an empty segment. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.",
+            "at": {
+              "path": "/defs/a7/value/args/0/value",
+              "span": [10, 15, 10, 19]
+            },
+            "docs": "mandate explain MDT-E0204"
+          },
+          {
+            "code": "MDT-E0204",
+            "severity": "error",
+            "message": "\"\" is not a Path: it is empty. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.",
+            "at": {
+              "path": "/defs/a8/value/args/0/value",
+              "span": [11, 15, 11, 17]
+            },
+            "docs": "mandate explain MDT-E0204"
+          },
+          {
+            "code": "MDT-E0204",
+            "severity": "error",
+            "message": "\"file.txt:stream\" is not a Path: it contains `:` (a drive or a stream). A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.",
+            "at": {
+              "path": "/defs/a9/value/args/0/value",
+              "span": [12, 15, 12, 32]
+            },
+            "docs": "mandate explain MDT-E0204"
+          }
+        ]
+      }
+    },
+    {
+      "name": "V20c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0204",
+            "severity": "error",
+            "message": "\"../b.ts\" is not a Path: it has a `.` or `..` segment. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.",
+            "at": {
+              "path": "/defs/a/value/args/0/value",
+              "span": [3, 15, 3, 38]
+            },
+            "docs": "mandate explain MDT-E0204"
+          }
+        ]
+      }
+    },
+    {
+      "name": "V20d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0201",
+            "severity": "error",
+            "message": "Expected Path but got Text.",
+            "at": {
+              "path": "/defs/f/body/0/value/args/0/value",
+              "span": [3, 30, 3, 31]
+            },
+            "docs": "mandate explain MDT-E0201"
+          }
+        ]
+      }
+    },
+    {
+      "name": "V20e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0201",
+            "severity": "error",
+            "message": "Expected Path but got Text.",
+            "at": {
+              "path": "/defs/f/body/0/value/args/0/value",
+              "span": [3, 30, 3, 39]
+            },
+            "docs": "mandate explain MDT-E0201"
+          }
+        ]
+      }
+    }
+  ]
+}

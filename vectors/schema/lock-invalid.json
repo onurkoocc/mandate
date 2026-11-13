@@ -1,0 +1,2552 @@
+{
+  "format": "mandate/vectors/schema/lock-invalid/0.1",
+  "cases": [
+    {
+      "name": "reach: remove /lock",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "",
+          "schemaPath": "#/required",
+          "keyword": "required",
+          "params": {
+            "missingProperty": "lock"
+          },
+          "message": "must have required property 'lock'"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: / must have required property 'lock'",
+          "at": {
+            "path": ""
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "required",
+            "params": {
+              "missingProperty": "lock"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: remove /modules",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "",
+          "schemaPath": "#/required",
+          "keyword": "required",
+          "params": {
+            "missingProperty": "modules"
+          },
+          "message": "must have required property 'modules'"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: / must have required property 'modules'",
+          "at": {
+            "path": ""
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "required",
+            "params": {
+              "missingProperty": "modules"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: add unknown member \"extra\" to (root)",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"extra\": 1\n}",
+      "raw_errors": [
+        {
+          "instancePath": "",
+          "schemaPath": "#/additionalProperties",
+          "keyword": "additionalProperties",
+          "params": {
+            "additionalProperty": "extra"
+          },
+          "message": "must NOT have additional properties"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: / must NOT have additional properties",
+          "at": {
+            "path": ""
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "additionalProperties",
+            "params": {
+              "additionalProperty": "extra"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /lock = \"mandate/lock/0.9\"",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.9\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/lock",
+          "schemaPath": "#/properties/lock/enum",
+          "keyword": "enum",
+          "params": {
+            "allowedValues": [
+              "mandate/lock/0.2",
+              "mandate/lock/0.3",
+              "mandate/lock/0.4",
+              "mandate/lock/0.5"
+            ]
+          },
+          "message": "must be equal to one of the allowed values"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /lock must be equal to one of the allowed values",
+          "at": {
+            "path": "/lock"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "enum",
+            "params": {
+              "allowedValues": [
+                "mandate/lock/0.2",
+                "mandate/lock/0.3",
+                "mandate/lock/0.4",
+                "mandate/lock/0.5"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /lock as number",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": 7,\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/lock",
+          "schemaPath": "#/properties/lock/enum",
+          "keyword": "enum",
+          "params": {
+            "allowedValues": [
+              "mandate/lock/0.2",
+              "mandate/lock/0.3",
+              "mandate/lock/0.4",
+              "mandate/lock/0.5"
+            ]
+          },
+          "message": "must be equal to one of the allowed values"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /lock must be equal to one of the allowed values",
+          "at": {
+            "path": "/lock"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "enum",
+            "params": {
+              "allowedValues": [
+                "mandate/lock/0.2",
+                "mandate/lock/0.3",
+                "mandate/lock/0.4",
+                "mandate/lock/0.5"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /models/standard/provider = \"openai\"",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"openai\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/models/standard/provider",
+          "schemaPath": "#/properties/models/additionalProperties/properties/provider/const",
+          "keyword": "const",
+          "params": {
+            "allowedValue": "anthropic"
+          },
+          "message": "must be equal to constant"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /models/standard/provider must be equal to constant",
+          "at": {
+            "path": "/models/standard/provider"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "const",
+            "params": {
+              "allowedValue": "anthropic"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /models/standard/effort = \"extreme\"",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"extreme\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/models/standard/effort",
+          "schemaPath": "#/properties/models/additionalProperties/properties/effort/enum",
+          "keyword": "enum",
+          "params": {
+            "allowedValues": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "message": "must be equal to one of the allowed values"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /models/standard/effort must be equal to one of the allowed values",
+          "at": {
+            "path": "/models/standard/effort"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "enum",
+            "params": {
+              "allowedValues": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /models/standard/max_input_tokens = 0",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 0,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/models/standard/max_input_tokens",
+          "schemaPath": "#/properties/models/additionalProperties/properties/max_input_tokens/minimum",
+          "keyword": "minimum",
+          "params": {
+            "comparison": ">=",
+            "limit": 1
+          },
+          "message": "must be >= 1"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /models/standard/max_input_tokens must be >= 1",
+          "at": {
+            "path": "/models/standard/max_input_tokens"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "minimum",
+            "params": {
+              "comparison": ">=",
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /models/standard/model as number",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": 7,\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/models/standard/model",
+          "schemaPath": "#/properties/models/additionalProperties/properties/model/type",
+          "keyword": "type",
+          "params": {
+            "type": "string"
+          },
+          "message": "must be string"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /models/standard/model must be string",
+          "at": {
+            "path": "/models/standard/model"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "type",
+            "params": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: remove /models/standard/model",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/models/standard",
+          "schemaPath": "#/properties/models/additionalProperties/required",
+          "keyword": "required",
+          "params": {
+            "missingProperty": "model"
+          },
+          "message": "must have required property 'model'"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /models/standard must have required property 'model'",
+          "at": {
+            "path": "/models/standard"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "required",
+            "params": {
+              "missingProperty": "model"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: add unknown member \"extra\" to /models/standard",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000,\n      \"extra\": 1\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/models/standard",
+          "schemaPath": "#/properties/models/additionalProperties/additionalProperties",
+          "keyword": "additionalProperties",
+          "params": {
+            "additionalProperty": "extra"
+          },
+          "message": "must NOT have additional properties"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /models/standard must NOT have additional properties",
+          "at": {
+            "path": "/models/standard"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "additionalProperties",
+            "params": {
+              "additionalProperty": "extra"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: rename \"standard\" to \"Bad Tier\" in /models",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"Bad Tier\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/models",
+          "schemaPath": "#/properties/models/propertyNames/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "message": "must match pattern \"^[a-z][a-z0-9_]*$\"",
+          "propertyName": "Bad Tier"
+        },
+        {
+          "instancePath": "/models",
+          "schemaPath": "#/properties/models/propertyNames",
+          "keyword": "propertyNames",
+          "params": {
+            "propertyName": "Bad Tier"
+          },
+          "message": "property name must be valid"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /models must match pattern \"^[a-z][a-z0-9_]*$\"",
+          "at": {
+            "path": "/models"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^[a-z][a-z0-9_]*$"
+            }
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /models property name must be valid",
+          "at": {
+            "path": "/models"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "propertyNames",
+            "params": {
+              "propertyName": "Bad Tier"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /tariffs/claude-opus-5-5/currency = \"usd\"",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"usd\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/tariffs/claude-opus-5-5/currency",
+          "schemaPath": "#/properties/tariffs/additionalProperties/properties/currency/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^[A-Z]{3}$"
+          },
+          "message": "must match pattern \"^[A-Z]{3}$\""
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /tariffs/claude-opus-5-5/currency must match pattern \"^[A-Z]{3}$\"",
+          "at": {
+            "path": "/tariffs/claude-opus-5-5/currency"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^[A-Z]{3}$"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /tariffs/claude-opus-5-5/as_of = \"2026-1-9\"",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-1-9\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/tariffs/claude-opus-5-5/as_of",
+          "schemaPath": "#/properties/tariffs/additionalProperties/properties/as_of/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "message": "must match pattern \"^[0-9]{4}-[0-9]{2}-[0-9]{2}$\""
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /tariffs/claude-opus-5-5/as_of must match pattern \"^[0-9]{4}-[0-9]{2}-[0-9]{2}$\"",
+          "at": {
+            "path": "/tariffs/claude-opus-5-5/as_of"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /tariffs/claude-opus-5-5/micros_per_mtok/input = -1",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": -1,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/tariffs/claude-opus-5-5/micros_per_mtok/input",
+          "schemaPath": "#/properties/tariffs/additionalProperties/properties/micros_per_mtok/properties/input/minimum",
+          "keyword": "minimum",
+          "params": {
+            "comparison": ">=",
+            "limit": 0
+          },
+          "message": "must be >= 0"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /tariffs/claude-opus-5-5/micros_per_mtok/input must be >= 0",
+          "at": {
+            "path": "/tariffs/claude-opus-5-5/micros_per_mtok/input"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "minimum",
+            "params": {
+              "comparison": ">=",
+              "limit": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: remove /tariffs/claude-opus-5-5/micros_per_mtok/output",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/tariffs/claude-opus-5-5/micros_per_mtok",
+          "schemaPath": "#/properties/tariffs/additionalProperties/properties/micros_per_mtok/required",
+          "keyword": "required",
+          "params": {
+            "missingProperty": "output"
+          },
+          "message": "must have required property 'output'"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /tariffs/claude-opus-5-5/micros_per_mtok must have required property 'output'",
+          "at": {
+            "path": "/tariffs/claude-opus-5-5/micros_per_mtok"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "required",
+            "params": {
+              "missingProperty": "output"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: add unknown member \"extra\" to /tariffs/claude-opus-5-5/micros_per_mtok",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000,\n        \"extra\": 1\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/tariffs/claude-opus-5-5/micros_per_mtok",
+          "schemaPath": "#/properties/tariffs/additionalProperties/properties/micros_per_mtok/additionalProperties",
+          "keyword": "additionalProperties",
+          "params": {
+            "additionalProperty": "extra"
+          },
+          "message": "must NOT have additional properties"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /tariffs/claude-opus-5-5/micros_per_mtok must NOT have additional properties",
+          "at": {
+            "path": "/tariffs/claude-opus-5-5/micros_per_mtok"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "additionalProperties",
+            "params": {
+              "additionalProperty": "extra"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: empty /host",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {},\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/host",
+          "schemaPath": "#/properties/host/minProperties",
+          "keyword": "minProperties",
+          "params": {
+            "limit": 1
+          },
+          "message": "must NOT have fewer than 1 properties"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /host must NOT have fewer than 1 properties",
+          "at": {
+            "path": "/host"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "minProperties",
+            "params": {
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /host/node = \"22.x\"",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.x\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/host/node",
+          "schemaPath": "#/$defs/Version/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^(0|[1-9][0-9]{0,8})(\\.(0|[1-9][0-9]{0,8})){0,2}$"
+          },
+          "message": "must match pattern \"^(0|[1-9][0-9]{0,8})(\\.(0|[1-9][0-9]{0,8})){0,2}$\""
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /host/node must match pattern \"^(0|[1-9][0-9]{0,8})(\\.(0|[1-9][0-9]{0,8})){0,2}$\"",
+          "at": {
+            "path": "/host/node"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^(0|[1-9][0-9]{0,8})(\\.(0|[1-9][0-9]{0,8})){0,2}$"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /host/bwrap = \"\"",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/host/bwrap",
+          "schemaPath": "#/$defs/Version/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^(0|[1-9][0-9]{0,8})(\\.(0|[1-9][0-9]{0,8})){0,2}$"
+          },
+          "message": "must match pattern \"^(0|[1-9][0-9]{0,8})(\\.(0|[1-9][0-9]{0,8})){0,2}$\""
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /host/bwrap must match pattern \"^(0|[1-9][0-9]{0,8})(\\.(0|[1-9][0-9]{0,8})){0,2}$\"",
+          "at": {
+            "path": "/host/bwrap"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^(0|[1-9][0-9]{0,8})(\\.(0|[1-9][0-9]{0,8})){0,2}$"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: add unknown member \"git\" to /host",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\",\n    \"git\": \"2\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/host",
+          "schemaPath": "#/properties/host/additionalProperties",
+          "keyword": "additionalProperties",
+          "params": {
+            "additionalProperty": "git"
+          },
+          "message": "must NOT have additional properties"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /host must NOT have additional properties",
+          "at": {
+            "path": "/host"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "additionalProperties",
+            "params": {
+              "additionalProperty": "git"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: empty /isolation",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {},\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/isolation",
+          "schemaPath": "#/properties/isolation/minProperties",
+          "keyword": "minProperties",
+          "params": {
+            "limit": 1
+          },
+          "message": "must NOT have fewer than 1 properties"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /isolation must NOT have fewer than 1 properties",
+          "at": {
+            "path": "/isolation"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "minProperties",
+            "params": {
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: rename \"confidential\" to \"secret\" in /isolation/floor",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"secret\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/isolation/floor",
+          "schemaPath": "#/$defs/DataClass/enum",
+          "keyword": "enum",
+          "params": {
+            "allowedValues": [
+              "public",
+              "internal",
+              "confidential",
+              "restricted"
+            ]
+          },
+          "message": "must be equal to one of the allowed values",
+          "propertyName": "secret"
+        },
+        {
+          "instancePath": "/isolation/floor",
+          "schemaPath": "#/properties/isolation/properties/floor/propertyNames",
+          "keyword": "propertyNames",
+          "params": {
+            "propertyName": "secret"
+          },
+          "message": "property name must be valid"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /isolation/floor must be equal to one of the allowed values",
+          "at": {
+            "path": "/isolation/floor"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "enum",
+            "params": {
+              "allowedValues": [
+                "public",
+                "internal",
+                "confidential",
+                "restricted"
+              ]
+            }
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /isolation/floor property name must be valid",
+          "at": {
+            "path": "/isolation/floor"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "propertyNames",
+            "params": {
+              "propertyName": "secret"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /isolation/floor/restricted = \"vm\"",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"vm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/isolation/floor/restricted",
+          "schemaPath": "#/$defs/Level/enum",
+          "keyword": "enum",
+          "params": {
+            "allowedValues": [
+              "process",
+              "user_kernel",
+              "microvm",
+              "dedicated_host"
+            ]
+          },
+          "message": "must be equal to one of the allowed values"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /isolation/floor/restricted must be equal to one of the allowed values",
+          "at": {
+            "path": "/isolation/floor/restricted"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "enum",
+            "params": {
+              "allowedValues": [
+                "process",
+                "user_kernel",
+                "microvm",
+                "dedicated_host"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /isolation/untrusted_network = \"none\"",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"none\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/isolation/untrusted_network",
+          "schemaPath": "#/$defs/Level/enum",
+          "keyword": "enum",
+          "params": {
+            "allowedValues": [
+              "process",
+              "user_kernel",
+              "microvm",
+              "dedicated_host"
+            ]
+          },
+          "message": "must be equal to one of the allowed values"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /isolation/untrusted_network must be equal to one of the allowed values",
+          "at": {
+            "path": "/isolation/untrusted_network"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "enum",
+            "params": {
+              "allowedValues": [
+                "process",
+                "user_kernel",
+                "microvm",
+                "dedicated_host"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /isolation/co_tenancy/restricted = \"maybe\"",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"maybe\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/isolation/co_tenancy/restricted",
+          "schemaPath": "#/properties/isolation/properties/co_tenancy/additionalProperties/enum",
+          "keyword": "enum",
+          "params": {
+            "allowedValues": [
+              "allowed",
+              "forbidden"
+            ]
+          },
+          "message": "must be equal to one of the allowed values"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /isolation/co_tenancy/restricted must be equal to one of the allowed values",
+          "at": {
+            "path": "/isolation/co_tenancy/restricted"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "enum",
+            "params": {
+              "allowedValues": [
+                "allowed",
+                "forbidden"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: rename \"Reacher\" to \"9bad\" in /egress",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"9bad\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/egress",
+          "schemaPath": "#/properties/egress/propertyNames/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "message": "must match pattern \"^[A-Za-z_][A-Za-z0-9_]*$\"",
+          "propertyName": "9bad"
+        },
+        {
+          "instancePath": "/egress",
+          "schemaPath": "#/properties/egress/propertyNames",
+          "keyword": "propertyNames",
+          "params": {
+            "propertyName": "9bad"
+          },
+          "message": "property name must be valid"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /egress must match pattern \"^[A-Za-z_][A-Za-z0-9_]*$\"",
+          "at": {
+            "path": "/egress"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /egress property name must be valid",
+          "at": {
+            "path": "/egress"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "propertyNames",
+            "params": {
+              "propertyName": "9bad"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: empty /egress/Reacher",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {}\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/egress/Reacher",
+          "schemaPath": "#/properties/egress/additionalProperties/minProperties",
+          "keyword": "minProperties",
+          "params": {
+            "limit": 1
+          },
+          "message": "must NOT have fewer than 1 properties"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /egress/Reacher must NOT have fewer than 1 properties",
+          "at": {
+            "path": "/egress/Reacher"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "minProperties",
+            "params": {
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: /egress/Reacher/api.github.com = \"9x\"",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"9x\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/egress/Reacher/api.github.com",
+          "schemaPath": "#/properties/egress/additionalProperties/additionalProperties/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+          },
+          "message": "must match pattern \"^[A-Za-z][A-Za-z0-9_-]{0,63}$\""
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /egress/Reacher/api.github.com must match pattern \"^[A-Za-z][A-Za-z0-9_-]{0,63}$\"",
+          "at": {
+            "path": "/egress/Reacher/api.github.com"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: rename \"api.github.com\" to \"\" in /egress/Reacher",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/egress/Reacher",
+          "schemaPath": "#/properties/egress/additionalProperties/propertyNames/minLength",
+          "keyword": "minLength",
+          "params": {
+            "limit": 1
+          },
+          "message": "must NOT have fewer than 1 characters",
+          "propertyName": ""
+        },
+        {
+          "instancePath": "/egress/Reacher",
+          "schemaPath": "#/properties/egress/additionalProperties/propertyNames",
+          "keyword": "propertyNames",
+          "params": {
+            "propertyName": ""
+          },
+          "message": "property name must be valid"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /egress/Reacher must NOT have fewer than 1 characters",
+          "at": {
+            "path": "/egress/Reacher"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "minLength",
+            "params": {
+              "limit": 1
+            }
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /egress/Reacher property name must be valid",
+          "at": {
+            "path": "/egress/Reacher"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "propertyNames",
+            "params": {
+              "propertyName": ""
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reach: rename \"api.github.com\" to \"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh\" in /egress/Reacher",
+      "base": "reach",
+      "pretty": false,
+      "input": "{\"lock\":\"mandate/lock/0.5\",\"modules\":{},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":128000,\"max_output_tokens\":12000}},\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}},\"host\":{\"node\":\"22\",\"bwrap\":\"0.1\"},\"isolation\":{\"floor\":{\"confidential\":\"user_kernel\",\"restricted\":\"microvm\"},\"untrusted_network\":\"process\",\"co_tenancy\":{\"restricted\":\"forbidden\"}},\"egress\":{\"Reacher\":{\"hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh\":\"github\"}}}",
+      "raw_errors": [
+        {
+          "instancePath": "/egress/Reacher",
+          "schemaPath": "#/properties/egress/additionalProperties/propertyNames/maxLength",
+          "keyword": "maxLength",
+          "params": {
+            "limit": 253
+          },
+          "message": "must NOT have more than 253 characters",
+          "propertyName": "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"
+        },
+        {
+          "instancePath": "/egress/Reacher",
+          "schemaPath": "#/properties/egress/additionalProperties/propertyNames",
+          "keyword": "propertyNames",
+          "params": {
+            "propertyName": "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"
+          },
+          "message": "property name must be valid"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /egress/Reacher must NOT have more than 253 characters",
+          "at": {
+            "path": "/egress/Reacher"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "maxLength",
+            "params": {
+              "limit": 253
+            }
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /egress/Reacher property name must be valid",
+          "at": {
+            "path": "/egress/Reacher"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "propertyNames",
+            "params": {
+              "propertyName": "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings: /bindings/managed-agents/format = \"mandate/binding/other/0.1\"",
+      "base": "bindings",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.23.4\",\n    \"bwrap\": \"0.11.0\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reader\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"bindings\": {\n    \"managed-agents\": {\n      \"format\": \"mandate/binding/other/0.1\",\n      \"beta\": \"managed-agents-2026-04-01\",\n      \"tools\": \"bridge\",\n      \"environment\": {\n        \"id\": \"env_1\",\n        \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      },\n      \"session_fee\": {\n        \"currency\": \"USD\",\n        \"micros_per_hour\": 80000\n      },\n      \"harness_tokens\": 4096,\n      \"agents\": {\n        \"Reader\": {\n          \"id\": \"agent_1\",\n          \"version\": 1,\n          \"tier\": \"standard\",\n          \"model\": \"claude-opus-5-5\",\n          \"effort\": \"high\",\n          \"max_output_tokens\": 12000,\n          \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n        }\n      },\n      \"profile\": {\n        \"package.identity\": \"full\",\n        \"static.checks\": \"full\",\n        \"caps.paths_commands\": \"full\",\n        \"caps.network\": \"full\",\n        \"parallel.isolation\": \"full\",\n        \"model.pinning\": \"full\",\n        \"model.max_class\": \"partial\",\n        \"budget.tokens_spend\": \"full\",\n        \"budget.steps\": \"full\",\n        \"budget.time\": \"full\",\n        \"loop.progress\": \"full\",\n        \"journal.turns\": \"full\",\n        \"replay.no_adapter\": \"full\",\n        \"evidence.verifier\": \"full\",\n        \"effects.prepare_authorize_commit\": \"full\",\n        \"credentials.control_plane\": \"full\",\n        \"cancel\": \"partial\"\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/bindings/managed-agents/format",
+          "schemaPath": "#/properties/bindings/properties/managed-agents/properties/format/const",
+          "keyword": "const",
+          "params": {
+            "allowedValue": "mandate/binding/managed-agents/0.1"
+          },
+          "message": "must be equal to constant"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /bindings/managed-agents/format must be equal to constant",
+          "at": {
+            "path": "/bindings/managed-agents/format"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "const",
+            "params": {
+              "allowedValue": "mandate/binding/managed-agents/0.1"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings: /bindings/managed-agents/tools = \"direct\"",
+      "base": "bindings",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.23.4\",\n    \"bwrap\": \"0.11.0\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reader\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"bindings\": {\n    \"managed-agents\": {\n      \"format\": \"mandate/binding/managed-agents/0.1\",\n      \"beta\": \"managed-agents-2026-04-01\",\n      \"tools\": \"direct\",\n      \"environment\": {\n        \"id\": \"env_1\",\n        \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      },\n      \"session_fee\": {\n        \"currency\": \"USD\",\n        \"micros_per_hour\": 80000\n      },\n      \"harness_tokens\": 4096,\n      \"agents\": {\n        \"Reader\": {\n          \"id\": \"agent_1\",\n          \"version\": 1,\n          \"tier\": \"standard\",\n          \"model\": \"claude-opus-5-5\",\n          \"effort\": \"high\",\n          \"max_output_tokens\": 12000,\n          \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n        }\n      },\n      \"profile\": {\n        \"package.identity\": \"full\",\n        \"static.checks\": \"full\",\n        \"caps.paths_commands\": \"full\",\n        \"caps.network\": \"full\",\n        \"parallel.isolation\": \"full\",\n        \"model.pinning\": \"full\",\n        \"model.max_class\": \"partial\",\n        \"budget.tokens_spend\": \"full\",\n        \"budget.steps\": \"full\",\n        \"budget.time\": \"full\",\n        \"loop.progress\": \"full\",\n        \"journal.turns\": \"full\",\n        \"replay.no_adapter\": \"full\",\n        \"evidence.verifier\": \"full\",\n        \"effects.prepare_authorize_commit\": \"full\",\n        \"credentials.control_plane\": \"full\",\n        \"cancel\": \"partial\"\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/bindings/managed-agents/tools",
+          "schemaPath": "#/properties/bindings/properties/managed-agents/properties/tools/const",
+          "keyword": "const",
+          "params": {
+            "allowedValue": "bridge"
+          },
+          "message": "must be equal to constant"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /bindings/managed-agents/tools must be equal to constant",
+          "at": {
+            "path": "/bindings/managed-agents/tools"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "const",
+            "params": {
+              "allowedValue": "bridge"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings: /bindings/managed-agents/environment/config = \"sha256:xyz\"",
+      "base": "bindings",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.23.4\",\n    \"bwrap\": \"0.11.0\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reader\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"bindings\": {\n    \"managed-agents\": {\n      \"format\": \"mandate/binding/managed-agents/0.1\",\n      \"beta\": \"managed-agents-2026-04-01\",\n      \"tools\": \"bridge\",\n      \"environment\": {\n        \"id\": \"env_1\",\n        \"config\": \"sha256:xyz\"\n      },\n      \"session_fee\": {\n        \"currency\": \"USD\",\n        \"micros_per_hour\": 80000\n      },\n      \"harness_tokens\": 4096,\n      \"agents\": {\n        \"Reader\": {\n          \"id\": \"agent_1\",\n          \"version\": 1,\n          \"tier\": \"standard\",\n          \"model\": \"claude-opus-5-5\",\n          \"effort\": \"high\",\n          \"max_output_tokens\": 12000,\n          \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n        }\n      },\n      \"profile\": {\n        \"package.identity\": \"full\",\n        \"static.checks\": \"full\",\n        \"caps.paths_commands\": \"full\",\n        \"caps.network\": \"full\",\n        \"parallel.isolation\": \"full\",\n        \"model.pinning\": \"full\",\n        \"model.max_class\": \"partial\",\n        \"budget.tokens_spend\": \"full\",\n        \"budget.steps\": \"full\",\n        \"budget.time\": \"full\",\n        \"loop.progress\": \"full\",\n        \"journal.turns\": \"full\",\n        \"replay.no_adapter\": \"full\",\n        \"evidence.verifier\": \"full\",\n        \"effects.prepare_authorize_commit\": \"full\",\n        \"credentials.control_plane\": \"full\",\n        \"cancel\": \"partial\"\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/bindings/managed-agents/environment/config",
+          "schemaPath": "#/properties/bindings/properties/managed-agents/properties/environment/properties/config/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "message": "must match pattern \"^sha256:[0-9a-f]{64}$\""
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /bindings/managed-agents/environment/config must match pattern \"^sha256:[0-9a-f]{64}$\"",
+          "at": {
+            "path": "/bindings/managed-agents/environment/config"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings: /bindings/managed-agents/session_fee/currency = \"usd\"",
+      "base": "bindings",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.23.4\",\n    \"bwrap\": \"0.11.0\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reader\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"bindings\": {\n    \"managed-agents\": {\n      \"format\": \"mandate/binding/managed-agents/0.1\",\n      \"beta\": \"managed-agents-2026-04-01\",\n      \"tools\": \"bridge\",\n      \"environment\": {\n        \"id\": \"env_1\",\n        \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      },\n      \"session_fee\": {\n        \"currency\": \"usd\",\n        \"micros_per_hour\": 80000\n      },\n      \"harness_tokens\": 4096,\n      \"agents\": {\n        \"Reader\": {\n          \"id\": \"agent_1\",\n          \"version\": 1,\n          \"tier\": \"standard\",\n          \"model\": \"claude-opus-5-5\",\n          \"effort\": \"high\",\n          \"max_output_tokens\": 12000,\n          \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n        }\n      },\n      \"profile\": {\n        \"package.identity\": \"full\",\n        \"static.checks\": \"full\",\n        \"caps.paths_commands\": \"full\",\n        \"caps.network\": \"full\",\n        \"parallel.isolation\": \"full\",\n        \"model.pinning\": \"full\",\n        \"model.max_class\": \"partial\",\n        \"budget.tokens_spend\": \"full\",\n        \"budget.steps\": \"full\",\n        \"budget.time\": \"full\",\n        \"loop.progress\": \"full\",\n        \"journal.turns\": \"full\",\n        \"replay.no_adapter\": \"full\",\n        \"evidence.verifier\": \"full\",\n        \"effects.prepare_authorize_commit\": \"full\",\n        \"credentials.control_plane\": \"full\",\n        \"cancel\": \"partial\"\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/bindings/managed-agents/session_fee/currency",
+          "schemaPath": "#/properties/bindings/properties/managed-agents/properties/session_fee/properties/currency/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^[A-Z]{3}$"
+          },
+          "message": "must match pattern \"^[A-Z]{3}$\""
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /bindings/managed-agents/session_fee/currency must match pattern \"^[A-Z]{3}$\"",
+          "at": {
+            "path": "/bindings/managed-agents/session_fee/currency"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^[A-Z]{3}$"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings: /bindings/managed-agents/harness_tokens = -1",
+      "base": "bindings",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.23.4\",\n    \"bwrap\": \"0.11.0\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reader\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"bindings\": {\n    \"managed-agents\": {\n      \"format\": \"mandate/binding/managed-agents/0.1\",\n      \"beta\": \"managed-agents-2026-04-01\",\n      \"tools\": \"bridge\",\n      \"environment\": {\n        \"id\": \"env_1\",\n        \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      },\n      \"session_fee\": {\n        \"currency\": \"USD\",\n        \"micros_per_hour\": 80000\n      },\n      \"harness_tokens\": -1,\n      \"agents\": {\n        \"Reader\": {\n          \"id\": \"agent_1\",\n          \"version\": 1,\n          \"tier\": \"standard\",\n          \"model\": \"claude-opus-5-5\",\n          \"effort\": \"high\",\n          \"max_output_tokens\": 12000,\n          \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n        }\n      },\n      \"profile\": {\n        \"package.identity\": \"full\",\n        \"static.checks\": \"full\",\n        \"caps.paths_commands\": \"full\",\n        \"caps.network\": \"full\",\n        \"parallel.isolation\": \"full\",\n        \"model.pinning\": \"full\",\n        \"model.max_class\": \"partial\",\n        \"budget.tokens_spend\": \"full\",\n        \"budget.steps\": \"full\",\n        \"budget.time\": \"full\",\n        \"loop.progress\": \"full\",\n        \"journal.turns\": \"full\",\n        \"replay.no_adapter\": \"full\",\n        \"evidence.verifier\": \"full\",\n        \"effects.prepare_authorize_commit\": \"full\",\n        \"credentials.control_plane\": \"full\",\n        \"cancel\": \"partial\"\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/bindings/managed-agents/harness_tokens",
+          "schemaPath": "#/properties/bindings/properties/managed-agents/properties/harness_tokens/minimum",
+          "keyword": "minimum",
+          "params": {
+            "comparison": ">=",
+            "limit": 0
+          },
+          "message": "must be >= 0"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /bindings/managed-agents/harness_tokens must be >= 0",
+          "at": {
+            "path": "/bindings/managed-agents/harness_tokens"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "minimum",
+            "params": {
+              "comparison": ">=",
+              "limit": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings: /bindings/managed-agents/agents/Reader/version = 0",
+      "base": "bindings",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.23.4\",\n    \"bwrap\": \"0.11.0\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reader\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"bindings\": {\n    \"managed-agents\": {\n      \"format\": \"mandate/binding/managed-agents/0.1\",\n      \"beta\": \"managed-agents-2026-04-01\",\n      \"tools\": \"bridge\",\n      \"environment\": {\n        \"id\": \"env_1\",\n        \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      },\n      \"session_fee\": {\n        \"currency\": \"USD\",\n        \"micros_per_hour\": 80000\n      },\n      \"harness_tokens\": 4096,\n      \"agents\": {\n        \"Reader\": {\n          \"id\": \"agent_1\",\n          \"version\": 0,\n          \"tier\": \"standard\",\n          \"model\": \"claude-opus-5-5\",\n          \"effort\": \"high\",\n          \"max_output_tokens\": 12000,\n          \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n        }\n      },\n      \"profile\": {\n        \"package.identity\": \"full\",\n        \"static.checks\": \"full\",\n        \"caps.paths_commands\": \"full\",\n        \"caps.network\": \"full\",\n        \"parallel.isolation\": \"full\",\n        \"model.pinning\": \"full\",\n        \"model.max_class\": \"partial\",\n        \"budget.tokens_spend\": \"full\",\n        \"budget.steps\": \"full\",\n        \"budget.time\": \"full\",\n        \"loop.progress\": \"full\",\n        \"journal.turns\": \"full\",\n        \"replay.no_adapter\": \"full\",\n        \"evidence.verifier\": \"full\",\n        \"effects.prepare_authorize_commit\": \"full\",\n        \"credentials.control_plane\": \"full\",\n        \"cancel\": \"partial\"\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/bindings/managed-agents/agents/Reader/version",
+          "schemaPath": "#/properties/bindings/properties/managed-agents/properties/agents/additionalProperties/properties/version/minimum",
+          "keyword": "minimum",
+          "params": {
+            "comparison": ">=",
+            "limit": 1
+          },
+          "message": "must be >= 1"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /bindings/managed-agents/agents/Reader/version must be >= 1",
+          "at": {
+            "path": "/bindings/managed-agents/agents/Reader/version"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "minimum",
+            "params": {
+              "comparison": ">=",
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings: /bindings/managed-agents/agents/Reader/tier = \"Standard\"",
+      "base": "bindings",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.23.4\",\n    \"bwrap\": \"0.11.0\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reader\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"bindings\": {\n    \"managed-agents\": {\n      \"format\": \"mandate/binding/managed-agents/0.1\",\n      \"beta\": \"managed-agents-2026-04-01\",\n      \"tools\": \"bridge\",\n      \"environment\": {\n        \"id\": \"env_1\",\n        \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      },\n      \"session_fee\": {\n        \"currency\": \"USD\",\n        \"micros_per_hour\": 80000\n      },\n      \"harness_tokens\": 4096,\n      \"agents\": {\n        \"Reader\": {\n          \"id\": \"agent_1\",\n          \"version\": 1,\n          \"tier\": \"Standard\",\n          \"model\": \"claude-opus-5-5\",\n          \"effort\": \"high\",\n          \"max_output_tokens\": 12000,\n          \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n        }\n      },\n      \"profile\": {\n        \"package.identity\": \"full\",\n        \"static.checks\": \"full\",\n        \"caps.paths_commands\": \"full\",\n        \"caps.network\": \"full\",\n        \"parallel.isolation\": \"full\",\n        \"model.pinning\": \"full\",\n        \"model.max_class\": \"partial\",\n        \"budget.tokens_spend\": \"full\",\n        \"budget.steps\": \"full\",\n        \"budget.time\": \"full\",\n        \"loop.progress\": \"full\",\n        \"journal.turns\": \"full\",\n        \"replay.no_adapter\": \"full\",\n        \"evidence.verifier\": \"full\",\n        \"effects.prepare_authorize_commit\": \"full\",\n        \"credentials.control_plane\": \"full\",\n        \"cancel\": \"partial\"\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/bindings/managed-agents/agents/Reader/tier",
+          "schemaPath": "#/properties/bindings/properties/managed-agents/properties/agents/additionalProperties/properties/tier/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "message": "must match pattern \"^[a-z][a-z0-9_]*$\""
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /bindings/managed-agents/agents/Reader/tier must match pattern \"^[a-z][a-z0-9_]*$\"",
+          "at": {
+            "path": "/bindings/managed-agents/agents/Reader/tier"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^[a-z][a-z0-9_]*$"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings: rename \"Reader\" to \"bad name\" in /bindings/managed-agents/agents",
+      "base": "bindings",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.23.4\",\n    \"bwrap\": \"0.11.0\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reader\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"bindings\": {\n    \"managed-agents\": {\n      \"format\": \"mandate/binding/managed-agents/0.1\",\n      \"beta\": \"managed-agents-2026-04-01\",\n      \"tools\": \"bridge\",\n      \"environment\": {\n        \"id\": \"env_1\",\n        \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      },\n      \"session_fee\": {\n        \"currency\": \"USD\",\n        \"micros_per_hour\": 80000\n      },\n      \"harness_tokens\": 4096,\n      \"agents\": {\n        \"bad name\": {\n          \"id\": \"agent_1\",\n          \"version\": 1,\n          \"tier\": \"standard\",\n          \"model\": \"claude-opus-5-5\",\n          \"effort\": \"high\",\n          \"max_output_tokens\": 12000,\n          \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n        }\n      },\n      \"profile\": {\n        \"package.identity\": \"full\",\n        \"static.checks\": \"full\",\n        \"caps.paths_commands\": \"full\",\n        \"caps.network\": \"full\",\n        \"parallel.isolation\": \"full\",\n        \"model.pinning\": \"full\",\n        \"model.max_class\": \"partial\",\n        \"budget.tokens_spend\": \"full\",\n        \"budget.steps\": \"full\",\n        \"budget.time\": \"full\",\n        \"loop.progress\": \"full\",\n        \"journal.turns\": \"full\",\n        \"replay.no_adapter\": \"full\",\n        \"evidence.verifier\": \"full\",\n        \"effects.prepare_authorize_commit\": \"full\",\n        \"credentials.control_plane\": \"full\",\n        \"cancel\": \"partial\"\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/bindings/managed-agents/agents",
+          "schemaPath": "#/properties/bindings/properties/managed-agents/properties/agents/propertyNames/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "message": "must match pattern \"^[A-Za-z_][A-Za-z0-9_]*$\"",
+          "propertyName": "bad name"
+        },
+        {
+          "instancePath": "/bindings/managed-agents/agents",
+          "schemaPath": "#/properties/bindings/properties/managed-agents/properties/agents/propertyNames",
+          "keyword": "propertyNames",
+          "params": {
+            "propertyName": "bad name"
+          },
+          "message": "property name must be valid"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /bindings/managed-agents/agents must match pattern \"^[A-Za-z_][A-Za-z0-9_]*$\"",
+          "at": {
+            "path": "/bindings/managed-agents/agents"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /bindings/managed-agents/agents property name must be valid",
+          "at": {
+            "path": "/bindings/managed-agents/agents"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "propertyNames",
+            "params": {
+              "propertyName": "bad name"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings: /bindings/managed-agents/profile/cancel = \"half\"",
+      "base": "bindings",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.23.4\",\n    \"bwrap\": \"0.11.0\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reader\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"bindings\": {\n    \"managed-agents\": {\n      \"format\": \"mandate/binding/managed-agents/0.1\",\n      \"beta\": \"managed-agents-2026-04-01\",\n      \"tools\": \"bridge\",\n      \"environment\": {\n        \"id\": \"env_1\",\n        \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      },\n      \"session_fee\": {\n        \"currency\": \"USD\",\n        \"micros_per_hour\": 80000\n      },\n      \"harness_tokens\": 4096,\n      \"agents\": {\n        \"Reader\": {\n          \"id\": \"agent_1\",\n          \"version\": 1,\n          \"tier\": \"standard\",\n          \"model\": \"claude-opus-5-5\",\n          \"effort\": \"high\",\n          \"max_output_tokens\": 12000,\n          \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n        }\n      },\n      \"profile\": {\n        \"package.identity\": \"full\",\n        \"static.checks\": \"full\",\n        \"caps.paths_commands\": \"full\",\n        \"caps.network\": \"full\",\n        \"parallel.isolation\": \"full\",\n        \"model.pinning\": \"full\",\n        \"model.max_class\": \"partial\",\n        \"budget.tokens_spend\": \"full\",\n        \"budget.steps\": \"full\",\n        \"budget.time\": \"full\",\n        \"loop.progress\": \"full\",\n        \"journal.turns\": \"full\",\n        \"replay.no_adapter\": \"full\",\n        \"evidence.verifier\": \"full\",\n        \"effects.prepare_authorize_commit\": \"full\",\n        \"credentials.control_plane\": \"full\",\n        \"cancel\": \"half\"\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/bindings/managed-agents/profile/cancel",
+          "schemaPath": "#/properties/bindings/properties/managed-agents/properties/profile/additionalProperties/enum",
+          "keyword": "enum",
+          "params": {
+            "allowedValues": [
+              "full",
+              "partial",
+              "none"
+            ]
+          },
+          "message": "must be equal to one of the allowed values"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /bindings/managed-agents/profile/cancel must be equal to one of the allowed values",
+          "at": {
+            "path": "/bindings/managed-agents/profile/cancel"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "enum",
+            "params": {
+              "allowedValues": [
+                "full",
+                "partial",
+                "none"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings: remove /bindings/managed-agents/profile",
+      "base": "bindings",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.23.4\",\n    \"bwrap\": \"0.11.0\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reader\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"bindings\": {\n    \"managed-agents\": {\n      \"format\": \"mandate/binding/managed-agents/0.1\",\n      \"beta\": \"managed-agents-2026-04-01\",\n      \"tools\": \"bridge\",\n      \"environment\": {\n        \"id\": \"env_1\",\n        \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      },\n      \"session_fee\": {\n        \"currency\": \"USD\",\n        \"micros_per_hour\": 80000\n      },\n      \"harness_tokens\": 4096,\n      \"agents\": {\n        \"Reader\": {\n          \"id\": \"agent_1\",\n          \"version\": 1,\n          \"tier\": \"standard\",\n          \"model\": \"claude-opus-5-5\",\n          \"effort\": \"high\",\n          \"max_output_tokens\": 12000,\n          \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n        }\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/bindings/managed-agents",
+          "schemaPath": "#/properties/bindings/properties/managed-agents/required",
+          "keyword": "required",
+          "params": {
+            "missingProperty": "profile"
+          },
+          "message": "must have required property 'profile'"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /bindings/managed-agents must have required property 'profile'",
+          "at": {
+            "path": "/bindings/managed-agents"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "required",
+            "params": {
+              "missingProperty": "profile"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings: add unknown member \"other\" to /bindings",
+      "base": "bindings",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.5\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.23.4\",\n    \"bwrap\": \"0.11.0\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reader\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"bindings\": {\n    \"managed-agents\": {\n      \"format\": \"mandate/binding/managed-agents/0.1\",\n      \"beta\": \"managed-agents-2026-04-01\",\n      \"tools\": \"bridge\",\n      \"environment\": {\n        \"id\": \"env_1\",\n        \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      },\n      \"session_fee\": {\n        \"currency\": \"USD\",\n        \"micros_per_hour\": 80000\n      },\n      \"harness_tokens\": 4096,\n      \"agents\": {\n        \"Reader\": {\n          \"id\": \"agent_1\",\n          \"version\": 1,\n          \"tier\": \"standard\",\n          \"model\": \"claude-opus-5-5\",\n          \"effort\": \"high\",\n          \"max_output_tokens\": 12000,\n          \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n        }\n      },\n      \"profile\": {\n        \"package.identity\": \"full\",\n        \"static.checks\": \"full\",\n        \"caps.paths_commands\": \"full\",\n        \"caps.network\": \"full\",\n        \"parallel.isolation\": \"full\",\n        \"model.pinning\": \"full\",\n        \"model.max_class\": \"partial\",\n        \"budget.tokens_spend\": \"full\",\n        \"budget.steps\": \"full\",\n        \"budget.time\": \"full\",\n        \"loop.progress\": \"full\",\n        \"journal.turns\": \"full\",\n        \"replay.no_adapter\": \"full\",\n        \"evidence.verifier\": \"full\",\n        \"effects.prepare_authorize_commit\": \"full\",\n        \"credentials.control_plane\": \"full\",\n        \"cancel\": \"partial\"\n      }\n    },\n    \"other\": {}\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/bindings",
+          "schemaPath": "#/properties/bindings/additionalProperties",
+          "keyword": "additionalProperties",
+          "params": {
+            "additionalProperty": "other"
+          },
+          "message": "must NOT have additional properties"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /bindings must NOT have additional properties",
+          "at": {
+            "path": "/bindings"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "additionalProperties",
+            "params": {
+              "additionalProperty": "other"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings: rename \"api.github.com\" to \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" in /egress/Reader",
+      "base": "bindings",
+      "pretty": false,
+      "input": "{\"lock\":\"mandate/lock/0.5\",\"modules\":{},\"models\":{\"standard\":{\"provider\":\"anthropic\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_input_tokens\":128000,\"max_output_tokens\":12000}},\"tariffs\":{\"claude-opus-5-5\":{\"currency\":\"USD\",\"as_of\":\"2026-10-09\",\"micros_per_mtok\":{\"input\":4000000,\"output\":20000000,\"cache_read\":200000,\"cache_write\":5000000}}},\"host\":{\"node\":\"22.23.4\",\"bwrap\":\"0.11.0\"},\"isolation\":{\"floor\":{\"confidential\":\"user_kernel\",\"restricted\":\"microvm\"},\"untrusted_network\":\"process\",\"co_tenancy\":{\"restricted\":\"forbidden\"}},\"egress\":{\"Reader\":{\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\":\"github\"}},\"bindings\":{\"managed-agents\":{\"format\":\"mandate/binding/managed-agents/0.1\",\"beta\":\"managed-agents-2026-04-01\",\"tools\":\"bridge\",\"environment\":{\"id\":\"env_1\",\"config\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\"},\"session_fee\":{\"currency\":\"USD\",\"micros_per_hour\":80000},\"harness_tokens\":4096,\"agents\":{\"Reader\":{\"id\":\"agent_1\",\"version\":1,\"tier\":\"standard\",\"model\":\"claude-opus-5-5\",\"effort\":\"high\",\"max_output_tokens\":12000,\"config\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\"}},\"profile\":{\"package.identity\":\"full\",\"static.checks\":\"full\",\"caps.paths_commands\":\"full\",\"caps.network\":\"full\",\"parallel.isolation\":\"full\",\"model.pinning\":\"full\",\"model.max_class\":\"partial\",\"budget.tokens_spend\":\"full\",\"budget.steps\":\"full\",\"budget.time\":\"full\",\"loop.progress\":\"full\",\"journal.turns\":\"full\",\"replay.no_adapter\":\"full\",\"evidence.verifier\":\"full\",\"effects.prepare_authorize_commit\":\"full\",\"credentials.control_plane\":\"full\",\"cancel\":\"partial\"}}}}",
+      "raw_errors": [
+        {
+          "instancePath": "/egress/Reader",
+          "schemaPath": "#/properties/egress/additionalProperties/propertyNames/maxLength",
+          "keyword": "maxLength",
+          "params": {
+            "limit": 253
+          },
+          "message": "must NOT have more than 253 characters",
+          "propertyName": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        },
+        {
+          "instancePath": "/egress/Reader",
+          "schemaPath": "#/properties/egress/additionalProperties/propertyNames",
+          "keyword": "propertyNames",
+          "params": {
+            "propertyName": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          },
+          "message": "property name must be valid"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /egress/Reader must NOT have more than 253 characters",
+          "at": {
+            "path": "/egress/Reader"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "maxLength",
+            "params": {
+              "limit": 253
+            }
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /egress/Reader property name must be valid",
+          "at": {
+            "path": "/egress/Reader"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "propertyNames",
+            "params": {
+              "propertyName": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "members: empty /members/alice/keys",
+      "base": "members",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.4\",\n  \"modules\": {\n    \"company.domain\": \"sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0\"\n  },\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 8000,\n      \"max_output_tokens\": 2000\n    }\n  },\n  \"tariffs\": {\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  },\n  \"members\": {\n    \"alice\": {\n      \"keys\": []\n    },\n    \"bob\": {\n      \"keys\": [\n        \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n      ]\n    }\n  },\n  \"roles\": {\n    \"platform_lead\": [\n      \"alice\"\n    ]\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/members/alice/keys",
+          "schemaPath": "#/properties/members/additionalProperties/properties/keys/minItems",
+          "keyword": "minItems",
+          "params": {
+            "limit": 1
+          },
+          "message": "must NOT have fewer than 1 items"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /members/alice/keys must NOT have fewer than 1 items",
+          "at": {
+            "path": "/members/alice/keys"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "minItems",
+            "params": {
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "members: repeat item 0 of /members/alice/keys",
+      "base": "members",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.4\",\n  \"modules\": {\n    \"company.domain\": \"sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0\"\n  },\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 8000,\n      \"max_output_tokens\": 2000\n    }\n  },\n  \"tariffs\": {\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  },\n  \"members\": {\n    \"alice\": {\n      \"keys\": [\n        \"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\n        \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      ]\n    },\n    \"bob\": {\n      \"keys\": [\n        \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n      ]\n    }\n  },\n  \"roles\": {\n    \"platform_lead\": [\n      \"alice\"\n    ]\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/members/alice/keys",
+          "schemaPath": "#/properties/members/additionalProperties/properties/keys/uniqueItems",
+          "keyword": "uniqueItems",
+          "params": {
+            "i": 0,
+            "j": 1
+          },
+          "message": "must NOT have duplicate items (items ## 1 and 0 are identical)"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /members/alice/keys must NOT have duplicate items (items ## 1 and 0 are identical)",
+          "at": {
+            "path": "/members/alice/keys"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "uniqueItems",
+            "params": {
+              "i": 0,
+              "j": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "members: /members/alice/keys/0 = \"sha256:short\"",
+      "base": "members",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.4\",\n  \"modules\": {\n    \"company.domain\": \"sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0\"\n  },\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 8000,\n      \"max_output_tokens\": 2000\n    }\n  },\n  \"tariffs\": {\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  },\n  \"members\": {\n    \"alice\": {\n      \"keys\": [\n        \"sha256:short\"\n      ]\n    },\n    \"bob\": {\n      \"keys\": [\n        \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n      ]\n    }\n  },\n  \"roles\": {\n    \"platform_lead\": [\n      \"alice\"\n    ]\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/members/alice/keys/0",
+          "schemaPath": "#/properties/members/additionalProperties/properties/keys/items/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "message": "must match pattern \"^sha256:[0-9a-f]{64}$\""
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /members/alice/keys/0 must match pattern \"^sha256:[0-9a-f]{64}$\"",
+          "at": {
+            "path": "/members/alice/keys/0"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "members: rename \"alice\" to \"9a\" in /members",
+      "base": "members",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.4\",\n  \"modules\": {\n    \"company.domain\": \"sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0\"\n  },\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 8000,\n      \"max_output_tokens\": 2000\n    }\n  },\n  \"tariffs\": {\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  },\n  \"members\": {\n    \"9a\": {\n      \"keys\": [\n        \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      ]\n    },\n    \"bob\": {\n      \"keys\": [\n        \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n      ]\n    }\n  },\n  \"roles\": {\n    \"platform_lead\": [\n      \"alice\"\n    ]\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/members",
+          "schemaPath": "#/properties/members/propertyNames/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "message": "must match pattern \"^[A-Za-z_][A-Za-z0-9_]*$\"",
+          "propertyName": "9a"
+        },
+        {
+          "instancePath": "/members",
+          "schemaPath": "#/properties/members/propertyNames",
+          "keyword": "propertyNames",
+          "params": {
+            "propertyName": "9a"
+          },
+          "message": "property name must be valid"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /members must match pattern \"^[A-Za-z_][A-Za-z0-9_]*$\"",
+          "at": {
+            "path": "/members"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /members property name must be valid",
+          "at": {
+            "path": "/members"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "propertyNames",
+            "params": {
+              "propertyName": "9a"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "members: remove /members/alice/keys",
+      "base": "members",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.4\",\n  \"modules\": {\n    \"company.domain\": \"sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0\"\n  },\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 8000,\n      \"max_output_tokens\": 2000\n    }\n  },\n  \"tariffs\": {\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  },\n  \"members\": {\n    \"alice\": {},\n    \"bob\": {\n      \"keys\": [\n        \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n      ]\n    }\n  },\n  \"roles\": {\n    \"platform_lead\": [\n      \"alice\"\n    ]\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/members/alice",
+          "schemaPath": "#/properties/members/additionalProperties/required",
+          "keyword": "required",
+          "params": {
+            "missingProperty": "keys"
+          },
+          "message": "must have required property 'keys'"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /members/alice must have required property 'keys'",
+          "at": {
+            "path": "/members/alice"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "required",
+            "params": {
+              "missingProperty": "keys"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "members: empty /roles/platform_lead",
+      "base": "members",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.4\",\n  \"modules\": {\n    \"company.domain\": \"sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0\"\n  },\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 8000,\n      \"max_output_tokens\": 2000\n    }\n  },\n  \"tariffs\": {\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  },\n  \"members\": {\n    \"alice\": {\n      \"keys\": [\n        \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      ]\n    },\n    \"bob\": {\n      \"keys\": [\n        \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n      ]\n    }\n  },\n  \"roles\": {\n    \"platform_lead\": []\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/roles/platform_lead",
+          "schemaPath": "#/properties/roles/additionalProperties/minItems",
+          "keyword": "minItems",
+          "params": {
+            "limit": 1
+          },
+          "message": "must NOT have fewer than 1 items"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /roles/platform_lead must NOT have fewer than 1 items",
+          "at": {
+            "path": "/roles/platform_lead"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "minItems",
+            "params": {
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "members: repeat item 0 of /roles/platform_lead",
+      "base": "members",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.4\",\n  \"modules\": {\n    \"company.domain\": \"sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0\"\n  },\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 8000,\n      \"max_output_tokens\": 2000\n    }\n  },\n  \"tariffs\": {\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  },\n  \"members\": {\n    \"alice\": {\n      \"keys\": [\n        \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      ]\n    },\n    \"bob\": {\n      \"keys\": [\n        \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n      ]\n    }\n  },\n  \"roles\": {\n    \"platform_lead\": [\n      \"alice\",\n      \"alice\"\n    ]\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/roles/platform_lead",
+          "schemaPath": "#/properties/roles/additionalProperties/uniqueItems",
+          "keyword": "uniqueItems",
+          "params": {
+            "i": 0,
+            "j": 1
+          },
+          "message": "must NOT have duplicate items (items ## 1 and 0 are identical)"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /roles/platform_lead must NOT have duplicate items (items ## 1 and 0 are identical)",
+          "at": {
+            "path": "/roles/platform_lead"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "uniqueItems",
+            "params": {
+              "i": 0,
+              "j": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "members: /roles/platform_lead/0 = \"bad name\"",
+      "base": "members",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.4\",\n  \"modules\": {\n    \"company.domain\": \"sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0\"\n  },\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 8000,\n      \"max_output_tokens\": 2000\n    }\n  },\n  \"tariffs\": {\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  },\n  \"members\": {\n    \"alice\": {\n      \"keys\": [\n        \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      ]\n    },\n    \"bob\": {\n      \"keys\": [\n        \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n      ]\n    }\n  },\n  \"roles\": {\n    \"platform_lead\": [\n      \"bad name\"\n    ]\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/roles/platform_lead/0",
+          "schemaPath": "#/properties/roles/additionalProperties/items/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "message": "must match pattern \"^[A-Za-z_][A-Za-z0-9_]*$\""
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /roles/platform_lead/0 must match pattern \"^[A-Za-z_][A-Za-z0-9_]*$\"",
+          "at": {
+            "path": "/roles/platform_lead/0"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "members: rename \"platform_lead\" to \"9r\" in /roles",
+      "base": "members",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.4\",\n  \"modules\": {\n    \"company.domain\": \"sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0\"\n  },\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 8000,\n      \"max_output_tokens\": 2000\n    }\n  },\n  \"tariffs\": {\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  },\n  \"members\": {\n    \"alice\": {\n      \"keys\": [\n        \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      ]\n    },\n    \"bob\": {\n      \"keys\": [\n        \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n      ]\n    }\n  },\n  \"roles\": {\n    \"9r\": [\n      \"alice\"\n    ]\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/roles",
+          "schemaPath": "#/properties/roles/propertyNames/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "message": "must match pattern \"^[A-Za-z_][A-Za-z0-9_]*$\"",
+          "propertyName": "9r"
+        },
+        {
+          "instancePath": "/roles",
+          "schemaPath": "#/properties/roles/propertyNames",
+          "keyword": "propertyNames",
+          "params": {
+            "propertyName": "9r"
+          },
+          "message": "property name must be valid"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /roles must match pattern \"^[A-Za-z_][A-Za-z0-9_]*$\"",
+          "at": {
+            "path": "/roles"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /roles property name must be valid",
+          "at": {
+            "path": "/roles"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "propertyNames",
+            "params": {
+              "propertyName": "9r"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "modules: /modules/company.domain = \"\"",
+      "base": "modules",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.2\",\n  \"modules\": {\n    \"company.domain\": \"\"\n  },\n  \"models\": {\n    \"economy\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    },\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    },\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/modules/company.domain",
+          "schemaPath": "#/properties/modules/additionalProperties/minLength",
+          "keyword": "minLength",
+          "params": {
+            "limit": 1
+          },
+          "message": "must NOT have fewer than 1 characters"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /modules/company.domain must NOT have fewer than 1 characters",
+          "at": {
+            "path": "/modules/company.domain"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "minLength",
+            "params": {
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "modules: /modules/company.domain as number",
+      "base": "modules",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.2\",\n  \"modules\": {\n    \"company.domain\": 7\n  },\n  \"models\": {\n    \"economy\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    },\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    },\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/modules/company.domain",
+          "schemaPath": "#/properties/modules/additionalProperties/type",
+          "keyword": "type",
+          "params": {
+            "type": "string"
+          },
+          "message": "must be string"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /modules/company.domain must be string",
+          "at": {
+            "path": "/modules/company.domain"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "type",
+            "params": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "modules: /modules as array",
+      "base": "modules",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.2\",\n  \"modules\": [],\n  \"models\": {\n    \"economy\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    },\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    },\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/modules",
+          "schemaPath": "#/properties/modules/type",
+          "keyword": "type",
+          "params": {
+            "type": "object"
+          },
+          "message": "must be object"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /modules must be object",
+          "at": {
+            "path": "/modules"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "type",
+            "params": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "three independent errors at three depths, in the order of the sort",
+      "base": "modules",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.9\",\n  \"modules\": {\n    \"company.domain\": \"sha256:0f1e\"\n  },\n  \"models\": {\n    \"economy\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 0\n    },\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    },\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"usd\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/lock",
+          "schemaPath": "#/properties/lock/enum",
+          "keyword": "enum",
+          "params": {
+            "allowedValues": [
+              "mandate/lock/0.2",
+              "mandate/lock/0.3",
+              "mandate/lock/0.4",
+              "mandate/lock/0.5"
+            ]
+          },
+          "message": "must be equal to one of the allowed values"
+        },
+        {
+          "instancePath": "/models/economy/max_output_tokens",
+          "schemaPath": "#/properties/models/additionalProperties/properties/max_output_tokens/minimum",
+          "keyword": "minimum",
+          "params": {
+            "comparison": ">=",
+            "limit": 1
+          },
+          "message": "must be >= 1"
+        },
+        {
+          "instancePath": "/tariffs/claude-sonnet-5-5/currency",
+          "schemaPath": "#/properties/tariffs/additionalProperties/properties/currency/pattern",
+          "keyword": "pattern",
+          "params": {
+            "pattern": "^[A-Z]{3}$"
+          },
+          "message": "must match pattern \"^[A-Z]{3}$\""
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /lock must be equal to one of the allowed values",
+          "at": {
+            "path": "/lock"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "enum",
+            "params": {
+              "allowedValues": [
+                "mandate/lock/0.2",
+                "mandate/lock/0.3",
+                "mandate/lock/0.4",
+                "mandate/lock/0.5"
+              ]
+            }
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /models/economy/max_output_tokens must be >= 1",
+          "at": {
+            "path": "/models/economy/max_output_tokens"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "minimum",
+            "params": {
+              "comparison": ">=",
+              "limit": 1
+            }
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /tariffs/claude-sonnet-5-5/currency must match pattern \"^[A-Z]{3}$\"",
+          "at": {
+            "path": "/tariffs/claude-sonnet-5-5/currency"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "pattern",
+            "params": {
+              "pattern": "^[A-Z]{3}$"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "two required members missing at one path",
+      "base": "modules",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.2\",\n  \"modules\": {\n    \"company.domain\": \"sha256:0f1e\"\n  },\n  \"models\": {\n    \"economy\": {\n      \"provider\": \"anthropic\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    },\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    },\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  }\n}",
+      "raw_errors": [
+        {
+          "instancePath": "/models/economy",
+          "schemaPath": "#/properties/models/additionalProperties/required",
+          "keyword": "required",
+          "params": {
+            "missingProperty": "model"
+          },
+          "message": "must have required property 'model'"
+        },
+        {
+          "instancePath": "/models/economy",
+          "schemaPath": "#/properties/models/additionalProperties/required",
+          "keyword": "required",
+          "params": {
+            "missingProperty": "effort"
+          },
+          "message": "must have required property 'effort'"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /models/economy must have required property 'model'",
+          "at": {
+            "path": "/models/economy"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "required",
+            "params": {
+              "missingProperty": "model"
+            }
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock file does not match spec/lock.schema.json: /models/economy must have required property 'effort'",
+          "at": {
+            "path": "/models/economy"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "keyword": "required",
+            "params": {
+              "missingProperty": "effort"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bindings in a lock of 0.2, and every field that needs 0.5",
+      "base": "bindings",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.2\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22.23.4\",\n    \"bwrap\": \"0.11.0\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reader\": {\n      \"api.github.com\": \"github\"\n    }\n  },\n  \"bindings\": {\n    \"managed-agents\": {\n      \"format\": \"mandate/binding/managed-agents/0.1\",\n      \"beta\": \"managed-agents-2026-04-01\",\n      \"tools\": \"bridge\",\n      \"environment\": {\n        \"id\": \"env_1\",\n        \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      },\n      \"session_fee\": {\n        \"currency\": \"USD\",\n        \"micros_per_hour\": 80000\n      },\n      \"harness_tokens\": 4096,\n      \"agents\": {\n        \"Reader\": {\n          \"id\": \"agent_1\",\n          \"version\": 1,\n          \"tier\": \"standard\",\n          \"model\": \"claude-opus-5-5\",\n          \"effort\": \"high\",\n          \"max_output_tokens\": 12000,\n          \"config\": \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n        }\n      },\n      \"profile\": {\n        \"package.identity\": \"full\",\n        \"static.checks\": \"full\",\n        \"caps.paths_commands\": \"full\",\n        \"caps.network\": \"full\",\n        \"parallel.isolation\": \"full\",\n        \"model.pinning\": \"full\",\n        \"model.max_class\": \"partial\",\n        \"budget.tokens_spend\": \"full\",\n        \"budget.steps\": \"full\",\n        \"budget.time\": \"full\",\n        \"loop.progress\": \"full\",\n        \"journal.turns\": \"full\",\n        \"replay.no_adapter\": \"full\",\n        \"evidence.verifier\": \"full\",\n        \"effects.prepare_authorize_commit\": \"full\",\n        \"credentials.control_plane\": \"full\",\n        \"cancel\": \"partial\"\n      }\n    }\n  }\n}",
+      "raw_errors": [],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "Executor bindings need lock format mandate/lock/0.3, not mandate/lock/0.2.",
+          "at": {
+            "path": "/lock"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "lock": "mandate/lock/0.2"
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "Lock field host needs lock format mandate/lock/0.5, not mandate/lock/0.2.",
+          "at": {
+            "path": "/host"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "field": "host",
+            "lock": "mandate/lock/0.2"
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "Lock field isolation needs lock format mandate/lock/0.5, not mandate/lock/0.2.",
+          "at": {
+            "path": "/isolation"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "field": "isolation",
+            "lock": "mandate/lock/0.2"
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "Lock field egress needs lock format mandate/lock/0.5, not mandate/lock/0.2.",
+          "at": {
+            "path": "/egress"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "field": "egress",
+            "lock": "mandate/lock/0.2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "members and roles in a lock of 0.3",
+      "base": "members",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.3\",\n  \"modules\": {\n    \"company.domain\": \"sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0\"\n  },\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 8000,\n      \"max_output_tokens\": 2000\n    }\n  },\n  \"tariffs\": {\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  },\n  \"members\": {\n    \"alice\": {\n      \"keys\": [\n        \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      ]\n    },\n    \"bob\": {\n      \"keys\": [\n        \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n      ]\n    }\n  },\n  \"roles\": {\n    \"platform_lead\": [\n      \"alice\"\n    ]\n  }\n}",
+      "raw_errors": [],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "Lock field members needs lock format mandate/lock/0.4, not mandate/lock/0.3.",
+          "at": {
+            "path": "/members"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "field": "members",
+            "lock": "mandate/lock/0.3"
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "Lock field roles needs lock format mandate/lock/0.4, not mandate/lock/0.3.",
+          "at": {
+            "path": "/roles"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "field": "roles",
+            "lock": "mandate/lock/0.3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "host, isolation and egress in a lock of 0.4",
+      "base": "reach",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.4\",\n  \"modules\": {},\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    }\n  },\n  \"host\": {\n    \"node\": \"22\",\n    \"bwrap\": \"0.1\"\n  },\n  \"isolation\": {\n    \"floor\": {\n      \"confidential\": \"user_kernel\",\n      \"restricted\": \"microvm\"\n    },\n    \"untrusted_network\": \"process\",\n    \"co_tenancy\": {\n      \"restricted\": \"forbidden\"\n    }\n  },\n  \"egress\": {\n    \"Reacher\": {\n      \"api.github.com\": \"github\"\n    }\n  }\n}",
+      "raw_errors": [],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "Lock field host needs lock format mandate/lock/0.5, not mandate/lock/0.4.",
+          "at": {
+            "path": "/host"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "field": "host",
+            "lock": "mandate/lock/0.4"
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "Lock field isolation needs lock format mandate/lock/0.5, not mandate/lock/0.4.",
+          "at": {
+            "path": "/isolation"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "field": "isolation",
+            "lock": "mandate/lock/0.4"
+          }
+        },
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "Lock field egress needs lock format mandate/lock/0.5, not mandate/lock/0.4.",
+          "at": {
+            "path": "/egress"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "field": "egress",
+            "lock": "mandate/lock/0.4"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a key listed under two members",
+      "base": "members",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.4\",\n  \"modules\": {\n    \"company.domain\": \"sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0\"\n  },\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 8000,\n      \"max_output_tokens\": 2000\n    }\n  },\n  \"tariffs\": {\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  },\n  \"members\": {\n    \"alice\": {\n      \"keys\": [\n        \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      ]\n    },\n    \"bob\": {\n      \"keys\": [\n        \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      ]\n    }\n  },\n  \"roles\": {\n    \"platform_lead\": [\n      \"alice\"\n    ]\n  }\n}",
+      "raw_errors": [],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "Key sha256:1111111111111111111111111111111111111111111111111111111111111111 is listed under members alice and bob; one key belongs to one member.",
+          "at": {
+            "path": "/members/bob/keys/0"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "key": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "members": [
+              "alice",
+              "bob"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a role lists a member that is not in members",
+      "base": "members",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.4\",\n  \"modules\": {\n    \"company.domain\": \"sha256:6e4dc465a755e0ac1e3ae42a278235854f314dbe4d9375e80bdcfaf9c47babf0\"\n  },\n  \"models\": {\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-sonnet-5-5\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 8000,\n      \"max_output_tokens\": 2000\n    }\n  },\n  \"tariffs\": {\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  },\n  \"members\": {\n    \"alice\": {\n      \"keys\": [\n        \"sha256:1111111111111111111111111111111111111111111111111111111111111111\"\n      ]\n    },\n    \"bob\": {\n      \"keys\": [\n        \"sha256:2222222222222222222222222222222222222222222222222222222222222222\"\n      ]\n    }\n  },\n  \"roles\": {\n    \"platform_lead\": [\n      \"alice\",\n      \"carol\"\n    ]\n  }\n}",
+      "raw_errors": [],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "Role platform_lead lists member carol, which is not in members.",
+          "at": {
+            "path": "/roles/platform_lead/1"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "role": "platform_lead",
+            "member": "carol"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a tier maps to a model that has no tariff",
+      "base": "modules",
+      "pretty": true,
+      "input": "{\n  \"lock\": \"mandate/lock/0.2\",\n  \"modules\": {\n    \"company.domain\": \"sha256:0f1e\"\n  },\n  \"models\": {\n    \"economy\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-haiku-9\",\n      \"effort\": \"medium\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    },\n    \"standard\": {\n      \"provider\": \"anthropic\",\n      \"model\": \"claude-opus-5-5\",\n      \"effort\": \"high\",\n      \"max_input_tokens\": 128000,\n      \"max_output_tokens\": 12000\n    }\n  },\n  \"tariffs\": {\n    \"claude-opus-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 4000000,\n        \"output\": 20000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 5000000\n      }\n    },\n    \"claude-sonnet-5-5\": {\n      \"currency\": \"USD\",\n      \"as_of\": \"2026-10-09\",\n      \"micros_per_mtok\": {\n        \"input\": 2000000,\n        \"output\": 10000000,\n        \"cache_read\": 200000,\n        \"cache_write\": 2500000\n      }\n    }\n  }\n}",
+      "raw_errors": [],
+      "diagnostics": [
+        {
+          "code": "MDT-E0140",
+          "severity": "error",
+          "message": "The lock maps tier economy to claude-haiku-9, which has no tariff.",
+          "at": {
+            "path": "/models/economy/model"
+          },
+          "docs": "mandate explain MDT-E0140",
+          "facts": {
+            "tier": "economy",
+            "model": "claude-haiku-9"
+          }
+        }
+      ]
+    }
+  ]
+}

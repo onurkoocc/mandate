@@ -12,6 +12,8 @@
   "expect": {
     "ok": false,
     "diagnostics": [
+      { "code": "MDT-W0601", "path": "/defs/Moved/accept/moved/by/static" },
+      { "code": "MDT-W0601", "path": "/defs/Moved/accept/nothing_left/by/static" },
       {
         "code": "MDT-E1502",
         "path": "/defs/MigrateAll/envelope/approve/git.merge",
