@@ -68,7 +68,7 @@ import type { Faults } from "./faults.js";
 import { runAgentLoop, type LoopTask } from "./loop.js";
 import { PLAN_TOOLS, planBrief, Planner, Shared, type PlanHost, type ProgramChecker } from "./plan.js";
 import { schemaErrors, typeSchema } from "./schema.js";
-import type { ActionRow, Admission, CommandRow, Journal } from "./journal.js";
+import type { ActionRow, Admission, CommandRow, Journal, ViolationKind } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
 import {
   canonical,
@@ -254,6 +254,12 @@ export interface InterpOptions {
   sub?: { command: string; plan: string };
   /** What the interpreters of one run share. The run's own interpreter makes it. */
   shared?: Shared;
+  /**
+   * How many violations stop the run (spec/boundary.md "Violations and halt"): a new violation that brings the run's
+   * count to it, or past it, stops the run with `violation_limit`. Absent: violations are recorded and counted, and
+   * nothing stops the run for them.
+   */
+  violationLimit?: number;
 }
 
 const RESTARTABLE = new Set(["Timeout", "SkillFailed"]);
@@ -1308,6 +1314,7 @@ export class Interpreter {
                 await this.o.journal.event(tx, this.o.runId, "sandbox_stopped", { delegate: id, agent: agentName, handle, result });
               }),
             ...(planner && lead ? { extra: (cid, name, input, stepLabel) => planner.call(cid, name, input, stepLabel) } : {}),
+            violation: (kind, step, detail) => this.violation({ kind, delegate: id, agent: agentName, step, detail }),
           });
         },
         { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}) },
@@ -1340,6 +1347,19 @@ export class Interpreter {
       },
       { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}), ...(atMostOnce ? { atMostOnce } : {}) },
     );
+  }
+
+  /**
+   * Records a violation of a delegation's agent (spec/boundary.md "Violations and halt"), once for its step, and stops
+   * the run when a new one reaches the run's limit. The limit is checked only when a violation is written, so a
+   * resumed run that comes to an earlier one again goes on, and stops at its next new one. A replay writes nothing.
+   */
+  private async violation(v: { kind: ViolationKind; delegate: string; agent: string; step: string; detail: Value }): Promise<void> {
+    if (this.o.replay) return;
+    const count = await this.o.journal.violation(this.o.runId, this.o.fence, v);
+    const limit = this.o.violationLimit;
+    if (count === undefined || limit === undefined || count < limit) return;
+    throw new Violation("violation_limit", `The run reached its limit of ${limit} violation${limit === 1 ? "" : "s"}: ${v.agent} at ${v.step} (${v.kind}) is violation ${count}.`);
   }
 
   /** The rate-limit buckets a command of `kind` draws from, as command options. */

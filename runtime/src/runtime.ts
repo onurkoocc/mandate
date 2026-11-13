@@ -4,7 +4,7 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { capsOf, check, domainHash, hashProgram, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, workflowBounds, type DenialReport, type Envelope, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { atLeast, capsOf, check, domainHash, hashProgram, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, workflowBounds, type DenialReport, type Envelope, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
 import type { Adapters, Cost, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
@@ -111,7 +111,16 @@ export interface RuntimeOptions {
    * (2 s by default), and the checker, which by default runs the compiler in a worker thread of its own.
    */
   plan?: { checkMs?: number; checker?: ProgramChecker };
+  /**
+   * The violation limit (spec/boundary.md "Violations and halt"): how many violations stop a run. A 0.5 package's run
+   * stops at 3 unless `limit` says otherwise; an earlier package's stops only when `limit` is given. Every run records
+   * and counts its violations either way.
+   */
+  violations?: { limit?: number };
 }
+
+/** The violation limit of a 0.5 package's run when the configuration names none. */
+export const VIOLATION_LIMIT = 3;
 
 /** Who made a decision the runtime took: a member with a signed record, or in unsigned mode the name the caller gave. */
 interface Decider {
@@ -158,6 +167,8 @@ export class Runtime {
   /** Checks a lead's sub-programs, and how long one check may take. */
   readonly checker: ProgramChecker;
   readonly checkMs: number;
+  /** The configured violation limit; absent, a 0.5 package's run stops at `VIOLATION_LIMIT` and an earlier one's never. */
+  readonly violationLimit: number | undefined;
   private readonly packages = new Map<string, Package>();
 
   constructor(
@@ -182,6 +193,7 @@ export class Runtime {
     this.decisionKeys = options.decisions?.keys ?? new TrustedKeys();
     this.checker = options.plan?.checker ?? new WorkerChecker();
     this.checkMs = options.plan?.checkMs ?? CHECK_MS;
+    this.violationLimit = options.violations?.limit;
   }
 
   // ── StartRun / resume ─────────────────────────────────────────────────
@@ -552,6 +564,8 @@ export class Runtime {
 
   private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[]): Interpreter {
     const wf = Object.hasOwn(loaded.program.defs, run.workflow) ? loaded.program.defs[run.workflow] : undefined;
+    // The limit is the package's language's: a 0.5 program's run has one by default, an earlier one's only when configured.
+    const violationLimit = this.violationLimit ?? (atLeast(loaded.source.language, "mandate/0.5") ? VIOLATION_LIMIT : undefined);
     return new Interpreter({
       journal: this.journal,
       adapters,
@@ -576,6 +590,7 @@ export class Runtime {
       replay,
       durableTimers: this.durableTimers,
       ...(this.limiter ? { limiter: this.limiter } : {}),
+      ...(violationLimit !== undefined ? { violationLimit } : {}),
     });
   }
 

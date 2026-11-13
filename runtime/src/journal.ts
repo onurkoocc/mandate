@@ -24,6 +24,12 @@ export type RunState = "accepted" | "running" | "waiting" | "cancelling" | "atte
 
 export const TERMINAL: ReadonlySet<RunState> = new Set(["succeeded", "failed", "cancelled"]);
 
+/**
+ * What a `violation` event records (spec/boundary.md "Violations and halt"): a tool call refused for an authority
+ * reason (`authority_denied`), or a request the egress proxy denied (`egress_denied`).
+ */
+export type ViolationKind = "authority_denied" | "egress_denied";
+
 export interface RunRow {
   run_id: string;
   tenant: string;
@@ -638,6 +644,33 @@ export class Journal {
       const [seen] = await tx.query<Row>("select 1 as seen from events where run_id = $1 and type = $2 and data->>'step' = $3 limit 1", [runId, type, data.step]);
       if (!seen) await this.event(tx, runId, type, data);
     });
+  }
+
+  // ── violations and halts (spec/boundary.md "Violations and halt") ─────
+
+  /**
+   * Records a violation: an agent's attempt the runtime refused, at one step of its loop. Once for a step, however
+   * often the run is resumed and comes to the step again: a step that has its violation already returns `undefined`,
+   * and nothing is counted. Otherwise the event is written with `count`, the run's violations with this one, which
+   * is returned. The count is taken under the run's row lock, so two violations of one run never share a count.
+   * Only the lease holder may write (R06).
+   */
+  async violation(runId: string, fence: number, v: { kind: ViolationKind; delegate: string; agent: string; step: string; detail: Value }): Promise<number | undefined> {
+    return this.db.tx(async (tx) => {
+      await this.lock(tx, runId, fence);
+      const [seen] = await tx.query<Row>("select 1 as seen from events where run_id = $1 and type = 'violation' and data->>'step' = $2 limit 1", [runId, v.step]);
+      if (seen) return undefined;
+      const [n] = await tx.query<Row>("select count(*) as n from events where run_id = $1 and type = 'violation'", [runId]);
+      const count = num(n?.["n"]) + 1;
+      await this.event(tx, runId, "violation", { kind: v.kind, delegate: v.delegate, agent: v.agent, step: v.step, detail: v.detail, count });
+      return count;
+    });
+  }
+
+  /** The run's violations, oldest first, as their events record them. */
+  async violations(runId: string): Promise<Array<{ kind: ViolationKind; delegate: string; agent: string; step: string; detail: Value; count: number }>> {
+    const rows = await this.db.query<Row>("select data from events where run_id = $1 and type = 'violation' order by seq", [runId]);
+    return rows.map((r) => r["data"] as never);
   }
 
   /** The sub-programs admitted at a `plan` node, in the order of their numbers. */
