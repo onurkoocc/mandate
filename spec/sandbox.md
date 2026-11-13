@@ -170,7 +170,7 @@ with its Bubblewrap backend (BACKLOG K16). Each process runs in its own
 | Network | Egress and ingress denied: `--unshare-net`, no network at all. A sandbox whose policy lists hosts, on a host with the egress proxy: a network of its own whose one way out is its session's proxy port ([`boundary.md`](boundary.md#sandbox-egress)) |
 | Host services | No unix socket in the host's runtime directories, and none in its abstract namespace |
 | Commands | Checked by the host before a process starts. Either a helper the runtime's tools use (`cat`, `ls`, `grep`, the `write_file` script) on a path inside the policy, or an allowed command with an allowed argument prefix. Bubblewrap cannot limit commands inside the sandbox |
-| Environment | None of the runtime's: the process gets MXC's default `PATH` and `TERM`, so no API key or token reaches it. With an egress session, also the proxy variables MXC sets and the session's placeholders, `MANDATE_EGRESS_PLACEHOLDER_<NAME>`, never a secret |
+| Environment | None of the runtime's: the process gets MXC's default `PATH` and `TERM`, and its working directory as `PWD`, so no API key or token reaches it. With an egress session, also the proxy variables MXC sets and the session's placeholders, `MANDATE_EGRESS_PLACEHOLDER_<NAME>`, never a secret. CI's `sandbox` job holds a real sandbox's environment to these names |
 | Time | The policy's timeout, per process |
 
 The host reports isolation level `process` and `shared`: a Bubblewrap sandbox
