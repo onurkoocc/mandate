@@ -115,10 +115,15 @@ export async function until(cond: () => boolean, what: string): Promise<void> {
  * dispatches (spec/runtime.md "Branch results"): PGlite's one connection takes them in the order they were sent, a
  * PostgreSQL server's pool of connections in any order. A test whose outcome depends on which branch reserves first
  * says which with this.
+ *
+ * That orders the dispatches and nothing after them: a branch whose dispatch came first runs on, and may finish and
+ * give its reservation back before the next branch reserves. A test that needs the first to still hold its reservation
+ * when the next is refused holds the first branch's work until `settled(id)` of the next, as the gate of its own.
  */
-export function dispatchOrder(w: World, ids: string[]): void {
+export function dispatchOrder(w: World, ids: string[]): { settled(id: string): Promise<void> } {
   const journal = w.rt.journal;
   const dispatched = ids.map(() => deferred<void>());
+  const settled = ids.map(() => deferred<void>());
   const dispatch = journal.dispatch.bind(journal);
   journal.dispatch = async (...args: Parameters<typeof dispatch>) => {
     const i = ids.indexOf(args[2].id);
@@ -126,8 +131,21 @@ export function dispatchOrder(w: World, ids: string[]): void {
     try {
       return await dispatch(...args);
     } finally {
-      if (i >= 0) dispatched[i]!.resolve();
+      if (i >= 0) {
+        dispatched[i]!.resolve();
+        // A refusal goes on as a fault through the command, the delegation and the branch to its `par`, which tells
+        // the other branches to stop; none of that waits for the database, so one turn of the event loop lets it run.
+        void flush(1).then(() => settled[i]!.resolve());
+      }
     }
+  };
+  return {
+    /** Resolves once the dispatch of `id` has returned or been refused, and a refusal has reached its branch's `par`. */
+    settled(id) {
+      const i = ids.indexOf(id);
+      if (i < 0) throw new Error(`dispatchOrder was not given ${id}`);
+      return settled[i]!.promise;
+    },
   };
 }
 

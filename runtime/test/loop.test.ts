@@ -303,21 +303,29 @@ on budget_exceeded in Both => pause and human.ask("Budget exceeded. Continue or 
     const w = await world(PAR);
     const host = new SimSandboxHost();
     host.files.set("/work/repo/src/a.ts", "bug");
-    const chat = new SimChat((req, n) => {
+    const FIX = "/defs/Both/body/0/branches/fix";
+    const TEST = "/defs/Both/body/0/branches/test";
+    // 1.5 USD covers one agent's 1 USD budget, not both: the second reservation does not fit. The branches start
+    // together and the Fixer is the one that reserves first, so its loop is the one stopped. Ordering the two
+    // dispatches is not enough: the Fixer's loop runs on after its own, and were it to finish before the Tester
+    // reserves, its reservation would be given back and both would fit. The Fixer's model therefore answers only once
+    // the Tester's reservation has been refused, and the Fixer holds its own until then.
+    const order = dispatchOrder(w, [FIX, TEST]);
+    const chat = new SimChat(async (req, n) => {
       const fixer = req.system.startsWith("You are Fixer,");
       const turn = req.messages.filter((m) => (m as { role?: string }).role === "assistant").length;
-      if (fixer) return turn === 0 ? [toolUse(`f${n}`, "read_file", { path: "/work/repo/src/a.ts" })] : [toolUse(`f${n}`, "finish", { result: "fixed" })];
+      if (fixer) {
+        await order.settled(TEST);
+        return turn === 0 ? [toolUse(`f${n}`, "read_file", { path: "/work/repo/src/a.ts" })] : [toolUse(`f${n}`, "finish", { result: "fixed" })];
+      }
       return [toolUse(`t${n}`, "finish", { result: "tested" })];
     });
     w.adapters.loop = { chat, sandbox: new MxcAdapter({ host, schemaVersion: "0.8.0", modelEndpoints: {}, modelsInControlPlane: true }) };
 
-    // 1.5 USD covers one agent's 1 USD budget, not both: the second reservation does not fit. The branches start
-    // together; the Fixer is the one that reserves first, so its loop is the one stopped.
-    dispatchOrder(w, ["/defs/Both/body/0/branches/fix", "/defs/Both/body/0/branches/test"]);
     const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Both", input: { task: "t" }, runId: "par1", limits: { spend: { micros: 1_500_000, currency: "USD" } } });
     expect(run.state).toBe("waiting");
     expect(run.waiting).toMatchObject({ kind: "budget_exceeded", detail: { $tag: "BudgetExceeded" } });
-    const fixer = (await w.rt.journal.command("par1", "/defs/Both/body/0/branches/fix"))!;
+    const fixer = (await w.rt.journal.command("par1", FIX))!;
     expect(fixer.state).toBe("dispatched");
 
     const raised = await w.rt.raiseLimits("par1", { sender: "erin", messageId: "r1" }, { revision: run.revision, limits: { spend: { micros: 3_000_000, currency: "USD" } }, by: "erin" });
@@ -325,7 +333,7 @@ on budget_exceeded in Both => pause and human.ask("Budget exceeded. Continue or 
     const done = await w.rt.submitInput("par1", { sender: "erin", messageId: "a1" }, { commandId: ask.command, revision: raised.revision, value: "continue" });
     expect(done.state, JSON.stringify(done.error ?? done.attention)).toBe("succeeded");
     expect(done.result).toBe("fixed");
-    // Each recorded step ran once: the Fixer's first turn and read were not sent again after the raise.
+    // Each recorded step ran once: the Fixer's first turn was not sent again after the raise, and its read ran once.
     expect(host.executions).toHaveLength(1);
     expect(chat.calls.filter((c) => c.system.startsWith("You are Fixer,"))).toHaveLength(2);
     const report = await w.rt.budgetReport("par1");
