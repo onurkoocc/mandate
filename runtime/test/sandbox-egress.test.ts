@@ -861,6 +861,9 @@ describe.runIf(REAL)("sandbox egress through real Bubblewrap sandboxes (the CI r
     try {
       const r = await host.execute(handle, { argv: ["env"] });
       console.log(`[sandbox egress] ${told("env", r)}`);
+      // The names alone, letters apart, so that a log that masks a line still shows which variables the sandbox has.
+      const names = r.stdout.split("\n").filter((l) => l.includes("=")).map((l) => l.slice(0, l.indexOf("=")));
+      console.log(`[sandbox egress] env names: ${names.map((n) => [...n].join(" ")).join(" | ")}`);
       expect(r.exitCode, told("env", r)).toBe(0);
       expect(r.stdout, told("env", r)).toMatch(new RegExp(`^${placeholderVariable("github")}=mdt-ph-[0-9a-f]{32}$`, "m"));
       expect(r.stdout, told("env", r)).toMatch(/^http_proxy=http:\/\/[0-9.]+:\d+\/?$/m);
