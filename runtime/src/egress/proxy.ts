@@ -133,7 +133,13 @@ const LINGER_MS = 600_000;
 
 /** Headers that are this hop's own (RFC 9110 §7.6.1), and those the proxy sets itself; none is copied upstream. */
 const REQUEST_DROPPED = new Set(["connection", "keep-alive", "proxy-connection", "proxy-authorization", "proxy-authenticate", "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length", "expect", "accept-encoding", "http2-settings"]);
-const RESPONSE_DROPPED = new Set(["connection", "keep-alive", "proxy-connection", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length"]);
+/**
+ * The header a denial carries its reason in. Only the proxy sets it: an upstream's is removed from the response, so a
+ * response that carries it is the proxy's own denial, and its request was not sent upstream.
+ */
+export const DENIAL_HEADER = "x-mandate-egress-denied";
+/** Headers of an upstream response that are this hop's own, the framing the proxy sets itself, and the denial header. */
+const RESPONSE_DROPPED = new Set(["connection", "keep-alive", "proxy-connection", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length", DENIAL_HEADER]);
 
 interface Session {
   id: string;
@@ -452,7 +458,7 @@ export class EgressProxy {
     }
     const body = JSON.stringify({ error: "egress_denied", why: v.deny, detail: v.detail }) + "\n";
     const status = v.deny === "malformed_request" ? "400 Bad Request" : "403 Forbidden";
-    this.answer(socket, `HTTP/1.1 ${status}\r\ncontent-type: application/json\r\nx-mandate-egress-denied: ${v.deny}\r\ncontent-length: ${Buffer.byteLength(body)}\r\nconnection: close\r\n\r\n${body}`);
+    this.answer(socket, `HTTP/1.1 ${status}\r\ncontent-type: application/json\r\n${DENIAL_HEADER}: ${v.deny}\r\ncontent-length: ${Buffer.byteLength(body)}\r\nconnection: close\r\n\r\n${body}`);
   }
 
   /** Answers a request that was allowed but could not be carried out: no upstream, or an upstream that failed. */

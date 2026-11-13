@@ -3,8 +3,7 @@
 **Status: in progress.** The page specifies release 0.5 so that the
 TypeScript implementation, and later the Rust one, are held to the same
 rules and cases. What the table says is implemented is, with the
-runtime's refusals of what it does not enforce yet; the reference egress
-proxy is implemented, and nothing in the runtime uses it yet. Each part that is not
+runtime's refusals of what it does not enforce yet. Each part that is not
 lands with the change named in the table, which refines its section here.
 
 **A note on the name.** Release 0.5 is called Boundary. In the code and in
@@ -25,8 +24,8 @@ the configuration and the CLI.
 | The chained journal: event hashes, signed anchors, export, verification (J01–J16) | PR 3 | implemented ([`journal.md`](journal.md)) |
 | Isolation levels of hosts; host fitness (`unfit_host`) | PR 4 | implemented; shown on the CI runner's Bubblewrap |
 | Violations and the violation limit; a hard halt | PR 5 | implemented; `egress_denied` is written by PR 8, through the same seam |
-| The reference egress proxy and its admin channel ([`egress.md`](egress.md)) | PR 6 | implemented; nothing in the runtime uses it until PR 7 and PR 8 |
-| The control plane's adapters through gateways; `credential_in_environment` | PR 7 | specified |
+| The reference egress proxy and its admin channel ([`egress.md`](egress.md)) | PR 6 | implemented; the control plane's gateways use it, and sandboxes will from PR 8 |
+| The control plane's adapters through gateways; `credential_in_environment` | PR 7 | implemented |
 | Sandbox egress on Linux through the proxy | PR 8 | specified; enforceable where the sandbox SDK reports it, shown on the CI runner |
 | Sandbox egress on Windows | — | refused by name |
 | Views by role and the audit view | PR 9 | implemented |
@@ -348,8 +347,8 @@ What the MXC adapter does with it:
 
 ## The egress proxy
 
-*The proxy is implemented (PR 6); the control plane's gateways are
-specified for PR 7, sandbox egress for PR 8.*
+*The proxy (PR 6) and the control plane's gateways (PR 7) are
+implemented; sandbox egress is specified for PR 8.*
 
 This section states the rules. The byte-exact contract of the proxy, its
 configuration and its admin channel is [`egress.md`](egress.md).
@@ -365,11 +364,18 @@ own adapters, reach a host. It holds the secrets; nothing else does.
   the runtime's environment.
 - A sandbox sees **placeholders**, never secrets: the proxy puts the secret
   into a request on its way out.
-- With gateways on, the runtime refuses to start when it finds a credential
-  in its own environment, `credential_in_environment`
-  (`CLAUDE_API_KEY`, `ANTHROPIC_API_KEY`, `MANDATE_GITHUB_TOKEN`). A
-  runtime that can read a secret makes its placeholder prove nothing. The
-  verifier's process gets placeholders and the gateway's address only.
+- With a gateway on, the runtime refuses to start when it finds that
+  gateway's credential in its own environment, `credential_in_environment`,
+  naming the variable and never its value: `CLAUDE_API_KEY` or
+  `ANTHROPIC_API_KEY` for the model gateway, `MANDATE_GITHUB_TOKEN` for the
+  GitHub one. The refusal is per gateway: a gateway that is off refuses
+  nothing, so with only the model gateway on, `MANDATE_GITHUB_TOKEN` is
+  the GitHub adapter's as before. A variable set to the empty string holds
+  nothing and is not refused; on Windows a name matches in any case, as
+  Windows reads it. Through the model gateway, the SDK client is given no
+  token from `ANTHROPIC_AUTH_TOKEN`, which it would otherwise read itself.
+  A runtime that can read a secret makes its placeholder prove nothing.
+  The verifier's process gets a placeholder and a gateway's address only.
 - The proxy refuses a credential its own configuration does not bind to
   the host it is asked for: the root of the secrets is the proxy's
   configuration, not the lock and not the runtime.
@@ -399,7 +405,23 @@ The proxy's configuration is read strictly; an unknown field is an error.
 | `ca` | Optional: a PEM file of certificate authorities to trust for upstream TLS, beside the system's |
 
 The runtime's configuration names the proxy (`mandate.runtime.json`):
-`egress { admin, gateways: { model, github } }`.
+`egress { admin, gateways: { model, github } }`, read as strictly as the
+rest of it.
+
+```json
+"egress": { "admin": "/run/mandate/egress.sock", "gateways": { "model": "anthropic", "github": "github" } }
+```
+
+| Field | Means |
+|---|---|
+| `egress.admin` | The proxy's admin channel: a Unix socket path, relative to the configuration, or a named pipe `\\.\pipe\…` |
+| `egress.gateways.model` | The model gateway is on: the credential the proxy holds for `api.anthropic.com`, configured with header `x-api-key` and template `{secret}` |
+| `egress.gateways.github` | The GitHub gateway is on: the credential the proxy holds for `api.github.com`, configured with header `authorization` and template `Bearer {secret}` |
+
+A gateway's credential is a name, as the proxy's configuration names it
+(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`). The header and template are what the
+API expects; the runtime sends exactly that with the placeholder, so a
+proxy configured with another header refuses it (`placeholder_misuse`).
 
 ### The admin channel
 
@@ -446,6 +468,9 @@ closes.
   address a host resolved to is pinned for the request.
 - A redirect is not followed; it is returned.
 - The exact bytes of the secret are scrubbed from responses.
+- Only the proxy's own denials carry `x-mandate-egress-denied`: an
+  upstream's is removed, so a client can tell a request that was not sent
+  upstream from one the upstream answered.
 - Each denial is recorded with its reason:
 
 | Reason | When |
@@ -467,11 +492,80 @@ A closed session's port does not answer, so nothing is recorded for it.
   names none is refused, `no_egress_proxy`; a proxy that does not answer
   `hello`, or does not hold a credential the package binds, is
   `egress_unavailable`. A sandbox requirement whose credential the proxy
-  does not know is E0902, `credential <name> for <host>`.
+  does not know is E0902, `credential <name> for <host>`. For the
+  gateways, see below.
 - **Earlier programs.** With a proxy configured, an agent of a 0.1 to 0.4
   program that holds `net.https` hosts reaches them through it: hosts only,
   any method, no credential. Binding a credential needs lock 0.5.
 - **Replay** never touches the proxy.
+
+### The control plane's gateways
+
+With a gateway on, the runtime's own adapters reach their API through a
+gateway session ([`egress.md`](egress.md#gateway-sessions)): the model
+gateway carries the Anthropic model adapter, the Managed Agents executor
+and the verifier process's model client; the GitHub gateway carries
+`git.open_pr`, `git.merge` and the boundary verifier's CI source. Such an
+adapter holds no secret: it sends to the session's base URL with the
+session's placeholder in the gateway's header, and its SDK client reads no
+credential of its own from the environment.
+
+- **Refusals at start.** `adaptersFor`, which every command that builds a
+  runtime calls, refuses a gateway when `egress.admin` names no proxy
+  (`no_egress_proxy`), and a gateway whose secret is in the runtime's
+  environment (`credential_in_environment`). `StartRun`, before anything
+  else that reaches out (the bindings, the executor), asks the proxy
+  `hello`: a proxy that does not answer, speaks another format, or does not
+  hold a gateway's credential refuses the start, `egress_unavailable`,
+  naming the proxy and the credential. A resume is not checked: a proxy
+  that is gone stops the run at its next request (below).
+- **Sessions.** A runtime opens one session per gateway, at the gateway's
+  first request, never before, so a status, a view or a replay never
+  reaches the proxy. Its `run` and `tenant` are those of the run the
+  runtime was built for (each CLI command is for one run), so `revoke
+  { run }` and `revoke { tenant }` cut it. Its `command` is
+  `gateway:<gateway>`, its destination the gateway's host with any method
+  and the gateway's credential, its `ttl_ms` one hour. A session is replaced
+  by a new one before a request when it has less than 15 minutes left, so a
+  request in flight is not cut by its expiry; one the proxy answered
+  `session_expired` is replaced and the request sent again, once, since
+  nothing of a denied request went upstream. A session replaced, and every
+  session a runtime opened, is closed (`close_session`) when its requests
+  are done and when the runtime closes.
+- **A revoked session is not replaced.** Once the proxy answers a gateway
+  `session_revoked`, every later request of that gateway in that runtime is
+  refused before it is sent, by name. A session port that does not take a
+  connection (the proxy closed the session, or stopped) is
+  `egress_unavailable`, and no other session is opened for it either, since
+  the cause may be a revocation the runtime was not told of. New work after
+  a cancel or a halt is refused by the journal, not by the proxy.
+- **How a refusal surfaces.** A request the proxy denied (403, or 400
+  `malformed_request`, with `x-mandate-egress-denied`, which the proxy
+  removes from every upstream answer) was not sent upstream. A gateway's
+  `fetch` takes a URL and its init, and refuses a `Request`, whose method,
+  headers and body it would not carry. For the model and Managed Agents it is a violation,
+  `egress_denied`, with the reason: the run stops for a person, the call is
+  not handed to the program, and it is not retried as a transient error.
+  For GitHub it is not a definite answer: it says this request was not
+  sent and nothing of those an operation sent before it, so an action is
+  left `unknown_outcome`, to be reconciled, never `rejected`; its detail
+  names the reason. A proxy that is gone is `egress_unavailable` the same
+  ways. The proxy's own `502` and `504` (`egress_upstream`) are an upstream
+  that could not be reached, and are treated as the provider's 5xx.
+- **The verifier's process** gets a gateway session of its own, opened
+  when the process starts, for the same run: its environment holds that
+  session's base URL (`MANDATE_EGRESS_MODEL_URL`) and placeholder
+  (`MANDATE_EGRESS_MODEL_PLACEHOLDER`), the workspace id, and none of the
+  model's key, address or proxy variables. It cannot open a session. The
+  runtime starts it again with a new session before a check that finds it
+  idle with less than 15 minutes left on its session.
+- **Revocation.** A runtime with `egress` configured has
+  `Adapters.revoke(scope)`, for `{ run }`, `{ tenant }` or `{ all: true }`,
+  which sends `revoke` over the admin channel and rejects, naming the proxy,
+  when it could not. A cancel calls it for its run once the cancel is
+  recorded, wherever the run's sessions were opened; a proxy that did not
+  revoke is reported to whoever cancelled, and the cancel stands. A halt
+  calls it for its tenant or all.
 
 ### Sandbox egress
 
@@ -516,7 +610,10 @@ What PR 8 is held to. It was shown by an experiment on GitHub's
 ### What stays outside it
 
 - The `git` CLI the runtime runs (its inherited environment and credential
-  helpers), PostgreSQL connection strings and Temporal's workers.
+  helpers), PostgreSQL connection strings, the read broker's database
+  logins, and Temporal's workers.
+- `mandate deploy`, which reads no runtime configuration and talks to
+  Managed Agents with `CLAUDE_API_KEY` from its own environment.
 - Docker traffic of the boundary verifier.
 - The proxy is a reference proxy: its own surface (request smuggling, DNS
   rebinding, local ports any process on the machine can reach, an encoded
@@ -1067,8 +1164,9 @@ Refusals of the runtime that 0.5 adds:
 | `unsupported_lock` | At load: the lock sets `egress`, named, before the change that enforces it |
 | `unsupported_sandbox_profile` (E0902) | A requirement 0.2 asks for what the host cannot give: method limits, an isolation level above the host's, no sharing on a host that may share, credentials |
 | `unfit_host` | At a start or a resume, before the lease: a tool the lock names is missing, cannot be read, or is below the lock's least version, or the `bwrap` is setuid |
-| `credential_in_environment` | With gateways on, a credential is in the runtime's environment |
-| `no_egress_proxy`, `egress_unavailable` | A package needs the proxy and none is named, or it does not answer or lacks a credential |
+| `credential_in_environment` | With a gateway on, its credential is in the runtime's environment |
+| `no_egress_proxy`, `egress_unavailable` | A package or a gateway needs the proxy and none is named, or it does not answer or lacks a credential |
+| `egress_denied` | Through the model gateway, the proxy refused the runtime's own request; the run stops for a person, the reason named |
 | `violation_limit` | The run reached its violation limit; it is `attention_required` |
 | `halted` | A start, or the lease of a run that has not ended, in a halted scope |
 | `not_halted` | A lift of a scope where no halt is in force |

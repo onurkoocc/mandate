@@ -972,6 +972,11 @@ lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
   `MANDATE_GITHUB_TOKEN`. The verifier process and `docker` get only the
   variables they need (see "A verifier of its own" and "Boundary
   verifier").
+- **Egress.** `egress { admin, gateways: { model, github } }` names the
+  egress proxy and turns the control plane's gateways on: the model and
+  GitHub adapters then hold placeholders, the proxy holds the secrets, and
+  the gateway's secret may not be in the runtime's environment. See
+  [`boundary.md`](boundary.md#the-control-planes-gateways).
 - **Missing adapters.** An adapter the configuration leaves out is refused
   when a run reaches it, and never simulated.
 - **Strict reading.** Unknown fields in the file are an error.

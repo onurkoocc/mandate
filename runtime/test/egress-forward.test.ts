@@ -463,6 +463,20 @@ describe("responses", () => {
     expect(h.status).toBe(200);
     expect(h.raw.endsWith("\r\n\r\n")).toBe(true);
   });
+
+  it("removes an upstream's denial header: only the proxy's own denials carry it", async () => {
+    w.up.handler = (_req, res) => {
+      res.writeHead(200, { "content-type": "text/plain", "X-Mandate-Egress-Denied": "session_revoked" });
+      res.end("ok");
+    };
+    const s = await session();
+    const r = await send(s.port, get("http://api.github.com/x"));
+    expect(r.status).toBe(200);
+    expect(r.header("x-mandate-egress-denied")).toBeUndefined();
+    expect(r.raw.toLowerCase()).not.toContain("x-mandate-egress-denied");
+    expect(r.body).toBe("ok");
+    expect(await denials(s.id)).toEqual([]);
+  });
 });
 
 describe("the denials a session records", () => {
