@@ -15,6 +15,7 @@ import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "./evidence.js"
 import { RateLimiter, type BucketConfig } from "./ratelimit.js";
 import type { Db, Row, Tx } from "./db.js";
 import { Faults } from "./faults.js";
+import { checkFitness, systemProbe, type HostProbe } from "./fitness.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
 import { costDims, haltedRefusal, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
@@ -117,6 +118,11 @@ export interface RuntimeOptions {
    * and counts its violations either way.
    */
   violations?: { limit?: number };
+  /**
+   * How the host's tools are read when a package's lock names their least versions (`host`; spec/boundary.md
+   * "Isolation level and host fitness"). Default: this process's Node version and the first `bwrap` on PATH.
+   */
+  hostProbe?: HostProbe;
 }
 
 /** The violation limit of a 0.5 package's run when the configuration names none. */
@@ -169,6 +175,8 @@ export class Runtime {
   readonly checkMs: number;
   /** The configured violation limit; absent, a 0.5 package's run stops at `VIOLATION_LIMIT` and an earlier one's never. */
   readonly violationLimit: number | undefined;
+  /** Reads the host's tools for a lock's `host`. */
+  readonly hostProbe: HostProbe;
   private readonly packages = new Map<string, Package>();
 
   constructor(
@@ -194,6 +202,7 @@ export class Runtime {
     this.checker = options.plan?.checker ?? new WorkerChecker();
     this.checkMs = options.plan?.checkMs ?? CHECK_MS;
     this.violationLimit = options.violations?.limit;
+    this.hostProbe = options.hostProbe ?? systemProbe;
   }
 
   // ── StartRun / resume ─────────────────────────────────────────────────
@@ -207,6 +216,8 @@ export class Runtime {
     if (this.decisionMode === "unsigned" && isSigned04(o.pkg.program, o.pkg.modules)) {
       throw new Violation("signed_decisions_required", "A mandate/0.4 package does not run in unsigned mode: its decisions are signed records (spec/envelope.md). Take decisions.mode out of the runtime configuration.");
     }
+    // A host below the lock's least versions starts nothing of the package: no workspace, no run, no event (unfit_host).
+    await checkFitness(o.pkg.lock, this.hostProbe);
     const wf = o.pkg.program.defs[o.workflow];
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
     const linked = linkedProgram(o.pkg.program, o.pkg.modules);
@@ -443,6 +454,10 @@ export class Runtime {
 
   /** Starts a new worker on the run: takes the lease (fence + 1) and drives the body against the journal. */
   async resume(runId: string): Promise<RunRow> {
+    // Every resume checks the host against the package's lock before it takes the lease. An unfit host takes nothing
+    // and writes nothing: the run stays as it was, for a fit host to resume (unfit_host). A finished run runs nothing.
+    const current = await this.journal.run(runId);
+    if (!TERMINAL.has(current.state)) await checkFitness((await this.packaged(current.package_hash)).lock, this.hostProbe);
     const { run, fence } = await this.journal.acquire(runId);
     if (TERMINAL.has(run.state)) return run;
     const loaded = await this.loaded(run.package_hash);

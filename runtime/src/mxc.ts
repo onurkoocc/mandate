@@ -149,7 +149,8 @@ export class MxcHost implements SandboxHost {
       this.unavailable = p.unavailableReasons?.["bubblewrap"] ?? p.reason ?? `bubblewrap is not among ${p.availableMethods.join(", ") || "no backends"}`;
       return NOTHING;
     }
-    const enforcing: Enforceable = { backends: ["process"], modes: ["enforcement"], filesystem: true, network: "deny_all", exec: "args_prefix", timeout: true, ui: true, hidden: [...HOST_RUNTIME_DIRS] };
+    // A Bubblewrap sandbox is a set of namespaces on the host's own kernel, beside whatever else runs on it: `process`, shared.
+    const enforcing: Enforceable = { backends: ["process"], modes: ["enforcement"], filesystem: true, network: "deny_all", exec: "args_prefix", timeout: true, ui: true, hidden: [...HOST_RUNTIME_DIRS], level: "process", co_tenancy: "shared" };
     // Without the masks, a sandbox would see the host's service sockets: neither its path lists nor its network would hold.
     const shown = (this.o.baseline ?? []).find((b) => exposedBy(b));
     const why = shown ? `the baseline path ${shown} leads to ${exposedBy(shown)}, which no sandbox may see` : await (this.masking ??= this.checkMasks(sdk));
