@@ -158,6 +158,14 @@ A delegate reserves the budget written at the call, else the skill's, else
 the agent's: the same budget the compiler adds up for E0501. `time` is a
 deadline, not a ledger dimension, so it is not reserved.
 
+Among siblings that run at the same time (the branches of a `par`, the
+items of a `map`) the order in which they reserve is not defined: a
+reservation goes to whichever sibling takes the run's row lock first. When
+the budget covers only some of them, which sibling gets `BudgetExceeded`
+can differ between runs and between stores (PGlite and PostgreSQL were
+seen to differ). Results and decisions of a `map` are in input order;
+reservations are not.
+
 When a reservation does not fit, the run does not fail. Each time this
 happens is a numbered episode, recorded as a `budget_exceeded` event:
 
