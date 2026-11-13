@@ -200,16 +200,16 @@ describe("refusals at start", () => {
 
 describe("the adapters through gateways", () => {
   it("send a model call with the placeholder; the upstream gets the real secret in the configured header", async () => {
-    const a = adapters(gatewaysOn(w), "g1");
-    const rw = await runtimeWith(a);
     // The SDK client would read a token of its own from the process's environment; through a gateway it reads none.
     process.env["ANTHROPIC_AUTH_TOKEN"] = "made-up-auth-token-3f";
-    let run: RunRow;
+    let a: Adapters;
     try {
-      run = await rw.rt.startRun({ pkg: rw.pkg, workflow: "Ask", input: { country: "Turkey" }, runId: "g1" });
+      a = adapters(gatewaysOn(w), "g1");
     } finally {
       delete process.env["ANTHROPIC_AUTH_TOKEN"];
     }
+    const rw = await runtimeWith(a);
+    const run = await rw.rt.startRun({ pkg: rw.pkg, workflow: "Ask", input: { country: "Turkey" }, runId: "g1" });
     expect(run.state).toBe("waiting");
     for (const s of w.up.seen) expect(seenHeader(s, "authorization")).toEqual([]);
     // count_tokens and messages, each with the secret the proxy holds for "model", in x-api-key, and nothing else of it.
@@ -328,6 +328,21 @@ describe("sessions", () => {
     expect(w.up.seen.map((s) => s.url)).toEqual(["/b"]);
     await link.closeAll();
     await short.closeAll();
+  });
+
+  it("a revoked session is not replaced, not even when it would be renewed", async () => {
+    let now = 0;
+    const link = new EgressLink({ admin: w.config.admin, scope: { tenant: "acme", run: "s5" }, ttlMs: 60_000, renewMs: 10_000, now: () => now });
+    const gw = new Gateway(link, "github", "github");
+    expect((await gw.fetch("https://api.github.com/a")).status).toBe(200);
+    const ids = await w.client.revoke({ run: "s5" });
+    expect((await gw.fetch("https://api.github.com/b")).headers.get("x-mandate-egress-denied")).toBe("session_revoked");
+    now += 55_000;
+    w.up.seen.length = 0;
+    await expect(gw.fetch("https://api.github.com/c")).rejects.toThrow(/^egress_denied: session_revoked: .*opens no other/);
+    expect(w.up.seen).toEqual([]);
+    expect(await w.client.revoke({ run: "s5" })).toEqual(ids);
+    await link.closeAll();
   });
 
   it("a session port that does not answer is egress_unavailable, and no other session is opened for it", async () => {
