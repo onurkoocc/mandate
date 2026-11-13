@@ -3,7 +3,7 @@
 //
 // - Probe: the SDK's platform check. A host where Bubblewrap cannot run (no
 //   bwrap, user namespaces off) enforces nothing, so MxcAdapter refuses every
-//   agent by name (G05). Windows backends are a later item (P2-27). Then one
+//   agent by name (G05). The Windows host is in mxc-windows.ts. Then one
 //   sandbox with the masks below, to see that they hold: Bubblewrap does not
 //   report the capability (`filesystemDeniedPaths`), so it is checked, once
 //   per host. Where the runtime directories still show, the host holds
