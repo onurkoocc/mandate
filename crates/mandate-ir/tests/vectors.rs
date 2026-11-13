@@ -17,8 +17,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use mandate_ir::{
-    Diagnostic, HashDomain, Map, Parsed, Value, canonicalize, domain_hash, hash_program,
-    package_hash, parse, parse_bytes,
+    Diagnostic, HashDomain, JsValue, Map, Parsed, Value, canonicalize, domain_hash, hash_program,
+    package_hash, parse, parse_bytes, stringify,
 };
 use sha2::{Digest, Sha256};
 
@@ -116,8 +116,14 @@ fn spans_value(parsed: &Parsed) -> Value {
     )
 }
 
-fn diagnostics_value(diags: &[Diagnostic]) -> Value {
-    Value::Array(diags.iter().map(Diagnostic::to_value).collect())
+/// The diagnostics as `JSON.stringify` writes them. The vectors keep the
+/// members in the order TypeScript gives them, so this compares that order
+/// too (`at` is `{ span, path }` from the reader's `fail`, for one).
+fn diagnostics_text(diags: &[Diagnostic]) -> String {
+    stringify(&JsValue::Array(
+        diags.iter().map(Diagnostic::to_js).collect(),
+    ))
+    .unwrap_or_default()
 }
 
 /// What a reader vector gives this crate's reader, by the form of its input.
@@ -180,8 +186,8 @@ fn reader() {
             }
             (Err(diags), false) => failures.check(
                 &format!("{name}: diagnostics"),
-                &canonicalize(field(v, "diagnostics")),
-                &canonicalize(&diagnostics_value(&diags)),
+                &stringify(&JsValue::from(field(v, "diagnostics"))).unwrap_or_default(),
+                &diagnostics_text(&diags),
             ),
             (Ok(parsed), false) => failures.check(
                 &format!("{name}: refused in TypeScript, accepted here"),
@@ -193,7 +199,7 @@ fn reader() {
                 v.get("canonical")
                     .and_then(Value::as_str)
                     .unwrap_or("(long)"),
-                &canonicalize(&diagnostics_value(&diags)),
+                &diagnostics_text(&diags),
             ),
         }
     }

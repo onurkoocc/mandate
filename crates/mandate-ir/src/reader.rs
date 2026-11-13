@@ -18,6 +18,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use crate::diag::{Diagnostic, Location, Span, ptr_token};
+use crate::js_value::JsObject;
 use crate::limits::{JSON_DEPTH, SOURCE_BYTES};
 use crate::value::{Int, Map, Value};
 
@@ -39,9 +40,9 @@ pub struct Parsed {
 /// phase's diagnostics.
 pub fn parse(text: &str) -> Result<Parsed, Vec<Diagnostic>> {
     if text.len() > SOURCE_BYTES {
-        let mut facts = Map::new();
-        facts.insert("limit", Int::from_usize_saturating(SOURCE_BYTES));
-        facts.insert("actual", Int::from_usize_saturating(text.len()));
+        let facts = JsObject::new()
+            .with("limit", SOURCE_BYTES)
+            .with("actual", text.len());
         return Err(vec![Diagnostic::new(
             "E0105",
             format!("Input exceeds the {SOURCE_BYTES}-byte source limit."),
@@ -137,17 +138,18 @@ impl Reader<'_> {
         code: &str,
         message: impl Into<String>,
         path: Option<&str>,
-        facts: Option<Map>,
+        facts: Option<JsObject>,
     ) -> Fail {
-        let at = Location {
-            def: None,
-            path: path.map(str::to_owned),
-            span: Some(Span {
-                start_line: self.line,
-                start_col: self.col,
-                end_line: self.line,
-                end_col: self.col.saturating_add(1),
-            }),
+        let span = Span {
+            start_line: self.line,
+            start_col: self.col,
+            end_line: self.line,
+            end_col: self.col.saturating_add(1),
+        };
+        // `{ span }`, and `path` set after it when there is one.
+        let at = match path {
+            Some(path) => Location::span_path(span, path),
+            None => Location::span(span),
         };
         Box::new(Diagnostic::new(code, message, at, facts))
     }
@@ -219,8 +221,7 @@ impl Reader<'_> {
 
     fn value(&mut self, path: &str, depth: usize) -> Result<Value, Fail> {
         if depth > JSON_DEPTH {
-            let mut facts = Map::new();
-            facts.insert("limit", Int::from_usize_saturating(JSON_DEPTH));
+            let facts = JsObject::new().with("limit", JSON_DEPTH);
             let message = format!("JSON nesting exceeds the depth limit of {JSON_DEPTH}.");
             return Err(self.fail("E0105", message, Some(path), Some(facts)));
         }
@@ -282,18 +283,14 @@ impl Reader<'_> {
             let key = self.string(path)?;
             let member = format!("{path}/{}", ptr_token(&key));
             if seen.contains(&key) {
-                let mut facts = Map::new();
-                facts.insert("key", key.as_str());
-                let at = Location {
-                    def: None,
-                    path: Some(member),
-                    span: Some(Span {
-                        start_line: key_line,
-                        start_col: key_col,
-                        end_line: self.line,
-                        end_col: self.col,
-                    }),
+                let facts = JsObject::new().with("key", key.as_str());
+                let span = Span {
+                    start_line: key_line,
+                    start_col: key_col,
+                    end_line: self.line,
+                    end_col: self.col,
                 };
+                let at = Location::path_span(member, Some(span));
                 let message = format!(
                     "Duplicate object key \"{key}\". Duplicate keys are rejected before schema validation."
                 );
@@ -446,11 +443,7 @@ impl Reader<'_> {
             }
         }
         let lexeme = self.lexeme(len);
-        let lexeme_facts = || {
-            let mut facts = Map::new();
-            facts.insert("lexeme", lexeme.as_str());
-            Some(facts)
-        };
+        let lexeme_facts = || Some(JsObject::new().with("lexeme", lexeme.as_str()));
         if !integral {
             let message = format!(
                 "Number {lexeme} is not an integer. IR numbers are integers; write decimals as strings and money as integer micro-units."

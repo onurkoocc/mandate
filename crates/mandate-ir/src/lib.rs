@@ -1,24 +1,31 @@
 //! Reads, canonicalises and hashes Mandate IR exactly as the TypeScript
-//! reference compiler does.
+//! reference compiler does, and holds what every ported phase of that
+//! compiler shares.
 //!
 //! A program's hash is an identity that approvals and the runtime bind to, so
 //! a second implementation must give the same bytes and the same hashes. This
-//! crate ports the three TypeScript modules those depend on, which remain the
+//! crate ports the TypeScript modules those depend on, which remain the
 //! specification:
 //!
 //! - [`parse`] and [`parse_bytes`]: the strict JSON reader,
-//!   `compiler/src/json/strict-json.ts`, with its limits ([`limits`]) and its
-//!   diagnostics ([`Diagnostic`]: code, message, JSON Pointer, span in UTF-16
-//!   columns).
+//!   `compiler/src/json/strict-json.ts`, with its limits ([`limits`]).
 //! - [`canonicalize`]: RFC 8785 canonical text, `compiler/src/json/jcs.ts`.
 //! - [`domain_hash`], [`hash_program`] and [`package_hash`]:
 //!   `compiler/src/hash.ts`.
+//! - [`Diagnostic`], [`Location`], [`Repair`], [`ptr`], [`has_errors`] and
+//!   [`format_diagnostic`]: `compiler/src/diag.ts`.
 //!
-//! [`number_to_string`] is ECMAScript's `Number::toString`, which the
-//! compiler's output and the runtime's canonical form write numbers with.
+//! And the ECMAScript behaviour the compiler's output depends on, so that no
+//! phase reinvents it: objects that keep their members in ECMAScript order
+//! ([`Map`], [`JsObject`]); the output value [`JsValue`] with `undefined`, and
+//! `JSON.stringify` with and without indentation ([`stringify`],
+//! [`stringify_pretty`]); `Number::toString` ([`number_to_string`]); and the
+//! string operations that count UTF-16 code units or use ECMAScript white
+//! space ([`utf16_len`], [`compare_utf16`], [`sort_utf16`], [`trim`]).
 //!
-//! The vectors in the repository's `vectors/` directory are written by the
-//! TypeScript implementation and read by this crate's tests.
+//! The crate reads no file, environment variable or clock and starts no
+//! process, and it builds for `wasm32-wasip1`. The vectors in the repository's `vectors/` directory are
+//! written by the TypeScript implementation and read by this crate's tests.
 //!
 //! ```
 //! let parsed = mandate_ir::parse(r#"{"b": 1, "a": "é"}"#).map_err(|d| d[0].message.clone())?;
@@ -43,7 +50,10 @@ mod reader;
 mod text;
 mod value;
 
-pub use diag::{Diagnostic, Location, Severity, Span, ptr_token};
+pub use diag::{
+    Diagnostic, Location, PtrToken, Repair, RepairOp, RepairOpKind, Risk, Severity, Span,
+    format_diagnostic, has_errors, ptr, ptr_token,
+};
 pub use hash::{
     HashDomain, ProgramHashes, RUNTIME_HASH_VERSION, domain_hash, hash_program, package_hash,
 };

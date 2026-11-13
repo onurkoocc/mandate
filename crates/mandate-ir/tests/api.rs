@@ -5,14 +5,16 @@
     clippy::expect_used,
     clippy::panic,
     clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
     missing_docs
 )]
 
 use std::cmp::Ordering;
 
 use mandate_ir::{
-    Diagnostic, Int, Location, Map, Severity, Span, Value, canonicalize, compare_utf16, parse,
-    ptr_token,
+    Diagnostic, Int, JsObject, JsValue, Location, Map, Repair, RepairOp, RepairOpKind, Risk,
+    Severity, Span, Value, canonicalize, compare_utf16, format_diagnostic, has_errors, limits,
+    parse, ptr, ptr_token, stringify,
 };
 
 #[test]
@@ -95,8 +97,8 @@ fn diagnostic_severity_follows_the_code() {
     let e = Diagnostic::new("E0108", "m", Location::default(), None);
     assert_eq!(e.severity, Severity::Error);
     assert_eq!(
-        canonicalize(&e.to_value()),
-        r#"{"at":{},"code":"MDT-E0108","docs":"mandate explain MDT-E0108","message":"m","severity":"error"}"#
+        stringify(&e.to_js()).unwrap(),
+        r#"{"code":"MDT-E0108","severity":"error","message":"m","at":{},"docs":"mandate explain MDT-E0108"}"#
     );
 }
 
@@ -126,4 +128,97 @@ fn spans_are_recorded_by_pointer() {
             .map(<[Value]>::len),
         Some(1)
     );
+}
+
+fn span(line: usize, col: usize) -> Span {
+    Span {
+        start_line: line,
+        start_col: col,
+        end_line: line,
+        end_col: col + 1,
+    }
+}
+
+fn written(at: &Location) -> String {
+    stringify(&JsValue::Object(at.to_js())).unwrap()
+}
+
+#[test]
+fn locations_keep_the_member_order_of_their_call_site() {
+    assert_eq!(written(&Location::default()), "{}");
+    assert_eq!(written(&Location::path("/a")), r#"{"path":"/a"}"#);
+    assert_eq!(
+        written(&Location::span(span(1, 2))),
+        r#"{"span":[1,2,1,3]}"#
+    );
+    assert_eq!(
+        written(&Location::path_span("/a", Some(span(1, 2)))),
+        r#"{"path":"/a","span":[1,2,1,3]}"#
+    );
+    assert_eq!(
+        written(&Location::path_span("/a", None)),
+        r#"{"path":"/a"}"#
+    );
+    let reader = Location::span_path(span(1, 2), "");
+    assert_eq!(written(&reader), r#"{"span":[1,2,1,3],"path":""}"#);
+    // `{ ...at, span }`: a span already there keeps its place, a new one is last.
+    assert_eq!(
+        written(&reader.with_span(span(3, 4))),
+        r#"{"span":[3,4,3,5],"path":""}"#
+    );
+    assert_eq!(
+        written(&Location::path("/a").with_span(span(3, 4))),
+        r#"{"path":"/a","span":[3,4,3,5]}"#
+    );
+}
+
+#[test]
+fn a_diagnostic_is_written_as_diag_builds_it() {
+    // As resolve.ts reports E0120: a did_you_mean fact and a repair.
+    let at = Location::path_span("/defs/a/body/0", Some(span(2, 5)));
+    let facts = JsObject::new()
+        .with("name", "fixr")
+        .with("expected", "agent")
+        .with_some("did_you_mean", Some("fixer"))
+        .with_some("module", None::<&str>);
+    let repair = Repair {
+        id: "r1".to_owned(),
+        summary: "Use 'fixer'".to_owned(),
+        patch: vec![RepairOp {
+            op: RepairOpKind::Replace,
+            path: "/defs/a/body/0".to_owned(),
+            value: Some(JsValue::from("fixer")),
+        }],
+        risk: Risk::Low,
+        requires_approval: None,
+    };
+    let d = Diagnostic::new("E0120", "No agent 'fixr'.", at, Some(facts)).with_repair(vec![repair]);
+    assert_eq!(
+        stringify(&d.to_js()).unwrap(),
+        concat!(
+            r#"{"code":"MDT-E0120","severity":"error","message":"No agent 'fixr'.","#,
+            r#""at":{"path":"/defs/a/body/0","span":[2,5,2,6]},"docs":"mandate explain MDT-E0120","#,
+            r#""facts":{"name":"fixr","expected":"agent","did_you_mean":"fixer"},"#,
+            r#""repair":[{"id":"r1","summary":"Use 'fixer'","patch":[{"op":"replace","path":"/defs/a/body/0","value":"fixer"}],"risk":"low"}]}"#
+        )
+    );
+    assert_eq!(
+        format_diagnostic(&d, Some("a.mdt")),
+        "a.mdt:2:5: error MDT-E0120: No agent 'fixr'. [/defs/a/body/0]"
+    );
+    let w = Diagnostic::new("W0907", "Not carried.", Location::default(), None);
+    assert_eq!(
+        format_diagnostic(&w, None),
+        "<input>: warning MDT-W0907: Not carried."
+    );
+    assert!(has_errors(&[w.clone(), d]));
+    assert!(!has_errors(&[w]));
+}
+
+#[test]
+fn pointers_escape_each_token() {
+    assert_eq!(ptr(&[]), "");
+    assert_eq!(ptr(&[&"uses", &3_usize, &"names"]), "/uses/3/names");
+    assert_eq!(ptr(&[&"defs", &String::from("a/b~c")]), "/defs/a~1b~0c");
+    assert_eq!((limits::DEFINITIONS, limits::EXPANDED_NODES), (64, 1000));
 }

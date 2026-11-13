@@ -31,7 +31,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use mandate_ir::{Diagnostic, Parsed, Value, canonicalize, hash_program, parse, parse_bytes};
+use mandate_ir::{
+    Diagnostic, JsValue, Parsed, Value, canonicalize, hash_program, parse, parse_bytes, stringify,
+};
 
 /// The codes the strict JSON reader gives.
 const READER_CODES: [&str; 5] = [
@@ -163,11 +165,11 @@ fn check_refused(got: &[Diagnostic], want: &[Value]) -> Vec<String> {
         if let Some(facts) = w.get("facts").and_then(Value::as_object) {
             for (key, value) in facts.iter() {
                 let found = g.facts.as_ref().and_then(|m| m.get(key));
-                if found.map(canonicalize) != Some(canonicalize(value)) {
+                let expected = stringify(&JsValue::from(value));
+                if found.and_then(stringify) != expected {
                     problems.push(format!(
-                        "diagnostic {i} ({code}): fact {key}: expected {}, got {:?}",
-                        canonicalize(value),
-                        found.map(canonicalize)
+                        "diagnostic {i} ({code}): fact {key}: expected {expected:?}, got {:?}",
+                        found.and_then(stringify)
                     ));
                 }
             }
