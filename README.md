@@ -176,8 +176,13 @@ pull request was opened, for 0.23 USD.
    some methods (E1801), and narrows by them, and which an earlier
    program cannot import without the limit (E1804); lock format 0.5 with `host`,
    `isolation` and `egress` (E1802, E1803), whose changes `view --against`
-   shows; and sandbox requirement 0.2 for a 0.5 program. None of it is
-   enforced yet, so nothing that needs it runs: the runtime refuses a
+   shows; and sandbox requirement 0.2 for a 0.5 program. In the runtime, the
+   chained journal, and violations and the halt: an agent's tool call
+   refused for its authority is a `violation` event, once per step, and a
+   run stops at its limit (3 for a 0.5 package); `mandate halt` ends every
+   open run of a tenant, or of all, in one transaction, and refuses their
+   starts and resumes until `mandate halt --lift`. The rest of the
+   compile-time surface is not enforced yet, so nothing that needs it runs: the runtime refuses a
    package whose lock sets `host`, `isolation` or `egress`, by name, and the
    sandbox adapter refuses a requirement that limits methods, asks for more
    than process isolation, or carries credentials.
@@ -589,6 +594,8 @@ These cases from §25 are covered:
 | J14 | An anchor names the first event with its seq in the export's order | `journal-verify` (and the case `J14`) |
 | J15 | An export that is not JSON by the rules is `unreadable`, never `broken` | `journal-verify`, `cli-journal` (and the case `J15`) |
 | J16 | A run nested deeper than a verifier reads is journaled, and its export is `unreadable` | `journal-verify`, `cli-journal` (and the case `J16`) |
+| G21 | A tool call refused for its authority is one `violation`, malformed input none; the limit stops a 0.5 run at 3, an earlier one only when configured; a resumed run does not count a violation twice and stops again at its next new one | `violations`, `violation-seam`, `tools` |
+| G22 | A halt ends every open run of its scope in one transaction, in every state; a result in flight is not written; a start or a resume in the scope is refused before a lease; the adapters revoke after; a lift is recorded with who and brings no run back | `halt`, `cli-halt` |
 
 The journal is chained ([`spec/journal.md`](spec/journal.md)): each event
 carries a hash over its contents and the one before it, and the evidence key
@@ -597,6 +604,16 @@ run's journal with its manifest and package, `mandate journal key` the
 public keys, and `mandate journal verify` checks the export with those
 alone. J01–J16 are also cases in `conformance/` that any verifier can run.
 It is evidence against someone who holds the database but not the key.
+
+`halt.test.ts` halts a tenant with a run in every state a run is in before
+it ends: accepted, running with a live lease, waiting for an answer, for a
+decision and on a timer, needing attention for an unknown outcome, and
+inside a lead's sub-program. Each ends with its journal verifiable, another
+tenant's run goes on, a worker that was mid-step cannot write its result,
+an action in flight keeps its run `attention_required` (INV-12), starts
+and resumes are refused, and the adapters revoke only after the runs have
+ended. `mandate halt --tenant T | --all`, `--lift … --by WHO` and `--list`
+are the operator's commands ([`spec/boundary.md`](spec/boundary.md#halt)).
 
 `map.test.ts` also runs the map of the migration example
 (`fixtures/envelope/migrate-all.mdt`) over 24 repositories: 24 migrators,

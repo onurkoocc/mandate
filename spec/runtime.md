@@ -42,11 +42,16 @@ Two database drivers share one interface (`runtime/src/db.ts`):
 | `inbox` | Inbound message keys with their payload digests |
 | `outbox` | Committed actions waiting for, or past, delivery |
 | `artifacts` | Which run (and tenant) recorded which artifact digest; the bytes live in the artifact store |
+| `halts` | Each halt of a tenant, or of every tenant (`tenant` null): its id, reason, who halted and when, who lifted it and when ([`boundary.md`](boundary.md#halt)). `runs` is indexed by `(tenant, state)` for a halt's sweep |
 
 Every write that must be atomic runs in one transaction that first locks the
 run's row (`select … for update`). This covers reserve plus dispatch,
 consuming an authorization plus writing the outbox, cancel against dispatch,
-and recording a result. Writers of one run are serialized that way.
+and recording a result. Writers of one run are serialized that way. A start,
+in the transaction that creates its run, and a lease, in the transaction
+that takes it, first take a halt lock of their tenant, shared, which a halt
+takes exclusive; it comes before any row lock
+([`boundary.md`](boundary.md#halt)).
 
 ## Commands and replay (§8.3)
 
@@ -507,6 +512,10 @@ The loop runs in the control plane (BACKLOG K7):
 The runtime checks every path and command against the grant before it
 starts a process. This only gives the model a clear refusal; the sandbox
 enforces the same limits again. Tool output is cut at 20,000 characters.
+A call refused because the grant does not give what it asks is a
+violation, recorded once for its step, and a run stops at its violation
+limit; one refused for its input is not
+([`boundary.md`](boundary.md#violations)).
 
 **Journal.** Every step is a command below the delegation's own:
 
@@ -746,6 +755,12 @@ request; it does not erase anything. A dispatch after the cancel request is
 refused. An action already in flight is followed to its real result and
 listed in the run's summary (R09).
 
+A halt is the hard stop of a tenant, or of every tenant: it ends each of
+their open runs at once, `cancelled` or, with an action open,
+`attention_required`, drops their leases so no result in flight is
+written, and refuses starts and leases in its scope until it is lifted
+(`halted`; [`boundary.md`](boundary.md#halt)).
+
 ## Load-time verification (§3.5, S09)
 
 `StartRun` does not trust whoever built the package. It:
@@ -854,6 +869,9 @@ mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
 mandate journal export <run> [--out FILE]
 mandate journal key [--out FILE]
 mandate journal verify <export.json> --key <public key.pem> [--key FILE]… [--json]
+mandate halt (--tenant T | --all) [--reason TEXT] [--by WHO] [--json]
+mandate halt --lift (--tenant T | --all) --by WHO
+mandate halt --list [--json]
 mandate replay <run>
 mandate artifact <run> <blob:sha256:…>
 mandate show <run> [--format md|html|json]
@@ -875,6 +893,13 @@ could be checked ([`journal.md`](journal.md#the-report)). A run id or a tenant
 that is not well-formed Unicode, or holds U+0000, is refused at the start
 (`invalid_run_id`, `invalid_tenant`).
 
+`halt` is an operator's hard stop of a tenant or of every tenant; it reads
+no package and no secret, prints each run it ended, and exits 1 when the
+halt is in force but revoking what the runtime holds open failed. `--lift`
+lifts the halts of exactly the scope it names, recorded with `--by`, and
+brings no run back; `--list` lists every halt
+([`boundary.md`](boundary.md#halt)).
+
 `--limit` takes `spend`, `tokens`, `steps` and, for a workflow with an
 envelope, `agents`, separated by commas. `approve-envelope` signs a
 package's envelope so that its runs may start
@@ -893,6 +918,7 @@ lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
   "evidence": { "key": ".mandate/evidence.key" },
   "decisions": { "keys": ".mandate/decision-keys" },
   "plan": { "checkMs": 2000 },
+  "violations": { "limit": 3 },
   "rateLimits": { "model": { "capacity": 50, "perSecond": 1 } },
   "model": { "provider": "anthropic" },
   "executor": { "managed-agents": { "pollMs": 1000, "maxTurnMs": 3600000 } },
@@ -923,6 +949,10 @@ lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
 - **Plan.** `plan.checkMs` is the longest the check of a lead's
   sub-program may take, in milliseconds, 2000 by default. See
   [`envelope.md`](envelope.md#limits).
+- **Violations.** `violations.limit` is how many violations stop a run, a
+  whole number, at least 1. Without it a 0.5 package's run stops at 3 and
+  an earlier package's run never; every run records its violations
+  ([`boundary.md`](boundary.md#violations)).
 - **Executor.** `executor.managed-agents` runs the agents the lock binds
   to Claude Managed Agents there, each delegation in a session of its own.
   Their tools still run in `sandbox`. See [`executors.md`](executors.md).
