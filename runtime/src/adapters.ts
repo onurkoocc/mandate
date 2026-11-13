@@ -347,4 +347,6 @@ export interface Adapters {
   samples?: ReadBroker;
   clock: Clock;
   random(): number;
+  /** Cuts what this runtime holds open outside itself for a run, a tenant or everything: sessions, sandboxes. */
+  revoke?(scope: { run: string } | { tenant: string } | { all: true }): Promise<void>;
 }

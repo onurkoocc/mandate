@@ -17,7 +17,7 @@ import type { Db, Row, Tx } from "./db.js";
 import { Faults } from "./faults.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
-import { costDims, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type Limits, type RunRow } from "./journal.js";
+import { costDims, haltedRefusal, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
 import { buildPackage, isSigned04, verifyPackage, type Package } from "./package.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
@@ -226,6 +226,10 @@ export class Runtime {
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(workflowBounds(wf).budget), costDims(o.limits));
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
+    // A halted scope starts nothing (spec/boundary.md "Violations and halt"). Asked here so that nothing is prepared
+    // for a run that will not start; what decides is asked again where the run is created.
+    const early = await this.journal.openHalt(policy.tenant);
+    if (early) throw haltedRefusal(early, `Run ${runId} does not start`);
     // The components the program works on start from one base commit each, recorded in the run's manifest (B3).
     const components = await this.prepareWorkspace(runId, o.pkg);
     // The manifest of a run under an envelope lists the approval it starts under; another run's manifest is as it was.
@@ -240,12 +244,22 @@ export class Runtime {
       ...(approved ? { envelope_approval: { decision: approved.decision, member: approved.member, role: approved.role, key: approved.key } } : {}),
     } as unknown as Value;
     const manifestHash = digest("run", manifest);
-    await this.db.tx(async (tx) => {
-      await this.keep(tx, o.pkg);
-      await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash });
-      if (approved) await this.journal.event(tx, runId, "envelope_approved", approved);
-      for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
-    });
+    try {
+      await this.db.tx(async (tx) => {
+        // Under the lock a halt of this tenant takes: a halt either committed before and is seen here, or waits for
+        // this transaction and then finds the run among the open ones it ends.
+        const halt = await this.journal.holdOffHalts(tx, policy.tenant);
+        if (halt) throw haltedRefusal(halt, `Run ${runId} does not start`);
+        await this.keep(tx, o.pkg);
+        await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash });
+        if (approved) await this.journal.event(tx, runId, "envelope_approved", approved);
+        for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
+      });
+    } catch (e) {
+      // A run that was refused gives back the working copies it claimed: it never existed.
+      if (e instanceof Violation && e.code === "halted" && Object.keys(components).length) await this.db.query("delete from workspace_claims where run_id = $1", [runId]);
+      throw e;
+    }
     this.packages.set(o.pkg.hash, o.pkg);
     return this.drive(runId, true);
   }
@@ -1083,6 +1097,139 @@ export class Runtime {
     return this.journal.run(runId);
   }
 
+  // ── Halt (spec/boundary.md "Violations and halt") ─────────────────────
+
+  /**
+   * Halts a tenant, or every tenant: the hard stop. In one transaction, under the lock every start and every resume
+   * of the scope takes (`Journal.holdOffHalts`), it records the halt, and then ends every run of the scope that has
+   * not ended: it locks the run, records that it was cancelled (`cancel_requested`) and that its lease was revoked
+   * (`lease_revoked`), drops the lease (the fence goes up, so a worker that was driving the run writes nothing more),
+   * and ends the run `cancelled`, or `attention_required` while an action is open (INV-12). A second sweep in the
+   * same transaction ends a run that a writer which does not take the lock (a runtime of an earlier version) created
+   * meanwhile.
+   *
+   * Once that has committed, as a cancel does, an action whose outcome is unknown is asked to stop, and a run whose
+   * actions are all resolved by that ends `cancelled`; the scheduler is told; and the adapters are told to revoke
+   * what they hold open for the scope. A failure of any of these undoes nothing: the runs have ended, and the report
+   * says what failed.
+   *
+   * `between` is a seam for tests: it runs between the two sweeps, inside the transaction.
+   */
+  async halt(scope: HaltScope, o: { reason?: string; by?: string; between?: (tx: Tx) => Promise<void> } = {}): Promise<HaltReport> {
+    if ("tenant" in scope && (scope.tenant === "" || !storable(scope.tenant))) throw new Violation("invalid_tenant", "A tenant is non-empty, well-formed Unicode without U+0000.");
+    const halt: HaltRow = { halt_id: `halt-${randomUUID()}`, tenant: "tenant" in scope ? scope.tenant : null, reason: o.reason ?? null, halted_by: o.by ?? null, halted_at: this.adapters.clock.now(), lifted_by: null, lifted_at: null };
+    const ended: HaltReport["ended"] = [];
+    await this.db.tx(async (tx) => {
+      await this.journal.lockHaltScope(tx, scope);
+      await tx.query("insert into halts (halt_id, tenant, reason, halted_by, halted_at) values ($1, $2, $3, $4, $5)", [halt.halt_id, halt.tenant, halt.reason, halt.halted_by, halt.halted_at]);
+      const done = new Set<string>();
+      const sweep = async (): Promise<void> => {
+        // In run id order, so that two halts that cover the same runs lock them in the same order.
+        const open = await tx.query<Row>(
+          `select run_id from runs where state not in ('succeeded', 'failed', 'cancelled')${halt.tenant === null ? "" : " and tenant = $1"} order by run_id for update`,
+          halt.tenant === null ? [] : [halt.tenant],
+        );
+        for (const r of open) {
+          const runId = String(r["run_id"]);
+          if (done.has(runId)) continue;
+          done.add(runId);
+          const e = await this.endHalted(tx, runId, halt);
+          if (e) ended.push(e);
+        }
+      };
+      await sweep();
+      await o.between?.(tx);
+      await sweep();
+    });
+    const problems: string[] = [];
+    for (const e of ended) {
+      if (e.state !== "attention_required") continue;
+      try {
+        for (const a of await this.journal.actions(e.run)) if (a.state === "unknown_outcome") await this.cancelAction(e.run, a.operation_key);
+        e.state = await this.closeHalted(e.run);
+      } catch (x) {
+        problems.push(`run ${e.run}: asking its open actions to stop failed: ${(x as Error).message}`);
+      }
+    }
+    for (const e of ended) {
+      try {
+        await this.driver?.wake(e.run);
+      } catch (x) {
+        problems.push(`run ${e.run}: its scheduler was not told: ${(x as Error).message}`);
+      }
+    }
+    let revoke: HaltReport["revoke"] = "none";
+    if (this.adapters.revoke) {
+      try {
+        await this.adapters.revoke("all" in scope ? { all: true } : { tenant: scope.tenant });
+        revoke = "revoked";
+      } catch (x) {
+        revoke = { failed: (x as Error).message };
+      }
+    }
+    return { halt, ended, revoke, problems };
+  }
+
+  /** Ends one run for a halt, in the halt's transaction; a run that has ended meanwhile is left as it is. */
+  private async endHalted(tx: Tx, runId: string, halt: HaltRow): Promise<HaltReport["ended"][number] | undefined> {
+    const run = await this.journal.lock(tx, runId);
+    if (TERMINAL.has(run.state)) return undefined;
+    await tx.query("update runs set cancel_requested = true, fence = fence + 1, revision = revision + 1, updated_at = $2 where run_id = $1", [runId, this.adapters.clock.now()]);
+    await this.journal.event(tx, runId, "cancel_requested", { halt: halt.halt_id, ...(halt.reason !== null ? { reason: halt.reason } : {}), ...(halt.halted_by !== null ? { by: halt.halted_by } : {}) });
+    await this.journal.event(tx, runId, "lease_revoked", { halt: halt.halt_id, fence: run.fence });
+    const target = haltTarget(await this.actionsIn(tx, runId), halt.halt_id);
+    const { state, ...fields } = target;
+    await this.journal.setState(tx, runId, state, fields);
+    return { run: runId, tenant: run.tenant, state };
+  }
+
+  /** The run's actions, read in `tx`: an in-process database has one connection. */
+  private async actionsIn(tx: Tx, runId: string): Promise<ActionRow[]> {
+    return (await tx.query<Row>("select * from actions where run_id = $1 order by command_id", [runId])) as unknown as ActionRow[];
+  }
+
+  /**
+   * A run a halt left `attention_required`, for an action that was open: once no action of it is open, it ends
+   * `cancelled`, as a cancelled run does. Returns the state the run is in.
+   */
+  private async closeHalted(runId: string): Promise<RunRow["state"]> {
+    return this.db.tx(async (tx) => {
+      const run = await this.journal.lock(tx, runId);
+      const halted = isObj(run.attention) ? run.attention["halted"] : undefined;
+      if (run.state !== "attention_required" || !run.cancel_requested || typeof halted !== "string") return run.state;
+      const target = haltTarget(await this.actionsIn(tx, runId), halted);
+      if (target.state !== "cancelled") return run.state;
+      await this.journal.setState(tx, runId, "cancelled", { summary: target.summary });
+      return "cancelled";
+    });
+  }
+
+  /**
+   * Lifts the halts of exactly `scope`, recorded with who lifted them; a lift is not signed. A lift of all tenants
+   * lifts the halts of all tenants and leaves each tenant's own halt as it is; a lift of a tenant leaves a halt of
+   * all tenants as it is. Lifting brings no run back: what a halt ended stays ended. Returns the halts it lifted.
+   */
+  async liftHalt(scope: HaltScope, by: string): Promise<HaltRow[]> {
+    if (!by.trim()) throw new Violation("invalid_lift", "A lift says who lifts the halt (--by).");
+    if ("tenant" in scope && (scope.tenant === "" || !storable(scope.tenant))) throw new Violation("invalid_tenant", "A tenant is non-empty, well-formed Unicode without U+0000.");
+    const lifted = await this.db.tx(async (tx) => {
+      await this.journal.lockHaltScope(tx, scope);
+      return tx.query<Row>(
+        `update halts set lifted_at = $1, lifted_by = $2 where lifted_at is null and ${"all" in scope ? "tenant is null" : "tenant = $3"} returning halt_id`,
+        "all" in scope ? [this.adapters.clock.now(), by] : [this.adapters.clock.now(), by, scope.tenant],
+      );
+    });
+    if (!lifted.length) throw new Violation("not_halted", `${"all" in scope ? "No halt of every tenant" : `No halt of tenant ${scope.tenant}`} is in force.`);
+    const ids = new Set(lifted.map((r) => String(r["halt_id"])));
+    return (await this.journal.halts()).filter((h) => ids.has(h.halt_id));
+  }
+
+  /** Every halt, lifted or not, oldest first; with `open`, only those in force. */
+  async halts(o: { open?: boolean } = {}): Promise<HaltRow[]> {
+    const all = await this.journal.halts();
+    return o.open ? all.filter((h) => h.lifted_at === null) : all;
+  }
+
   // ── ReconcileAction ───────────────────────────────────────────────────
 
   /**
@@ -1110,6 +1257,13 @@ export class Runtime {
     if ("applied" in r) await this.journal.finishAction(runId, undefined, operationKey, "confirmed", { receipt: r.applied });
     else if ("notApplied" in r) await this.journal.finishAction(runId, undefined, operationKey, "prepared", { detail: { not_applied: r.notApplied } });
     else return this.journal.run(runId);
+    // A halted scope resumes nothing (spec/boundary.md "Violations and halt"). A run the halt left for an open action
+    // ends `cancelled` once none is open, as a cancelled run does; it is not driven.
+    const after = await this.journal.run(runId);
+    if (!TERMINAL.has(after.state) && (await this.journal.openHalt(after.tenant))) {
+      await this.closeHalted(runId);
+      return this.journal.run(runId);
+    }
     return this.drive(runId);
   }
 
@@ -1138,6 +1292,26 @@ export class Runtime {
   purgePayloads(runId: string): Promise<void> {
     return this.journal.purgePayloads(runId);
   }
+}
+
+/**
+ * Where a halt leaves a run, from its actions: `cancelled`, with the effects that completed, or `attention_required`
+ * while an action is dispatched or has an unknown outcome (INV-12). Both name the halt.
+ */
+function haltTarget(actions: ActionRow[], halt: string): { state: "cancelled"; summary: Value } | { state: "attention_required"; attention: Value; summary: Value } {
+  const summary = { effects_completed_before_or_during_cancel: actions.filter((a) => a.state === "confirmed").map((a) => ({ effect: a.effect, operation: a.operation_key })), halt };
+  const open = actions.filter((a) => a.state === "dispatched" || a.state === "unknown_outcome").map((a) => ({ operation: a.operation_key, effect: a.effect, state: a.state }));
+  return open.length ? { state: "attention_required", attention: { halted: halt, open_actions: open }, summary } : { state: "cancelled", summary };
+}
+
+/** What a halt did: its record, the runs it ended and how, whether the adapters revoked, and what failed after it. */
+export interface HaltReport {
+  halt: HaltRow;
+  ended: Array<{ run: string; tenant: string; state: RunRow["state"] }>;
+  /** `revoked`; `none` when no adapter holds anything to revoke; or why revoking failed. */
+  revoke: "revoked" | "none" | { failed: string };
+  /** What failed once the runs had ended: asking an open action to stop, telling the scheduler. */
+  problems: string[];
 }
 
 /** What a waiting command shows to whoever decides on it: its digest and the role it asks (`Shown`). */

@@ -22,6 +22,10 @@
 //   mandate journal verify <export.json> --key <public key.pem> [--key …] [--json]
 //                                                         check a journal's chain and anchors; no configuration, no database
 //   mandate replay <run>
+//   mandate halt (--tenant T | --all) [--reason TEXT] [--by WHO]   the hard stop: ends every open run of the scope
+//                                                         and refuses its starts and resumes (spec/boundary.md)
+//   mandate halt --lift (--tenant T | --all) --by WHO     lifts that scope's halts; no run comes back
+//   mandate halt --list                                   every halt, in force or lifted
 //   mandate artifact <run> <blob:sha256:…>
 //   mandate show <run> [--format md|html|json]           the run's views (§15): status, evidence, cost, actions
 //   mandate rotate-key                                    a new evidence key; the old one's public half stays trusted
@@ -47,12 +51,12 @@ import { randomUUID, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, printProgram, toHtml, toMarkdown, type Lock, type Modules, type Program } from "@mandate/compiler";
-import { adaptersFor, anthropicClient, connect, readConfig, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
+import { adaptersFor, anthropicClient, connect, operatorAdapters, readConfig, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { deployManagedAgents, sdkApi } from "./managed-agents.js";
 import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type SignedDecision } from "./decisions.js";
 import { EvidenceSigner, keyIdOf, TrustedKeys } from "./evidence.js";
 import { openDb, type Db } from "./db.js";
-import { costDims, type Limits, type RunRow } from "./journal.js";
+import { costDims, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { exportJournal, parseExportJson, publicKeysIn, readExport, verifyExport, type FindingCode } from "./journal-chain.js";
 import { draft, drift, scan, type RepoFacts } from "./onboard.js";
 import { buildPackage, Runtime } from "./runtime.js";
@@ -72,7 +76,7 @@ interface Args {
   all: Record<string, string[]>;
 }
 
-const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason"]);
 const PAIRS = new Set(["--component", "--host", "--repo"]);
 
 function parse(argv: string[]): Args {
@@ -129,6 +133,9 @@ const USAGE = `usage:
   mandate replay <run>
   mandate artifact <run> <blob:sha256:…>
   mandate show <run> [--format md|html|json]
+  mandate halt (--tenant T | --all) [--reason TEXT] [--by WHO] [--json]
+  mandate halt --lift (--tenant T | --all) --by WHO
+  mandate halt --list [--json]
   mandate denials <run>
   mandate rotate-key
   mandate test <program> [--json] [--lock FILE]
@@ -138,7 +145,7 @@ const USAGE = `usage:
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "halt"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -186,6 +193,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     }
 
     if (cmd === "journal") return await journal(a, config, db, out);
+    if (cmd === "halt") return await halt(a, config, db, out);
 
     if (cmd === "approve-envelope") {
       // A member of the envelope's owner role signs for the package hash its card shows (`mandate view --card`).
@@ -645,6 +653,64 @@ async function journal(a: Args, config: RuntimeConfig, db: Db, out: (s: string) 
     return 0;
   }
   throw new Usage("journal takes export, key or verify");
+}
+
+/**
+ * `mandate halt` (spec/boundary.md "Violations and halt"): the operator's hard stop of a tenant or of every tenant,
+ * its lift, and the list of halts. Halting reads no secret and no package. Exit 1 when the halt is in force but what
+ * comes after it failed (revoking, asking an open action to stop): the runs have ended all the same.
+ */
+async function halt(a: Args, config: RuntimeConfig, db: Db, out: (s: string) => void): Promise<number> {
+  if (a.positional.length) throw new Usage("halt takes no run: mandate halt (--tenant T | --all) [--reason TEXT]");
+  const json = a.flags["--json"] === true;
+  const rt = new Runtime(db, operatorAdapters(config), undefined, undefined, runtimeOptions(config, db));
+  const where = (h: HaltRow): string => (h.tenant === null ? "every tenant" : `tenant ${h.tenant}`);
+  if (a.flags["--list"] === true) {
+    if (a.flags["--lift"] !== undefined || a.flags["--tenant"] !== undefined || a.flags["--all"] !== undefined) throw new Usage("halt --list takes no scope: mandate halt --list [--json]");
+    const all = await rt.halts();
+    if (json) out(JSON.stringify(all, null, 2) + "\n");
+    else {
+      for (const h of all) {
+        const by = h.halted_by !== null ? ` by ${h.halted_by}` : "";
+        const state = h.lifted_at === null ? "in force" : `lifted by ${h.lifted_by} at ${new Date(h.lifted_at).toISOString()}`;
+        out(`${h.halt_id}  ${where(h)}  ${state}; halted${by} at ${new Date(h.halted_at).toISOString()}${h.reason !== null ? `: ${h.reason}` : ""}\n`);
+      }
+      if (!all.length) out("no halts\n");
+    }
+    return 0;
+  }
+  const tenant = a.flags["--tenant"];
+  const everyone = a.flags["--all"] === true;
+  if ((typeof tenant === "string") === everyone) throw new Usage("halt needs its scope, one of --tenant T and --all");
+  const scope: HaltScope = typeof tenant === "string" ? { tenant } : { all: true };
+  if (a.flags["--lift"] === true) {
+    if (a.flags["--reason"] !== undefined) throw new Usage("a lift takes no --reason; it is recorded with --by");
+    const lifted = await rt.liftHalt(scope, str(a, "--by"));
+    const still = "tenant" in scope ? await rt.journal.openHalt(scope.tenant) : undefined;
+    if (json) out(JSON.stringify({ lifted, ...(still ? { still_halted_by: still } : {}) }, null, 2) + "\n");
+    else {
+      for (const h of lifted) out(`lifted ${h.halt_id} (${where(h)}), by ${h.lifted_by}\n`);
+      if (still && "tenant" in scope) out(`tenant ${scope.tenant} is still halted by ${still.halt_id} (${where(still)})\n`);
+      out("no run comes back: what the halt ended stays ended\n");
+    }
+    return 0;
+  }
+  const r = await rt.halt(scope, { ...(typeof a.flags["--reason"] === "string" ? { reason: a.flags["--reason"] } : {}), ...(typeof a.flags["--by"] === "string" ? { by: a.flags["--by"] } : {}) });
+  if (json) out(JSON.stringify(r, null, 2) + "\n");
+  else {
+    const lines = [`halted ${where(r.halt)}: ${r.halt.halt_id}${r.halt.reason !== null ? ` (${r.halt.reason})` : ""}`, `${r.ended.length === 1 ? "1 run" : `${r.ended.length} runs`} ended`];
+    for (const e of r.ended) lines.push(`  ${e.run}  ${e.tenant}  ${e.state}${e.state === "attention_required" ? ": an action is open; mandate status shows it, mandate reconcile resolves it" : ""}`);
+    lines.push(`starts and resumes in ${where(r.halt)} are refused until mandate halt --lift ${"all" in scope ? "--all" : `--tenant ${scope.tenant}`} --by <you>`);
+    lines.push(`revoke: ${r.revoke === "revoked" ? "done" : r.revoke === "none" ? "nothing configured holds sessions to revoke" : `FAILED: ${r.revoke.failed}`}`);
+    for (const p of r.problems) lines.push(`problem: ${p}`);
+    out(lines.join("\n") + "\n");
+  }
+  const failed = r.revoke !== "revoked" && r.revoke !== "none";
+  if (failed || r.problems.length) {
+    process.stderr.write(`mandate: the halt is in force and its runs have ended, but ${failed ? "revoking failed" : "not everything after it succeeded"}; see above\n`);
+    return 1;
+  }
+  return 0;
 }
 
 /** What each finding means, as `journal verify` prints it. */

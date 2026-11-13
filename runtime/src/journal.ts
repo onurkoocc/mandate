@@ -30,6 +30,30 @@ export const TERMINAL: ReadonlySet<RunState> = new Set(["succeeded", "failed", "
  */
 export type ViolationKind = "authority_denied" | "egress_denied";
 
+/** What a halt covers: one tenant, or every tenant. */
+export type HaltScope = { tenant: string } | { all: true };
+
+/** A halt as `halts` keeps it (spec/boundary.md "Violations and halt"). `tenant` is null for a halt of all tenants. */
+export interface HaltRow {
+  halt_id: string;
+  tenant: string | null;
+  reason: string | null;
+  halted_by: string | null;
+  halted_at: number;
+  lifted_by: string | null;
+  lifted_at: number | null;
+}
+
+/** The advisory lock keys of halts (`holdOffHalts`, `lockHaltScope`): one for all tenants, one space for each tenant. */
+const HALT_LOCK_ALL = 1835296876;
+const HALT_LOCK_TENANT = 1835296884;
+
+/** The refusal of a start or a resume in a halted scope. */
+export function haltedRefusal(h: HaltRow, what: string): Violation {
+  const scope = h.tenant === null ? "every tenant" : `tenant ${h.tenant}`;
+  return new Violation("halted", `${what}: ${scope} is halted (${h.halt_id}${h.reason ? `: ${h.reason}` : ""}). Lift it with mandate halt --lift ${h.tenant === null ? "--all" : `--tenant ${h.tenant}`} --by <you>.`);
+}
+
 export interface RunRow {
   run_id: string;
   tenant: string;
@@ -305,10 +329,20 @@ export class Journal {
     await this.anchor(tx, r.runId, await this.event(tx, r.runId, "run_accepted", { workflow: r.workflow, package: r.packageHash, limits: r.limits, manifest: r.manifestHash }));
   }
 
-  /** Takes the run's lease for a new worker: the fence goes up, so older workers' writes are refused (R06). */
+  /**
+   * Takes the run's lease for a new worker: the fence goes up, so older workers' writes are refused (R06). A run that
+   * has not ended takes no lease in a halted scope (`halted`, spec/boundary.md "Violations and halt"): that is read
+   * in this transaction, before the lease is taken, under the lock a halt of the run's tenant takes, so a halt either
+   * committed before and is seen here, or waits for this transaction and then ends the run it leased.
+   */
   async acquire(runId: string): Promise<{ run: RunRow; fence: number }> {
     return this.db.tx(async (tx) => {
+      // The tenant first, without the row lock: the halt's lock is taken before the row's, as a halt takes them.
+      const [seen] = await tx.query<Row>("select tenant, state from runs where run_id = $1", [runId]);
+      if (!seen) throw new Violation("unknown_run", `No run '${runId}'.`);
+      const halt = TERMINAL.has(seen["state"] as RunState) ? undefined : await this.holdOffHalts(tx, String(seen["tenant"]));
       const run = await this.lock(tx, runId);
+      if (halt && !TERMINAL.has(run.state)) throw haltedRefusal(halt, `Run ${runId} is not resumed`);
       const fence = run.fence + 1;
       await tx.query("update runs set fence = $2, updated_at = $3 where run_id = $1", [runId, fence, this.now()]);
       await this.event(tx, runId, "lease_acquired", { fence });
@@ -665,6 +699,38 @@ export class Journal {
       await this.event(tx, runId, "violation", { kind: v.kind, delegate: v.delegate, agent: v.agent, step: v.step, detail: v.detail, count });
       return count;
     });
+  }
+
+  /**
+   * Holds off every halt that would cover `tenant` until this transaction ends, and returns the one that holds now,
+   * if any: the oldest halt of the tenant or of all tenants that was not lifted. A start creates its run, and a
+   * resume takes its lease, in the transaction that called this, so neither can slip between a halt's record and its
+   * sweep of the open runs (`lockHaltScope`). It takes advisory locks, shared, before any row lock.
+   */
+  async holdOffHalts(tx: Tx, tenant: string): Promise<HaltRow | undefined> {
+    await tx.query(`select pg_advisory_xact_lock_shared(${HALT_LOCK_ALL}, 0)`);
+    await tx.query(`select pg_advisory_xact_lock_shared(${HALT_LOCK_TENANT}, hashtext($1))`, [tenant]);
+    return this.openHalt(tenant, tx);
+  }
+
+  /**
+   * Takes the lock a halt or a lift of `scope` holds while it runs, exclusive: a start or a resume in the scope waits
+   * for it, and every one that came before has committed (`holdOffHalts`). Taken before any row lock.
+   */
+  async lockHaltScope(tx: Tx, scope: HaltScope): Promise<void> {
+    if ("all" in scope) await tx.query(`select pg_advisory_xact_lock(${HALT_LOCK_ALL}, 0)`);
+    else await tx.query(`select pg_advisory_xact_lock(${HALT_LOCK_TENANT}, hashtext($1))`, [scope.tenant]);
+  }
+
+  /** The oldest halt that covers `tenant` and was not lifted: of the tenant, or of all tenants. Takes no lock. */
+  async openHalt(tenant: string, tx: Tx = this.db): Promise<HaltRow | undefined> {
+    const [row] = await tx.query<Row>("select * from halts where lifted_at is null and (tenant is null or tenant = $1) order by halted_at, halt_id limit 1", [tenant]);
+    return row ? toHalt(row) : undefined;
+  }
+
+  /** Every halt, lifted or not, oldest first. */
+  async halts(): Promise<HaltRow[]> {
+    return (await this.db.query<Row>("select * from halts order by halted_at, halt_id")).map(toHalt);
   }
 
   /** The run's violations, oldest first, as their events record them. */
@@ -1046,6 +1112,19 @@ function toRun(r: Row): RunRow {
     summary: (r["summary"] ?? null) as Value,
     manifest: (r["manifest"] ?? null) as Value,
     manifest_hash: (r["manifest_hash"] ?? null) as string | null,
+  };
+}
+
+function toHalt(r: Row): HaltRow {
+  const text = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+  return {
+    halt_id: String(r["halt_id"]),
+    tenant: text(r["tenant"]),
+    reason: text(r["reason"]),
+    halted_by: text(r["halted_by"]),
+    halted_at: num(r["halted_at"]),
+    lifted_by: text(r["lifted_by"]),
+    lifted_at: r["lifted_at"] === null || r["lifted_at"] === undefined ? null : num(r["lifted_at"]),
   };
 }
 

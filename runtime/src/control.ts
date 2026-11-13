@@ -349,6 +349,24 @@ function boundaryVerifier(config: RuntimeConfig, sandbox: MxcAdapter, env: NodeJ
   return new BoundaryVerifier({ ...(b.integration ? { integration: b.integration } : {}), ...(b.pinned ? { pinned: b.pinned } : {}), ...(b.extraRead ? { extraRead: b.extraRead } : {}), ...(b.timeoutMs ? { timeoutMs: b.timeoutMs } : {}), ...ci }, sandbox, realDocker, inner);
 }
 
+/**
+ * The adapters of a command that acts on runs without running a package, `mandate halt`: an operator's emergency
+ * stop needs no model, no executor and no secret, so none is read. Nothing here calls out; an action whose outcome
+ * is unknown is left for `mandate reconcile`. What holds sessions open outside the runtime and can revoke them
+ * (`Adapters.revoke`) belongs here once the configuration names it.
+ */
+export function operatorAdapters(_config: RuntimeConfig): Adapters {
+  return {
+    agents: { run: async () => missing("agent adapter") },
+    model: { infer: async () => missing("model"), upperBound: () => missing("model") },
+    verifier: { check: async () => missing("verifier") },
+    reads: { call: async () => missing("reader") },
+    tools: {},
+    clock: wallClock,
+    random: Math.random,
+  };
+}
+
 /** A stand-in for an adapter the configuration leaves out: calling it stops the run for a person. */
 function missing(what: string): never {
   throw new Violation("no_adapter", `The runtime configuration has no ${what}.`);

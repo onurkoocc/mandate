@@ -291,6 +291,8 @@ async function decisionViews(rt: Runtime, runId: string, events: Event[], comman
     }
     const kind = Object.hasOwn(UNSIGNED, e.type) ? UNSIGNED[e.type]! : undefined;
     if (kind === undefined) continue;
+    // A halt's cancel is an operator's, not a person's decision on the run (spec/boundary.md "Violations and halt").
+    if (e.type === "cancel_requested" && d["halt"] !== undefined) continue;
     // Unsigned. Which way a decision on a wait went is in the journal. One on a criterion or a gate writes an
     // event that names the wait. An approval of an action writes the authorization it made, whose id names the
     // message that carried the approval. A refusal of an action writes neither. The wait's result says it too,
