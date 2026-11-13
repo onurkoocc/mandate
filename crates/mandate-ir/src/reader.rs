@@ -263,12 +263,13 @@ impl Reader<'_> {
 
     fn object(&mut self, path: &str, depth: usize) -> Result<Map, Fail> {
         self.expect(b'{')?;
-        let mut out = Map::new();
+        // The members as read; the object puts them in ECMAScript order once.
+        let mut out: Vec<(String, Value)> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
         self.ws();
         if self.peek() == Some(0x7d) {
             self.advance();
-            return Ok(out);
+            return Ok(Map::new());
         }
         let inner = depth.saturating_add(1);
         loop {
@@ -303,14 +304,14 @@ impl Reader<'_> {
             self.expect(b':')?;
             self.ws();
             let value = self.value(&member, inner)?;
-            out.push_new(key, value);
+            out.push((key, value));
             self.ws();
             if self.peek() == Some(0x2c) {
                 self.advance();
                 continue;
             }
             self.expect(b'}')?;
-            return Ok(out);
+            return Ok(Map::from_unique(out));
         }
     }
 

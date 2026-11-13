@@ -6,8 +6,9 @@
 //! members with the same name ([`Map`]). Every value of this type therefore
 //! has exactly one canonical text, and [`crate::canonicalize`] cannot fail.
 
-use std::collections::HashSet;
 use std::fmt;
+
+use crate::members::Members;
 
 /// A value of the IR domain.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -151,16 +152,19 @@ impl fmt::Display for Int {
     }
 }
 
-/// The members of an object, in the order they were read or inserted.
+/// The members of an object, in the order an ECMAScript object holds them
+/// (`OrdinaryOwnPropertyKeys`): array-index names such as `"0"`
+/// and `"10"` first, ascending, then the others in the order they were read
+/// or inserted. So iterating a `Map` read by [`crate::parse`] gives the order
+/// of `Object.keys` on what `JSON.parse` gives in TypeScript.
 ///
 /// Names are unique: [`Map::insert`] replaces the value of a name already
 /// present and keeps its place, as assignment to an ECMAScript object does.
-/// The order carries no meaning; canonical text sorts the members. `==`
-/// compares members in order, so two objects that differ only in order are
-/// unequal; compare their canonical text to compare them as IR values.
+/// Canonical text sorts the members, so the order never changes a hash. `==`
+/// compares members in order; compare canonical text to compare IR values.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Map {
-    entries: Vec<(String, Value)>,
+    members: Members<Value>,
 }
 
 impl Map {
@@ -168,50 +172,39 @@ impl Map {
     #[must_use]
     pub const fn new() -> Map {
         Map {
-            entries: Vec::new(),
+            members: Members::new(),
         }
     }
 
     /// Sets member `key` to `value`; the value it had, if any.
     pub fn insert(&mut self, key: impl Into<String>, value: impl Into<Value>) -> Option<Value> {
-        let key = key.into();
-        let value = value.into();
-        match self.entries.iter_mut().find(|(k, _)| *k == key) {
-            Some((_, slot)) => Some(std::mem::replace(slot, value)),
-            None => {
-                self.entries.push((key, value));
-                None
-            }
-        }
+        self.members.insert(key.into(), value.into())
     }
 
-    /// An object of these members, in this order; `None` when two have the
-    /// same name. Unlike inserting them one by one, it takes time linear in
-    /// their number, for objects read from large untrusted input.
+    /// An object of these members; `None` when two have the same name.
+    /// Unlike inserting them one by one, it takes time O(n log n) at worst,
+    /// for objects read from large untrusted input.
     #[must_use]
     pub fn from_entries(entries: Vec<(String, Value)>) -> Option<Map> {
-        let unique = {
-            let mut seen: HashSet<&str> = HashSet::with_capacity(entries.len());
-            entries.iter().all(|(k, _)| seen.insert(k.as_str()))
-        };
-        unique.then_some(Map { entries })
+        Members::from_entries(entries).map(|members| Map { members })
     }
 
-    /// Appends a member whose name the caller knows is not present yet.
-    pub(crate) fn push_new(&mut self, key: String, value: Value) {
-        self.entries.push((key, value));
+    /// An object of members whose names the caller knows are unique.
+    pub(crate) fn from_unique(entries: Vec<(String, Value)>) -> Map {
+        Map {
+            members: Members::from_unique(entries),
+        }
     }
 
     /// Removes member `key`; the value it had, if any.
     pub fn remove(&mut self, key: &str) -> Option<Value> {
-        let at = self.entries.iter().position(|(k, _)| k == key)?;
-        Some(self.entries.remove(at).1)
+        self.members.remove(key)
     }
 
     /// The value of member `key`.
     #[must_use]
     pub fn get(&self, key: &str) -> Option<&Value> {
-        self.entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+        self.members.get(key)
     }
 
     /// Whether member `key` is present.
@@ -222,24 +215,24 @@ impl Map {
 
     /// The members, in order.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &Value)> {
-        self.entries.iter().map(|(k, v)| (k.as_str(), v))
+        self.members.iter()
     }
 
     /// The member names, in order.
     pub fn keys(&self) -> impl Iterator<Item = &str> {
-        self.entries.iter().map(|(k, _)| k.as_str())
+        self.members.iter().map(|(k, _)| k)
     }
 
     /// The number of members.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.members.len()
     }
 
     /// Whether there are no members.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.members.len() == 0
     }
 }
 

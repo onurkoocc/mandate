@@ -41,6 +41,21 @@ fn map_insert_replaces_in_place() {
 }
 
 #[test]
+fn map_puts_array_indices_first_as_an_ecmascript_object_does() {
+    let read = parse(r#"{"b": 0, "10": 0, "a": 0, "007": 0, "2": 0, "4294967295": 0}"#).unwrap();
+    let keys: Vec<&str> = read.value.as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["2", "10", "b", "a", "007", "4294967295"]);
+    let mut m = Map::new();
+    for k in ["b", "10", "a", "0", "10"] {
+        m.insert(k, true);
+    }
+    assert_eq!(m.keys().collect::<Vec<_>>(), ["0", "10", "b", "a"]);
+    assert_eq!(m.remove("0"), Some(Value::Bool(true)));
+    m.insert("1", false);
+    assert_eq!(m.keys().collect::<Vec<_>>(), ["1", "10", "b", "a"]);
+}
+
+#[test]
 fn utf16_order_is_not_code_point_order() {
     assert_eq!(compare_utf16("\u{1F600}", "\u{E000}"), Ordering::Less);
     assert_eq!("\u{1F600}".cmp("\u{E000}"), Ordering::Greater);

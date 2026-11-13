@@ -36,6 +36,7 @@ mod diag;
 mod hash;
 mod jcs;
 pub mod limits;
+mod members;
 mod number;
 mod reader;
 mod value;
