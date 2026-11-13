@@ -4,9 +4,9 @@ Mandate is a coordination and contract language for agents. Agents write
 programs. People review them through generated views. The compiler checks
 authority, effects, budgets, contracts and delegation before anything runs.
 
-This page is the compact core of the language, meant to fit in an agent's
-context (design doc 4, G8: under 8,000 tokens). It says what a program
-means. The detailed rules are on the other pages:
+This page is the compact core of the language, for an agent's context
+(design doc 4, G8: under 8,000 tokens). It says what a program means; the
+other pages hold the detailed rules:
 
 - [`ir.md`](ir.md) and [`ir.schema.json`](ir.schema.json): the IR, its schema and hashing;
 - [`checks.md`](checks.md): the static checks;
@@ -14,12 +14,12 @@ means. The detailed rules are on the other pages:
 - [`sandbox.md`](sandbox.md): sandboxes;
 - [`views.md`](views.md): the views people review;
 - [`mcp.md`](mcp.md): the compiler as an MCP server for agents;
-- [`system.md`](system.md): existing systems: the system model, change sets, boundary evidence, reads and run modes;
+- [`system.md`](system.md): the system model, change sets, boundary evidence, reads and run modes;
 - [`diagnostics.md`](diagnostics.md): diagnostic codes;
 - [`envelope.md`](envelope.md): 0.4: roles, signed decisions, envelopes, `map` and `plan`;
 - [`boundary.md`](boundary.md): 0.5, in progress: `methods`, egress, isolation, the chained journal.
 
-*Must* marks a rule that every conforming implementation follows.
+*Must* marks a rule every conforming implementation follows.
 
 ## 1. Programs
 
@@ -31,8 +31,8 @@ A program is one module: a canonical JSON IR document, closed by
   "uses": [ … ], "defs": { "<Name>": { "kind": "…", … } }, "tests": { … } }
 ```
 
-- The IR is the source of truth. The `.mdt` text form is a projection:
-  text lowers into IR and IR prints back as text, and both keep the hash.
+- The IR is the source of truth. The `.mdt` text is a projection: it
+  lowers into IR, IR prints back as text, and both keep the hash.
 - `language` is `mandate/0.1` to `0.5`; 0.2 adds an agent's `loop` and
   `progress` (§5), 0.3 the system model and change sets (§10), 0.4 roles and
   envelopes, 0.5 `methods` of `net.https`. In text, a file names its version
@@ -48,8 +48,8 @@ A program is one module: a canonical JSON IR document, closed by
 - The program hash is
   `SHA256("mandate/program/<v>\n" ‖ JCS(program))`, written
   `sha256:<hex>`, where `<v>` is the language version. Each definition is
-  hashed the same way under the domain `def`. A patch names the hash it was written against; if the program
-  has changed since, it is refused (`stale_base`).
+  hashed the same way under the domain `def`. A patch names the hash it was written against and is refused
+  (`stale_base`) if the program has changed since.
 
 Definition kinds:
 
@@ -66,19 +66,16 @@ Definition kinds:
 | `contract` | Acceptance criteria over its parameters |
 | `component` | 0.3: a deployable unit of a system: repository, root, owner, build and test commands, interfaces it provides and consumes, its own governance-class file patterns |
 | `interface` | 0.3: a contract between components (`openapi`, `mcp_tools`, `oauth`, `event`, `db_schema`) and its spec file |
-| `environment` | 0.3: an environment: its data class, declared reads, and the weakest authorization each effect accepts there |
+| `environment` | 0.3: its data class, declared reads, and the weakest authorization each effect accepts there |
 | `role` | 0.4: a role people hold; the lock says who ([`envelope.md`](envelope.md)) |
 
 ## 2. Types
 
 Base types are `Bool`, `Int`, `Dec`, `Text`, `Bytes`, `Path`, `Url`,
 `Time`, `Duration` and `Money`. Generic types are `List<T>`, `Set<T>`,
-`Map<K,V>`, `Option<T>` and `Result<T,E>`. A type can also be:
-
-- a record, `{ f: T, … }`;
-- an enum;
-- a union of tagged variants;
-- a refinement, `T where e`.
+`Map<K,V>`, `Option<T>` and `Result<T,E>`. A type can also be a record,
+`{ f: T, … }`; an enum; a union of tagged variants; or a refinement,
+`T where e`.
 
 Money is integer micro-units plus an ISO 4217 code. Amounts in different
 currencies are never added implicitly. A duration is milliseconds. A
@@ -86,24 +83,21 @@ currencies are never added implicitly. A duration is milliseconds. A
 
 <a id="paths"></a>A `Path` names a file relative to the root of a working copy, the same
 way on every host and executor (K68). It is one or more segments separated
-by `/`. No segment is empty, `.` or `..`, so a Path never starts or ends
-with `/`. It contains no `\`, no `:` (a Windows drive or alternate data
+by `/`, none empty, `.` or `..`, with no `\`, no `:` (a Windows drive or
 stream) and no NUL. As a JSON Schema pattern (ECMA 262):
 
 ```text
 ^(S)(/(S))*$    S = [^/\\:\x00.][^/\\:\x00]* | \.[^/\\:\x00.][^/\\:\x00]* | \.\.[^/\\:\x00]+
 ```
 
-- A model's answer of a type that contains `Path` is checked against this
-  rule, like the rest of its schema. A value that breaks it is refused, and
-  the model is asked again or the call is `Rejected` (G14).
-- A text literal is a `Path` where a Path is expected, if it keeps the rule;
-  otherwise it does not check (E0204, V20). Any other `Text` is not a Path.
-- A run's input is checked against its workflow's parameter types, so a
-  Path in it keeps the rule too (`input_mismatch`).
-- The runtime still checks each path where it uses one, against the working
-  copy on disk (a link on the way is refused). The type is the first line,
-  not the only one.
+- A model's answer of a type containing `Path` is checked against this
+  rule like the rest of its schema, and so is a Path in a run's input
+  (`input_mismatch`). A model's value that breaks it is refused, and the
+  model is asked again or the call is `Rejected` (G14).
+- A text literal is a `Path` where one is expected if it keeps the rule,
+  else it does not check (E0204, V20). Any other `Text` is not a Path.
+- The runtime checks each path where it uses one, against the working
+  copy on disk (a link on the way is refused).
 
 ### 2.1 How a value is known
 
@@ -141,8 +135,8 @@ The rules:
 ### 2.2 Data classes
 
 A value has a data class: `public < internal < confidential <
-restricted`. It takes the highest class of what it came from, and model
-output inherits the highest class of its input. A program cannot lower a
+restricted`. It takes the highest class of what it came from, model
+output included. A program cannot lower a
 class. A model capability states the highest class the model may receive,
 `internal` by default.
 
@@ -154,22 +148,21 @@ A model asked to choose from a closed set returns
 - A policy function (`threshold`, `top_margin` or `abstain_if`) turns it
   into `Confident(T) | Uncertain`.
 - A `switch` on that result must handle `Uncertain`.
-- A raw decision cannot steer control flow, and cannot reach a critical
-  effect.
+- A raw decision cannot steer control flow.
 
 ## 3. Effects
 
 Each step that touches the world is an effect. The built-in effects are
 `Fs.Read`, `Fs.Write`, `Net`, `Model`, `Tool`, `Exec`, `Human`,
-`Delegate`, `Spend`, `Time`, `Random` and `Data.Read` (0.3). External effects carry their
-declared name, e.g. `git.open_pr`.
+`Delegate`, `Spend`, `Time`, `Random` and `Data.Read` (0.3). External
+effects carry their declared name, e.g. `git.open_pr`.
 
 - A function or skill must declare every effect it uses, including those of
   the functions it calls. A public function must declare its effects.
 - A **critical** effect is one that changes shared state outside the run.
   It must declare `idempotency required`, must be called with
-  `idempotent_by <business key>`, and may run only in a workflow body:
-  never in a function, a skill or a contract.
+  `idempotent_by <business key>`, and may run only in a workflow body,
+  never in a function, skill or contract.
 - An **irreversible** effect also needs one of these: an earlier
   `human.approve` in the same body, or an argument verified by a contract
   that has a `human.approve` criterion.
@@ -177,14 +170,14 @@ declared name, e.g. `git.open_pr`.
   workflow, a lockfile, agent settings, the Mandate lock, CODEOWNERS)
   needs the code owner's approval at run time, whatever else authorizes it
   (K70; [`system.md`](system.md#governance-class-files-k70)).
-- A **retry class** is declared, not inferred from a name. It is one of
-  `read_only`, `idempotent`, `reconcilable` or `non_retryable`.
+- A **retry class** is declared, not inferred from a name: `read_only`,
+  `idempotent`, `reconcilable` or `non_retryable`.
 
 ## 4. Capabilities
 
 A capability is the authority to use an effect over a scope. A program
 cannot create authority. Capabilities are granted at the entry point,
-passed explicitly, and can only shrink.
+passed explicitly.
 
 | Constructor | Authorizes | Scope |
 |---|---|---|
@@ -210,8 +203,8 @@ passed explicitly, and can only shrink.
 | C4 | A workflow's `caps` are the upper bound of what its entry point may be granted |
 | C5 | The write capabilities (`fs.write`, `git.*`) of different `par` branches do not overlap |
 
-A capability that nothing uses is reported, because the sandbox it
-produces is the upper bound of real use.
+An unused capability is reported: the sandbox it produces bounds real
+use from above.
 
 ## 5. Agents, skills and workflows
 
@@ -225,7 +218,7 @@ produces is the upper bound of real use.
     delegation's budget.
   - It ends when the model hands back a value that fits the result type.
   - It stops with `SkillFailed(kind)` when it repeats a call
-    (`progress { window, repeats }`) or observes nothing new for `stall`
+    (`progress { window, repeats }`), observes nothing new for `stall`
     turns, or runs out of steps.
   - `loop plan_execute` checks the whole plan before any tool runs.
 - **Workflows.** A `workflow` body is deterministic orchestration. Every
@@ -235,7 +228,7 @@ produces is the upper bound of real use.
 - **Tests.** `test "…" { with handlers { … } run W(args) expect ok }` runs a
   workflow against deterministic handlers: recorded model answers, an
   in-memory file system, a fixed clock, an automatic approver. Only tests
-  may swap handlers; in a real run the runtime picks them.
+  may swap handlers.
 
 ### 5.1 Statements and expressions
 
@@ -256,15 +249,9 @@ produces is the upper bound of real use.
 
 ### 5.2 Faults and supervision
 
-Expected failures are values that a program can match:
-
-- `Timeout`
-- `BudgetExceeded`
-- `Throttled(retry_after)`
-- `SkillFailed(…)`
-- `Rejected(…)`
-- `PolicyDenied(…)`
-- `UnknownOutcome(…)`
+Expected failures are values that a program can match: `Timeout`,
+`BudgetExceeded`, `Throttled(retry_after)`, `SkillFailed(…)`, `Rejected(…)`,
+`PolicyDenied(…)` and `UnknownOutcome(…)`.
 
 There are no exceptions. A broken invariant is never handed to the
 program: the run stops for a person (`attention_required`).
@@ -281,23 +268,22 @@ program: the run stops for a person (`attention_required`).
 ### 5.3 Budgets
 
 - **Static.** The checker adds up what a workflow hands out and compares
-  it with the workflow's own budget. Sequences and `par` add up money and
+  it with its own budget. Sequences and `par` add up money and
   tokens; `par` takes the longest time; `if` and `switch` take the larger
-  branch; `loop` multiplies by `max_iter`. Upper bounds are used, never
-  averages.
+  branch; `loop` multiplies by `max_iter`.
 - **Rate limits.** Shared token buckets limit model and tool calls per
-  unit of time. An empty bucket, or a provider's quota, makes a call
-  `Throttled`: it waits and is sent again, without counting as an attempt
-  or holding its reservation.
-- **Run time.** Every command reserves its upper-bound cost when it is
+  unit of time. An empty bucket or a provider's quota makes a call
+  `Throttled`: it waits and is sent again, not counting as an attempt or
+  holding its reservation.
+- **Run time.** Every command reserves its upper-bound cost when
   dispatched, atomically with the dispatch record. It is refused when
   `limit − settled − active reservations` cannot cover it. A run's limits
-  are the minimum of the workflow's budget and the caller's limits.
+  are the minimum of the workflow's budget and the caller's.
 - **Exhaustion.** `BudgetExceeded` runs the workflow's
   `on budget_exceeded` handler; with no handler, the run pauses for a
   person. A person may raise the run's limits, up to the workflow's own
-  budget. This is a governance change. Once the handler's question is
-  answered, the run tries again from the command that did not fit.
+  budget (a governance change). Once the question is answered, the run
+  retries from the command that did not fit.
 
 ## 6. Contracts and evidence
 
@@ -311,18 +297,17 @@ contract FixAccepted(issue: Issue, pr: PullRequestDraft) {
 
 - **Methods.** A criterion is met `by static e`, by a verifier call
   (`test.*`, `eval`, `review(…)`), by `human.approve(role)`, or by several
-  of these joined with `and`.
-- **Review alone.** `review(…)` alone never meets a criterion.
+  of these joined with `and`. `review(…)` alone never meets a criterion.
 - **Static criteria.** A `static` criterion the compiler cannot prove is
   checked at run time, with a warning.
 - **Order.** `verify` checks `require`, then the criteria in order of
-  their method: static, then tests, then evals and reviews, then people.
-  A person is asked only once every other criterion is met. With
+  their method: static, then tests, then evals and reviews, then people,
+  who are asked only once every other criterion is met. With
   `human.approve(role: r, deadline: d)`, an approval not given within `d`
   is unmet.
-- **Evidence.** Each check records evidence. The verifier produces the
-  evidence, never the agent. When every criterion is met, the value
-  becomes `Verified<T, C>`, carrying the ids of its evidence.
+- **Evidence.** Each check records evidence, produced by the
+  verifier and never by the agent. A met contract makes the value
+  `Verified<T, C>`, carrying the ids of its evidence.
 - **Unmet criteria.** They go to `on unmet(c)`, or else the verify fails
   with `Rejected`. An answer to an escalation is never `Verified`.
 
@@ -334,34 +319,34 @@ contract FixAccepted(issue: Issue, pr: PullRequestDraft) {
   with a stable id, the IR path of the node that issued it: delegates,
   model calls, verifier calls, reads, time, randomness and waits for
   people. Its result is recorded before the program sees it.
-- **Recovery and replay.** Recovering from a crash, and replaying a run,
-  both re-run the body against the record. A command already recorded is
-  never sent again, and replay calls no adapter (INV-09).
-- **A changed request.** If a recorded command is found with a different
-  request, the run stops (`nondeterministic_replay`).
-- **Pinned package.** A running run keeps its package. Before a run
-  starts, the runtime recomputes the package's hashes, requires every
+- **Recovery and replay.** Recovery from a crash and replay both
+  re-run the body against the record. A recorded command is never sent
+  again (INV-09).
+- **A changed request.** A recorded command found with a different request
+  stops the run (`nondeterministic_replay`).
+- **Pinned package.** A run keeps its package. Before it starts,
+  the runtime recomputes the package's hashes, requires every
   imported module to be locked, and re-runs the checks.
 
 ### 7.2 External effects: prepare → authorize → commit
 
-A critical effect runs in three steps:
+A critical effect runs in three steps.
 
-1. **Prepare.** The parameters are frozen into an action digest. The digest
+1. **Prepare.** The parameters are frozen into an action digest, which
    covers the package, run, node, effect, adapter and its contract,
    parameters, evidence and business key.
 2. **Authorize.**
-   - By default, policy authorizes, and a person must authorize an
-     irreversible effect.
-   - A person's approval is bound to the digest they saw and applies only
+   - Policy authorizes by default; a person must authorize an irreversible
+     effect.
+   - A person's approval is bound to the digest they saw and holds only
      before the wait's deadline.
    - A model or a program cannot authorize.
 3. **Commit.** One atomic step checks that the authorization exists,
    matches the digest, is unused and unexpired, and that the run was not
-   cancelled. It then consumes the authorization and records the dispatch.
-   Only then is the adapter called.
+   cancelled. It then consumes the authorization, records the dispatch,
+   and only then calls the adapter.
 
-On recovery, an action that was already dispatched follows its retry class:
+On recovery, a dispatched action follows its retry class:
 
 | Retry class | On recovery |
 |---|---|
@@ -369,14 +354,14 @@ On recovery, an action that was already dispatched follows its retry class:
 | `reconcilable` | The system of record is asked first; sent again only with proof it was not applied |
 | `non_retryable` | Never sent again; the action becomes `unknown_outcome` |
 
-An unknown outcome is never retried blindly. It waits for reconciliation,
-and no run ends cleanly while an action is unresolved (INV-12). Automatic
+An unknown outcome waits for reconciliation, and no run ends cleanly while
+an action is unresolved (INV-12). Automatic
 compensation does not exist in 0.1; it is only offered to a person.
 
 ### 7.3 People and cancellation
 
-- **Inbound messages.** They are deduplicated by sender and message id.
-  The same id with a different payload is refused.
+- **Inbound messages.** They are deduplicated by sender and message id; the
+  same id with a different payload is refused.
 - **Cancellation.** It is an event, not erasure. A dispatch after the cancel
   request is refused. An action already in flight is followed to its real
   result and reported.
@@ -385,18 +370,14 @@ compensation does not exist in 0.1; it is only offered to a person.
 
 ### 7.4 Sandboxes
 
-Each local agent runs in a sandbox. The sandbox is built from the
-authority its delegation was actually granted:
-
-- read and write paths;
-- commands with their argument prefixes;
-- hosts and model tiers;
-- no desktop and no clipboard;
-- its `time` budget as a timeout.
+Each local agent runs in a sandbox built from the authority its delegation
+was granted: read and write paths,
+commands with their argument prefixes, hosts and model tiers, and its
+`time` budget as a timeout. It has no desktop and no clipboard.
 
 A sandbox adapter probes the host first. A requirement the host cannot
 enforce refuses the agent's start with
-`PolicyDenied(unsupported_sandbox_profile)`. It is never run with less
+`PolicyDenied(unsupported_sandbox_profile)`, never a run with less
 isolation or in a permissive mode (INV-11).
 
 ## 8. Invariants
@@ -414,7 +395,7 @@ Every conforming implementation keeps these:
 | INV-07 | An unknown outcome is neither success nor failure until reconciled | `unknown_outcome` |
 | INV-08 | A budget covers the whole run | One ledger per run; atomic reservations |
 | INV-09 | Replay makes no model call and no external effect | Replay reads the record only |
-| INV-10 | Views of authority, effects and state come from the program and the record | Views are computed from the IR and the journal, and name the program hash and the revision they show |
+| INV-10 | Views of authority, effects and state come from the program and the record | Computed from the IR and the journal; they name the program hash and the revision they show |
 | INV-11 | An unsupported security requirement is never dropped silently | Sandbox probe; E0902 |
 | INV-12 | No clean end while an external effect is unresolved | `attention_required` |
 | INV-13 | `Inferred` and `Untrusted` values do not reach a critical effect or an instruction unverified | R1, R4, R5; runtime check of `Verified` parameters |
@@ -423,36 +404,33 @@ Every conforming implementation keeps these:
 ## 9. Not yet
 
 - **Not in the IR:** dynamic `spawn` and `await`.
-- **Not generated yet:** these targets: host code, MCP, A2A and AX.
+- **Not generated yet:** host code, MCP, A2A and AX targets.
 
 ## 10. Existing systems (0.3)
 
-Mandate describes a working system instead of rewriting it
-([`system.md`](system.md)).
-
-- **System model.** `component`, `interface` and `environment` definitions
-  live in an ordinary module, e.g. `acme.system`. Programs import what they
-  work on with `use`, and the lock pins the module by hash. Every interface
-  has exactly one provider. Changing the model is a governance change.
+- **System model.** Definitions of `component`, `interface` and `environment`
+  live in an ordinary module, e.g. `acme.system`, that programs import with
+  `use` and the lock pins by hash. Every interface has exactly one provider.
+  Changing the model is a governance change.
 - **Capabilities over components.** `component.read(c)` and its siblings
-  open into the paths, commands and repositories the model declares, so every
-  check (C1–C5) and every sandbox treats them like capabilities written out.
+  open into the paths, commands and repositories the model declares, so checks
+  C1–C5 and sandboxes treat them as if written out.
 - **Workspace.** A run starts from one base commit per component, recorded
   in its manifest (hash R).
 - **Change sets.** `changeset(plan) { member c = git.merge(x) … order …
   change I additive approve role "r" }` lands one change per component as a
-  unit. The plan is verified. The order respects the interface graph: an
+  unit. The plan is verified. The order follows the interface graph: an
   additive change lands at its provider first, and a breaking change is
   never one set (E1101–E1105). Each owner approves its member, then the set
-  approver approves the set digest S. Members commit in order; a failure or
-  an unknown outcome after a member has landed stops the set as
-  `changeset_partial`, and compensation is offered, never run.
+  approver the set digest S. Members commit in order; a failure or unknown
+  outcome after a member has landed stops the set as `changeset_partial`,
+  and compensation is offered, never run.
 - **Reads and modes.** `data.read(env.r, p: v, max_class: c)` runs a read
   the environment declares, through the control plane's broker: values are
   bound parameters, never query text, and fields above `c` come back masked
   (typed `Masked`). A run's mode is `live`, `read_only` (real reads;
   effects prepared, never committed) or `design` (sample reads, simulated
-  effects); it is part of the manifest, and evidence carries it.
+  effects); the manifest and evidence record it.
 - **Boundary evidence.** `test.suite_each`, `test.contract`,
   `test.integration` and `test.ci` check a change where components meet:
   each component's tests pinned to the base, interface specs against the
