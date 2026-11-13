@@ -765,9 +765,16 @@ listed in the run's summary (R09).
 - refuses a language version it does not run, and of 0.4 `agents` in a
   budget that is not an envelope's, which it does not run yet
   (`unsupported_language`; [`envelope.md`](envelope.md));
-- refuses a package whose lock sets `host`, `isolation` or `egress`, each
-  by its name, until it enforces them (`unsupported_lock`;
-  [`boundary.md`](boundary.md#lock-05));
+- refuses a package whose lock sets `egress`, by its name, until it
+  enforces it (`unsupported_lock`; [`boundary.md`](boundary.md#lock-05)),
+  and one whose lock sets `isolation` or `egress` for a program of 0.1 to
+  0.4, which they would not apply to (`load_verification_failed`, E1803);
+- when the lock sets `host`, reads the host's tools it names and refuses a
+  host that falls short (`unfit_host`): a tool missing or unreadable,
+  below its least version, or a setuid `bwrap`. Nothing of the run is
+  written. Every resume checks the host the same way before it takes the
+  lease, and an unfit host leaves the run as it was
+  ([`boundary.md`](boundary.md#host-fitness));
 - when the lock lists members or roles, requires it to be well formed
   (`malformed_lock`), and for a 0.4 package requires every role it names
   to have a member (`unbound_role`, E1502);

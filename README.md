@@ -176,11 +176,16 @@ pull request was opened, for 0.23 USD.
    some methods (E1801), and narrows by them, and which an earlier
    program cannot import without the limit (E1804); lock format 0.5 with `host`,
    `isolation` and `egress` (E1802, E1803), whose changes `view --against`
-   shows; and sandbox requirement 0.2 for a 0.5 program. None of it is
-   enforced yet, so nothing that needs it runs: the runtime refuses a
-   package whose lock sets `host`, `isolation` or `egress`, by name, and the
-   sandbox adapter refuses a requirement that limits methods, asks for more
-   than process isolation, or carries credentials.
+   shows; and sandbox requirement 0.2 for a 0.5 program. Of the runtime,
+   isolation levels and host fitness: a sandbox host reports the level it
+   gives and whether it may share, and the adapter refuses by name a
+   requirement whose level or no-sharing the host does not give (every
+   host here gives `process`, shared); a run whose lock names least tool
+   versions starts and resumes only on a host that meets them
+   (`unfit_host`). The rest is not enforced yet, so nothing that needs it
+   runs: the runtime refuses a package whose lock sets `egress`, by name,
+   and the sandbox adapter refuses a requirement that limits methods or
+   carries credentials.
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
@@ -551,6 +556,8 @@ These cases from §25 are covered:
 | G12 | A remote agent without idempotent delivery: refused if required, else sent at most once | `gate4` |
 | G13 | One authorization is consumed by one commit; a second is refused | `gate4`, `effects` |
 | G14 | A path an agent names that leaves the working copy, is absolute or is not portable is refused: as a model's answer, a skill's result or a run's input by its type, and where the runtime uses it, without following a link | `gate4`, `loop` (the type); `paths`, `verifier`, `boundary` (the use site) |
+| G19 | A host below the lock's least tool versions, with a tool it cannot read, or with a setuid `bwrap`, starts and resumes nothing of the package: refused before the lease, and the run is left as it was | `fitness`, `mxc` (the runner's Bubblewrap, CI job `sandbox`) |
+| G20 | A requirement whose isolation level or no-sharing the host does not give is refused by name, and the agent is not started | `isolation`, `mxc`, `mxc-windows`, `container` |
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
 | V14 | A throttled call waits and is sent again; no restart is counted and no BudgetExceeded is raised | `supervision`, `anthropic` |
 | V16 | A `plan_execute` plan with a tool the agent does not have is never run | `loop` |
@@ -596,11 +603,24 @@ approved and an unanswered amendment; and decisions whose stored record
 was changed or removed.
 
 `fail-closed.test.ts` holds what 0.5 asks and this runtime does not
-enforce yet to its refusals: a lock's `host`, `isolation` and `egress`,
-each refused at load by its name; a requirement 0.2 that limits methods,
-asks for more than process isolation, forbids sharing or carries
-credentials, refused by the adapter on a host that enforces all of 0.1;
-and a 0.5 run whose agent may only GET, which is not started.
+enforce yet to its refusals: a lock's `egress`, refused at load by its
+name; a requirement 0.2 that limits methods or carries credentials,
+refused by the adapter on a host that enforces all of 0.1; and a 0.5 run
+whose agent may only GET, which is not started.
+
+`isolation.test.ts` holds a requirement 0.2's `isolation` to the level and
+sharing a host reports: a level above the host's, or no sharing on a host
+that may share, is refused by name and the agent is not started; what the
+host gives is planned with the policy of 0.1, byte for byte; a 0.1
+requirement is planned as before whatever the host reports; and a lock's
+`isolation` with a program before 0.5 is refused at load (E1803).
+`fitness.test.ts` holds a lock's `host` to the host's tools, read through
+a probe the test gives: versions compared by number, a suffix read as just
+below its numbers, what cannot be compared refused; each `unfit_host` text;
+a start on an unfit host that writes nothing, and a resume that takes no
+lease and leaves the run as it was. On Linux it also runs the real probe
+against stand-ins for `bwrap`: its environment, its 5 second limit, an
+error exit, and the setuid bit.
 
 ## Live runs
 
