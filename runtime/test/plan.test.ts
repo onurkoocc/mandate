@@ -12,7 +12,7 @@ import type { Program, SubprogramInput } from "@mandate/compiler";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { readConfig, runtimeOptions, type RuntimeConfig } from "../src/control.js";
-import { CHECK_MS, MAX_OPS, overLimit, type ProgramChecker, type WorkerChecker } from "../src/plan.js";
+import { CHECK_MS, MAX_OPS, overLimit, Shared, type ProgramChecker, type WorkerChecker } from "../src/plan.js";
 import { Crash } from "../src/signals.js";
 import { deferred, SimModel, SimTool, toolUse, type SimTurn } from "../src/sim.js";
 import { isObj, type Obj, type Value } from "../src/values.js";
@@ -492,6 +492,289 @@ describe("the ledger under a sub-program (N02, INV-15)", () => {
     expect(state(r)).toBe("succeeded null");
     expect(told[item(0)]![0]).toMatchObject({ admitted: true, number: 1, result: "fixed s1" });
     expect(refusals(told[item(0)]![1])).toEqual(heldBy("/work/repos/b", ITEM("b")));
+  });
+});
+
+// ── a map beside a sub-program in flight ────────────────────────────────
+
+/**
+ * A workflow whose lead plans in one branch while the other runs a map over the items, each item writing below its
+ * name. The map comes after a delegation of the branch's own, to the item `gate`, so a test says when it starts.
+ */
+const BESIDE = `  par {\n    planned = plan Lead.finish(items) within envelope\n    moved = map g in items max 1 {\n      delegate Worker.fix(Item { name: "gate" })\n      map i in items max 2 with caps SrcWrite.narrow(i.name) {\n        delegate Worker.fix(i)\n      }\n    }\n  }\n  moved`;
+const beside = (o: { body?: string; returns?: string; approve?: string } = {}): string =>
+  program({ body: o.body ?? BESIDE, ...(o.approve ? { approve: o.approve } : {}) }).replace("-> Inferred<Text>\n  envelope", `-> ${o.returns ?? "List<Outcome<List<Outcome<Inferred<Text>>>>>"}\n  envelope`);
+const PLANNED = "/defs/W/body/0/branches/planned";
+const OUTER = "/defs/W/body/0/branches/moved";
+const INNER = `${OUTER}[0]/body/1/value`;
+const GATE = `${OUTER}[0]/body/0/value`;
+const A = { items: [{ name: "a" }] };
+const ok = (v: Value): Value => ({ $tag: "Ok", $args: [v] });
+const failed = (tag: string, ...args: Value[]): Value => ({ $tag: "Failed", $args: [{ $tag: tag, $args: args }] });
+const MINE_A = 'Mine = fs.write("/work/repos/a")';
+/** What the program sees of the map at `map`, refused because its first item would write where sub-program `program` may write `held`. */
+const besideProgram = (map: string, held: string, program: string): Value => failed("Rejected", "overlapping_scopes", { map, items: [0], left: ITEM("a"), right: held, program });
+/** The outer map's one item, as the program sees it when the inner map was refused because of sub-program 1. */
+const REFUSED = [besideProgram(INNER, MINE_A, programAt(1, PLANNED))];
+/** A sub-program that fixes `s1` below /work/repos/a and then comments on `a`, which waits for the release manager. */
+const waits = `capability Mine = SrcWrite.narrow("/work/repos/a")\n\n${sub(`  let note = delegate Worker.fix(Item { name: "s1" }) with caps Mine\n  effect git.comment(Item { name: "a" }, "fixed")\n    idempotent_by "a"\n  note`, BUDGET, "RepoRead, Mine, ModelStd, Merge")}`;
+
+/** Calls `then` after each call of the journal's `name` whose arguments `when` picks has returned. */
+function after<K extends "mapEnded" | "closeProgram" | "openWait" | "dispatch">(w: Planned, name: K, when: (args: Parameters<Planned["rt"]["journal"][K]>) => boolean, then: () => void): void {
+  const journal = w.rt.journal as unknown as Record<K, (...args: unknown[]) => Promise<unknown>>;
+  const real = journal[name].bind(journal);
+  journal[name] = async (...args: unknown[]) => {
+    const out = await real(...args);
+    if (when(args as Parameters<Planned["rt"]["journal"][K]>)) then();
+    return out;
+  };
+}
+
+const workers = (w: Planned): string[] => w.chat.calls.filter((c) => c.agent === "Worker").map(itemOf).sort();
+
+describe("C5 across the run: a map beside a sub-program in flight", () => {
+  it("refuses a map whose item would write where a sub-program in flight may write (Rejected overlapping_scopes), before the item runs", async () => {
+    const inFlight = deferred<void>();
+    const mapped = deferred<void>();
+    // The map starts once the sub-program's worker is in flight, and the worker ends once the map has.
+    const worker = async (req: TurnRequest): Promise<SimTurn> => {
+      if (itemOf(req) === "gate") await inFlight.promise;
+      if (itemOf(req) === "s1") {
+        inFlight.resolve();
+        await mapped.promise;
+      }
+      return fixed(req);
+    };
+    const w = await planned([], { src: beside() });
+    after(w, "mapEnded", ([, , d]) => d.map === OUTER, () => mapped.resolve());
+    const told = leads(w, { [PLANNED]: [submit(1, narrowed("/work/repos/a", "s1")), finish("planned")] }, worker);
+    const r = await run(w, "beside", { input: A });
+    expect(state(r)).toBe("succeeded null");
+    // The same value and reason as two items that overlap, and the facts say which sub-program is in the way.
+    expect(r.result).toEqual(REFUSED);
+    expect(told[PLANNED]![0]).toMatchObject({ admitted: true, number: 1, result: "fixed s1" });
+    // The item never ran, and the map never started.
+    expect(workers(w)).toEqual(["gate", "s1"]);
+    expect((await events(w, "beside", "map_started")).map((e) => e["map"])).toEqual([OUTER]);
+    // The refusal is recorded, and a replay reads it there: what is in flight now is nothing.
+    expect(await w.rt.journal.command("beside", `${INNER}/in_flight`)).toMatchObject({ kind: "refusal", state: "failed", error: { tag: "Rejected" } });
+    expect(await w.rt.replayRun("beside")).toEqual({ status: "complete", value: REFUSED });
+  });
+
+  it("runs a map whose items write apart from what the sub-program in flight may write", async () => {
+    const inFlight = deferred<void>();
+    const mapped = deferred<void>();
+    const worker = async (req: TurnRequest): Promise<SimTurn> => {
+      if (itemOf(req) === "gate") await inFlight.promise;
+      if (itemOf(req) === "s1") {
+        inFlight.resolve();
+        await mapped.promise;
+      }
+      return fixed(req);
+    };
+    const w = await planned([], { src: beside() });
+    after(w, "mapEnded", ([, , d]) => d.map === OUTER, () => mapped.resolve());
+    leads(w, { [PLANNED]: [submit(1, narrowed("/work/repos/b", "s1")), finish("planned")] }, worker);
+    const r = await run(w, "apart", { input: A });
+    expect(state(r)).toBe("succeeded null");
+    expect(r.result).toEqual([ok([ok("fixed a")])]);
+    expect(workers(w)).toEqual(["a", "gate", "s1"]);
+  });
+
+  it("runs a map whose item writes where a sub-program wrote that has ended: it holds nothing", async () => {
+    const closed = deferred<void>();
+    const worker = async (req: TurnRequest): Promise<SimTurn> => {
+      if (itemOf(req) === "gate") await closed.promise;
+      return fixed(req);
+    };
+    const w = await planned([], { src: beside() });
+    after(w, "closeProgram", () => true, () => closed.resolve());
+    leads(w, { [PLANNED]: [submit(1, narrowed("/work/repos/a", "s1")), finish("planned")] }, worker);
+    const r = await run(w, "ended", { input: A });
+    expect(state(r)).toBe("succeeded null");
+    expect(r.result).toEqual([ok([ok("fixed a")])]);
+    expect(workers(w)).toEqual(["a", "gate", "s1"]);
+  });
+
+  it("refuses a map whose item would write where a sub-program may write that waits for a person: it has not ended", async () => {
+    const tool = new SimTool("git.comment", "reconcilable");
+    const asked = deferred<void>();
+    const worker = async (req: TurnRequest): Promise<SimTurn> => {
+      if (itemOf(req) === "gate") await asked.promise;
+      return fixed(req);
+    };
+    const w = await planned([], { src: beside({ approve: "git.comment by release_manager" }), tools: [tool] });
+    after(w, "openWait", ([, , cmd]) => cmd.kind === "decision", () => asked.resolve());
+    leads(w, { [PLANNED]: [submit(1, waits), finish("planned")] }, worker);
+    const stopped = await run(w, "waits", { input: A });
+    expect(state(stopped)).toContain("waiting");
+    expect(stopped.waiting).toMatchObject({ kind: "decision", request: { effect: "git.comment", role: "release_manager" } });
+    const done = await w.rt.decideAction("waits", msg(), { signed: await sign(w, "waits", "bob", "approve") });
+    expect(state(done)).toBe("succeeded null");
+    expect(done.result).toEqual(REFUSED);
+    expect(tool.executions).toHaveLength(1);
+    expect(workers(w)).toEqual(["gate", "s1"]);
+  });
+
+  it("refuses a map whose item would write where a sub-program may write whose worker crashed: the resumed run finds it in flight", async () => {
+    const inFlight = deferred<void>();
+    const worker = async (req: TurnRequest): Promise<SimTurn> => {
+      if (itemOf(req) === "gate") await inFlight.promise;
+      if (itemOf(req) === "s1") inFlight.resolve();
+      return fixed(req);
+    };
+    const w = await planned([], { src: beside() });
+    leads(w, { [PLANNED]: [submit(1, narrowed("/work/repos/a", "s1")), finish("planned")] }, worker);
+    // The worker dies before it records how the sub-program's worker and the map's gate ended: the map never came to its items.
+    const S1 = `${programAt(1, PLANNED)}/defs/Fix/body/0/value`;
+    w.faults.arm("before_record", (i) => i.id === S1).arm("before_record", (i) => i.id === GATE);
+    await expect(run(w, "crashed", { input: A })).rejects.toBeInstanceOf(Crash);
+    expect((await w.rt.journal.inFlight("crashed")).map((a) => a.command)).toEqual([programAt(1, PLANNED)]);
+    expect(await commandIds(w, "crashed", "refusal")).toEqual([]);
+    // In the resumed run, the sub-program ends only once the map has decided.
+    const mapped = deferred<void>();
+    after(w, "mapEnded", ([, , d]) => d.map === OUTER, () => mapped.resolve());
+    const closeProgram = w.rt.journal.closeProgram.bind(w.rt.journal);
+    w.rt.journal.closeProgram = async (...args: Parameters<typeof closeProgram>) => {
+      await mapped.promise;
+      return closeProgram(...args);
+    };
+    const r = await w.rt.resume("crashed");
+    expect(state(r)).toBe("succeeded null");
+    expect(r.result).toEqual(REFUSED);
+    // Each worker's turn was recorded before the crash, and is read again, not asked again.
+    expect(workers(w)).toEqual(["gate", "s1"]);
+  });
+
+  it("decides a map's items and a sub-program's admission one after the other: a sub-program being admitted is in the map's way", async () => {
+    const checking = deferred<void>();
+    const asked = deferred<void>();
+    const mapped = deferred<void>();
+    // The check waits for the map to ask to start its items, or, were the two not one after the other, for the
+    // map's item to start.
+    const slow: ProgramChecker = {
+      check: async (input, ms) => {
+        checking.resolve();
+        await asked.promise;
+        return checker.check(input, ms);
+      },
+    };
+    const admitting = Shared.prototype.admitting;
+    let afterCheck = false;
+    void checking.promise.then(() => (afterCheck = true));
+    Shared.prototype.admitting = function <T>(this: Shared, fn: () => Promise<T>): Promise<T> {
+      if (afterCheck) asked.resolve();
+      return admitting.call(this, fn) as Promise<T>;
+    };
+    try {
+      const worker = async (req: TurnRequest): Promise<SimTurn> => {
+        if (itemOf(req) === "gate") await checking.promise;
+        if (itemOf(req) === "a") asked.resolve();
+        if (itemOf(req) === "s1") await mapped.promise;
+        return fixed(req);
+      };
+      const w = await planned([], { src: beside(), plan: { checker: slow } });
+      after(w, "mapEnded", ([, , d]) => d.map === OUTER, () => mapped.resolve());
+      const told = leads(w, { [PLANNED]: [submit(1, narrowed("/work/repos/a", "s1")), finish("planned")] }, worker);
+      const r = await run(w, "one-after", { input: A });
+      expect(state(r)).toBe("succeeded null");
+      expect(told[PLANNED]![0]).toMatchObject({ admitted: true, number: 1, result: "fixed s1" });
+      expect(r.result).toEqual(REFUSED);
+      expect(workers(w)).toEqual(["gate", "s1"]);
+    } finally {
+      Shared.prototype.admitting = admitting;
+    }
+  });
+
+  it("does not refuse a map inside a sub-program because of that sub-program", async () => {
+    const inside = `capability Mine = SrcWrite.narrow("/work/repos/a")\n\n${sub(`  let moved = map i in [Item { name: "x" }, Item { name: "y" }] max 2 par 2 with caps Mine.narrow(i.name) {\n    delegate Worker.fix(i)\n  }\n  delegate Worker.fix(Item { name: "s1" }) with caps Mine`, BUDGET, "RepoRead, Mine, ModelStd")}`;
+    const w = await planned([submit(1, inside), finish("planned")]);
+    const r = await run(w, "own");
+    expect(state(r)).toBe("succeeded null");
+    expect(w.told[0]).toMatchObject({ admitted: true, number: 1, result: "fixed s1" });
+    expect(workers(w)).toEqual(["s1", "x", "y"]);
+    expect((await events(w, "own", "map_started")).map((e) => e["map"])).toEqual([`${programAt(1)}/defs/Fix/body/0/value`]);
+  });
+
+  it("does not refuse a map item, when the run comes to its map again, because of the sub-program its lead planned inside it", async () => {
+    const body = `  let outs = map i in items max 2 with caps SrcWrite.narrow(i.name) {\n    plan Lead.finish([i]) within envelope\n  }\n  plan Lead.finish(items) within envelope`;
+    const item = "/defs/W/body/0/value[0]";
+    const w = await planned([], { src: program({ body }) });
+    leads(w, { [item]: [submit(1, narrowed("/work/repos/a/src", "s1")), finish("a")], "/defs/W/body/1/value": [finish("planned")] });
+    // The worker dies inside the item's sub-program, which is in flight when the resumed run comes to the map.
+    w.faults.arm("after_dispatch", (i) => i.kind === "delegate" && i.id === `${programAt(1, `${item}/body/0/value`)}/defs/Fix/body/0/value`);
+    await expect(run(w, "parent", { input: A })).rejects.toBeInstanceOf(Crash);
+    expect((await w.rt.journal.inFlight("parent")).map((a) => a.command)).toEqual([programAt(1, `${item}/body/0/value`)]);
+    const r = await w.rt.resume("parent");
+    expect(state(r)).toBe("succeeded null");
+    expect(r.result).toBe("planned");
+    // The worker died before it sent the item's worker its task: that was sent once, by the resumed run.
+    expect(workers(w)).toEqual(["s1"]);
+    expect(await w.rt.replayRun("parent")).toEqual({ status: "complete", value: "planned" });
+  });
+
+  it("does not refuse a map the run began before when it comes to it again, resumed: a sub-program admitted since may write where its item wrote", async () => {
+    const tool = new SimTool("git.comment", "reconcilable");
+    const body = `  par {\n    planned = plan Lead.finish(items) within envelope\n    moved = map i in items max 2 with caps SrcWrite.narrow(i.name) {\n      delegate Worker.fix(i)\n    }\n  }\n  moved`;
+    const MAP = "/defs/W/body/0/branches/moved";
+    const mapped = deferred<void>();
+    const w = await planned([], { src: beside({ body, returns: "List<Outcome<Inferred<Text>>>", approve: "git.comment by release_manager" }), tools: [tool] });
+    after(w, "mapEnded", ([, , d]) => d.map === MAP, () => mapped.resolve());
+    // The lead plans once the map has ended: its sub-program writes where the map's item wrote, and waits for a person.
+    leads(w, {
+      [PLANNED]: [
+        async () => {
+          await mapped.promise;
+          return submit(1, waits);
+        },
+        finish("planned"),
+      ],
+    });
+    const stopped = await run(w, "again", { input: A });
+    expect(state(stopped)).toContain("waiting");
+    // The resumed run comes to the map again while the sub-program is still in flight: it ends only once the map has decided.
+    const decided = deferred<void>();
+    after(w, "mapEnded", ([, , d]) => d.map === MAP, () => decided.resolve());
+    after(w, "dispatch", ([, , cmd]) => cmd.id === `${MAP}/in_flight`, () => decided.resolve());
+    const closeProgram = w.rt.journal.closeProgram.bind(w.rt.journal);
+    let inFlightAgain: string[] = [];
+    w.rt.journal.closeProgram = async (...args: Parameters<typeof closeProgram>) => {
+      inFlightAgain = (await w.rt.journal.inFlight("again")).map((a) => a.command);
+      await decided.promise;
+      return closeProgram(...args);
+    };
+    const done = await w.rt.decideAction("again", msg(), { signed: await sign(w, "again", "bob", "approve") });
+    expect(state(done)).toBe("succeeded null");
+    expect(inFlightAgain).toEqual([programAt(1, PLANNED)]);
+    expect(done.result).toEqual([ok("fixed a")]);
+    expect(await commandIds(w, "again", "refusal")).toEqual([]);
+    expect(workers(w)).toEqual(["a", "s1"]);
+    expect(await w.rt.replayRun("again")).toEqual({ status: "complete", value: [ok("fixed a")] });
+  });
+
+  it("keeps a map refused when the run comes to it again, resumed, though the sub-program in its way has ended since", async () => {
+    const inFlight = deferred<void>();
+    const mapped = deferred<void>();
+    const worker = async (req: TurnRequest): Promise<SimTurn> => {
+      if (itemOf(req) === "gate") await inFlight.promise;
+      if (itemOf(req) === "s1") {
+        inFlight.resolve();
+        await mapped.promise;
+      }
+      return fixed(req);
+    };
+    const w = await planned([], { src: beside() });
+    after(w, "mapEnded", ([, , d]) => d.map === OUTER, () => mapped.resolve());
+    leads(w, { [PLANNED]: [submit(1, narrowed("/work/repos/a", "s1")), finish("planned")] }, worker);
+    // The worker dies after the sub-program has ended, before the lead's step records it.
+    w.faults.arm("before_record", (i) => i.kind === "tool" && i.id === toolStep(1, PLANNED));
+    await expect(run(w, "kept", { input: A })).rejects.toBeInstanceOf(Crash);
+    expect(await w.rt.journal.inFlight("kept")).toEqual([]);
+    const r = await w.rt.resume("kept");
+    expect(state(r)).toBe("succeeded null");
+    expect(r.result).toEqual(REFUSED);
+    expect(workers(w)).toEqual(["gate", "s1"]);
+    expect(await w.rt.replayRun("kept")).toEqual({ status: "complete", value: REFUSED });
   });
 });
 

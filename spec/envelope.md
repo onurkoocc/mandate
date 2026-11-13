@@ -677,9 +677,16 @@ agents, capabilities, contracts, types, functions, effects.
     while it waits for a person or for the run to be resumed. A map holds
     the scope of every item from before its first item is dispatched; an
     item's scope is free when the item has ended, and all of them when
-    the map has failed. The test is made at admission: a map that starts
-    while a sub-program in flight holds an overlapping scope is not
-    refused in 0.4;
+    the map has failed. A map is held to the same test when it starts: if
+    an item would write where a sub-program in flight may write, the map
+    is `Rejected(overlapping_scopes)` before any item is dispatched, as
+    when two of its items overlap. The sub-program a map runs inside is
+    not in its items' way. Admissions and the starts of maps are decided
+    one after the other, so neither misses the other. What is in flight
+    changes as the run goes on, so that refusal is recorded as a failed
+    command, `<map>/in_flight`, which a resumed run and a replay read; and
+    a map the journal shows started is not refused when a resumed run
+    comes to it again;
   - its workflow's budget names every dimension the run is limited in and
     fits in what the envelope has left, per dimension: `limit − settled −
     active reservations`, `agents` included. When the envelope names a
@@ -963,7 +970,7 @@ any fault it can be an outer map item's outcome.
 | Fault | When |
 |---|---|
 | `Rejected(over_limit)` | The list is longer than the map's bound: `max`, or without it the envelope's `agents`, or in a sub-program its own (N08). Names the map, the number of items and the bound |
-| `Rejected(overlapping_scopes)` | With `par > 1`, two items are handed write scopes that overlap (N03). Names the map, the two items and the two capabilities |
+| `Rejected(overlapping_scopes)` | With `par > 1`, two items are handed write scopes that overlap (N03). Names the map, the two items and the two capabilities. Also, at any `par`, when an item is handed a write scope that overlaps one a sub-program in flight holds (C5 across the run): names the map, the item, the two capabilities and the sub-program's command (`program`) |
 | `PolicyDenied(outside_capability)` | A scope chosen at run time does not lie inside the capability it narrows. Names the capability and the scope asked for. Also for a delegation outside a map |
 | `PolicyDenied(outside_authority)` | A map's `with caps` outside what its context holds (names the map and the item), or a delegation's own outside what it can be granted (names the delegate) |
 

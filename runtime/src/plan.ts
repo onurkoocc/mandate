@@ -310,7 +310,13 @@ export class Shared {
   readonly writes = new Map<string, CapVal[]>();
   private last: Promise<unknown> = Promise.resolve();
 
-  /** Runs `fn` after every admission asked for before it has been decided. */
+  /**
+   * @param programs Reads the sub-programs in flight (`programsInFlight`), for a map to keep its items clear of
+   *   them. Absent in a run whose program plans nothing, which has none.
+   */
+  constructor(readonly programs?: () => Promise<ProgramInFlight[]>) {}
+
+  /** Runs `fn` after every admission, and every start of a map that writes, asked for before it has been decided. */
   admitting<T>(fn: () => Promise<T>): Promise<T> {
     const mine = this.last.then(fn);
     this.last = mine.catch(() => undefined);
