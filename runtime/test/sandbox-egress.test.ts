@@ -579,6 +579,39 @@ describe("sandbox egress in a run", () => {
     where.cleanup();
   });
 
+  it("runs a step's process again in a new sandbox after the proxy did not say what it denied: the request the first process got through is sent again", async () => {
+    const r = await egressRun((n) => (n === 1 ? [run("GET http://api.github.com/repos/acme/app")] : [toolUse("f", "finish", { result: "done" })]));
+    // The proxy does not answer the read of the session's denials, once: the step is left unfinished and the run stops for a person.
+    vi.spyOn(r.hostLink, "denials").mockRejectedValueOnce(new Violation("egress_unavailable", "the egress proxy did not say what it denied session sbx.made-up"));
+    const stopped = await r.rt.startRun({ pkg: r.pkg, workflow: "Fetch", input: { task: "t" }, runId: "eg-reread", tenant: "acme" });
+    expect(stopped.state, JSON.stringify(stopped.attention ?? stopped.error)).toBe("attention_required");
+    expect(stopped.attention).toMatchObject({ violation: "egress_unavailable", message: expect.stringMatching(/did not say what it denied/) });
+    // The first process ran, got its request through, and its sandbox and session are gone; the step has no result.
+    expect(r.sdk.spawned).toHaveLength(1);
+    expect(w.up.seen.map((s) => `${s.method} ${s.url}`)).toEqual(["GET /repos/acme/app"]);
+    expect(opened).toHaveLength(1);
+    expect(closed).toEqual(opened.map((s) => s.session));
+    expect(await r.rt.journal.command("eg-reread", `${D}/step/0/tool/0`)).toMatchObject({ state: "dispatched", result: null });
+    expect(await r.violations("eg-reread")).toEqual([]);
+
+    const resumed = await r.rt.resume("eg-reread");
+    expect(resumed.state, JSON.stringify(resumed.attention ?? resumed.error)).toBe("succeeded");
+    // The step's process ran again, in a new sandbox with a new proxy session of its own, and the upstream saw the same request twice.
+    expect(r.sdk.spawned).toHaveLength(2);
+    expect(opened.map((s) => [s.run, s.tenant, s.command])).toEqual([
+      ["eg-reread", "acme", D],
+      ["eg-reread", "acme", D],
+    ]);
+    expect(new Set(opened.map((s) => s.session)).size).toBe(2);
+    expect(r.sdk.spawned[0]!.network.runtimeConfig?.networkProxy).not.toBe(r.sdk.spawned[1]!.network.runtimeConfig?.networkProxy);
+    expect(closed).toEqual(opened.map((s) => s.session));
+    expect(w.up.seen.map((s) => `${s.method} ${s.url} ${seenHeader(s, "authorization")[0]}`)).toEqual([`GET /repos/acme/app Bearer ${SECRET}`, `GET /repos/acme/app Bearer ${SECRET}`]);
+    // Nothing was denied, so no violation; the step now has the result of the second process.
+    expect(await r.violations("eg-reread")).toEqual([]);
+    expect(((await r.rt.journal.command("eg-reread", `${D}/step/0/tool/0`))?.result as unknown as ExecResult).stdout).toBe("GET http://api.github.com/repos/acme/app 200 ok\n");
+    expect((await r.rt.verifyJournal("eg-reread")).status).toBe("verified");
+  });
+
   it("a cancel revokes the sandbox's session: the process's next request is denied, and that denial is no violation", async () => {
     let entered!: () => void;
     const inside = new Promise<void>((ok) => (entered = ok));
