@@ -2,9 +2,13 @@
 
 **Status: in progress.** The page specifies release 0.5 so that the
 TypeScript implementation, and later the Rust one, are held to the same
-rules and cases. What the table says is implemented is, with the
-runtime's refusals of what it does not enforce yet. Each part that is not
-lands with the change named in the table, which refines its section here.
+rules and cases. Everything the release includes is implemented in the
+TypeScript implementation, and the table says where each part is shown;
+what it leaves out by decision is under [Not in 0.5](#not-in-05). The page
+stays in progress because one criterion of the release is not met: the Rust
+compiler does not yet give every fixture the same hashes and diagnostics,
+and that port is planned on its own. The Rust workspace today reads and
+hashes IR and verifies journals; it does not check programs.
 
 **A note on the name.** Release 0.5 is called Boundary. In the code and in
 the earlier specs, "boundary" already means *boundary evidence*: the
@@ -16,25 +20,27 @@ the configuration and the CLI.
 
 | Part | Change | State |
 |---|---|---|
-| Language 0.5: `net.https(…, methods: […])`, E1801, E1804, its views and diff | PR 2 | implemented |
-| Lock 0.5: `host`, `isolation`, `egress`; E1802, E1803; their changes in `view --against` | PR 2 | implemented |
-| Sandbox requirement 0.2, for a 0.5 program; a 0.5 parent's sub-programs in 0.5 | PR 2 | implemented. The MXC adapter holds its `isolation` to what the host reports (PR 4), and its method limits and credentials to the egress proxy, refusing them by name on a host that does not reach its hosts through one (PR 8) |
-| At load, a lock field the runtime does not enforce is refused by its name (`unsupported_lock`) | PR 2 | implemented; no field is refused now: PR 4 lifted `host` and `isolation`, and PR 8 `egress`, by enforcing them |
-| The attestation a check needs is read from the program, not the record; child processes get a filtered environment (B20) | PR 1 (#34) | implemented (INV-27; [`runtime.md`](runtime.md)) |
-| The chained journal: event hashes, signed anchors, export, verification (J01–J16) | PR 3 | implemented ([`journal.md`](journal.md)) |
-| Isolation levels of hosts; host fitness (`unfit_host`) | PR 4 | implemented; shown on the CI runner's Bubblewrap |
-| Violations and the violation limit; a hard halt | PR 5 | implemented; `egress_denied` is written by sandbox egress (PR 8), through the same seam |
-| The reference egress proxy and its admin channel ([`egress.md`](egress.md)) | PR 6 | implemented; the control plane's gateways and the sandboxes use it |
-| The control plane's adapters through gateways; `credential_in_environment` | PR 7 | implemented |
-| Sandbox egress on Linux through the proxy; `no_egress_proxy` and `egress_unavailable` for a package | PR 8 | implemented; enforced where the sandbox SDK reports it and the proxy answers; shown on the CI runner's Bubblewrap |
-| Sandbox egress on Windows | — | refused by name |
-| Views by role and the audit view | PR 9 | implemented |
-| The OpenTelemetry projection | PR 9 | implemented |
+| Language 0.5: `net.https(…, methods: […])`, E1801, E1804, its views and diff | PR 2 | implemented; `compiler/test/surface05.test.ts`, the cases E1801 to E1804 |
+| Lock 0.5: `host`, `isolation`, `egress`; E1802, E1803; their changes in `view --against` | PR 2 | implemented; `compiler/test/surface05.test.ts`, the cases E1802 and E1803 |
+| Sandbox requirement 0.2, for a 0.5 program; a 0.5 parent's sub-programs in 0.5 | PR 2 | implemented. The MXC adapter holds its `isolation` to what the host reports (`isolation.test.ts`), and its method limits and credentials to the egress proxy, refusing them by name on a host that does not reach its hosts through one (`fail-closed.test.ts`, `sandbox-egress.test.ts`) |
+| At load, a lock field the runtime does not enforce is refused by its name (`unsupported_lock`) | PR 2 | implemented; no field is refused today, since `host`, `isolation` and `egress` are each enforced (`fail-closed.test.ts`) |
+| The attestation a check needs is read from the program, not the record; child processes get a filtered environment (B20) | PR 1 (#34) | implemented (INV-27; [`runtime.md`](runtime.md); `verifier-process.test.ts`, `child-env.test.ts`) |
+| The chained journal: event hashes, signed anchors, export, verification (J01–J16) | PR 3 | implemented ([`journal.md`](journal.md); `journal-hash.test.ts`, `journal-verify.test.ts`, `journal-cases.test.ts`, `cli-journal.test.ts`) |
+| Isolation levels of hosts; host fitness (`unfit_host`) | PR 4 | implemented (`isolation.test.ts`, `fitness.test.ts`); shown on the CI runner's Bubblewrap (`mxc.test.ts`) |
+| Violations and the violation limit; a hard halt | PR 5 | implemented (`violations.test.ts`, `halt.test.ts`, `cli-halt.test.ts`, `halt-revoke.test.ts`); `egress_denied` is written by sandbox egress, through the same seam (`violation-seam.test.ts`) |
+| The reference egress proxy and its admin channel ([`egress.md`](egress.md)) | PR 6 | implemented; `egress-admin.test.ts`, `egress-forward.test.ts`, `egress-gateway.test.ts`, `egress-tls.test.ts`, `egress-cli.test.ts` |
+| The control plane's adapters through gateways; `credential_in_environment` | PR 7 | implemented (`egress-gateways.test.ts`) |
+| Sandbox egress on Linux through the proxy; `no_egress_proxy` and `egress_unavailable` for a package | PR 8 | implemented (`sandbox-egress.test.ts`); enforced where the sandbox SDK reports it and the proxy answers; shown on the CI runner's Bubblewrap |
+| Sandbox egress on Windows | — | not implemented, by decision: refused by name |
+| Views by role and the audit view | PR 9 | implemented (`views-role.test.ts`, `views-default.test.ts`, `classes.test.ts`, `cli-views.test.ts`) |
+| The OpenTelemetry projection | PR 9 | implemented (`otel.test.ts`) |
 | An independent journal verifier, `verify-journal`, in Rust | R3 | implemented (`crates/verify-journal`: every journal case, and a fresh export of a real run on CI) |
+| The Rust compiler: the same hashes and diagnostics on every fixture | — | not implemented; a later plan. Until it is, release 0.5 is not closed |
 
-Until a part lands, nothing it would enforce runs. A sandbox that needs
-outbound network runs only on a host that reaches its hosts through the
-egress proxy; every other host refuses it by name, as before 0.5.
+A sandbox that needs outbound network runs only on a host that reaches its
+hosts through the egress proxy; every other host refuses it by name, as
+before 0.5. Nothing a lock or a requirement asks of a sandbox or a host is
+dropped because the host cannot enforce it.
 
 0.5 is about the runtime's border. Outbound network goes only through an
 egress proxy, and the credential a request needs is put in there: a
@@ -330,7 +336,8 @@ What the MXC adapter does with it:
   `<found>` is one of `<version> found`, `not found on the runtime's PATH`,
   `<path> is setuid`, `printed "<output>", which is not a version that can
   be compared`, `could not be started (<code>)`, `gave no version within 5
-  s`, `exited with code <n> on --version`.
+  s`, `exited with code <n> on --version`, `was stopped by <signal> on
+  --version`.
 - **When.** At `StartRun`, once the package is verified and before
   anything else of the run: an unfit host claims no working copy and
   writes no package, run or event. At every resume, before the lease is
@@ -731,7 +738,9 @@ job shows it there on every run (`runtime/test/sandbox-egress.test.ts`).*
 - **What CI shows.** The `sandbox` job runs real Bubblewrap sandboxes held
   to an in-process proxy, with `curl` inside them, and the proxy's
   connections going to local servers through the resolver and dialer the
-  test gives it: the sandbox's environment holds the placeholder and the
+  test gives it: the SDK reports that it can hold a sandbox to its proxy,
+  and the host reports an outbound host list and the proxy's credentials;
+  the sandbox's environment holds the placeholder and the
   proxy variables, and neither the secret nor the runtime's environment;
   an allowed request reaches the upstream with the secret put in, and the
   echoed secret comes back as the placeholder; another host, a method not
@@ -933,7 +942,8 @@ not cut by it: the proxy's `revoke` does not prevent new sessions, and what
 stops new work in the scope is the halt itself, which the journal enforces.
 Without `egress.admin` there is nothing to revoke, and the report says so.
 The command holds no secret, opens no session and reads no credential from
-its environment, so a credential there does not refuse it (`credential_in_environment` is a refusal of the commands that run
+its environment, so a credential there does not refuse it
+(`credential_in_environment` is a refusal of the commands that run
 adapters). It connects only for the revoke: `--lift` and `--list` never reach
 the proxy, and the connection is closed when the command ends. The proxy has
 10 seconds to take the connection and 10 seconds to answer; a proxy that does
@@ -1128,6 +1138,9 @@ was asked of the role:
 - Never the run's result or error whole, its evidence, its actions, its
   change sets, its plans, its input, any command's result, the trace or
   the events.
+- In Markdown and HTML the document ends with the program's architecture
+  and authority views (S2, made from its IR alone), as the run's own
+  document does. The JSON has neither.
 
 ### The audit view
 
@@ -1145,6 +1158,11 @@ The run's view whole, kind `run_audit`, and:
 - `chain`: `Runtime.verifyJournal`'s report (`verified`, `broken`,
   `unchained` or `unreadable`), with its findings and how far the
   signatures reach.
+
+In Markdown and HTML the audit document opens with the chain's status and
+then holds the run's sections, the input, the exceptions, the halts, the
+steps, the trace, the events and the program's architecture and authority
+views.
 
 **The read path stays free of the chain check.** The audit view verifies
 the chain as a step of its own, after everything it shows has been read.
@@ -1188,7 +1206,8 @@ the journal as it is, a journal tests change on purpose included.
     command the event's data names, when that is a command of the run, and
     the run's span otherwise. It has no status.
   - A **command span**, named `mandate.<kind>` (`infer`, `turn`, `tool`,
-    `delegate`, `read`, `time` and the rest), a child of the run's span. It is
+    `delegate`, `read`, `time` and the rest; `mandate.command` for a kind not
+    shaped as above), a child of the run's span. It is
     sent once, in the pass that reads the event that ends it: the command's
     first `command_completed` event or, for a command that never completed,
     the event that ends the run. It starts at the command's first event and
@@ -1236,7 +1255,7 @@ the journal as it is, a journal tests change on purpose included.
   | every span | `mandate.run`, `mandate.tenant` | The run and its tenant |
   | every span | `mandate.package` | The hash of the package: the run's, or for a command and its events the one the command was first recorded under |
   | event, command | `mandate.command` | The command's id, when it is shaped like one the runtime builds (letters, digits and `_ . : / @ # > [ ] -`, at most 200); otherwise `sha256:` and 16 hex digits of its hash. An event span has it when the event names a command of the run |
-  | command | `mandate.command.kind` | The command's kind |
+  | command | `mandate.command.kind` | The command's kind, when it is lower-case letters and `_`, at most 32; otherwise `other` |
   | command, run | `mandate.span.events` | An integer: the events of the command, or of the run, up to the span's end |
   | event | `mandate.event.type`, `mandate.event.class` | The event's type, and its class (S0 to S4) assigned from the type alone |
   | event | `mandate.event.seq`, `mandate.event.hash` | The event's sequence number, an integer, and its hash, when it has one |
@@ -1332,6 +1351,11 @@ Refusals of the runtime that 0.5 adds:
 | `not_halted` | A lift of a scope where no halt is in force |
 | `invalid_lift` | A lift that does not say who lifts it |
 | `unknown_role` | `mandate show --role R`, or `runView` for a role, where `R` is no role the run's program names |
+| `invalid_run_id`, `invalid_tenant` | A start with a run id that is empty, is not well-formed Unicode or holds U+0000, or a tenant that is not well-formed Unicode or holds U+0000, since the chain hashes what the database stores ([`journal.md`](journal.md#the-event-hash)); a halt or a lift of an empty tenant or one such |
+| `no_evidence_key` | `mandate journal key` where the runtime has signed nothing yet: it reads the evidence key and never makes one |
+| `invalid_endpoint` | `mandate otel export` with an endpoint that is not an `http://` or `https://` URL, or has a user, a password, a query, a fragment or the path `/v1/traces`; a usage error, exit 2 |
+| `otel_export_failed` | A post of the export was not answered 2xx, could not be made or was not answered within 10 seconds; the cursor stays where it was; exit 1 |
+| `bad_egress_config`, `egress_secret_missing`, `egress_secret_invalid`, `egress_admin_unavailable` | `mandate egress serve` does not start ([`egress.md`](egress.md#running-the-proxy)); exit 1 |
 
 Compile cases in [`conformance/`](../conformance/README.md):
 
@@ -1372,7 +1396,7 @@ shared with `verify-journal`:
 | J03 | An event deleted | `seq_gap`, `chain_broken` |
 | J04 | The tail cut while its anchors stay | `anchor_beyond_end`, `unanchored_tail` |
 | J05 | An open run with events after its last anchor | `unanchored_tail` (`verified`) |
-| J06 | An anchor signed by another key, one whose signature does not verify | `anchor_unknown_key`, `anchor_signature_invalid` |
+| J06 | An anchor whose signature does not verify, one signed by another key | `anchor_signature_invalid`, `anchor_unknown_key` |
 | J07 | A manifest and a package other than the run's | `manifest_mismatch`, `package_mismatch` |
 | J08 | A run begun before the upgrade | — (`unchained`) |
 | J09 | The same values spelled otherwise | — (`verified`) |
@@ -1390,7 +1414,8 @@ The letters P, T and L are kept for later releases.
 
 - **The Rust compiler.** Release 0.5 is not closed until the Rust compiler
   gives every fixture the same hashes and diagnostics; that port is
-  planned on its own. B7 too.
+  planned on its own. The Rust workspace has no `.mdt` parser, no schema
+  validation and no checks yet.
 - **New isolation backends.** 0.5 adds the level and the refusal, not a
   host that gives more than `process`.
 - **Sandbox egress on Windows**, TLS interception, and `git`, PostgreSQL

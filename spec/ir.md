@@ -1,4 +1,4 @@
-# Canonical IR, 0.1 to 0.4
+# Canonical IR, 0.1 to 0.5
 
 The canonical IR is the source of truth for a Mandate program (design doc
 4 §3.3). It is JSON, described by the closed schema in
@@ -11,7 +11,7 @@ back as text, and both directions keep the program hash.
 A conforming reader rejects, rather than repairs:
 
 - a `language` other than `"mandate/0.1"`, `"mandate/0.2"`,
-  `"mandate/0.3"` or `"mandate/0.4"` (E0103). Other versions are migrated
+  `"mandate/0.3"`, `"mandate/0.4"` or `"mandate/0.5"` (E0103). Other versions are migrated
   explicitly, never loaded on a best-effort basis;
 - a 0.2 field in a 0.1 program, or a 0.3 or 0.4 definition, field or
   expression in an older program (E0104);
@@ -89,7 +89,7 @@ because writing test programs as JSON IR is slow and error-prone; the IR stays
 authoritative, and `fixtures/fixbug/fixbug.ir.json` is the committed source
 for the FixBug example, with `fixbug.mdt` as its projection.
 
-A file whose first line is `mandate @ 0.2` (or `0.3`, `0.4`) is a program
+A file whose first line is `mandate @ 0.2` (or `0.3`, `0.4`, `0.5`) is a program
 of that version; a file without that line is 0.1. `mandate fmt` writes the
 line for every version but 0.1.
 
@@ -147,3 +147,11 @@ Each of them in an older program is E0104. `Outcome` is a built-in type
 name from 0.4. The new forms are words of the text only where they stand:
 `role`, `envelope`, `map`, `plan`, `within`, `max` and `agents` are still
 names everywhere else, so no older program stops parsing.
+
+## What 0.5 adds
+
+0.5 adds no shape to the IR. `methods` of `net.https` is an argument of the
+call, `{ "name": "methods", "value": { "op": "list", "items": [{ "op": "var",
+"name": "GET" }] } }`; before 0.5 it is read, kept and hashed, and means
+nothing. What 0.5 adds to the language, the lock and the sandbox requirement
+is in [`boundary.md`](boundary.md).

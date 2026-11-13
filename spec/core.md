@@ -1,4 +1,4 @@
-# Mandate core, 0.1 to 0.3
+# Mandate core, 0.1 to 0.5
 
 Mandate is a coordination and contract language for agents. Agents write
 programs. People review them through generated views. The compiler checks
@@ -33,9 +33,10 @@ A program is one module: a canonical JSON IR document, closed by
 
 - The IR is the source of truth. The `.mdt` text form is a projection:
   text lowers into IR and IR prints back as text, and both keep the hash.
-- `language` is `mandate/0.1`, `0.2` or `0.3`; 0.2 adds an agent's
-  `loop` and `progress` (§5), 0.3 the system model and change sets (§10).
-  In text, a file names its version first: `mandate @ 0.3`.
+- `language` is `mandate/0.1` to `0.5`; 0.2 adds an agent's `loop` and
+  `progress` (§5), 0.3 the system model and change sets (§10), 0.4 roles and
+  envelopes, 0.5 `methods` of `net.https`. In text, a file names its version
+  first: `mandate @ 0.5`.
 - A reader must reject, not repair, any of these: another `language`, an
   unknown field, a duplicate key, a non-integer or out-of-range number, a
   lone surrogate, or input over the limits (1 MiB of source, nesting 64,
@@ -188,7 +189,7 @@ passed explicitly, and can only shrink.
 | Constructor | Authorizes | Scope |
 |---|---|---|
 | `fs.read(P…)`, `fs.write(P…)` | `Fs.Read`, `Fs.Write` | Paths, compared by segment after resolving `.` and `..` |
-| `net.https(hosts: […])` | `Net` | Hosts |
+| `net.https(hosts: […], methods: […])` | `Net` | Hosts, and from 0.5 the methods each allows ([`boundary.md`](boundary.md#language-05)) |
 | `model.infer(tier: t, max_class: c)` | `Model` | A model tier and the highest data class |
 | `exec(commands: […], args_prefix: […])` | `Exec` | Commands and their argument prefixes |
 | `git.pr(repo)` | `git.*` | Repositories |

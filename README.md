@@ -4,7 +4,8 @@ Mandate is an agent-native coordination and contract language. Agents write
 and edit programs; people review them through generated views; the compiler
 checks capabilities, effects, budgets, contracts and delegation before
 anything runs. This repository holds the reference implementation of
-versions 0.1 to 0.4, and of the first part of 0.5, which is in progress.
+versions 0.1 to 0.4, and of 0.5, which is in progress: what it includes is
+implemented, and the Rust compiler it needs to close is not.
 
 ## Why
 
@@ -166,39 +167,54 @@ pull request was opened, for 0.23 USD.
    signature holds. See [`spec/envelope.md`](spec/envelope.md).
 
 12. **0.5, Boundary (in progress):** the runtime's border with the outside
-   world. [`spec/boundary.md`](spec/boundary.md) specifies all of it: an
-   egress proxy that is the only way out and puts credentials into
-   requests, so a sandbox sees placeholders; isolation levels and the
-   host's least versions in the lock; a hash-chained journal with signed
-   anchors and an independent verifier; counted violations and a hard
-   halt; views by role; an OpenTelemetry projection. What exists so far is
-   the compile-time surface: language 0.5, whose `net.https` may allow only
-   some methods (E1801), and narrows by them, and which an earlier
-   program cannot import without the limit (E1804); lock format 0.5 with `host`,
-   `isolation` and `egress` (E1802, E1803), whose changes `view --against`
-   shows; and sandbox requirement 0.2 for a 0.5 program. In the runtime, the
-   chained journal; violations and the halt: an agent's tool call
-   refused for its authority is a `violation` event, once per step, and a
-   run stops at its limit (3 for a 0.5 package); `mandate halt` ends every
-   open run of a tenant, or of all, in one transaction, and refuses their
-   starts and resumes until `mandate halt --lift`; and isolation levels and
-   host fitness: a sandbox host reports the level it gives and whether it
-   may share, and the adapter refuses by name a requirement whose level or
-   no-sharing the host does not give (every host here gives `process`,
-   shared); a run whose lock names least tool versions starts and resumes
-   only on a host that meets them (`unfit_host`); and views by role:
-   `mandate show --role R` shows a run as one of its program's roles may
-   see it, and `--audit` everything, with its events and the chain's
-   status. `mandate otel export` posts a run's journal to an OpenTelemetry
-   collector as spans without content. The reference egress
-   proxy exists, and the runtime's own model and GitHub adapters can go
-   through it, holding placeholders. A sandbox on Linux reaches its
-   agent's hosts through it, and only those, with the methods its
-   capability allows: the sandbox sees placeholders, the proxy puts the
-   secret the lock's `egress` binds in on the way out, and what the proxy
-   denies a tool call is a violation. A host that does not reach the proxy
-   (Windows, or Linux without MXC's proxy enforcement) refuses by name a
-   requirement with hosts, method limits or credentials.
+    world, specified in [`spec/boundary.md`](spec/boundary.md). Everything
+    the release includes is implemented in the TypeScript implementation. It
+    stays in progress because the Rust compiler, whose port is planned on
+    its own, does not yet give every fixture the same hashes and
+    diagnostics; 0.5 is not closed without that.
+
+    - **Language and lock.** In language 0.5 `net.https` may allow only some
+      methods (`methods: [GET]`, E1801), narrowing holds by them, and a
+      program of 0.1 to 0.4 cannot import a limit without it (E1804). Lock
+      format 0.5 adds `host`, `isolation` and `egress` (E1802, E1803), and
+      `view --against` shows their changes. A 0.5 program gets sandbox
+      requirement 0.2.
+    - **The egress proxy.** The reference proxy (`mandate egress serve`) is
+      the only way out. It puts a credential into a request on its way, so a
+      sandbox sees a placeholder. The runtime's own model and GitHub
+      adapters go through it holding placeholders (the gateways). A sandbox
+      on Linux reaches its agent's hosts through it, only those, with only
+      the methods its capability allows, and what the proxy denies a tool
+      call is a violation. A host that does not reach the proxy (Windows, or
+      Linux without MXC's proxy enforcement) refuses by name a requirement
+      with hosts, method limits or credentials.
+    - **Isolation and hosts.** A sandbox host reports the isolation level it
+      gives and whether it may share its machine, and the adapter refuses by
+      name a requirement whose level or no-sharing the host does not give
+      (every host here gives `process`, shared). A run whose lock names
+      least tool versions starts and resumes only on a host that meets them
+      (`unfit_host`). The attestation a check needs is read from the program
+      and the configuration, not from the record, and the processes the
+      runtime starts get a filtered environment.
+    - **The journal.** It is hash-chained, with an anchor signed at every
+      state change. `mandate journal export` and `verify` check it without
+      the runtime, and `crates/verify-journal`, written in Rust from
+      [`spec/journal.md`](spec/journal.md), does too.
+    - **Violations and halt.** An agent's tool call refused for its
+      authority, or a request the proxy denied, is a `violation` event, once
+      per step, and a run stops at its limit (3 for a 0.5 package).
+      `mandate halt` ends every open run of a tenant, or of all, in one
+      transaction, cuts the proxy's sessions when the configuration names
+      one, and refuses starts and resumes until `mandate halt --lift`.
+    - **Views and telemetry.** `mandate show --role R` shows a run as one of
+      its program's roles may see it, and `--audit` everything, with its
+      events and the chain's status. `mandate otel export` posts a run's
+      journal to an OpenTelemetry collector as spans without content.
+
+    Left out by decision: the Rust port of the compiler, new isolation
+    backends, sandbox egress on Windows, TLS interception, `git`, database
+    and container-engine traffic through the proxy, and masking by data class
+    in views.
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
@@ -206,8 +222,9 @@ enough for an agent's context.
 ## Layout
 
 ```text
-spec/        core spec, IR schema and rules, static checks, diagnostic codes, runtime, sandboxes,
-             executors, views, the compiler's MCP server
+spec/        core spec, IR schema and rules, static checks, diagnostic codes, the lock, runtime,
+             sandboxes, executors, views, the compiler's MCP server, the system model (0.3),
+             the envelope (0.4), and the boundary, egress and journal (0.5)
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
 crates/      the Rust implementation, started: mandate-ir and verify-journal (below)
@@ -261,8 +278,8 @@ MANDATE_UPDATE_VECTORS=1 npm test   # write vectors/ again after a change
 ```
 
 The toolchain is pinned in `rust-toolchain.toml`; CI runs `cargo fmt
---check`, `cargo clippy -- -D warnings`, `cargo test` and the fresh export
-check (`runtime/scripts/journal-fresh.mjs`).
+--check`, `cargo clippy --all-targets --locked -- -D warnings`, `cargo test
+--locked` and the fresh export check (`runtime/scripts/journal-fresh.mjs`).
 
 ## Using the compiler
 
@@ -365,7 +382,8 @@ per rule to FixBug and checks that the rule fires.
 the 0.1 fixture that writes them included, narrowing by them, E1801 to
 E1803, lock format 0.5 and its changes in `view --against`, sandbox
 requirement 0.2 and its byte-identity below 0.5, and a 0.5 parent's
-sub-programs.
+sub-programs. The cases `E1801` to `E1804` in `conformance/` say the
+compile-time rules for any implementation.
 
 ## Runtime
 
@@ -631,8 +649,10 @@ These cases from §25 are covered:
 | G12 | A remote agent without idempotent delivery: refused if required, else sent at most once | `gate4` |
 | G13 | One authorization is consumed by one commit; a second is refused | `gate4`, `effects` |
 | G14 | A path an agent names that leaves the working copy, is absolute or is not portable is refused: as a model's answer, a skill's result or a run's input by its type, and where the runtime uses it, without following a link | `gate4`, `loop` (the type); `paths`, `verifier`, `boundary` (the use site) |
-| G15 | An agent that may GET a host gets its GET through the egress proxy; its POST there, and any request to another host, are denied and are one violation of the tool call; a host that does not reach the proxy refuses method limits by name | `sandbox-egress` (and on the runner's Bubblewrap, CI job `sandbox`), `fail-closed` |
-| G16 | A sandbox's environment and requests hold the placeholder, never the secret, and the upstream gets the secret; a placeholder outside its header is denied; a credential the proxy does not hold for the host is refused by name | `sandbox-egress` (and on the runner's Bubblewrap, CI job `sandbox`) |
+| G15 | An agent that may GET a host gets its GET through the egress proxy; its POST there, and any request to another host, are denied and are one violation of the tool call; a host that does not reach the proxy refuses method limits by name | `sandbox-egress`, `boundary-acceptance` (and on the runner's Bubblewrap, CI job `sandbox`), `fail-closed` |
+| G16 | A sandbox's environment and requests hold the placeholder, never the secret, and the upstream gets the secret; a placeholder outside its header is denied; a credential the proxy does not hold for the host is refused by name | `sandbox-egress`, `boundary-acceptance` (and on the runner's Bubblewrap, CI job `sandbox`) |
+| G17 | A host that resolves to a private, loopback, link-local or metadata address is refused when any of its addresses is one, and the connection goes to the address that was checked; a redirect is returned, not followed | `egress-forward`, `egress-gateway` |
+| G18 | With a gateway on, a runtime with that gateway's credential in its environment is refused, naming the variable and never its value; its adapters hold a placeholder and the upstream gets the secret; the verifier's process gets a session of its own and no key | `egress-gateways` |
 | G19 | A host below the lock's least tool versions, with a tool it cannot read, or with a setuid `bwrap`, starts and resumes nothing of the package: refused before the lease, and the run is left as it was | `fitness`, `mxc` (the runner's Bubblewrap, CI job `sandbox`) |
 | G20 | A requirement whose isolation level or no-sharing the host does not give is refused by name, and the agent is not started | `isolation`, `mxc`, `mxc-windows`, `container` |
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
@@ -657,8 +677,8 @@ These cases from §25 are covered:
 | H03 | A run of an envelope workflow does not start without an approval of its package hash by a member of the envelope's owner role | `envelope`, `cli-envelope` |
 | H04 | Evidence for `human.approve` whose decision record was changed after signing shows as invalid, and a `Verified` value resting on it is refused | `decisions` |
 | H05 | A changed member, key or role binding in the lock is a new package and shows as a governance change | `lock-diff` (compiler) |
-| J01 | A closed run's journal verifies from its export and the public key alone, also over fractions, exponents and keys that sort differently by UTF-16 code units and by code points | `journal-verify`, `cli-journal`, `journal-hash` (and the case `J01`) |
-| J02 | An event edited in the database breaks the chain at that event | `journal-verify`, `cli-journal` (and the case `J02`) |
+| J01 | A closed run's journal verifies from its export and the public key alone, also over fractions, exponents and keys that sort differently by UTF-16 code units and by code points | `journal-verify`, `cli-journal`, `journal-hash`, `boundary-acceptance` (and the case `J01`) |
+| J02 | An event edited in the database breaks the chain at that event | `journal-verify`, `cli-journal`, `boundary-acceptance` (and the case `J02`) |
 | J03 | An event deleted from the database leaves a gap and breaks the chain after it | `journal-verify` (and the case `J03`) |
 | J04 | A tail cut from the database while its anchors stay names events past the last one | `journal-verify` (and the case `J04`) |
 | J05 | An open run with events after its last anchor verifies, and the report says no signature covers them | `journal-verify` (and the case `J05`) |
@@ -674,7 +694,10 @@ These cases from §25 are covered:
 | J15 | An export that is not JSON by the rules is `unreadable`, never `broken` | `journal-verify`, `cli-journal` (and the case `J15`) |
 | J16 | A run nested deeper than a verifier reads is journaled, and its export is `unreadable` | `journal-verify`, `cli-journal` (and the case `J16`) |
 | G21 | A tool call refused for its authority is one `violation`, malformed input none; the limit stops a 0.5 run at 3, an earlier one only when configured; a resumed run does not count a violation twice and stops again at its next new one | `violations`, `violation-seam`, `tools` |
-| G22 | A halt ends every open run of its scope in one transaction, in every state; a result in flight is not written; a start or a resume in the scope is refused before a lease; the adapters revoke after; a lift is recorded with who and brings no run back | `halt`, `cli-halt` |
+| G22 | A halt ends every open run of its scope in one transaction, in every state; a result in flight is not written; a start or a resume in the scope is refused before a lease; the adapters revoke after; a lift is recorded with who and brings no run back | `halt`, `cli-halt`, `halt-revoke` |
+| G23 | A role's view holds what was asked of that role, how the run ended and its progress, and no other role's decision, no step's request or result and no trace; the audit view shows everything and alone verifies the chain; `mandate show` without options prints what it printed before | `views-role`, `views-default`, `cli-views`, `classes` |
+| G24 | The OpenTelemetry export carries no content: its spans are built from an allow-list of identifiers, types, classes, counts, hashes and times; no span is sent twice, and a failed export leaves the run and its cursor as they were | `otel` |
+| G25 | Evidence whose required attestation is missing, or was taken out or changed and signed again by the runtime's key, is invalid, whatever its record says; which checks need one is read from the program and the configuration, not from the record | `verifier-process`, `audience` |
 
 The journal is chained ([`spec/journal.md`](spec/journal.md)): each event
 carries a hash over its contents and the one before it, and the evidence key
@@ -696,6 +719,48 @@ an action in flight keeps its run `attention_required` (INV-12), starts
 and resumes are refused, and the adapters revoke only after the runs have
 ended. `mandate halt --tenant T | --all`, `--lift … --by WHO` and `--list`
 are the operator's commands ([`spec/boundary.md`](spec/boundary.md#halt)).
+`halt-revoke.test.ts` holds the halt to the egress proxy named in
+`egress.admin`, with or without gateways, against an in-process proxy: a
+halt of a tenant cuts that tenant's sessions and another's keep working, a
+halt of every tenant cuts all, the command holds no secret, opens no session
+and is not refused for a credential in its environment, `--lift` and
+`--list` never connect, and a proxy that is dead or does not answer leaves the
+halt in force and the exit 1.
+
+`violations.test.ts` and `violation-seam.test.ts` hold violations
+([`spec/boundary.md`](spec/boundary.md#violations)): a tool call refused for
+an authority reason, or a step of a plan outside the grant, is one
+`violation` event with its kind, delegation, agent, step, detail and count,
+for a package of every language; malformed input and the interpreter's
+`PolicyDenied` are none; a 0.5 package's run stops at its third as
+`attention_required` with `violation_limit`, an earlier package's run only
+when `violations.limit` is configured; and a resumed run neither writes nor
+counts a violation twice, and stops again at its next new one. The seam an
+egress denial is written through is held the same way.
+
+`views-role.test.ts`, `views-default.test.ts`, `cli-views.test.ts` and
+`classes.test.ts` hold the views by role and the audit view
+([`spec/boundary.md`](spec/boundary.md#views-by-role-and-the-audit-view)). A
+role sees what was asked of it, how the run ended and what stopped it, and
+its progress, and nothing else: words planted where only a step's result, a
+trace or another role's decision can carry them are not in its JSON,
+Markdown or HTML. The audit view shows everything, with every event and the
+chain's status (verified, broken or unchained), and is the one view that
+verifies the chain. `mandate show` without options prints what it printed
+before, byte for byte, held by digests taken before the new views were
+written. The class table has a class for every event type the runtime
+writes, read from its sources, and what it does not name is S4.
+
+`otel.test.ts` holds the OpenTelemetry export
+([`spec/boundary.md`](spec/boundary.md#the-opentelemetry-projection))
+against a collector in the test's own process: what leaves holds no content
+and is built from an allow-list; a run is a trace of event, command and run
+spans with the ids the specification gives, each sent once; an export
+resumes from a cursor kept per endpoint and run, in windows of at most 500
+spans; a failure, a redirect or a collector that does not answer leaves the
+cursor and the run as they were; `--follow` picks up new events and stops on
+SIGINT; and `mandate otel export` exits 1 for a failed post and 2 for a usage
+error.
 
 `map.test.ts` also runs the map of the migration example
 (`fixtures/envelope/migrate-all.mdt`) over 24 repositories: 24 migrators,
@@ -743,10 +808,36 @@ violation of its step, counted once on resume and stopping the run at
 its limit; a cancel's and a halt's revoke cut the session; a start is
 refused `no_egress_proxy` or `egress_unavailable`; and Windows refuses it
 all by name. On Linux with `MANDATE_MXC=1` (the `sandbox` job) it runs
-real Bubblewrap sandboxes with `curl`: the placeholder in the sandbox's
-environment and no secret, an allowed request with the secret put in,
-denials as violations, and an HTTPS tunnel to a TLS server whose
-certificate is made when it runs.
+real Bubblewrap sandboxes with `curl`: the SDK reports that it can hold a
+sandbox to its proxy; the placeholder is in the sandbox's environment and
+no secret; an allowed request reaches the upstream with the secret put in;
+another host, a method not allowed and a tunnel to a host with a credential
+are denied; a request around the proxy reaches nothing, on the sandbox's own
+loopback and at the address it sees its proxy at; the denials of a run are
+violations in its journal; and an HTTPS tunnel to a host without a
+credential, to a TLS server whose certificate is made when it runs, works
+with the sandbox's own TLS.
+
+`boundary-acceptance.test.ts` is 0.5's acceptance from end to end, for the
+agent of `fixtures/boundary/reach.mdt` and `reach.lock.json` (the proxy
+configuration it needs is `reach.egress.json`): its environment holds the
+placeholder and not the secret, its allowed GET reaches the upstream with
+the secret, a request to another host is a violation the audit view shows
+(a role's view without its detail), and `mandate journal export` and
+`mandate journal key` give an export that verifies and, with one event
+changed in the database, is `chain_broken` at that event; it runs against a
+fake sandbox everywhere and in a real Bubblewrap sandbox in the `sandbox`
+job, which hands those exports to `verify-journal`. By hand, with the
+secret in the proxy's environment and a `mandate.runtime.json` that names
+the model, the `mxc` sandbox and `egress.admin` (`/run/mandate/egress.sock`):
+
+```sh
+MANDATE_EGRESS_GITHUB=<token> mandate egress serve --config fixtures/boundary/reach.egress.json
+mandate run fixtures/boundary/reach.mdt --lock fixtures/boundary/reach.lock.json --workflow Reach --input '{"task": "reach what you are granted"}' --run-id reach1
+mandate show reach1 --audit
+mandate journal export reach1 --out run.json ; mandate journal key --out cp.pub.pem
+cargo run -p verify-journal -- run.json --key cp.pub.pem
+```
 
 `isolation.test.ts` holds a requirement 0.2's `isolation` to the level and
 sharing a host reports: a level above the host's, or no sharing on a host

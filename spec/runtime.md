@@ -1,8 +1,14 @@
-# Mandate runtime, 0.1 to 0.3
+# Mandate runtime, 0.1 to 0.5
 
 This is the reference runtime in `runtime/`. It runs a checked package
 against adapters and keeps every decision that must survive a crash in
 PostgreSQL. Section numbers refer to the design document (Doc 4).
+
+The page describes the runtime of releases 0.1 to 0.5. The parts that came
+with 0.4 and 0.5 are specified in [`envelope.md`](envelope.md) and
+[`boundary.md`](boundary.md); here they are named where they touch the
+runtime's storage, load-time checks, control API, control CLI and
+configuration, and linked.
 
 ## Scope
 
@@ -39,11 +45,43 @@ Two database drivers share one interface (`runtime/src/db.ts`):
 | `actions` | External actions: digest, frozen parameters, retry class, state, receipt |
 | `authorizations` | Bound to one action digest, with an expiry; `consumed_by` is unique |
 | `evidence` | Contract criteria results that back a `Verified` value |
+| `decisions` | Each signed decision record a person's message took (0.4): its id, package, run and command, kind, member, role, key id, the record and its signature, and when it was accepted ([`envelope.md`](envelope.md#signed-decisions)) |
 | `inbox` | Inbound message keys with their payload digests |
 | `outbox` | Committed actions waiting for, or past, delivery |
 | `artifacts` | Which run (and tenant) recorded which artifact digest; the bytes live in the artifact store |
+| `rate_buckets` | The shared token buckets of the rate limits: each bucket's key, its tokens and when it was last refilled ([Rate limits](#rate-limits-and-throttled-86-v14)) |
+| `changesets` | Each change set of a run: its digest, members, state and summary ([Change sets](#change-sets-design-doc-9-3-b4)) |
 | `otel_cursors` | For each OpenTelemetry endpoint and run, the last event sequence number exported to it and when ([`boundary.md`](boundary.md#the-opentelemetry-projection)); the export's one write |
 | `halts` | Each halt of a tenant, or of every tenant (`tenant` null): its id, reason, who halted and when, who lifted it and when ([`boundary.md`](boundary.md#halt)). `runs` is indexed by `(tenant, state)` for a halt's sweep |
+
+The `events` table holds these types, every one the runtime writes. The
+class of each, for the views, is in
+[`boundary.md`](boundary.md#classes); a test reads the runtime's sources
+and fails on a type without a class.
+
+- **The run's state and lease:** `run_accepted`, `run_running`,
+  `run_waiting`, `run_cancelling`, `run_attention_required`,
+  `run_succeeded`, `run_failed`, `run_cancelled` (each anchors a chained
+  run, [`journal.md`](journal.md#anchors)), `cancel_requested`,
+  `lease_acquired`, `lease_revoked`.
+- **Commands and the budget:** `command_dispatched`, `command_completed`,
+  `command_throttled`, `charge_pending`, `charge_settled`,
+  `budget_exceeded`, `limits_raised`, `map_started`, `map_ended`.
+- **Waits and decisions:** `wait_opened`, `wait_expired`,
+  `decision_received`, `input_received`, `decision_refused`,
+  `criterion_approved`, `criterion_denied`, `governance_approved`,
+  `governance_denied`, `reconcile_requested`, `envelope_approved`,
+  `amendment_requested`, `package_amended`.
+- **External actions:** `action_prepared`, `action_authorized`,
+  `action_committed`, `action_confirmed`, `action_rejected`,
+  `action_unknown_outcome`, `action_cancelled`, `action_would_apply`.
+- **Change sets:** `changeset_prepared`, `changeset_would_apply`,
+  `changeset_simulated`, `changeset_committed`, `changeset_partial`,
+  `changeset_failed`.
+- **A lead's sub-programs:** `program_submitted`, `program_refused`,
+  `program_admitted`.
+- **Others:** `violation` (0.5, [`boundary.md`](boundary.md#violations)),
+  `guarantee_lowered`, `sandbox_stopped`.
 
 Every write that must be atomic runs in one transaction that first locks the
 run's row (`select … for update`). This covers reserve plus dispatch,
@@ -475,7 +513,9 @@ what a program needs to run on Linux and on Windows (the search path, the
 system directories, the temporary and home directories, the locale and
 the time zone) and the sandbox SDK's settings. When the configuration has
 `model`, it also gets the model's credentials and the settings that reach
-its API, for model-backed checks. It never gets `MANDATE_GITHUB_TOKEN` or
+its API, for model-backed checks; with the model gateway on, it gets a
+gateway session's address and placeholder in their place, never the key
+([`boundary.md`](boundary.md#the-control-planes-gateways)). It never gets `MANDATE_GITHUB_TOKEN` or
 a read broker's database URL. The process that creates its key gets only
 what a program needs.
 
@@ -498,8 +538,11 @@ The loop runs in the control plane (BACKLOG K7):
 - Each tool call runs as a process in the agent's sandbox
   (`SandboxHost.execute`).
 - The sandbox is built from the delegation's grant
-  ([`sandbox.md`](sandbox.md)). Its network is closed: model calls need
-  none from inside (`modelsInControlPlane`).
+  ([`sandbox.md`](sandbox.md)). Its network is closed, but for the hosts of
+  the agent's `net.https` capabilities, which it reaches only through the
+  egress proxy, on a host that holds a sandbox to one
+  ([`boundary.md`](boundary.md#sandbox-egress)); model calls need none from
+  inside (`modelsInControlPlane`).
 
 **Tools.** They come from the grant (K8, `runtime/src/tools.ts`):
 
@@ -793,6 +836,15 @@ written, and refuses starts and leases in its scope until it is lifted
   written. Every resume checks the host the same way before it takes the
   lease, and an unfit host leaves the run as it was
   ([`boundary.md`](boundary.md#host-fitness));
+- when the lock binds a credential, or the control plane's gateways are on,
+  or, with a sandbox configured, a sandbox of the package reaches a host,
+  requires the egress proxy: a runtime that names none refuses the start
+  (`no_egress_proxy`), and a proxy that does not answer or does not hold
+  the credential does too (`egress_unavailable`;
+  [`boundary.md`](boundary.md#the-egress-proxy));
+- refuses a start in a halted scope (`halted`), a run id that is empty, and a
+  run id or a tenant that is not well-formed Unicode or holds U+0000
+  (`invalid_run_id`, `invalid_tenant`);
 - when the lock lists members or roles, requires it to be well formed
   (`malformed_lock`), and for a 0.4 package requires every role it names
   to have a member (`unbound_role`, E1502);
@@ -816,6 +868,12 @@ written, and refuses starts and leases in its scope until it is lifted
 | `SubmitInput` | `submitInput` |
 | `DecideAction` | `decideAction`: an action's approval, or a contract's `human.approve` |
 | (governance) | `approveEnvelope`: an owner's approval of a package's envelope, before any run of it |
+| `CancelRun` | `cancelRun` |
+| `ReconcileAction` | `reconcileAction` |
+| `ReplayRun` | `replayRun` (adapters that refuse every call) |
+| (journal) | `exportJournal` and `verifyJournal`: the run's chained journal as an outsider checks it, and that check under the runtime's trusted keys ([`journal.md`](journal.md)) |
+| (governance) | `raiseLimits`: a person raises the run's limits after `budget_exceeded` |
+| (halt) | `halt`, `liftHalt` and `halts`: an operator's hard stop of a tenant or of every tenant, its lift, and the list of halts; not a message of a person, so it is not signed ([`boundary.md`](boundary.md#halt)) |
 
 Every message by which a person changes a run is a decision record the
 person signs ([`envelope.md`](envelope.md#signed-decisions)):
@@ -832,11 +890,6 @@ the revision. An answer given on an older revision is refused with
 `stale_revision` and records nothing: the wait stays open and the person
 has to look again. The check comes after deduplication, so a resent copy of
 an accepted message is still a no-op.
-| `CancelRun` | `cancelRun` |
-| `ReconcileAction` | `reconcileAction` |
-| `ReplayRun` | `replayRun` (adapters that refuse every call) |
-| (journal) | `exportJournal` and `verifyJournal`: the run's chained journal as an outsider checks it, and that check under the runtime's trusted keys ([`journal.md`](journal.md)) |
-| (governance) | `raiseLimits`: a person raises the run's limits after `budget_exceeded` |
 
 `tick` expires decision waits whose deadline passed. `settleCharge` records
 a late charge, and `purgePayloads` applies retention, after which a replay
@@ -884,6 +937,8 @@ mandate halt --list [--json]
 mandate replay <run>
 mandate artifact <run> <blob:sha256:…>
 mandate show <run> [--format md|html|json] [--role R | --audit]
+mandate otel export --endpoint URL [--run R | --tenant T] [--follow] [--json]
+mandate egress serve [--config FILE]
 mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER/REPO]… [--name MODULE]
 mandate drift --module MODEL --component NAME=DIR… [--json]
 mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [--name PREFIX] [--harness-tokens N]
@@ -904,10 +959,28 @@ that is not well-formed Unicode, or holds U+0000, is refused at the start
 
 `halt` is an operator's hard stop of a tenant or of every tenant; it reads
 no package and no secret, prints each run it ended, and exits 1 when the
-halt is in force but revoking what the runtime holds open failed. `--lift`
-lifts the halts of exactly the scope it names, recorded with `--by`, and
-brings no run back; `--list` lists every halt
-([`boundary.md`](boundary.md#halt)).
+halt is in force but revoking what the runtime holds open failed. Its scope
+is exactly one of `--tenant T` and `--all`; `--reason` and `--by` are
+recorded with the halt. `--lift` lifts the halts of exactly the scope it
+names, recorded with `--by` (needed), takes no `--reason` and brings no run
+back; `--list` takes no scope and lists every halt, in force or lifted.
+`--json` prints the halt's report, the lifted halts or the list
+([`boundary.md`](boundary.md#halt)). With `egress.admin` in the
+configuration, `halt` also revokes the egress proxy's sessions of its scope.
+
+`otel export` posts the journal of one run (`--run`), of a tenant's runs
+(`--tenant`) or of every run, as OpenTelemetry spans without content, to the
+collector at `--endpoint`, from the cursor each run has for that endpoint.
+It takes no lease and writes no event; its one write is `otel_cursors`.
+`--run` and `--tenant` together, and an endpoint the command cannot use, are
+usage errors (exit 2); a failed post exits 1. `--follow` goes on exporting
+until SIGINT or SIGTERM, and `--json` prints the report
+([`boundary.md`](boundary.md#the-opentelemetry-projection)).
+
+`egress serve` runs the reference egress proxy, from `--config` (the proxy's
+own file, `./mandate.egress.json` by default; it is not the runtime's
+configuration) and the secrets in its own environment. It opens no database,
+and serves until SIGINT or SIGTERM ([`egress.md`](egress.md#running-the-proxy)).
 
 `--limit` takes `spend`, `tokens`, `steps` and, for a workflow with an
 envelope, `agents`, separated by commas. `approve-envelope` signs a
@@ -933,7 +1006,8 @@ lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
   "executor": { "managed-agents": { "pollMs": 1000, "maxTurnMs": 3600000 } },
   "sandbox": { "host": "mxc", "baseline": ["/usr/local"] },
   "github": { "repo": "owner/name", "base": "main", "workdir": "/work/repo" },
-  "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"], "process": { "key": ".mandate/verifier.key" } }
+  "verifier": { "workdir": "/work/repo", "base": "seed", "suites": { "unit": "test/**/*.test.ts" }, "command": ["node", "--test"], "process": { "key": ".mandate/verifier.key" } },
+  "egress": { "admin": "/run/mandate/egress.sock", "gateways": { "model": "anthropic", "github": "github" } }
 }
 ```
 
@@ -968,9 +1042,12 @@ lead's reason ([`envelope.md`](envelope.md#amendments-n04)).
 - **Verifier process.** `verifier.process` runs the checks in a process of
   their own with their own key (`key`, default `.mandate/verifier.key`;
   `trusted`, default the key's `.pub` file). See "A verifier of its own".
-- **Secrets.** They come only from the environment: `CLAUDE_API_KEY` (and
-  `CLAUDE_WORKSPACE_ID` for a key that is not scoped to a workspace), and
-  `MANDATE_GITHUB_TOKEN`. The verifier process and `docker` get only the
+- **Secrets.** They come only from the environment: `CLAUDE_API_KEY` or
+  `ANTHROPIC_API_KEY` (and `CLAUDE_WORKSPACE_ID` for a key that is not scoped
+  to a workspace), and `MANDATE_GITHUB_TOKEN`. With a gateway on, that
+  gateway's secrets belong to the egress proxy, and a command that builds a
+  runtime refuses while it finds one in the environment
+  (`credential_in_environment`). The verifier process and `docker` get only the
   variables they need (see "A verifier of its own" and "Boundary
   verifier").
 - **Egress.** `egress { admin, gateways: { model, github } }` names the
@@ -1062,6 +1139,18 @@ The same mechanisms are tested under Temporal against a local dev server:
 ## Not in this runtime yet
 
 - **Automatic compensation.** 0.1 offers it to a person and never runs it.
+- **Sandbox egress on Windows.** The AppContainer host reaches no host
+  through the egress proxy, so it refuses outbound hosts, method limits and
+  credentials by name ([`boundary.md`](boundary.md#sandbox-egress)).
+- **A host that isolates more than `process`.** Every sandbox host reports
+  `process` and shared; a requirement above that is refused by name
+  ([`boundary.md`](boundary.md#levels)).
+- **TLS interception**, and `git`, PostgreSQL, container-engine and Temporal
+  traffic through the egress proxy ([`boundary.md`](boundary.md#what-stays-outside-it)).
+- **Masking by data class in the views of a run**; a role's view and the
+  audit view show or hide whole classes ([`boundary.md`](boundary.md#views-by-role-and-the-audit-view)).
+- **Decision and evidence records in a journal export**
+  ([`journal.md`](journal.md#the-export)).
 
 ## Workspace and run manifest (design doc 9 §12, B3)
 

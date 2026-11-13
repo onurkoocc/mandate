@@ -1,0 +1,40 @@
+// An agent that reaches one host and is held to it (spec/boundary.md). Its
+// capability allows GET of api.github.com and nothing else; reach.lock.json
+// binds the credential its requests carry, by name, and the egress proxy the
+// operator runs puts the secret in on the way out. The agent's processes
+// see a placeholder in MANDATE_EGRESS_PLACEHOLDER_GITHUB, never the secret.
+// It may run `env` and two fixed scripts: a GET of the host it is granted,
+// and one of a host it is not, which the proxy denies and the run counts as
+// a violation. A host that has a credential is reached as http://, which
+// the proxy sends on over TLS; an https:// request to it is a tunnel, and is
+// denied.
+
+mandate @ 0.5
+
+module example.reach @ 0.1
+
+use std.{exec, model, net}
+
+role operator "Reads the run's view of what its agent reached"
+
+capability GitHubRead = net.https(hosts: ["api.github.com"], methods: [GET])
+capability Probe      = exec(commands: ["sh"], args_prefix: [
+  ["-c", "curl -sS -i --max-time 20 -H \"authorization: Bearer $MANDATE_EGRESS_PLACEHOLDER_GITHUB\" http://api.github.com/repos/acme/app/issues/1"],
+  ["-c", "curl -sS -i --max-time 20 http://example.org/"]
+])
+capability Environ    = exec(commands: ["env"])
+capability ModelStd   = model.infer(tier: standard, max_class: internal)
+
+agent Reacher {
+  role   "Runs env, then each of its two fixed curl scripts through sh -c, and says what each printed."
+  caps   GitHubRead, Probe, Environ, ModelStd
+  budget { tokens: 900k, spend: 6 USD, steps: 6 }
+  skill reach(task: Text) -> Inferred<Text> ! {Net, Exec, Model}
+}
+
+workflow Reach(task: Text) -> Inferred<Text>
+  caps   GitHubRead, Probe, Environ, ModelStd
+  budget { spend: 8 USD }
+{
+  delegate Reacher.reach(task)
+}

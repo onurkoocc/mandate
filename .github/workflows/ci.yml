@@ -73,11 +73,40 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Make /work writable for the Gate 3 rehearsal
         run: sudo mkdir -p /work && sudo chown "$(id -u):$(id -g)" /work
-      - name: Sandbox enforcement on Bubblewrap (G05, G07), sandbox egress through the proxy (G15, G16), the Gate 3 rehearsal, and two components in two sandboxes (B3)
+      - name: Sandbox enforcement on Bubblewrap (G05, G07), sandbox egress through the proxy (G15, G16), the acceptance of 0.5 in a real sandbox, the Gate 3 rehearsal, and two components in two sandboxes (B3)
         working-directory: runtime
         env:
           MANDATE_MXC: "1"
-        run: npx vitest run test/mxc.test.ts test/sandbox-egress.test.ts test/gate3.test.ts test/workspace.test.ts
+          # The acceptance test leaves its exports here, for the Rust verifier below.
+          MANDATE_ACCEPTANCE_OUT: ${{ runner.temp }}/acceptance
+        run: npx vitest run test/mxc.test.ts test/sandbox-egress.test.ts test/boundary-acceptance.test.ts test/gate3.test.ts test/workspace.test.ts
+      # The independent verifier on what the run in the real sandbox left: its journal's export must verify, and the
+      # export made after one event was changed in the database must be chain_broken at that event.
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+      - name: Build verify-journal
+        run: cargo build --locked -p verify-journal
+      - name: verify-journal verifies the export of the run in the real sandbox, and finds the event changed in the next
+        env:
+          ACCEPTANCE: ${{ runner.temp }}/acceptance
+        run: |
+          for f in run.json tampered.json cp.pub.pem tampered-seq; do
+            if [ ! -s "$ACCEPTANCE/$f" ]; then echo "::error::the acceptance test left no $f"; exit 1; fi
+          done
+          verify() { cargo run --locked --quiet -p verify-journal -- "$@"; }
+
+          code=0
+          verify "$ACCEPTANCE/run.json" --key "$ACCEPTANCE/cp.pub.pem" > "$ACCEPTANCE/rust-report.json" || code=$?
+          cat "$ACCEPTANCE/rust-report.json"
+          if [ "$code" -ne 0 ]; then echo "::error::the export of the run: exit $code, not 0"; exit 1; fi
+          grep -q '^  "status": "verified",$' "$ACCEPTANCE/rust-report.json"
+
+          code=0
+          verify "$ACCEPTANCE/tampered.json" --key "$ACCEPTANCE/cp.pub.pem" > "$ACCEPTANCE/rust-tampered.json" || code=$?
+          cat "$ACCEPTANCE/rust-tampered.json"
+          if [ "$code" -ne 1 ]; then echo "::error::the export with one event changed: exit $code, not 1"; exit 1; fi
+          seq="$(cat "$ACCEPTANCE/tampered-seq")"
+          grep -A1 '"code": "chain_broken",' "$ACCEPTANCE/rust-tampered.json" | grep -q "\"seq\": $seq\$"
 
   sandbox-windows:
     runs-on: windows-latest

@@ -196,7 +196,7 @@ The profile is written into the binding and checked against this table.
 | `package.identity` | Full | Binding digests and ValidateBinding before every run |
 | `static.checks` | Full | The compiler is unchanged; E0903–E0905 on top |
 | `caps.paths_commands` | Full | Every tool runs in the runtime's MXC sandbox, checked against the grant |
-| `caps.network` | Full | The sandbox has no network; the environment has none either |
+| `caps.network` | Full | The service's environment has no network; a tool's sandbox has the network its grant lists and no other ([`sandbox.md`](sandbox.md), [`boundary.md`](boundary.md#sandbox-egress)) |
 | `parallel.isolation` | Full | One session per delegation, one sandbox per delegation (C5, INV-14) |
 | `model.pinning` | Full | Model and effort on the pinned agent version, checked against the lock |
 | `model.max_class` | Partial | At most `internal` (E0905); `confidential` and above run on the local runtime |

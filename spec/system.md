@@ -314,7 +314,9 @@ for `core_owner`, and declined, it lands nothing
 ## Reads and run modes (B6)
 
 Production is read through the read broker in the control plane, never
-from an agent's sandbox: agents have no network and no credential (K7).
+from an agent's sandbox: an agent has no credential (K7), and no network but
+the hosts its grant lists, through the egress proxy where there is one
+([`boundary.md`](boundary.md#sandbox-egress)).
 Writes go through the effect broker.
 
 ```mandate
