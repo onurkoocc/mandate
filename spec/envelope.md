@@ -260,7 +260,7 @@ mandate approve      <run> --revision N --key FILE [--member NAME]
 mandate decline      <run> --revision N --key FILE [--member NAME]
 mandate answer       <run> --revision N --key FILE [--member NAME] <text>
 mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
-mandate reconcile    <run> <operation> --key FILE [--member NAME]
+mandate reconcile    <run> <operation> [--key FILE] [--member NAME]
 mandate cancel       <run> [--key FILE]
 mandate decision     <run> <digest>                            # a decision the run took, as its signed record
 mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
@@ -272,6 +272,9 @@ mandate amend        <run> --revision N --key FILE [--member NAME] (approve | de
 ([below](#amendments-n04)). `approve` signs a decision of kind `amend`
 and `decline` one of kind `decline`, for the package hash `mandate status`
 shows. It is always signed: only a 0.4 run has an amendment.
+
+`reconcile` is signed when `--key` is given; a signed package requires the
+key, and for any other run it may be left out.
 
 `--member` is needed only when a key id is listed under more than one
 member, which the lock forbids, so in practice never. The CLI finds the

@@ -923,7 +923,7 @@ mandate approve <run> --revision N --key FILE [--member NAME]
 mandate decline <run> --revision N --key FILE [--member NAME]
 mandate answer <run> --revision N --key FILE [--member NAME] <text>
 mandate cancel <run> [--key FILE]
-mandate reconcile <run> <operation> --key FILE [--member NAME]
+mandate reconcile <run> <operation> [--key FILE] [--member NAME]
 mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
 mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
 mandate decision <run> <digest>
@@ -943,6 +943,10 @@ mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER
 mandate drift --module MODEL --component NAME=DIR… [--json]
 mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [--name PREFIX] [--harness-tokens N]
 ```
+
+`reconcile` is signed when `--key` is given. A run of a signed package (a
+0.4 program, or a runtime configured for signed decisions) requires the key;
+for any other run it may be left out.
 
 `deploy` writes an executor binding into the lock; it needs
 `CLAUDE_API_KEY` and no configuration ([`executors.md`](executors.md)).
