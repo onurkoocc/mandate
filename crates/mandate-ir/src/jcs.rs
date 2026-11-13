@@ -40,7 +40,7 @@ fn write_value(out: &mut String, value: &Value) {
         Value::Number(n) => {
             let _ = write!(out, "{n}");
         }
-        Value::String(s) => write_string(out, s),
+        Value::String(s) => write_json_string(out, s),
         Value::Array(items) => {
             out.push('[');
             for (i, item) in items.iter().enumerate() {
@@ -59,7 +59,7 @@ fn write_value(out: &mut String, value: &Value) {
                 if i > 0 {
                     out.push(',');
                 }
-                write_string(out, key);
+                write_json_string(out, key);
                 out.push(':');
                 write_value(out, item);
             }
@@ -72,7 +72,11 @@ fn write_value(out: &mut String, value: &Value) {
 /// escapes `\b \f \n \r \t`, any other character below U+0020 as `\u00xx` in
 /// lower-case hex, and every other character as itself (U+007F, U+2028 and
 /// U+2029 included).
-fn write_string(out: &mut String, s: &str) {
+///
+/// It is the string form of RFC 8785 for any string, so other canonical forms
+/// built on RFC 8785, such as the runtime's over values with fractions
+/// (`crates/verify-journal`), write their strings and member names with it.
+pub fn write_json_string(out: &mut String, s: &str) {
     out.push('"');
     for c in s.chars() {
         match c {

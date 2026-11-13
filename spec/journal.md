@@ -1,6 +1,8 @@
 # The chained journal, 0.5
 
-Status: implemented in the reference runtime (`runtime/src/journal-chain.ts`).
+Status: implemented in the reference runtime (`runtime/src/journal-chain.ts`);
+the verifier also in Rust, written from this document
+(`crates/verify-journal`).
 
 A run's journal is the append-only list of its events in the database
 (`events`, [`runtime.md`](runtime.md#storage)). Replay and the views are
@@ -291,6 +293,9 @@ breaks any other rule is `malformed_export`. Either way the report is
 first, then that the whole is UTF-8, then the JSON text from its start, then
 the shape: the first rule broken in that order is the one reported, so an
 export that nests too deep before it is malformed is `export_over_limit`.
+In the JSON text a rule is broken where the reading first meets it: a
+duplicate name where the second name is read, before its value, so
+`{"a": 1, "a": [[…` is `malformed_export` however deep the value goes.
 
 The limits are part of the contract. Every verifier reads every export
 within them and reports any beyond them as `export_over_limit`, so every
@@ -311,14 +316,17 @@ runtime journals.
 6. In strings, the escapes of RFC 8259 only. A lone surrogate, escaped
    (`\ud800` without a low surrogate escape after it) or not, is refused.
    An unescaped code point below U+0020 is refused.
-7. A number is read as the double nearest to it, as `JSON.parse` reads it.
+7. A number is read as the double nearest to it, as `JSON.parse` reads it
+   (a tie goes to the even one, as IEEE 754 rounds).
    One beyond the largest double (`1e400`) is refused; one below the
-   smallest reads as 0. `-0` reads as -0, whose canonical form is `0`.
+   smallest reads as 0, with its sign (`-1e-400` reads as -0). `-0` reads
+   as -0, whose canonical form is `0`.
 8. The shape, each object with exactly these members and no others:
    - the export: `format` (exactly `"mandate/journal-export/0.1"`), `run`
      (a non-empty string), `tenant` (a string), `manifest_hash` (a string or
      `null`), `manifest` (an object or `null`), `package`, `events`,
-     `anchors`, `keys` (an array of strings);
+     `anchors`, `keys` (an array of strings, in any order and with
+     repeats: nothing else of them is read);
    - `package`: `hash` (a string), `program`, `lock`, `modules` (objects);
    - `events`: an array of at least one event, each with `seq` (an integer
      from 1 up to 2^53 - 1), `type` (a string), `data` (any value), `at` (an
@@ -363,10 +371,16 @@ Then, with `events` and `anchors` in the order the export gives them:
    `data.package` is a string, and `package.hash`, and the package hash
    recomputed from `program` and `lock`, both equal it, and each module in
    `modules` has `module` equal to its name and hashes to the pin
-   `lock.modules[name]`. The hashes here are over the IR's canonical form
-   ([`ir.md`](ir.md#hashing)), which is the canonical form above with one
+   `lock.modules[name]`. A pin is the module's program hash, a string; a
+   module is an object; a module with no pin is a mismatch (so is every
+   module when `lock.modules` is not an object), and a pin with no module
+   in `modules` is not checked. The hashes here are over the IR's
+   canonical form ([`ir.md`](ir.md#hashing)), which is the canonical form
+   above with one
    difference: it admits only integers of magnitude up to 2^53 - 1, and not
-   -0, so a program, module or lock with another number is a mismatch.
+   -0, so a program, module or lock with another number is a mismatch. The
+   limits of the IR's reader (its size and depth) do not apply: the values
+   are the export's, read by the export's rules.
    - The program hash `P` is `sha256:` and the hex SHA-256 of
      `mandate/program/<v>`, a line feed, and the program's canonical form.
      `<v>` is what follows `mandate/` in the program's `language` when
@@ -484,7 +498,11 @@ An unreadable export's report has one finding, `malformed_export` or
 `mandate journal verify` prints the status, each finding with what it
 means, and for a verified journal how far the signatures reach; `--json`
 prints the report. A `--key` file may hold several PEM blocks, and `--key`
-may be given more than once. Its exit status:
+may be given more than once. Of a key file only its `PUBLIC KEY` blocks
+are read, and each must be an Ed25519 key, or nothing is checked: text
+between them, and blocks of another kind (a private key, a certificate),
+are not read. A file whose only key is a private key holds no public key.
+The exit status of `mandate journal verify`:
 
 | Exit | When |
 |---|---|
