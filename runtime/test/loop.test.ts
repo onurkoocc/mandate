@@ -8,7 +8,7 @@ import type { Value } from "../src/values.js";
 import { MxcAdapter } from "../src/sandbox.js";
 import { FULL_SANDBOX, SimChat, SimSandboxHost, toolUse, type SimTurn } from "../src/sim.js";
 import type { TurnRequest } from "../src/adapters.js";
-import { closeAll, commandIds, world, type World } from "./helpers.js";
+import { closeAll, commandIds, dispatchOrder, world, type World } from "./helpers.js";
 
 const program = (agentExtra = "", budget = "{ tokens: 100k, spend: 1 USD, steps: 6 }") => `mandate @ 0.2
 
@@ -311,7 +311,9 @@ on budget_exceeded in Both => pause and human.ask("Budget exceeded. Continue or 
     });
     w.adapters.loop = { chat, sandbox: new MxcAdapter({ host, schemaVersion: "0.8.0", modelEndpoints: {}, modelsInControlPlane: true }) };
 
-    // 1.5 USD covers one agent's 1 USD budget, not both: the second reservation does not fit.
+    // 1.5 USD covers one agent's 1 USD budget, not both: the second reservation does not fit. The branches start
+    // together; the Fixer is the one that reserves first, so its loop is the one stopped.
+    dispatchOrder(w, ["/defs/Both/body/0/branches/fix", "/defs/Both/body/0/branches/test"]);
     const run = await w.rt.startRun({ pkg: w.pkg, workflow: "Both", input: { task: "t" }, runId: "par1", limits: { spend: { micros: 1_500_000, currency: "USD" } } });
     expect(run.state).toBe("waiting");
     expect(run.waiting).toMatchObject({ kind: "budget_exceeded", detail: { $tag: "BudgetExceeded" } });
