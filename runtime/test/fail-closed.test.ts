@@ -1,6 +1,8 @@
-// What 0.5 asks that this runtime does not enforce yet is refused by name,
-// never dropped (spec/boundary.md, INV-11). A sandbox requirement 0.2 that
-// asks nothing beyond 0.1 gives the policy a 0.1 requirement gives.
+// What 0.5 asks that a host does not enforce is refused by name, never
+// dropped (spec/boundary.md, INV-11). A sandbox requirement 0.2 that asks
+// nothing beyond 0.1 gives the policy a 0.1 requirement gives. Method limits
+// and credentials are enforced only by a host that reaches its hosts through
+// the egress proxy (sandbox-egress.test.ts); every other host refuses them.
 
 import { readFileSync } from "node:fs";
 import { check, hashProgram, load, loadModules, requirementFor, type CapVal, type Json, type Lock, type Program } from "@mandate/compiler";
@@ -35,9 +37,17 @@ describe("a sandbox requirement 0.2 on today's hosts", () => {
   it.each([
     ["method limits", [net(["GET"])], {}, "method limits on outbound hosts: api.github.com"],
     ["credentials", [net()], { egress: { Reader: { "api.github.com": "github" } } }, "credentials for outbound hosts: api.github.com"],
-  ])("that asks for %s is refused by name, on a host that enforces all of 0.1", async (_what, caps, lock, line) => {
+  ])("that asks for %s is refused by name, on a host that enforces all of 0.1 but reaches no proxy", async (_what, caps, lock, line) => {
     const planned = await adapter().plan(requirementFor(subject, caps, 60_000, { ...v05, lock: { modules: {}, ...lock } as Lock }));
     expect(planned).toEqual({ unsupported: [line] });
+  });
+
+  it("that limits methods and binds a credential is planned on a host that reaches its hosts through a proxy holding it", async () => {
+    const through = new MxcAdapter({ host: new SimSandboxHost({ ...FULL_SANDBOX, egress: { credentials: ["github"] } }), schemaVersion: "1.0", modelEndpoints: {}, modelsInControlPlane: true });
+    const planned = await through.plan(requirementFor(subject, [net(["GET"])], 60_000, { ...v05, lock: { modules: {}, egress: { Reader: { "api.github.com": "github" } } } }));
+    expect(planned).toMatchObject({ policy: { network: { allowOutbound: true, allowedHosts: ["api.github.com"], methods: { "api.github.com": ["GET"] }, credentials: { "api.github.com": "github" } } } });
+    const other = await through.plan(requirementFor(subject, [net()], 60_000, { ...v05, lock: { modules: {}, egress: { Reader: { "api.github.com": "gh-app" } } } }));
+    expect(other).toEqual({ unsupported: ["credential gh-app for api.github.com"] });
   });
 });
 
@@ -72,24 +82,24 @@ describe("a 0.5 package", () => {
   };
   const fetchProgram = (): Program => check(FETCH, "mdt", { lock: LOCK05 }).program!;
 
-  it.each([
-    ["egress", { egress: packaged.egress }, "egress (credentials for agents' requests, which go only through an egress proxy, and this runtime has none yet)"],
-  ])("whose lock sets %s is refused at load, by that name, until the runtime enforces it", (name, field, said) => {
-    const lock = { modules: {}, models: packaged.models, tariffs: packaged.tariffs, ...field } as Lock;
-    expect(notRunYet(fetchProgram(), lock)).toEqual([`lock.${name}`]);
-    const e = refusal(fetchProgram(), lock);
-    expect(e).toBeInstanceOf(Violation);
-    expect(e).toMatchObject({ code: "unsupported_lock" });
-    expect((e as Violation).message).toBe(`unsupported_lock: The package's lock sets ${said}, which this runtime does not enforce yet (spec/boundary.md).`);
-  });
-
-  it("whose lock sets all three is refused naming the one it does not enforce yet; without it it is accepted", () => {
-    expect(notRunYet(fetchProgram(), packaged)).toEqual(["lock.egress"]);
-    expect((refusal(fetchProgram(), packaged) as Violation).message).toMatch(/^unsupported_lock: The package's lock sets egress \(.*\), which this runtime/);
-    const { egress: _egress, ...enforced } = packaged;
-    expect(refusal(fetchProgram(), enforced as Lock)).toBeUndefined();
+  it("whose lock sets all three loads: the runtime enforces each, egress through the proxy", () => {
+    expect(notRunYet(fetchProgram(), packaged)).toEqual([]);
+    expect(refusal(fetchProgram(), packaged)).toBeUndefined();
+    expect(refusal(fetchProgram(), { modules: {}, models: packaged.models, tariffs: packaged.tariffs, egress: packaged.egress } as Lock)).toBeUndefined();
     expect(refusal(fetchProgram(), { modules: {}, models: packaged.models, tariffs: packaged.tariffs } as Lock)).toBeUndefined();
     expect(notRunYet(fetchProgram())).toEqual([]);
+  });
+
+  it("whose lock binds a credential is not started on a runtime that names no egress proxy (no_egress_proxy)", async () => {
+    const inner = new SimAgents();
+    const w = await world(FETCH.replace(", methods: [GET])", ")"), { agents: new SandboxedAgents(adapter(), (req) => inner.run(req)) as unknown as SimAgents, lock: { modules: {}, models: packaged.models, tariffs: packaged.tariffs, egress: packaged.egress } as Lock, decisions: { keys: new TrustedKeys([]) } });
+    const e = await w.rt.startRun({ pkg: w.pkg, workflow: "Summarize", input: { issue: "#7" }, runId: "b05-np" }).then(
+      () => undefined,
+      (x: unknown) => x,
+    );
+    expect(e).toBeInstanceOf(Violation);
+    expect(e).toMatchObject({ code: "no_egress_proxy" });
+    expect(inner.calls).toEqual([]);
   });
 
   it("is not reached into by an earlier one: a 0.4 package that imports a 0.5 method limit is refused at load (MDT-E1804)", () => {

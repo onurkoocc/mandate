@@ -121,10 +121,13 @@ they mean is in [`boundary.md`](boundary.md#lock-05).
     0.5 program.
 - **The runtime.** It refuses to load a package whose lock pins models but is
   malformed (`malformed_lock`) or leaves a named tier unlocked
-  (`unlocked_model_tier`). Until it enforces it, it refuses a package
-  whose lock sets `egress`, by its name (`unsupported_lock`). It holds
-  every sandbox of a 0.5 program to the lock's `isolation`, refusing an
-  agent whose host gives less (E0902), and checks E1803 again at load. It
+  (`unlocked_model_tier`). It holds every sandbox of a 0.5 program to the
+  lock's `isolation`, refusing an agent whose host gives less (E0902), and
+  checks E1803 again at load. It puts the credentials `egress` binds into
+  an agent's requests only through the egress proxy: a package whose lock
+  binds one does not start on a runtime that names no proxy
+  (`no_egress_proxy`), and an agent whose binding the proxy does not hold
+  is not started (E0902; [`boundary.md`](boundary.md#sandbox-egress)). It
   starts or resumes a run whose lock sets `host` only on a host that
   meets it (`unfit_host`). Its model adapter sends each tier's model and
   effort, and prices every call from the tariff. A lock without `models` is

@@ -1315,6 +1315,8 @@ export class Interpreter {
               }),
             ...(planner && lead ? { extra: (cid, name, input, stepLabel) => planner.call(cid, name, input, stepLabel) } : {}),
             violation: (kind, step, detail) => this.violation({ kind, delegate: id, agent: agentName, step, detail }),
+            // A sandbox that reaches hosts has an egress session for this run and tenant, which a cancel or a halt revokes.
+            owner: { run: this.o.runId, tenant: this.o.policy.tenant },
           });
         },
         { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}) },

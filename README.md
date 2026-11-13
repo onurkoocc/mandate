@@ -192,10 +192,13 @@ pull request was opened, for 0.23 USD.
    status. `mandate otel export` posts a run's journal to an OpenTelemetry
    collector as spans without content. The reference egress
    proxy exists, and the runtime's own model and GitHub adapters can go
-   through it, holding placeholders. The rest is not enforced yet, so
-   nothing that needs it runs: the runtime refuses a package whose lock
-   sets `egress`, by name, and the sandbox adapter refuses a requirement
-   that limits methods or carries credentials.
+   through it, holding placeholders. A sandbox on Linux reaches its
+   agent's hosts through it, and only those, with the methods its
+   capability allows: the sandbox sees placeholders, the proxy puts the
+   secret the lock's `egress` binds in on the way out, and what the proxy
+   denies a tool call is a violation. A host that does not reach the proxy
+   (Windows, or Linux without MXC's proxy enforcement) refuses by name a
+   requirement with hosts, method limits or credentials.
 
 Start with [`spec/core.md`](spec/core.md): the language on one page, small
 enough for an agent's context.
@@ -535,6 +538,17 @@ cancelled run's sessions are revoked; `status`, `show` and `replay` never
 reach the proxy. `egress-gateways.test.ts` checks it against the
 in-process proxy and upstream ([`spec/boundary.md`](spec/boundary.md#the-control-planes-gateways)).
 
+With `egress.admin` set, a sandbox on Linux reaches its agent's hosts
+through the proxy too, in a forward session of its own for exactly those
+hosts, their methods and the credentials the lock's `egress` binds. The
+sandbox's processes find each credential's placeholder in
+`MANDATE_EGRESS_PLACEHOLDER_<NAME>`, and reach a host with a credential or
+a method limit as `http://host/…`, which the proxy sends on over TLS. A
+package whose lock binds a credential does not start without a proxy
+(`no_egress_proxy`), nor when the proxy does not answer or lacks the
+credential (`egress_unavailable`)
+([`spec/boundary.md`](spec/boundary.md#sandbox-egress)).
+
 `github.test.ts` checks the `git.open_pr` adapter for GitHub against an
 in-memory GitHub:
 
@@ -617,6 +631,8 @@ These cases from §25 are covered:
 | G12 | A remote agent without idempotent delivery: refused if required, else sent at most once | `gate4` |
 | G13 | One authorization is consumed by one commit; a second is refused | `gate4`, `effects` |
 | G14 | A path an agent names that leaves the working copy, is absolute or is not portable is refused: as a model's answer, a skill's result or a run's input by its type, and where the runtime uses it, without following a link | `gate4`, `loop` (the type); `paths`, `verifier`, `boundary` (the use site) |
+| G15 | An agent that may GET a host gets its GET through the egress proxy; its POST there, and any request to another host, are denied and are one violation of the tool call; a host that does not reach the proxy refuses method limits by name | `sandbox-egress` (and on the runner's Bubblewrap, CI job `sandbox`), `fail-closed` |
+| G16 | A sandbox's environment and requests hold the placeholder, never the secret, and the upstream gets the secret; a placeholder outside its header is denied; a credential the proxy does not hold for the host is refused by name | `sandbox-egress` (and on the runner's Bubblewrap, CI job `sandbox`) |
 | G19 | A host below the lock's least tool versions, with a tool it cannot read, or with a setuid `bwrap`, starts and resumes nothing of the package: refused before the lease, and the run is left as it was | `fitness`, `mxc` (the runner's Bubblewrap, CI job `sandbox`) |
 | G20 | A requirement whose isolation level or no-sharing the host does not give is refused by name, and the agent is not started | `isolation`, `mxc`, `mxc-windows`, `container` |
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
@@ -702,11 +718,35 @@ journal: a map with a failed item, one that still runs and one that
 approved and an unanswered amendment; and decisions whose stored record
 was changed or removed.
 
-`fail-closed.test.ts` holds what 0.5 asks and this runtime does not
-enforce yet to its refusals: a lock's `egress`, refused at load by its
-name; a requirement 0.2 that limits methods or carries credentials,
-refused by the adapter on a host that enforces all of 0.1; and a 0.5 run
-whose agent may only GET, which is not started.
+`fail-closed.test.ts` holds what 0.5 asks and a host does not enforce to
+its refusals: a requirement 0.2 that limits methods or carries
+credentials, refused by the adapter on a host that enforces all of 0.1
+and reaches no egress proxy, and planned on one that does; a 0.5 run
+whose agent may only GET, which is not started; and a lock with all three
+0.5 fields, which loads, and whose binding refuses a start on a runtime
+that names no proxy (`no_egress_proxy`).
+
+`sandbox-egress.test.ts` holds sandbox egress to the egress proxy
+([`spec/boundary.md`](spec/boundary.md#sandbox-egress)), against a fake
+MXC SDK whose processes send their requests to the in-process proxy: the
+host reports an outbound host list only while MXC's proxy enforcement is
+supported and the proxy answers, and a configured proxy that does not
+answer stops a run that needs a host for a person (`egress_unavailable`),
+to go on when it is resumed; each sandbox's session has exactly its
+hosts, methods and credentials, for its run and tenant, and closes with
+it; MXC gets the session's address and the placeholders, never a secret,
+and the upstream gets the secret; a credential the proxy does not hold or
+bind, and a host that is not a host name, are refused by name; a 0.4
+program's hosts go through with any method; a session near its end is
+replaced; what the proxy denies a tool call is one `egress_denied`
+violation of its step, counted once on resume and stopping the run at
+its limit; a cancel's and a halt's revoke cut the session; a start is
+refused `no_egress_proxy` or `egress_unavailable`; and Windows refuses it
+all by name. On Linux with `MANDATE_MXC=1` (the `sandbox` job) it runs
+real Bubblewrap sandboxes with `curl`: the placeholder in the sandbox's
+environment and no secret, an allowed request with the secret put in,
+denials as violations, and an HTTPS tunnel to a TLS server whose
+certificate is made when it runs.
 
 `isolation.test.ts` holds a requirement 0.2's `isolation` to the level and
 sharing a host reports: a level above the host's, or no sharing on a host

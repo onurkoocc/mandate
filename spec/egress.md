@@ -3,8 +3,9 @@
 **Status: the contract and a reference proxy are implemented in the
 TypeScript implementation.** The runtime's own adapters go through it in
 gateway sessions when its configuration turns the gateways on
-([`boundary.md`](boundary.md#the-control-planes-gateways)); sandboxes are
-connected to it in a later change.
+([`boundary.md`](boundary.md#the-control-planes-gateways)), and a sandbox
+on Linux reaches its hosts through a forward session of its own
+([`boundary.md`](boundary.md#sandbox-egress)).
 
 Outbound traffic goes through one **egress proxy**, and the proxy holds the
 secrets. A sandbox, and the runtime's own HTTP clients, hold only

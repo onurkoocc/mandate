@@ -68,7 +68,8 @@ writes the representative policy of §11.3:
 | Policy field | From the requirement |
 |---|---|
 | `filesystem.readOnly`, `readWrite` | `filesystem.read`, `filesystem.write` |
-| `network.allowedHosts` | `network.hosts` plus the configured hosts of each model tier; `allowOutbound` only when that list is non-empty |
+| `network.allowedHosts` | `network.hosts` plus the configured hosts of each model tier; `allowOutbound` only when that list is non-empty. Through the egress proxy, each in lower case, once |
+| `network.methods`, `network.credentials` | Through the egress proxy only, and only when not empty: a 0.2 requirement's `network.methods` and `egress.credentials`, by host |
 | `process.allowedCommands` | `exec`, with `argsPrefix` |
 | `ui` | Desktop and clipboard off |
 | `timeoutSeconds` | `limits.timeout_ms`, else the adapter's default |
@@ -94,12 +95,17 @@ refuses the requirement when any of these holds:
   the desktop and the clipboard;
 - a model tier has no configured endpoint;
 - `unbounded` is not empty;
-- for a requirement 0.2: it limits methods, its `isolation.min` is above
-  the level the host reports, it forbids sharing and the host may share,
-  or it carries credentials ([`boundary.md`](boundary.md#levels)). The
-  probe reports the level (`process` when a host does not say) and
-  whether a sandbox may share its host (`shared` when it does not say).
-  Every host here reports `process` and `shared`.
+- for a requirement 0.2: its `isolation.min` is above the level the host
+  reports, or it forbids sharing and the host may share
+  ([`boundary.md`](boundary.md#levels)). The probe reports the level
+  (`process` when a host does not say) and whether a sandbox may share its
+  host (`shared` when it does not say). Every host here reports `process`
+  and `shared`;
+- for a requirement 0.2, on a host that does not reach its hosts through
+  the egress proxy: it limits methods, or it carries credentials. On one
+  that does, a credential the proxy does not hold, an outbound host that is
+  not a host name, and two credentials for one host or for one placeholder
+  variable ([`boundary.md`](boundary.md#sandbox-egress)).
 
 A refusal lists every missing guarantee. `learning` mode is allowed: it
 blocks like `enforcement` and also reports what it blocked.
@@ -159,10 +165,10 @@ with its Bubblewrap backend (BACKLOG K16). Each process runs in its own
 | Guarantee | How |
 |---|---|
 | Filesystem | MXC's deny-by-default baseline (system binaries and `/etc` read-only), the policy's read-only and read-write paths, and nothing else. The host's runtime directories (`/run`, `/var/run`) are masked in every sandbox |
-| Network | Egress and ingress denied: `--unshare-net`, no network at all |
+| Network | Egress and ingress denied: `--unshare-net`, no network at all. A sandbox whose policy lists hosts, on a host with the egress proxy: a network of its own whose one way out is its session's proxy port ([`boundary.md`](boundary.md#sandbox-egress)) |
 | Host services | No unix socket in the host's runtime directories, and none in its abstract namespace |
 | Commands | Checked by the host before a process starts. Either a helper the runtime's tools use (`cat`, `ls`, `grep`, the `write_file` script) on a path inside the policy, or an allowed command with an allowed argument prefix. Bubblewrap cannot limit commands inside the sandbox |
-| Environment | None of the runtime's: the process gets MXC's default `PATH` and `TERM`, so no API key or token reaches it |
+| Environment | None of the runtime's: the process gets MXC's default `PATH` and `TERM`, so no API key or token reaches it. With an egress session, also the proxy variables MXC sets and the session's placeholders, `MANDATE_EGRESS_PLACEHOLDER_<NAME>`, never a secret |
 | Time | The policy's timeout, per process |
 
 A unix socket is a file, not a network route, so the network policy does
@@ -212,7 +218,14 @@ falls back to a weaker isolation.
 
 The host refuses by name what it does not support:
 
-- an outbound host allow-list (`network: deny_all`);
+- an outbound host allow-list (`network: deny_all`), unless the egress
+  proxy is configured, the SDK says it can hold a Bubblewrap sandbox to
+  its proxy, and the proxy answers, all asked at every probe; then it
+  reports `host_allow_list` and the credentials the proxy holds
+  ([`boundary.md`](boundary.md#sandbox-egress)). A configured proxy that
+  does not answer, where the SDK can hold a sandbox to it, is not refused
+  by name: a sandbox that needs a host is `egress_unavailable`, and the
+  run stops for a person;
 - `learning` mode, because Bubblewrap has none;
 - a path at or under a runtime directory.
 
@@ -238,6 +251,17 @@ user namespaces allowed. The tests check that:
   host itself connects to both;
 - the runtime's environment is absent;
 - an agent loop does its work through the sandbox.
+
+With the egress proxy (`runtime/test/sandbox-egress.test.ts`, in the same
+job) they check that a sandbox's environment holds its placeholder and no
+secret; that an allowed request reaches its upstream with the secret put
+in by the proxy; that another host, a method not allowed and a tunnel to
+a host with a credential are denied, and are violations in a run's
+journal; that a request around the proxy reaches neither the upstream's
+port on the sandbox's loopback nor that port at the address the sandbox
+sees its proxy at, where the session's port answers; and that an HTTPS
+tunnel to a host without a credential succeeds, with the sandbox's own
+TLS.
 
 ## The MXC host on Windows
 
@@ -295,12 +319,14 @@ repeat the Linux enforcement tests against a real AppContainer
 
 - **Learning mode on Linux.** Bubblewrap has none; a requirement for it is
   refused there.
-- **An outbound host allow-list.** MXC offers one through a proxy. It is
-  not wired up, so a requirement with `net.https` hosts is refused. The
-  egress proxy of 0.5 is how it will be ([`boundary.md`](boundary.md#the-egress-proxy)).
-- **What requirement 0.2 adds.** Method limits and credentials are refused
-  by the adapter by name, on every host, until a host enforces them. An
-  isolation level above `process` and a sandbox that may not share its
-  host are held to what the host reports; no host here gives either, so
-  both are refused by name on every host for now.
+- **An outbound host allow-list on Windows.** An AppContainer's proxy is
+  best effort, so a requirement with `net.https` hosts is refused there by
+  name. On Linux it goes through the egress proxy of 0.5
+  ([`boundary.md`](boundary.md#sandbox-egress)), and is refused by name
+  where the proxy or MXC's proxy enforcement is not there.
+- **What requirement 0.2 adds.** Method limits and credentials are held to
+  the egress proxy, and refused by name on a host that does not reach its
+  hosts through it. An isolation level above `process` and a sandbox that
+  may not share its host are held to what the host reports; no host here
+  gives either, so both are refused by name on every host for now.
 - **An AX adapter.**

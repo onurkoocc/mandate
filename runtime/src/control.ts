@@ -37,7 +37,8 @@
 //     "egress":   { "admin": "/run/mandate/egress.sock", "gateways": { "model": "anthropic", "github": "github" } }
 //                 // the egress proxy the operator runs (spec/boundary.md "The egress proxy"), and the credential each
 //                 // gateway sends: with a gateway on, its adapters send through the proxy with a placeholder, and
-//                 // its secret (CLAUDE_API_KEY, ANTHROPIC_API_KEY; MANDATE_GITHUB_TOKEN) may not be in the environment
+//                 // its secret (CLAUDE_API_KEY, ANTHROPIC_API_KEY; MANDATE_GITHUB_TOKEN) may not be in the environment.
+//                 // With "admin", a sandbox on Linux reaches its agent's hosts through it ("Sandbox egress")
 //   }
 
 import { execFileSync } from "node:child_process";
@@ -371,13 +372,15 @@ function executorFor(config: RuntimeConfig, lock: Lock, env: NodeJS.ProcessEnv, 
 }
 
 // Linux: Bubblewrap; Windows: the AppContainer process container (P2-27). Each refuses by name what it cannot enforce.
-function sandboxFor(config: RuntimeConfig): MxcAdapter | undefined {
+// On Linux, with an egress proxy, a sandbox reaches its hosts through it; on Windows none does: an AppContainer's
+// proxy is best effort, so the host refuses outbound hosts by name (spec/boundary.md "Sandbox egress").
+function sandboxFor(config: RuntimeConfig, egress?: EgressLink): MxcAdapter | undefined {
   const s = config.sandbox;
   if (!s) return undefined;
   const host =
     process.platform === "win32"
       ? new WindowsMxcHost({ ...(s.toolchain ? { toolchain: s.toolchain } : {}), ...(s.isolation ? { backend: s.isolation } : {}) })
-      : new MxcHost({ ...(s.baseline ? { baseline: s.baseline } : {}), ...(s.path ? { path: s.path } : {}) });
+      : new MxcHost({ ...(s.baseline ? { baseline: s.baseline } : {}), ...(s.path ? { path: s.path } : {}), ...(egress ? { egress } : {}) });
   return new MxcAdapter({ host, schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true, ...(s.isolation ? { isolation: s.isolation } : {}), ...(s.mode ? { mode: s.mode } : {}) });
 }
 
@@ -513,7 +516,7 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
     if (config.github.repo && config.github.workdir) tools["git.open_pr"] = new GitHubPullRequests({ token, repo: config.github.repo, workdir: config.github.workdir, ...base, ...via });
     if (config.github.repos?.length) tools["git.merge"] = new GitHubMerges({ token, repos: config.github.repos, ...base, ...via });
   }
-  const sandbox = sandboxFor(config);
+  const sandbox = sandboxFor(config, egress?.link);
   const executor = executorFor(config, lock, env, egress?.model?.fetch);
   const own = config.verifier?.process
     ? new ProcessVerifier({ command: [...main, "--config", config.file!], trusted: verifierKeys(config, main), package: { program, lock }, env: verifierEnvFor(config, env, egress) })
@@ -539,17 +542,22 @@ export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock,
     ...(config.samples ? { samples: new SampleReads(JSON.parse(readFileSync(config.samples, "utf8")) as Record<string, Value[]>) } : {}),
     clock: wallClock,
     random: Math.random,
-    ...(egress ? egressAdapters(egress) : {}),
+    ...(egress ? egressAdapters(egress, !!sandbox) : {}),
   };
 }
 
-/** What the runtime does with the proxy itself: check it before a start, revoke through it, and close what it opened. */
-function egressAdapters(egress: EgressSetup): Pick<Adapters, "revoke" | "egress"> {
+/**
+ * What the runtime does with the proxy itself: check it before a start, revoke through it, and close what it opened.
+ * A start asks the proxy when a gateway is on, or, with a sandbox configured, when the package's sandboxes reach hosts
+ * or its lock binds credentials.
+ */
+function egressAdapters(egress: EgressSetup, sandboxed: boolean): Pick<Adapters, "revoke" | "egress"> {
   return {
     revoke: (scope) => egress.link.revoke(scope),
     egress: {
-      ready: async () => {
-        if (egress.on.length) await egress.link.ready(egress.gateways);
+      ready: async (need) => {
+        const sandboxes = sandboxed && need && (need.hosts || need.credentials.length) ? need : undefined;
+        if (egress.on.length || sandboxes) await egress.link.ready(egress.gateways, sandboxes?.credentials ?? []);
       },
       close: () => egress.link.closeAll(),
     },

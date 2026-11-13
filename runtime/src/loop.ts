@@ -38,7 +38,7 @@
 import type { CapVal, LoopStrategy, Param, Program, Progress, SandboxRequirement, TypeExpr } from "@mandate/compiler";
 import type { ChatModel, Cost, Outcome, ToolSpec, TurnRequest } from "./adapters.js";
 import type { ViolationKind } from "./journal.js";
-import type { ExecRequest, ExecResult, MxcAdapter } from "./sandbox.js";
+import { SandboxRefused, SESSION_ENDED, type ExecRequest, type ExecResult, type MxcAdapter } from "./sandbox.js";
 import { schemaErrors, typeSchema, type JsonSchema } from "./schema.js";
 import { Fault } from "./signals.js";
 import { callKey, commandFor, Denied, FINISH, SUBMIT_PLAN, toolResult, toolsFor, type AgentTools } from "./tools.js";
@@ -101,6 +101,11 @@ export interface LoopIO {
    * `Violation("violation_limit")` when a new violation reaches the run's limit, which stops the run.
    */
   violation?(kind: ViolationKind, step: string, detail: Value): Promise<void>;
+  /**
+   * Whose the loop's sandbox is: the run and its tenant. A sandbox that reaches hosts has an egress session for them
+   * and the delegation (spec/boundary.md "Sandbox egress"), so that revoking the run or the tenant cuts it.
+   */
+  owner?: { run: string; tenant: string };
 }
 
 type Block = { [k: string]: Value };
@@ -116,9 +121,8 @@ class Stop {
 /** Runs a bodiless skill as an agent loop; the outcome is the delegation's result. */
 export async function runAgentLoop(task: LoopTask, io: LoopIO): Promise<Outcome> {
   const planned = await io.sandbox.plan(task.sandbox);
-  if ("unsupported" in planned) {
-    return { error: { tag: "PolicyDenied", args: [{ reason: "unsupported_sandbox_profile", code: "MDT-E0902", agent: task.agent, unsupported: planned.unsupported }] }, cost: {} };
-  }
+  const refused = (unsupported: string[]): Outcome => ({ error: { tag: "PolicyDenied", args: [{ reason: "unsupported_sandbox_profile", code: "MDT-E0902", agent: task.agent, unsupported }] }, cost: {} });
+  if ("unsupported" in planned) return refused(planned.unsupported);
   const resultSchema = typeSchema(task.program, task.returns);
   const tools = withExtra(toolsFor(task.grants, resultSchema), task.extra ?? []);
   const host = io.sandbox.o.host;
@@ -131,12 +135,14 @@ export async function runAgentLoop(task: LoopTask, io: LoopIO): Promise<Outcome>
     return collected?.denials.length ? { ...base, mode: planned.policy.mode, sandbox_denials: collected.denials as unknown as Value } : base;
   };
   try {
-    handle = await host.create(planned.policy);
+    handle = await host.create(planned.policy, io.owner ? { ...io.owner, command: task.id } : undefined);
     await loop.open();
     const result = await loop.run(handle);
     await loop.close();
     return { ok: result, cost: {}, meta: await summary() };
   } catch (e) {
+    // A host that will not create the sandbox, for a reason it names (an egress proxy that does not hold a credential for its host): the agent is not started.
+    if (e instanceof SandboxRefused) return refused(e.unsupported);
     if (e instanceof Stop) {
       await loop.close();
       return { error: { tag: "SkillFailed", args: [{ kind: e.kind, detail: e.detail, partial: loop.partial() }] }, cost: {}, meta: await summary() };
@@ -444,12 +450,30 @@ class Loop {
       `${t.agent}.${t.skill} ${u.name}`,
     );
     this.toolCalls++;
+    await this.egressDenied(`${t.id}/${where}`, exec);
     const r = toolResult(u.name, exec as never);
     if (u.name === "write_file" && !r.isError) this.written.add(String(cmd.argv[cmd.argv.length - 1]));
     const observation = digest("request", { tool: u.name, input: u.input as Value, content: r.content });
     const observedNew = !this.observed.has(observation);
     this.observed.add(observation);
     return { block: { type: "tool_result", tool_use_id: u.id, content: r.content, ...(r.isError ? { is_error: true } : {}) }, observedNew };
+  }
+
+  /**
+   * What the egress proxy denied a tool call's process, as its step's result holds it, is one violation of that step
+   * (spec/boundary.md "Sandbox egress"), written before the model is told. Its detail is what the proxy reported. A
+   * denial that only says the session ended (a cancel or a halt revoked it, or it expired) is not an attempt to cross
+   * the grant, and a process denied nothing else is none; a denial that is not listed counts by the host's `counted`,
+   * which knows the reasons it paged past, and, where a host gives none, counts whatever its reason. The decision is
+   * read from the step's result alone, which is journaled, so a resumed loop finds the same denials, asks no proxy,
+   * and the step's violation is not written or counted twice (INV-28).
+   */
+  private async egressDenied(step: string, exec: Value): Promise<void> {
+    const d = isObj(exec) ? exec["egress_denials"] : undefined;
+    if (d === undefined || !isObj(d) || !Array.isArray(d["denials"])) return;
+    const listed = d["denials"].some((x) => isObj(x) && !SESSION_ENDED.has(String(x["why"])));
+    const byCount = typeof d["counted"] === "number" ? d["counted"] > 0 : Number(d["more"]) > 0;
+    if (listed || byCount) await this.io.violation?.("egress_denied", step, d);
   }
 
   /**
