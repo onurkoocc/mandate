@@ -425,7 +425,10 @@ What PR 8 is held to. It was shown by an experiment on GitHub's
   the proxy's loopback address and port, and does not assume that the
   sandbox's processes see the same address.
 - **No crossing.** Two sandboxes with two proxy ports do not reach each
-  other's proxy.
+  other's proxy. That separation is the sandbox's network, not the proxy:
+  on the host itself any local process can connect to any session's port,
+  and there only the placeholder stands between it and the credential
+  ([`egress.md`](egress.md), its limits).
 - **Each session** opens with its sandbox and closes with it; the sandbox
   gets its placeholders in its environment. After every tool call, within
   the step, the session's denials are read into the journal.

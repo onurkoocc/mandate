@@ -80,7 +80,7 @@ here, is an error, not a field ignored.
 |---|---|
 | `admin` | Required. Where the admin channel listens: a Unix socket path, or a named pipe `\\.\pipe\…` on Windows. A relative path is relative to the file |
 | `listen` | A loopback IP address (`127.0.0.0/8` or `::1`), default `127.0.0.1`. Every session listens on its own port of it. A name such as `localhost` is refused |
-| `credentials` | The secrets the proxy holds, by name. A name is lower case letters, digits, `_` and `-`, starting with a letter. Default none |
+| `credentials` | The secrets the proxy holds, by name. A name is letters, digits, `_` and `-`, starting with a letter, at most 64 characters, as a lock's `egress` names it (`^[A-Za-z][A-Za-z0-9_-]{0,63}$`); names differ by case. Default none |
 | `credentials.<name>.env` | The environment variable of the proxy's own process that holds the secret |
 | `credentials.<name>.hosts` | The only hosts the secret may be sent to: a non-empty list of distinct host names or IP addresses, without a port ([Host names](#host-names)) |
 | `credentials.<name>.header` | The request header the secret is sent in, in lower case. It cannot be a header the proxy sets or removes itself: `host`, `content-length`, `transfer-encoding`, `connection`, `keep-alive`, `proxy-connection`, `proxy-authorization`, `proxy-authenticate`, `te`, `trailer`, `upgrade`, `expect`, `accept-encoding`, `http2-settings` |
@@ -179,8 +179,12 @@ configuration to say, not the caller's.
 A `forward` session answers `{ "proxy_url": "http://127.0.0.1:<port>",
 "placeholders": { <name>: "mdt-ph-<32 hex digits>" } }`; a `gateway`
 session answers `{ "base_url": "http://127.0.0.1:<port>", "placeholders":
-{…} }`. The address is `listen`, in brackets when it is IPv6. `placeholders`
-has one entry for each credential the session's destinations name.
+{…} }`. The address is `listen`, in brackets when it is IPv6: the address
+the proxy listens on. A client that reaches the proxy through another
+address (a sandbox sees its host at a gateway address) uses that address
+with the same port; the proxy does not look at where a connection comes
+from. `placeholders` has one entry for each credential the session's
+destinations name.
 
 ### `close_session`
 

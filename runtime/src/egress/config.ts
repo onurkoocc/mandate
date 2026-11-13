@@ -41,7 +41,8 @@ const KEYS = ["admin", "listen", "credentials", "allow_private", "ca"];
 const CREDENTIAL_KEYS = ["env", "hosts", "header", "template"];
 
 /** A credential's name: what a session binds and what `hello` lists. */
-export const CREDENTIAL_NAME = /^[a-z][a-z0-9_-]{0,63}$/;
+// The names a lock's `egress` may bind (spec/boundary.md "Lock 0.5"): the proxy must be able to hold every one.
+export const CREDENTIAL_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
 const TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 /** Headers the proxy itself sets or removes; a credential is never sent in one. */
@@ -99,7 +100,7 @@ export function egressConfig(value: unknown, where: string, base: string): Egres
   if (!isRecord(raw)) bad(`"credentials" maps names to { "env", "hosts", "header", "template" }`);
   for (const [name, v] of Object.entries(raw as Record<string, unknown>)) {
     const at = `credentials.${name}`;
-    if (!CREDENTIAL_NAME.test(name)) bad(`${at}: a credential's name is lower case letters, digits, "_" and "-", starting with a letter`);
+    if (!CREDENTIAL_NAME.test(name)) bad(`${at}: a credential's name is letters, digits, "_" and "-", starting with a letter, at most 64 characters`);
     if (!isRecord(v)) bad(`${at} is { "env", "hosts", "header", "template" }`);
     const cr = v as Record<string, unknown>;
     for (const k of Object.keys(cr)) if (!CREDENTIAL_KEYS.includes(k)) bad(`unknown field ${at}.${k}`);

@@ -56,6 +56,16 @@ describe("the configuration", () => {
   const base = { admin: "egress.sock", ...CONFIG };
   const bad = (c: unknown) => () => egressConfig(c, "mandate.egress.json", tmpdir());
 
+  it("takes every credential name a lock's egress may bind, and no other", () => {
+    // The lock's rule (spec/boundary.md "Lock 0.5"): a letter, then letters, digits, _ and -, 64 characters at most.
+    for (const name of ["GitHub", "github_read-2", "a", `A${"b".repeat(63)}`]) {
+      expect(Object.keys(egressConfig({ ...base, credentials: { [name]: CONFIG.credentials.github } }, "mandate.egress.json", tmpdir()).credentials)).toEqual([name]);
+    }
+    for (const name of ["2fa", "_x", "git hub", "git.hub", `a${"b".repeat(64)}`, ""]) {
+      expect(bad({ ...base, credentials: { [name]: CONFIG.credentials.github } }), name).toThrow(/a credential's name is letters, digits/);
+    }
+  });
+
   it("is strict: an unknown field, at the top or in a credential, is an error", () => {
     expect(bad({ ...base, proxy: 1 })).toThrow(/bad_egress_config: mandate.egress.json: unknown field proxy/);
     expect(bad({ ...base, credentials: { github: { ...CONFIG.credentials.github, scope: "repo" } } })).toThrow(/unknown field credentials.github.scope/);
