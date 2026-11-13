@@ -1,0 +1,31 @@
+{
+  "format": "mandate/vectors/spans/0.1",
+  "source": "compiler/test/fixtures/syntax/remote.mdt",
+  "kind": "mdt",
+  "count": 23,
+  "spans": [
+    ["", 2, 1, 14, 4],
+    ["/defs/BillingAgent", 7, 1, 14, 4],
+    ["/defs/BillingAgent/caps/0", 11, 12, 11, 57],
+    ["/defs/BillingAgent/caps/0/args/0", 11, 22, 11, 56],
+    ["/defs/BillingAgent/caps/0/args/0/value", 11, 29, 11, 56],
+    ["/defs/BillingAgent/caps/0/args/0/value/items/0", 11, 30, 11, 55],
+    ["/defs/BillingAgent/caps/0/callee", 11, 12, 11, 21],
+    ["/defs/BillingAgent/caps/0/callee/of", 11, 12, 11, 15],
+    ["/defs/BillingAgent/remote", 7, 29, 7, 95],
+    ["/defs/BillingAgent/remote/bind", 7, 29, 7, 95],
+    ["/defs/BillingAgent/remote/bind/args/0", 7, 33, 7, 94],
+    ["/defs/BillingAgent/remote/bind/args/0/value", 7, 33, 7, 94],
+    ["/defs/BillingAgent/remote/bind/callee", 7, 29, 7, 32],
+    ["/defs/BillingAgent/remote/require/0", 9, 12, 9, 50],
+    ["/defs/BillingAgent/remote/require/0/args/0", 9, 24, 9, 49],
+    ["/defs/BillingAgent/remote/require/0/args/0/value", 9, 32, 9, 49],
+    ["/defs/BillingAgent/remote/require/0/callee", 9, 12, 9, 23],
+    ["/defs/BillingAgent/skills/quote_refund", 13, 5, 13, 49],
+    ["/defs/BillingAgent/skills/quote_refund/params/0", 13, 18, 13, 33],
+    ["/defs/BillingAgent/skills/quote_refund/params/0/type", 13, 25, 13, 33],
+    ["/defs/BillingAgent/skills/quote_refund/returns", 13, 38, 13, 49],
+    ["/uses/0", 5, 1, 5, 43],
+    ["/uses/1", 4, 1, 4, 14]
+  ]
+}
