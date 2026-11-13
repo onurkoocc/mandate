@@ -10,16 +10,16 @@
 // a read outside them sees nothing, no host can be reached, and no unix
 // socket of the host can be connected to (G05, G07).
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
 import { requirementFor, type SandboxRequirement } from "@mandate/compiler";
 import { afterAll, describe, expect, it } from "vitest";
-import { HOST_RUNTIME_DIRS, MASK_CHECK, MxcHost, shellQuote, type MxcContainerRequest, type MxcSdk } from "../src/mxc.js";
+import { HOST_RUNTIME_DIRS, MASK_CHECK, maskCheck, MxcHost, shellQuote, type MxcContainerRequest, type MxcSdk } from "../src/mxc.js";
 import { MxcAdapter, type MxcPolicy } from "../src/sandbox.js";
 import { SimChat, toolUse } from "../src/sim.js";
 import { WRITE_SCRIPT } from "../src/tools.js";
@@ -46,6 +46,8 @@ class FakeSdk implements MxcSdk {
   killed = 0;
   /** Like a backend that ignores `deniedPaths`: the host's runtime directory stays in view. */
   ignoresMasks = false;
+  /** What the mask check answers instead, e.g. a shell that could not list a directory or died. */
+  checkReply: { stdout: string; exitCode?: number } | undefined;
   constructor(private readonly support: ReturnType<MxcSdk["getPlatformSupport"]> = { isSupported: true, availableMethods: ["bubblewrap", "lxc"] }) {}
   getPlatformSupport() {
     return this.support;
@@ -53,6 +55,7 @@ class FakeSdk implements MxcSdk {
   async spawn(request: MxcContainerRequest) {
     if (request.command === MASK_CHECK) {
       this.checks.push(request);
+      if (this.checkReply) return finished(this.checkReply.stdout, this.checkReply.exitCode);
       // What a sandbox sees in /run: the resolver's directory the baseline shows, unless /run is masked.
       const masked = !this.ignoresMasks && request.filesystem.deniedPaths.includes("/run");
       return finished(masked ? "end\n" : "/run/systemd\nend\n");
@@ -82,13 +85,13 @@ class FakeSdk implements MxcSdk {
   }
 }
 
-/** A process that has already printed `stdout` and exited 0. */
-function finished(stdout: string) {
+/** A process that has already printed `stdout` and exited. */
+function finished(stdout: string, exitCode = 0) {
   const out = new PassThrough();
   const err = new PassThrough();
   out.end(stdout);
   err.end();
-  return { standardInput: new PassThrough(), standardOutput: out, standardError: err, wait: async () => ({ exitCode: 0, timedOut: false }), kill: () => {}, dispose: () => {} };
+  return { standardInput: new PassThrough(), standardOutput: out, standardError: err, wait: async () => ({ exitCode, timedOut: false }), kill: () => {}, dispose: () => {} };
 }
 
 const adapter = (host: MxcHost) => new MxcAdapter({ host, schemaVersion: "0.9.0", modelEndpoints: {}, modelsInControlPlane: true });
@@ -200,7 +203,7 @@ describe("MxcHost against a fake SDK", () => {
       throw new Error("unknown field deniedPaths");
     };
     for (const [sdk, why] of [
-      [ignores, "Bubblewrap here does not mask the host's runtime directories (a sandbox still sees /run/systemd)"],
+      [ignores, "Bubblewrap here is not shown to mask the host's runtime directories (a sandbox with the masks lists /run/systemd)"],
       [fails, "MXC could not start a sandbox that masks paths (unknown field deniedPaths)"],
     ] as const) {
       const host = new MxcHost({ sdk });
@@ -210,6 +213,86 @@ describe("MxcHost against a fake SDK", () => {
       expect(host.unavailable).toContain("service sockets");
     }
     expect(ignores.spawned).toHaveLength(0);
+  });
+
+  it("takes the masks as holding only when the check listed nothing and reached its end", async () => {
+    const cases: Array<[{ stdout: string; exitCode?: number }, string | undefined]> = [
+      [{ stdout: "end\n" }, undefined],
+      // A runtime directory the sandbox could not list is a line of its own.
+      [{ stdout: "/run is not a directory this sandbox can list\n/var/run is not a directory this sandbox can list\nend\n" }, "lists /run is not a directory this sandbox can list; /var/run is not a directory this sandbox can list"],
+      // The shell stopped before its end, or printed nothing at all.
+      [{ stdout: "" }, "the check exited 0"],
+      [{ stdout: "", exitCode: 127 }, "the check exited 127"],
+      [{ stdout: "end\n", exitCode: 2 }, "the check exited 2"],
+      [{ stdout: "/run/dbus\n" }, "lists /run/dbus"],
+    ];
+    for (const [reply, why] of cases) {
+      const sdk = new FakeSdk();
+      sdk.checkReply = reply;
+      const host = new MxcHost({ sdk });
+      const can = await host.probe();
+      expect({ filesystem: can.filesystem, network: can.network }, JSON.stringify(reply)).toEqual(why === undefined ? { filesystem: true, network: "deny_all" } : { filesystem: false, network: "none" });
+      if (why === undefined) expect(host.unavailable).toBeUndefined();
+      else expect(host.unavailable).toContain(why);
+    }
+  });
+
+  it("makes the check of nothing but the shell's own words: no program it runs can be missing", () => {
+    // No pipe, redirection or command substitution: each simple command's first word is the shell's own.
+    expect(MASK_CHECK).not.toMatch(/`|\$\(|[<>]|(?<!\|)\|(?!\|)/);
+    const first = MASK_CHECK.split(/;|&&|\|\||\bthen\b|\bdo\b|\belse\b/)
+      .map((c) => c.trim().replace(/^((if|fi|done)\b\s*)+/, "").split(/\s+/)[0])
+      .filter(Boolean);
+    expect(new Set(first)).toEqual(new Set(["for", "[", "echo"]));
+    expect(MASK_CHECK.endsWith("echo end")).toBe(true);
+  });
+});
+
+/** A POSIX shell on this machine, by absolute path, so that it can run with an empty PATH. */
+const SH = process.platform === "win32" ? spawnSync("where", ["sh"], { encoding: "utf8" }).stdout?.split(/\r?\n/)[0]?.trim() : "/bin/sh";
+
+describe.runIf(SH && existsSync(SH))("the probe's mask check in a real shell, with no program on its PATH", () => {
+  const fwd = (p: string) => p.replaceAll("\\", "/");
+  const root = fwd(mkdtempSync(join(tmpdir(), "mandate-check-")));
+  afterAll(() => {
+    for (const d of ["no-read", "no-search", "nothing"]) if (existsSync(join(root, d))) chmodSync(join(root, d), 0o700);
+    rmSync(root, { recursive: true, force: true });
+  });
+  const run = (dirs: string[]) => {
+    const r = spawnSync(SH!, ["-c", maskCheck(dirs)], { encoding: "utf8", env: { PATH: "" } });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout.endsWith("end\n"), r.stdout).toBe(true);
+    return r.stdout.split("\n").slice(0, -2);
+  };
+
+  it("prints nothing for an empty directory, and every entry of one that is not", () => {
+    mkdirSync(join(root, "empty"));
+    const full = `${root}/full`;
+    mkdirSync(full);
+    for (const f of ["a", ".hidden", "..dots"]) writeFileSync(join(full, f), "");
+    const links = process.platform !== "win32";
+    if (links) symlinkSync(join(root, "missing-target"), join(full, "gone"));
+    expect(run([`${root}/empty`])).toEqual([]);
+    expect(run([`${root}/empty`, full])).toEqual([`${full}/a`, ...(links ? [`${full}/gone`] : []), `${full}/.hidden`, `${full}/..dots`]);
+  });
+
+  const lines = (ps: string[]) => ps.map((p) => `${p} is not a directory this sandbox can list`);
+
+  it("prints a line for each path it cannot list because it is missing or not a directory", () => {
+    writeFileSync(join(root, "file"), "");
+    expect(run([`${root}/absent`, `${root}/file`])).toEqual(lines([`${root}/absent`, `${root}/file`]));
+  });
+
+  // Permissions do not hold for the superuser, nor on Windows.
+  it.runIf(process.platform !== "win32" && process.getuid?.() !== 0)("prints a line for each directory it cannot both read and search", () => {
+    const modes: Array<[string, number]> = [["no-read", 0o300], ["no-search", 0o600], ["nothing", 0o000]];
+    for (const [d, mode] of modes) {
+      mkdirSync(join(root, d));
+      writeFileSync(join(root, d, "inside"), "");
+      chmodSync(join(root, d), mode);
+    }
+    const ps = modes.map(([d]) => `${root}/${d}`);
+    expect(run(ps)).toEqual(lines(ps));
   });
 });
 
@@ -459,6 +542,17 @@ describe.runIf(REAL)("no service socket of the host reaches a Bubblewrap sandbox
     console.log(`[sockets] resolver from a sandbox: ${JSON.stringify(inside)}`);
     expect(reached(inside)).toEqual([]);
     expect(Object.keys(inside).filter((k) => k.endsWith("ResolveHostname"))).toEqual([]);
+  });
+
+  it("lists the resolver's directory with the probe's check where the masks are absent, and nothing where they hold", async () => {
+    const control = await unmasked(["sh", "-c", MASK_CHECK]);
+    console.log(`[sockets] mask check in a sandbox without the masks: ${JSON.stringify(control)}`);
+    expect(control.split("\n")).toContain("/run/systemd");
+    expect(control.endsWith("end\n")).toBe(true);
+    const { handle } = await sandbox(host, requirement({ exec: [{ command: "sh", args_prefix: [["-c", MASK_CHECK]] }] }));
+    const r = await host.execute(handle, { argv: ["sh", "-c", MASK_CHECK] });
+    console.log(`[sockets] mask check in a sandbox: ${JSON.stringify(r.stdout)}`);
+    expect(r).toMatchObject({ exitCode: 0, stdout: "end\n" });
   });
 
   it("finds no unix socket anywhere it can see", { timeout: 240_000 }, async () => {
