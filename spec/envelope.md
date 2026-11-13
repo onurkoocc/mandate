@@ -1041,7 +1041,9 @@ would be None, and a program with an envelope needs both (INV-11).
 - `shapes` (the patterns a lead may apply), `human.review`, `waive by`,
   libraries, patterns and connectors: 0.6.
 - `stage`, `report`, the attention view and `asks`: 0.7.
-- An egress proxy for sub-programs that need the network: 0.5. Until then a
-  sub-program with `net.https` is refused like any sandbox that needs it.
+- An egress proxy for sub-programs that need the network: 0.5
+  ([`boundary.md`](boundary.md#the-egress-proxy)). On a host that does not
+  reach one, a sub-program with `net.https` is refused like any sandbox that
+  needs it.
 - A critical effect inside a `map` body.
 - `await` and a lead that runs several sub-programs at once.
