@@ -545,8 +545,15 @@ describe("spawn.max_concurrent under a sub-program", () => {
   it("holds a sub-program's map to the envelope's concurrency, and bounds a map without max by the sub-program's own agents", async () => {
     let inFlight = 0;
     let peak = 0;
+    let arrived = 0;
+    // A worker stays in flight until two are, or until the last of the three items has come, so the peak does not
+    // depend on how fast the machine and its database are. The pause after that is what lets one too many show.
+    const full: Array<() => void> = [];
     const worker = async (req: TurnRequest): Promise<SimTurn> => {
       peak = Math.max(peak, ++inFlight);
+      arrived++;
+      if (inFlight < 2 && arrived < 3) await new Promise<void>((r) => full.push(r));
+      for (const r of full.splice(0)) r();
       await new Promise((r) => setTimeout(r, 15));
       inFlight--;
       return fixed(req);

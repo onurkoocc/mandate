@@ -30,6 +30,7 @@
 //   mandate journal export | key | verify  a run's chained journal, its keys, and its check (spec/journal.md)
 //   mandate halt                           the operator's hard stop of a tenant or of all, its lift and
 //                                          the list of halts (spec/boundary.md, the runtime's CLI)
+//   mandate egress serve --config <file>   the reference egress proxy, which holds the secrets (spec/egress.md)
 //   mandate test <file>                    run the program's tests with their effect handlers (§6.4)
 //
 // <file> is .mdt text or .json canonical IR. `--module <file>` (repeatable)
@@ -79,6 +80,7 @@ function usage(): never {
       "  amend <run> --revision N --key FILE [--member NAME] (approve | decline)",
       "  journal export <run> [--out FILE] | journal key [--out FILE] | journal verify <export.json> --key <public key.pem>…",
       "  halt (--tenant T | --all) [--reason TEXT] [--by WHO] | halt --lift (--tenant T | --all) --by WHO | halt --list",
+      "  egress serve --config <mandate.egress.json>   (the reference egress proxy)",
       "  test <file> [--json]",
       "",
     ].join("\n"),
@@ -342,7 +344,7 @@ function main(argv: string[]): void {
   }
 }
 
-const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "halt"]);
+const CONTROL = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt"]);
 
 /** Control commands belong to the runtime, which depends on the compiler; it is loaded only when asked for. */
 async function control(argv: string[]): Promise<void> {

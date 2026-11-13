@@ -3,7 +3,8 @@
 **Status: in progress.** The page specifies release 0.5 so that the
 TypeScript implementation, and later the Rust one, are held to the same
 rules and cases. What the table says is implemented is, with the
-runtime's refusals of what it does not enforce yet. Each part that is not
+runtime's refusals of what it does not enforce yet; the reference egress
+proxy is implemented, and nothing in the runtime uses it yet. Each part that is not
 lands with the change named in the table, which refines its section here.
 
 **A note on the name.** Release 0.5 is called Boundary. In the code and in
@@ -24,7 +25,7 @@ the configuration and the CLI.
 | The chained journal: event hashes, signed anchors, export, verification (J01–J16) | PR 3 | implemented ([`journal.md`](journal.md)) |
 | Isolation levels of hosts; host fitness (`unfit_host`) | PR 4 | specified |
 | Violations and the violation limit; a hard halt | PR 5 | implemented; `egress_denied` is written by PR 8, through the same seam |
-| The reference egress proxy and its admin channel | PR 6 | specified |
+| The reference egress proxy and its admin channel ([`egress.md`](egress.md)) | PR 6 | implemented; nothing in the runtime uses it until PR 7 and PR 8 |
 | The control plane's adapters through gateways; `credential_in_environment` | PR 7 | specified |
 | Sandbox egress on Linux through the proxy | PR 8 | specified; enforceable where the sandbox SDK reports it, shown on the CI runner |
 | Sandbox egress on Windows | — | refused by name |
@@ -272,12 +273,11 @@ What the MXC adapter does with it, until the changes below land:
 
 ## The egress proxy
 
-*Specified; the proxy is implemented by PR 6, the control plane's gateways
-by PR 7, sandbox egress by PR 8.*
+*The proxy is implemented (PR 6); the control plane's gateways are
+specified for PR 7, sandbox egress for PR 8.*
 
 This section states the rules. The byte-exact contract of the proxy, its
-configuration and its admin channel is spec/egress.md, which lands with
-PR 6.
+configuration and its admin channel is [`egress.md`](egress.md).
 
 The proxy is the only way a sandbox, and with gateways the control plane's
 own adapters, reach a host. It holds the secrets; nothing else does.
@@ -310,40 +310,46 @@ The proxy's configuration is read strictly; an unknown field is an error.
   "credentials": {
     "github": { "env": "MANDATE_EGRESS_GITHUB", "hosts": ["api.github.com"], "header": "authorization", "template": "Bearer {secret}" }
   },
-  "allow_private": false
+  "allow_private": false,
+  "ca": "roots.pem"
 }
 ```
 
 | Field | Means |
 |---|---|
-| `admin` | The admin channel: a local socket path, or a named pipe on Windows |
-| `listen` | The address of the data path; `127.0.0.1` |
+| `admin` | The admin channel: a Unix socket path, created owner-only, or a named pipe `\\.\pipe\…` on Windows |
+| `listen` | The loopback address every session listens on, a port each: `127.0.0.1` by default, or another loopback address, never a name |
 | `credentials.<name>` | Where the secret is (`env`, a variable of the proxy's own environment), the only hosts it may go to, the header it goes in, and the header's value with `{secret}` in it |
-| `allow_private` | `false`: a host that resolves to a private address is refused. Only for tests |
-| `ca` | Optional: certificate authorities to trust for upstream TLS, beside the system's |
+| `allow_private` | `false`: a host that resolves to a private, loopback, link-local, unique-local, multicast or metadata address is refused. `true` only for tests and private upstreams |
+| `ca` | Optional: a PEM file of certificate authorities to trust for upstream TLS, beside the system's |
 
 The runtime's configuration names the proxy (`mandate.runtime.json`):
 `egress { admin, gateways: { model, github } }`.
 
 ### The admin channel
 
-One JSON object per line, each way, over `admin`. Only the runtime speaks
-it.
+One JSON object per line, each way, over `admin`: a request carries an
+`id` and an `op`, and its answer the same `id` with `ok` and either a
+`result` or an `error` with its code. Only the runtime speaks it. At most
+64 requests wait on one connection; past that the connection is answered
+`too_many_pending` and closed.
 
 | Request | Answer |
 |---|---|
 | `hello` | `{ "format": "mandate/egress/0.1", "credentials": [<names>] }` |
 | `open_session { session, tenant, run, command, kind, destinations, ttl_ms }` | `{ proxy_url \| base_url, placeholders: { <name>: "mdt-ph-<128-bit random>" } }` |
-| `close_session { session }` | `{}` |
-| `revoke { session \| run \| tenant \| all }` | `{}`; later requests of what it names are refused (`session_revoked`). A halt revokes its tenant or all; a cancelled run, its run |
-| `denials { session, after }` | `[{ id, host, method, why, path_digest, at }]`, after the denial `after` |
+| `close_session { session }` | `{ closed: <session> }`; the port stops listening, and the session's denials go with it |
+| `revoke { session \| run \| tenant \| all: true }`, exactly one | `{ revoked: [<sessions>] }`; their connections are cut at once, and later requests on them are refused (`session_revoked`). A halt revokes its tenant or all; a cancelled run, its run |
+| `denials { session, after?, limit? }` | `{ denials: [{ id, host, method, why, path_digest, at }], dropped }`: those after the denial `after`, oldest first, at most `limit` (100 unless given); `path_digest` is a SHA-256 of the path, never the path |
 
 `kind` is `forward` for a sandbox (the answer has `proxy_url`) or `gateway`
 for one of the control plane's adapters (`base_url`). Each destination is
 `{ host, methods | null, credential | null }`. Each session has its own
 short-lived port on the loopback address, since MXC opens one local
 endpoint to a sandbox: one session, one port. A placeholder is fresh per
-session.
+session. A session ends after `ttl_ms` (`session_expired`) or when it is
+revoked; either way its port answers denials for ten minutes more, then
+closes.
 
 ### The data path
 
@@ -354,11 +360,15 @@ session.
   between a sandbox and the proxy is local.
 - A request's host and method are among its session's destinations.
 - A placeholder is replaced only in the configured header of a destination
-  bound to that credential. A placeholder seen anywhere else (another
-  header, the path, the body, another host) is a denial.
+  bound to that credential, and only when the header's value is exactly the
+  template with this session's placeholder. A placeholder seen anywhere
+  else in the request line or the headers (another header, the path,
+  another host) is a denial. Request bodies are not scanned.
+- A request whose length is ambiguous is refused, and no upstream
+  connection is shared, so a request cannot be smuggled.
 - `Upgrade`, HTTP/2, and a host that resolves to a private, loopback,
-  link-local or metadata address are refused. The address a host resolved
-  to is pinned for the request.
+  link-local, unique-local, multicast or metadata address are refused. The
+  address a host resolved to is pinned for the request.
 - A redirect is not followed; it is returned.
 - The exact bytes of the secret are scrubbed from responses.
 - Each denial is recorded with its reason:
@@ -367,10 +377,16 @@ session.
 |---|---|
 | `host_not_allowed` | The host is not a destination of the session |
 | `method_not_allowed` | The method is not one the destination allows |
-| `placeholder_misuse` | A placeholder outside the configured header of a destination bound to its credential |
-| `connect_not_allowed` | `CONNECT` to a destination that has a credential or a method limit, or to a port other than 443 |
-| `resolved_private` | The host resolved to a private, loopback, link-local or metadata address |
-| `session_revoked` | The session was closed or revoked |
+| `placeholder_misuse` | A placeholder outside the configured header of a destination bound to its credential, or in that header when `Connection` names it |
+| `connect_not_allowed` | `CONNECT` to a destination that has a credential or a method limit, to a port other than 443, or on a gateway session |
+| `resolved_private` | The host resolved to, or is, a private, loopback, link-local, unique-local, multicast or metadata address |
+| `session_revoked` | The session was revoked |
+| `session_expired` | The session outlived its `ttl_ms` |
+| `port_not_allowed` | An `http://` URL names a port other than 80 or 443 |
+| `upgrade_not_allowed` | `Upgrade`, h2c or HTTP/2 |
+| `malformed_request` | A request that cannot be read in exactly one way, or is not in the form its session takes. Answered 400; the others 403 |
+
+A closed session's port does not answer, so nothing is recorded for it.
 
 - **Runtime refusals.** A package that needs the proxy on a runtime that
   names none is refused, `no_egress_proxy`; a proxy that does not answer
@@ -409,7 +425,10 @@ What PR 8 is held to. It was shown by an experiment on GitHub's
   the proxy's loopback address and port, and does not assume that the
   sandbox's processes see the same address.
 - **No crossing.** Two sandboxes with two proxy ports do not reach each
-  other's proxy.
+  other's proxy. That separation is the sandbox's network, not the proxy:
+  on the host itself any local process can connect to any session's port,
+  and there only the placeholder stands between it and the credential
+  ([`egress.md`](egress.md), its limits).
 - **Each session** opens with its sandbox and closes with it; the sandbox
   gets its placeholders in its environment. After every tool call, within
   the step, the session's denials are read into the journal.
