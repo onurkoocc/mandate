@@ -259,16 +259,82 @@ program hash.
 In JSON the 0.4 parts are `decisions`, `envelope` (null without one),
 `plans` and `maps`. A run that has none of a part has no section for it.
 
-**By role, and for an audit** (0.5). `mandate show <run> --role R` shows
-the run as a role its program names may see it: what was asked of that
-role, how the run ended and what stopped it, and its progress; never a
-step's request or result, nor an agent loop's trace. `mandate show <run>
---audit` shows the view above whole, with the run's input, each command's
-result, every event, the halts over its tenant, and the journal's chain as
-verified when the view is made. Each part is in a class by its event type,
-section or command kind alone ([`boundary.md`](boundary.md#views-by-role-and-the-audit-view)).
-Without either option the view is the one this section describes, byte for
-byte.
+**By role, and for an audit** (0.5). `mandate show <run> --role R` shows the
+run as one role may see it, and `mandate show <run> --audit` shows
+everything, with the state of the journal's chain. Each takes `--format` as
+`show` does; giving both is a usage error. Without either option the view is
+the one above, byte for byte (`runtime/test/views-default.test.ts` holds the
+digests of the view tests' runs in each format). The rules, with every class
+assignment, are in [`boundary.md`](boundary.md#views-by-role-and-the-audit-view).
+
+A view is made from classes, not from content (INV-17). Each event is in a
+class by its type alone, each section of a run's view by its name alone, and
+each command by its kind alone: nothing reads an event's data, a result or a
+text to decide what may be shown. A type, a section or a command kind the
+table does not name is S4, which no role sees (`runtime/src/classes.ts`; a
+test fails on an event type the runtime writes that has no class).
+
+| Class | Holds |
+|---|---|
+| S0 | A decision: what was asked of whom, and how it was decided |
+| S1 | An outcome or an exception: how the run ended, a fault, a violation, a halt |
+| S2 | Progress: steps begun and ended, budget left; what names the run and the program |
+| S3 | A step's detail: its request and result |
+| S4 | A trace: an agent loop's turns, tool calls and outputs; what a lead wrote |
+
+A role's view shows S1 and S2, and S0 where it was asked of that role. The
+audit view shows S0 to S4. Nothing is masked by data class in 0.5.
+
+- **By role** (`kind: "run_role"`). `R` is a role the run's program names, in
+  a `role` definition or anywhere it names one, with the modules it imports;
+  another is refused (`unknown_role`) with the roles the program does name.
+  The view holds:
+  - **Status:** the run's state; the wait it is in, whole, with its request,
+    only when it is asked of `R`. A wait asked of another role, or of none,
+    shows that the run waits and nothing else;
+  - **Decisions:** each decision whose wait was asked of `R`, and each made in
+    `R`'s role on no wait (the envelope's approval, a cancel, a raise of the
+    limits), with its member, role and whether its signature holds. An
+    operator's halt is no decision;
+  - **Exceptions:** how the run ended and what stopped it, by the fields
+    named and no others: the fault's tag, never its arguments; while the run
+    needs a person, the code of the invariant violation (`violation_limit`
+    among them), the halt that left an action open, a reason's code and its
+    command, whether a change set stopped part applied, and each open
+    action's operation, effect and state, never a message; each violation's
+    kind, delegation, agent, step and count, never its `detail`, which names
+    what the agent asked for; and the halt that ended the run, with its id,
+    who halted it, its reason and the fence it revoked;
+  - **Progress:** the budget's dimensions and the commands that are not an
+    agent loop's steps, nor a wait asked of another role; the envelope's
+    owner, deadline and what is left, with its amendments only for the role
+    that owns it; each map's items and outcomes.
+
+  It never holds the run's result or error whole, its evidence, actions,
+  change sets, plans or input, a command's result, the trace or the events.
+- **For an audit** (`kind: "run_audit"`). The run's view whole, with:
+  - the run's `input`;
+  - the exceptions as a role's, with each violation's `detail`;
+  - each command in command-id order, split into `steps` and an agent
+    loop's `trace`: its label, state, request digest, and its result or
+    error (`purged` when retention took them);
+  - every event the view reaches (`as_of`), with its sequence number, type,
+    class, time, hash and data;
+  - every halt over the run's tenant or over every tenant, in force or
+    lifted, oldest first;
+  - `chain`, the report of `Runtime.verifyJournal`: `verified`, `broken`,
+    `unchained` or `unreadable`, its findings and how far the signatures
+    reach ([`journal.md`](journal.md#the-report)).
+
+  Only the audit view verifies the chain, as a step of its own once
+  everything it shows has been read. The run's view, a role's view,
+  `events()` and replay read the journal as it is.
+
+In Markdown and HTML a role's document and the audit document end, as the
+run's does, with the program's architecture and authority views, which are
+S2 and come from the IR alone; the JSON of neither has them. What a model, a
+tool or a person wrote (an event's data, a step's result, a halt's reason,
+the run's input) is shown as untrusted text, as everywhere else on this page.
 
 Every run view names the revision and the last event it shows (`as_of`).
 `freshness(run, as_of)` says how many events the run has moved since. A
