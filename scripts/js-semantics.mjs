@@ -84,6 +84,61 @@ for (let i = 0; i < 400; i++) {
   const m = String(1 + below(9)) + Array.from({ length: digits - 1 }, () => String(below(10))).join("");
   doubles.add(Number(`${below(2) ? "-" : ""}${m}e${below(60) - 30}`));
 }
+// Ties (Number::toString, ECMA-262 §6.1.6.1.20 Note 2): x lies exactly
+// halfway between the two numbers of its shortest length k that read back as
+// x, and the one whose last digit is even is taken. Such an x has an exact
+// decimal expansion of k + 1 significant digits ending in 5. A family (the
+// doubles n + 0.25, which round down to even, and n + 0.75, which round up,
+// just above 2^50, of either sign), and some hundreds found by a search with
+// its own seed, so that the other vectors stay as they were.
+function isTie(x) {
+  if (!Number.isFinite(x) || x === 0) return false;
+  const a = Math.abs(x);
+  view.setFloat64(0, a);
+  const raw = view.getBigUint64(0);
+  const expBits = Number((raw >> 52n) & 0x7ffn);
+  const frac = raw & 0xfffffffffffffn;
+  const mant = expBits === 0 ? frac : frac | (1n << 52n);
+  const e = (expBits === 0 ? 1 : expBits) - 1075;
+  // a = digits × 10^q exactly.
+  let digits = e >= 0 ? (mant << BigInt(e)).toString() : (mant * 5n ** BigInt(-e)).toString();
+  let q = Math.min(e, 0);
+  while (digits.endsWith("0")) {
+    digits = digits.slice(0, -1);
+    q += 1;
+  }
+  const k = a.toExponential().split("e")[0].replace(".", "").length;
+  if (digits.length !== k + 1 || !digits.endsWith("5")) return false;
+  const lower = BigInt(digits.slice(0, k));
+  const upper = lower + 1n;
+  const tie = String(upper).length === k && Number(`${lower}e${q + 1}`) === a && Number(`${upper}e${q + 1}`) === a;
+  if (tie && Number(a.toExponential().split("e")[0].slice(-1)) % 2 !== 0) throw new Error(`a tie not taken to even: ${a}`);
+  return tie;
+}
+const ties = [];
+{
+  let seed = 0xbb67ae8584caa73bn;
+  const rand = () => {
+    seed ^= seed >> 12n;
+    seed ^= (seed << 25n) & 0xffffffffffffffffn;
+    seed ^= seed >> 27n;
+    return (seed * 0x2545f4914f6cdd1dn) & 0xffffffffffffffffn;
+  };
+  const tie = (x) => {
+    if (isTie(x) && !ties.includes(x) && !doubles.has(x)) ties.push(x);
+  };
+  for (const bits of ["4313d27da8ac08c1", "c287fb5648a7cc40", "42e661f820d08374"]) tie(fromBits(BigInt(`0x${bits}`)));
+  for (let i = 0; i < 64; i++) for (const f of [0.25, 0.75]) for (const sign of [1, -1]) tie(sign * (2 ** 50 + i * 104729 + f));
+  for (let i = 0; i < 200000 && ties.length < 559; i++) {
+    const m = Number((rand() >> 11n) | (1n << 52n));
+    const x = m / 2 ** (1 + Number(rand() % 6n));
+    tie(rand() & 1n ? -x : x);
+  }
+}
+ties.forEach((x) => doubles.add(x));
+// Every power of two: there the doubles on the two sides are not equally far
+// apart, and the digits rounded half to even may not read back.
+for (let e = -1074; e <= 1023; e++) doubles.add(2 ** e);
 // A Set holds one zero; -0 is given by its bits.
 const numbers = [[bitsOf(-0), String(-0), Number.isInteger(-0), Number.isSafeInteger(-0)]];
 for (const x of doubles) numbers.push([bitsOf(x), String(x), Number.isInteger(x), Number.isSafeInteger(x)]);
@@ -175,6 +230,6 @@ const parts = Object.entries(out).map(([k, v]) =>
 const file = fileURLToPath(new URL("../crates/mandate-ir/tests/data/js-semantics.json", import.meta.url));
 writeFileSync(file, `{\n${parts.join(",\n")}\n}\n`);
 process.stdout.write(
-  `${numbers.length} numbers, ${orders.length} key orders, ${stringify.length} values, ${whitespace.length} white space code points, ` +
+  `${numbers.length} numbers (${ties.length} of them ties), ${orders.length} key orders, ${stringify.length} values, ${whitespace.length} white space code points, ` +
     `${trim.length} trims, ${sort.length} lists: ${file}\n`,
 );

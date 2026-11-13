@@ -73,7 +73,8 @@ pub fn number_to_string(x: f64) -> String {
 
 /// Appends [`number_to_string`] of `x`: [`mandate_ir::write_number`] for a
 /// finite `x` (`0` for both zeros; otherwise the shortest digits that read
-/// back as `x`, as an integer up to 21 digits, as a decimal fraction down to
+/// back as `x`, of two as close the one whose last digit is even, as an
+/// integer up to 21 digits, as a decimal fraction down to
 /// `0.000001`, and in exponent form beyond those), and `null` otherwise.
 pub fn write_number(out: &mut String, x: f64) {
     if x.is_finite() {

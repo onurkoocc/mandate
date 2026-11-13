@@ -15,7 +15,8 @@ use std::fmt::Write as _;
 /// `NaN`, `Infinity` and `-Infinity` for the values that are not finite (as
 /// `String` writes them; `JSON.stringify` writes `null` there instead); `0`
 /// for both zeros; otherwise the shortest digits that read back as `x` (the
-/// closer to `x` of two), as an integer up to 21 digits, as a decimal
+/// closer to `x` of two, and of two as close the one whose last digit is
+/// even), as an integer up to 21 digits, as a decimal
 /// fraction down to `0.000001`, and in exponent form beyond those.
 #[must_use]
 pub fn number_to_string(x: f64) -> String {
@@ -41,13 +42,7 @@ pub fn write_number(out: &mut String, x: f64) {
         out.push_str("Infinity");
         return;
     }
-    // Rust's exponent form of a double is its shortest round-trip digits,
-    // the one closest to it when two are as short (`{:e}` of core's
-    // flt2dec, Grisu with a Dragon4 fallback): `1e21`, `1.2345e-7`.
-    let sci = format!("{:e}", x.abs());
-    let (mantissa, exponent) = sci.split_once('e').unwrap_or((sci.as_str(), "0"));
-    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
-    let e: i64 = exponent.parse().unwrap_or(0);
+    let (digits, e) = shortest_digits(x.abs());
     // In the spec's terms: s is `digits`, k its length, x = s × 10^(n−k).
     let k = i64::try_from(digits.len()).unwrap_or(i64::MAX);
     let n = e.saturating_add(1);
@@ -81,6 +76,36 @@ pub fn write_number(out: &mut String, x: f64) {
         out.push(if power < 0 { '-' } else { '+' });
         // Writing to a String cannot fail.
         let _ = write!(out, "{}", power.unsigned_abs());
+    }
+}
+
+/// The digits of an exponent form such as `1.2345e-7`, and its exponent.
+fn split_exponent_form(sci: &str) -> (String, i64) {
+    let (mantissa, exponent) = sci.split_once('e').unwrap_or((sci, "0"));
+    let digits = mantissa.chars().filter(char::is_ascii_digit).collect();
+    (digits, exponent.parse().unwrap_or(0))
+}
+
+/// The digits s and the exponent n − 1 of a positive finite `a` as
+/// `Number::toString` chooses them: the fewest digits k that read back as
+/// `a`, and of two such k-digit numbers equally close to `a`, the one whose
+/// last digit is even (ECMA-262 §6.1.6.1.20, Note 2).
+///
+/// Rust's shortest form (`{:e}`, core's flt2dec) gives the right k, but on
+/// such a tie it takes the larger one: `1394865425023536.3` for
+/// 1394865425023536.25, where ECMAScript writes `1394865425023536.2`. The
+/// digits are therefore taken from `{:.*e}` with k − 1 decimals, which
+/// rounds the exact binary value half to even, as long as that reads back as
+/// `a`; at a power of two, where the doubles on the two sides are not
+/// equally far apart, it may not, and then the shortest form's digits stand.
+fn shortest_digits(a: f64) -> (String, i64) {
+    let shortest = split_exponent_form(&format!("{a:e}"));
+    let decimals = shortest.0.len().saturating_sub(1);
+    let rounded = format!("{a:.decimals$e}");
+    if rounded.parse::<f64>() == Ok(a) {
+        split_exponent_form(&rounded)
+    } else {
+        shortest
     }
 }
 
