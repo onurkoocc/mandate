@@ -631,8 +631,8 @@ These cases from §25 are covered:
 | G12 | A remote agent without idempotent delivery: refused if required, else sent at most once | `gate4` |
 | G13 | One authorization is consumed by one commit; a second is refused | `gate4`, `effects` |
 | G14 | A path an agent names that leaves the working copy, is absolute or is not portable is refused: as a model's answer, a skill's result or a run's input by its type, and where the runtime uses it, without following a link | `gate4`, `loop` (the type); `paths`, `verifier`, `boundary` (the use site) |
-| G15 | An agent that may GET a host gets its GET through the egress proxy; its POST there, and any request to another host, are denied and are one violation of the tool call; a host that does not reach the proxy refuses method limits by name | `sandbox-egress` (and on the runner's Bubblewrap, CI job `sandbox`), `fail-closed` |
-| G16 | A sandbox's environment and requests hold the placeholder, never the secret, and the upstream gets the secret; a placeholder outside its header is denied; a credential the proxy does not hold for the host is refused by name | `sandbox-egress` (and on the runner's Bubblewrap, CI job `sandbox`) |
+| G15 | An agent that may GET a host gets its GET through the egress proxy; its POST there, and any request to another host, are denied and are one violation of the tool call; a host that does not reach the proxy refuses method limits by name | `sandbox-egress`, `boundary-acceptance` (and on the runner's Bubblewrap, CI job `sandbox`), `fail-closed` |
+| G16 | A sandbox's environment and requests hold the placeholder, never the secret, and the upstream gets the secret; a placeholder outside its header is denied; a credential the proxy does not hold for the host is refused by name | `sandbox-egress`, `boundary-acceptance` (and on the runner's Bubblewrap, CI job `sandbox`) |
 | G19 | A host below the lock's least tool versions, with a tool it cannot read, or with a setuid `bwrap`, starts and resumes nothing of the package: refused before the lease, and the run is left as it was | `fitness`, `mxc` (the runner's Bubblewrap, CI job `sandbox`) |
 | G20 | A requirement whose isolation level or no-sharing the host does not give is refused by name, and the agent is not started | `isolation`, `mxc`, `mxc-windows`, `container` |
 | V11 | The same tool call three times in the window stops the loop with `Stuck` before it runs again | `loop` |
@@ -657,8 +657,8 @@ These cases from §25 are covered:
 | H03 | A run of an envelope workflow does not start without an approval of its package hash by a member of the envelope's owner role | `envelope`, `cli-envelope` |
 | H04 | Evidence for `human.approve` whose decision record was changed after signing shows as invalid, and a `Verified` value resting on it is refused | `decisions` |
 | H05 | A changed member, key or role binding in the lock is a new package and shows as a governance change | `lock-diff` (compiler) |
-| J01 | A closed run's journal verifies from its export and the public key alone, also over fractions, exponents and keys that sort differently by UTF-16 code units and by code points | `journal-verify`, `cli-journal`, `journal-hash` (and the case `J01`) |
-| J02 | An event edited in the database breaks the chain at that event | `journal-verify`, `cli-journal` (and the case `J02`) |
+| J01 | A closed run's journal verifies from its export and the public key alone, also over fractions, exponents and keys that sort differently by UTF-16 code units and by code points | `journal-verify`, `cli-journal`, `journal-hash`, `boundary-acceptance` (and the case `J01`) |
+| J02 | An event edited in the database breaks the chain at that event | `journal-verify`, `cli-journal`, `boundary-acceptance` (and the case `J02`) |
 | J03 | An event deleted from the database leaves a gap and breaks the chain after it | `journal-verify` (and the case `J03`) |
 | J04 | A tail cut from the database while its anchors stay names events past the last one | `journal-verify` (and the case `J04`) |
 | J05 | An open run with events after its last anchor verifies, and the report says no signature covers them | `journal-verify` (and the case `J05`) |
@@ -747,6 +747,27 @@ real Bubblewrap sandboxes with `curl`: the placeholder in the sandbox's
 environment and no secret, an allowed request with the secret put in,
 denials as violations, and an HTTPS tunnel to a TLS server whose
 certificate is made when it runs.
+
+`boundary-acceptance.test.ts` is 0.5's acceptance from end to end, for the
+agent of `fixtures/boundary/reach.mdt` and `reach.lock.json` (the proxy
+configuration it needs is `reach.egress.json`): its environment holds the
+placeholder and not the secret, its allowed GET reaches the upstream with
+the secret, a request to another host is a violation the audit view shows
+(a role's view without its detail), and `mandate journal export` and
+`mandate journal key` give an export that verifies and, with one event
+changed in the database, is `chain_broken` at that event; it runs against a
+fake sandbox everywhere and in a real Bubblewrap sandbox in the `sandbox`
+job, which hands those exports to `verify-journal`. By hand, with the
+secret in the proxy's environment and a `mandate.runtime.json` that names
+the model, the `mxc` sandbox and `egress.admin` (`/run/mandate/egress.sock`):
+
+```sh
+MANDATE_EGRESS_GITHUB=<token> mandate egress serve --config fixtures/boundary/reach.egress.json
+mandate run fixtures/boundary/reach.mdt --lock fixtures/boundary/reach.lock.json --workflow Reach --input '{"task": "reach what you are granted"}' --run-id reach1
+mandate show reach1 --audit
+mandate journal export reach1 --out run.json ; mandate journal key --out cp.pub.pem
+cargo run -p verify-journal -- run.json --key cp.pub.pem
+```
 
 `isolation.test.ts` holds a requirement 0.2's `isolation` to the level and
 sharing a host reports: a level above the host's, or no sharing on a host
