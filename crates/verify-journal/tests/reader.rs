@@ -19,6 +19,9 @@ use verify_journal::{
     read_json, verify_export,
 };
 
+/// A named edit of an export read as JSON.
+type Edit<'a> = (&'a str, Box<dyn Fn(&mut Json)>);
+
 fn malformed(text: &[u8]) -> bool {
     matches!(read_json(text), Err(ReadError::Malformed(_)))
 }
@@ -299,7 +302,7 @@ fn j01_verifies_in_canonical_form_too() {
 
 #[test]
 fn rule_8_the_shape_of_an_export() {
-    let edits: Vec<(&str, Box<dyn Fn(&mut Json)>)> = vec![
+    let edits: Vec<Edit<'_>> = vec![
         ("no format", Box::new(|v| remove(v, &[], "format"))),
         (
             "another format",
@@ -462,7 +465,7 @@ fn rule_8_the_shape_of_an_export() {
 
     // Within the shape: a negative time, -0 as a time, keys that name no key
     // given, anchors and keys empty. These are read, and checked.
-    let readable: Vec<(&str, Box<dyn Fn(&mut Json)>)> = vec![
+    let readable: Vec<Edit<'_>> = vec![
         (
             "an at of -(2^53 - 1)",
             Box::new(|v| *at(v, &["events", "1", "at"]) = n(-9_007_199_254_740_991.0)),
