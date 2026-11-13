@@ -222,3 +222,113 @@ fn pointers_escape_each_token() {
     assert_eq!(ptr(&[&"defs", &String::from("a/b~c")]), "/defs/a~1b~0c");
     assert_eq!((limits::DEFINITIONS, limits::EXPANDED_NODES), (64, 1000));
 }
+
+#[test]
+fn the_parser_writes_a_span_before_the_path_when_it_has_one() {
+    assert_eq!(
+        written(&Location::span_then_path(Some(span(1, 2)), "/a")),
+        r#"{"span":[1,2,1,3],"path":"/a"}"#
+    );
+    assert_eq!(
+        written(&Location::span_then_path(None, "/a")),
+        r#"{"path":"/a"}"#
+    );
+}
+
+#[test]
+fn values_and_objects_can_be_read_and_changed_in_place() {
+    let facts = JsObject::new()
+        .with("name", "a")
+        .with("n", 2)
+        .with("ok", true)
+        .with("list", vec![JsValue::Null])
+        .with("gone", None::<bool>);
+    let mut d = JsValue::Object(facts);
+    assert_eq!(d.get("name").and_then(JsValue::as_str), Some("a"));
+    assert_eq!(d.get("n").and_then(JsValue::as_f64), Some(2.0));
+    assert_eq!(d.get("ok").and_then(JsValue::as_bool), Some(true));
+    assert!(d.get("list").and_then(JsValue::as_array).unwrap()[0].is_null());
+    assert!(d.get("gone").unwrap().is_undefined());
+    assert_eq!(d.as_object().map(JsObject::len), Some(5));
+    // (o[k] ??= []).push(x)
+    if let JsValue::Object(o) = &mut d
+        && let Some(JsValue::Array(items)) = o.get_mut("list")
+    {
+        items.push(JsValue::from(1));
+    }
+    assert_eq!(
+        stringify(&d).unwrap(),
+        r#"{"name":"a","n":2,"ok":true,"list":[null,1]}"#
+    );
+
+    let mut m = parse(r#"{"b": [1], "1": "x"}"#).unwrap().value;
+    if let Value::Object(map) = &mut m {
+        if let Some(Value::Array(items)) = map.get_mut("b") {
+            items.push(Value::Bool(true));
+        }
+        let o = JsObject::from(&*map);
+        assert_eq!(stringify(&o.into()).unwrap(), r#"{"1":"x","b":[1,true]}"#);
+    }
+}
+
+#[test]
+fn objects_are_built_in_bulk_with_assignment_semantics() {
+    let o: JsObject = [("b", 1), ("10", 2), ("a", 3), ("b", 4), ("2", 5)]
+        .into_iter()
+        .collect();
+    assert_eq!(
+        stringify(&o.into()).unwrap(),
+        r#"{"2":5,"10":2,"b":4,"a":3}"#
+    );
+    let m: Map = [("b", true), ("0", false), ("b", false)]
+        .into_iter()
+        .collect();
+    assert_eq!(m.keys().collect::<Vec<_>>(), ["0", "b"]);
+    let entries = vec![
+        ("x".to_owned(), JsValue::Null),
+        ("x".to_owned(), JsValue::Null),
+    ];
+    assert_eq!(JsObject::from_entries(entries), None);
+    let entries = vec![
+        ("y".to_owned(), JsValue::Null),
+        ("1".to_owned(), JsValue::Null),
+    ];
+    let o = JsObject::from_entries(entries).unwrap();
+    assert_eq!(o.keys().collect::<Vec<_>>(), ["1", "y"]);
+}
+
+/// With a linear scan per lookup this takes minutes under WASI; with the
+/// index, about a second.
+#[test]
+fn large_objects_are_looked_up_and_spread_in_linear_time() {
+    const N: usize = 200_000;
+    let mut o = JsObject::new();
+    let mut m = Map::new();
+    for i in 0..N {
+        o.insert(format!("m{i}"), i);
+        m.insert(format!("m{i}"), Int::from_usize_saturating(i));
+    }
+    let mut found = 0;
+    for i in 0..N {
+        let key = format!("m{i}");
+        if o.get(&key) == Some(&JsValue::from(i))
+            && m.get(&key).and_then(Value::as_i64) == i64::try_from(i).ok()
+        {
+            found += 1;
+        }
+    }
+    assert_eq!(found, N);
+    let spread = JsObject::new().with("first", true).spread(&o);
+    assert_eq!(spread.len(), N + 1);
+    assert_eq!(spread.keys().nth(1), Some("m0"));
+    let copy = JsObject::new().spread(&o);
+    assert_eq!(copy, o);
+    // A delete, and a new array index before the rest: the places follow.
+    assert_eq!(o.remove("m5"), Some(JsValue::from(5)));
+    o.insert("7", "index");
+    assert_eq!(o.keys().next(), Some("7"));
+    assert_eq!(o.get("m6"), Some(&JsValue::from(6)));
+    assert_eq!(o.get("m5"), None);
+    assert_eq!(o.keys().nth(6), Some("m6"));
+    assert_eq!(o.len(), N);
+}

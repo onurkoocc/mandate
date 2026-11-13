@@ -207,6 +207,11 @@ impl Map {
         self.members.get(key)
     }
 
+    /// The value of member `key`, to change in place.
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
+        self.members.get_mut(key)
+    }
+
     /// Whether member `key` is present.
     #[must_use]
     pub fn contains_key(&self, key: &str) -> bool {
@@ -237,11 +242,12 @@ impl Map {
 }
 
 impl<K: Into<String>, V: Into<Value>> FromIterator<(K, V)> for Map {
+    /// The object these assignments make, in order: a name given again keeps
+    /// its first place and takes the last value, as [`Map::insert`] one by
+    /// one would, in one pass.
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
-        let mut map = Map::new();
-        for (k, v) in iter {
-            map.insert(k, v);
+        Map {
+            members: Members::from_assignments(iter.into_iter().map(|(k, v)| (k.into(), v.into()))),
         }
-        map
     }
 }

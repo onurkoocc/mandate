@@ -11,11 +11,19 @@
 //! TypeScript compiler holds, whether it was built by `JSON.parse` or by
 //! assignments in the compiler.
 //!
-//! The cost: assigning a new array-index name moves the members after its
-//! place (as assigning any new name already scans the members for a
-//! duplicate), and building from a list sorts its array-index names once.
+//! The cost. An object of [`INDEXED_FROM`] members or more also keeps each
+//! name's place in a hash map, so looking a member up, assigning one and
+//! appending a new name take constant time, however large the object (one
+//! read from a 1 MiB input has some 100,000). Assigning a new array-index
+//! name before others and deleting a member move the members after it, and
+//! their places, as a `Vec` does. Building from a list sorts its
+//! array-index names once.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::fmt;
+
+/// The size from which an object keeps the places of its names.
+const INDEXED_FROM: usize = 16;
 
 /// The numeric value of `key` when it is an array index.
 fn array_index(key: &str) -> Option<u32> {
@@ -33,11 +41,13 @@ fn array_index(key: &str) -> Option<u32> {
 }
 
 /// Members in ECMAScript order; names are unique.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub(crate) struct Members<V> {
     entries: Vec<(String, V)>,
     /// How many of the first entries have array-index names.
     indexed: usize,
+    /// Each name's place in `entries`, once there are `INDEXED_FROM` of them.
+    places: Option<HashMap<String, usize>>,
 }
 
 impl<V> Default for Members<V> {
@@ -46,18 +56,68 @@ impl<V> Default for Members<V> {
     }
 }
 
+impl<V: PartialEq> PartialEq for Members<V> {
+    /// The members in order; the places follow from them.
+    fn eq(&self, other: &Self) -> bool {
+        self.entries == other.entries
+    }
+}
+
+impl<V: Eq> Eq for Members<V> {}
+
+impl<V: fmt::Debug> fmt::Debug for Members<V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map()
+            .entries(self.entries.iter().map(|(k, v)| (k, v)))
+            .finish()
+    }
+}
+
 impl<V> Members<V> {
     pub(crate) const fn new() -> Self {
         Members {
             entries: Vec::new(),
             indexed: 0,
+            places: None,
+        }
+    }
+
+    /// The place of `key` in `entries`.
+    fn place(&self, key: &str) -> Option<usize> {
+        match &self.places {
+            Some(places) => places.get(key).copied(),
+            None => self.entries.iter().position(|(k, _)| k == key),
+        }
+    }
+
+    /// Keeps the places once the object is large enough.
+    fn index_if_large(&mut self) {
+        if self.places.is_none() && self.entries.len() >= INDEXED_FROM {
+            let places = self
+                .entries
+                .iter()
+                .enumerate()
+                .map(|(i, (k, _))| (k.clone(), i))
+                .collect();
+            self.places = Some(places);
+        }
+    }
+
+    /// Updates the places of the entries from `from` on, after they moved.
+    fn moved_from(&mut self, from: usize) {
+        if let Some(places) = &mut self.places {
+            for (i, (k, _)) in self.entries.iter().enumerate().skip(from) {
+                if let Some(slot) = places.get_mut(k.as_str()) {
+                    *slot = i;
+                }
+            }
         }
     }
 
     /// Assignment, `object[key] = value`: a present name keeps its place.
     pub(crate) fn insert(&mut self, key: String, value: V) -> Option<V> {
-        match self.entries.iter_mut().find(|(k, _)| *k == key) {
-            Some((_, slot)) => Some(std::mem::replace(slot, value)),
+        match self.get_mut(&key) {
+            Some(slot) => Some(std::mem::replace(slot, value)),
             None => {
                 self.insert_new(key, value);
                 None
@@ -67,17 +127,24 @@ impl<V> Members<V> {
 
     /// Adds a name the caller knows is not present.
     fn insert_new(&mut self, key: String, value: V) {
-        let Some(index) = array_index(&key) else {
-            self.entries.push((key, value));
-            return;
+        let place = match array_index(&key) {
+            None => self.entries.len(),
+            Some(index) => {
+                let before = self
+                    .entries
+                    .get(..self.indexed)
+                    .unwrap_or_default()
+                    .partition_point(|(k, _)| array_index(k).is_some_and(|n| n < index));
+                self.indexed = self.indexed.saturating_add(1);
+                before
+            }
         };
-        let place = self
-            .entries
-            .get(..self.indexed)
-            .unwrap_or_default()
-            .partition_point(|(k, _)| array_index(k).is_some_and(|n| n < index));
+        if let Some(places) = &mut self.places {
+            places.insert(key.clone(), place);
+        }
         self.entries.insert(place, (key, value));
-        self.indexed = self.indexed.saturating_add(1);
+        self.moved_from(place.saturating_add(1));
+        self.index_if_large();
     }
 
     /// The members of `entries`, in ECMAScript order; `None` when two have
@@ -88,6 +155,28 @@ impl<V> Members<V> {
             entries.iter().all(|(k, _)| seen.insert(k.as_str()))
         };
         unique.then(|| Self::from_unique(entries))
+    }
+
+    /// The object these assignments make, in this order: a name assigned
+    /// again keeps its first place and takes the last value. In one pass,
+    /// with one sort.
+    pub(crate) fn from_assignments(items: impl IntoIterator<Item = (String, V)>) -> Self {
+        let mut entries: Vec<(String, V)> = Vec::new();
+        let mut seen: HashMap<String, usize> = HashMap::new();
+        for (k, v) in items {
+            match seen.get(&k) {
+                Some(&at) => {
+                    if let Some(slot) = entries.get_mut(at) {
+                        slot.1 = v;
+                    }
+                }
+                None => {
+                    seen.insert(k.clone(), entries.len());
+                    entries.push((k, v));
+                }
+            }
+        }
+        Self::from_unique(entries)
     }
 
     /// As [`Members::from_entries`], for names the caller knows are unique.
@@ -104,23 +193,37 @@ impl<V> Members<V> {
         let count = indexed.len();
         let mut entries: Vec<(String, V)> = indexed.into_iter().map(|(_, kv)| kv).collect();
         entries.append(&mut named);
-        Members {
+        let mut members = Members {
             entries,
             indexed: count,
-        }
+            places: None,
+        };
+        members.index_if_large();
+        members
     }
 
     /// `delete object[key]`; the value it had, if any.
     pub(crate) fn remove(&mut self, key: &str) -> Option<V> {
-        let at = self.entries.iter().position(|(k, _)| k == key)?;
+        let at = self.place(key)?;
         if at < self.indexed {
             self.indexed = self.indexed.saturating_sub(1);
         }
-        Some(self.entries.remove(at).1)
+        if let Some(places) = &mut self.places {
+            places.remove(key);
+        }
+        let (_, value) = self.entries.remove(at);
+        self.moved_from(at);
+        Some(value)
     }
 
     pub(crate) fn get(&self, key: &str) -> Option<&V> {
-        self.entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+        let at = self.place(key)?;
+        self.entries.get(at).map(|(_, v)| v)
+    }
+
+    pub(crate) fn get_mut(&mut self, key: &str) -> Option<&mut V> {
+        let at = self.place(key)?;
+        self.entries.get_mut(at).map(|(_, v)| v)
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = (&str, &V)> {

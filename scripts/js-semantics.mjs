@@ -166,6 +166,35 @@ for (let i = 0; i < 8; i++) {
   }
   order(keys);
 }
+// Assignments and deletes, long enough for objects of many members: each
+// sequence is [["set", key] or ["delete", key], ...] and the object it
+// leaves, written by JSON.stringify (a set assigns the number of the step).
+const edits = [];
+{
+  let seed = 0x3c6ef372fe94f82bn;
+  const rand = (n) => {
+    seed ^= seed >> 12n;
+    seed ^= (seed << 25n) & 0xffffffffffffffffn;
+    seed ^= seed >> 27n;
+    return Number(((seed * 0x2545f4914f6cdd1dn) & 0xffffffffffffffffn) % BigInt(n));
+  };
+  const pool = [...new Set([...KEYS, ...Array.from({ length: 40 }, (_, i) => (i % 3 === 0 ? String(i * 37) : `k${i}`))])];
+  for (const steps of [20, 60, 200, 600]) {
+    const ops = [];
+    const obj = {};
+    for (let i = 0; i < steps; i++) {
+      const key = pool[rand(pool.length)];
+      if (rand(10) < 3) {
+        ops.push(["delete", key]);
+        delete obj[key];
+      } else {
+        ops.push(["set", key]);
+        obj[key] = i;
+      }
+    }
+    edits.push([ops, JSON.stringify(obj)]);
+  }
+}
 
 // 3. JSON.stringify(v), JSON.stringify(v, null, 2) and String(v).
 const VALUES = [
@@ -216,6 +245,7 @@ const out = {
   generator: "scripts/js-semantics.mjs",
   numbers,
   orders,
+  edits,
   stringify,
   whitespace: [whitespace],
   trim,
@@ -230,6 +260,6 @@ const parts = Object.entries(out).map(([k, v]) =>
 const file = fileURLToPath(new URL("../crates/mandate-ir/tests/data/js-semantics.json", import.meta.url));
 writeFileSync(file, `{\n${parts.join(",\n")}\n}\n`);
 process.stdout.write(
-  `${numbers.length} numbers (${ties.length} of them ties), ${orders.length} key orders, ${stringify.length} values, ${whitespace.length} white space code points, ` +
+  `${numbers.length} numbers (${ties.length} of them ties), ${orders.length} key orders, ${edits.length} edit sequences, ${stringify.length} values, ${whitespace.length} white space code points, ` +
     `${trim.length} trims, ${sort.length} lists: ${file}\n`,
 );

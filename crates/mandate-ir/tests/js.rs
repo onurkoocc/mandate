@@ -12,9 +12,9 @@
 )]
 
 use mandate_ir::{
-    JsObject, JsValue, Map, Value, is_integer, is_js_whitespace, is_safe_integer, number_to_string,
-    parse, sort_utf16, stringify, stringify_pretty, trim, trim_end, trim_start, unique_in_order,
-    utf16_len, write_json_string,
+    Int, JsObject, JsValue, Map, Value, is_integer, is_js_whitespace, is_safe_integer,
+    number_to_string, parse, sort_utf16, stringify, stringify_pretty, trim, trim_end, trim_start,
+    unique_in_order, utf16_len, write_json_string,
 };
 use mandate_testkit::read_json;
 
@@ -151,6 +151,35 @@ fn objects_keep_their_members_in_ecmascript_order() {
         }
     }
     finish(&wrong, vectors.len(), "key order");
+}
+
+#[test]
+fn assignments_and_deletes_keep_ecmascript_order_in_large_objects() {
+    let vectors = data("edits");
+    let mut wrong = Vec::new();
+    for v in &vectors {
+        let v = v.as_array().unwrap();
+        let ops = v[0].as_array().unwrap();
+        let want = s(&v[1]);
+        let mut js = JsObject::new();
+        let mut map = Map::new();
+        for (step, op) in ops.iter().enumerate() {
+            let op = strings(op);
+            if op[0] == "set" {
+                js.insert(op[1], step);
+                map.insert(op[1], Int::new(i64::try_from(step).unwrap()).unwrap());
+            } else {
+                js.remove(op[1]);
+                map.remove(op[1]);
+            }
+        }
+        let got = stringify(&JsValue::Object(js)).unwrap();
+        let want_map = parse(want).unwrap().value;
+        if got != want || Value::Object(map) != want_map {
+            wrong.push(format!("{} steps: expected {want}, got {got}", ops.len()));
+        }
+    }
+    finish(&wrong, vectors.len(), "edit sequence");
 }
 
 #[test]

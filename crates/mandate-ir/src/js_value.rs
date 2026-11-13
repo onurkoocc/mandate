@@ -12,12 +12,19 @@
 //!
 //! Strings are Unicode scalar values: a TypeScript string with a lone
 //! surrogate, which `JSON.stringify` writes as a `\ud800` escape, has no
-//! counterpart here.
+//! counterpart here (where the reader quotes one, U+FFFD stands for it; see
+//! the crate's documentation of known differences).
+//!
+//! For porters: in TypeScript `o["__proto__"] = v` on a plain `{}` sets the
+//! object's prototype and adds no member, while on an object made with
+//! `Object.create(null)` (as the JSON reader makes its objects) it adds one.
+//! [`JsObject::insert`] always adds one, so check how the TypeScript object
+//! was made before porting an assignment of a name that may be `__proto__`.
 
 use crate::jcs::write_json_string;
 use crate::members::Members;
 use crate::number::write_number;
-use crate::value::{Int, Value};
+use crate::value::{Int, Map, Value};
 
 /// A value as `JSON.stringify` and `String` see it.
 #[derive(Clone, Debug, PartialEq)]
@@ -71,13 +78,70 @@ impl JsValue {
         }
     }
 
-    /// The member `key` when this is an object that has one.
+    /// The member `key` when this is an object that has one: `v?.[key]`.
     #[must_use]
     pub fn get(&self, key: &str) -> Option<&JsValue> {
         match self {
             JsValue::Object(o) => o.get(key),
             _ => None,
         }
+    }
+
+    /// The string when this is a string.
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            JsValue::String(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// The number when this is a number.
+    #[must_use]
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            JsValue::Number(x) => Some(*x),
+            _ => None,
+        }
+    }
+
+    /// The boolean when this is one.
+    #[must_use]
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            JsValue::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// The elements when this is an array.
+    #[must_use]
+    pub fn as_array(&self) -> Option<&[JsValue]> {
+        match self {
+            JsValue::Array(items) => Some(items),
+            _ => None,
+        }
+    }
+
+    /// The members when this is an object.
+    #[must_use]
+    pub fn as_object(&self) -> Option<&JsObject> {
+        match self {
+            JsValue::Object(o) => Some(o),
+            _ => None,
+        }
+    }
+
+    /// Whether this is `undefined`.
+    #[must_use]
+    pub fn is_undefined(&self) -> bool {
+        matches!(self, JsValue::Undefined)
+    }
+
+    /// Whether this is `null`.
+    #[must_use]
+    pub fn is_null(&self) -> bool {
+        matches!(self, JsValue::Null)
     }
 }
 
@@ -159,13 +223,31 @@ impl From<&Value> for JsValue {
             Value::Number(n) => JsValue::from(*n),
             Value::String(s) => JsValue::String(s.clone()),
             Value::Array(items) => JsValue::Array(items.iter().map(JsValue::from).collect()),
-            Value::Object(map) => JsValue::Object(JsObject {
-                members: Members::from_unique(
-                    map.iter()
-                        .map(|(k, v)| (k.to_owned(), JsValue::from(v)))
-                        .collect(),
-                ),
-            }),
+            Value::Object(map) => JsValue::Object(JsObject::from(map)),
+        }
+    }
+}
+
+impl From<&Map> for JsObject {
+    /// The IR object as TypeScript holds it, its members in the same order.
+    fn from(map: &Map) -> Self {
+        JsObject {
+            members: Members::from_unique(
+                map.iter()
+                    .map(|(k, v)| (k.to_owned(), JsValue::from(v)))
+                    .collect(),
+            ),
+        }
+    }
+}
+
+impl<K: Into<String>, V: Into<JsValue>> FromIterator<(K, V)> for JsObject {
+    /// The object these assignments make, in order: a name given again keeps
+    /// its first place and takes the last value, as [`JsObject::insert`] one
+    /// by one would (`Object.fromEntries`), in one pass.
+    fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
+        JsObject {
+            members: Members::from_assignments(iter.into_iter().map(|(k, v)| (k.into(), v.into()))),
         }
     }
 }
@@ -217,13 +299,30 @@ impl JsObject {
         self.members.insert(key.into(), value.into())
     }
 
+    /// An object of these members, in ECMAScript order; `None` when two have
+    /// the same name. In one pass and one sort, for large objects.
+    #[must_use]
+    pub fn from_entries(entries: Vec<(String, JsValue)>) -> Option<JsObject> {
+        Members::from_entries(entries).map(|members| JsObject { members })
+    }
+
     /// `{ ...this, ...other }`: each member of `other` assigned in its order.
+    /// Into an empty object it is a copy.
     #[must_use]
     pub fn spread(mut self, other: &JsObject) -> JsObject {
+        if self.is_empty() {
+            return other.clone();
+        }
         for (k, v) in other.iter() {
             self.insert(k, v.clone());
         }
         self
+    }
+
+    /// The value of member `key`, to change in place, as in
+    /// `(o[k] ??= []).push(x)`.
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut JsValue> {
+        self.members.get_mut(key)
     }
 
     /// `delete o[key]`; the value it had, if any.

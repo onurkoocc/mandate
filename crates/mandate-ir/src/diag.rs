@@ -130,6 +130,16 @@ impl Location {
         }
     }
 
+    /// `span ? { span, path } : { path }`, as the parser's depth check
+    /// (`tooDeep` in parser.ts) writes it.
+    #[must_use]
+    pub fn span_then_path(span: Option<Span>, path: impl Into<String>) -> Location {
+        match span {
+            Some(span) => Location::span_path(span, path),
+            None => Location::path(path),
+        }
+    }
+
     /// `{ ...at, span }`: a span already present keeps its place; a new one
     /// comes last.
     #[must_use]
