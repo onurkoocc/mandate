@@ -14,7 +14,7 @@ import { bundleWorkflowCode, DefaultLogger, Runtime as TemporalRuntime, type Wor
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { shownPackage, signDecision } from "../src/decisions.js";
 import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
-import type { HostProbe } from "../src/fitness.js";
+import type { HostProbe, HostTool, ToolReading } from "../src/fitness.js";
 import type { ProgramChecker, WorkerChecker } from "../src/plan.js";
 import { buildPackage, Runtime } from "../src/runtime.js";
 import { MxcAdapter } from "../src/sandbox.js";
@@ -458,5 +458,39 @@ describe("under Temporal the host that is checked is the worker's (spec/boundary
     expect((await handle.describe()).runId).not.toBe(failed.runId);
     expect(checks(fit)).toBe(1);
     expect(s.agents.count()).toBe(1);
+  });
+
+  it(`an unfit worker that would expire a decision is tried ${ATTEMPTS} times too and writes nothing; a fit worker expires it (R15)`, async () => {
+    const tool = new SimTool("git.comment");
+    // The worker's host is fit for the resume that opens the wait, and falls short from then on.
+    const workerHost = new (class extends FakeHost {
+      override async read(tool: HostTool): Promise<ToolReading> {
+        const r = await super.read(tool);
+        if (tool === "node") this.readings = BELOW;
+        return r;
+      }
+    })(FIT);
+    const s = await scheduled(NOTIFY, { lock, tools: [tool], clock: wallClock, controlHost: new FakeHost(FIT), workerHost });
+    await s.control.startRun({ pkg: s.pkg, workflow: "Notify", input: ISSUE, runId: "h4", authorize: { "git.comment": { by: "human", role: "owner", deadlineMs: 1_000 } } });
+    let before: Awaited<ReturnType<typeof recorded>> | undefined;
+    const end = await s.serve(async () => {
+      await stateOf(s, "h4", "waiting");
+      // The next thing the workflow does is expire the wait, on the unfit host.
+      before = await recorded(s, "h4");
+      return ending(s, "h4", 12_000);
+    });
+    expect(checks(workerHost)).toBe(1 + ATTEMPTS);
+    failedUnfit(end);
+    // The decision did not expire on the unfit host: no wait_expired, the command still waits, the run as it was.
+    expect(await recorded(s, "h4")).toEqual(before);
+    expect(before?.commands).toContainEqual(expect.objectContaining({ state: "waiting" }));
+    const done = await s.serve(async () => {
+      await s.driver.start("h4");
+      return s.driver.result("h4");
+    }, new FakeHost(FIT));
+    expect(done.state).toBe("failed");
+    expect((await s.control.getRun("h4")).error).toEqual({ $tag: "Rejected", $args: ["approval_expired"] });
+    expect((await s.control.journal.events("h4")).filter((e) => e.type === "wait_expired")).toHaveLength(1);
+    expect(tool.executions).toHaveLength(0);
   });
 });

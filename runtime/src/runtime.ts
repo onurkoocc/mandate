@@ -984,6 +984,9 @@ export class Runtime {
     if (w["kind"] === "timer") return this.drive(runId);
     // A decision expires, and so does an amendment nobody answered: the lead is told, and the envelope stays.
     if (w["kind"] !== "decision" && w["kind"] !== "amendment") return run;
+    // A runtime that resumes the run itself checks its host first, as the resume would: an unfit host expires
+    // nothing, and the wait stays for a fit host to expire (unfit_host). With a scheduler, its worker checks.
+    if (!this.driver) await checkFitness((await this.packaged(run.package_hash)).lock, this.hostProbe);
     await this.db.tx(async (tx) => {
       await this.journal.lock(tx, runId);
       await tx.query("update commands set state = 'failed', error = $3 where run_id = $1 and command_id = $2 and state = 'waiting'", [
