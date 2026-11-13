@@ -58,7 +58,9 @@ import { randomUUID, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, printProgram, toHtml, toMarkdown, type Doc, type Lock, type Modules, type Program } from "@mandate/compiler";
-import { adaptersFor, anthropicClient, connect, operatorAdapters, readConfig, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
+import type { Adapters } from "./adapters.js";
+import { adaptersFor, anthropicClient, connect, operatorAdapters, readConfig, replayAdapters, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
+import { credentialAdvice } from "./gateway.js";
 import { deployManagedAgents, sdkApi } from "./managed-agents.js";
 import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type SignedDecision } from "./decisions.js";
 import { EvidenceSigner, keyIdOf, TrustedKeys } from "./evidence.js";
@@ -229,7 +231,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     }
 
     if (!runId) throw new Usage(`${cmd} needs a run id`);
-    const { rt, lock } = await runtimeFor(db, config, runId, env);
+    const { rt, lock } = await runtimeFor(db, config, cmd, runId, env);
     made = rt;
     // Who decides: a member, by the key they sign with (the lock says whose it is), or in unsigned mode a name.
     const key = typeof a.flags["--key"] === "string" ? readDecisionKey(a.flags["--key"]) : undefined;
@@ -562,12 +564,42 @@ async function deploy(a: Args, out: (s: string) => void, env: NodeJS.ProcessEnv)
   return 0;
 }
 
-/** The runtime for a run's package, and the package's lock: it says which member a key belongs to. */
-async function runtimeFor(db: Db, config: RuntimeConfig, runId: string, env: NodeJS.ProcessEnv): Promise<{ rt: Runtime; lock: Lock }> {
+/**
+ * The commands that only read a run: none of them calls an adapter, a tool, a model, a sandbox or the proxy, or
+ * moves the run forward. They are built with `operatorAdapters`, as `halt` is: the process holds no adapter that could
+ * use a secret, so the environment may hold one (no `credential_in_environment`). Add a command here only after reading
+ * its code path in `main`; `cancel` is not one, since it asks an adapter about an action whose outcome is unknown.
+ */
+const READ_ONLY_COMMANDS: ReadonlySet<string> = new Set(["status", "show", "denials", "artifact", "decision", "shadow-diff"]);
+
+/**
+ * The runtime for a run's package, and the package's lock: it says which member a key belongs to. How it is built
+ * depends on the command, and on what the command may do beside a secret in the environment (spec/boundary.md "Where
+ * secrets live"):
+ *
+ * - a read-only command (`READ_ONLY_COMMANDS`): `operatorAdapters`, no tools, no credential check;
+ * - `replay`: the configuration's tool map and nothing else, every call refused (`replayAdapters`), no credential check;
+ * - every other command, which can start, resume, decide or cancel (so can run an adapter): the full adapters
+ *   (`adaptersFor`), and with a gateway on and its secret in `env`, `credential_in_environment`. For `cancel` the
+ *   message also says what to do instead.
+ */
+async function runtimeFor(db: Db, config: RuntimeConfig, cmd: string, runId: string, env: NodeJS.ProcessEnv): Promise<{ rt: Runtime; lock: Lock }> {
   const [row] = await db.query<{ program: Program; lock: Lock; modules: Modules | null; tenant: string }>("select p.program, p.lock, p.modules, r.tenant from runs r join packages p on p.package_hash = r.package_hash where r.run_id = $1", [runId]);
   if (!row) throw new Violation("unknown_run", `No run ${runId}.`);
   // The gateways' sessions, if any are opened, are for this run and its tenant.
-  const adapters = adaptersFor(config, linkedProgram(row.program, row.modules ?? {}), row.lock, env, undefined, { tenant: row.tenant, run: runId });
+  const scope = { tenant: row.tenant, run: runId };
+  let adapters: Adapters;
+  if (READ_ONLY_COMMANDS.has(cmd)) adapters = operatorAdapters(config);
+  else if (cmd === "replay") adapters = replayAdapters(config, env, scope);
+  else {
+    try {
+      adapters = adaptersFor(config, linkedProgram(row.program, row.modules ?? {}), row.lock, env, undefined, scope);
+    } catch (e) {
+      const advice = e instanceof Violation && e.code === "credential_in_environment" ? credentialAdvice(cmd, runId, row.tenant) : undefined;
+      if (advice === undefined || !(e instanceof Violation)) throw e;
+      throw new Violation(e.code, `${e.message.slice(e.code.length + 2)} ${advice}`);
+    }
+  }
   return { rt: new Runtime(db, adapters, undefined, undefined, runtimeOptions(config, db)), lock: row.lock };
 }
 
