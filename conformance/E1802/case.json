@@ -1,0 +1,35 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1802",
+  "kind": "compile",
+  "title": "A credential bound to an agent's requests to a host none of its net.https capabilities holds is refused at that binding.",
+  "spec": [
+    "spec/boundary.md#lock-05",
+    "spec/lock.md"
+  ],
+  "language": "mandate/0.5",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1802",
+        "path": "/egress/Reader/uploads.github.com",
+        "facts": {
+          "agent": "Reader",
+          "reason": "host_not_held",
+          "host": "uploads.github.com",
+          "credential": "github",
+          "held": [
+            "api.github.com"
+          ]
+        }
+      }
+    ]
+  }
+}

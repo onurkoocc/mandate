@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S07a",
+  "kind": "compile",
+  "title": "A critical effect inside a function is refused: external writes run only in workflows.",
+  "spec": [
+    "spec/checks.md#effects-6"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0408",
+        "path": "/defs/note/body/0/value"
+      }
+    ]
+  }
+}

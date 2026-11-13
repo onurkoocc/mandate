@@ -1,8 +1,8 @@
-// Public API of the Mandate reference runtime, for language 0.1 to 0.4.
+// Public API of the Mandate reference runtime, for language 0.1 to 0.5.
 export * from "./adapters.js";
 export * from "./artifacts.js";
 export * from "./evidence.js";
-export { ATTESTATION_FORMAT, attestationProblem, statementOf, type Attestation, type CheckStatement } from "./attestation.js";
+export { ATTESTATION_FORMAT, ATTESTATION_FORMAT_0_1, attestationProblem, statementOf, type Attestation, type CheckStatement, type CheckStatement01 } from "./attestation.js";
 export { ProcessVerifier, serveVerifier, type ProcessVerifierOptions, type VerifierPackage } from "./verifier-service.js";
 export { RateLimiter, type BucketConfig, type Priority } from "./ratelimit.js";
 export { openDb, SCHEMA, type Db, type Tx } from "./db.js";

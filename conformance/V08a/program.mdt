@@ -1,0 +1,16 @@
+module m @ 0.1
+use std.{git, model}
+use std.decision.{Choice}
+use company.domain.{Issue}
+type Kind = Merge | Other
+capability PR = git.pr("company/backend")
+fn decide(i: Issue) -> Inferred<Decision<Kind>> ! {Model} {
+  infer Choice<Kind> from quote(i.title)
+}
+workflow W(i: Issue) -> Bool
+  caps PR, model.infer(tier: decision)
+{
+  let d = decide(i)
+  effect git.comment(i, d) idempotent_by i.id
+  true
+}

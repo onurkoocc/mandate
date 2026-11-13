@@ -1,0 +1,27 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V02a",
+  "kind": "compile",
+  "title": "Text read from a file cannot be interpolated into the instruction part of a prompt.",
+  "spec": [
+    "spec/checks.md#epistemic-types-52"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0215",
+        "path": "/defs/summarize/body/1/value/from/parts/1/expr",
+        "facts": {
+          "level": "untrusted"
+        }
+      }
+    ]
+  }
+}

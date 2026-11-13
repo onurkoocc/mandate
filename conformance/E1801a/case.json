@@ -1,0 +1,45 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1801a",
+  "kind": "compile",
+  "title": "A method is a bare name: a method written as text is refused, even one net.https knows.",
+  "spec": [
+    "spec/boundary.md#language-05"
+  ],
+  "language": "mandate/0.5",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/GitHubRead/value/args/1/value/items/0",
+      "value": {
+        "op": "text",
+        "value": "GET"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1801",
+        "path": "/defs/GitHubRead/value/args/1/value/items/0",
+        "facts": {
+          "found": "GET",
+          "expected": [
+            "GET",
+            "HEAD",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S02a",
+  "kind": "compile",
+  "title": "An unknown language version is refused by name, with the versions the compiler reads.",
+  "spec": [
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.9",
+  "input": {
+    "text": "{\"language\":\"mandate/0.9\",\"module\":\"example.minimal\",\"version\":\"0.1\",\"defs\":{\"Greeting\":{\"kind\":\"type\",\"type\":{\"ref\":\"Text\"}}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0103",
+        "path": "/language",
+        "facts": {
+          "expected": [
+            "mandate/0.1",
+            "mandate/0.2",
+            "mandate/0.3",
+            "mandate/0.4",
+            "mandate/0.5"
+          ],
+          "found": "mandate/0.9"
+        }
+      }
+    ]
+  }
+}

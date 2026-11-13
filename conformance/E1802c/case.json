@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1802c",
+  "kind": "compile",
+  "title": "A credential bound to the requests of an agent the lock binds to Managed Agents is refused: its requests are not the runtime's sandbox's.",
+  "spec": [
+    "spec/boundary.md#lock-05",
+    "spec/lock.md"
+  ],
+  "language": "mandate/0.5",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/ModelStd/value/args/1/value/name",
+      "value": "internal"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1802",
+        "path": "/egress/Reader",
+        "facts": {
+          "agent": "Reader",
+          "reason": "executor",
+          "hosts": [
+            "api.github.com"
+          ]
+        }
+      }
+    ]
+  }
+}

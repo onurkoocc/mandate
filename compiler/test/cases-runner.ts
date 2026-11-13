@@ -14,6 +14,7 @@ import type { Program } from "../src/ir/types.js";
 import type { Json } from "../src/json/strict-json.js";
 import type { Lock } from "../src/lock.js";
 import type { Modules } from "../src/modules.js";
+import { applyOps } from "../src/patch/patch.js";
 import { CAP_CTORS, DATA_CLASSES, type DataClass } from "../src/std/std.js";
 import { repoRoot } from "./helpers.js";
 
@@ -71,6 +72,7 @@ export interface Case {
   modules?: string[];
   lock?: string | null;
   patch?: PatchOpJson[];
+  base?: string;
   subprogram?: CaseSubprogram;
   amendment?: CaseAmendment;
   expect: CaseExpect;
@@ -118,7 +120,8 @@ export function compareResult(expect: CaseExpect, got: Observed): string[] {
       continue;
     }
     if (have.code !== want.code) problems.push(`diagnostic ${i}: expected code ${want.code}, got ${have.code}`);
-    if (have.at.path !== want.path) problems.push(`diagnostic ${i} (${want.code}): expected path ${JSON.stringify(want.path)}, got ${JSON.stringify(have.at.path)}`);
+    // A diagnostic without a path (a reader error that has only a span) is at "".
+    if ((have.at.path ?? "") !== want.path) problems.push(`diagnostic ${i} (${want.code}): expected path ${JSON.stringify(want.path)}, got ${JSON.stringify(have.at.path ?? "")}`);
     for (const [key, value] of Object.entries(want.facts ?? {})) {
       const found = have.facts !== undefined && Object.hasOwn(have.facts, key) ? have.facts[key] : undefined;
       if (!deepEqual(found, value)) {
@@ -279,7 +282,7 @@ export function subprogramInput(dir: string, s: CaseSubprogram, parent: Program,
     modules,
     workflow: s.workflow,
     number,
-    base: hashProgram(skeleton(parent.module, number) as unknown as Json).program,
+    base: hashProgram(skeleton(parent.module, number, parent.language) as unknown as Json).program,
     ops,
     lead,
     room: { left: { ...s.room.left }, ...(s.room.time_left_ms !== undefined ? { time_left_ms: s.room.time_left_ms } : {}), writes },
@@ -300,8 +303,14 @@ export function amendmentInput(a: CaseAmendment, parent: Program, modules: Modul
 /** An amendment's check, with the hash of the program it makes where a case's `hashes` are read. */
 export type AmendmentObserved = AmendmentCheck & { hashes?: { program: string } };
 
+/** What a patch case with `base` observes when the patch is refused before the patched program is checked. */
+export interface PatchRefused {
+  ok: false;
+  diagnostics: Diagnostic[];
+}
+
 /** Runs a `compile` case with this compiler and returns what it observed. */
-export function runCompileCase(name: string, c: Case): CheckResult | SubprogramCheck | AmendmentObserved {
+export function runCompileCase(name: string, c: Case): CheckResult | SubprogramCheck | AmendmentObserved | PatchRefused {
   const dir = join(CASES_DIR, name);
   let text = sourceText(dir, c.input);
   let kind = c.input.kind;
@@ -340,12 +349,20 @@ export function runCompileCase(name: string, c: Case): CheckResult | SubprogramC
     return checkSubprogram(subprogramInput(dir, c.subprogram, standsOn("parent of a subprogram case"), loaded.modules));
   }
 
+  if (c.base !== undefined && c.patch === undefined) throw new Error("base is the hash a patch was written against; a case with base has a patch");
   if (c.patch !== undefined) {
-    const base = load(text, kind);
-    if (!base.program || hasErrors(base.diagnostics)) {
-      throw new Error(`the input of a patch case must load before the patch: ${base.diagnostics.map((d) => `${d.code} at ${d.at.path ?? ""}`).join(", ")}`);
+    const before = load(text, kind);
+    if (!before.program || hasErrors(before.diagnostics)) {
+      throw new Error(`the input of a patch case must load before the patch: ${before.diagnostics.map((d) => `${d.code} at ${d.at.path ?? ""}`).join(", ")}`);
     }
-    text = JSON.stringify(applyJsonPatch(base.program, c.patch));
+    if (c.base !== undefined) {
+      // Applied as `mandate.apply_patch` does: against a base. A stale one (E0130) or an operation that cannot be applied (E0131) is the result.
+      const applied = applyOps(before.program, c.base, c.patch);
+      if (!applied.program) return { ok: false, diagnostics: applied.diagnostics };
+      text = JSON.stringify(applied.program);
+    } else {
+      text = JSON.stringify(applyJsonPatch(before.program, c.patch));
+    }
     kind = "json";
   }
 

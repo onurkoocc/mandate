@@ -1,0 +1,4 @@
+module m @ 0.1
+use company.domain.{Patch}
+extern ts "x.ts"::check(p: Patch) -> Verified<Patch>
+  ! {}

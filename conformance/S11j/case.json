@@ -1,0 +1,23 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S11j",
+  "kind": "compile",
+  "title": "A non-ASCII identifier in text is refused.",
+  "spec": [
+    "spec/ir.md#reading-ir"
+  ],
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0101",
+        "path": ""
+      }
+    ]
+  }
+}

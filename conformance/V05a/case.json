@@ -1,0 +1,28 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V05a",
+  "kind": "compile",
+  "title": "spawn is not available in 0.1.",
+  "spec": [
+    "spec/checks.md#supervision-87"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0711",
+        "path": "/defs/W/body/0/value"
+      },
+      {
+        "code": "MDT-W0310",
+        "path": "/defs/W/caps/0"
+      }
+    ]
+  }
+}

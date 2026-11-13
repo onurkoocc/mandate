@@ -54,6 +54,12 @@ the same way from what that delegation was actually granted (§7.5): the
 agent's capabilities inside the workflow's, narrowed by `with caps`, and the
 delegate's `time` budget. Without `with caps`, the two are equal.
 
+A 0.5 program's requirement has format `mandate/sandbox-requirement/0.2`:
+the fields above, the methods each host is limited to, the isolation level
+the sandbox needs, whether it may share its host, and the credential each
+host's requests carry, by name ([`boundary.md`](boundary.md#sandbox-requirement-02)).
+Every other program's is format 0.1, as above.
+
 ## The MXC adapter
 
 `MxcAdapter` (`runtime/src/sandbox.ts`) is pinned as `mandate-mxc@0.1`. It
@@ -146,21 +152,57 @@ with its Bubblewrap backend (BACKLOG K16). Each process runs in its own
 
 | Guarantee | How |
 |---|---|
-| Filesystem | MXC's deny-by-default baseline (system binaries and `/etc` read-only), the policy's read-only and read-write paths, and nothing else |
+| Filesystem | MXC's deny-by-default baseline (system binaries and `/etc` read-only), the policy's read-only and read-write paths, and nothing else. The host's runtime directories (`/run`, `/var/run`) are masked in every sandbox |
 | Network | Egress and ingress denied: `--unshare-net`, no network at all |
+| Host services | No unix socket in the host's runtime directories, and none in its abstract namespace |
 | Commands | Checked by the host before a process starts. Either a helper the runtime's tools use (`cat`, `ls`, `grep`, the `write_file` script) on a path inside the policy, or an allowed command with an allowed argument prefix. Bubblewrap cannot limit commands inside the sandbox |
 | Environment | None of the runtime's: the process gets MXC's default `PATH` and `TERM`, so no API key or token reaches it |
 | Time | The policy's timeout, per process |
 
+A unix socket is a file, not a network route, so the network policy does
+not govern it. A process that can connect to a service's socket can ask
+that service to act for it: a resolver's socket resolves names upstream, a
+container engine's starts containers. The host's services keep their
+sockets in its runtime directories, so no sandbox sees them:
+
+- `/run` and `/var/run` are masked in every sandbox (MXC's
+  `filesystem.deniedPaths`): each is an empty directory there. The mask
+  also covers what the baseline would show under them, such as the
+  resolver's directory that `/etc/resolv.conf` leads to.
+- A policy path at or under one of them is refused by name: the probe
+  reports them as `hidden`, and planning lists each such path among the
+  `unsupported` reasons. MXC would mount such a grant over the mask, so it
+  is refused rather than run; it is never dropped silently.
+- A granted path that leads into one of them through a link, or that is
+  another name for a directory holding one, is refused before a process
+  starts. A `baseline` path that would show one leaves the host enforcing
+  neither the path lists nor the network.
+- A grant of a directory that holds one, such as `/var`, does not show
+  it: the mask is mounted over the grant.
+- Abstract unix sockets belong to a network namespace. A sandbox has a
+  network namespace of its own, so it sees none of the host's.
+
+This does not cover a socket the host keeps outside its runtime
+directories, in a path the policy grants or the baseline shows; a policy
+that grants a directory holding a socket grants that socket. Nor does it
+cover another name for a runtime directory that is not a link, such as a
+bind mount of it elsewhere on the host.
+
 The probe asks the SDK whether Bubblewrap can run: is `bwrap` installed,
 and are user namespaces enabled? Where it cannot, the host enforces
-nothing, so every agent is refused by name (G05). Nothing falls back to a
-weaker isolation.
+nothing, so every agent is refused by name (G05). The probe then starts
+one sandbox with the masks and nothing granted, and lists what it finds in
+the runtime directories; the Bubblewrap backend does not report the
+capability (`filesystemDeniedPaths`), so it is checked, once per host.
+Where anything is found, or the sandbox does not start, the host enforces
+neither the path lists nor the network, and every agent is refused by
+name. Nothing falls back to a weaker isolation.
 
 The host refuses by name what it does not support:
 
 - an outbound host allow-list (`network: deny_all`);
-- `learning` mode, because Bubblewrap has none.
+- `learning` mode, because Bubblewrap has none;
+- a path at or under a runtime directory.
 
 `baseline` adds read-only paths every sandbox sees, such as a toolchain
 under `/opt`. These paths appear in the request MXC gets.
@@ -174,6 +216,14 @@ user namespaces allowed. The tests check that:
   shell the agent was allowed to start;
 - nothing outside the paths is visible;
 - no host can be reached (G07), while the CI host itself reaches it;
+- the host's resolver socket cannot be connected to or asked to resolve
+  a name, while the CI host itself can, and so can a sandbox started
+  without the masks;
+- no unix socket is found anywhere the sandbox can see, while a walk of a
+  sandbox without the masks finds the resolver's;
+- a socket the test listens on under the host's runtime directory, and
+  one in the abstract namespace, cannot be connected to, while the CI
+  host itself connects to both;
 - the runtime's environment is absent;
 - an agent loop does its work through the sandbox.
 
@@ -234,5 +284,10 @@ repeat the Linux enforcement tests against a real AppContainer
 - **Learning mode on Linux.** Bubblewrap has none; a requirement for it is
   refused there.
 - **An outbound host allow-list.** MXC offers one through a proxy. It is
-  not wired up, so a requirement with `net.https` hosts is refused.
+  not wired up, so a requirement with `net.https` hosts is refused. The
+  egress proxy of 0.5 is how it will be ([`boundary.md`](boundary.md#the-egress-proxy)).
+- **What requirement 0.2 adds.** Method limits, an isolation level above
+  `process`, a sandbox that may not share its host, and credentials are
+  refused by the adapter by name, on every host, until a host enforces
+  them.
 - **An AX adapter.**

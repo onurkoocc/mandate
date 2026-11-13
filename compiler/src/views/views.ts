@@ -55,7 +55,8 @@ import { ptr, ptrToken } from "../diag.js";
 import { canonicalize } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
 import { own, packagedLock, perCallBound, type Lock } from "../lock.js";
-import { STD_EFFECTS, STD_FNS } from "../std/std.js";
+import { DATA_CLASSES, STD_EFFECTS, STD_FNS } from "../std/std.js";
+import { coTenancyFor, floorFor, ISOLATION_LEVELS, type IsolationLevel } from "../target/sandbox.js";
 import type { Block, Cell, Doc } from "./doc.js";
 
 export const VIEW_FORMAT = "mandate/view/0.1";
@@ -75,7 +76,7 @@ export function programRef(p: Program): ProgramRef {
 
 /** The capabilities a list of capability expressions stands for (component capabilities may stand for several). */
 export function capsIn(program: Program, list: Expr[]): CapVal[] {
-  return list.flatMap((e) => capsOf(program.defs, e));
+  return list.flatMap((e) => capsOf(program.defs, e, { language: program.language }));
 }
 
 /** `c.narrow(v)` whose scope is a value of the run: where it lies is known only then. */
@@ -89,7 +90,7 @@ function chosenAtRunTime(e: Expr): boolean {
  * most the narrowing can be. Read by itself it has no scope, and a view would call it unbounded.
  */
 function widest(program: Program, list: Expr[]): CapVal[] {
-  return list.flatMap((e) => capsOf(program.defs, chosenAtRunTime(e) && e.op === "call" && e.callee.op === "field" ? e.callee.of : e));
+  return list.flatMap((e) => capsOf(program.defs, chosenAtRunTime(e) && e.op === "call" && e.callee.op === "field" ? e.callee.of : e, { language: program.language }));
 }
 
 /** The kinds of capability in a list of `with caps` whose scope the run chooses. */
@@ -142,7 +143,8 @@ export function authorityOf(caps: CapVal[]): Authority {
     if (c.scope === undefined && ["fs.read", "fs.write", "net.https", "exec", "git.pr"].includes(c.ctor)) a.unbounded.push(showCap(c));
     if (c.ctor === "fs.read") a.read.push(...scope);
     else if (c.ctor === "fs.write") a.write.push(...scope);
-    else if (c.ctor === "net.https") a.network.push(...scope);
+    // A host a 0.5 capability allows only some methods of is shown with them.
+    else if (c.ctor === "net.https") a.network.push(...scope.map((h) => (c.methods ? `${h} (${c.methods.join(", ")})` : h)));
     else if (c.ctor === "model.infer") a.model.push(`${c.tier ?? "any tier"} (up to ${c.maxClass ?? "internal"})`);
     else if (c.ctor === "exec") a.exec.push(...scope.map((cmd) => (c.argsPrefix?.length ? c.argsPrefix.map((p) => [cmd, ...p].join(" ")).join("; ") : `${cmd} …`)));
     else if (c.ctor === "git.pr") a.repos.push(...scope);
@@ -700,6 +702,12 @@ function scopeDiff(before: CapVal | undefined, after: CapVal | undefined): { add
   if (before.tier !== after.tier) other.push(`model tier ${before.tier ?? "any"} → ${after.tier ?? "any"}`);
   if ((before.maxClass ?? "internal") !== (after.maxClass ?? "internal")) other.push(`data class up to ${before.maxClass ?? "internal"} → ${after.maxClass ?? "internal"}`);
   if (j(before.argsPrefix ?? null) !== j(after.argsPrefix ?? null)) other.push(`argument prefixes ${j(before.argsPrefix ?? "any")} → ${j(after.argsPrefix ?? "any")}`);
+  // Methods (0.5): one more method, or none named where some were, widens; fewer narrows.
+  const methods = (m: string[] | undefined): string => (m ? m.join(", ") : "any");
+  if (j(before.methods ?? null) !== j(after.methods ?? null)) {
+    const widened = after.methods === undefined || (before.methods !== undefined && after.methods.some((m) => !before.methods!.includes(m)));
+    (widened ? other : removed).push(`methods ${methods(before.methods)} → ${methods(after.methods)}`);
+  }
   return { added, removed, other };
 }
 
@@ -741,7 +749,7 @@ function scopeDiffs(before: CapVal[], after: CapVal[]): { added: string[]; remov
   return out;
 }
 
-const shownCaps = (p: Program, e: Expr): string => capsOf(p.defs, e).map(showCap).join(", ") || j(e);
+const shownCaps = (p: Program, e: Expr): string => capsIn(p, [e]).map(showCap).join(", ") || j(e);
 
 function budgetChanges(name: string, before: Budget | undefined, after: Budget | undefined): { up: string[]; down: string[] } {
   const up: string[] = [];
@@ -819,6 +827,69 @@ export function lockDiff(before: Lock | undefined, after: Lock | undefined): Cha
     }
   }
   return out;
+}
+
+/**
+ * What changed in what two locks of format 0.5 ask of the runtime's host and of a sandbox (spec/boundary.md
+ * "Lock 0.5"). What lets a sandbox do more, or run on less, is a governance change: a credential bound to an
+ * agent's requests, added or changed; an isolation floor lowered or taken away; a sandbox that may now share
+ * its host; a least host version lowered or taken away. The opposite of each is a behavior change.
+ */
+export function lockLimitsDiff(before: Lock | undefined, after: Lock | undefined): { governance: Change[]; behavior: Change[] } {
+  const governance: Change[] = [];
+  const behavior: Change[] = [];
+  const names = (x: object | undefined, y: object | undefined): string[] => [...new Set([...Object.keys(x ?? {}), ...Object.keys(y ?? {})])].sort();
+  const at = <T>(r: Partial<Record<string, T>> | undefined, k: string): T | undefined => (r && Object.hasOwn(r, k) ? r[k] : undefined);
+  /**
+   * One least value: `below` orders values, and none is below all, or is `bottom` when one value means the same
+   * as none (a floor of process is no floor). Lowered or taken away is governance; raised or added, behavior.
+   */
+  const least = (path: string, label: string, b: string | undefined, a: string | undefined, below: (x: string, y: string) => boolean, none: string, bottom?: string): void => {
+    const was = b ?? bottom;
+    const now = a ?? bottom;
+    if (was === now || (was !== undefined && now !== undefined && !below(was, now) && !below(now, was))) return;
+    const shown = (v: string | undefined): string => v ?? none;
+    const lowered = now === undefined || (was !== undefined && below(now, was));
+    (lowered ? governance : behavior).push({ path, text: `~ ${label}: ${shown(b)} → ${shown(a)} (${lowered ? "lowered" : "raised"})` });
+  };
+  // Versions by number, segment by segment; a missing segment is 0, so 22.23 and 22.23.0 are the same.
+  const version = (x: string, y: string): boolean => {
+    const xs = x.split(".").map(Number);
+    const ys = y.split(".").map(Number);
+    for (let i = 0; i < Math.max(xs.length, ys.length); i++) if ((xs[i] ?? 0) !== (ys[i] ?? 0)) return (xs[i] ?? 0) < (ys[i] ?? 0);
+    return false;
+  };
+  for (const tool of names(before?.host, after?.host)) {
+    least(`/host/${ptrToken(tool)}`, `host.${tool}`, at(before?.host, tool), at(after?.host, tool), version, "no minimum");
+  }
+  const level = (x: string, y: string): boolean => ISOLATION_LEVELS.indexOf(x as IsolationLevel) < ISOLATION_LEVELS.indexOf(y as IsolationLevel);
+  const bi = before?.isolation;
+  const ai = after?.isolation;
+  // Floors and sharing are compared as each data class has them in effect: a floor holds for every more sensitive
+  // class, so taking one away, or lowering it, may lower what a class that the lock does not name gets.
+  for (const cls of DATA_CLASSES) least(`/isolation/floor/${ptrToken(cls)}`, `isolation.floor.${cls} in effect`, floorFor(bi, cls), floorFor(ai, cls), level, "process");
+  least("/isolation/untrusted_network", "isolation.untrusted_network", bi?.untrusted_network, ai?.untrusted_network, level, "no floor", "process");
+  for (const cls of DATA_CLASSES) {
+    const b = coTenancyFor(bi, cls);
+    const a = coTenancyFor(ai, cls);
+    if (b === a) continue;
+    const relaxed = a === "allowed";
+    (relaxed ? governance : behavior).push({ path: `/isolation/co_tenancy/${ptrToken(cls)}`, text: `~ isolation.co_tenancy.${cls} in effect: ${b} → ${a} (${relaxed ? "relaxed" : "tightened"})` });
+  }
+  for (const agent of names(before?.egress, after?.egress)) {
+    const b = at(before?.egress, agent);
+    const a = at(after?.egress, agent);
+    for (const host of names(b, a)) {
+      const was = at(b, host);
+      const now = at(a, host);
+      if (was === now) continue;
+      const path = `/egress/${ptrToken(agent)}/${ptrToken(host)}`;
+      if (was === undefined) governance.push({ path, text: `+ egress: ${agent}'s requests to ${host} carry credential ${now}` });
+      else if (now === undefined) behavior.push({ path, text: `- egress: ${agent}'s requests to ${host} carry credential ${was} no more` });
+      else governance.push({ path, text: `~ egress: ${agent}'s requests to ${host} carry credential ${was} → ${now}` });
+    }
+  }
+  return { governance, behavior };
 }
 
 /**
@@ -939,7 +1010,7 @@ function classify(before: Program, after: Program, modules: Modules = {}): { gov
     }
     switch (a.kind) {
       case "capability": {
-        const d = scopeDiffs(capsOf(lb.defs, { op: "var", name }), capsOf(la.defs, { op: "var", name }));
+        const d = scopeDiffs(capsIn(lb, [{ op: "var", name }]), capsIn(la, [{ op: "var", name }]));
         for (const x of d.added) governance.push({ kind: "capability_added", path, text: `+ ${name}: ${x}` });
         for (const x of d.other) governance.push({ kind: "capability_added", path, text: `~ ${name}: ${x}` });
         for (const x of d.removed) behavior.push({ path, text: `- ${name}: ${x} (narrowed)` });
@@ -1045,7 +1116,13 @@ export function semanticDiff(before: Program, after: Program, locks?: { before?:
   const governance: Change[] = changes.governance.map(({ path, text }) => ({ path, text }));
   const behavior = changes.behavior;
   // After the program's own changes, so a diff without locks, or with the same people in both, reads as it did.
-  if (locks) governance.push(...lockDiff(locks.before, locks.after));
+  if (locks) {
+    governance.push(...lockDiff(locks.before, locks.after));
+    // Then what the locks ask of the host and the sandboxes (0.5); a lock without it adds nothing.
+    const limits = lockLimitsDiff(locks.before, locks.after);
+    governance.push(...limits.governance);
+    behavior.push(...limits.behavior);
+  }
   const critical = (p: Program): string[] =>
     Object.values(p.defs)
       .filter((d): d is WorkflowDef => d.kind === "workflow")
@@ -1057,7 +1134,7 @@ export function semanticDiff(before: Program, after: Program, locks?: { before?:
   if (j(cb) === j(ca)) unchanged.push(cb.length ? `external effects unchanged: ${cb.join(", ")}` : "no external effects, before or after");
   const contracts = (p: Program) => Object.entries(p.defs).filter(([, d]) => d.kind === "contract");
   if (j(contracts(before)) === j(contracts(after))) unchanged.push("contracts and their criteria unchanged");
-  if (!governance.some((g) => g.text.startsWith("+") || g.text.includes("tier") || g.text.includes("data class"))) unchanged.push("no authority added");
+  if (!governance.some((g) => g.text.startsWith("+") || g.text.includes("tier") || g.text.includes("data class") || g.text.includes(": methods "))) unchanged.push("no authority added");
   if (!governance.some((g) => g.text.includes(".budget."))) unchanged.push("no budget raised");
   return { format: VIEW_FORMAT, kind: "diff", from: programRef(before), to: programRef(after), governance, behavior, unchanged };
 }
@@ -1351,7 +1428,7 @@ export function card(program: Program, workflow: string, opts: { lock?: Lock; mo
         par: e.par ?? 1,
         delegates,
         handed: (e.caps ?? []).map((c) => {
-          const vals = capsOf(lp.defs, c);
+          const vals = capsIn(lp, [c]);
           const scopes = vals.flatMap((x) => x.scope ?? []);
           return { cap: exprText(c), kinds: [...new Set(vals.map((x) => x.ctor))], scope: vals.length && vals.every((x) => x.scope) ? scopes : null, by_item: readsVar(c, e.bind) };
         }),

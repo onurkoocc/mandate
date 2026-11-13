@@ -90,8 +90,8 @@ const KEY = `sha256:${"3f".repeat(32)}`;
 const BOUND: Lock = { modules: {}, members: { bob: { keys: [KEY] } }, roles: { reviewer: ["bob"] } };
 
 describe("the language versions the runtime runs", () => {
-  it("are 0.1 to 0.4", () => {
-    expect(RUNTIME_LANGUAGES).toEqual(["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4"]);
+  it("are 0.1 to 0.5", () => {
+    expect(RUNTIME_LANGUAGES).toEqual(["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4", "mandate/0.5"]);
   });
 
   it("accept a 0.4 program that names a role, with a lock that binds it", () => {

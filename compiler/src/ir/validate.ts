@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
 import { diag, ptrToken, type Diagnostic, type Span } from "../diag.js";
+import { compareUtf16 } from "../json/jcs.js";
 import type { Json } from "../json/strict-json.js";
 import { LIMITS } from "../limits.js";
 import { atLeast, isLanguageVersion, LANGUAGE_VERSIONS, SYSTEM_KINDS, type LanguageVersion } from "./types.js";
@@ -181,7 +182,8 @@ function schemaDiagnostics(errors: ErrorObject[], at: (p: string) => { path: str
     seen.add(key);
     out.push(diag("E0104", message, at(path), { facts: { keyword: e.keyword, schema_path: e.schemaPath } }));
   }
-  return out.sort((a, b) => (a.at.path ?? "").localeCompare(b.at.path ?? ""));
+  // By UTF-16 code units, not by the locale: another implementation has to be able to reproduce the order.
+  return out.sort((a, b) => compareUtf16(a.at.path ?? "", b.at.path ?? ""));
 }
 
 export function nearestSpan(spans: Map<string, Span> | undefined, path: string): Span | undefined {

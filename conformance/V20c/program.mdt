@@ -1,0 +1,3 @@
+module m @ 0.1
+fn touch(ps: List<Path>) -> Bool { true }
+let a = touch(["src/a.ts", "../b.ts"])

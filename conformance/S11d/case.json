@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S11d",
+  "kind": "compile",
+  "title": "A number written with a fraction is refused, not rounded, even when it is whole.",
+  "spec": [
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "text": "{\"language\":\"mandate/0.1\",\"module\":\"m\",\"version\":\"0.1\",\"defs\":{\"N\":{\"kind\":\"const\",\"value\":{\"op\":\"int\",\"value\":1.0}}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0106",
+        "path": "/defs/N/value/value"
+      }
+    ]
+  }
+}

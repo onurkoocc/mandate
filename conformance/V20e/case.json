@@ -1,0 +1,25 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "V20e",
+  "kind": "compile",
+  "title": "A template is not a Path, even when it starts like one.",
+  "spec": [
+    "spec/core.md#paths",
+    "spec/diagnostics.md"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0201",
+        "path": "/defs/f/body/0/value/args/0/value"
+      }
+    ]
+  }
+}

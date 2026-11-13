@@ -12,7 +12,8 @@
 //   component.repo(c…)           git.pr(c.repo…)
 
 import { posix } from "node:path";
-import type { Arg, ComponentDef, Def, Expr } from "../ir/types.js";
+import { diag, ptr, type Diagnostic } from "../diag.js";
+import { atLeast, type Arg, type ComponentDef, type Def, type Expr, type LanguageVersion, type Program } from "../ir/types.js";
 import { CAP_CTORS, DEFAULT_MODEL_MAX_CLASS, DATA_CLASSES, type DataClass } from "../std/std.js";
 
 export interface CapVal {
@@ -37,6 +38,55 @@ export interface CapVal {
   tier?: string;
   /** For exec: the argument prefixes a command may start with. */
   argsPrefix?: string[][];
+  /**
+   * For net.https from 0.5: the HTTP methods it allows, sorted, without duplicates. Undefined means any method.
+   * Before 0.5 `methods` is not read, and a capability that writes it allows any method, as it always did.
+   */
+  methods?: string[];
+}
+
+/** The methods `net.https(methods: […])` may name, from 0.5 (spec/boundary.md). */
+export const HTTP_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] as const;
+
+/** Whether a capability read in `language` reads `methods`: from 0.5. */
+export function readsMethods(language: LanguageVersion | undefined): boolean {
+  return language !== undefined && atLeast(language, "mandate/0.5");
+}
+
+/** One problem with a `methods:` argument (E1801): where it is, below the argument's value, and what is there. */
+export interface MethodProblem {
+  /** JSON Pointer below the argument's value: "" for the value itself, "/items/<i>" for an item. */
+  at: string;
+  /** The name written, or null where no bare name is written. */
+  found: string | null;
+  problem: "not_a_list" | "empty" | "not_a_name" | "unknown";
+}
+
+/**
+ * The methods a `methods:` value names, and what is wrong with it: it is a non-empty list of bare names from
+ * HTTP_METHODS. Only names it knows are in `methods`; a value with a problem does not check (E1801).
+ */
+export function readMethods(v: Expr): { methods: string[]; problems: MethodProblem[] } {
+  if (v.op !== "list") return { methods: [], problems: [{ at: "", found: null, problem: "not_a_list" }] };
+  if (!v.items.length) return { methods: [], problems: [{ at: "", found: null, problem: "empty" }] };
+  const methods = new Set<string>();
+  const problems: MethodProblem[] = [];
+  v.items.forEach((item, i) => {
+    if (item.op !== "var") problems.push({ at: `/items/${i}`, found: item.op === "text" ? item.value : null, problem: "not_a_name" });
+    else if (!(HTTP_METHODS as readonly string[]).includes(item.name)) problems.push({ at: `/items/${i}`, found: item.name, problem: "unknown" });
+    else methods.add(item.name);
+  });
+  return { methods: [...methods].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)), problems };
+}
+
+/**
+ * How a capability expression is read. What it means can depend on the language of the program it is read in, as
+ * a definition imported from a module is read in the program that imports it. Without a language it is read as
+ * in 0.1 to 0.4.
+ */
+export interface CapOptions {
+  /** The language of the program the capability is read in. */
+  language?: LanguageVersion;
 }
 
 /** Dotted path of a callee such as `fs.read` or `git.pr`, if it is one. */
@@ -71,7 +121,7 @@ function symbol(e: Expr): string | undefined {
  * Evaluates a capability constructor call such as `fs.write("/work/repo/src")`.
  * Returns undefined when the expression is not a known constructor.
  */
-export function capFromCall(e: Expr): CapVal | undefined {
+export function capFromCall(e: Expr, opts: CapOptions = {}): CapVal | undefined {
   if (e.op !== "call") return undefined;
   const ctor = calleePath(e.callee);
   if (!ctor) return undefined;
@@ -90,6 +140,9 @@ export function capFromCall(e: Expr): CapVal | undefined {
       const h = named("hosts");
       const v = h && literalStrings(h.value);
       if (v) cap.scope = v;
+      // From 0.5 a capability may allow only some methods. Before, `methods` is written and means nothing.
+      const m = readsMethods(opts.language) ? named("methods") : undefined;
+      if (m) cap.methods = readMethods(m.value).methods;
       break;
     }
     case "commands": {
@@ -115,6 +168,36 @@ export function capFromCall(e: Expr): CapVal | undefined {
   return cap;
 }
 
+/**
+ * E1804: a program of 0.1 to 0.4 reads every capability in its own language, so a `net.https` written with
+ * `methods` in a module of 0.5 or later, which it reaches through an import, would allow any method there. Each
+ * imported definition that holds such a call is refused, at the import that brings it in. What the program writes
+ * itself, and what a module below 0.5 writes, are read as they always were and not looked at.
+ */
+export function importedMethods(program: Program, linked: { defs: Record<string, Def>; origin: Record<string, string> }, modules: Record<string, Program> = {}): Diagnostic[] {
+  if (readsMethods(program.language)) return [];
+  const out: Diagnostic[] = [];
+  const holds = (v: unknown): boolean => {
+    if (Array.isArray(v)) return v.some(holds);
+    if (!v || typeof v !== "object") return false;
+    const e = v as Expr;
+    if (e.op === "call" && calleePath(e.callee) === "net.https" && e.args.some((a) => a.name === "methods")) return true;
+    return Object.values(v).some(holds);
+  };
+  for (const name of Object.keys(linked.origin).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
+    const module = linked.origin[name]!;
+    const m = Object.hasOwn(modules, module) ? modules[module] : undefined;
+    if (!m || !readsMethods(m.language) || !holds(linked.defs[name])) continue;
+    const i = (program.uses ?? []).findIndex((u) => u.module === module);
+    out.push(
+      diag("E1804", `${name}, imported from ${module}, holds a net.https capability that allows only some methods, as ${m.language} reads it. This program is ${program.language}, which would read it without the limit, allowing any method. Write the program in mandate/0.5 or later.`, { path: i < 0 ? "/uses" : ptr("uses", i) }, {
+        facts: { definition: name, module, module_language: m.language, language: program.language },
+      }),
+    );
+  }
+  return out;
+}
+
 /** What a capability expression stands for, or why it stands for nothing. */
 export interface CapResult {
   caps: CapVal[];
@@ -129,13 +212,13 @@ const COMPONENT_CTORS = new Set(["component.read", "component.write", "component
  * constructor that cannot be opened (an argument that is not a component, a
  * command kind it does not declare) has a `problem` and no capabilities.
  */
-export function capsFromCall(e: Expr, defs: Record<string, Def> = {}): CapResult | undefined {
+export function capsFromCall(e: Expr, defs: Record<string, Def> = {}, opts: CapOptions = {}): CapResult | undefined {
   if (e.op !== "call") return undefined;
   const ctor = calleePath(e.callee);
   if (ctor && COMPONENT_CTORS.has(ctor)) return componentCaps(ctor, e.args, defs);
   if (ctor === "data.read") return readCaps(e.args, defs);
   if (ctor === "env.deploy" || ctor === "env.migrate") return envCaps(ctor, e.args, defs);
-  const c = capFromCall(e);
+  const c = capFromCall(e, opts);
   return c ? { caps: [c] } : undefined;
 }
 
@@ -239,22 +322,22 @@ function uniquePrefixes(ps: string[][]): string[][] {
  * scope is not literal leaves the scope unknown, never the base's wider one.
  * The checker reports what cannot be evaluated; here it stands for nothing.
  */
-export function capsOf(defs: Record<string, Def>, e: Expr, within: ReadonlySet<string> = new Set()): CapVal[] {
+export function capsOf(defs: Record<string, Def>, e: Expr, opts: CapOptions = {}, within: ReadonlySet<string> = new Set()): CapVal[] {
   if (e.op === "var") {
     const d = Object.hasOwn(defs, e.name) ? defs[e.name] : undefined;
     // A capability that names itself, directly or through another, is nothing.
     if (d?.kind !== "capability" || within.has(e.name)) return [];
-    return capsOf(defs, d.value, new Set(within).add(e.name)).map((c) => ({ ...c, name: e.name }));
+    return capsOf(defs, d.value, opts, new Set(within).add(e.name)).map((c) => ({ ...c, name: e.name }));
   }
   if (e.op === "call" && e.callee.op === "field" && e.callee.name === "narrow") {
-    const bases = capsOf(defs, e.callee.of, within);
+    const bases = capsOf(defs, e.callee.of, opts, within);
     const scope = e.args.flatMap((a) => (a.value.op === "text" ? [a.value.value] : []));
     return bases.map((base) => {
       const { scope: _wide, ...rest } = base;
       return bases.length === 1 && scope.length === e.args.length ? { ...rest, scope, name: `${base.name ?? base.ctor}.narrow` } : rest;
     });
   }
-  return capsFromCall(e, defs)?.caps ?? [];
+  return capsFromCall(e, defs, opts)?.caps ?? [];
 }
 
 /** Normalizes an absolute path into segments; `..` and `.` are resolved, trailing slashes dropped. */
@@ -305,6 +388,8 @@ export function capCovers(cap: CapVal, need: CapVal): boolean {
   // Tiers are not ordered: a capability without a tier allows any, one with a tier allows only that one.
   if (cap.tier !== undefined && need.tier !== cap.tier) return false;
   if (!prefixesWithin(need.argsPrefix, cap.argsPrefix)) return false;
+  // Methods (0.5): a capability without them allows any method, so only one without them covers one without them.
+  if (cap.methods !== undefined && (need.methods === undefined || !need.methods.every((m) => cap.methods!.includes(m)))) return false;
   return true;
 }
 
@@ -327,6 +412,7 @@ export function writesOverlap(a: CapVal, b: CapVal): boolean {
 }
 
 export function showCap(c: CapVal): string {
-  const scope = c.scope ? `(${c.scope.map((s) => JSON.stringify(s)).join(", ")})` : "";
+  const args = [...(c.scope ?? []).map((s) => JSON.stringify(s)), ...(c.methods ? [`methods: [${c.methods.join(", ")}]`] : [])];
+  const scope = c.scope || c.methods ? `(${args.join(", ")})` : "";
   return `${c.name ? `${c.name} = ` : ""}${c.via ? `${c.via} → ` : ""}${c.ctor}${scope}`;
 }

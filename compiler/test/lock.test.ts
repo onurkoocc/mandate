@@ -113,8 +113,8 @@ describe("lock format 0.4: members and roles", () => {
     profile: { ...MA_BRIDGE_PROFILE },
   };
 
-  it("reads a 0.4 lock with members and roles, and writes 0.4", () => {
-    expect(LOCK_FORMAT).toBe("mandate/lock/0.4");
+  it("reads a 0.4 lock with members and roles, and writes 0.5", () => {
+    expect(LOCK_FORMAT).toBe("mandate/lock/0.5");
     expect(validateLock(V04())).toEqual([]);
     expect(validateLock({ ...V04(), members: undefined, roles: undefined })).toEqual([]);
   });

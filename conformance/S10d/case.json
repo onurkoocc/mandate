@@ -1,0 +1,29 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S10d",
+  "kind": "compile",
+  "title": "The same program in text with its definitions, imports and fields in another order has the same hashes as S10c.",
+  "spec": [
+    "spec/ir.md#hashing",
+    "spec/core.md#1-programs"
+  ],
+  "language": "mandate/0.1",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "hashes": {
+      "program": "sha256:e487ef0797464c32304cdfda10bafe7cf6c05ef0814d3e6441c9b66f5f9fecea",
+      "defs": {
+        "A": "sha256:f3a581979f922d07eca4f01c8eff22d2bf950b8e68070553f66edeb67cb28c6e",
+        "M": "sha256:226f2d7856eeb5b4e6717ec71baec503c5a6a5ba9ea3ac2c41564b31382f78e2",
+        "R": "sha256:ccd1d3970abc97635fb9c778b8e7b6b965b76c762a1c838c266af1804842fec7",
+        "T": "sha256:f8a83ed4e3ab00626694ba0ce762417e1607dca3e5cd7c7326a4705a71fe5ddf"
+      }
+    }
+  }
+}

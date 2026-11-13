@@ -33,7 +33,7 @@ import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, sym
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { globRegExp, requirementFor, type CapVal } from "@mandate/compiler";
-import type { CheckLog, CheckResult, CheckSubject, SystemFacts, VerifierAdapter, VerifyRequest } from "./adapters.js";
+import type { CheckBinding, CheckLog, CheckResult, CheckSubject, SystemFacts, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { sha256Of } from "./artifacts.js";
 import { childEnv, DOCKER_ENV } from "./env.js";
 import { PathRefused, realEntries, writeWithin } from "./paths.js";
@@ -142,10 +142,10 @@ export class BoundaryVerifier implements VerifierAdapter {
     return this.inner?.upperBound?.(req);
   }
 
-  async check(req: VerifyRequest): Promise<CheckResult> {
+  async check(req: VerifyRequest, binding?: CheckBinding): Promise<CheckResult> {
     const sys = req.system;
     const boundary = BOUNDARY_METHODS.includes(req.method);
-    if (!boundary) return this.inner ? this.inner.check(req) : { passed: false, detail: { unsupported: `the verifier has no method ${req.method}` } };
+    if (!boundary) return this.inner ? this.inner.check(req, binding) : { passed: false, detail: { unsupported: `the verifier has no method ${req.method}` } };
     if (!sys) return { passed: false, detail: { reason: `${req.method} needs the run's system model and workspace (design doc 9 §4)` }, producer: this.producer() };
     const subject = snapshot(sys);
     const r = await this.run(req, sys);

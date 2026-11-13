@@ -1,0 +1,28 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1801c",
+  "kind": "compile",
+  "title": "A 0.5 program whose net.https capability allows only GET checks, and hashes as a 0.5 program.",
+  "spec": [
+    "spec/boundary.md#language-05"
+  ],
+  "language": "mandate/0.5",
+  "input": {
+    "file": "../../fixtures/boundary/fetch.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "hashes": {
+      "program": "sha256:781a61284d6508f07ad8381299fad87900978dc773eb3a1081f9d302dfd8ea61",
+      "defs": {
+        "GitHubRead": "sha256:9f31ffd285728bed1fa2f316d201e084bc0fd6d18aae3bb715dc56e7a85db6a1",
+        "ModelStd": "sha256:dec1a608583bd1d8fb262cba0481b869988df1be27636a3b0c23f3927fb05054",
+        "Reader": "sha256:3cdfeb5e2e7e9188f96070898db97e36a9eaeb96b9d7db4f10d7469a5ba3b456",
+        "Summarize": "sha256:0fe9ded8d4a7949c8f29eaa2630dcf37168c93991e88aa8ad248130367ba0923"
+      }
+    }
+  }
+}

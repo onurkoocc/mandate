@@ -1,0 +1,21 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1804",
+  "kind": "compile",
+  "title": "A 0.4 program that imports a 0.5 net.https capability written with methods is refused at the import: it would read the capability without the limit.",
+  "spec": ["spec/boundary.md#language-05"],
+  "language": "mandate/0.4",
+  "input": { "file": "program.mdt", "kind": "mdt" },
+  "modules": ["github.mdt"],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1804",
+        "path": "/uses/0",
+        "facts": { "definition": "GitHubRead", "module": "example.github", "module_language": "mandate/0.5", "language": "mandate/0.4" }
+      }
+    ]
+  }
+}

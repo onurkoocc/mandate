@@ -1,0 +1,9 @@
+module m @ 0.1
+use std.{fs}
+fn summarize(path: Path) -> Inferred<Text> ! {Fs.Read, Model} {
+  let log = fs.read_text(path)
+  infer Text from prompt"""
+    Summarize this log.
+    {log}
+  """
+}

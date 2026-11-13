@@ -1,0 +1,9 @@
+module m @ 0.1
+use std.{git}
+use company.domain.{PullRequestDraft, PullRequest}
+capability PR = git.pr("company/backend")
+agent Bot {
+  caps PR
+  budget { steps: 5 }
+  skill ship(d: Verified<PullRequestDraft>) -> PullRequest ! {git.open_pr}
+}

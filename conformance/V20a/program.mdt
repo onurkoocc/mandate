@@ -1,0 +1,7 @@
+module m @ 0.1
+fn open(p: Path) -> Bool { true }
+let a0 = open("src/a.ts")
+let a1 = open("README.md")
+let a2 = open(".github/workflows/ci.yml")
+let a3 = open("a/..b/c..d/.e")
+let a4 = open("x y/z")

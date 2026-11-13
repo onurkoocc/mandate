@@ -59,6 +59,7 @@ import {
   type Diagnostic,
   type Envelope,
   type Json,
+  type LanguageVersion,
   type Lock,
   type Modules,
   type Program,
@@ -118,9 +119,9 @@ export const PLAN_TOOLS: ToolSpec[] = [
   },
 ];
 
-/** The hash of the module the runtime starts for sub-program `n`: the `base` of the lead's patch. */
-export function baseOf(parent: string, n: number): string {
-  return hashProgram(skeleton(parent, n) as unknown as Json).program;
+/** The hash of the module the runtime starts for sub-program `n` of a parent in `language`: the `base` of the lead's patch. */
+export function baseOf(parent: string, n: number, language?: LanguageVersion): string {
+  return hashProgram(skeleton(parent, n, language) as unknown as Json).program;
 }
 
 /**
@@ -135,8 +136,8 @@ export function planBrief(parent: Program, envelope: Envelope): string {
   return [
     "",
     "You can hand work to a sub-program: a Mandate module, written as JSON IR, that the runtime checks and then runs inside this run's envelope.",
-    `- The runtime starts sub-program n as this module, with n in place of 1: ${canonical(skeleton(parent.module, 1) as unknown as Value)}`,
-    `- \`base\` is that module's hash. For the first sub-program it is ${baseOf(parent.module, 1)}. Every tool result gives the base to use next.`,
+    `- The runtime starts sub-program n as this module, with n in place of 1: ${canonical(skeleton(parent.module, 1, parent.language) as unknown as Value)}`,
+    `- \`base\` is that module's hash. For the first sub-program it is ${baseOf(parent.module, 1, parent.language)}. Every tool result gives the base to use next.`,
     "- `ops` add definitions under /defs/<Name>: types, constants, capabilities, functions, local agents, and exactly one workflow, which takes no parameters and is what runs.",
     "- The workflow's `caps` and `budget` are what it asks of the envelope. Each capability must lie inside one of the envelope's. The budget must name every dimension the run is limited in, and a time.",
     `- It may use every definition of ${parent.module}${names.length ? ":" : "."}`,
@@ -394,7 +395,7 @@ export class Planner {
     const told = async (): Promise<Value> => {
       const number = (await h.journal.admissions(h.runId, h.plan)).length + 1;
       const room = await this.room();
-      return { envelope: now as unknown as Value, number, base: baseOf(h.parent.module, number), room: { left: room.left, ...(room.time_left_ms !== undefined ? { time_left_ms: room.time_left_ms } : {}), writes_in_flight: room.writes.map(showCap) } };
+      return { envelope: now as unknown as Value, number, base: baseOf(h.parent.module, number, h.parent.language), room: { left: room.left, ...(room.time_left_ms !== undefined ? { time_left_ms: room.time_left_ms } : {}), writes_in_flight: room.writes.map(showCap) } };
     };
     let wait: CommandRow | undefined = await h.journal.command(h.runId, id);
     if (!wait) {
@@ -465,7 +466,7 @@ export class Planner {
     if (earlier) return this.result(earlier);
     const decided = await h.shared.admitting(async (): Promise<{ answer: Value } | { admitted: Admission; sub: Program }> => {
       const number = (await h.journal.admissions(h.runId, h.plan)).length + 1;
-      const base = baseOf(h.parent.module, number);
+      const base = baseOf(h.parent.module, number, h.parent.language);
       const room = await this.room();
       const told = { number, base, room: { left: room.left, ...(room.time_left_ms !== undefined ? { time_left_ms: room.time_left_ms } : {}), writes_in_flight: room.writes.map(showCap) } };
       const over = overLimit(input["ops"]);
@@ -492,7 +493,7 @@ export class Planner {
         ok,
         // What the lead's patch makes of the module it was given, and what in it a person would have had to approve
         // in a program of their own. Here the envelope's owner approved it beforehand, within the envelope.
-        ...(ok ? { hash: r!.hash!, governance: [...new Set(governanceChanges(skeleton(h.parent.module, number), r!.program!, { ...h.modules, [h.parent.module]: h.parent }).map((c) => c.kind))].sort() } : {}),
+        ...(ok ? { hash: r!.hash!, governance: [...new Set(governanceChanges(skeleton(h.parent.module, number, h.parent.language), r!.program!, { ...h.modules, [h.parent.module]: h.parent }).map((c) => c.kind))].sort() } : {}),
       });
       if (!ok) return refuse(diagnostics);
       const sub = r!.program!;
@@ -556,7 +557,7 @@ export class Planner {
   private async result(a: Admission, sub?: Program): Promise<Value> {
     const h = this.h;
     const row = await h.journal.command(h.runId, a.command);
-    const next = { number: a.number + 1, base: baseOf(h.parent.module, a.number + 1) };
+    const next = { number: a.number + 1, base: baseOf(h.parent.module, a.number + 1, h.parent.language) };
     const told = (o: { ok: Value } | { error: Value }): Value => ({ admitted: true, number: a.number, hash: a.hash, ...("ok" in o ? { result: o.ok } : { error: o.error, $error: true }), next });
     const ended = row && (row.state === "succeeded" || row.state === "failed") ? (row.state === "succeeded" ? { ok: row.result } : { error: faultValue(row.error) }) : undefined;
     // A replay runs it against the journal even when the journal says how it ended, and holds the two to each other.

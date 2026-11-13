@@ -1,10 +1,10 @@
-// Public API of the Mandate reference compiler, for language 0.1 to 0.4.
+// Public API of the Mandate reference compiler, for language 0.1 to 0.5.
 export { check, checkPatch, load, loadModules, kindOf, type CheckOptions, type CheckResult, type LoadResult, type ModuleSource, type PatchCheck, type SourceKind } from "./check.js";
 export { checkSubprogram, subprogramLinked, type SubprogramCheck, type SubprogramInput } from "./check.js";
 export { checkAmendment, type AmendmentCheck, type AmendmentInput } from "./check.js";
 export { narrowings } from "./check/amendment.js";
 export { link, linkedProgram, references, type Linked, type Modules } from "./modules.js";
-export { LOCK_FORMAT, LOCK_FORMATS, lockChecks, moduleLockChecks, roleLockChecks, lockSchema, modelTiers, packagedLock, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
+export { LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, lockChecks, moduleLockChecks, roleLockChecks, sandboxLockChecks, lockSchema, modelTiers, packagedLock, perCallBound, validateLock, type Lock, type ModelLock, type Tariff } from "./lock.js";
 export { CODES } from "./codes.js";
 export { diag, formatDiagnostic, hasErrors, type Diagnostic, type Repair, type Span } from "./diag.js";
 export { domainHash, hashProgram, packageHash, type HashDomain, type ProgramHashes } from "./hash.js";
@@ -18,7 +18,7 @@ export { parseMdt, RESERVED } from "./parse/parser.js";
 export { applyPatch, type GovernanceChange, type PatchOp, type PatchResult } from "./patch/patch.js";
 export { printProgram } from "./print/printer.js";
 export { resolveNames } from "./resolve/resolve.js";
-export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, pathsOverlap, scopeWithin, showCap, within, writesOverlap, type CapResult, type CapVal } from "./check/caps.js";
+export { calleePath, capCovers, capFromCall, capsFromCall, capsOf, HTTP_METHODS, importedMethods, pathsOverlap, readMethods, readsMethods, scopeWithin, showCap, within, writesOverlap, type CapOptions, type MethodProblem, type CapResult, type CapVal } from "./check/caps.js";
 export { roleChecks, roleSites, rolesNamed, type RoleSite } from "./check/roles.js";
 export { staticCost, type CostPart, type StaticCost } from "./check/cost.js";
 export { leadClasses, type Claim } from "./check/static.js";
@@ -27,7 +27,7 @@ export { GOVERNANCE_FILES, GOVERNANCE_KINDS, globRegExp, governanceFiles, govern
 export { BUILTIN_EFFECTS, classRank, DATA_CLASSES, DECISION_POLICIES, STD_EFFECTS, STD_FNS, type DataClass } from "./std/std.js";
 export { ACS_PROFILE, ACS_TARGET_FORMAT, ACS_VERSION, acsTarget, type AcsAgent, type AcsTarget } from "./target/acs.js";
 export { agentModels, bindingChecks, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, MA_MAX_CLASS, type ManagedAgentsAgentBinding, type ManagedAgentsBinding, type ProfileLevel } from "./target/managed-agents.js";
-export { denialDiagnostics, requirementFor, sandboxRequirements, SANDBOX_DENIALS_FORMAT, SANDBOX_REQUIREMENT_FORMAT, type DenialReport, type SandboxRequirement } from "./target/sandbox.js";
+export { coTenancyFor, denialDiagnostics, floorFor, ISOLATION_LEVELS, requirementFor, sandboxRequirements, SANDBOX_DENIALS_FORMAT, SANDBOX_REQUIREMENT_FORMAT, SANDBOX_REQUIREMENT_FORMAT_0_2, type CoTenancy, type DenialReport, type IsolationLevel, type RequirementOptions, type SandboxRequirement } from "./target/sandbox.js";
 export { htmlEscape, mdEscape, toHtml, toMarkdown, type Block, type Cell, type Doc } from "./views/doc.js";
 export * from "./views/views.js";
 export { callTool, LEGACY_VERSIONS, McpServer, MODERN_VERSIONS, serveStdio, TOOLS } from "./mcp/server.js";
