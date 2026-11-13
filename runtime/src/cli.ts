@@ -26,6 +26,9 @@
 //                                                         and refuses its starts and resumes (spec/boundary.md)
 //   mandate halt --lift (--tenant T | --all) --by WHO     lifts that scope's halts; no run comes back
 //   mandate halt --list                                   every halt, in force or lifted
+//   mandate otel export --endpoint URL [--run R | --tenant T] [--follow] [--json]
+//                                                         the journal as OpenTelemetry spans, without content, posted to
+//                                                         URL/v1/traces from each run's cursor; no credential is sent (spec/boundary.md)
 //   mandate artifact <run> <blob:sha256:…>
 //   mandate show <run> [--format md|html|json]           the run's views (§15): status, evidence, cost, actions
 //   mandate show <run> --role R | --audit                 what a role of the program may see of it; or everything, with
@@ -64,6 +67,7 @@ import { serveUntilSignalled } from "./egress/main.js";
 import { costDims, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { exportJournal, parseExportJson, publicKeysIn, readExport, verifyExport, type FindingCode } from "./journal-chain.js";
 import { draft, drift, scan, type RepoFacts } from "./onboard.js";
+import { otelEndpoint, otelExport, type OtelReport } from "./otel.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { runTests } from "./testing.js";
@@ -81,7 +85,7 @@ interface Args {
   all: Record<string, string[]>;
 }
 
-const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run"]);
 const PAIRS = new Set(["--component", "--host", "--repo"]);
 
 function parse(argv: string[]): Args {
@@ -141,6 +145,7 @@ const USAGE = `usage:
   mandate halt (--tenant T | --all) [--reason TEXT] [--by WHO] [--json]
   mandate halt --lift (--tenant T | --all) --by WHO
   mandate halt --list [--json]
+  mandate otel export --endpoint URL [--run R | --tenant T] [--follow] [--json]
   mandate denials <run>
   mandate rotate-key
   mandate test <program> [--json] [--lock FILE]
@@ -151,7 +156,7 @@ const USAGE = `usage:
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -205,6 +210,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
 
     if (cmd === "journal") return await journal(a, config, db, out);
     if (cmd === "halt") return await halt(a, config, db, out);
+    if (cmd === "otel") return await otel(a, db, out);
 
     if (cmd === "approve-envelope") {
       // A member of the envelope's owner role signs for the package hash its card shows (`mandate view --card`).
@@ -680,6 +686,53 @@ async function journal(a: Args, config: RuntimeConfig, db: Db, out: (s: string) 
     return 0;
   }
   throw new Usage("journal takes export, key or verify");
+}
+
+/**
+ * `mandate otel export` (spec/boundary.md "The OpenTelemetry projection"): the journal of one run, of a tenant's runs
+ * or of every run, as spans without content, posted to a collector from each run's cursor. It takes no lease and
+ * writes no event; its one write is the cursor. Exit 1 when a post failed. With `--follow` it keeps going until
+ * SIGINT or SIGTERM, which stop it cleanly, and exits 1 only when it stopped while the collector was failing.
+ */
+async function otel(a: Args, db: Db, out: (s: string) => void): Promise<number> {
+  if (a.positional[0] !== "export" || a.positional.length > 1) throw new Usage("otel takes export: mandate otel export --endpoint URL [--run R | --tenant T] [--follow]");
+  const run = a.flags["--run"];
+  const tenant = a.flags["--tenant"];
+  if (run !== undefined && tenant !== undefined) throw new Usage("otel export takes one of --run and --tenant");
+  let endpoint: string;
+  try {
+    endpoint = otelEndpoint(str(a, "--endpoint"));
+  } catch (e) {
+    if (e instanceof Violation && e.code === "invalid_endpoint") throw new Usage(e.message);
+    throw e;
+  }
+  const json = a.flags["--json"] === true;
+  const follow = a.flags["--follow"] === true;
+  const stop = new AbortController();
+  const interrupt = (): void => stop.abort();
+  process.once("SIGINT", interrupt);
+  process.once("SIGTERM", interrupt);
+  try {
+    const report: OtelReport = await otelExport(db, {
+      endpoint,
+      ...(typeof run === "string" ? { scope: { run } } : typeof tenant === "string" ? { scope: { tenant } } : {}),
+      follow,
+      signal: stop.signal,
+      onPost: (p) => {
+        if (!json) out(`run ${p.run}: events ${p.from} to ${p.to} sent in ${p.spans === 1 ? "1 span" : `${p.spans} spans`}\n`);
+      },
+      onFailure: (m) => process.stderr.write(`mandate: ${m}\n`),
+    });
+    if (json) out(JSON.stringify(report, null, 2) + "\n");
+    else {
+      if (!report.runs.some((r) => r.events > 0)) out("nothing to export\n");
+      if (report.rejected > 0) process.stderr.write(`mandate: the collector rejected ${report.rejected} spans; they are not sent again\n`);
+    }
+    return report.failed !== undefined ? 1 : 0;
+  } finally {
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", interrupt);
+  }
 }
 
 /**

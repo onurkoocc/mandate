@@ -40,7 +40,8 @@ It is not more than that:
   newest events together with their anchors. The journal then reads as one
   that stopped at an earlier anchor, and verifies that far. Only a witness
   outside the database shows the cut: an export taken earlier and kept
-  elsewhere, and later the OpenTelemetry projection (spec/boundary.md). The
+  elsewhere, and the OpenTelemetry projection (spec/boundary.md), which
+  carries each event's hash to a collector. The
   export is that witness; the runtime keeps no copy of it.
 - **A chained run can be made to read as unchained** by removing every hash
   and every anchor. `unchained` is never `verified`: a reader who knows the

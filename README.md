@@ -189,7 +189,8 @@ pull request was opened, for 0.23 USD.
    only on a host that meets them (`unfit_host`); and views by role:
    `mandate show --role R` shows a run as one of its program's roles may
    see it, and `--audit` everything, with its events and the chain's
-   status. The reference egress
+   status. `mandate otel export` posts a run's journal to an OpenTelemetry
+   collector as spans without content. The reference egress
    proxy exists, and the runtime's own model and GitHub adapters can go
    through it, holding placeholders. The rest is not enforced yet, so
    nothing that needs it runs: the runtime refuses a package whose lock

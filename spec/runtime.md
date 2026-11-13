@@ -42,6 +42,7 @@ Two database drivers share one interface (`runtime/src/db.ts`):
 | `inbox` | Inbound message keys with their payload digests |
 | `outbox` | Committed actions waiting for, or past, delivery |
 | `artifacts` | Which run (and tenant) recorded which artifact digest; the bytes live in the artifact store |
+| `otel_cursors` | For each OpenTelemetry endpoint and run, the last event sequence number exported to it and when ([`boundary.md`](boundary.md#the-opentelemetry-projection)); the export's one write |
 | `halts` | Each halt of a tenant, or of every tenant (`tenant` null): its id, reason, who halted and when, who lifted it and when ([`boundary.md`](boundary.md#halt)). `runs` is indexed by `(tenant, state)` for a halt's sweep |
 
 Every write that must be atomic runs in one transaction that first locks the
