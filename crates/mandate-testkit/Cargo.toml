@@ -12,6 +12,7 @@ mandate-ir = { path = "../mandate-ir" }
 sha2 = { version = "=0.11.1", default-features = false }
 
 [dev-dependencies]
+mandate-check = { path = "../mandate-check" }
 mandate-syntax = { path = "../mandate-syntax" }
 
 [lints]

@@ -2,9 +2,13 @@
 //! writes it again: the repository and its files ([`repo`], [`read_text`],
 //! [`read_json`], [`subdirectories`], [`files`]), digests ([`sha256`]), the
 //! golden digests of the TypeScript compiler's outputs ([`Golden`]), the
+//! stored results of its checks ([`stored_cases`], [`stored_programs`]), the
 //! comparison of texts ([`compare_text`], [`compare_digest`]), the
-//! pending-list rule of a gate test ([`run_gate`]) and the compiled corpus of
-//! the TypeScript compiler's calls to its front doors ([`corpus`]).
+//! pending-list rule of a gate test ([`run_gate`]), the table of which
+//! slice of the port brings each diagnostic code, by which the gates name
+//! their items ([`codes`]: [`item_name`], [`FAMILIES`], [`check_pending`])
+//! and the compiled corpus of the TypeScript compiler's calls to its front
+//! doors ([`corpus`]).
 //!
 //! It is a dev-dependency only, and it may read files and the environment;
 //! the library crates may not. Every function returns its failures as text
@@ -18,7 +22,9 @@
 
 #![forbid(unsafe_code)]
 
+pub mod codes;
 pub mod corpus;
+mod diagnostic_vectors;
 mod gate;
 mod golden;
 
@@ -28,6 +34,10 @@ use std::path::{Path, PathBuf};
 use mandate_ir::{Value, parse_bytes};
 use sha2::{Digest, Sha256};
 
+pub use codes::{FAMILIES, Family, check_pending, code_set, family_of, item_name};
+pub use diagnostic_vectors::{
+    DIAGNOSTICS, StoredCase, StoredProgram, repo_path, result_codes, stored_cases, stored_programs,
+};
 pub use gate::run_gate;
 pub use golden::{GOLDEN, Golden, GoldenOutput};
 
