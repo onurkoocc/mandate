@@ -15,8 +15,8 @@
 )]
 
 use mandate_ir::{
-    JsValue, Schema, SchemaError, SchemaOptions, Value, ir_schema_errors, lock_schema_errors,
-    parse, stringify_pretty,
+    Diagnostic, JsValue, Schema, SchemaError, SchemaOptions, Value, ir_schema_errors, load_json,
+    lock_schema_errors, parse, stringify_pretty,
 };
 use mandate_testkit::{compare_text, read_json, run_gate};
 
@@ -104,6 +104,41 @@ fn raw_errors() {
         }
         .map_err(str::to_owned)?;
         compare_text(&stored(case, "raw_errors"), &errors_text(&errors))
+    });
+    if let Err(report) = gate {
+        panic!("{report}");
+    }
+}
+
+fn diagnostics_text(diagnostics: &[Diagnostic]) -> String {
+    pretty(&JsValue::Array(
+        diagnostics.iter().map(Diagnostic::to_js).collect(),
+    ))
+}
+
+/// The cases of invalid IR whose diagnostics need what this crate does not
+/// give yet, with the reason.
+const IR_PENDING: &[&str] = &[
+    // The version gates of `validateIr` come in the next commit.
+    "ir: agent_min: add unknown member \"loop\" to /defs/Support",
+    "ir: agent_min: add unknown member \"progress\" to /defs/Support",
+    "ir: agent_full: /defs/Peer/progress/window = 1",
+];
+
+/// `load(input, "json").diagnostics` of every invalid IR, whole: the schema
+/// diagnostics and those of the version gates, in order.
+#[test]
+fn invalid_ir_diagnostics() {
+    let items = named("ir", parted_cases("ir-invalid"));
+    let gate = run_gate("invalid IR diagnostics", IR_PENDING, items, |case| {
+        let loaded = load_json(str_of(case, "input"));
+        if loaded.program.is_some() {
+            return Err("the program was accepted".to_owned());
+        }
+        compare_text(
+            &stored(case, "diagnostics"),
+            &diagnostics_text(&loaded.diagnostics),
+        )
     });
     if let Err(report) = gate {
         panic!("{report}");

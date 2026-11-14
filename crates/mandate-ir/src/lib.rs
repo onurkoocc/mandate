@@ -62,7 +62,9 @@ mod number;
 mod pattern;
 mod reader;
 mod schema;
+mod tags;
 mod text;
+mod validate;
 mod value;
 
 pub use diag::{
@@ -80,7 +82,9 @@ pub use schema::{
     IR_SCHEMA_TEXT, LOCK_SCHEMA_TEXT, Schema, SchemaError, SchemaOptions, ir_schema,
     ir_schema_errors, lock_schema, lock_schema_errors,
 };
+pub use tags::Language;
 pub use text::{
     is_js_whitespace, sort_utf16, trim, trim_end, trim_start, unique_in_order, utf16_len,
 };
+pub use validate::{Loaded, Spans, load_json, nearest_span, validate_ir};
 pub use value::{Int, Map, Value};
