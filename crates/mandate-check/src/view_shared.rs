@@ -479,7 +479,7 @@ pub fn supervision(e: Expr<'_>) -> Option<String> {
     let args: Vec<String> = s
         .args()
         .iter()
-        .filter_map(|a| mandate_ir::Arg::of(a))
+        .filter_map(mandate_ir::Arg::of)
         .map(|a| {
             let label = match a.name() {
                 Some(n) if !n.is_empty() => format!("{n}: "),

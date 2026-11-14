@@ -59,7 +59,7 @@
 //!   [`lock_diff`] for what two locks bind and ask of a host and a sandbox.
 //! - [`patch`]: structural patches ([`apply_ops`], [`apply_patch`]), which
 //!   report the governance changes they make.
-//! - [`js_number`]: `Number(string)`.
+//! - [`js_number`]: what JavaScript's `Number(string)` gives.
 //!
 //! The JavaScript semantics they depend on are imitated where they occur and
 //! said so there: sorting without a comparator by UTF-16 code units, `Set`
