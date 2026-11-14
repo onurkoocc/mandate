@@ -7,7 +7,7 @@
 // TEMPORAL_CLI_PATH.
 
 import { randomUUID } from "node:crypto";
-import { check, load, type WorkflowDef } from "@mandate/compiler";
+import { check, load, type WorkflowDef } from "@mandate/bridge";
 import { WorkflowFailedError } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { bundleWorkflowCode, DefaultLogger, Runtime as TemporalRuntime, type WorkflowBundleWithSourceMap } from "@temporalio/worker";

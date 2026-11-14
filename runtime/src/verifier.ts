@@ -26,7 +26,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { globRegExp, requirementFor, type CapVal, type TypeExpr } from "@mandate/compiler";
+import { globRegExp, requirementFor, type CapVal, type TypeExpr } from "@mandate/bridge";
 import type { CheckLog, CheckResult, CheckSubject, Cost, InferRequest, ModelAdapter, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { sha256Of } from "./artifacts.js";
 import { inside, outside, PathRefused, realEntries, removeWithin, writeWithin } from "./paths.js";

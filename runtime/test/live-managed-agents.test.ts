@@ -9,7 +9,7 @@
 // `harness_tokens`.
 
 import { existsSync } from "node:fs";
-import { check, type Lock } from "@mandate/compiler";
+import { check, type Lock } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { anthropicClient } from "../src/control.js";
 import { deployManagedAgents, managedAgentsExecutor, sdkApi, type ManagedAgentsApi } from "../src/managed-agents.js";

@@ -2,7 +2,7 @@
 // nondeterministic step goes through one of these, and its result is journaled
 // before the program sees it, so replay never calls them again (INV-09).
 
-import type { Budget, Command, DataClass, RetryClass, SandboxRequirement, TypeExpr } from "@mandate/compiler";
+import type { Budget, Command, DataClass, RetryClass, SandboxRequirement, TypeExpr } from "@mandate/bridge";
 import type { MxcAdapter } from "./sandbox.js";
 import type { WorkspaceAdapter } from "./workspace.js";
 import type { Value } from "./values.js";

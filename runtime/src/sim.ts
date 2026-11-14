@@ -3,7 +3,7 @@
 // test can assert what reached the "outside world", and can be scripted to
 // fail, hang, or lose its response at a chosen moment.
 
-import type { RetryClass } from "@mandate/compiler";
+import type { RetryClass } from "@mandate/bridge";
 import type {
   Adapters,
   AgentAdapter,

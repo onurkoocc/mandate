@@ -10,7 +10,7 @@
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { check, load, packagedLock, type Lock, type WorkflowDef } from "@mandate/compiler";
+import { check, load, packagedLock, type Lock, type WorkflowDef } from "@mandate/bridge";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { main } from "../src/cli.js";
 import { connect, readConfig, runtimeOptions } from "../src/control.js";
