@@ -16,8 +16,9 @@ on:
 #
 # Every job reads the repository and nothing else. Actions are pinned to full
 # commit SHAs (the tag is in the comment) so a moved tag cannot change what
-# runs; the pins are updated by hand, with the tag in the comment. Installs run no lifecycle scripts:
-# none of the packages with an install script is needed by these jobs.
+# runs; the pins are updated by hand (Renovate is not installed on the
+# repository). Installs run no lifecycle scripts: none of the packages with an
+# install script is needed by these jobs.
 permissions:
   contents: read
 

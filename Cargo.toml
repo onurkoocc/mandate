@@ -8,12 +8,12 @@
 # mandate-check, then mandate-views, each depending on the one before, until
 # the Rust compiler gives the TypeScript one's bytes for every output in
 # compiler/test/golden/outputs.json and every case in conformance/. The
-# vectors in vectors/ hold the two to the same bytes. Release 0.6 adds
-# mandate-lib (the model of a library: manifest, digest, version rules),
-# mandate-doors (the JSON doors, one dispatcher over the compiler's
-# functions), mandate-wasm (the compiler as a wasm32-wasip1 command module
-# that the Node runtime calls) and mandate-cli (the native command line,
-# the `mandate` binary).
+# vectors in vectors/ hold the two to the same bytes. Four crates are empty
+# for now, the places release 0.6 fills: mandate-lib (the model of a library:
+# manifest, digest, version rules), mandate-doors (the JSON doors, one
+# dispatcher over the compiler's functions), mandate-wasm (the compiler as a
+# wasm32-wasip1 command module for the Node runtime to call) and mandate-cli
+# (the native command line, the `mandate` binary).
 [workspace]
 resolver = "3"
 members = ["crates/*"]
