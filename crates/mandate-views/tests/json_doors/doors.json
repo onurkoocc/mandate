@@ -1,0 +1,18 @@
+{
+  "format": "mandate/doors/0.1",
+  "doors": [
+    {"name":"architecture","ts":"architecture","params":["program"]},
+    {"name":"architecture_blocks","ts":"architectureBlocks","params":["v"]},
+    {"name":"authority","ts":"authority","params":["program"]},
+    {"name":"authority_blocks","ts":"authorityBlocks","params":["v"]},
+    {"name":"cost","ts":"cost","params":["program","lock"]},
+    {"name":"program_doc","ts":"programDoc","params":["program","lock","modules"]},
+    {"name":"diff_doc","ts":"diffDoc","params":["before","after","locks"]},
+    {"name":"envelope_workflows","ts":"envelopeWorkflows","params":["program"]},
+    {"name":"card","ts":"card","params":["program","workflow","opts"]},
+    {"name":"card_doc","ts":"cardDoc","params":["program","workflow","opts"]},
+    {"name":"acs_target","ts":"acsTarget","params":["program","modules","lock"]},
+    {"name":"to_markdown","ts":"toMarkdown","params":["doc"]},
+    {"name":"to_html","ts":"toHtml","params":["doc"]}
+  ]
+}
