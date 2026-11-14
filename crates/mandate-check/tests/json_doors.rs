@@ -18,7 +18,7 @@
 //! A second crate with a table of doors copies this file, with its own
 //! table, directory and lists.
 
-#![allow(clippy::panic, missing_docs)]
+#![allow(clippy::panic, clippy::expect_used, missing_docs)]
 
 use mandate_check::json_doors::{DOORS, door};
 use mandate_testkit::json_doors::{
@@ -143,6 +143,59 @@ fn every_door_answers_as_the_typescript() {
         Ok(summary) => println!("{summary}"),
         Err(e) => panic!("{e}"),
     }
+}
+
+/// The inputs on which the Rust is knowingly not the TypeScript (listed in
+/// `vectors/README.md`, "What they do not reach"), each with what the Rust
+/// gives, the TypeScript's answer beside it: when one gives the TypeScript's
+/// answer, it comes off the list, and off this one.
+const KNOWN_DIFFERENCES: [(&str, &str, &str, &str); 2] = [
+    (
+        // A lock that is a string with a character outside the Basic
+        // Multilingual Plane: spread by code point here, by UTF-16 code unit
+        // in the TypeScript, whose halves a Rust string cannot hold.
+        "packaged_lock",
+        r#"{"lock":"a😀"}"#,
+        "",
+        // TypeScript: {"0":"a","1":"\ud83d","2":"\ude00"}
+        "{\"0\":\"a\",\"1\":\"\u{1F600}\"}",
+    ),
+    (
+        // A `time.ms` that is not a number, which the schema refuses: the
+        // TypeScript carries the value into the requirement.
+        "sandbox_requirements",
+        r#"{"program":{"$ir":"fixtures/boundary/reach.mdt","$set":[["/defs/Reacher/budget",{"tokens":900000,"time":{"ms":"20m"}}]]}}"#,
+        "/Reacher/limits",
+        // TypeScript: {"timeout_ms":"20m"}
+        "{\"timeout_ms\":null}",
+    ),
+];
+
+#[test]
+fn known_differences_answer_as_written() {
+    let doors = doors();
+    for (name, input, at, rust) in KNOWN_DIFFERENCES {
+        let d = doors.iter().find(|d| d.name == name).expect("a door");
+        let input =
+            mandate_testkit::json_doors::resolve(&mandate_ir::parse(input).expect("JSON").value)
+                .expect("the input");
+        let Answer::Output(out) = (d.call)(&input) else {
+            panic!("{name}: no output");
+        };
+        let mut part = &out;
+        for t in at.split('/').filter(|t| !t.is_empty()) {
+            part = part.get(t).expect("the part");
+        }
+        assert_eq!(
+            mandate_testkit::json_doors::output_text(part),
+            rust,
+            "{name}"
+        );
+    }
+    println!(
+        "json doors: {} known differences, as written",
+        KNOWN_DIFFERENCES.len()
+    );
 }
 
 #[test]
