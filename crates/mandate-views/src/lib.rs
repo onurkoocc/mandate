@@ -23,6 +23,12 @@
 //!   envelope for the person who approves it ([`card()`], [`card_doc`],
 //!   [`envelope_workflows`], [`CardView`]); it stayed in TypeScript for 0.5
 //!   and is ported in 0.6.
+//! - [`acs`]: the ACS target, `compiler/src/target/acs.ts`: each local agent
+//!   written as an Agent Control Specification manifest and a Rego policy
+//!   ([`acs_target`], [`AcsTarget`], [`AcsAgent`]), with the profile of what an
+//!   ACS host alone guarantees ([`ACS_PROFILE`], [`ACS_PROFILE_NOTES`]); it
+//!   stayed in TypeScript for 0.5 and is ported in 0.6. The Rego is the
+//!   TypeScript's byte for byte; CI evaluates the TypeScript's on a real OPA.
 //!
 //! The cost view counts the delegations a workflow with an envelope may
 //! start as the checker does, with `mandate_check::static_cost`
@@ -37,6 +43,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod acs;
 pub mod architecture;
 pub mod authority;
 pub mod card;
@@ -47,6 +54,10 @@ pub mod program_doc;
 pub mod shown;
 pub mod system;
 
+pub use acs::{
+    ACS_PROFILE, ACS_PROFILE_NOTES, ACS_TARGET_FORMAT, ACS_VERSION, AcsAgent, AcsProfileRow,
+    AcsTarget, acs_target,
+};
 pub use architecture::{
     ArchitectureView, WorkflowArchitecture, architecture, architecture_blocks, mermaid,
 };
