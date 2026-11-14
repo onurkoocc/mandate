@@ -242,7 +242,10 @@
     "view --format md": "sha256:faaf504d1e1d23d27fe1f840a169d9b0e85b216982159cfc0e85af1314301147",
     "view --format html": "sha256:02f98e59dfba7d956a5d93056da3bb8427b0917af5b250643b57275309810324",
     "view --against itself": "sha256:cfdade7a27fb32f9c059ad12aa4c5cb536097193cbec0cdb900a5506509ba22b",
-    "sandbox": "sha256:c0a39cff72ced635df22d5b430a043e08e0af275099421d86871bc7d1bf212b0"
+    "sandbox": "sha256:c0a39cff72ced635df22d5b430a043e08e0af275099421d86871bc7d1bf212b0",
+    "view --card --format json": "sha256:12779b17b091b596c185a61750730846a75ce27acd600f4c84837b995c7a2a4c",
+    "view --card --format md": "sha256:f8fd0180c6e5d28bd76a4d58c854d00c83389a2b09e70609a966b7387e797a3e",
+    "view --card --format html": "sha256:f4bf3eda48fd7dd9230dce8a3416009ef700f9c432462c65b019fd94e20dccdd"
   },
   "fixtures/boundary/fetch.mdt": {
     "check": "sha256:d30845cd530b0b0e22e037a78d0a7a3f0539d69b3dc8ad24f8f6fe9206f11e3f",

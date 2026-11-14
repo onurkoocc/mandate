@@ -1,0 +1,226 @@
+// Programs with envelopes written to reach the branches of the envelope card
+// (compiler/src/views/views.ts `card`) that the one golden program, MigrateAll,
+// does not: scripts/views-vectors.mjs reads this file for the `cards` group.
+// It is an input of the vectors only; it runs nothing. The script loads it
+// (parses it into the IR) and does not check it: the card is computed from the
+// IR whatever the checker says, and some branches (a currency the budget does
+// not name, a budget the delegations exceed, so a negative amount left) are
+// ones the checker refuses.
+
+mandate @ 0.5
+
+module example.cards @ 0.1
+
+use std.{fs, exec, model, net, git, human, money, component}
+use example.other.{Mystery}
+use acme.system.{auth, mcp, core, TokenIssuance, CoreApi}
+
+type Item = { name: Text, root: Path }
+type Note = { text: Text }
+
+role platform_lead   "Platform lead"
+role release_manager "Release manager"
+role reviewer        ""
+role legal           "Legal <b>review</b> & `terms`"
+role auditor         "Auditor"
+
+capability RepoRead  = fs.read("/work/repo")
+capability RepoWrite = fs.write("/work/repo")
+capability DocsWrite = fs.write("/work/docs")
+capability Api       = net.https(hosts: ["api.example.com"], methods: [GET])
+capability Build     = exec(commands: ["npm"], args_prefix: [["ci"], ["test"]])
+capability Brain     = model.infer(tier: standard)
+capability Cheap     = model.infer(tier: economy, max_class: confidential)
+capability Pr        = git.pr("acme/app")
+capability Cash      = money.spend(max: 20 USD, per: workflow_run)
+capability Anywhere  = fs.read(base)
+
+contract Signed(item: Item, note: Note) {
+  accept written "The note has text"
+    by static len(note.text) >= 1
+  accept legal_ok "Legal accepts the note"
+    by human.approve(role: legal, distinct_from: auditor)
+}
+
+fn inner(note: Note) -> Bool {
+  human.approve("Is the note fine?", role: reviewer)
+}
+
+fn gate(note: Note) -> Bool {
+  inner(note)
+}
+
+// Names a role and is called by nothing: the card does not list it.
+fn unreached(note: Note) -> Bool {
+  human.approve("Is the note fine?", role: platform_lead)
+}
+
+agent Worker {
+  role   "Does one item."
+  caps   RepoRead, RepoWrite, DocsWrite, Api, Build, Brain
+  budget { tokens: 100k, time: 10m, spend: 1.5 USD, steps: 8 }
+  skill run(item: Item) -> Inferred<Note> ! {Fs.Read, Fs.Write, Net, Exec, Model}
+  skill quick(item: Item) -> Inferred<Note> ! {Fs.Read, Model}
+    budget { tokens: 7k, steps: 2 }
+}
+
+agent Cheaper {
+  role   "Does one item, cheaply."
+  caps   RepoRead, Cheap
+  budget { tokens: 20k, spend: 0.25 EUR, steps: 3 }
+  skill run(item: Item) -> Inferred<Note> ! {Fs.Read, Model}
+}
+
+agent Free {
+  role   "Has no budget of its own."
+  caps   RepoRead, Brain
+  skill run(item: Item) -> Inferred<Note> ! {Fs.Read, Model}
+}
+
+agent Lead {
+  role   "Plans what is left."
+  caps   RepoRead, Brain
+  budget { tokens: 500k, time: 30m, spend: 5 USD, steps: 20, agents: 10 }
+  skill finish(items: List<Item>) -> Inferred<Note> ! {Fs.Read, Model}
+}
+
+// Everything the card shows: a map with its bounds inside a map, the plans with
+// the budget of the call, the skill and the agent, a wait in the body, in a
+// function and in a contract, two approvals, an owner with a description.
+workflow Full(items: List<Item>) -> Inferred<Note>
+  envelope {
+    owner   platform_lead
+    caps    RepoRead, RepoWrite, DocsWrite, Api, Build, Brain, Pr, Cash
+    budget  { tokens: 4000k, time: 90m, spend: 40 USD, steps: 300, agents: 60 }
+    spawn   { max_concurrent: 4, max_class: confidential }
+    approve money.spend by platform_lead
+    approve git.merge by release_manager
+  }
+{
+  let first = map item in items max 20 par 4 with caps RepoWrite, DocsWrite {
+    let again = map sub in items max 3 with caps Api.narrow("api.example.com") {
+      delegate Worker.quick(sub)
+    }
+    delegate Worker.run(item)
+    delegate Worker.run(item)
+    delegate Cheaper.run(item)
+  }
+  let ok = human.ask("Go on?", role: platform_lead)
+  let fine = gate(Note { text: "x" })
+  let again = inner(Note { text: "y" })
+  let checked = verify Note { text: "x" } against Signed(items, Note { text: "x" })
+    on unmet(c) => escalate human("Open: {c}", role: release_manager)
+  plan Lead.finish(items) within envelope
+}
+
+// Maps whose scope the run chooses, that name nothing known, and that have no
+// bound of their own.
+workflow Maps(items: List<Item>, one: Item) -> Inferred<Note>
+  envelope {
+    owner   platform_lead
+    caps    RepoRead, RepoWrite, Api, Brain
+    budget  { tokens: 900k, steps: 60, agents: 12 }
+  }
+{
+  let a = map item in items with caps RepoWrite.narrow(item.root) {
+    delegate Worker.run(item)
+  }
+  let b = map item in items max 5 par 2 with caps Mystery {
+    delegate Free.run(item)
+  }
+  let c = map item in items {
+    delegate Free.run(item)
+  }
+  let d = map item in items max 2 with caps RepoWrite.narrow(one.root), Anywhere {
+    delegate Worker.run(item)
+  }
+  plan Free.run(one) within envelope
+}
+
+// Plans: the lead's skill budget, the lead agent's budget in another currency,
+// a lead that is no agent of the program, and a plan inside a map.
+workflow Scouts(items: List<Item>, one: Item) -> Inferred<Note>
+  envelope {
+    owner   platform_lead
+    caps    RepoRead, Brain
+    budget  { tokens: 300k, spend: 9 USD, steps: 30, agents: 6 }
+  }
+{
+  let a = plan Worker.quick(one) within envelope
+  let b = plan Cheaper.run(one) within envelope
+  let c = plan Ghost.run(one) within envelope
+  let d = map item in items max 2 {
+    plan Free.run(item) within envelope
+  }
+  d
+}
+
+// The smallest envelope the card can describe: no owner, no budget, no spawn,
+// no approvals, no steps.
+workflow Bare() -> Bool
+  envelope {
+    caps    RepoRead
+  }
+{
+  true
+}
+
+// An envelope with a budget of one dimension, a currency the agents spend and
+// the budget does not name, and the budget of the plan's own call.
+workflow Thin(items: List<Item>, one: Item) -> Inferred<Note>
+  envelope {
+    owner   reviewer
+    caps    RepoRead, Brain
+    budget  { spend: 3 USD, time: 61m }
+  }
+{
+  let n = delegate Cheaper.run(one)
+  let m = delegate Worker.run(one)
+  plan Lead.finish(items) budget { tokens: 9k, time: 2m, spend: 1.25 USD, steps: 3, agents: 2 } within envelope
+}
+
+workflow NoEnvelope(items: List<Item>) -> Bool
+  caps   RepoRead
+  budget { spend: 1 USD }
+{
+  true
+}
+
+capability Repos = component.repo(auth, mcp, core)
+
+type Plan   = { summary: Text }
+type Change = { files: List<Text> }
+
+contract PlanAccepted(plan: Plan) {
+  accept summarized "The plan says what changes" by static len(plan.summary) >= 1
+}
+
+contract ChangeAccepted(change: Change) {
+  accept listed "The change names its files" by static len(change.files) >= 1
+}
+
+// The other places a workflow waits for a person by role: a supervision that
+// escalates, a change set's approver and a change set member's approver. With
+// the system model of fixtures/system/acme.system.mdt given, its components
+// open into the capabilities the envelope holds.
+workflow Waits(task: Text, one: Item) -> Text
+  envelope {
+    owner   legal
+    caps    Repos, RepoRead, Brain
+    budget  { tokens: 200k, time: 20m, spend: 3 USD, steps: 20, agents: 4 }
+    approve git.merge by release_manager
+  }
+{
+  let d = delegate Free.run(one) supervise escalate(human, role: reviewer)
+  let plan = verify Plan { summary: task } against PlanAccepted(Plan { summary: task })
+  let a = verify Change { files: ["src/token.ts"] } against ChangeAccepted(Change { files: ["src/token.ts"] })
+  let c = verify Change { files: ["src/main/java/Api.java"] } against ChangeAccepted(Change { files: ["src/main/java/Api.java"] })
+  let landed = changeset(plan) {
+    member auth = git.merge(a) approved_by role "reviewer"
+    member core = git.merge(c)
+    order auth, core
+    change TokenIssuance additive
+    approve role "legal"
+  } idempotent_by task
+  "landed"
+}

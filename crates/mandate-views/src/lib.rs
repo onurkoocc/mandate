@@ -18,8 +18,11 @@
 //!   ([`delegate_budget`], [`Sum`]), `system` ([`has_system`]), and
 //!   `program_doc`, which puts them in one document. [`shown`] holds the
 //!   small texts they are written in ([`show`], [`list`], [`mermaid_text`],
-//!   [`type_text`]). The envelope card is not in this crate: it stays in TypeScript
-//!   for 0.5.
+//!   [`type_text`]).
+//! - [`card`]: the envelope card of a workflow, the one-page summary of its
+//!   envelope for the person who approves it ([`card()`], [`card_doc`],
+//!   [`envelope_workflows`], [`CardView`]); it stayed in TypeScript for 0.5
+//!   and is ported in 0.6.
 //!
 //! The cost view counts the delegations a workflow with an envelope may
 //! start as the checker does, with `mandate_check::static_cost`
@@ -36,6 +39,7 @@
 
 pub mod architecture;
 pub mod authority;
+pub mod card;
 pub mod cost;
 pub mod diff;
 pub mod doc;
@@ -47,6 +51,11 @@ pub use architecture::{
     ArchitectureView, WorkflowArchitecture, architecture, architecture_blocks, mermaid,
 };
 pub use authority::{AuthorityRow, AuthorityView, authority, authority_blocks, late_kinds};
+pub use card::{
+    CardApproval, CardApproves, CardBudgetRow, CardBudgetText, CardHanded, CardMap, CardMember,
+    CardPlan, CardPlanNumbers, CardTouches, CardView, CardWait, card, card_blocks, card_doc,
+    envelope_workflows,
+};
 pub use cost::{
     BudgetFrom, CostRow, CostView, DelegateBudget, Sum, WorkflowCost, cost, cost_blocks,
     delegate_budget,

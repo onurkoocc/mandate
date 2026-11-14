@@ -1,0 +1,26 @@
+[package]
+name = "mandate-cli"
+description = "The native command line of the Rust Mandate compiler"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mandate"
+path = "src/main.rs"
+
+[dependencies]
+mandate-doors = { path = "../mandate-doors" }
+mandate-ir = { path = "../mandate-ir" }
+mandate-syntax = { path = "../mandate-syntax" }
+mandate-check = { path = "../mandate-check" }
+mandate-views = { path = "../mandate-views" }
+mandate-lib = { path = "../mandate-lib" }
+
+[dev-dependencies]
+mandate-testkit = { path = "../mandate-testkit" }
+
+[lints]
+workspace = true

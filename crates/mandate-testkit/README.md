@@ -40,8 +40,9 @@ Its tests are two gates of the whole workspace:
   compiler crate; each joins this crate's dev-dependencies when it is written,
   and the gate grows by shortening its `PENDING` list.
 - `tests/authority.rs`: the library crates' sources name no `std::fs`,
-  `std::env`, `std::process`, `std::net`, `SystemTime` or `Instant`. A new
-  library crate adds itself to its `LIBRARIES`.
+  `std::env`, `std::process`, `std::net`, `SystemTime` or `Instant`. Every
+  crate of `crates/` is checked, except the `main.rs` of a crate and the
+  crates on the test's `EXCLUDED` list; a new crate is checked by default.
 
 ```
 node scripts/wasi-test.mjs -p mandate-testkit -- --nocapture

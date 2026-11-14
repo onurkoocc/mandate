@@ -71,8 +71,34 @@ name = "mandate-check"
 version = "0.1.0"
 dependencies = [
  "mandate-ir",
+ "mandate-lib",
  "mandate-syntax",
  "mandate-testkit",
+]
+
+[[package]]
+name = "mandate-cli"
+version = "0.1.0"
+dependencies = [
+ "mandate-check",
+ "mandate-doors",
+ "mandate-ir",
+ "mandate-lib",
+ "mandate-syntax",
+ "mandate-testkit",
+ "mandate-views",
+]
+
+[[package]]
+name = "mandate-doors"
+version = "0.1.0"
+dependencies = [
+ "mandate-check",
+ "mandate-ir",
+ "mandate-lib",
+ "mandate-syntax",
+ "mandate-testkit",
+ "mandate-views",
 ]
 
 [[package]]
@@ -81,6 +107,14 @@ version = "0.1.0"
 dependencies = [
  "mandate-testkit",
  "sha2",
+]
+
+[[package]]
+name = "mandate-lib"
+version = "0.1.0"
+dependencies = [
+ "mandate-ir",
+ "mandate-testkit",
 ]
 
 [[package]]
@@ -110,6 +144,13 @@ dependencies = [
  "mandate-ir",
  "mandate-syntax",
  "mandate-testkit",
+]
+
+[[package]]
+name = "mandate-wasm"
+version = "0.1.0"
+dependencies = [
+ "mandate-doors",
 ]
 
 [[package]]
