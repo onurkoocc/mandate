@@ -57,6 +57,7 @@ mod hash;
 mod jcs;
 mod js_value;
 pub mod limits;
+mod lock;
 mod members;
 mod number;
 mod pattern;
@@ -76,6 +77,7 @@ pub use hash::{
 };
 pub use jcs::{canonicalize, compare_utf16, write_json_string};
 pub use js_value::{JsObject, JsValue, stringify, stringify_pretty};
+pub use lock::lock_schema_diagnostics;
 pub use number::{is_integer, is_safe_integer, number_to_string, write_number};
 pub use reader::{Parsed, parse, parse_bytes};
 pub use schema::{

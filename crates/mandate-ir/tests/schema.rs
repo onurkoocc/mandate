@@ -16,7 +16,7 @@
 
 use mandate_ir::{
     Diagnostic, JsValue, Schema, SchemaError, SchemaOptions, Value, ir_schema_errors, load_json,
-    lock_schema_errors, parse, stringify_pretty,
+    lock_schema_diagnostics, lock_schema_errors, parse, stringify_pretty,
 };
 use mandate_testkit::{compare_text, read_json, run_gate};
 
@@ -151,6 +151,34 @@ fn version_gates() {
         compare_text(
             &stored(case, "diagnostics"),
             &diagnostics_text(&loaded.diagnostics),
+        )
+    });
+    if let Err(report) = gate {
+        panic!("{report}");
+    }
+}
+
+/// The locks the schema accepts and the rules of `validateLock` after the
+/// schema refuse: those rules are slice R14's.
+const LOCK_PENDING: &[&str] = &[
+    "lock: bindings in a lock of 0.2, and every field that needs 0.5",
+    "lock: members and roles in a lock of 0.3",
+    "lock: host, isolation and egress in a lock of 0.4",
+    "lock: a key listed under two members",
+    "lock: a role lists a member that is not in members",
+    "lock: a tier maps to a model that has no tariff",
+];
+
+/// `validateLock(value)` of every invalid lock, whole: one E0140 for each raw
+/// error of the lock schema.
+#[test]
+fn lock_diagnostics() {
+    let items = named("lock", cases_of("lock-invalid.json"));
+    let gate = run_gate("lock diagnostics", LOCK_PENDING, items, |case| {
+        let value = input_value(case)?;
+        compare_text(
+            &stored(case, "diagnostics"),
+            &diagnostics_text(&lock_schema_diagnostics(&value)),
         )
     });
     if let Err(report) = gate {
