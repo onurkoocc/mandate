@@ -72,7 +72,7 @@ import { SandboxVerifier, type VerifierConfig } from "./verifier.js";
 import { GitWorkspace, type ComponentSource } from "./workspace.js";
 import { ProcessVerifier, type ChildEnvSource } from "./verifier-service.js";
 import { CREDENTIAL_NAME, isPipe } from "./egress/config.js";
-import { EgressLink, Gateway, GATEWAY_HOSTS, givenGateway, refuseCredentials, type EgressScope, type GatewayName } from "./gateway.js";
+import { EgressLink, Gateway, gatewaySpec, givenGateway, refuseCredentials, type EgressScope, type GatewayName } from "./gateway.js";
 
 export interface RuntimeConfig {
   database: string;
@@ -504,8 +504,8 @@ function egressFor(config: RuntimeConfig, env: NodeJS.ProcessEnv, scope: EgressS
     link,
     gateways,
     on,
-    ...(gateways.model !== undefined ? { model: new Gateway(link, "model", gateways.model) } : {}),
-    ...(gateways.github !== undefined ? { github: new Gateway(link, "github", gateways.github) } : {}),
+    ...(gateways.model !== undefined ? { model: new Gateway(link, gatewaySpec("model", gateways.model)) } : {}),
+    ...(gateways.github !== undefined ? { github: new Gateway(link, gatewaySpec("github", gateways.github)) } : {}),
   };
 }
 
@@ -521,7 +521,7 @@ function verifierEnvFor(config: RuntimeConfig, env: NodeJS.ProcessEnv, egress: E
   const link = egress.link;
   return {
     make: async () => {
-      const s = await link.open("verifier.model", GATEWAY_HOSTS.model, credential);
+      const s = await link.open("verifier.model", gatewaySpec("model", credential));
       return {
         env: verifierEnv({ model: true, gateway: { url: s.base_url, placeholder: s.placeholder } }, env),
         stale: () => s.expiresAt - link.now() <= link.renewMs,
