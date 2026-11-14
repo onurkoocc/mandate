@@ -285,7 +285,7 @@ pub const FAMILIES: &[Family] = &[
         codes: "E1001",
         stage: "staticCheck: the system model (checkSystem in check/static.ts)",
         slice: "R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1002*",
@@ -299,49 +299,49 @@ pub const FAMILIES: &[Family] = &[
         codes: "E1003",
         stage: "staticCheck: the system model (checkSystem in check/static.ts)",
         slice: "R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1004*",
         codes: "E1004",
         stage: "staticCheck: declared reads (checkRead in check/static.ts)",
         slice: "R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1005*",
         codes: "E1005",
         stage: "staticCheck: declared reads (checkRead in check/static.ts)",
         slice: "R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1006*",
         codes: "E1006",
         stage: "staticCheck: the system model (checkSystem in check/static.ts)",
         slice: "R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1007*",
         codes: "E1007",
         stage: "staticCheck: the system model (checkSystem in check/static.ts)",
         slice: "R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E11*",
         codes: "E1101-E1105",
         stage: "staticCheck: change sets (check/static.ts)",
         slice: "R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E12*",
         codes: "E1201",
         stage: "staticCheck: reads (check/static.ts)",
         slice: "R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1501*",
@@ -397,7 +397,7 @@ pub const FAMILIES: &[Family] = &[
         codes: "E1705",
         stage: "checkSubprogram: a sub-program's shape (subprogramShape in check/subprogram.ts)",
         slice: "R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1706*",
@@ -425,7 +425,7 @@ pub const FAMILIES: &[Family] = &[
         codes: "E1709",
         stage: "checkAmendment: an amendment narrows nothing (narrowings in check/amendment.ts)",
         slice: "R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1801*",
@@ -549,7 +549,7 @@ mod tests {
         assert_eq!(family_of("MDT-E0213").map(|f| f.slice), Some("R11"));
         assert_eq!(family_of("MDT-E1708").map(|f| f.ported), Some(true));
         assert_eq!(family_of("MDT-E1706").map(|f| f.ported), Some(true));
-        assert_eq!(family_of("MDT-E1705").map(|f| f.ported), Some(false));
+        assert_eq!(family_of("MDT-E1705").map(|f| f.ported), Some(true));
         assert_eq!(family_of("MDT-E1502").map(|f| f.slice), Some("R14"));
         assert!(family_of("MDT-X0000").is_none());
         // Every code of codes.ts has a row.

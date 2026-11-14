@@ -5,9 +5,11 @@
 #![allow(dead_code, clippy::expect_used, clippy::panic, missing_docs)]
 
 use mandate_check::{
-    CheckOptions, CheckResult, ModuleSource, Modules, PatchOp, apply_ops, check, load_modules,
+    AmendmentInput, CapVal, CheckOptions, CheckResult, DataClass, ModuleSource, Modules, PatchOp,
+    Room, SubprogramInput, apply_ops, cap_ctor, check, check_amendment, check_subprogram,
+    language_of, load_modules, skeleton,
 };
-use mandate_ir::{JsValue, Spans, Value, stringify_pretty};
+use mandate_ir::{Diagnostic, JsObject, JsValue, Spans, Value, hash_program, stringify_pretty};
 use mandate_syntax::{SourceKind, kind_of};
 use mandate_testkit::{read_bytes, read_json};
 
@@ -328,4 +330,206 @@ pub fn amended_program(parent: &Value, workflow: &str, envelope: Value) -> Resul
     defs.insert(workflow, Value::Object(wf));
     program.insert("defs", Value::Object(defs));
     Ok(Value::Object(program))
+}
+
+/// What a case observes of a door: `ok`, the diagnostics, and the `hashes`
+/// it compares (`Observed` in `compiler/test/cases-runner.ts`).
+pub struct Observed {
+    pub ok: bool,
+    pub diagnostics: Vec<Diagnostic>,
+    pub hashes: Option<JsValue>,
+}
+
+impl From<&CheckResult> for Observed {
+    fn from(r: &CheckResult) -> Observed {
+        Observed {
+            ok: r.ok,
+            diagnostics: r.diagnostics.clone(),
+            hashes: r.hashes.as_ref().map(|h| JsValue::Object(h.to_js())),
+        }
+    }
+}
+
+/// What a case of a door that is not `check` gives: the observation, and
+/// the text of the result the door gives, `JSON.stringify(result, null, 2)`
+/// and a line end, which the stored result of the diagnostics gate is.
+pub struct DoorResult {
+    pub observed: Observed,
+    pub text: String,
+}
+
+/// What `checkSubprogram` receives for a case's `subprogram`
+/// (`subprogramInput` of `compiler/test/cases-runner.ts`), owned.
+pub struct SubprogramCase {
+    pub workflow: String,
+    pub number: f64,
+    pub base: String,
+    pub ops: Vec<PatchOp>,
+    pub lead: DataClass,
+    pub room: Room,
+}
+
+/// `subprogramInput(dir, s, parent, modules)`: the operations are one `add`
+/// for each definition of `defs`, in order, then `patch` as written; the
+/// room's writes are capabilities of their constructor's effect.
+pub fn subprogram_case(dir: &str, s: &Value, parent: &Value) -> Result<SubprogramCase, String> {
+    let number = s.get("number").and_then(Value::as_i64).unwrap_or(1) as f64;
+    let mut ops: Vec<PatchOp> = Vec::new();
+    if let Some(defs) = s.get("defs") {
+        let kind = kind_named(defs.get("kind").and_then(Value::as_str).unwrap_or("mdt"));
+        let text = match defs.get("text").and_then(Value::as_str) {
+            Some(t) => t.to_owned(),
+            None => read_source(&mandate_testkit::repo_path(
+                dir,
+                defs.get("file")
+                    .and_then(Value::as_str)
+                    .ok_or("no defs file")?,
+            ))?,
+        };
+        let r = mandate_syntax::load(&text, kind);
+        let program = match r.program {
+            Some(p) if !mandate_ir::has_errors(&r.diagnostics) => p,
+            _ => return Err("the defs of a subprogram case must load".to_owned()),
+        };
+        // Only the definitions are read; the module's header is not.
+        for (name, def) in program
+            .get("defs")
+            .and_then(Value::as_object)
+            .ok_or("no defs")?
+            .iter()
+        {
+            ops.push(PatchOp {
+                op: "add".to_owned(),
+                path: format!("/defs/{name}"),
+                value: Some(def.clone()),
+            });
+        }
+    }
+    for op in s.get("patch").and_then(Value::as_array).unwrap_or_default() {
+        ops.push(PatchOp::from_value(op));
+    }
+    let lead = s.get("lead").and_then(Value::as_str).unwrap_or("public");
+    let lead =
+        DataClass::from_name(lead).ok_or_else(|| format!("lead {lead} is not a data class"))?;
+    let room = s.get("room").ok_or("no room")?;
+    let mut writes: Vec<CapVal> = Vec::new();
+    for w in room
+        .get("writes")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+    {
+        let ctor = w.get("ctor").and_then(Value::as_str).unwrap_or("undefined");
+        let spec = cap_ctor(ctor)
+            .filter(|c| c.write)
+            .ok_or_else(|| format!("room.writes: {ctor} is not a write capability constructor"))?;
+        let mut cap = CapVal::new(ctor, spec.effect, spec.write);
+        cap.set_scope(Some(
+            w.get("scope")
+                .and_then(Value::as_array)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect(),
+        ));
+        writes.push(cap);
+    }
+    let room = Room {
+        left: room
+            .get("left")
+            .and_then(Value::as_object)
+            .ok_or("no room.left")?
+            .iter()
+            .filter_map(|(k, v)| v.as_i64().map(|n| (k.to_owned(), n as f64)))
+            .collect(),
+        time_left_ms: room
+            .get("time_left_ms")
+            .and_then(Value::as_i64)
+            .map(|n| n as f64),
+        writes,
+    };
+    Ok(SubprogramCase {
+        workflow: s
+            .get("workflow")
+            .and_then(Value::as_str)
+            .ok_or("no workflow")?
+            .to_owned(),
+        number,
+        base: hash_program(&skeleton(
+            parent
+                .get("module")
+                .and_then(Value::as_str)
+                .unwrap_or("undefined"),
+            number,
+            language_of(parent),
+        ))
+        .program,
+        ops,
+        lead,
+        room,
+    })
+}
+
+/// `checkSubprogram(subprogramInput(…))`.
+pub fn run_subprogram(
+    case: &SubprogramCase,
+    parent: &Value,
+    modules: &Modules,
+) -> Result<DoorResult, String> {
+    let r = check_subprogram(&SubprogramInput {
+        parent,
+        modules: Some(modules),
+        workflow: &case.workflow,
+        number: case.number,
+        base: &case.base,
+        ops: &case.ops,
+        lead: case.lead,
+        room: &case.room,
+    })?;
+    Ok(DoorResult {
+        observed: Observed {
+            ok: r.ok,
+            diagnostics: r.diagnostics.clone(),
+            hashes: None,
+        },
+        text: result_text(&r.to_js()),
+    })
+}
+
+/// `checkAmendment(amendmentInput(a, parent, modules))`, observed with
+/// `hashes: { program: hash }` where the amendment has a hash.
+pub fn run_amendment(a: &Value, parent: &Value, modules: &Modules) -> Result<DoorResult, String> {
+    let workflow = a
+        .get("workflow")
+        .and_then(Value::as_str)
+        .ok_or("no workflow")?;
+    let patch = a
+        .get("patch")
+        .and_then(Value::as_array)
+        .ok_or("no amendment patch")?;
+    let envelope = amendment_envelope(workflow, patch, parent)?;
+    let r = check_amendment(&AmendmentInput {
+        parent,
+        modules: Some(modules),
+        workflow,
+        envelope: Some(&envelope),
+    })?;
+    Ok(DoorResult {
+        observed: Observed {
+            ok: r.ok,
+            diagnostics: r.diagnostics.clone(),
+            hashes: r
+                .hash
+                .as_deref()
+                .map(|h| JsObject::new().with("program", h).into()),
+        },
+        text: result_text(&r.to_js()),
+    })
+}
+
+/// `JSON.stringify(result, null, 2)` and a line end.
+fn result_text(v: &JsValue) -> String {
+    let mut text = stringify_pretty(v).unwrap_or_default();
+    text.push('\n');
+    text
 }

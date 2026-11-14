@@ -38,9 +38,9 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::{
-    Applied, applied_source, check_with, kind_named, modules_of, patched_source, read_source,
+    Applied, Observed, applied_source, check_with, kind_named, modules_of, patched_source,
+    read_source, run_amendment, run_subprogram, subprogram_case,
 };
-use mandate_check::CheckResult;
 use mandate_ir::{JsValue, Value, canonicalize, parse, stringify};
 use mandate_syntax::SourceKind;
 use mandate_testkit::{
@@ -52,14 +52,7 @@ use mandate_testkit::{
 /// for each front door that is not, and by name the items that still fail
 /// although every code they hold is of a ported family. Every pending item
 /// is held to failing only by omission (`mandate_testkit::run_held_gate`).
-const PENDING: &[&str] = &[
-    // R13: sub-programs and amendments.
-    "*MDT-E1705*",
-    "*MDT-E1709*",
-    // R13: the doors of sub-programs and amendments.
-    "check_subprogram @ *",
-    "check_amendment @ *",
-];
+const PENDING: &[&str] = &[];
 
 /// The front door a compile case goes through, as `doorOf` in
 /// `compiler/test/diagnostic-vectors.test.ts` names it.
@@ -88,7 +81,7 @@ fn deep_equal(a: &JsValue, b: &Value) -> bool {
 }
 
 /// `compareResult(expect, got)`: every difference, none when the case holds.
-fn compare_result(expect: &Value, got: &CheckResult) -> Vec<String> {
+fn compare_result(expect: &Value, got: &Observed) -> Vec<String> {
     let mut problems = Vec::new();
     let want_ok = expect.get("ok").and_then(|v| match v {
         Value::Bool(b) => Some(*b),
@@ -148,7 +141,7 @@ fn compare_result(expect: &Value, got: &CheckResult) -> Vec<String> {
         }
     }
     if let Some(hashes) = expect.get("hashes") {
-        let got_hashes = got.hashes.as_ref().map(|h| JsValue::Object(h.to_js()));
+        let got_hashes = got.hashes.clone();
         if !got_hashes.as_ref().is_some_and(|h| deep_equal(h, hashes)) {
             problems.push(format!(
                 "hashes: expected {}, got {:?}",
@@ -189,7 +182,7 @@ fn same_diagnostic(w: &Value, h: &mandate_ir::Diagnostic) -> bool {
 /// A case's result held to the rule of the gate: `Ok` when it meets the
 /// case; else whether Rust's diagnostics are the expected ones with some
 /// left out, in order.
-fn verdict(expect: &Value, result: &CheckResult) -> Result<(), Miss> {
+fn verdict(expect: &Value, result: &Observed) -> Result<(), Miss> {
     let problems = compare_result(expect, result);
     if problems.is_empty() {
         return Ok(());
@@ -214,12 +207,6 @@ fn verdict(expect: &Value, result: &CheckResult) -> Result<(), Miss> {
 /// together (they must load), the lock read, then `check`; and the case's
 /// `language`, when it gives one, is the one the program declares.
 fn run(c: &Case) -> Result<(), Miss> {
-    if !matches!(c.door, "check" | "check_patched" | "apply_ops") {
-        return Err(Miss::Excluded {
-            rule: "its front door (checkSubprogram, checkAmendment) is not ported (R13), so there is no Rust result to hold",
-            why: format!("the {} door is not ported", c.door),
-        });
-    }
     prepare(c)
         .map_err(Miss::Differs)
         .and_then(|(expect, result)| verdict(&expect, &result))
@@ -227,7 +214,7 @@ fn run(c: &Case) -> Result<(), Miss> {
 
 /// The case's `expect` and what `check` gives for it, or what keeps the
 /// case from being run.
-fn prepare(c: &Case) -> Result<(Value, CheckResult), String> {
+fn prepare(c: &Case) -> Result<(Value, Observed), String> {
     let dir = format!("conformance/{}", c.id);
     let case = &c.value;
     let input = case.get("input").ok_or("no input")?;
@@ -253,6 +240,33 @@ fn prepare(c: &Case) -> Result<(Value, CheckResult), String> {
         .get("lock")
         .and_then(Value::as_str)
         .map(|l| repo_path(&dir, l));
+    // `check_subprogram` and `check_amendment`: the case's input must check
+    // without errors (`standsOn`), and is the program the door stands on.
+    if matches!(c.door, "check_subprogram" | "check_amendment") {
+        let parent = check_with(&text, kind, Some(&modules), None)?;
+        let (Some(program), true) = (parent.program.as_ref(), parent.ok) else {
+            return Err("the parent must check without errors".to_owned());
+        };
+        if let Some(language) = case.get("language").and_then(Value::as_str)
+            && program.get("language").and_then(Value::as_str) != Some(language)
+        {
+            return Err(format!(
+                "the case says language {language}, the parent declares otherwise"
+            ));
+        }
+        let door = match case.get("subprogram") {
+            Some(s) => run_subprogram(&subprogram_case(&dir, s, program)?, program, &modules)?,
+            None => run_amendment(
+                case.get("amendment").ok_or("no amendment")?,
+                program,
+                &modules,
+            )?,
+        };
+        return Ok((
+            case.get("expect").ok_or("no expect")?.clone(),
+            door.observed,
+        ));
+    }
     // `check_patched`: the patch applied to the loaded IR, and the patched
     // IR checked as JSON text.
     let (text, kind) = match case.get("patch").and_then(Value::as_array) {
@@ -263,7 +277,10 @@ fn prepare(c: &Case) -> Result<(Value, CheckResult), String> {
             match applied_source(&text, kind, base, patch)? {
                 Applied::Source(patched) => (patched, SourceKind::Json),
                 Applied::Refused(refused) => {
-                    return Ok((case.get("expect").ok_or("no expect")?.clone(), refused));
+                    return Ok((
+                        case.get("expect").ok_or("no expect")?.clone(),
+                        Observed::from(&refused),
+                    ));
                 }
             }
         }
@@ -306,7 +323,10 @@ fn prepare(c: &Case) -> Result<(Value, CheckResult), String> {
             ));
         }
     }
-    Ok((case.get("expect").ok_or("no expect")?.clone(), result))
+    Ok((
+        case.get("expect").ok_or("no expect")?.clone(),
+        Observed::from(&result),
+    ))
 }
 
 #[test]

@@ -6,9 +6,12 @@
 //!
 //! - [`check`](mod@check): [`check()`], [`load_modules`], [`CheckOptions`],
 //!   [`CheckResult`], `compiler/src/check.ts` lines 60–131. Of the static
-//!   checks the system model's diagnostics are not ported yet, listed in
-//!   [`UNPORTED`]: until it is empty, an `ok` from
-//!   [`check()`] means no error from what is ported so far.
+//!   checks all three slices are ported ([`UNPORTED`] is empty).
+//! - [`doors`]: the front doors that stand on `check`, `compiler/src/check.ts`
+//!   lines 133–279: [`check_patch`], [`check_subprogram`], [`check_amendment`]
+//!   and [`subprogram_linked`], with [`subprogram`] (a lead's sub-program:
+//!   [`skeleton`], [`opened`], [`subprogram_shape`], [`containment`], [`Room`])
+//!   and [`amendment`] ([`narrowings`]).
 //! - [`modules`]: [`link`], [`linked_program`] and [`references`],
 //!   `compiler/src/modules.ts`: the definitions a program sees with its
 //!   imported modules ([`Linked`], [`Modules`]).
@@ -29,10 +32,9 @@
 //! - [`statics`]: [`static_check`] and [`lead_classes`],
 //!   `compiler/src/check/static.ts`: the core of the static checks (types,
 //!   expressions, constants, functions, contracts, recursion, budgets and
-//!   the node count) with, in `statics/authority.rs` and
-//!   `statics/system.rs`, the entry points of the authority and the system
-//!   model, which walk as the TypeScript does but give no diagnostic of
-//!   their own yet.
+//!   the node count), the authority in `statics/authority.rs` and the system
+//!   model in `statics/system.rs` (providers, working copies, declared reads,
+//!   `data.read`, change sets).
 //! - [`ty`]: the checker's types and the epistemic assignability rules,
 //!   `compiler/src/check/ty.ts`; [`cost`]: the static cost model,
 //!   `compiler/src/check/cost.ts` ([`static_cost`], [`micros_text`]); and
@@ -88,10 +90,12 @@
 
 #![forbid(unsafe_code)]
 
+pub mod amendment;
 pub mod caps;
 pub mod check;
 pub mod cost;
 pub mod diff;
+pub mod doors;
 pub mod governance;
 pub mod js_number;
 pub mod lock;
@@ -106,10 +110,12 @@ pub mod roles;
 pub mod sandbox;
 pub mod statics;
 pub mod stdlib;
+pub mod subprogram;
 pub mod ty;
 pub mod view_shared;
 pub mod walk;
 
+pub use amendment::narrowings;
 pub use cost::{CostPart, StaticCost, micros_text, static_cost};
 pub use statics::{lead_classes, static_check};
 pub use walk::reads_var;
@@ -122,6 +128,10 @@ pub use diff::{
     BudgetChanges, Change, Classified, DiffView, GovernanceChangeKind, KindedChange, Locks,
     ScopeDiff, budget_changes, classify, envelope_changes, governance_changes, scope_diff,
     scope_diffs, semantic_diff, shown_caps, steps, system_changes,
+};
+pub use doors::{
+    AmendmentCheck, AmendmentInput, PatchCheck, SubprogramCheck, SubprogramInput, check_amendment,
+    check_patch, check_subprogram, subprogram_linked,
 };
 pub use js_number::js_to_number;
 pub use lock::{
@@ -171,4 +181,7 @@ pub use stdlib::{
     STD_EFFECTS, STD_FNS, ScopeKind, StdEffect, StdFn, StdType, UNGATED_EFFECTS, UNKNOWN, cap_ctor,
     class_rank, is_builtin_effect, is_decision_policy, is_out_of_scope_option, is_protected_type,
     is_ungated_effect, std_effect, std_fn,
+};
+pub use subprogram::{
+    Room, containment, language_of, opened, skeleton, subprogram_shape, subprogram_workflow,
 };

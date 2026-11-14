@@ -1154,6 +1154,71 @@ pub fn render_apply_patch(
     rendered
 }
 
+/// The result of `check_patch`: `{ ok, hash?, diagnostics, governance,
+/// requires_approval, program? }`, `program` as its digest.
+#[must_use]
+pub fn render_check_patch(
+    ok: bool,
+    hash: Option<&str>,
+    diagnostics: &[Diagnostic],
+    governance: JsValue,
+    requires_approval: bool,
+    program: Option<&Value>,
+) -> Rendered {
+    let mut rendered = Rendered::new(JsValue::Undefined);
+    let mut object = JsObject::new().with("ok", ok);
+    if let Some(hash) = hash {
+        object.insert("hash", hash);
+    }
+    object.insert("diagnostics", diagnostics_js(diagnostics));
+    object.insert("governance", governance);
+    object.insert("requires_approval", requires_approval);
+    if let Some(program) = program {
+        object.insert("program", rendered.digest("program", ir_text(program)));
+    }
+    rendered.value = JsValue::Object(object);
+    rendered
+}
+
+/// The result of `check_subprogram`: `{ ok, diagnostics, program?, hash?,
+/// workflow? }`, `program` as its digest.
+#[must_use]
+pub fn render_check_subprogram(
+    ok: bool,
+    diagnostics: &[Diagnostic],
+    program: Option<&Value>,
+    hash: Option<&str>,
+    workflow: Option<&str>,
+) -> Rendered {
+    let mut rendered = Rendered::new(JsValue::Undefined);
+    let mut object = JsObject::new()
+        .with("ok", ok)
+        .with("diagnostics", diagnostics_js(diagnostics));
+    if let Some(program) = program {
+        object.insert("program", rendered.digest("program", ir_text(program)));
+    }
+    if let Some(hash) = hash {
+        object.insert("hash", hash);
+    }
+    if let Some(workflow) = workflow {
+        object.insert("workflow", workflow);
+    }
+    rendered.value = JsValue::Object(object);
+    rendered
+}
+
+/// The result of `check_amendment`: `{ ok, diagnostics, program?, hash? }`,
+/// `program` as its digest.
+#[must_use]
+pub fn render_check_amendment(
+    ok: bool,
+    diagnostics: &[Diagnostic],
+    program: Option<&Value>,
+    hash: Option<&str>,
+) -> Rendered {
+    render_check_subprogram(ok, diagnostics, program, hash, None)
+}
+
 /// The result of `load_modules`: `{ modules: { <name>: digest, ... },
 /// problems: [{ file, diagnostics }, ...] }`; `modules` in the order the
 /// compiler built them, and `problems` as `(file, diagnostics)`.
