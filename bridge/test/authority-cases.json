@@ -1,0 +1,6067 @@
+[
+  {
+    "name": "available outside a map is the bounds, in their order",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/repo"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": null
+    },
+    "output": {
+      "available": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work"
+          ]
+        },
+        {
+          "ctor": "model.infer",
+          "effect": "Model",
+          "write": false,
+          "maxClass": "internal",
+          "tier": "standard"
+        },
+        {
+          "ctor": "fs.read",
+          "effect": "Fs.Read",
+          "write": false,
+          "scope": [
+            "/repo"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "available with an empty capability list is empty",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [],
+        "given": [],
+        "handed": []
+      },
+      "delegation": null
+    },
+    "output": {
+      "available": []
+    }
+  },
+  {
+    "name": "available inside a map: the map's with caps stand in place of the kinds they name",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/repo"
+            ]
+          },
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal"
+          }
+        ],
+        "given": [
+          [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        ],
+        "handed": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      },
+      "delegation": null
+    },
+    "output": {
+      "available": [
+        {
+          "ctor": "fs.read",
+          "effect": "Fs.Read",
+          "write": false,
+          "scope": [
+            "/repo"
+          ]
+        },
+        {
+          "ctor": "model.infer",
+          "effect": "Model",
+          "write": false,
+          "maxClass": "internal"
+        },
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "available inside two maps: each layer in turn, outermost first",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/repo"
+            ]
+          }
+        ],
+        "given": [
+          [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            },
+            {
+              "ctor": "fs.read",
+              "effect": "Fs.Read",
+              "write": false,
+              "scope": [
+                "/repo/a"
+              ]
+            }
+          ],
+          [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a/b"
+              ]
+            }
+          ]
+        ],
+        "handed": [
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/repo/a"
+            ]
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/b"
+            ]
+          }
+        ]
+      },
+      "delegation": null
+    },
+    "output": {
+      "available": [
+        {
+          "ctor": "fs.read",
+          "effect": "Fs.Read",
+          "write": false,
+          "scope": [
+            "/repo/a"
+          ]
+        },
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a/b"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "available ignores what is handed",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/elsewhere"
+            ]
+          }
+        ]
+      },
+      "delegation": null
+    },
+    "output": {
+      "available": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "available: a layer that is empty takes nothing out",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [
+          []
+        ],
+        "handed": []
+      },
+      "delegation": null
+    },
+    "output": {
+      "available": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "an agent holding what is available is granted it, sorted by kind and scope",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.read",
+          "effect": "Fs.Read",
+          "write": false,
+          "scope": [
+            "/work"
+          ]
+        },
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work"
+          ]
+        },
+        {
+          "ctor": "model.infer",
+          "effect": "Model",
+          "write": false,
+          "maxClass": "internal",
+          "tier": "standard"
+        }
+      ]
+    }
+  },
+  {
+    "name": "what the agent holds outside the context is not granted",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": []
+    }
+  },
+  {
+    "name": "an agent's capability inside the context is granted as the agent holds it, not as the context does",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "with caps inside the context replaces the agent's capabilities of its kind",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.read",
+          "effect": "Fs.Read",
+          "write": false,
+          "scope": [
+            "/work"
+          ]
+        },
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "with caps outside the context is refused",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "delegate": "coder",
+            "capability": "fs.write(\"/work/b\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "the first with caps outside the context is the one refused",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/x"
+            ]
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/x"
+            ],
+            "name": "other"
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/y"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "delegate": "coder",
+            "capability": "other = fs.write(\"/x\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "with caps the agent does not hold, inside the context, is granted",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "git.pr",
+            "effect": "git.*",
+            "write": true,
+            "scope": [
+              "acme/app"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "git.pr",
+            "effect": "git.*",
+            "write": true,
+            "scope": [
+              "acme/app"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work"
+          ]
+        },
+        {
+          "ctor": "git.pr",
+          "effect": "git.*",
+          "write": true,
+          "scope": [
+            "acme/app"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "with caps under an empty capability list is refused",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "delegate": "coder",
+            "capability": "fs.write(\"/work\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "nothing is granted under an empty capability list",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal"
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": []
+    }
+  },
+  {
+    "name": "an agent that holds nothing is granted nothing",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": []
+    }
+  },
+  {
+    "name": "with caps asking a higher data class than the capability is refused",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          }
+        ],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "confidential",
+            "tier": "standard"
+          }
+        ]
+      }
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "delegate": "coder",
+            "capability": "model.infer"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "an agent's model capability with a higher data class than the context's is not granted",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "restricted",
+            "tier": "standard"
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": []
+    }
+  },
+  {
+    "name": "with caps asking a lower data class is granted",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "confidential",
+            "tier": "standard"
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "confidential",
+            "tier": "standard"
+          }
+        ],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "public",
+            "tier": "standard"
+          }
+        ]
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "model.infer",
+          "effect": "Model",
+          "write": false,
+          "maxClass": "public",
+          "tier": "standard"
+        }
+      ]
+    }
+  },
+  {
+    "name": "with caps asking another model tier is refused",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          }
+        ],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "frontier"
+          }
+        ]
+      }
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "delegate": "coder",
+            "capability": "model.infer"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "an agent's model capability of another tier is not granted",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "frontier"
+          },
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "model.infer",
+          "effect": "Model",
+          "write": false,
+          "maxClass": "internal",
+          "tier": "standard"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a model capability without a tier in the context covers every tier",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal"
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "frontier"
+          },
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "model.infer",
+          "effect": "Model",
+          "write": false,
+          "maxClass": "internal",
+          "tier": "frontier"
+        },
+        {
+          "ctor": "model.infer",
+          "effect": "Model",
+          "write": false,
+          "maxClass": "internal",
+          "tier": "standard"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a model capability without a tier is not covered by one with a tier",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal"
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": []
+    }
+  },
+  {
+    "name": "capabilities with the same key keep their order",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal"
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "b"
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "a"
+          },
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "c"
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work"
+          ]
+        },
+        {
+          "ctor": "model.infer",
+          "effect": "Model",
+          "write": false,
+          "maxClass": "internal",
+          "tier": "b"
+        },
+        {
+          "ctor": "model.infer",
+          "effect": "Model",
+          "write": false,
+          "maxClass": "internal",
+          "tier": "a"
+        },
+        {
+          "ctor": "model.infer",
+          "effect": "Model",
+          "write": false,
+          "maxClass": "internal",
+          "tier": "c"
+        }
+      ]
+    }
+  },
+  {
+    "name": "the sort compares the JSON text of kind and scope",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/"
+            ]
+          },
+          {
+            "ctor": "git.pr",
+            "effect": "git.*",
+            "write": true,
+            "scope": [
+              "acme/app",
+              "acme/lib"
+            ]
+          },
+          {
+            "ctor": "exec",
+            "effect": "Exec",
+            "write": false,
+            "scope": [
+              "npm"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "git.pr",
+            "effect": "git.*",
+            "write": true,
+            "scope": [
+              "acme/lib"
+            ]
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/z"
+            ]
+          },
+          {
+            "ctor": "git.pr",
+            "effect": "git.*",
+            "write": true,
+            "scope": [
+              "acme/app"
+            ]
+          },
+          {
+            "ctor": "exec",
+            "effect": "Exec",
+            "write": false,
+            "scope": [
+              "npm"
+            ]
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work",
+              "/other"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "exec",
+          "effect": "Exec",
+          "write": false,
+          "scope": [
+            "npm"
+          ]
+        },
+        {
+          "ctor": "fs.read",
+          "effect": "Fs.Read",
+          "write": false,
+          "scope": [
+            "/z"
+          ]
+        },
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work",
+            "/other"
+          ]
+        },
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a"
+          ]
+        },
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/b"
+          ]
+        },
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true
+        },
+        {
+          "ctor": "git.pr",
+          "effect": "git.*",
+          "write": true,
+          "scope": [
+            "acme/app"
+          ]
+        },
+        {
+          "ctor": "git.pr",
+          "effect": "git.*",
+          "write": true,
+          "scope": [
+            "acme/lib"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "a scope with .. that leaves the context is refused",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/../etc"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "delegate": "coder",
+            "capability": "fs.write(\"/work/../etc\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a scope with .. that stays inside the context is granted as written",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/../b"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a/../b"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "a .. above the root is dropped, so the scope lies inside",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/../work/x"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/../work/x"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "a path is inside by segment, not by prefix",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/workshop"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "delegate": "coder",
+            "capability": "fs.write(\"/workshop\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a path with a backslash, a colon or NUL is compared by segment like any other",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a\\b",
+              "/work/c:d",
+              "/work/e\u0000f"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a\\b",
+            "/work/c:d",
+            "/work/e\u0000f"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "a relative scope is compared by segment as if it were absolute",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "work/a"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "work/a"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "a capability without a scope in the context covers every scope",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/anywhere"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/etc"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/etc"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "a capability without a scope is not covered by one with a scope",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true
+          }
+        ]
+      }
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "delegate": "coder",
+            "capability": "fs.write"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a host is covered by equality",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "net.https",
+            "effect": "Net",
+            "write": false,
+            "scope": [
+              "api.example.com"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "net.https",
+            "effect": "Net",
+            "write": false,
+            "scope": [
+              "api.example.com"
+            ]
+          },
+          {
+            "ctor": "net.https",
+            "effect": "Net",
+            "write": false,
+            "scope": [
+              "api.example.com:443"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "net.https",
+          "effect": "Net",
+          "write": false,
+          "scope": [
+            "api.example.com"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "methods: one that allows some is covered only by one that allows them all",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "net.https",
+            "effect": "Net",
+            "write": false,
+            "scope": [
+              "api.example.com"
+            ],
+            "methods": [
+              "GET",
+              "POST"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "net.https",
+            "effect": "Net",
+            "write": false,
+            "scope": [
+              "api.example.com"
+            ],
+            "methods": [
+              "GET"
+            ]
+          },
+          {
+            "ctor": "net.https",
+            "effect": "Net",
+            "write": false,
+            "scope": [
+              "api.example.com"
+            ],
+            "methods": [
+              "DELETE"
+            ]
+          },
+          {
+            "ctor": "net.https",
+            "effect": "Net",
+            "write": false,
+            "scope": [
+              "api.example.com"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "net.https",
+          "effect": "Net",
+          "write": false,
+          "scope": [
+            "api.example.com"
+          ],
+          "methods": [
+            "GET"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "argument prefixes: each must extend one of the context's",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "exec",
+            "effect": "Exec",
+            "write": false,
+            "scope": [
+              "npm"
+            ],
+            "argsPrefix": [
+              [
+                "test"
+              ]
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "exec",
+            "effect": "Exec",
+            "write": false,
+            "scope": [
+              "npm"
+            ],
+            "argsPrefix": [
+              [
+                "test",
+                "--ci"
+              ]
+            ]
+          },
+          {
+            "ctor": "exec",
+            "effect": "Exec",
+            "write": false,
+            "scope": [
+              "npm"
+            ],
+            "argsPrefix": [
+              [
+                "install"
+              ]
+            ]
+          },
+          {
+            "ctor": "exec",
+            "effect": "Exec",
+            "write": false,
+            "scope": [
+              "npm"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "exec",
+          "effect": "Exec",
+          "write": false,
+          "scope": [
+            "npm"
+          ],
+          "argsPrefix": [
+            [
+              "test",
+              "--ci"
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "inside a map, what the map hands is given when the agent holds it at least as widely",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [
+          [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        ],
+        "handed": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.read",
+          "effect": "Fs.Read",
+          "write": false,
+          "scope": [
+            "/work"
+          ]
+        },
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "inside a map, what the map hands is not given to an agent that does not hold its kind",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [
+          [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        ],
+        "handed": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.read",
+          "effect": "Fs.Read",
+          "write": false,
+          "scope": [
+            "/work"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "inside a map, what the map hands is not given to an agent that holds it more narrowly",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [
+          [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        ],
+        "handed": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/b"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a/b"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "inside a map, a remote agent is given what the map hands whatever it holds",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [
+          [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        ],
+        "handed": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [],
+        "remote": true,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "inside a map, with caps of the kind the map hands takes its place",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [
+          [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        ],
+        "handed": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/x"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a/x"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "inside a map, with caps outside what the map handed is refused",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [
+          [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        ],
+        "handed": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      },
+      "delegation": {
+        "agent": "coder",
+        "held": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          }
+        ]
+      }
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "delegate": "coder",
+            "capability": "fs.write(\"/work/b\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "an absolute path inside the capability",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "/work/a"
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a"
+          ],
+          "name": "work.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a relative path goes below each path of the capability",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work/",
+          "/other//"
+        ]
+      },
+      "args": [
+        "src"
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/src",
+            "/other/src"
+          ],
+          "name": "fs.write.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a list argument names each of its members",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        [
+          "a",
+          "/work/b"
+        ],
+        "c"
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a",
+            "/work/b",
+            "/work/c"
+          ],
+          "name": "work.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a narrowing that widens is refused",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work/a"
+        ],
+        "name": "a"
+      },
+      "args": [
+        "/work"
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_capability",
+            "capability": "a = fs.write(\"/work/a\")",
+            "requested": [
+              "/work"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a narrowing to the root is refused",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "/"
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_capability",
+            "capability": "work = fs.write(\"/work\")",
+            "requested": [
+              "/"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a relative path with .. that leaves the capability is refused",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "../etc"
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_capability",
+            "capability": "work = fs.write(\"/work\")",
+            "requested": [
+              "/work/../etc"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a relative path with .. that stays inside",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "a/../b"
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/a/../b"
+          ],
+          "name": "work.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "an absolute path with .. that leaves the capability is refused",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "/work/../etc"
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_capability",
+            "capability": "work = fs.write(\"/work\")",
+            "requested": [
+              "/work/../etc"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a path by prefix, not by segment, is refused",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "/workshop"
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_capability",
+            "capability": "work = fs.write(\"/work\")",
+            "requested": [
+              "/workshop"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a backslash is refused",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "a\\b"
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_capability",
+            "capability": "work = fs.write(\"/work\")",
+            "requested": [
+              "a\\b"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a colon is refused",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "c:/x"
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_capability",
+            "capability": "work = fs.write(\"/work\")",
+            "requested": [
+              "c:/x"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a NUL character is refused",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "a\u0000b"
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_capability",
+            "capability": "work = fs.write(\"/work\")",
+            "requested": [
+              "a\u0000b"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a refused character in a later argument names only that value",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "a",
+        "b:c"
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_capability",
+            "capability": "work = fs.write(\"/work\")",
+            "requested": [
+              "b:c"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a refused character is refused before the arguments are complete",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "a:b"
+      ],
+      "complete": false
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_capability",
+            "capability": "work = fs.write(\"/work\")",
+            "requested": [
+              "a:b"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a value that is not text",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        3
+      ],
+      "complete": true
+    },
+    "output": {
+      "notText": 0
+    }
+  },
+  {
+    "name": "a list member that is not text names its argument",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "a",
+        [
+          "b",
+          null
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "notText": 1
+    }
+  },
+  {
+    "name": "a refused character comes before a later member that is not text",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        [
+          "a:b",
+          7
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_capability",
+            "capability": "work = fs.write(\"/work\")",
+            "requested": [
+              "a:b"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a member that is not text comes before a later refused character",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        [
+          {
+            "k": "v"
+          },
+          "a:b"
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "notText": 0
+    }
+  },
+  {
+    "name": "while the arguments are not complete, nothing else is decided",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        "/elsewhere"
+      ],
+      "complete": false
+    },
+    "output": {
+      "partial": true
+    }
+  },
+  {
+    "name": "a host may hold a colon: only file scopes are held to that",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "net.https",
+        "effect": "Net",
+        "write": false,
+        "scope": [
+          "api.example.com:443",
+          "api.example.com"
+        ]
+      },
+      "args": [
+        "api.example.com:443"
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "net.https",
+          "effect": "Net",
+          "write": false,
+          "scope": [
+            "api.example.com:443"
+          ],
+          "name": "net.https.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a host is inside by equality",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "net.https",
+        "effect": "Net",
+        "write": false,
+        "scope": [
+          "api.example.com"
+        ]
+      },
+      "args": [
+        "other.example.com"
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_capability",
+            "capability": "net.https(\"api.example.com\")",
+            "requested": [
+              "other.example.com"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a host is not joined to the capability's hosts",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "net.https",
+        "effect": "Net",
+        "write": false,
+        "scope": [
+          "api.example.com"
+        ]
+      },
+      "args": [
+        "api.example.com"
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "net.https",
+          "effect": "Net",
+          "write": false,
+          "scope": [
+            "api.example.com"
+          ],
+          "name": "net.https.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a repository is inside by equality",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "git.pr",
+        "effect": "git.*",
+        "write": true,
+        "scope": [
+          "acme/app",
+          "acme/lib"
+        ]
+      },
+      "args": [
+        "acme/lib"
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "git.pr",
+          "effect": "git.*",
+          "write": true,
+          "scope": [
+            "acme/lib"
+          ],
+          "name": "git.pr.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a capability without a scope takes any absolute path",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true
+      },
+      "args": [
+        "/etc"
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/etc"
+          ],
+          "name": "fs.write.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a capability without a scope keeps a relative path as it is",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true
+      },
+      "args": [
+        "src"
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "src"
+          ],
+          "name": "fs.write.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "an empty list argument names nothing, and nothing lies inside",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        []
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [],
+          "name": "work.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "no arguments: an empty scope",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [],
+          "name": "work.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "an empty text is the capability's own path",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/work"
+        ],
+        "name": "work"
+      },
+      "args": [
+        ""
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/work/"
+          ],
+          "name": "work.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a capability without a name is named after its kind",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.read",
+        "effect": "Fs.Read",
+        "write": false,
+        "scope": [
+          "/repo"
+        ]
+      },
+      "args": [
+        "/repo/a"
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "fs.read",
+          "effect": "Fs.Read",
+          "write": false,
+          "scope": [
+            "/repo/a"
+          ],
+          "name": "fs.read.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a capability over a component keeps what it was written as",
+    "fn": "narrow",
+    "input": {
+      "base": {
+        "ctor": "fs.write",
+        "effect": "Fs.Write",
+        "write": true,
+        "scope": [
+          "/repo/app"
+        ],
+        "via": "component.write(app)",
+        "components": [
+          "app"
+        ]
+      },
+      "args": [
+        "src"
+      ],
+      "complete": true
+    },
+    "output": {
+      "caps": [
+        {
+          "ctor": "fs.write",
+          "effect": "Fs.Write",
+          "write": true,
+          "scope": [
+            "/repo/app/src"
+          ],
+          "via": "component.write(app)",
+          "components": [
+            "app"
+          ],
+          "name": "fs.write.narrow"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a map without with caps: each item stands in the map's context",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 1,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [],
+        [],
+        []
+      ],
+      "complete": true
+    },
+    "output": {
+      "items": [
+        null,
+        null,
+        null
+      ],
+      "writes": [
+        [],
+        [],
+        []
+      ]
+    }
+  },
+  {
+    "name": "a map over no items",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 4,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [],
+      "complete": true
+    },
+    "output": {
+      "items": [],
+      "writes": []
+    }
+  },
+  {
+    "name": "each item is handed its with caps",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work/b"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "items": [
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/a"
+                ]
+              },
+              {
+                "ctor": "fs.read",
+                "effect": "Fs.Read",
+                "write": false,
+                "scope": [
+                  "/work/a"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            },
+            {
+              "ctor": "fs.read",
+              "effect": "Fs.Read",
+              "write": false,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        },
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/b"
+                ]
+              },
+              {
+                "ctor": "fs.read",
+                "effect": "Fs.Read",
+                "write": false,
+                "scope": [
+                  "/work/b"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/b"
+              ]
+            },
+            {
+              "ctor": "fs.read",
+              "effect": "Fs.Read",
+              "write": false,
+              "scope": [
+                "/work/b"
+              ]
+            }
+          ]
+        }
+      ],
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "write scopes that overlap exactly are refused with par > 1",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/0/value",
+            "items": [
+              0,
+              1
+            ],
+            "left": "fs.write(\"/work/a\")",
+            "right": "fs.write(\"/work/a\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "write scopes that overlap by prefix are refused",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 3,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/b"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/c"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/0/value",
+            "items": [
+              0,
+              2
+            ],
+            "left": "fs.write(\"/work/a/b\")",
+            "right": "fs.write(\"/work/a\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "write scopes that do not overlap",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 3,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/ab"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "items": [
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/a"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        },
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/ab"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/ab"
+              ]
+            }
+          ]
+        },
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/b"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/b"
+              ]
+            }
+          ]
+        }
+      ],
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/ab"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "write scopes that overlap after .. are refused",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/../b"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/0/value",
+            "items": [
+              0,
+              1
+            ],
+            "left": "fs.write(\"/work/a/../b\")",
+            "right": "fs.write(\"/work/b\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "overlapping writes with par 1 are not compared",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 1,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "items": [
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/a"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        },
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/a"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        }
+      ],
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "reads never overlap",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "items": [
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.read",
+                "effect": "Fs.Read",
+                "write": false,
+                "scope": [
+                  "/work/a"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.read",
+              "effect": "Fs.Read",
+              "write": false,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        },
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.read",
+                "effect": "Fs.Read",
+                "write": false,
+                "scope": [
+                  "/work/a"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.read",
+              "effect": "Fs.Read",
+              "write": false,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        }
+      ],
+      "writes": [
+        [],
+        []
+      ]
+    }
+  },
+  {
+    "name": "writes of different kinds never overlap",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "git.pr",
+            "effect": "git.*",
+            "write": true,
+            "scope": [
+              "acme/app"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "git.pr",
+            "effect": "git.*",
+            "write": true,
+            "scope": [
+              "acme/app"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "items": [
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/a"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        },
+        {
+          "given": [
+            [
+              {
+                "ctor": "git.pr",
+                "effect": "git.*",
+                "write": true,
+                "scope": [
+                  "acme/app"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "git.pr",
+              "effect": "git.*",
+              "write": true,
+              "scope": [
+                "acme/app"
+              ]
+            }
+          ]
+        }
+      ],
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "git.pr",
+            "effect": "git.*",
+            "write": true,
+            "scope": [
+              "acme/app"
+            ]
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "repositories overlap by equality",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "git.pr",
+            "effect": "git.*",
+            "write": true,
+            "scope": [
+              "acme/app",
+              "acme/lib"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "git.pr",
+            "effect": "git.*",
+            "write": true,
+            "scope": [
+              "acme/app"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "git.pr",
+            "effect": "git.*",
+            "write": true,
+            "scope": [
+              "acme/app",
+              "acme/lib"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/0/value",
+            "items": [
+              0,
+              1
+            ],
+            "left": "git.pr(\"acme/app\")",
+            "right": "git.pr(\"acme/app\", \"acme/lib\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a write without a scope overlaps every write of its kind",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/0/value",
+            "items": [
+              0,
+              1
+            ],
+            "left": "fs.write(\"/work/a\")",
+            "right": "fs.write"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "the first overlapping pair is refused: by the first item, then the second",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 3,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/x"
+            ]
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/y"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/y"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/x"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/0/value",
+            "items": [
+              0,
+              1
+            ],
+            "left": "fs.write(\"/work/y\")",
+            "right": "fs.write(\"/work/y\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "the refusal names the first of the second item's writes that overlaps",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/1"
+            ]
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/2"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/0/value",
+            "items": [
+              0,
+              1
+            ],
+            "left": "fs.write(\"/work/a\")",
+            "right": "fs.write(\"/work/a/1\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "an item outside the context is refused, before any overlap",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/c"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "map": "/defs/main/body/0/value",
+            "item": 2,
+            "capability": "fs.write(\"/work/c\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "an item asking a higher data class is refused",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 1,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal"
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal"
+          }
+        ],
+        [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "restricted"
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "map": "/defs/main/body/0/value",
+            "item": 1,
+            "capability": "model.infer"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "an item asking another model tier is refused",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 1,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "standard"
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "maxClass": "internal",
+            "tier": "frontier"
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "map": "/defs/main/body/0/value",
+            "item": 0,
+            "capability": "model.infer"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "an item under an empty capability list is refused",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 1,
+      "context": {
+        "bounds": [],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "map": "/defs/main/body/0/value",
+            "item": 0,
+            "capability": "fs.write(\"/work\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "items without with caps under an empty capability list",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [],
+        []
+      ],
+      "complete": true
+    },
+    "output": {
+      "items": [
+        null,
+        null
+      ],
+      "writes": [
+        [],
+        []
+      ]
+    }
+  },
+  {
+    "name": "while the items are not complete, an item outside the context is refused",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/etc"
+            ]
+          }
+        ]
+      ],
+      "complete": false
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "map": "/defs/main/body/0/value",
+            "item": 1,
+            "capability": "fs.write(\"/etc\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "while the items are not complete, overlaps are not looked at",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      ],
+      "complete": false
+    },
+    "output": {
+      "partial": true
+    }
+  },
+  {
+    "name": "a nested map: the item's given is appended to the context's, and what is handed is replaced by kind",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 2,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [
+          [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            },
+            {
+              "ctor": "fs.read",
+              "effect": "Fs.Read",
+              "write": false,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        ],
+        "handed": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          },
+          {
+            "ctor": "fs.read",
+            "effect": "Fs.Read",
+            "write": false,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/1"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/2"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "items": [
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/a"
+                ]
+              },
+              {
+                "ctor": "fs.read",
+                "effect": "Fs.Read",
+                "write": false,
+                "scope": [
+                  "/work/a"
+                ]
+              }
+            ],
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/a/1"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.read",
+              "effect": "Fs.Read",
+              "write": false,
+              "scope": [
+                "/work/a"
+              ]
+            },
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a/1"
+              ]
+            }
+          ]
+        },
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/a"
+                ]
+              },
+              {
+                "ctor": "fs.read",
+                "effect": "Fs.Read",
+                "write": false,
+                "scope": [
+                  "/work/a"
+                ]
+              }
+            ],
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/a/2"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.read",
+              "effect": "Fs.Read",
+              "write": false,
+              "scope": [
+                "/work/a"
+              ]
+            },
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a/2"
+              ]
+            }
+          ]
+        }
+      ],
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/1"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/2"
+            ]
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "a nested map: an item outside what the outer map handed is refused",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 1,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [
+          [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        ],
+        "handed": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "map": "/defs/main/body/0/value",
+            "item": 0,
+            "capability": "fs.write(\"/work/b\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a scope with .. that leaves the context is refused",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 1,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/../../etc"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "map": "/defs/main/body/0/value",
+            "item": 0,
+            "capability": "fs.write(\"/work/a/../../etc\")"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "paths with a backslash, a colon and NUL are compared by segment",
+    "fn": "mapScopes",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "par": 3,
+      "context": {
+        "bounds": [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work"
+            ]
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "items": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a\\b"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/c:d"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/e\u0000f"
+            ]
+          }
+        ]
+      ],
+      "complete": true
+    },
+    "output": {
+      "items": [
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/a\\b"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a\\b"
+              ]
+            }
+          ]
+        },
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/c:d"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/c:d"
+              ]
+            }
+          ]
+        },
+        {
+          "given": [
+            [
+              {
+                "ctor": "fs.write",
+                "effect": "Fs.Write",
+                "write": true,
+                "scope": [
+                  "/work/e\u0000f"
+                ]
+              }
+            ]
+          ],
+          "handed": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/e\u0000f"
+              ]
+            }
+          ]
+        }
+      ],
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a\\b"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/c:d"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/e\u0000f"
+            ]
+          }
+        ]
+      ]
+    }
+  },
+  {
+    "name": "no sub-program in flight",
+    "fn": "inFlightOverlap",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      ],
+      "programs": []
+    },
+    "output": {
+      "overlap": null
+    }
+  },
+  {
+    "name": "an item writing where a sub-program may write",
+    "fn": "inFlightOverlap",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          }
+        ]
+      ],
+      "programs": [
+        {
+          "command": "/defs/main/body/1/value",
+          "writes": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/b/x"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "overlap": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/0/value",
+            "items": [
+              1
+            ],
+            "left": "fs.write(\"/work/b\")",
+            "right": "fs.write(\"/work/b/x\")",
+            "program": "/defs/main/body/1/value"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "an item and a sub-program writing the same scope exactly",
+    "fn": "inFlightOverlap",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      ],
+      "programs": [
+        {
+          "command": "/defs/main/body/1/value",
+          "writes": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/a"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "overlap": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/0/value",
+            "items": [
+              0
+            ],
+            "left": "fs.write(\"/work/a\")",
+            "right": "fs.write(\"/work/a\")",
+            "program": "/defs/main/body/1/value"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "an item and a sub-program writing apart",
+    "fn": "inFlightOverlap",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/b"
+            ]
+          }
+        ]
+      ],
+      "programs": [
+        {
+          "command": "/defs/main/body/1/value",
+          "writes": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/c"
+              ]
+            },
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/ab"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "overlap": null
+    }
+  },
+  {
+    "name": "the sub-program the map runs inside is left out",
+    "fn": "inFlightOverlap",
+    "input": {
+      "map": "/defs/main/body/1/value/defs/w/body/0/value",
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      ],
+      "programs": [
+        {
+          "command": "/defs/main/body/1/value",
+          "writes": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "overlap": null
+    }
+  },
+  {
+    "name": "a command that is a prefix of the map's path but not a parent is not left out",
+    "fn": "inFlightOverlap",
+    "input": {
+      "map": "/defs/main/body/1/value0/defs/w/body/0/value",
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a"
+            ]
+          }
+        ]
+      ],
+      "programs": [
+        {
+          "command": "/defs/main/body/1/value",
+          "writes": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "overlap": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/1/value0/defs/w/body/0/value",
+            "items": [
+              0
+            ],
+            "left": "fs.write(\"/work/a\")",
+            "right": "fs.write(\"/work\")",
+            "program": "/defs/main/body/1/value"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "the first item, then its first write, then the first sub-program, is named",
+    "fn": "inFlightOverlap",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "writes": [
+        [],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/x"
+            ]
+          },
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/y"
+            ]
+          }
+        ],
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/y"
+            ]
+          }
+        ]
+      ],
+      "programs": [
+        {
+          "command": "/p/1",
+          "writes": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/y"
+              ]
+            }
+          ]
+        },
+        {
+          "command": "/p/2",
+          "writes": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/x/1"
+              ]
+            },
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/x"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "overlap": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/0/value",
+            "items": [
+              1
+            ],
+            "left": "fs.write(\"/work/x\")",
+            "right": "fs.write(\"/work/x/1\")",
+            "program": "/p/2"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a sub-program writing without a scope overlaps every write of its kind",
+    "fn": "inFlightOverlap",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "writes": [
+        [
+          {
+            "ctor": "git.pr",
+            "effect": "git.*",
+            "write": true,
+            "scope": [
+              "acme/app"
+            ]
+          }
+        ]
+      ],
+      "programs": [
+        {
+          "command": "/defs/main/body/1/value",
+          "writes": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work"
+              ]
+            },
+            {
+              "ctor": "git.pr",
+              "effect": "git.*",
+              "write": true
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "overlap": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/0/value",
+            "items": [
+              0
+            ],
+            "left": "git.pr(\"acme/app\")",
+            "right": "git.pr",
+            "program": "/defs/main/body/1/value"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "a map that writes nothing",
+    "fn": "inFlightOverlap",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "writes": [
+        [],
+        []
+      ],
+      "programs": [
+        {
+          "command": "/defs/main/body/1/value",
+          "writes": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "overlap": null
+    }
+  },
+  {
+    "name": "a scope with .. that reaches a sub-program's",
+    "fn": "inFlightOverlap",
+    "input": {
+      "map": "/defs/main/body/0/value",
+      "writes": [
+        [
+          {
+            "ctor": "fs.write",
+            "effect": "Fs.Write",
+            "write": true,
+            "scope": [
+              "/work/a/../b/c"
+            ]
+          }
+        ]
+      ],
+      "programs": [
+        {
+          "command": "/defs/main/body/1/value",
+          "writes": [
+            {
+              "ctor": "fs.write",
+              "effect": "Fs.Write",
+              "write": true,
+              "scope": [
+                "/work/b"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "overlap": {
+        "tag": "Rejected",
+        "args": [
+          "overlapping_scopes",
+          {
+            "map": "/defs/main/body/0/value",
+            "items": [
+              0
+            ],
+            "left": "fs.write(\"/work/a/../b/c\")",
+            "right": "fs.write(\"/work/b\")",
+            "program": "/defs/main/body/1/value"
+          }
+        ]
+      }
+    }
+  }
+]

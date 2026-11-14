@@ -29,6 +29,28 @@ describe("the seam between the runtime and the compiler", () => {
     expect(found, `import the compiler through @mandate/bridge, not ${COMPILER}:\n${found.join("\n")}`).toEqual([]);
   });
 
+  // The run-time authority decisions are the bridge's (grant, narrow, mapScopes, inFlightOverlap): the runtime makes
+  // none of them with the compiler's own coverage and overlap predicates, so that one implementation decides them.
+  it("decides no authority itself: no file of the runtime takes the compiler's coverage and overlap predicates", () => {
+    const PREDICATES = new Set(["capCovers", "scopeWithin", "writesOverlap"]);
+    const found: string[] = [];
+    for (const file of files(runtimeDir)) {
+      if (file === fileURLToPath(import.meta.url) || !/\.[cm]?[jt]s$/.test(file)) continue;
+      const text = readFileSync(file, "utf8");
+      const at = (index: number): string => `${relative(runtimeDir, file).replaceAll("\\", "/")}:${text.slice(0, index).split("\n").length}`;
+      // A name imported or re-exported from the bridge, under any alias.
+      for (const m of text.matchAll(/\b(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\s*["']@mandate\/bridge["']/g)) {
+        for (const spec of m[1]!.split(",")) {
+          const name = spec.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]!.trim();
+          if (PREDICATES.has(name)) found.push(`${at(m.index)}: imports ${name}`);
+        }
+      }
+      // A predicate reached through a namespace or a dynamic import: `bridge.capCovers`, `["capCovers"]`.
+      for (const m of text.matchAll(/(?:\.\s*|\[\s*["'])(capCovers|scopeWithin|writesOverlap)\b/g)) found.push(`${at(m.index)}: uses ${m[1]}`);
+    }
+    expect(found, `ask the bridge's authority decisions instead:\n${found.join("\n")}`).toEqual([]);
+  });
+
   it("does not list the compiler as a dependency", () => {
     const pkg = JSON.parse(readFileSync(join(runtimeDir, "package.json"), "utf8")) as Record<string, Record<string, string> | undefined>;
     for (const field of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
