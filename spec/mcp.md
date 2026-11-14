@@ -83,3 +83,20 @@ A 1 000 000-element array cannot fit in 1 MiB, so it is refused for its
 size. A program sent as `source` is a JSON string inside the request, so the
 largest program one request can carry is a little smaller than the
 compiler's own 1 MiB source limit.
+
+## 0.6
+
+*Specified in [`library.md`](library.md); not implemented yet. Everything
+above holds as it is today.*
+
+- **The server stays this one.** In 0.6 the server is still the
+  TypeScript program, a thin shell over the compiler's doors: its tools
+  call the Rust compiler through the bridge
+  ([`library.md`](library.md#the-bridge)), so they check 0.6 programs too.
+  Its tools, protocol and limits do not change. A native `mandate mcp` in
+  Rust is 0.7.
+- **Mandate as an MCP client.** 0.6 also makes the runtime a client of
+  other MCP servers, for connectors. That client speaks a narrow part of
+  MCP over HTTP and is specified with connectors
+  ([`library.md`](library.md#the-mcp-the-runtime-speaks)); it has nothing
+  to do with this server.

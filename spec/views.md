@@ -101,6 +101,25 @@ the package and the one `mandate approve-envelope` signs, so a changed
 program, lock or imported module shows a new hash on the card. In JSON
 every number is given as a number and as the text the document shows.
 
+### The card in 0.6
+
+*Specified in [`library.md`](library.md#views); not implemented yet. What
+is above holds for every program of 0.1 to 0.5, unchanged.*
+
+- **A workflow without an envelope.** In a 0.6 program the card is made
+  for a workflow with no envelope too: its `caps` and `budget` take the
+  envelope's place, and the fifth question is answered with "no envelope:
+  nobody approves it before a run, and nobody may amend it".
+- **What it adds:** the pattern a workflow applies, with its library and
+  version; the workflow's `///` doc lines; each map's most items and the
+  proof of the budget; each `human.review` as one decision of its role,
+  with its deadline and the role it is escalated to; each criterion with
+  `waive by` and its roles; the connectors' tools, those that read apart
+  from those that write; and each batch commit step as an action per item,
+  authorized by policy and idempotent by its key.
+- The diff gains `waiver_added` and `waiver_removed`, both governance
+  changes, and shows a changed library pin as `mandate upgrade` shows it.
+
 ## What changed between two versions
 
 `mandate view <new> --against <old>` shows the semantic diff of §15.3 in
@@ -258,6 +277,12 @@ program hash.
 
 In JSON the 0.4 parts are `decisions`, `envelope` (null without one),
 `plans` and `maps`. A run that has none of a part has no section for it.
+
+A run of a 0.6 package will also show each `human.review` with its items
+by index (open, waived or declined, and who decided), each waived
+criterion's failed record beside its waiver, and each sub-program's
+shape. This is specified in [`library.md`](library.md#views) and not
+implemented yet.
 
 **By role, and for an audit** (0.5). `mandate show <run> --role R` shows the
 run as one role may see it, and `mandate show <run> --audit` shows

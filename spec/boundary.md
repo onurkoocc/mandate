@@ -1374,7 +1374,9 @@ the journal as it is, a journal tests change on purpose included.
 | INV-28 | A violation is counted once: a replay or a resume never counts it again | One `violation` event per step |
 | INV-29 | A floor, a least version and a credential binding come from the lock alone, inside the package hash: changing one is a new package | Lock 0.5; no built-in floor |
 
-INV-18 to INV-22 are kept for later releases.
+INV-18, INV-21 and INV-22 are specified for 0.6 in
+[`library.md`](library.md#invariants), not implemented yet; INV-19 and
+INV-20 are kept for a later release.
 
 ## Diagnostics and conformance cases
 
@@ -1459,14 +1461,18 @@ shared with `verify-journal`:
 | J15 | An export that is not one | `malformed_export` (`unreadable`) |
 | J16 | A run whose data nests deeper than a verifier reads | `export_over_limit` (`unreadable`) |
 
-The letters P, T and L are kept for later releases.
+The letters P, T and L are 0.6's, with H06 onward and N11
+([`library.md`](library.md#diagnostics-and-conformance-cases)): planned
+cases of a release that is specified and not implemented yet.
 
 ## Not in 0.5
 
 - **Parts of the Rust compiler.** It is a library with no command line;
   the runtime and the `mandate` CLI use the TypeScript compiler. The
   envelope card (`mandate view --card`), the ACS/Rego target and the MCP
-  server are not ported. These start the plan for 0.6. A few written
+  server are not ported. These start the plan for 0.6, whose bridge
+  ([`library.md`](library.md#the-bridge)) is specified and not implemented
+  yet. A few written
   inputs are known to differ; they are listed in `vectors/README.md`
   ("Where the Rust compiler is not held to the TypeScript").
 - **New isolation backends.** 0.5 adds the level and the refusal, not a
