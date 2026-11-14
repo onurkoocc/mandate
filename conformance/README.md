@@ -31,8 +31,14 @@ own input files (`program.mdt` or `program.ir.json`, module files,
   case checks (after the patch) must declare that language. A case that
   expects E0103 for a version no compiler reads may name instead the version
   of the compiler it is written for, when that is one only the Rust compiler
-  reads (`S02h`: a program of `mandate/0.7`, a case of `mandate/0.6`). A case
-  of `mandate/0.6` is a case of the Rust compiler alone (see "Cases of 0.6").
+  reads (`S02h`: a program of `mandate/0.7`, a case of `mandate/0.6`). So may a
+  case about how a program of an earlier version meets what that version adds,
+  which the TypeScript could not run or would write vectors for (`E0104d`: a
+  program of 0.5 with fields of 0.6; `E1603`: a program of 0.5 that imports a
+  module of 0.6): its program declares a version the Rust reads that is older
+  than the case's. A text that does not read declares the version of its header
+  (`mandate @ 0.6`). A case of `mandate/0.6` is a case of the Rust compiler alone
+  (see "Cases of 0.6").
 - `input`: required except in a journal case. `{ "file": "<path>", "kind": "mdt" | "json" }` or
   `{ "text": "<source>", "kind": ... }`. Exactly one of `file` and `text`.
 - `modules`: optional list of module files, loaded the way `--module` loads them.
@@ -251,10 +257,38 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E0140` | A 0.5 lock that carries `libraries`, a field of format 0.6 | E0140 |
 | `E0140a` | A 0.6 lock whose library has a version that is not `MAJOR.MINOR.PATCH` and a module with no program hash | E0140 |
 | `E0140b` | A 0.6 lock whose connector has no `tools` and a credential that is not a name | E0140 |
+| `P01` | A 0.6 module with `pub` before each of the 13 kinds of definition and doc lines checks; its hashes cover each `pub` and `doc` | — |
+| `P01a` | The IR `P01` reads to, as JSON IR: the 0.6 schema takes `pub` and `doc` on every kind; the hashes are `P01`'s | — |
+| `P01b` | One doc line changed: a new program hash and a new hash of that definition, no other | — |
+| `E0104d` | `doc` and `pub` (on a type) in the IR of a program of 0.5 | E0104 |
+| `E0101` | A doc line inside the body of a definition | E0101 |
+| `E0101a` | A doc line before a `use` | E0101 |
+| `E0101b` | A doc line before `module` | E0101 |
+| `E0101c` | A doc line at the end of the file | E0101 |
+| `E0101d` | A doc line followed by a blank line before the definition | E0101 |
+| `E0101e` | `pub type` in a program of 0.5: before 0.6, `pub` stands before a `fn` only | E0101 |
+| `E0101f` | `///` lines everywhere in a program of 0.5 are comments: it checks with the hashes of its text without them | — |
+| `E0101g` | A `///` comment at the end of a line of code, on the line before a definition | E0101 |
+| `E1602` | A name of a 0.6 module that is not `pub`, in a `use` list (a mutation of a program that checks) | E1602 |
+| `E1602a` | The same written with its module as a type, `types.Note` | E1602 |
+| `E1602c` | The same written with its module as a value, `types.SECRET` | E1602 |
+| `E1602b` | A 0.6 program names definitions of a 0.5 module, in a `use` list and with its module | — |
+| `E1603` | A program of 0.5 that imports a module of 0.6 (a mutation: the program's `language`) | E1603 |
+| `E1603a` | A module of 0.5, definitions only, that imports a module of 0.6 | E1603 |
+| `E1604` | A `use` of a module the check is not given (a mutation: one `use` added) | E1604 |
+| `E1604a` | A `use` of `std.patterns`, which this compiler does not build in yet | E1604 |
+| `E1604b` | Imports of `std`, `std.decision` and a module the check is given | — |
+
+The import cases share the 0.6 module `E1602/types.mdt` and the program
+`E1602/program.mdt`. What a case cannot say, because its modules must load, is in
+`crates/mandate-check/tests/language_0_6.rs`: a module of 0.5 among the modules given
+to a check that imports one of 0.6 (E1603), and one of 0.6 that imports a module
+nobody gave (E1604), do not load.
 
 spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
 (human steps), L (libraries) and N11 (shapes), and the code numbers of its
-families; the cases above use the S02 claim and E0140, which 0.6 extends.
+families; the cases above use P01 (which spec/library.md names), the S02 claim,
+E0101, E0104 and E0140, which 0.6 extends, and the code numbers of E16xx.
 
 ## What the Rust crates run
 
@@ -292,12 +326,14 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 125, passed 125, pending 0
+conformance cases: ran 152, passed 152, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
+  of them 27 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(141 cases: 125 `compile`, 16 `journal`; no case has the kind `run` yet.) A case
+(168 cases: 152 `compile`, 27 of them of language 0.6, and 16 `journal`; no case
+has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the
 list is empty, and what it is for now is this: a new rule of the language is
@@ -316,10 +352,10 @@ it runs natively (CI's `rust` job), not under WebAssembly.
 
 **`mandate-ir`.** `crates/mandate-ir/tests/conformance.rs` runs, with the Rust
 crate alone, the cases that need only the strict JSON reader and the hashes, and
-counts the rest as skipped, with the reason (it prints `ran 6, skipped 135 (of
-141)`). It runs a `compile` case with a JSON input and none of `patch`,
+counts the rest as skipped, with the reason (it prints `ran 7, skipped 161 (of
+168)`). It runs a `compile` case with a JSON input and none of `patch`,
 `modules`, `lock`, `subprogram`, `amendment` and `base`, when it expects `ok`
-with `hashes` and no diagnostics (E0104c, S10a, S10b, S11a, S11b, S11m): the
+with `hashes` and no diagnostics (E0104c, P01a, S10a, S10b, S11a, S11b, S11m): the
 reader must accept the input with no diagnostic and the hashes must be the
 case's.
 
