@@ -1,0 +1,18 @@
+[package]
+name = "mandate-wasm"
+description = "The Mandate compiler as a wasm32-wasip1 command module, which the Node runtime calls"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mandate-wasm"
+path = "src/main.rs"
+
+[dependencies]
+mandate-doors = { path = "../mandate-doors" }
+
+[lints]
+workspace = true
