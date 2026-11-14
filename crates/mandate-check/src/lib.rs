@@ -2,7 +2,22 @@
 //! reference compiler, which remains the specification: the same
 //! diagnostics, codes, messages and `facts`, byte for byte.
 //!
-//! So far it holds what every later check stands on:
+//! So far it holds the front door and the stages before the static checks:
+//!
+//! - [`check`](mod@check): [`check()`], [`load_modules`], [`CheckOptions`],
+//!   [`CheckResult`], `compiler/src/check.ts` lines 60–131. The stages after
+//!   `importedMethods` are seams that give nothing yet, listed in
+//!   [`UNPORTED`]: until it is empty, an `ok` from [`check()`] means no
+//!   error from the stages ported so far.
+//! - [`modules`]: [`link`], [`linked_program`] and [`references`],
+//!   `compiler/src/modules.ts`: the definitions a program sees with its
+//!   imported modules ([`Linked`], [`Modules`]).
+//! - [`resolve`]: [`resolve_names`] and [`closest`] (the "did you mean" of
+//!   every diagnostic that has one), `compiler/src/resolve/resolve.ts`.
+//! - [`roles`]: [`role_checks`], [`role_sites`] and [`roles_named`],
+//!   `compiler/src/check/roles.ts`.
+//!
+//! And what every later check stands on:
 //!
 //! - [`caps`]: what a capability expression means and the relations between
 //!   capabilities, `compiler/src/check/caps.ts` ([`caps_of`],
@@ -30,15 +45,32 @@
 //! Like `mandate-ir`, the crate reads no file, environment variable or clock
 //! and starts no process (a test in `mandate-testkit` holds it to that), and
 //! it builds for `wasm32-wasip1`. Its tests compare it with what the
-//! TypeScript gives on the inputs `scripts/caps-vectors.mjs` writes.
+//! TypeScript gives on the inputs `scripts/caps-vectors.mjs` and
+//! `scripts/front-vectors.mjs` write; the gates of `mandate-testkit` hold
+//! [`check()`] to the stored results of the TypeScript's.
 
 #![forbid(unsafe_code)]
 
 pub mod caps;
+pub mod check;
 pub mod governance;
+pub mod modules;
 pub mod path;
 pub mod posix;
+pub mod resolve;
+pub mod roles;
 pub mod stdlib;
+
+pub use check::{
+    CheckOptions, CheckResult, LoadedModules, ModuleProblem, ModuleSource, UNPORTED, check,
+    load_modules,
+};
+pub use modules::{Linked, Modules, link, linked_program, references};
+pub use resolve::{
+    BUILTIN_FUNCTIONS, BUILTIN_TYPES, BUILTIN_TYPES_0_4, SUPERVISION_STRATEGIES, closest,
+    resolve_names,
+};
+pub use roles::{RoleSite, RoleValue, role_checks, role_sites, roles_named};
 
 pub use caps::{
     CapMember, CapOptions, CapResult, CapVal, HTTP_METHODS, MethodProblem, MethodProblemKind,

@@ -8,12 +8,22 @@
 //! One gate per door, each named `corpus <door>` and printing
 //! `corpus <door>: ran N, passed M, pending K`, over the entries of that
 //! door, named `<door> @ <id> [<codes>]` (the codes are those of the stored
-//! result, sorted, so a pending list can name a family: `*MDT-E03??*`).
-//! Today only `load` exists in Rust, so every other door is pending as a
-//! whole, with the slice that will end it named below. Plugging a door in
-//! takes two edits in this file: an arm in [`replay`], and taking the door's
-//! pattern off its pending list (or narrowing it to the entries that still
-//! fail).
+//! result, sorted, so a pending list can name a family: `*MDT-E03*`).
+//! Three doors exist in Rust: `load` (`mandate_syntax::load`), and `check`
+//! and `load_modules` (`mandate_check`), whose entries are pending only by
+//! the family of codes of a stage not ported yet (`mandate_check::UNPORTED`;
+//! the families are `mandate_testkit::codes::FAMILIES`, and
+//! `mandate_testkit::check_pending` holds each list to them), with the slice
+//! named beside each, and two entries by name, with the reason. Every other
+//! door is pending as a whole, with the slice that will end it named below.
+//! Plugging a door in takes two edits in this file: an arm in [`replay`],
+//! and taking the door's pattern off its pending list (or narrowing it to
+//! the entries that still fail).
+//!
+//! A `check` entry also passes when TypeScript ran a stage Rust does not
+//! have yet and that stage happened to give nothing (its static checks on a
+//! result with no error, its lock checks on one with a lock too); the gate
+//! prints how many of the passing entries are such.
 //!
 //! Two things are neither passed nor pending, and are counted and printed
 //! (`corpus <door>: excluded N: ...`): the entries in [`EXCLUDED`], by id
@@ -23,21 +33,60 @@
 
 #![allow(clippy::panic, clippy::expect_used, missing_docs)]
 
-use mandate_ir::{Span, Spans, Value, parse};
+use mandate_check::{CheckOptions, ModuleSource, Modules, check, load_modules};
+use mandate_ir::{Diagnostic, JsValue, Span, Spans, Value, parse};
 use mandate_syntax::{SourceKind, load};
 use mandate_testkit::corpus::{
-    Actual, Corpus, Door, Entry, Input, Kind, digest_of, ir_text, render_load, spans_text,
+    Actual, Corpus, Door, Entry, Input, Kind, digest_of, ir_text, render_check, render_load,
+    render_load_modules, spans_text,
 };
-use mandate_testkit::run_gate;
+use mandate_testkit::{check_pending, run_gate};
 
 // ---------------------------------------------------------------------------
 // What is not ported yet, by door, and what is not compared
 
-/// `check`: the check port, R9 (in progress).
-const PENDING_CHECK: &[&str] = &["check @ *"];
-/// `load_modules`: it calls `check`'s linker, so it waits for the check port,
-/// R9 (in progress).
-const PENDING_LOAD_MODULES: &[&str] = &["load_modules @ *"];
+/// `check`: the entries that expect a code of a stage `mandate_check::check`
+/// does not run yet (`mandate_check::UNPORTED`), by family of codes
+/// (`mandate_testkit::codes::FAMILIES`), with the slice that ports it.
+const PENDING_CHECK: &[&str] = &[
+    // R11: the static core (types, expressions, budgets, cost).
+    "*MDT-E02*",
+    "*MDT-W02*",
+    "*MDT-E05*",
+    // R12: the static authority (capabilities, delegation, effects, envelopes, methods).
+    "*MDT-E03*",
+    "*MDT-W0310*",
+    "*MDT-E04*",
+    "*MDT-E06*",
+    "*MDT-W06*",
+    "*MDT-E07*",
+    "*MDT-E17*",
+    "*MDT-E1801*",
+    // R13: the system model, change sets, reads.
+    "*MDT-E10*",
+    "*MDT-E11*",
+    "*MDT-E12*",
+    // R14: the lock.
+    "*MDT-E014*",
+    "*MDT-W0504*",
+    "*MDT-E1502*",
+    "*MDT-E1802*",
+    "*MDT-E1803*",
+    // R14: the managed-agents binding checks, which lockChecks runs.
+    "*MDT-E09*",
+    // R11: the static checks' limit of 1000 expanded nodes per workflow. Its
+    // code, MDT-E0105, is also the reader's and validateIr's, which are
+    // ported, so no family glob can hold these two without holding entries
+    // that pass; they are listed by name.
+    "check @ check-2842daaeba080270 [MDT-E0105]",
+    "check @ check-b187ac8a2a6ae914 [MDT-E0105]",
+];
+/// `load_modules`: a module that does not check against the others for a
+/// reason of a later slice, by family of codes.
+const PENDING_LOAD_MODULES: &[&str] = &[
+    // R13: the system model.
+    "*MDT-E10*",
+];
 /// `check_patch`: the patch and subprogram checks, R13.
 const PENDING_CHECK_PATCH: &[&str] = &["check_patch @ *"];
 /// `check_subprogram`: R13.
@@ -98,18 +147,74 @@ const OUT_OF_SCOPE: &[(Door, &str)] = &[(
 /// pending list.
 fn replay(input: &Input<'_>) -> Result<Actual, String> {
     match input {
-        Input::Load { source, kind } => {
-            let kind = match kind {
-                Kind::Mdt => SourceKind::Mdt,
-                Kind::Json => SourceKind::Json,
-            };
-            Ok(Actual::Result(render_load(&load(source, kind))))
+        Input::Load { source, kind } => Ok(Actual::Result(render_load(&load(
+            source,
+            source_kind(*kind),
+        )))),
+        Input::Check {
+            source,
+            kind,
+            modules,
+            lock,
+            claim,
+        } => {
+            let modules = modules.as_ref().map(|m| modules_map(m));
+            let r = check(
+                source,
+                source_kind(*kind),
+                &CheckOptions {
+                    lock: *lock,
+                    modules: modules.as_ref(),
+                    claim: *claim,
+                },
+            );
+            Ok(Actual::Result(render_check(
+                r.program.as_ref(),
+                &r.spans,
+                &r.diagnostics,
+                r.ok,
+                r.hashes.as_ref().map(|h| JsValue::Object(h.to_js())),
+            )))
+        }
+        Input::LoadModules { sources } => {
+            let sources: Vec<ModuleSource<'_>> = sources
+                .iter()
+                .map(|s| ModuleSource {
+                    text: s.text,
+                    kind: source_kind(s.kind),
+                    file: s.file,
+                })
+                .collect();
+            let r = load_modules(&sources);
+            let modules: Vec<(&str, &Value)> = r.modules.iter().collect();
+            let problems: Vec<(&str, &[Diagnostic])> = r
+                .problems
+                .iter()
+                .map(|p| (p.file.as_str(), p.diagnostics.as_slice()))
+                .collect();
+            Ok(Actual::Result(render_load_modules(&modules, &problems)))
         }
         other => Err(format!(
             "the Rust door for {} is not ported yet",
             other.door().name()
         )),
     }
+}
+
+fn source_kind(kind: Kind) -> SourceKind {
+    match kind {
+        Kind::Mdt => SourceKind::Mdt,
+        Kind::Json => SourceKind::Json,
+    }
+}
+
+/// The modules of a call as `mandate_check::Modules`, in the order the call
+/// gave them.
+fn modules_map(modules: &[(&str, &Value)]) -> Modules {
+    modules
+        .iter()
+        .map(|(name, ir)| (*name, (*ir).clone()))
+        .collect()
 }
 
 /// One entry: its input built, the door called, the result compared.
@@ -120,6 +225,39 @@ fn run(corpus: &Corpus, entry: &Entry) -> Result<(), String> {
     let actual = replay(&input)
         .map_err(|e| format!("{} (from {}): {e}", entry.id, entry.files.join(", ")))?;
     mandate_testkit::corpus::compare(entry, &actual)
+}
+
+/// Says how many of the `check` entries that pass did so although the
+/// TypeScript ran a stage that `mandate_check::check` does not run yet
+/// (`mandate_check::UNPORTED`): a stored result with no error is one the
+/// static checks ran on (and gave nothing); one with no error and a lock is
+/// one the lock checks ran on too; one with a claim is one whose claim the
+/// static checks read. Such an entry passes because that stage happened to
+/// give nothing, so the numbers are printed rather than hidden.
+fn print_unported_stages(corpus: &Corpus, title: &str, passed: &[&Entry]) {
+    let (mut statics, mut locks, mut claims) = (0_usize, 0_usize, 0_usize);
+    for entry in passed {
+        let Ok(Input::Check { lock, claim, .. }) = corpus.input(entry) else {
+            continue;
+        };
+        let ok = match &entry.outcome {
+            mandate_testkit::corpus::Outcome::Result(r) => r.get("ok") == Some(&Value::Bool(true)),
+            _ => false,
+        };
+        if ok {
+            statics = statics.saturating_add(1);
+            if lock.is_some() {
+                locks = locks.saturating_add(1);
+            }
+        }
+        if claim.is_some() {
+            claims = claims.saturating_add(1);
+        }
+    }
+    println!(
+        "{title}: of the {} that pass, {statics} have no error, so TypeScript ran its static checks on them (R11-R13, not in Rust yet), {locks} of those with a lock, so it ran its lock checks too (R14), and {claims} have a claim (R13)",
+        passed.len()
+    );
 }
 
 /// The totals of the gates of all doors.
@@ -173,8 +311,19 @@ fn gate(corpus: &Corpus, door: Door, totals: &mut Totals) -> Result<(), String> 
         );
     }
 
-    if let Err(report) = run_gate(&title, pending(door), items, |entry| run(corpus, entry)) {
+    let mut passed: Vec<&Entry> = Vec::new();
+    let gate = run_gate(&title, pending(door), items, |entry| {
+        let r = run(corpus, entry);
+        if r.is_ok() {
+            passed.push(entry);
+        }
+        r
+    });
+    if let Err(report) = gate {
         problems.push(report);
+    }
+    if door == Door::Check {
+        print_unported_stages(corpus, &title, &passed);
     }
     if problems.is_empty() {
         Ok(())
@@ -186,6 +335,17 @@ fn gate(corpus: &Corpus, door: Door, totals: &mut Totals) -> Result<(), String> 
 #[test]
 fn corpus_gates() {
     let corpus = Corpus::load().unwrap_or_else(|e| panic!("{e}"));
+    // A pending entry is a family of codes or a door; the few that name one
+    // entry (`<door> @ <door>-<hex> [...]`) say why beside them.
+    for door in Door::ALL {
+        let rules: Vec<&str> = pending(door)
+            .iter()
+            .copied()
+            .filter(|p| !p.contains(&format!(" @ {}-", door.name())))
+            .collect();
+        check_pending(&rules)
+            .unwrap_or_else(|e| panic!("the pending list of {}: {e}", door.name()));
+    }
     let mut totals = Totals::default();
     let mut failures: Vec<String> = Vec::new();
     for (id, _) in EXCLUDED {

@@ -11,17 +11,28 @@
 
 #![allow(clippy::panic, clippy::expect_used, missing_docs)]
 
+mod common;
+
+use std::collections::BTreeMap;
+
+use common::{check_text, check_with, modules_of, read_source};
 use mandate_ir::{Diagnostic, JsValue, Loaded, canonicalize, stringify_pretty};
 use mandate_syntax::{kind_of, load};
-use mandate_testkit::{Golden, GoldenOutput, compare_digest, read_text, run_gate};
+use mandate_testkit::{
+    Golden, GoldenOutput, compare_digest, item_name, read_text, result_codes, run_gate,
+    stored_programs,
+};
 
 /// The outputs the Rust crates do not give yet, as `<output> @ <program>`
-/// patterns. Shorten it in the commit that makes an item pass.
+/// patterns. Shorten it in the commit that makes an item pass. The checks
+/// are named by the codes they hold (`check @ <program> [codes]`, see
+/// `mandate_testkit::codes`), and pending by family of codes.
 const PENDING: &[&str] = &[
-    "check @ *",
-    "check --module @ *",
-    "check --lock @ *",
-    "hash @ *",
+    // R12: the static authority (a criterion checked at run time).
+    "*MDT-W06*",
+    // R13: the system model, reads.
+    "*MDT-E10*",
+    "*MDT-E12*",
     "view --format json @ *",
     "view --format md @ *",
     "view --format html @ *",
@@ -56,14 +67,109 @@ fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
                 .ok_or_else(|| "load gave no program".to_owned())?;
             mandate_syntax::print_program(&program)
         }
+        // `checkOutput(check(text, kind))`: `JSON.stringify({ ok, hashes?,
+        // diagnostics }, null, 2) + "\n"`.
+        "check" => Ok(check_text(&checked(o.program, false, false)?)),
+        // The same, with the program's modules (`moduleFilesOf`).
+        "check --module" => Ok(check_text(&checked(o.program, true, false)?)),
+        // The same, with its modules and its lock (`lockOf`).
+        "check --lock" => Ok(check_text(&checked(o.program, true, true)?)),
+        // `JSON.stringify(check(text, kind).hashes, null, 2) + "\n"`, for a
+        // program that checks.
+        "hash" => {
+            let hashes = checked(o.program, false, false)?
+                .hashes
+                .ok_or("the program does not check, so it has no hashes")?;
+            let mut text = stringify_pretty(&JsValue::Object(hashes.to_js())).unwrap_or_default();
+            text.push('\n');
+            Ok(text)
+        }
         _ => Err("no Rust implementation yet".to_owned()),
+    }
+}
+
+/// The module files a program is given: `moduleFilesOf` in
+/// `compiler/test/golden-outputs.ts` (`MODULE_FILES`, except where
+/// `MODULE_FILES_OF` names others).
+fn module_files_of(program: &str) -> Vec<String> {
+    let files: &[&str] = if program == "fixtures/envelope/migrate-all.mdt" {
+        &["fixtures/envelope/domain.mdt"]
+    } else {
+        &[
+            "fixtures/system/acme.system.mdt",
+            "fixtures/system/repos.mdt",
+        ]
+    };
+    files.iter().map(|f| (*f).to_owned()).collect()
+}
+
+/// The lock a program is checked with: `lockFileOf` in
+/// `compiler/test/helpers.ts`, `<name>.lock.json` beside it, else
+/// `mandate.lock.json` beside it, the first that exists.
+fn lock_file_of(program: &str) -> Option<String> {
+    let (dir, file) = match program.rsplit_once('/') {
+        Some((dir, file)) => (format!("{dir}/"), file),
+        None => (String::new(), program),
+    };
+    // `.replace(/\.[^.]*$/, "")`.
+    let name = file.rsplit_once('.').map_or(file, |(name, _)| name);
+    [
+        format!("{dir}{name}.lock.json"),
+        format!("{dir}mandate.lock.json"),
+    ]
+    .into_iter()
+    .find(|p| mandate_testkit::path(p).exists())
+}
+
+/// `check(text, kind, { modules?, lock? })` of a golden program.
+fn checked(
+    program: &str,
+    with_modules: bool,
+    with_lock: bool,
+) -> Result<mandate_check::CheckResult, String> {
+    let text = read_source(program)?;
+    let files = module_files_of(program);
+    let modules = if with_modules {
+        Some(modules_of(&files, &files)?)
+    } else {
+        None
+    };
+    let lock = if with_lock {
+        Some(lock_file_of(program).ok_or("the program has no lock")?)
+    } else {
+        None
+    };
+    check_with(&text, kind_of(program), modules.as_ref(), lock.as_deref())
+}
+
+/// The name of an output in the gate: `<output> @ <program>`, and for a
+/// check the codes its stored result holds (`vectors/diagnostics/`), and
+/// for `hash`, which holds none, `[]`.
+fn name_of(o: &GoldenOutput<'_>, codes: &BTreeMap<(String, String), Vec<String>>) -> String {
+    match o.output {
+        "check" | "check --module" | "check --lock" => {
+            let slot = o.output.replace(" --", "_");
+            match codes.get(&(o.program.to_owned(), slot)) {
+                Some(codes) => item_name(o.output, o.program, codes),
+                None => format!("{} (no stored result)", o.name()),
+            }
+        }
+        "hash" => item_name::<&str>(o.output, o.program, []),
+        _ => o.name(),
     }
 }
 
 #[test]
 fn golden_outputs() {
+    mandate_testkit::check_pending(PENDING).expect("the pending list");
     let golden = Golden::load().expect("the golden file");
-    let items = golden.outputs().map(|o| (o.name(), o));
+    let mut codes: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+    for p in stored_programs().expect("the golden vectors") {
+        for (slot, v) in &p.results {
+            codes.insert((p.program.clone(), slot.clone()), result_codes(v));
+        }
+    }
+    let items = golden.outputs().map(|o| (name_of(&o, &codes), o));
     let gate = run_gate("golden outputs", PENDING, items, |o| {
         compare_digest(o.digest, &output(o)?)
     });

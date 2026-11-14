@@ -15,6 +15,7 @@ use std::fmt::Write as _;
 use sha2::{Digest, Sha256};
 
 use crate::jcs::{canonicalize, compare_utf16};
+use crate::js_value::JsObject;
 use crate::value::{Map, Value};
 
 /// The version the runtime's domains are hashed under, and a program's when
@@ -108,6 +109,22 @@ pub struct ProgramHashes {
     pub program: String,
     /// Each definition's hash, by name, in UTF-16 order of the names.
     pub defs: Vec<(String, String)>,
+}
+
+impl ProgramHashes {
+    /// The object `hashProgram` returns: `{ program, defs }`, `defs` by name
+    /// in UTF-16 order of the names, as it is built.
+    #[must_use]
+    pub fn to_js(&self) -> JsObject {
+        let defs: JsObject = self
+            .defs
+            .iter()
+            .map(|(name, hash)| (name.as_str(), hash.as_str()))
+            .collect();
+        JsObject::new()
+            .with("program", self.program.as_str())
+            .with("defs", defs)
+    }
 }
 
 /// The hashes of a program: `hashProgram` in `hash.ts`.

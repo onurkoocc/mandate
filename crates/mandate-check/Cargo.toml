@@ -1,6 +1,6 @@
 [package]
 name = "mandate-check"
-description = "The checks of the Rust Mandate compiler, ported from the TypeScript one: capabilities, the standard library's tables, governance-class files and paths so far"
+description = "The checks of the Rust Mandate compiler, ported from the TypeScript one: the front door check, modules, name resolution and roles, capabilities, the standard library's tables, governance-class files and paths so far"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 mandate-ir = { path = "../mandate-ir" }
+mandate-syntax = { path = "../mandate-syntax" }
 
 [dev-dependencies]
 mandate-testkit = { path = "../mandate-testkit" }
