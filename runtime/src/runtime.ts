@@ -581,20 +581,32 @@ export class Runtime {
     return rows.filter((a) => a.state === "dispatched" || a.state === "unknown_outcome").map((a) => ({ operation: a.operation_key, effect: a.effect, state: a.state }));
   }
 
+  /**
+   * Ends a cancelled run, from its actions as they are in the transaction that writes the state (`cancelTarget`). A
+   * worker ends its own run, under its lease (`fence`). Without one, the cancel ends a run it found idle, as a halt
+   * does (`endHalted`): under the row lock it reads the run again and leaves a run that has ended meanwhile as it
+   * ended, so a run ends once; and it raises the fence, so a worker that took the lease since writes nothing more. A
+   * run a halt left for an open action is the halt's: it ends `cancelled` once none is open, as `closeHalted` ends it.
+   */
   private async closeCancelled(runId: string, fence?: number): Promise<void> {
-    const actions = await this.journal.actions(runId);
-    const summary = {
-      effects_completed_before_or_during_cancel: actions.filter((a) => a.state === "confirmed").map((a: ActionRow) => ({ effect: a.effect, operation: a.operation_key })),
-    };
-    const open = await this.openActions(runId);
-    const target = open.length ? { state: "attention_required" as const, attention: { open_actions: open }, summary } : { state: "cancelled" as const, summary };
-    if (fence === undefined) {
-      await this.db.tx(async (tx) => {
-        await this.journal.lock(tx, runId);
-        const { state, ...fields } = target;
+    if (fence !== undefined) {
+      await this.write(runId, fence, async (tx) => {
+        const { state, ...fields } = cancelTarget(await this.actionsIn(tx, runId));
         await this.journal.setState(tx, runId, state, fields);
       });
-    } else await this.finish(runId, fence, target);
+      return;
+    }
+    await this.db.tx(async (tx) => {
+      const run = await this.journal.lock(tx, runId);
+      if (TERMINAL.has(run.state)) return;
+      const actions = await this.actionsIn(tx, runId);
+      const halted = isObj(run.attention) ? run.attention["halted"] : undefined;
+      const target = typeof halted === "string" ? haltTarget(actions, halted) : cancelTarget(actions);
+      if (typeof halted === "string" && target.state !== "cancelled") return;
+      await tx.query("update runs set fence = fence + 1 where run_id = $1", [runId]);
+      const { state, ...fields } = target;
+      await this.journal.setState(tx, runId, state, fields);
+    });
   }
 
   /**
@@ -1086,7 +1098,9 @@ export class Runtime {
   /**
    * Cancellation is an event, not erasure (§8.9). It is ordered against
    * dispatch on the run's row: a dispatch after it is refused (R08); one
-   * before it is followed to its real result (R09).
+   * before it is followed to its real result (R09). A run ends once: the
+   * cancel that ends an idle run takes its lease, and leaves a run that
+   * ended meanwhile as it ended (`closeCancelled`).
    */
   async cancelRun(runId: string, signed?: SignedDecision): Promise<RunRow> {
     const loaded = signed === undefined ? undefined : await this.loaded((await this.journal.run(runId)).package_hash);
@@ -1101,9 +1115,13 @@ export class Runtime {
         if (why) await this.journal.event(tx, runId, "decision_refused", refusedEvent(new Refused(why, signed, undefined), undefined));
         else who = { member: signed.record.member, role: null, key: signed.record.key, decision: await this.journal.recordDecision(tx, signed) };
       }
-      await tx.query("update runs set cancel_requested = true, revision = revision + 1 where run_id = $1", [runId]);
+      // A run no worker is driving is ended by this cancel, so the cancel takes its lease, as a halt does: a worker
+      // that took it before, and has not written yet, writes nothing. A running run keeps its worker, which meets the
+      // cancel at its next dispatch (R08) and follows an action in flight to its result (R09).
+      const idle = run.state === "waiting" || run.state === "accepted" || run.state === "attention_required";
+      await tx.query(`update runs set cancel_requested = true,${idle ? " fence = fence + 1," : ""} revision = revision + 1 where run_id = $1`, [runId]);
       await this.journal.event(tx, runId, "cancel_requested", who);
-      return run.state === "waiting" || run.state === "accepted" || run.state === "attention_required";
+      return idle;
     });
     // An action whose outcome is unknown is asked to stop: an adapter that can prove it never took effect resolves it.
     for (const a of await this.journal.actions(runId)) {
@@ -1337,6 +1355,16 @@ export class Runtime {
   purgePayloads(runId: string): Promise<void> {
     return this.journal.purgePayloads(runId);
   }
+}
+
+/**
+ * Where a cancel leaves a run, from its actions: `cancelled`, with the effects that completed, or `attention_required`
+ * while an action is dispatched or has an unknown outcome (INV-12).
+ */
+function cancelTarget(actions: ActionRow[]): { state: "cancelled"; summary: Value } | { state: "attention_required"; attention: Value; summary: Value } {
+  const summary = { effects_completed_before_or_during_cancel: actions.filter((a) => a.state === "confirmed").map((a) => ({ effect: a.effect, operation: a.operation_key })) };
+  const open = actions.filter((a) => a.state === "dispatched" || a.state === "unknown_outcome").map((a) => ({ operation: a.operation_key, effect: a.effect, state: a.state }));
+  return open.length ? { state: "attention_required", attention: { open_actions: open }, summary } : { state: "cancelled", summary };
 }
 
 /**
