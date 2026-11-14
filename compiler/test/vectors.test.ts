@@ -9,7 +9,6 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import { describe, expect, it } from "vitest";
 import { kindOf, load } from "../src/check.js";
 import { domainHash, hashProgram, packageHash, type HashDomain } from "../src/hash.js";
@@ -17,7 +16,7 @@ import { canonicalize } from "../src/json/jcs.js";
 import { isWellFormed, parseStrictJson, type Json } from "../src/json/strict-json.js";
 import { LIMITS } from "../src/limits.js";
 import { packagedLock, type Lock } from "../src/lock.js";
-import { readRepo, repoRoot } from "./helpers.js";
+import { lockFileOf, readRepo, repoRoot } from "./helpers.js";
 
 const VECTORS = "vectors/";
 const PROGRAMS_DIR = `${VECTORS}programs/`;
@@ -272,9 +271,9 @@ function programVector(source: string): unknown {
     canonical: canonicalize(ir),
     hashes: { program: h.program, defs: Object.keys(loaded.program.defs).sort().map((n) => [n, h.defs[n]]) },
   };
-  const lockPath = `${dirname(repoRoot + source)}/mandate.lock.json`;
-  if (existsSync(lockPath)) {
-    const parsed = parseStrictJson(readFileSync(lockPath, "utf8"));
+  const lockPath = lockFileOf(source);
+  if (lockPath) {
+    const parsed = parseStrictJson(readRepo(lockPath));
     if (!parsed.ok) throw new Error(`${lockPath} is not strict JSON`);
     const packaged = packagedLock(parsed.value.value as unknown as Lock);
     out["lock"] = packaged;
@@ -310,7 +309,8 @@ function generate(): Map<string, string> {
 
 /** The vector files on disk, as repository paths. */
 function committed(): string[] {
-  const top = existsSync(repoRoot + VECTORS) ? readdirSync(repoRoot + VECTORS).filter((f) => f.endsWith(".json")).map((f) => VECTORS + f) : [];
+  // syntax.json is written by syntax-vectors.test.ts.
+  const top = existsSync(repoRoot + VECTORS) ? readdirSync(repoRoot + VECTORS).filter((f) => f.endsWith(".json") && f !== "syntax.json").map((f) => VECTORS + f) : [];
   const programs = existsSync(repoRoot + PROGRAMS_DIR) ? readdirSync(repoRoot + PROGRAMS_DIR).map((f) => PROGRAMS_DIR + f) : [];
   return [...top, ...programs].sort();
 }
@@ -354,7 +354,7 @@ describe("vectors for other implementations", () => {
     const programs = goldenPrograms();
     expect(programs.length).toBeGreaterThanOrEqual(16);
     expect(new Set(programs.map(programFile)).size).toBe(programs.length);
-    const withLock = programs.filter((p) => existsSync(`${dirname(repoRoot + p)}/mandate.lock.json`));
+    const withLock = programs.filter((p) => lockFileOf(p) !== undefined);
     expect(withLock.length).toBeGreaterThan(0);
     for (const p of withLock) expect(now.get(programFile(p))).toContain('"package": "sha256:');
   });

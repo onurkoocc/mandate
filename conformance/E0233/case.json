@@ -1,0 +1,14 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0233",
+  "kind": "compile",
+  "title": "A Choice with 256 options, one more than a Choice may have, is refused at the type of the infer.",
+  "spec": ["spec/checks.md#decisions-810"],
+  "language": "mandate/0.1",
+  "input": { "file": "program.mdt", "kind": "mdt" },
+  "expect": {
+    "ok": false,
+    "diagnostics": [{ "code": "MDT-E0233", "path": "/defs/decide/body/0/value/type" }]
+  }
+}

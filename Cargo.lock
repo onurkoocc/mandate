@@ -67,9 +67,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
+name = "mandate-check"
+version = "0.1.0"
+dependencies = [
+ "mandate-ir",
+ "mandate-syntax",
+ "mandate-testkit",
+]
+
+[[package]]
 name = "mandate-ir"
 version = "0.1.0"
 dependencies = [
+ "mandate-testkit",
+ "sha2",
+]
+
+[[package]]
+name = "mandate-syntax"
+version = "0.1.0"
+dependencies = [
+ "mandate-ir",
+ "mandate-testkit",
+]
+
+[[package]]
+name = "mandate-testkit"
+version = "0.1.0"
+dependencies = [
+ "mandate-check",
+ "mandate-ir",
+ "mandate-syntax",
  "sha2",
 ]
 
@@ -96,5 +124,6 @@ version = "0.1.0"
 dependencies = [
  "ed25519-compact",
  "mandate-ir",
+ "mandate-testkit",
  "sha2",
 ]

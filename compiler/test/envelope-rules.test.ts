@@ -7,12 +7,12 @@
 // test names every diagnostic the check gives.
 
 import { describe, expect, it } from "vitest";
-import { check, kindOf, loadModules } from "../src/check.js";
+import { kindOf, loadModules } from "../src/check.js";
 import { staticCost } from "../src/check/cost.js";
 import type { Diagnostic } from "../src/diag.js";
 import type { Program, WorkflowDef } from "../src/ir/types.js";
 import { link, type Modules } from "../src/modules.js";
-import { readRepo } from "./helpers.js";
+import { checkLessMoved as check, readRepo } from "./helpers.js";
 
 const MIGRATE_ALL = readRepo("fixtures/envelope/migrate-all.mdt");
 const DOMAIN = "fixtures/envelope/domain.mdt";

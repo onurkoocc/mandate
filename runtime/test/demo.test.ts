@@ -41,27 +41,11 @@ const DOMAIN = "fixtures/envelope/domain.mdt";
 const MODULE = "company.migrations";
 
 /**
- * What says that a repository was moved and may be merged. The spec's example has no contract. `git.merge` takes
- * a verified value and, being irreversible, one a person approved (E0405), so a sub-program of the example as it
- * stands can merge nothing: a sub-program may use its parent's contracts and define none (E1705). The test adds
- * one to the fixture's text, before its first agent.
+ * The fixture as it is. Its contract `Moved` is what lets a sub-program merge: `git.merge` takes a verified value
+ * and, being irreversible, one a person approved (E0405), and a sub-program may use its parent's contracts but
+ * define none (E1705).
  */
-const CONTRACT = `contract Moved(repo: Repo, s: Summary) {
-  accept moved "The migrator reports what it moved"
-    by static len(s.migrated) >= 1
-  accept nothing_left "Nothing of the repository is left to move"
-    by static len(s.left) == 0
-  accept release_approved "The release manager accepts the change"
-    by human.approve(role: release_manager)
-}
-`;
-
-function source(): string {
-  const text = here("fixtures/envelope/migrate-all.mdt");
-  const at = "agent Migrator {";
-  expect(text.split(at)).toHaveLength(2);
-  return text.replace(at, `${CONTRACT}\n${at}`);
-}
+const source = (): string => here("fixtures/envelope/migrate-all.mdt");
 
 const NAMES = Array.from({ length: 24 }, (_, i) => `svc-${String(i + 1).padStart(2, "0")}`);
 /** The one repository the bulk migration cannot move. */

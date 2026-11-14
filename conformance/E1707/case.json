@@ -33,7 +33,9 @@
         "code": "MDT-E1707",
         "path": "/defs/MigrateAll/body/1/value",
         "facts": { "def": "MigrateAll", "kind": "workflow", "envelope": false }
-      }
+      },
+      { "code": "MDT-W0601", "path": "/defs/Moved/accept/moved/by/static" },
+      { "code": "MDT-W0601", "path": "/defs/Moved/accept/nothing_left/by/static" }
     ]
   }
 }

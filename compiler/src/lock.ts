@@ -25,7 +25,7 @@
 // bound `steps × per-call bound` it can compute (§8.6).
 
 import { readFileSync } from "node:fs";
-import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
+import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
 import { capFromCall, capsOf } from "./check/caps.js";
 import { roleSites } from "./check/roles.js";
 import { diag, ptr, type Diagnostic, type Span } from "./diag.js";
@@ -110,9 +110,23 @@ export function lockSchema(): object {
   return JSON.parse(readFileSync(new URL("../../spec/lock.schema.json", import.meta.url), "utf8")) as object;
 }
 
+function lockValidator(): ValidateFunction {
+  validator ??= new Ajv2020({ allErrors: true, strict: true }).compile(lockSchema());
+  return validator;
+}
+
+/**
+ * The raw errors of the validator `validateLock` uses, for `value` as it stands, in Ajv's order. It exists for the
+ * vectors (vectors/README.md): another implementation of the schema is checked against these.
+ */
+export function lockSchemaErrors(value: unknown): ErrorObject[] {
+  const validate = lockValidator();
+  return validate(value) ? [] : [...(validate.errors ?? [])];
+}
+
 /** Validates a parsed lock file against spec/lock.schema.json; E0140 for each problem. */
 export function validateLock(value: unknown): Diagnostic[] {
-  validator ??= new Ajv2020({ allErrors: true, strict: true }).compile(lockSchema());
+  const validator = lockValidator();
   if (validator(value)) {
     const lock = value as Lock;
     const out: Diagnostic[] = [];

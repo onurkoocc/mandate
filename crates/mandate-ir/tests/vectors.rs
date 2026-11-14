@@ -13,32 +13,15 @@
     missing_docs
 )]
 
-use std::fs;
-use std::path::{Path, PathBuf};
-
 use mandate_ir::{
-    Diagnostic, HashDomain, Map, Parsed, Value, canonicalize, domain_hash, hash_program,
-    package_hash, parse, parse_bytes,
+    Diagnostic, HashDomain, JsValue, Map, Parsed, Value, canonicalize, domain_hash, hash_program,
+    package_hash, parse, parse_bytes, stringify,
 };
-use sha2::{Digest, Sha256};
-
-/// The repository root: `MANDATE_REPO` when it is set (`scripts/wasi-test.mjs`
-/// sets it, since the compile-time path does not exist under WASI), else the
-/// path from this crate's directory.
-fn repo() -> PathBuf {
-    match std::env::var_os("MANDATE_REPO") {
-        Some(root) => PathBuf::from(root),
-        None => Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
-    }
-}
+use mandate_testkit::{files, read_bytes, read_json, sha256};
 
 /// Reads a vector file with this crate's own reader.
 fn read(rel: &str) -> Value {
-    let bytes = fs::read(repo().join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
-    match parse_bytes(&bytes) {
-        Ok(parsed) => parsed.value,
-        Err(d) => panic!("{rel} does not read: {d:?}"),
-    }
+    read_json(rel).unwrap_or_else(|e| panic!("{e}"))
 }
 
 fn field<'a>(v: &'a Value, key: &str) -> &'a Value {
@@ -61,15 +44,6 @@ fn hex(s: &str) -> Vec<u8> {
         .step_by(2)
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16).expect("hex"))
         .collect()
-}
-
-fn sha256_hex(s: &str) -> String {
-    use std::fmt::Write as _;
-    let mut out = String::new();
-    for b in Sha256::digest(s.as_bytes()).iter() {
-        write!(out, "{b:02x}").unwrap();
-    }
-    out
 }
 
 /// Shortens a long text for a failure message.
@@ -116,8 +90,14 @@ fn spans_value(parsed: &Parsed) -> Value {
     )
 }
 
-fn diagnostics_value(diags: &[Diagnostic]) -> Value {
-    Value::Array(diags.iter().map(Diagnostic::to_value).collect())
+/// The diagnostics as `JSON.stringify` writes them. The vectors keep the
+/// members in the order TypeScript gives them, so this compares that order
+/// too (`at` is `{ span, path }` from the reader's `fail`, for one).
+fn diagnostics_text(diags: &[Diagnostic]) -> String {
+    stringify(&JsValue::Array(
+        diags.iter().map(Diagnostic::to_js).collect(),
+    ))
+    .unwrap_or_default()
 }
 
 /// What a reader vector gives this crate's reader, by the form of its input.
@@ -168,8 +148,8 @@ fn reader() {
                 } else {
                     failures.check(
                         &format!("{name}: SHA-256 of the canonical text"),
-                        str_field(v, "canonical_sha256"),
-                        &sha256_hex(&canonical),
+                        &format!("sha256:{}", str_field(v, "canonical_sha256")),
+                        &sha256(&canonical),
                     );
                 }
                 failures.check(
@@ -180,8 +160,8 @@ fn reader() {
             }
             (Err(diags), false) => failures.check(
                 &format!("{name}: diagnostics"),
-                &canonicalize(field(v, "diagnostics")),
-                &canonicalize(&diagnostics_value(&diags)),
+                &stringify(&JsValue::from(field(v, "diagnostics"))).unwrap_or_default(),
+                &diagnostics_text(&diags),
             ),
             (Ok(parsed), false) => failures.check(
                 &format!("{name}: refused in TypeScript, accepted here"),
@@ -193,7 +173,7 @@ fn reader() {
                 v.get("canonical")
                     .and_then(Value::as_str)
                     .unwrap_or("(long)"),
-                &canonicalize(&diagnostics_value(&diags)),
+                &diagnostics_text(&diags),
             ),
         }
     }
@@ -277,19 +257,10 @@ fn hashes() {
 
 #[test]
 fn programs() {
-    let dir = repo().join("vectors/programs");
-    let mut files: Vec<PathBuf> = fs::read_dir(&dir)
-        .expect("vectors/programs")
-        .map(|e| e.expect("an entry").path())
-        .collect();
-    files.sort();
+    let files = files("vectors/programs").expect("vectors/programs");
     let mut failures = Failures::default();
-    for path in &files {
-        let rel = format!(
-            "vectors/programs/{}",
-            path.file_name().unwrap().to_str().unwrap()
-        );
-        let v = read(&rel);
+    for name in &files {
+        let v = read(&format!("vectors/programs/{name}"));
         assert_eq!(str_field(&v, "format"), "mandate/vectors/program/0.1");
         let source = str_field(&v, "source");
         let ir = field(&v, "ir");
@@ -316,7 +287,7 @@ fn programs() {
         }
         // A JSON source is read from its file too.
         if str_field(&v, "kind") == "json" {
-            let bytes = fs::read(repo().join(source)).expect("the source file");
+            let bytes = read_bytes(source).expect("the source file");
             let actual = match parse_bytes(&bytes) {
                 Ok(p) => canonicalize(&p.value),
                 Err(d) => format!("refused: {d:?}"),

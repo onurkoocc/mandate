@@ -1,0 +1,636 @@
+{
+  "format": "mandate/vectors/program/0.1",
+  "source": "fixtures/envelope/migrate-all.mdt",
+  "kind": "mdt",
+  "language": "mandate/0.4",
+  "canonical": "{\"defs\":{\"Build\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"commands\",\"value\":{\"items\":[{\"op\":\"text\",\"value\":\"npm\"}],\"op\":\"list\"}},{\"name\":\"args_prefix\",\"value\":{\"items\":[{\"items\":[{\"op\":\"text\",\"value\":\"ci\"}],\"op\":\"list\"},{\"items\":[{\"op\":\"text\",\"value\":\"test\"}],\"op\":\"list\"}],\"op\":\"list\"}}],\"callee\":{\"name\":\"exec\",\"op\":\"var\"},\"op\":\"call\"}},\"Lead\":{\"budget\":{\"spend\":{\"currency\":\"USD\",\"micros\":10000000},\"steps\":40,\"tokens\":2000000},\"caps\":[{\"name\":\"ModelStd\",\"op\":\"var\"},{\"name\":\"RepoRead\",\"op\":\"var\"}],\"kind\":\"agent\",\"role\":\"Plans what is left after the bulk migration and writes sub-programs for it.\",\"skills\":{\"finish\":{\"effects\":[{\"effect\":\"Fs.Read\"},{\"effect\":\"Model\"}],\"params\":[{\"name\":\"repos\",\"type\":{\"args\":[{\"ref\":\"Repo\"}],\"ref\":\"List\"}},{\"name\":\"done\",\"type\":{\"args\":[{\"args\":[{\"args\":[{\"ref\":\"Summary\"}],\"ref\":\"Inferred\"}],\"ref\":\"Outcome\"}],\"ref\":\"List\"}}],\"returns\":{\"args\":[{\"ref\":\"Summary\"}],\"ref\":\"Inferred\"}}}},\"Merge\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"company/backend\"}},{\"value\":{\"op\":\"text\",\"value\":\"company/frontend\"}}],\"callee\":{\"name\":\"pr\",\"of\":{\"name\":\"git\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"MigrateAll\":{\"body\":[{\"name\":\"done\",\"op\":\"let\",\"value\":{\"bind\":\"repo\",\"body\":[{\"op\":\"expr\",\"value\":{\"agent\":\"Migrator\",\"args\":[{\"value\":{\"name\":\"repo\",\"op\":\"var\"}}],\"op\":\"delegate\",\"skill\":\"migrate\"}}],\"caps\":[{\"args\":[{\"value\":{\"name\":\"root\",\"of\":{\"name\":\"repo\",\"op\":\"var\"},\"op\":\"field\"}}],\"callee\":{\"name\":\"narrow\",\"of\":{\"name\":\"SrcWrite\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}],\"max\":150,\"op\":\"map\",\"over\":{\"name\":\"repos\",\"op\":\"var\"},\"par\":16}},{\"op\":\"expr\",\"value\":{\"agent\":\"Lead\",\"args\":[{\"value\":{\"name\":\"repos\",\"op\":\"var\"}},{\"value\":{\"name\":\"done\",\"op\":\"var\"}}],\"op\":\"plan\",\"skill\":\"finish\"}}],\"caps\":[],\"envelope\":{\"approve\":{\"git.merge\":\"release_manager\"},\"budget\":{\"agents\":200,\"spend\":{\"currency\":\"USD\",\"micros\":120000000},\"steps\":2000,\"time\":{\"ms\":21600000},\"tokens\":80000000},\"caps\":[{\"name\":\"Build\",\"op\":\"var\"},{\"name\":\"Merge\",\"op\":\"var\"},{\"name\":\"ModelStd\",\"op\":\"var\"},{\"name\":\"RepoRead\",\"op\":\"var\"},{\"name\":\"SrcWrite\",\"op\":\"var\"}],\"owner\":\"platform_lead\",\"spawn\":{\"max_class\":\"internal\",\"max_concurrent\":16}},\"kind\":\"workflow\",\"params\":[{\"name\":\"repos\",\"type\":{\"args\":[{\"ref\":\"Repo\"}],\"ref\":\"List\"}}],\"returns\":{\"args\":[{\"ref\":\"Summary\"}],\"ref\":\"Inferred\"}},\"Migrator\":{\"budget\":{\"spend\":{\"currency\":\"USD\",\"micros\":500000},\"steps\":12,\"time\":{\"ms\":1200000},\"tokens\":400000},\"caps\":[{\"name\":\"Build\",\"op\":\"var\"},{\"name\":\"ModelStd\",\"op\":\"var\"},{\"name\":\"RepoRead\",\"op\":\"var\"},{\"name\":\"SrcWrite\",\"op\":\"var\"}],\"kind\":\"agent\",\"role\":\"Moves one repository to the new logging API.\",\"skills\":{\"migrate\":{\"effects\":[{\"effect\":\"Exec\"},{\"effect\":\"Fs.Read\"},{\"effect\":\"Fs.Write\"},{\"effect\":\"Model\"}],\"params\":[{\"name\":\"repo\",\"type\":{\"ref\":\"Repo\"}}],\"returns\":{\"args\":[{\"ref\":\"Summary\"}],\"ref\":\"Inferred\"}}}},\"ModelStd\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"name\":\"tier\",\"value\":{\"name\":\"standard\",\"op\":\"var\"}}],\"callee\":{\"name\":\"infer\",\"of\":{\"name\":\"model\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"Moved\":{\"accept\":{\"moved\":{\"by\":{\"static\":{\"bop\":\">=\",\"left\":{\"args\":[{\"value\":{\"name\":\"migrated\",\"of\":{\"name\":\"s\",\"op\":\"var\"},\"op\":\"field\"}}],\"callee\":{\"name\":\"len\",\"op\":\"var\"},\"op\":\"call\"},\"op\":\"binary\",\"right\":{\"op\":\"int\",\"value\":1}}},\"description\":\"The migrator reports what it moved\"},\"nothing_left\":{\"by\":{\"static\":{\"bop\":\"==\",\"left\":{\"args\":[{\"value\":{\"name\":\"left\",\"of\":{\"name\":\"s\",\"op\":\"var\"},\"op\":\"field\"}}],\"callee\":{\"name\":\"len\",\"op\":\"var\"},\"op\":\"call\"},\"op\":\"binary\",\"right\":{\"op\":\"int\",\"value\":0}}},\"description\":\"Nothing of the repository is left to move\"},\"release_approved\":{\"by\":{\"call\":{\"args\":[{\"name\":\"role\",\"value\":{\"name\":\"release_manager\",\"op\":\"var\"}}],\"callee\":{\"name\":\"approve\",\"of\":{\"name\":\"human\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"description\":\"The release manager accepts the change\"}},\"kind\":\"contract\",\"params\":[{\"name\":\"repo\",\"type\":{\"ref\":\"Repo\"}},{\"name\":\"s\",\"type\":{\"ref\":\"Summary\"}}]},\"RepoRead\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"/work/repos\"}}],\"callee\":{\"name\":\"read\",\"of\":{\"name\":\"fs\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"SrcWrite\":{\"kind\":\"capability\",\"value\":{\"args\":[{\"value\":{\"op\":\"text\",\"value\":\"/work/repos\"}}],\"callee\":{\"name\":\"write\",\"of\":{\"name\":\"fs\",\"op\":\"var\"},\"op\":\"field\"},\"op\":\"call\"}},\"platform_lead\":{\"description\":\"Platform lead\",\"kind\":\"role\"},\"release_manager\":{\"description\":\"Release manager\",\"kind\":\"role\"}},\"language\":\"mandate/0.4\",\"module\":\"company.migrations\",\"uses\":[{\"module\":\"company.domain\",\"names\":[\"Repo\",\"Summary\"]},{\"module\":\"std\",\"names\":[\"exec\",\"fs\",\"git\",\"human\",\"model\"]}],\"version\":\"0.1\"}",
+  "hashes": {
+    "program": "sha256:7c9c2702362efca6e0a4d861f4c855b845e9c013d0768410e944683d7cc778a4",
+    "defs": [
+      [
+        "Build",
+        "sha256:12a926c70bdf71cfbc2e880a742c5cba63254754411eb69e2f578ef72bea0667"
+      ],
+      [
+        "Lead",
+        "sha256:b4970705c53d4ca564c4cf01807bd90f34b121c15dab04f4fd2fe3db723c85b5"
+      ],
+      [
+        "Merge",
+        "sha256:487e09095157cef32d2c1ede181f2c503955e204a1dc1bd267807a211128be5b"
+      ],
+      [
+        "MigrateAll",
+        "sha256:a4f7c5dce16cf741e61d982644619b06f7549ad8c3f21f3793ad16d586f8f501"
+      ],
+      [
+        "Migrator",
+        "sha256:889fd8ab61bb3cd571c3913e0d4541ba9cf053cacf75f488418f3b36443f54fb"
+      ],
+      [
+        "ModelStd",
+        "sha256:b70813c35cc8056a6643a121c734cf3e4bd849ce74bc9700d20faa222d3de857"
+      ],
+      [
+        "Moved",
+        "sha256:b7d72fb6aec62304e4f0765959bd223832afc9c3d25b989e82711f7a07dc8b0a"
+      ],
+      [
+        "RepoRead",
+        "sha256:632cb1256baef2d81ac6fd719a08ee3cad1c2a1505f5843ee8c95c07050e8871"
+      ],
+      [
+        "SrcWrite",
+        "sha256:ceec2eeaf96ababac456a04cb06c23064edc3cbda3b56ce37a6474b53d570ba6"
+      ],
+      [
+        "platform_lead",
+        "sha256:143a5b40c5d3ba039036cbebe363ac008f9f8a1092e7c994eb6436f38818a75e"
+      ],
+      [
+        "release_manager",
+        "sha256:c4d2f910914772cb14b427c12aa255dfb490098bf54cb0beba2eaeb19c00d444"
+      ]
+    ]
+  },
+  "ir": {
+    "language": "mandate/0.4",
+    "module": "company.migrations",
+    "version": "0.1",
+    "defs": {
+      "platform_lead": {
+        "kind": "role",
+        "description": "Platform lead"
+      },
+      "release_manager": {
+        "kind": "role",
+        "description": "Release manager"
+      },
+      "RepoRead": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "fs"
+            },
+            "name": "read"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "/work/repos"
+              }
+            }
+          ]
+        }
+      },
+      "SrcWrite": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "fs"
+            },
+            "name": "write"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "/work/repos"
+              }
+            }
+          ]
+        }
+      },
+      "Build": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "var",
+            "name": "exec"
+          },
+          "args": [
+            {
+              "name": "commands",
+              "value": {
+                "op": "list",
+                "items": [
+                  {
+                    "op": "text",
+                    "value": "npm"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "args_prefix",
+              "value": {
+                "op": "list",
+                "items": [
+                  {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "text",
+                        "value": "ci"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "text",
+                        "value": "test"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "ModelStd": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "model"
+            },
+            "name": "infer"
+          },
+          "args": [
+            {
+              "name": "tier",
+              "value": {
+                "op": "var",
+                "name": "standard"
+              }
+            }
+          ]
+        }
+      },
+      "Merge": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "git"
+            },
+            "name": "pr"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "company/backend"
+              }
+            },
+            {
+              "value": {
+                "op": "text",
+                "value": "company/frontend"
+              }
+            }
+          ]
+        }
+      },
+      "Moved": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "repo",
+            "type": {
+              "ref": "Repo"
+            }
+          },
+          {
+            "name": "s",
+            "type": {
+              "ref": "Summary"
+            }
+          }
+        ],
+        "accept": {
+          "moved": {
+            "description": "The migrator reports what it moved",
+            "by": {
+              "static": {
+                "op": "binary",
+                "bop": ">=",
+                "left": {
+                  "op": "call",
+                  "callee": {
+                    "op": "var",
+                    "name": "len"
+                  },
+                  "args": [
+                    {
+                      "value": {
+                        "op": "field",
+                        "of": {
+                          "op": "var",
+                          "name": "s"
+                        },
+                        "name": "migrated"
+                      }
+                    }
+                  ]
+                },
+                "right": {
+                  "op": "int",
+                  "value": 1
+                }
+              }
+            }
+          },
+          "nothing_left": {
+            "description": "Nothing of the repository is left to move",
+            "by": {
+              "static": {
+                "op": "binary",
+                "bop": "==",
+                "left": {
+                  "op": "call",
+                  "callee": {
+                    "op": "var",
+                    "name": "len"
+                  },
+                  "args": [
+                    {
+                      "value": {
+                        "op": "field",
+                        "of": {
+                          "op": "var",
+                          "name": "s"
+                        },
+                        "name": "left"
+                      }
+                    }
+                  ]
+                },
+                "right": {
+                  "op": "int",
+                  "value": 0
+                }
+              }
+            }
+          },
+          "release_approved": {
+            "description": "The release manager accepts the change",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "human"
+                  },
+                  "name": "approve"
+                },
+                "args": [
+                  {
+                    "name": "role",
+                    "value": {
+                      "op": "var",
+                      "name": "release_manager"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "Migrator": {
+        "kind": "agent",
+        "caps": [
+          {
+            "op": "var",
+            "name": "Build"
+          },
+          {
+            "op": "var",
+            "name": "ModelStd"
+          },
+          {
+            "op": "var",
+            "name": "RepoRead"
+          },
+          {
+            "op": "var",
+            "name": "SrcWrite"
+          }
+        ],
+        "skills": {
+          "migrate": {
+            "params": [
+              {
+                "name": "repo",
+                "type": {
+                  "ref": "Repo"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "Inferred",
+              "args": [
+                {
+                  "ref": "Summary"
+                }
+              ]
+            },
+            "effects": [
+              {
+                "effect": "Exec"
+              },
+              {
+                "effect": "Fs.Read"
+              },
+              {
+                "effect": "Fs.Write"
+              },
+              {
+                "effect": "Model"
+              }
+            ]
+          }
+        },
+        "role": "Moves one repository to the new logging API.",
+        "budget": {
+          "tokens": 400000,
+          "time": {
+            "ms": 1200000
+          },
+          "spend": {
+            "micros": 500000,
+            "currency": "USD"
+          },
+          "steps": 12
+        }
+      },
+      "Lead": {
+        "kind": "agent",
+        "caps": [
+          {
+            "op": "var",
+            "name": "ModelStd"
+          },
+          {
+            "op": "var",
+            "name": "RepoRead"
+          }
+        ],
+        "skills": {
+          "finish": {
+            "params": [
+              {
+                "name": "repos",
+                "type": {
+                  "ref": "List",
+                  "args": [
+                    {
+                      "ref": "Repo"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "done",
+                "type": {
+                  "ref": "List",
+                  "args": [
+                    {
+                      "ref": "Outcome",
+                      "args": [
+                        {
+                          "ref": "Inferred",
+                          "args": [
+                            {
+                              "ref": "Summary"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "ref": "Inferred",
+              "args": [
+                {
+                  "ref": "Summary"
+                }
+              ]
+            },
+            "effects": [
+              {
+                "effect": "Fs.Read"
+              },
+              {
+                "effect": "Model"
+              }
+            ]
+          }
+        },
+        "role": "Plans what is left after the bulk migration and writes sub-programs for it.",
+        "budget": {
+          "tokens": 2000000,
+          "spend": {
+            "micros": 10000000,
+            "currency": "USD"
+          },
+          "steps": 40
+        }
+      },
+      "MigrateAll": {
+        "kind": "workflow",
+        "params": [
+          {
+            "name": "repos",
+            "type": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Repo"
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Inferred",
+          "args": [
+            {
+              "ref": "Summary"
+            }
+          ]
+        },
+        "caps": [],
+        "body": [
+          {
+            "op": "let",
+            "name": "done",
+            "value": {
+              "op": "map",
+              "bind": "repo",
+              "over": {
+                "op": "var",
+                "name": "repos"
+              },
+              "body": [
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "delegate",
+                    "agent": "Migrator",
+                    "skill": "migrate",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "repo"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "max": 150,
+              "par": 16,
+              "caps": [
+                {
+                  "op": "call",
+                  "callee": {
+                    "op": "field",
+                    "of": {
+                      "op": "var",
+                      "name": "SrcWrite"
+                    },
+                    "name": "narrow"
+                  },
+                  "args": [
+                    {
+                      "value": {
+                        "op": "field",
+                        "of": {
+                          "op": "var",
+                          "name": "repo"
+                        },
+                        "name": "root"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "op": "expr",
+            "value": {
+              "op": "plan",
+              "agent": "Lead",
+              "skill": "finish",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "repos"
+                  }
+                },
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "done"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "envelope": {
+          "owner": "platform_lead",
+          "caps": [
+            {
+              "op": "var",
+              "name": "Build"
+            },
+            {
+              "op": "var",
+              "name": "Merge"
+            },
+            {
+              "op": "var",
+              "name": "ModelStd"
+            },
+            {
+              "op": "var",
+              "name": "RepoRead"
+            },
+            {
+              "op": "var",
+              "name": "SrcWrite"
+            }
+          ],
+          "budget": {
+            "tokens": 80000000,
+            "time": {
+              "ms": 21600000
+            },
+            "spend": {
+              "micros": 120000000,
+              "currency": "USD"
+            },
+            "steps": 2000,
+            "agents": 200
+          },
+          "spawn": {
+            "max_concurrent": 16,
+            "max_class": "internal"
+          },
+          "approve": {
+            "git.merge": "release_manager"
+          }
+        }
+      }
+    },
+    "uses": [
+      {
+        "module": "company.domain",
+        "names": [
+          "Repo",
+          "Summary"
+        ]
+      },
+      {
+        "module": "std",
+        "names": [
+          "exec",
+          "fs",
+          "git",
+          "human",
+          "model"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104a",
+  "kind": "compile",
+  "title": "A program declared 0.5 with a negative int literal is refused at the literal.",
+  "spec": ["spec/ir.md#what-05-adds"],
+  "language": "mandate/0.5",
+  "input": {
+    "text": "{\"language\":\"mandate/0.5\",\"module\":\"m\",\"version\":\"0.1\",\"defs\":{\"Debt\":{\"kind\":\"const\",\"value\":{\"op\":\"int\",\"value\":-5}}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E0104", "path": "/defs/Debt/value", "facts": { "op": "int", "language": "mandate/0.5" } }
+    ]
+  }
+}

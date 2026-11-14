@@ -6,14 +6,14 @@
 // Each rule fires on one change to a program that checks.
 
 import { describe, expect, it } from "vitest";
-import { check, loadModules } from "../src/check.js";
+import { loadModules } from "../src/check.js";
 import { roleSites, rolesNamed } from "../src/check/roles.js";
 import { CODES } from "../src/codes.js";
 import { hashProgram } from "../src/hash.js";
 import type { Json } from "../src/json/strict-json.js";
 import type { Lock } from "../src/lock.js";
 import type { Modules } from "../src/modules.js";
-import { readRepo } from "./helpers.js";
+import { checkLessMoved as check, readRepo } from "./helpers.js";
 
 /** Every place a person is asked, each naming a role: approvals, a question and two escalations. */
 const PEOPLE = `mandate @ 0.4
@@ -434,6 +434,7 @@ describe("roleSites and rolesNamed", () => {
     expect(roleSites(migrate.defs).map((s) => [s.role, s.path])).toEqual([
       ["release_manager", "/defs/MigrateAll/envelope/approve/git.merge"],
       ["platform_lead", "/defs/MigrateAll/envelope/owner"],
+      ["release_manager", "/defs/Moved/accept/release_approved/by/call/args/0/value"],
     ]);
     expect(rolesNamed(migrate.defs)).toEqual(["platform_lead", "release_manager"]);
   });

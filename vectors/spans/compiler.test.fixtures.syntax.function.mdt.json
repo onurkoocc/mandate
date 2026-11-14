@@ -1,0 +1,25 @@
+{
+  "format": "mandate/vectors/spans/0.1",
+  "source": "compiler/test/fixtures/syntax/function.mdt",
+  "kind": "mdt",
+  "count": 17,
+  "spans": [
+    ["", 2, 1, 13, 2],
+    ["/defs/summarize_log", 6, 1, 13, 2],
+    ["/defs/summarize_log/body/0", 9, 3, 12, 6],
+    ["/defs/summarize_log/body/0/value", 9, 3, 12, 6],
+    ["/defs/summarize_log/body/0/value/from", 9, 25, 12, 6],
+    ["/defs/summarize_log/body/0/value/from/parts/1/expr", 11, 6, 11, 16],
+    ["/defs/summarize_log/body/0/value/from/parts/1/expr/args/0", 11, 12, 11, 15],
+    ["/defs/summarize_log/body/0/value/from/parts/1/expr/args/0/value", 11, 12, 11, 15],
+    ["/defs/summarize_log/body/0/value/from/parts/1/expr/callee", 11, 6, 11, 11],
+    ["/defs/summarize_log/body/0/value/type", 9, 9, 9, 19],
+    ["/defs/summarize_log/budget", 7, 3, 7, 25],
+    ["/defs/summarize_log/effects/0", 6, 56, 6, 61],
+    ["/defs/summarize_log/params/0", 6, 18, 6, 27],
+    ["/defs/summarize_log/params/0/type", 6, 23, 6, 27],
+    ["/defs/summarize_log/returns", 6, 32, 6, 52],
+    ["/defs/summarize_log/returns/args/0", 6, 41, 6, 51],
+    ["/uses/0", 4, 1, 4, 32]
+  ]
+}
