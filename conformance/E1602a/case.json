@@ -1,0 +1,38 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1602a",
+  "kind": "compile",
+  "title": "A 0.6 program that writes a type of a 0.6 module with the module's name is refused at the name when the type is not pub.",
+  "spec": [
+    "spec/library.md#pub-and-visibility"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../E1602/types.mdt"
+  ],
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Read/params/0/type/ref",
+      "value": "types.Note"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1602",
+        "path": "/defs/Read/params/0/type/ref",
+        "facts": {
+          "name": "Note",
+          "module": "example.library.types"
+        }
+      }
+    ]
+  }
+}

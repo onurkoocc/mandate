@@ -64,23 +64,30 @@ fn every_program_of_0_6_gives_the_outputs_it_gave() {
         };
         let names: Vec<&str> = outs.iter().map(|(n, _)| n.as_str()).collect();
         // A pin of nothing would pass for ever: every 0.6 program here is
-        // one that checks, so each has its views.
+        // one that checks with its modules, so each has its views; one that
+        // imports nothing but std checks alone too, and has its hash. One
+        // that imports a module of fixtures/library/ is refused alone, at
+        // that import (closed imports, E1604), and nothing else.
+        let output = |name: &str| outs.iter().find(|(n, _)| n == name).map(|(_, t)| t);
+        let alone = output("check").is_some_and(|t| t.contains("\"ok\": true"));
+        let with_modules = output("check --module").is_some_and(|t| t.contains("\"ok\": true"));
+        let only_closed = output("check").is_some_and(|t| t.contains("\"MDT-E1604\""));
         for needed in [
             "check",
             "load",
             "ir --canonical",
             "fmt",
-            "hash",
             "view --format json",
         ] {
             if !names.contains(&needed) {
                 problems.push(format!("{p}: no {needed}"));
             }
         }
-        if !outs
-            .iter()
-            .any(|(n, t)| n == "check" && t.contains("\"ok\": true"))
-        {
+        if alone != names.contains(&"hash") {
+            problems.push(format!("{p}: a hash only when it checks alone"));
+        }
+        let checks = with_modules && (alone || only_closed);
+        if !checks {
             problems.push(format!("{p}: does not check"));
         }
         let row: JsObject = outs

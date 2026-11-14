@@ -55,6 +55,48 @@
       "texts": {}
     },
     {
+      "program": "fixtures/library/invoices.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:84268ea450555fe507c58dc8db1459b657c17fcdbdff169854f80799c76e3679",
+            "defs": {
+              "Invoice": "sha256:8494a83c0453526968f6e18018b8bd26a03f09512389602ad0700a3fe84ba316",
+              "Line": "sha256:8c14173a7c11e2a19e61e97ce446d41ae61bcca26102fd4c3faecd6bd7058986",
+              "MAX_TOTAL": "sha256:8e220c0291e14b83cdcb103c47a5830e8837bc3494a9a371b8130a7c929c1c2c",
+              "ModelStd": "sha256:ccf74faa07c428e9bd3c0aec602fe6a30cacd162a26650732585ebb1754788bb",
+              "Summarizer": "sha256:dfb7d587d501f2a4725b070b24398b8adcdd8c8413127ea35c18ce8eed92b893",
+              "within": "sha256:5fb249ac021f61add177a3e682fe55b915973da9f20e91979d62be9aadfa5b03"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:84268ea450555fe507c58dc8db1459b657c17fcdbdff169854f80799c76e3679",
+            "defs": {
+              "Invoice": "sha256:8494a83c0453526968f6e18018b8bd26a03f09512389602ad0700a3fe84ba316",
+              "Line": "sha256:8c14173a7c11e2a19e61e97ce446d41ae61bcca26102fd4c3faecd6bd7058986",
+              "MAX_TOTAL": "sha256:8e220c0291e14b83cdcb103c47a5830e8837bc3494a9a371b8130a7c929c1c2c",
+              "ModelStd": "sha256:ccf74faa07c428e9bd3c0aec602fe6a30cacd162a26650732585ebb1754788bb",
+              "Summarizer": "sha256:dfb7d587d501f2a4725b070b24398b8adcdd8c8413127ea35c18ce8eed92b893",
+              "within": "sha256:5fb249ac021f61add177a3e682fe55b915973da9f20e91979d62be9aadfa5b03"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
       "program": "fixtures/library/minimal.mdt",
       "modules": [
         "fixtures/system/acme.system.mdt",
@@ -82,6 +124,73 @@
               "Greet": "sha256:9f0fb23f0a8e295699245f2dbdcdbf5389246880807d77ac7a6093188c354657",
               "Greeter": "sha256:8d8db58bcc82fb4fb457a5deb888e2038d3d77b2719e4e5c52d0ac4d359a533d",
               "ModelStd": "sha256:0c86667ebbdcf268d82fcb600cca36fe21ccb44e3b1f660e6f7e80b4e8e27a6e"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/library/summarize.mdt",
+      "modules": [
+        "fixtures/library/invoices.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": false,
+          "diagnostics": [
+            {
+              "code": "MDT-E1604",
+              "severity": "error",
+              "message": "Module example.library.invoices is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
+              "at": {
+                "path": "/uses/0",
+                "span": [11, 1, 11, 61]
+              },
+              "docs": "mandate explain MDT-E1604",
+              "facts": {
+                "module": "example.library.invoices"
+              }
+            },
+            {
+              "code": "MDT-E0120",
+              "severity": "error",
+              "message": "Unknown capability 'ModelStd'.",
+              "at": {
+                "path": "/defs/Summarize/caps/0",
+                "span": [15, 10, 15, 18]
+              },
+              "docs": "mandate explain MDT-E0120",
+              "facts": {
+                "name": "ModelStd",
+                "expected": "capability"
+              }
+            },
+            {
+              "code": "MDT-E0120",
+              "severity": "error",
+              "message": "Unknown agent 'Summarizer'.",
+              "at": {
+                "path": "/defs/Summarize/body/0/value/agent",
+                "span": [18, 3, 18, 35]
+              },
+              "docs": "mandate explain MDT-E0120",
+              "facts": {
+                "name": "Summarizer",
+                "expected": "agent"
+              }
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:0c61a0588d4ed3356c2eae37635d39786c81571f0aa0cec02b1fe350f1054cb6",
+            "defs": {
+              "Summarize": "sha256:9628572e73be8e2efb0c59d8ee946f9b80421cf27eadc2414ffde1ff362d7d5f"
             }
           },
           "diagnostics": []

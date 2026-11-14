@@ -1,0 +1,29 @@
+// A program of language 0.6 that imports a 0.6 module whole and writes its
+// `pub` type with the module's name, `types.Invoice`, and its `pub` constant
+// as `types.LIMIT`. It checks; E1602a changes the type to one that is not
+// `pub`.
+
+mandate @ 0.6
+
+module example.library.qualified @ 0.1
+
+use std.{model}
+use example.library.types
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+let MOST: Int = types.LIMIT
+
+agent Reader {
+  role   "Reads one invoice."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill read(i: types.Invoice) -> Inferred<Text> ! {Model}
+}
+
+workflow Read(i: types.Invoice) -> Inferred<Text>
+  caps   ModelStd
+  budget { time: 5m, steps: 4 }
+{
+  delegate Reader.read(i)
+}

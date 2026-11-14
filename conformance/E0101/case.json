@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0101",
+  "kind": "compile",
+  "title": "A doc line inside the body of a definition documents nothing.",
+  "spec": [
+    "spec/library.md#doc-lines"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "text": "mandate @ 0.6\n\nmodule example.docs @ 0.1\n\ntype Greeting = {\n  /// Inside a body.\n  text: Text\n}\n",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0101",
+        "path": ""
+      }
+    ]
+  }
+}

@@ -23,10 +23,14 @@ use mandate_views::{
 use crate::common::{check_text, check_with, modules_of, read_source};
 
 /// `MODULE_FILES` in `compiler/test/golden-outputs.ts`, and `MODULE_FILES_OF`
-/// where it names others: the module files a program is given.
+/// where it names others: the module files a program is given. A program of
+/// 0.6 that imports a module of `fixtures/library/` is given it (no
+/// TypeScript reads either, so the golden file of 0.6 alone has them).
 pub fn module_files_of(program: &str) -> Vec<String> {
     let files: &[&str] = if program == "fixtures/envelope/migrate-all.mdt" {
         &["fixtures/envelope/domain.mdt"]
+    } else if program == "fixtures/library/summarize.mdt" {
+        &["fixtures/library/invoices.mdt"]
     } else {
         &[
             "fixtures/system/acme.system.mdt",

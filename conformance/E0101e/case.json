@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0101e",
+  "kind": "compile",
+  "title": "In a program of 0.5, pub stands before a fn only, as before.",
+  "spec": [
+    "spec/library.md#pub-and-visibility"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "text": "mandate @ 0.5\n\nmodule example.older @ 0.1\n\npub type Greeting = Text\n",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0101",
+        "path": ""
+      }
+    ]
+  }
+}

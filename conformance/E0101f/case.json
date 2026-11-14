@@ -1,0 +1,27 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0101f",
+  "kind": "compile",
+  "title": "In a program of 0.5 a /// line is a comment wherever it is: the program checks, with the hashes of its text without them.",
+  "spec": [
+    "spec/library.md#doc-lines"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "hashes": {
+      "program": "sha256:4ca72e8529dade1ab9da651d1bbbba1affe8aee12b41965e843e2e130027fc7a",
+      "defs": {
+        "ModelStd": "sha256:920cc23eac16b562bbe8e63ff8ef93b3baff8bedb989c74a5153e99b2286e978",
+        "Read": "sha256:730d0898a2e2a6e1ea1d2d34efe034f435185b990501263087c868b598fd8bad",
+        "Reader": "sha256:7d81e977ab916d579740cc561efae35670709b754fecb9c4056da0b54ad578b0"
+      }
+    }
+  }
+}

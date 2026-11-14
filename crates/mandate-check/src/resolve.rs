@@ -32,6 +32,8 @@ use mandate_ir::{
     TypeExpr, TypeForm, Value, Variant, Verifier, VerifierForm, nearest_span, ptr, ptr_token,
 };
 
+use crate::imports::Visibility;
+use crate::modules::Modules;
 use crate::stdlib::{STD_EFFECTS, std_effect};
 
 /// The built-in types, in order: `BUILTIN_TYPES`.
@@ -109,6 +111,23 @@ pub fn resolve_names(
     spans: Option<&Spans>,
     linked: Option<&Map>,
 ) -> Vec<Diagnostic> {
+    resolve_names_with(program, spans, linked, None, None)
+}
+
+/// [`resolve_names`] with the modules the check was given, which a program
+/// of language 0.6 is held to where it writes a name with its module
+/// (`types.Order`): such a name of a module of 0.6 must be `pub` (E1602,
+/// [`crate::imports`]), but in `own`, the module whose definitions the
+/// program names as its own (the parent of a sub-program). For a program of
+/// 0.1 to 0.5 the modules change nothing: it is [`resolve_names`].
+#[must_use]
+pub fn resolve_names_with(
+    program: Program<'_>,
+    spans: Option<&Spans>,
+    linked: Option<&Map>,
+    modules: Option<&Modules>,
+    own: Option<&str>,
+) -> Vec<Diagnostic> {
     let empty = Map::new();
     let defs = program.defs().unwrap_or(&empty);
     let mut r = Resolver {
@@ -119,6 +138,7 @@ pub fn resolve_names(
         imported: Vec::new(),
         imported_modules: Vec::new(),
         builtin_types: BUILTIN_TYPES.to_vec(),
+        visibility: Visibility::of(program, modules, own),
         out: Vec::new(),
     };
     if program
@@ -245,6 +265,9 @@ struct Resolver<'a> {
     imported_modules: Vec<&'a str>,
     /// The built-in type names of the program's language version.
     builtin_types: Vec<&'static str>,
+    /// What a program of 0.6 may name of a module it was given; `None`
+    /// before 0.6.
+    visibility: Option<Visibility<'a>>,
     out: Vec<Diagnostic>,
 }
 
@@ -324,6 +347,40 @@ impl<'a> Resolver<'a> {
 
     fn def_kind(&self, name: &str) -> Option<DefKind> {
         self.def_(name).and_then(kind_of)
+    }
+
+    /// 0.6: the E1602 of a name written with its module (`types.Order`) at
+    /// `path`, when it names a definition of a module of 0.6 that is not
+    /// `pub`.
+    fn qualified_visible(&mut self, qualified: &str, path: &str) {
+        if let Some(v) = &self.visibility
+            && let Some(d) = v.qualified(qualified, path, self.spans)
+        {
+            self.out.push(d);
+        }
+    }
+
+    /// 0.6: the E1602 of `prefix.name` as a value at `path`, where
+    /// `prefix` is a name no scope binds (`types.helper`).
+    fn member_visible(&mut self, prefix: &str, name: &str, path: &str) {
+        if let Some(v) = &self.visibility
+            && let Some(d) = v.member(prefix, name, path, self.spans)
+        {
+            self.out.push(d);
+        }
+    }
+
+    /// Whether `name` is bound in `scope` itself (a parameter, a `let`,
+    /// a binder), not as a definition.
+    fn bound(name: &str, scope: &Rc<Scope>) -> bool {
+        let mut s = Some(scope);
+        while let Some(at) = s {
+            if at.names.iter().any(|n| n == name) {
+                return true;
+            }
+            s = at.parent.as_ref();
+        }
+        false
     }
 
     /// The names of the definitions of `kind` the program sees:
@@ -631,6 +688,9 @@ impl<'a> Resolver<'a> {
     ) {
         if t.has(TypeForm::Ref) {
             let r = t.ref_name().unwrap_or_default();
+            if r.contains('.') {
+                self.qualified_visible(r, &format!("{path}/ref"));
+            }
             if !self.is_type(r, generics) {
                 let mut candidates: Vec<&str> = self.builtin_types.to_vec();
                 candidates.extend(self.defs_of_kind(DefKind::Type));
@@ -904,6 +964,7 @@ impl<'a> Resolver<'a> {
             && dot > 0
             && self.is_module_path(name.get(..dot).unwrap_or_default())
         {
+            self.qualified_visible(name, path);
             return;
         }
         // A std effect without a module (deploy, migrate) is a name of the
@@ -968,7 +1029,17 @@ impl<'a> Resolver<'a> {
                     );
                 }
             }
-            ExprOp::Field | ExprOp::Unary | ExprOp::Try | ExprOp::Await => {
+            ExprOp::Field => {
+                if let Some(of) = e.operand().filter(|o| o.is(ExprOp::Var))
+                    && let (Some(prefix), Some(name)) = (of.name(), e.name())
+                    && !Self::bound(prefix, &ctx.scope)
+                    && !self.defs.contains_key(prefix)
+                {
+                    self.member_visible(prefix, name, path);
+                }
+                self.sub(e.operand(), path, "of", ctx);
+            }
+            ExprOp::Unary | ExprOp::Try | ExprOp::Await => {
                 self.sub(e.operand(), path, "of", ctx);
             }
             ExprOp::Call => {
@@ -991,6 +1062,9 @@ impl<'a> Resolver<'a> {
             }
             ExprOp::Record => {
                 let t = e.record_type().unwrap_or_default();
+                if t.contains('.') {
+                    self.qualified_visible(t, &format!("{path}/type"));
+                }
                 if !self.is_type(t, &[]) {
                     let mut candidates = self.defs_of_kind(DefKind::Type);
                     candidates.extend(self.imported.iter().copied());

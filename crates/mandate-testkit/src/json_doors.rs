@@ -378,7 +378,8 @@ fn find<'d, 'a>(doors: &'d [JsonDoor<'a>], name: &str) -> Option<&'d JsonDoor<'a
 /// throws; the same answer both times; and a call for every door. An output
 /// is compared without the language versions only the Rust reads
 /// ([`rust_only`]: an E0103's list of versions, and the `tables` door's
-/// `LANGUAGE_VERSIONS` and `LANGUAGE_VERSION`), and the calls that needs
+/// `LANGUAGE_VERSIONS` and `LANGUAGE_VERSION`) and without the codes of 0.6
+/// in the `codes` door's table ([`rust_only::RUST_CODES`]), and the calls that needs
 /// are counted against [`rust_only::PINNED`].
 ///
 /// # Errors
@@ -436,6 +437,10 @@ pub fn check_calls(dir: &str, doors: &[JsonDoor<'_>]) -> Result<String, String> 
                 let mut as_typescript = rust_only::js_as_typescript(&mut v);
                 if d.name == "tables" {
                     as_typescript |= rust_only::tables_as_typescript(&mut v);
+                }
+                // And in the table of codes, without the codes of 0.6.
+                if d.name == "codes" {
+                    as_typescript |= rust_only::codes_as_typescript(&mut v);
                 }
                 if as_typescript {
                     changed = changed.saturating_add(1);

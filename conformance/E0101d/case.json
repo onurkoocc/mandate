@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0101d",
+  "kind": "compile",
+  "title": "A doc line followed by a blank line is not directly before the definition after it.",
+  "spec": [
+    "spec/library.md#doc-lines"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "text": "mandate @ 0.6\n\nmodule example.docs @ 0.1\n\n/// Followed by a blank line.\n\ntype Greeting = Text\n",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0101",
+        "path": ""
+      }
+    ]
+  }
+}

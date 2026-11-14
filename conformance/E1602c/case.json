@@ -1,0 +1,38 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1602c",
+  "kind": "compile",
+  "title": "A 0.6 program that writes a constant of a 0.6 module with the module's name is refused at the name when the constant is not pub.",
+  "spec": [
+    "spec/library.md#pub-and-visibility"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1602a/program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../E1602/types.mdt"
+  ],
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/MOST/value/name",
+      "value": "SECRET"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1602",
+        "path": "/defs/MOST/value",
+        "facts": {
+          "name": "SECRET",
+          "module": "example.library.types"
+        }
+      }
+    ]
+  }
+}

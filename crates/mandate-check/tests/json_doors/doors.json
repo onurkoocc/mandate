@@ -45,7 +45,7 @@
     {"name":"map_scopes","ts":"mapScopes","params":["input"]},
     {"name":"in_flight_overlap","ts":"inFlightOverlap","params":["input"]},
     {"name":"explain","ts":null,"params":["code"],"note":"What `mandate explain <code>` and the MCP tool mandate.explain answer: { code, title, explain } for the code, with MDT- put in front when it lacks it, or null when there is no such code. Every row of the Rust table of codes, those added from language 0.6 on included."},
-    {"name":"codes","ts":null,"params":[],"note":"The whole table of diagnostic codes, { \"MDT-E0101\": { title, explain }, ... } in the table's order, as CODES is written: every row of the Rust table, those added from language 0.6 on included (today it has none, and equals CODES)."},
+    {"name":"codes","ts":null,"params":[],"note":"The whole table of diagnostic codes, { \"MDT-E0101\": { title, explain }, ... } in the table's order, as CODES is written: every row of the Rust table, those added from language 0.6 on included: the rows of CODES, then the codes of 0.6, which CODES does not have."},
     {"name":"tables","ts":null,"params":[],"note":"Every constant the TypeScript entry point exports as a value, by its export name, in the order of the names (UTF-16): its JSON.stringify text, a Set as an array and a Map as an object. CODES is the rows of the TypeScript's table (the codes door has every row)."}
   ]
 }

@@ -1,12 +1,17 @@
-//! Language 0.6 across the compiler (spec/library.md), with no construct of
-//! 0.6 yet: a 0.6 program is a 0.5 program under a new header.
+//! Language 0.6 across the compiler (spec/library.md): a 0.6 program that
+//! uses nothing of what 0.6 adds is a 0.5 program under a new header.
 //!
 //! - Every 0.5 program of the repository, its header (or its `language`)
 //!   rewritten to 0.6 and nothing else, gives what it gives as 0.5: every
 //!   output of a fixture (the checks with their diagnostics whole, `load`,
 //!   the IR, `fmt`, the views, `sandbox`), and the result of every 0.5
 //!   conformance case, with the version's text and the hashes (which the
-//!   version is part of) taken out.
+//!   version is part of) taken out. A program that 0.6 reads otherwise on
+//!   purpose is left out by a named rule ([`EXCEPTIONS`]), which lists the
+//!   programs it applies to; a program that falls under a rule and is not
+//!   listed fails, and so does one listed that does not. None does today:
+//!   the 0.5 programs rewritten import only `std` (or modules their checks
+//!   are given) and have no `///` line.
 //! - Every code whose reference is the Rust compiler has a conformance case
 //!   of 0.6 that expects it, and every code a 0.6 case expects is in the
 //!   table.
@@ -33,6 +38,86 @@ use mandate_testkit::rust_only::RUST_ONLY_LANGUAGES;
 use mandate_testkit::{
     compare_text, files, read_json, repo_path, run_gate, sha256, subdirectories,
 };
+
+/// A program of 0.5 that imports a module its check is not given: as 0.5 the
+/// import is taken on trust; as 0.6 it is E1604 (closed imports). A fixture
+/// is checked once with no module at all (`check`), so any import of a
+/// module but `std` and `std.decision` puts it here.
+const CLOSED_IMPORTS: &str = "an import of a module the check is not given (E1604 in 0.6)";
+
+/// A program of 0.5 with a `///` line: as 0.5 a comment; as 0.6 a doc line,
+/// in the IR and the hashes, or E0101 where it documents nothing.
+const DOC_LINES: &str = "a /// line (a doc line or E0101 in 0.6)";
+
+/// For each rule by which 0.6 reads a 0.5 program otherwise on purpose, the
+/// programs (a fixture's path, a case's directory) it applies to, which the
+/// comparison leaves out. Each list is the whole list: a program that falls
+/// under a rule and is not in it fails the test, as does one in it that does
+/// not.
+const EXCEPTIONS: &[(&str, &[&str])] = &[(CLOSED_IMPORTS, &[]), (DOC_LINES, &[])];
+
+/// The rules of [`EXCEPTIONS`] that `text`, checked with the modules named
+/// `given` (or, for a fixture's plain `check`, none), falls under.
+fn rules_of(text: &str, kind: SourceKind, given: &[String]) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    let loaded = mandate_syntax::load(text, kind);
+    let open = loaded
+        .program
+        .as_ref()
+        .and_then(|p| p.get("uses"))
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|u| u.get("module").and_then(Value::as_str))
+        .any(|m| !mandate_check::STD_MODULES.contains(&m) && !given.iter().any(|g| g == m));
+    if open {
+        out.push(CLOSED_IMPORTS);
+    }
+    if kind == SourceKind::Mdt && text.contains("///") {
+        out.push(DOC_LINES);
+    }
+    out
+}
+
+/// Whether `item` is left out of the comparison by [`EXCEPTIONS`], and an
+/// error when `rules` (the rules it falls under) and the lists disagree.
+fn excepted(item: &str, rules: &[&str]) -> Result<bool, String> {
+    for (rule, listed) in EXCEPTIONS {
+        let falls = rules.contains(rule);
+        let named = listed.contains(&item);
+        if falls && !named {
+            return Err(format!(
+                "{item} falls under the rule \"{rule}\" and is not listed in EXCEPTIONS: 0.6 reads it otherwise on purpose; list it"
+            ));
+        }
+        if named && !falls {
+            return Err(format!(
+                "{item} is listed under the rule \"{rule}\" and does not fall under it: take it off"
+            ));
+        }
+    }
+    Ok(!rules.is_empty())
+}
+
+/// Every program [`EXCEPTIONS`] lists is among `items`, and each rule's
+/// count is printed.
+fn exceptions_all_seen(items: &[String], gate: &str) {
+    for (rule, listed) in EXCEPTIONS {
+        for p in *listed {
+            // A listed program of the other gate is that gate's.
+            let ours = p.starts_with("conformance/") == gate.contains("cases");
+            assert!(
+                !ours || items.iter().any(|i| i == p),
+                "{p}, listed under \"{rule}\", is not a program of {gate}"
+            );
+        }
+        let ours = listed
+            .iter()
+            .filter(|p| p.starts_with("conformance/") == gate.contains("cases"))
+            .count();
+        println!("{gate}: {ours} left out by the rule \"{rule}\"");
+    }
+}
 
 /// A text with what tells 0.6 from 0.5 taken out: the version's text, and
 /// every hash, whose domain prefix names the version.
@@ -104,7 +189,13 @@ fn every_0_5_fixture_under_the_0_6_header_gives_what_it_gives_as_0_5() {
         })
         .collect();
     let n = items.len();
+    let names: Vec<String> = items.iter().map(|(n, _)| n.clone()).collect();
+    exceptions_all_seen(&names, "0.5 fixtures as 0.6");
     let gate = run_gate("0.5 fixtures as 0.6", &[], items, |(p, rewritten)| {
+        let kind = mandate_syntax::kind_of(p);
+        if excepted(p, &rules_of(&read_source(p)?, kind, &[]))? {
+            return Ok(());
+        }
         let as_0_5 = outputs::outputs_of(p)?;
         let as_0_6 = outputs::outputs_of_text(p, rewritten)?;
         let names = |o: &[(String, String)]| o.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
@@ -153,6 +244,8 @@ fn every_0_5_conformance_case_under_the_0_6_header_gives_what_it_gives_as_0_5() 
         }
     }
     let n = items.len();
+    let names: Vec<String> = items.iter().map(|(n, _)| n.clone()).collect();
+    exceptions_all_seen(&names, "0.5 cases as 0.6");
     let gate = run_gate("0.5 cases as 0.6", &[], items, |id| {
         let dir = format!("conformance/{id}");
         let case = read_json(&format!("{dir}/case.json"))?;
@@ -180,6 +273,10 @@ fn every_0_5_conformance_case_under_the_0_6_header_gives_what_it_gives_as_0_5() 
             .collect();
         let module_files: Vec<String> = names.iter().map(|m| repo_path(&dir, m)).collect();
         let modules = modules_of(&module_files, &names)?;
+        let given: Vec<String> = modules.keys().map(str::to_owned).collect();
+        if excepted(&dir, &rules_of(&text, kind, &given))? {
+            return Ok(());
+        }
         let lock = case
             .get("lock")
             .and_then(Value::as_str)

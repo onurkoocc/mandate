@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1603",
+  "kind": "compile",
+  "title": "A program of 0.5 that imports a module written in 0.6 is refused at the use.",
+  "spec": [
+    "spec/library.md#pub-and-visibility",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1602/program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../E1602/types.mdt"
+  ],
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/language",
+      "value": "mandate/0.5"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1603",
+        "path": "/uses/0",
+        "facts": {
+          "module": "example.library.types",
+          "module_language": "mandate/0.6",
+          "language": "mandate/0.5"
+        }
+      }
+    ]
+  }
+}

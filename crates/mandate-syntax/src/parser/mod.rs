@@ -645,7 +645,8 @@ impl<'a> Parser<'a> {
     /// `decl()` as in every version, so its IR is the same; before 0.6 `pub`
     /// stands before `fn` only (`decl()` refuses it before anything else).
     fn definition(&mut self) -> Res<Decl<'a>> {
-        if !(self.reads_0_6() && self.is_w("pub") && !is_w(self.la(1), "fn")) {
+        let public = self.reads_0_6() && self.is_w("pub") && !is_w(self.la(1), "fn");
+        if !public {
             return self.decl();
         }
         self.bump();

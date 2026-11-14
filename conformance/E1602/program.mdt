@@ -1,0 +1,26 @@
+// A program of language 0.6 that imports the `pub` type of a 0.6 module it
+// is given, and std. It checks; the import cases of 0.6 change it by one
+// operation each.
+
+mandate @ 0.6
+
+module example.library.reader @ 0.1
+
+use std.{model}
+use example.library.types.{Invoice}
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+agent Reader {
+  role   "Reads one invoice."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill read(i: Invoice) -> Inferred<Text> ! {Model}
+}
+
+workflow Read(i: Invoice) -> Inferred<Text>
+  caps   ModelStd
+  budget { time: 5m, steps: 4 }
+{
+  delegate Reader.read(i)
+}

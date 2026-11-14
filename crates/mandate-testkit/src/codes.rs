@@ -368,6 +368,27 @@ pub const FAMILIES: &[Family] = &[
         reference: Reference::TypeScript,
     },
     Family {
+        glob: "*MDT-E1602*",
+        codes: "E1602",
+        stage: "Rust only: the import checks of a 0.6 program (a use list, crates/mandate-check/src/imports.rs) and resolveNames (a name written with its module)",
+        ported: true,
+        reference: Reference::Rust,
+    },
+    Family {
+        glob: "*MDT-E1603*",
+        codes: "E1603",
+        stage: "Rust only: the import checks of a 0.1 to 0.5 program (crates/mandate-check/src/imports.rs); loadModules",
+        ported: true,
+        reference: Reference::Rust,
+    },
+    Family {
+        glob: "*MDT-E1604*",
+        codes: "E1604",
+        stage: "Rust only: the import checks of a 0.6 program (crates/mandate-check/src/imports.rs); loadModules",
+        ported: true,
+        reference: Reference::Rust,
+    },
+    Family {
         glob: "*MDT-E1701*",
         codes: "E1701",
         stage: "staticCheck: an envelope's own fields (checkEnvelope in check/envelope.ts); also checkAmendment (check.ts)",

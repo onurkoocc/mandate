@@ -2,7 +2,8 @@
 //! of `compiler/src/check.ts`.
 //!
 //! ```text
-//! load → (stop if no program or an error) → link → resolveNames → roleChecks
+//! load → (stop if no program or an error) → link → (Rust: the import checks
+//!      of `crate::imports`) → resolveNames → roleChecks
 //!      → importedMethods → staticCheck (only if no error so far)
 //!      → the lock checks (only with a lock and no error so far) → ok, hashes
 //! ```
@@ -19,9 +20,10 @@ use mandate_ir::{
 use mandate_syntax::{SourceKind, load};
 
 use crate::caps::imported_methods;
+use crate::imports::{import_checks, parent_of_subprogram};
 use crate::lock::{Lock, lock_checks, module_lock_checks, role_lock_checks, validate_lock};
 use crate::modules::{Modules, link};
-use crate::resolve::resolve_names;
+use crate::resolve::resolve_names_with;
 use crate::roles::role_checks;
 
 /// What [`check`] is given besides the text: `CheckOptions`.
@@ -234,10 +236,21 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
             .cloned()
             .map(|d| with_exact_span(d, &loaded.spans)),
     );
-    diagnostics.extend(resolve_names(
+    // 0.6: what a `use` may name (E1602, E1604); before 0.6, a module of
+    // 0.6 given to an earlier program (E1603). Rust only.
+    let own = parent_of_subprogram(program, opts.claim.is_some());
+    diagnostics.extend(import_checks(
+        program,
+        opts.modules,
+        Some(&loaded.spans),
+        own,
+    ));
+    diagnostics.extend(resolve_names_with(
         program,
         Some(&loaded.spans),
         Some(&linked.defs),
+        opts.modules,
+        own,
     ));
     // A role is a name too, from 0.4: where one is named, it is a role
     // definition (E1501, E1503).

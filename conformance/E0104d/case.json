@@ -1,0 +1,42 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104d",
+  "kind": "compile",
+  "title": "A 0.6 field in a program of 0.5 is refused: doc on a definition and pub on a type are not fields of the IR of 0.1 to 0.5.",
+  "spec": [
+    "spec/library.md#what-06-adds",
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "text": "{\"language\":\"mandate/0.5\",\"module\":\"example.older\",\"version\":\"0.1\",\"defs\":{\"Greeting\":{\"kind\":\"type\",\"type\":{\"ref\":\"Text\"},\"pub\":true,\"doc\":\"A greeting.\"},\"greet\":{\"kind\":\"fn\",\"pub\":true,\"doc\":\"Says hello.\",\"params\":[],\"returns\":{\"ref\":\"Text\"},\"effects\":[],\"body\":[{\"op\":\"return\",\"value\":{\"op\":\"text\",\"value\":\"hello\"}}]}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/Greeting/doc",
+        "facts": {
+          "keyword": "additionalProperties"
+        }
+      },
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/Greeting/pub",
+        "facts": {
+          "keyword": "additionalProperties"
+        }
+      },
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/greet/doc",
+        "facts": {
+          "keyword": "additionalProperties"
+        }
+      }
+    ]
+  }
+}

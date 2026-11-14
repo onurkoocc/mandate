@@ -1,0 +1,38 @@
+// A module of language 0.6 (spec/library.md "The 0.6 surface"): what other
+// modules may name is `pub`, each with a doc line, and what is not stays
+// the module's own. summarize.mdt imports it. Only the Rust compiler reads
+// either.
+
+mandate @ 0.6
+
+module example.library.invoices @ 1.0
+
+use std.{model}
+
+/// An invoice as the mailbox holds it.
+///
+/// Its total is in cents.
+pub type Invoice = { invoice_no: Text, vendor_id: Text, total_cents: Int }
+
+/// A line of a summary, kept inside this module.
+type Line = { text: Text }
+
+/// The model an agent that reads invoices may use: standard, and nothing
+/// above internal data.
+pub capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+/// The largest total, in cents, a summary is written for.
+pub let MAX_TOTAL: Int = 1000000
+
+/// Whether a total is within the limit.
+pub fn within(total: Int) -> Bool ! {} {
+  total <= MAX_TOTAL
+}
+
+/// Summarizes one invoice for a person to read.
+pub agent Summarizer {
+  role   "Summarizes one invoice."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill summarize(i: Invoice) -> Inferred<Text> ! {Model}
+}

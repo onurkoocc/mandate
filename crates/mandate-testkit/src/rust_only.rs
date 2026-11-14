@@ -21,6 +21,14 @@
 //! - [`NEWEST_VERSION`]: the `LANGUAGE_VERSION` of the `tables` door is
 //!   [`TYPESCRIPT_NEWEST`] when the Rust's is [`RUST_NEWEST`]
 //!   ([`tables_as_typescript`]).
+//! - [`RUST_CODES`]: the output of the `codes` door, the whole table of
+//!   diagnostic codes, is compared without the rows whose reference is the
+//!   Rust compiler (`mandate_ir::codes::Reference::Rust`: the codes added
+//!   from 0.6 on, E1602 to E1604 today), which come after every row of the
+//!   TypeScript's table ([`codes_as_typescript`]). Each of those rows is held
+//!   instead by a conformance case of 0.6 that expects it
+//!   (`tests/language_0_6.rs`), and the `explain` door's answer for each by
+//!   `mandate-check`'s `tests/language_0_6.rs`.
 //!
 //! Each gate that applies a rule counts the stored results the rule changed
 //! something in, and holds the count to [`PINNED`] ([`check_count`]), so
@@ -28,6 +36,7 @@
 //! says so. The cases and vectors of 0.6 itself are written by hand or by
 //! the Rust, and are compared whole, with no rule.
 
+use mandate_ir::codes::{self, Reference};
 use mandate_ir::{Diagnostic, JsObject, JsValue};
 
 /// The language versions the Rust compiler reads and the TypeScript one
@@ -48,16 +57,23 @@ pub const KNOWN_VERSIONS: &str = "the list of the language versions a compiler r
 /// The second rule, as the gates print it.
 pub const NEWEST_VERSION: &str = "the newest language version, mandate/0.6 in the Rust and mandate/0.5 in the TypeScript (the tables door's LANGUAGE_VERSION)";
 
+/// The third rule, as the gates print it.
+pub const RUST_CODES: &str = "the table of diagnostic codes without the rows the Rust compiler is the reference for (the codes door)";
+
 /// For each gate that applies a rule, by the title it prints, the number of
 /// stored results the rule changes something in. A gate that applies one
 /// and is not listed here fails, as does one whose count is not this.
+///
+/// The JSON doors of `mandate-check` count 2: the `tables` call
+/// ([`KNOWN_VERSIONS`], [`NEWEST_VERSION`]) and the `codes` call
+/// ([`RUST_CODES`], since the table has the rows of 0.6).
 pub const PINNED: &[(&str, usize)] = &[
     ("invalid IR diagnostics", 5),
     ("diagnostic vectors", 2),
     ("conformance cases", 2),
     ("syntax", 2),
     ("corpus", 5),
-    ("json doors of crates/mandate-check/tests/json_doors", 1),
+    ("json doors of crates/mandate-check/tests/json_doors", 2),
 ];
 
 /// The code whose message and facts list the versions.
@@ -181,6 +197,20 @@ pub fn tables_as_typescript(v: &mut JsValue) -> bool {
     *o != before
 }
 
+/// [`RUST_CODES`] on the output of the `codes` door: the rows of the codes
+/// whose reference is the Rust compiler taken out, the others left as they
+/// are, in their order. Whether it took any out.
+pub fn codes_as_typescript(v: &mut JsValue) -> bool {
+    let JsValue::Object(o) = v else {
+        return false;
+    };
+    let mut changed = false;
+    for row in codes::iter().filter(|r| r.reference == Reference::Rust) {
+        changed |= o.remove(row.code).is_some();
+    }
+    changed
+}
+
 /// Holds the number of stored results a gate changed by a rule to the one
 /// [`PINNED`] gives it, and prints it.
 ///
@@ -210,7 +240,9 @@ pub fn check_count(gate: &str, changed: usize) -> Result<String, String> {
 mod tests {
     use mandate_ir::{Diagnostic, JsObject, JsValue, Location};
 
-    use super::{diagnostic_as_typescript, js_as_typescript, tables_as_typescript};
+    use super::{
+        codes_as_typescript, diagnostic_as_typescript, js_as_typescript, tables_as_typescript,
+    };
 
     fn listed(versions: &[&str]) -> JsValue {
         JsValue::Array(versions.iter().map(|v| JsValue::from(*v)).collect())
@@ -252,6 +284,25 @@ mod tests {
         );
         assert!(!diagnostic_as_typescript(&mut other));
         assert!(!js_as_typescript(&mut other.to_js()));
+    }
+
+    #[test]
+    fn the_table_of_codes_loses_the_rows_of_the_rust_and_nothing_else() {
+        let row = |title: &str| JsValue::Object(JsObject::new().with("title", title));
+        let mut table = JsValue::Object(
+            JsObject::new()
+                .with("MDT-E0101", row("Syntax error"))
+                .with("MDT-E1602", row("Definition not public"))
+                .with("MDT-E1604", row("Import not closed")),
+        );
+        assert!(codes_as_typescript(&mut table));
+        let keys: Vec<&str> = table
+            .as_object()
+            .map(|o| o.keys().collect())
+            .unwrap_or_default();
+        assert_eq!(keys, vec!["MDT-E0101"]);
+        assert!(!codes_as_typescript(&mut table), "once is enough");
+        assert!(!codes_as_typescript(&mut JsValue::Null));
     }
 
     #[test]

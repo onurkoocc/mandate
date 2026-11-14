@@ -24,9 +24,10 @@ use mandate_ir::{
 };
 
 use crate::diff::{GovernanceChangeKind, governance_changes};
+use crate::imports::import_checks;
 use crate::js_number::js_to_number;
 use crate::modules::{Modules, link};
-use crate::resolve::resolve_names;
+use crate::resolve::resolve_names_with;
 use crate::view_shared::js_text;
 
 /// One operation of a patch: `PatchOp`, `{ op, path, value? }` where `op` is
@@ -122,7 +123,16 @@ pub fn apply_patch(
     {
         let linked = link(view, modules);
         diagnostics.extend(linked.diagnostics.iter().cloned());
-        diagnostics.extend(resolve_names(view, None, Some(&linked.defs)));
+        // What a `use` may name, as `check` holds it (Rust only: before 0.6,
+        // nothing but a module of 0.6 given to an earlier program).
+        diagnostics.extend(import_checks(view, modules, None, None));
+        diagnostics.extend(resolve_names_with(
+            view,
+            None,
+            Some(&linked.defs),
+            modules,
+            None,
+        ));
     }
     let Some(next) = patched.program.filter(|_| !has_errors(&diagnostics)) else {
         return PatchResult {

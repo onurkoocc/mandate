@@ -1,0 +1,31 @@
+// A program of language 0.6 that names definitions of a 0.5 module, none of
+// them `pub`, in a `use` list and with the module's name. An older module
+// keeps every definition visible.
+
+mandate @ 0.6
+
+module example.library.tickets @ 0.1
+
+use std.{model}
+use example.older.domain.{Ticket}
+use example.older.domain
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+let MOST: Int = domain.MAX_TICKETS
+
+type Batch = { first: domain.Ticket }
+
+agent Triage {
+  role   "Reads one ticket."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill read(t: Ticket) -> Inferred<Text> ! {Model}
+}
+
+workflow Read(t: Ticket) -> Inferred<Text>
+  caps   ModelStd
+  budget { time: 5m, steps: 4 }
+{
+  delegate Triage.read(t)
+}
