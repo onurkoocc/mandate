@@ -126,7 +126,8 @@ impl CapMember {
 
 /// The `maxClass` of a [`CapVal`]: a data class, or a name that is none of
 /// them, which only a value read from JSON has (the run-time authority
-/// decisions, [`crate::grant`], take any name, as their TypeScript does).
+/// decisions, [`crate::grant`](mod@crate::grant), take any name, as their
+/// TypeScript does).
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum ClassName {
     Known(DataClass),

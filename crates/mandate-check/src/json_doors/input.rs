@@ -592,7 +592,7 @@ pub(crate) fn cap_val(v: &Value) -> Result<CapVal, String> {
 }
 
 /// A capability value as the run-time authority decisions take it
-/// (`bridge/src/authority.ts`, [`crate::grant`]): the object kept whole,
+/// (`bridge/src/authority.ts`, [`crate::grant`](mod@crate::grant)): the object kept whole,
 /// every member in its order, unknown ones included (of any value, `null`
 /// too, since nothing reads them), for the outputs to carry, and read for
 /// the predicates as [`cap_val`] reads one, with two members read as that

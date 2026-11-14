@@ -442,8 +442,9 @@ pub struct NarrowInput {
 /// What [`narrow`] gives: `NarrowOutput`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum NarrowOutput {
-    /// `{ caps: [n] }`: the narrowed capability.
-    Caps(Capability),
+    /// `{ caps: [n] }`: the narrowed capability, the one member of the
+    /// list, as the TypeScript gives it.
+    Caps(Vec<Capability>),
     /// `{ partial: true }`: nothing refused so far, with arguments still to
     /// come.
     Partial,
@@ -459,7 +460,7 @@ impl NarrowOutput {
     #[must_use]
     pub fn to_js(&self) -> JsObject {
         match self {
-            NarrowOutput::Caps(n) => JsObject::new().with("caps", caps_js(slice::from_ref(n))),
+            NarrowOutput::Caps(caps) => JsObject::new().with("caps", caps_js(caps)),
             NarrowOutput::Partial => JsObject::new().with("partial", true),
             NarrowOutput::NotText(i) => JsObject::new().with("notText", *i),
             NarrowOutput::Refused(r) => JsObject::new().with("refused", r.to_js()),
@@ -538,7 +539,7 @@ pub fn narrow(input: &NarrowInput) -> NarrowOutput {
     let mut cap = base.cap.clone();
     cap.set_scope(Some(scope));
     cap.set_name(Some(name));
-    NarrowOutput::Caps(Capability { cap, js })
+    NarrowOutput::Caps(vec![Capability { cap, js }])
 }
 
 /// What [`map_scopes`] decides: `MapScopesInput`.

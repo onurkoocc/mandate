@@ -1,5 +1,5 @@
 //! The doors of the run-time authority decisions, `bridge/src/authority.ts`
-//! (in Rust [`crate::grant`]): `grant`, `narrow`, `map_scopes` and
+//! (in Rust [`crate::grant`](mod@crate::grant)): `grant`, `narrow`, `map_scopes` and
 //! `in_flight_overlap`.
 //!
 //! Each takes `{ input }`, the TypeScript function's one argument, and

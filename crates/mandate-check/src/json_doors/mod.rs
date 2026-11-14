@@ -58,7 +58,8 @@
 //! this one: `front` (reading, checking, hashing, printing), `program` (what
 //! a program is made of), `lock` (the lock, the Managed Agents binding, the
 //! sandbox), `patch` (patches, sub-programs, amendments and diffs),
-//! `authority` (the run-time authority decisions of [`crate::grant`], whose
+//! `authority` (the run-time authority decisions of
+//! [`crate::grant`](mod@crate::grant), whose
 //! TypeScript is `bridge/src/authority.ts`) and `tables` (constants and the
 //! codes). [`input`], public, reads the input by
 //! the rules above. Each door's doc comment names the TypeScript function and
