@@ -1,0 +1,15 @@
+[package]
+name = "mandate-testkit"
+description = "What the tests of the Rust Mandate crates share: the repository, its vectors and golden digests, and the pending-list rule of the gate tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+mandate-ir = { path = "../mandate-ir" }
+sha2 = { version = "=0.11.1", default-features = false }
+
+[lints]
+workspace = true

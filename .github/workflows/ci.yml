@@ -163,6 +163,9 @@ jobs:
         run: cargo build --locked --target wasm32-wasip1 -p mandate-ir
       - name: mandate-ir tests under Node's WASI
         run: node scripts/wasi-test.mjs -p mandate-ir -- --nocapture
+      # The gate prints how many pinned outputs the Rust compiler gives and how many are still pending.
+      - name: mandate-testkit tests under Node's WASI (the golden gate and the ambient-authority scan)
+        run: node scripts/wasi-test.mjs -p mandate-testkit -- --nocapture
       # The Rust verifier against the TypeScript runtime on a run made now: a
       # fresh export of a real run (PGlite, in process) must be verified, and
       # the same export with one event changed must be chain_broken at that

@@ -1,6 +1,14 @@
-# The Rust implementation of Mandate. Today it is one crate, mandate-ir, which
-# reads, canonicalises and hashes IR exactly as the TypeScript compiler does;
-# the vectors in vectors/ hold the two to the same bytes.
+# The Rust implementation of Mandate. mandate-ir reads, canonicalises and
+# hashes IR exactly as the TypeScript compiler does, and holds what the ported
+# phases of that compiler share (diagnostics, the output value and
+# JSON.stringify, ECMAScript's member order and number text); verify-journal
+# verifies an exported run journal independently of the runtime; and
+# mandate-testkit is what their tests share (a dev-dependency only). The
+# compiler is being ported on top of mandate-ir: mandate-syntax, then
+# mandate-check, then mandate-views, each depending on the one before, until
+# the Rust compiler gives the TypeScript one's bytes for every output in
+# compiler/test/golden/outputs.json and every case in conformance/. The
+# vectors in vectors/ hold the two to the same bytes.
 [workspace]
 resolver = "3"
 members = ["crates/*"]

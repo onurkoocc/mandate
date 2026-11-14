@@ -28,10 +28,11 @@
 )]
 
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
 
-use mandate_ir::{Diagnostic, Parsed, Value, canonicalize, hash_program, parse, parse_bytes};
+use mandate_ir::{
+    Diagnostic, JsValue, Parsed, Value, canonicalize, hash_program, parse, parse_bytes, stringify,
+};
+use mandate_testkit::{read_bytes, read_json, subdirectories};
 
 /// The codes the strict JSON reader gives.
 const READER_CODES: [&str; 5] = [
@@ -52,23 +53,9 @@ const NEEDS_A_COMPILER: [&str; 6] = [
     "base",
 ];
 
-/// The repository root: `MANDATE_REPO` when it is set (`scripts/wasi-test.mjs`
-/// sets it, since the compile-time path does not exist under WASI), else the
-/// path from this crate's directory.
-fn repo() -> PathBuf {
-    match std::env::var_os("MANDATE_REPO") {
-        Some(root) => PathBuf::from(root),
-        None => Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
-    }
-}
-
 /// Reads a case file with this crate's own reader.
-fn read_case(path: &Path) -> Value {
-    let bytes = fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    match parse_bytes(&bytes) {
-        Ok(parsed) => parsed.value,
-        Err(d) => panic!("{} does not read: {d:?}", path.display()),
-    }
+fn read_case(rel: &str) -> Value {
+    read_json(rel).unwrap_or_else(|e| panic!("{e}"))
 }
 
 fn str_of<'a>(v: &'a Value, key: &str) -> &'a str {
@@ -123,13 +110,12 @@ fn plan(case: &Value) -> Result<Plan<'_>, String> {
 }
 
 /// Reads the JSON input of a case, given inline or as a file next to it.
-fn read_input(dir: &Path, input: &Value) -> Result<Parsed, Vec<Diagnostic>> {
+fn read_input(dir: &str, input: &Value) -> Result<Parsed, Vec<Diagnostic>> {
     if let Some(text) = input.get("text") {
         return parse(text.as_str().expect("text is a string"));
     }
-    let path = dir.join(str_of(input, "file"));
-    let bytes = fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    parse_bytes(&bytes)
+    let rel = format!("{dir}/{}", str_of(input, "file"));
+    parse_bytes(&read_bytes(&rel).unwrap_or_else(|e| panic!("{e}")))
 }
 
 /// How the reader's diagnostics differ from the ones the case expects: in
@@ -163,11 +149,11 @@ fn check_refused(got: &[Diagnostic], want: &[Value]) -> Vec<String> {
         if let Some(facts) = w.get("facts").and_then(Value::as_object) {
             for (key, value) in facts.iter() {
                 let found = g.facts.as_ref().and_then(|m| m.get(key));
-                if found.map(canonicalize) != Some(canonicalize(value)) {
+                let expected = stringify(&JsValue::from(value));
+                if found.and_then(stringify) != expected {
                     problems.push(format!(
-                        "diagnostic {i} ({code}): fact {key}: expected {}, got {:?}",
-                        canonicalize(value),
-                        found.map(canonicalize)
+                        "diagnostic {i} ({code}): fact {key}: expected {expected:?}, got {:?}",
+                        found.and_then(stringify)
                     ));
                 }
             }
@@ -209,34 +195,30 @@ fn check_hashes(program: &Value, want: &Value) -> Vec<String> {
 
 #[test]
 fn cases_that_need_only_the_reader_and_the_hashes() {
-    let mut dirs: Vec<PathBuf> = fs::read_dir(repo().join("conformance"))
-        .expect("the conformance directory")
-        .map(|entry| entry.expect("an entry").path())
-        .filter(|path| path.is_dir())
-        .collect();
-    dirs.sort();
+    let dirs = subdirectories("conformance").expect("the conformance directory");
 
     let mut ran = 0_usize;
     let mut skipped: BTreeMap<String, usize> = BTreeMap::new();
     let mut failures: Vec<String> = Vec::new();
-    for dir in &dirs {
-        let name = dir
-            .file_name()
-            .and_then(|n| n.to_str())
-            .expect("a case directory has a name");
-        let case = read_case(&dir.join("case.json"));
+    for name in &dirs {
+        let dir = format!("conformance/{name}");
+        let case = read_case(&format!("{dir}/case.json"));
         assert_eq!(
             str_of(&case, "format"),
             "mandate/conformance-case/0.1",
             "{name}"
         );
-        assert_eq!(str_of(&case, "id"), name, "the id is the directory name");
+        assert_eq!(
+            str_of(&case, "id"),
+            name.as_str(),
+            "the id is the directory name"
+        );
         match plan(&case) {
             Err(reason) => *skipped.entry(reason).or_default() += 1,
             Ok(plan) => {
                 ran += 1;
                 let input = case.get("input").expect("a case has an input");
-                let problems = match (plan, read_input(dir, input)) {
+                let problems = match (plan, read_input(&dir, input)) {
                     (Plan::Refuse(want), Err(got)) => check_refused(&got, want),
                     (Plan::Refuse(_), Ok(_)) => vec![
                         "the reader accepted an input that the case expects it to refuse"

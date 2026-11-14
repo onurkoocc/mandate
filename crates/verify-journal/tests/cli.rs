@@ -17,10 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 fn case(id: &str, file: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../conformance")
-        .join(id)
-        .join(file)
+    mandate_testkit::path("conformance").join(id).join(file)
 }
 
 fn run(args: &[&OsStr]) -> Output {

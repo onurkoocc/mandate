@@ -11,18 +11,10 @@
     missing_docs
 )]
 
-use std::fs;
-use std::path::Path;
-
 use verify_journal::{Code, PublicKey, Report, Status, public_keys_in, verify_export};
 
 fn case(file: &str) -> Vec<u8> {
-    // MANDATE_REPO is set by scripts/wasi-test.mjs, where the compile-time path does not exist.
-    let root = match std::env::var_os("MANDATE_REPO") {
-        Some(root) => std::path::PathBuf::from(root),
-        None => Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
-    };
-    fs::read(root.join("conformance/J01").join(file)).expect("J01")
+    mandate_testkit::read_bytes(&format!("conformance/J01/{file}")).expect("J01")
 }
 
 fn keys() -> Vec<PublicKey> {

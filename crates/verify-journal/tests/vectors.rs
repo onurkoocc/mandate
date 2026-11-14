@@ -12,20 +12,13 @@
     missing_docs
 )]
 
-use std::fs;
-use std::path::Path;
-
 use verify_journal::export::Event;
 use verify_journal::verify::anchor_message;
 use verify_journal::{Json, canonical, digest, event_hash, number_to_string, read_json};
 
 fn numbers() -> Json {
-    // MANDATE_REPO is set by scripts/wasi-test.mjs, where the compile-time path does not exist.
-    let path = match std::env::var_os("MANDATE_REPO") {
-        Some(root) => Path::new(&root).join("crates/verify-journal/tests/data/numbers.json"),
-        None => Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/numbers.json"),
-    };
-    read_json(&fs::read(path).expect("numbers.json")).expect("numbers.json reads")
+    let bytes = mandate_testkit::read_bytes("crates/verify-journal/tests/data/numbers.json");
+    read_json(&bytes.expect("numbers.json")).expect("numbers.json reads")
 }
 
 fn pairs<'a>(v: &'a Json, key: &str) -> Vec<(&'a str, Option<&'a str>)> {
