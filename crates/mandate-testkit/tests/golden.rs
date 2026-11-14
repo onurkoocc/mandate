@@ -26,7 +26,10 @@ use mandate_testkit::{
     Golden, GoldenOutput, Miss, compare_digest, item_name, omission, read_json, read_text,
     result_codes, run_held_gate, stored_programs,
 };
-use mandate_views::{architecture, authority, cost, program_doc, to_html, to_markdown};
+use mandate_views::{
+    architecture, authority, card, card_doc, cost, envelope_workflows, program_doc, to_html,
+    to_markdown,
+};
 
 /// The outputs the Rust crates do not give yet, as `<output> @ <program>`
 /// patterns: none. What the list is for now: a new rule of the language is
@@ -145,6 +148,43 @@ fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
             }
             let doc = program_doc(&program, lock.as_ref(), Some(&modules));
             Ok(if o.output == "view --format md" {
+                to_markdown(&doc)
+            } else {
+                to_html(&doc)
+            })
+        }
+        // `json(card(p, name, { modules, lock? }))`, and `toMarkdown` and `toHtml` of
+        // `cardDoc(p, name, { modules, lock? })` (`mandate view --card`), of the program
+        // as `check` gives it with its modules and its lock (`lockOf`), when it checks,
+        // for the one workflow of it that has an envelope.
+        "view --card --format json" | "view --card --format md" | "view --card --format html" => {
+            let files = module_files_of(o.program);
+            let modules = modules_of(&files, &files)?;
+            let lock_path = lock_file_of(o.program);
+            let lock = lock_path.as_deref().map(read_json).transpose()?;
+            let r = checked(o.program, true, lock_path.is_some())?;
+            let program = r
+                .program
+                .filter(|_| r.ok)
+                .ok_or("the program does not check, so it has no card")?;
+            let enveloped = envelope_workflows(&program);
+            let [name] = enveloped.as_slice() else {
+                return Err(format!(
+                    "the program has {} workflows with an envelope, not one",
+                    enveloped.len()
+                ));
+            };
+            let missing = || format!("{name} has no card");
+            if o.output == "view --card --format json" {
+                let view =
+                    card(&program, name, lock.as_ref(), Some(&modules)).ok_or_else(missing)?;
+                let mut text = stringify_pretty(&view.to_js()).unwrap_or_default();
+                text.push('\n');
+                return Ok(text);
+            }
+            let doc =
+                card_doc(&program, name, lock.as_ref(), Some(&modules)).ok_or_else(missing)?;
+            Ok(if o.output == "view --card --format md" {
                 to_markdown(&doc)
             } else {
                 to_html(&doc)

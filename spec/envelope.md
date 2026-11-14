@@ -590,7 +590,8 @@ In IR: `{ "op": "map", "bind": "x", "over": <expr>, "max": n, "par": k,
   contract with a criterion a person approves, and no call of a function
   that holds one of these, through any number of calls. Each item would
   wait on its own. A batch asks a person once, after the map, about the
-  list (0.6 adds `human.review` for that).
+  list (0.6 adds `human.review` for that: specified in
+  [`library.md`](library.md#humanreview), not implemented yet).
 - **No critical effect inside a map body.** Each item's critical effect
   would be its own action, authorized one by one. 0.4 refuses it, and a
   change set in a map body with it (E1708); a change set after the map or
@@ -1072,11 +1073,15 @@ would be None, and a program with an envelope needs both (INV-11).
 ## Not in 0.4
 
 - `shapes` (the patterns a lead may apply), `human.review`, `waive by`,
-  libraries, patterns and connectors: 0.6.
+  libraries, patterns and connectors: 0.6, specified in
+  [`library.md`](library.md) and not implemented yet.
 - `stage`, `report`, the attention view and `asks`: 0.7.
 - An egress proxy for sub-programs that need the network: 0.5
   ([`boundary.md`](boundary.md#the-egress-proxy)). On a host that does not
   reach one, a sub-program with `net.https` is refused like any sandbox that
   needs it.
-- A critical effect inside a `map` body.
+- A critical effect inside a `map` body. 0.6 specifies one under narrow
+  conditions, in a 0.6 program only
+  ([`library.md`](library.md#the-batch-commit-step)), and it is not
+  implemented yet; for a program of 0.4 and 0.5, E1708 stays as above.
 - `await` and a lead that runs several sub-programs at once.

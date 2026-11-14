@@ -31,6 +31,15 @@ runtime and the sandboxes do with it) is
 | Denials and their reasons | [Denials](#denials) |
 | What the proxy does not protect against | [Limits](#limits) |
 
+**Connectors (0.6).** *Specified in
+[`library.md`](library.md#egress); not implemented yet.* A 0.6 package's
+connectors reach their MCP servers through the proxy as the control
+plane's other gateways do: a `gateway` session per connector, its one
+destination the server's host with the method `POST` and the credential
+the lock binds to the connector. Nothing on this page changes for them:
+the proxy's configuration still says which secret may go to which host,
+and a connector's credential is a name the proxy holds.
+
 ## Where secrets live
 
 Only in the proxy. The operator starts it, in an environment of its own; the
