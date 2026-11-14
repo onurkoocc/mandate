@@ -574,7 +574,10 @@ mod tests {
                 .count();
             assert_eq!(claimed, 1, "{}", f.glob);
         }
-        assert!(check_pending(&["*MDT-E1001*", "apply_ops @ *"]).is_ok());
+        // Every family is ported, so none is a family a list may name.
+        assert!(FAMILIES.iter().all(|f| f.ported));
+        assert!(check_pending(&["apply_ops @ *"]).is_ok());
+        assert!(check_pending(&["*MDT-E1001*"]).is_err());
         assert!(check_pending(&["*MDT-E022*"]).is_err());
         assert!(check_pending(&["*MDT-E10*"]).is_err());
         assert!(
