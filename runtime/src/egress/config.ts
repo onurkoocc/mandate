@@ -44,9 +44,10 @@ const CREDENTIAL_KEYS = ["env", "hosts", "header", "template"];
 // The names a lock's `egress` may bind (spec/boundary.md "Lock 0.5"): the proxy must be able to hold every one.
 export const CREDENTIAL_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
-const TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+/** A header name: an HTTP token. A lock's connector binding is held to the same rules as a credential here. */
+export const HEADER_TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 /** Headers the proxy itself sets or removes; a credential is never sent in one. */
-const RESERVED_HEADERS = new Set(["host", "content-length", "transfer-encoding", "connection", "keep-alive", "proxy-connection", "proxy-authorization", "proxy-authenticate", "te", "trailer", "upgrade", "expect", "accept-encoding", "http2-settings"]);
+export const RESERVED_HEADERS: ReadonlySet<string> = new Set(["host", "content-length", "transfer-encoding", "connection", "keep-alive", "proxy-connection", "proxy-authorization", "proxy-authenticate", "te", "trailer", "upgrade", "expect", "accept-encoding", "http2-settings"]);
 /** The shortest secret the proxy holds: a shorter one would be scrubbed out of ordinary text in every response. */
 export const MIN_SECRET_BYTES = 8;
 export const MAX_SECRET_BYTES = 8192;
@@ -109,7 +110,7 @@ export function egressConfig(value: unknown, where: string, base: string): Egres
     if (!Array.isArray(hosts) || hosts.length === 0 || !hosts.every(validHost)) bad(`${at}.hosts is a non-empty list of host names in lower case, without a port`);
     if (new Set(hosts as string[]).size !== (hosts as string[]).length) bad(`${at}.hosts lists a host twice`);
     const header = cr["header"];
-    if (typeof header !== "string" || !TOKEN.test(header) || header !== header.toLowerCase()) bad(`${at}.header is a header name in lower case`);
+    if (typeof header !== "string" || !HEADER_TOKEN.test(header) || header !== header.toLowerCase()) bad(`${at}.header is a header name in lower case`);
     if (RESERVED_HEADERS.has(header as string)) bad(`${at}.header cannot be ${header as string}: the proxy sets or removes that header itself`);
     const template = cr["template"];
     if (typeof template !== "string" || template.split("{secret}").length !== 2) bad(`${at}.template has {secret} exactly once, as in "Bearer {secret}"`);

@@ -5,6 +5,10 @@
 // and the proxy, which the operator started in an environment of its own,
 // puts the secret in on the way out.
 //
+// - A gateway is a spec (`GatewaySpec`): its host, methods, credential, and
+//   the header and template its placeholder goes in. The model and GitHub
+//   gateways are two built-in ones (`GATEWAYS`); a connector's is made from
+//   its URL and its lock entry (`connectorGateway`, spec/library.md "Egress").
 // - One admin connection per runtime (`EgressLink`), opened at first use. A
 //   view, a status or a replay calls no adapter, so it never reaches the
 //   proxy.
@@ -25,23 +29,113 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import { EgressClient } from "./egress/client.js";
+import { CREDENTIAL_NAME, HEADER_TOKEN, RESERVED_HEADERS, validHost } from "./egress/config.js";
 import { DENIAL_HEADER, EgressError, type Denial, type Destination } from "./egress/proxy.js";
 import { Violation } from "./signals.js";
 
-export type GatewayName = "model" | "github";
-
-/** The host each gateway reaches. */
-export const GATEWAY_HOSTS: Record<GatewayName, string> = { model: "api.anthropic.com", github: "api.github.com" };
+/**
+ * What a gateway session is opened with and its requests are sent with (spec/egress.md "Gateway sessions"): the
+ * one host it reaches, the methods it allows toward it (`null`, any), the credential the proxy puts in, and the header
+ * and template the request carries the placeholder in. `name` names the gateway in messages and in the session's
+ * `command` (`gateway:<name>`).
+ */
+export interface GatewaySpec {
+  readonly name: string;
+  readonly host: string;
+  readonly methods: readonly string[] | null;
+  readonly credential: string;
+  /**
+   * The header the credential goes in, with `{secret}` in `template` where it goes: what the API expects. The proxy's
+   * credential is configured with the same header and template, or the proxy refuses the placeholder
+   * (`placeholder_misuse`).
+   */
+  readonly header: string;
+  readonly template: string;
+}
 
 /**
- * The header each gateway's requests carry their credential in, with `{secret}` where it goes: what the API expects.
- * The proxy's credential for the gateway is configured with the same header and template, or the proxy refuses the
- * placeholder (`placeholder_misuse`).
+ * One of the control plane's own gateways: a spec but for its credential, which the configuration names
+ * (`egress.gateways`), with the variables of the runtime's environment that would hold its secret.
  */
+export interface BuiltinGateway extends Omit<GatewaySpec, "credential"> {
+  readonly secrets: readonly string[];
+}
+
+/** The model and GitHub gateways (spec/boundary.md "The control plane's gateways"): any method, toward one host. */
+export const GATEWAYS = {
+  model: { name: "model", host: "api.anthropic.com", methods: null, header: "x-api-key", template: "{secret}", secrets: ["CLAUDE_API_KEY", "ANTHROPIC_API_KEY"] },
+  github: { name: "github", host: "api.github.com", methods: null, header: "authorization", template: "Bearer {secret}", secrets: ["MANDATE_GITHUB_TOKEN"] },
+} as const satisfies Record<string, BuiltinGateway>;
+
+/** The names of the built-in gateways, as `egress.gateways` turns them on. A gateway of a connector has a spec of its own. */
+export type GatewayName = keyof typeof GATEWAYS;
+
+/** A built-in gateway's spec, with the credential the configuration names for it. */
+export function gatewaySpec(name: GatewayName, credential: string): GatewaySpec {
+  const { secrets: _, ...g } = GATEWAYS[name];
+  return { ...g, credential };
+}
+
+/** The host each built-in gateway reaches. */
+export const GATEWAY_HOSTS: Record<GatewayName, string> = { model: GATEWAYS.model.host, github: GATEWAYS.github.host };
+
+/** The header and template each built-in gateway's requests carry their credential in. */
 export const GATEWAY_HEADERS: Record<GatewayName, { header: string; template: string }> = {
-  model: { header: "x-api-key", template: "{secret}" },
-  github: { header: "authorization", template: "Bearer {secret}" },
+  model: { header: GATEWAYS.model.header, template: GATEWAYS.model.template },
+  github: { header: GATEWAYS.github.header, template: GATEWAYS.github.template },
 };
+
+/** A connector's binding in the lock (spec/library.md "Lock 0.6"): the credential, and its header and template when not the default. */
+export interface ConnectorBinding {
+  credential: string;
+  header?: string;
+  template?: string;
+}
+
+/** A connector's gateway: its spec, and the URL its MCP requests are sent to, whose path the gateway keeps. */
+export interface ConnectorGateway {
+  spec: GatewaySpec;
+  /** `https://<host><path>`: what the MCP client posts to, through the gateway's `fetch`. */
+  endpoint: string;
+}
+
+/** The header and template a connector's credential goes in when its lock entry names none. */
+export const CONNECTOR_HEADER = { header: "authorization", template: "Bearer {secret}" } as const;
+
+/**
+ * The gateway of connector `name` (`<module>.<connector>`) declared with `mcp(url)` and bound by the lock to `binding`
+ * (spec/library.md "Egress"): the URL's host, `POST` only, the lock's credential, in the lock's header and template
+ * or `authorization: Bearer {secret}`. The URL is one absolute `https://` URL with no user, password, port, query or
+ * fragment, whose host is a host name or an IPv4 address; anything else, or a binding the proxy could not hold, is
+ * `bad_connector`. The compiler refuses such a program (E1402) and such a lock; this holds the runtime to the same.
+ */
+export function connectorGateway(name: string, url: string, binding: ConnectorBinding): ConnectorGateway {
+  const bad = (m: string): never => {
+    throw new Violation("bad_connector", `connector ${name}: ${m}`);
+  };
+  const raw = /^https:\/\/([^/?#]*)([^?#]*)$/i.exec(url);
+  if (!raw) bad("its server is one absolute https:// URL, with no query or fragment");
+  const authority = raw![1]!;
+  if (authority.includes("@")) bad("its server's URL names no user or password");
+  if (/:[0-9]*$/.test(authority) && !/^\[[^\]]*\]$/.test(authority)) bad("its server's URL names no port: a gateway session reaches port 443");
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return bad("its server is one absolute https:// URL");
+  }
+  if (u.protocol !== "https:" || u.username || u.password || u.port || u.search || u.hash) bad("its server is one absolute https:// URL, with no user, password, port, query or fragment");
+  // The host is the URL's as written: a URL parser would take `https:///x` as the host `x`, and fold a backslash, a
+  // percent-encoding or a Unicode name into another host than the one written.
+  if (!validHost(u.hostname) || authority.toLowerCase() !== u.hostname) bad("its server's host is a host name or an IPv4 address, as written");
+  if (typeof binding.credential !== "string" || !CREDENTIAL_NAME.test(binding.credential)) bad("its lock entry's credential is a name of letters, digits, _ and -, starting with a letter, at most 64 characters");
+  if ((binding.header === undefined) !== (binding.template === undefined)) bad("its lock entry gives a header and a template together, or neither");
+  const header = binding.header ?? CONNECTOR_HEADER.header;
+  const template = binding.template ?? CONNECTOR_HEADER.template;
+  if (typeof header !== "string" || !HEADER_TOKEN.test(header) || header !== header.toLowerCase() || RESERVED_HEADERS.has(header)) bad("its lock entry's header is a header name in lower case that the proxy does not set itself");
+  if (typeof template !== "string" || template.split("{secret}").length !== 2 || !/^[\x20-\x7e]*$/.test(template) || template !== template.trim()) bad("its lock entry's template is printable ASCII with {secret} exactly once");
+  return { spec: { name, host: u.hostname, methods: ["POST"], credential: binding.credential, header, template }, endpoint: `https://${u.hostname}${u.pathname}` };
+}
 
 /**
  * The header a proxy's denial carries its reason in (spec/egress.md "Denials"). A conforming proxy removes an
@@ -57,7 +151,7 @@ export const GATEWAY_RENEW_MS = 900_000;
 export const GATEWAY_ENV = { url: "MANDATE_EGRESS_MODEL_URL", placeholder: "MANDATE_EGRESS_MODEL_PLACEHOLDER" } as const;
 
 /** The variables of the runtime's environment that hold each gateway's secret; with the gateway on, none may be set. */
-export const GATEWAY_SECRETS: Record<GatewayName, readonly string[]> = { model: ["CLAUDE_API_KEY", "ANTHROPIC_API_KEY"], github: ["MANDATE_GITHUB_TOKEN"] };
+export const GATEWAY_SECRETS: Record<GatewayName, readonly string[]> = { model: GATEWAYS.model.secrets, github: GATEWAYS.github.secrets };
 
 /** Who a runtime's gateway sessions are for: what `revoke` selects by. */
 export interface EgressScope {
@@ -190,7 +284,7 @@ export class EgressLink {
    * and holds each credential a gateway sends and each one the package's lock binds. Otherwise `egress_unavailable`,
    * naming the proxy and the credential.
    */
-  async ready(credentials: Partial<Record<GatewayName, string>>, bound: ReadonlyArray<{ agent: string; host: string; credential: string }> = []): Promise<void> {
+  async ready(credentials: Readonly<Record<string, string | undefined>>, bound: ReadonlyArray<{ agent: string; host: string; credential: string }> = []): Promise<void> {
     const held = await this.credentials();
     for (const [g, name] of Object.entries(credentials)) {
       if (name !== undefined && !held.includes(name)) throw new Violation("egress_unavailable", `the egress proxy at ${this.o.admin} holds no credential ${name}, which the ${g} gateway sends`);
@@ -228,14 +322,21 @@ export class EgressLink {
     }
   }
 
-  /** Opens a gateway session to `host` with `credential`, for this runtime's run. */
-  async open(label: string, host: string, credential: string): Promise<Omit<Session, "inflight" | "retired">> {
+  /**
+   * Opens a gateway session to `spec`'s host, with its methods and credential, for this runtime's run. `label` names
+   * the session (`gw.<label>.<random>`) and its command (`gateway:<label>`); a label the session id cannot hold, as a
+   * long connector name could be, is named by its digest.
+   */
+  async open(label: string, spec: GatewaySpec): Promise<Omit<Session, "inflight" | "retired">> {
     const scope = this.o.scope;
     if (!scope) throw new Violation("egress_unavailable", `the ${label} gateway was set up for no run, so it opens no session`);
-    const session = `gw.${label}.${randomBytes(8).toString("hex")}`;
+    const named = /^[A-Za-z0-9._:-]{1,100}$/.test(label) ? label : `h${createHash("sha256").update(label).digest("hex").slice(0, 32)}`;
+    const session = `gw.${named}.${randomBytes(8).toString("hex")}`;
     const at = this.now();
+    const { host, credential } = spec;
+    const methods = spec.methods === null ? null : [...spec.methods];
     try {
-      const s = await this.call((c) => c.openSession({ session, tenant: scope.tenant, run: scope.run, command: `gateway:${label}`, kind: "gateway", destinations: [{ host, methods: null, credential }], ttl_ms: this.ttlMs }));
+      const s = await this.call((c) => c.openSession({ session, tenant: scope.tenant, run: scope.run, command: sessionCommand(`gateway:${label}`), kind: "gateway", destinations: [{ host, methods, credential }], ttl_ms: this.ttlMs }));
       this.open_.add(session);
       const placeholder = s.placeholders[credential];
       if (!placeholder) throw new Error(`the egress proxy gave no placeholder for ${credential}`);
@@ -305,22 +406,41 @@ function resendable(init: RequestInit | undefined): boolean {
 
 /**
  * One gateway: a `fetch` for an adapter whose requests go to `https://<host>/…`. It sends them to the gateway
- * session's base URL, with the session's placeholder in the gateway's header.
+ * session's base URL, with the session's placeholder in the gateway's header. It is made from a spec, or, for the
+ * two built-in gateways, from a name and the credential the configuration names for it.
  */
 export class Gateway {
   private current: Session | undefined;
   private opening: Promise<Session> | undefined;
   private refusal: Violation | undefined;
+  readonly spec: GatewaySpec;
+  readonly name: string;
+  readonly credential: string;
   readonly host: string;
+  private readonly label: string;
+  private readonly send: typeof fetch;
 
+  constructor(link: EgressLink, spec: GatewaySpec, label?: string, send?: typeof fetch);
+  constructor(link: EgressLink, name: GatewayName, credential: string, label?: string, send?: typeof fetch);
   constructor(
     private readonly link: EgressLink,
-    readonly name: GatewayName,
-    readonly credential: string,
-    private readonly label: string = name,
-    private readonly send: typeof fetch = fetch,
+    gateway: GatewaySpec | GatewayName,
+    a?: string,
+    b?: string | typeof fetch,
+    c?: typeof fetch,
   ) {
-    this.host = GATEWAY_HOSTS[name];
+    if (typeof gateway === "string") {
+      this.spec = gatewaySpec(gateway, a!);
+      this.label = (b as string | undefined) ?? gateway;
+      this.send = c ?? fetch;
+    } else {
+      this.spec = gateway;
+      this.label = a ?? gateway.name;
+      this.send = (b as typeof fetch | undefined) ?? fetch;
+    }
+    this.name = this.spec.name;
+    this.credential = this.spec.credential;
+    this.host = this.spec.host;
   }
 
   /** The session to send on: the current one while it has longer than `renewMs` to live, else a new one. */
@@ -333,7 +453,7 @@ export class Gateway {
     const s = this.current;
     if (s && s.expiresAt - this.link.now() > this.link.renewMs) return s;
     this.opening ??= this.link
-      .open(this.label, this.host, this.credential)
+      .open(this.label, this.spec)
       .then((opened) => {
         const next: Session = { ...opened, inflight: 0, retired: false };
         if (this.current) this.retire(this.current);
@@ -355,7 +475,7 @@ export class Gateway {
   readonly fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = urlOf(input);
     if (url.protocol !== "https:" || url.host !== this.host) throw new Error(`the ${this.label} gateway reaches ${this.host} only, not ${url.host}`);
-    const { header, template } = GATEWAY_HEADERS[this.name];
+    const { header, template } = this.spec;
     for (let attempt = 0; ; attempt++) {
       const s = await this.use();
       s.inflight++;
@@ -388,13 +508,13 @@ export class Gateway {
 export function givenGateway(env: NodeJS.ProcessEnv, send: typeof fetch = fetch): typeof fetch {
   const base = env[GATEWAY_ENV.url];
   const placeholder = env[GATEWAY_ENV.placeholder];
-  const host = GATEWAY_HOSTS.model;
+  const { host, header, template } = GATEWAYS.model;
   return async (input, init) => {
     if (!base || !placeholder) throw new Violation("egress_unavailable", `the model gateway is on, and this process was not given its address and placeholder (${GATEWAY_ENV.url}, ${GATEWAY_ENV.placeholder})`);
     const url = urlOf(input);
     if (url.protocol !== "https:" || url.host !== host) throw new Error(`the model gateway reaches ${host} only, not ${url.host}`);
     try {
-      return await send(`${base}${url.pathname}${url.search}`, { ...init, headers: withHeader(init, GATEWAY_HEADERS.model.header, GATEWAY_HEADERS.model.template.replace("{secret}", placeholder)) });
+      return await send(`${base}${url.pathname}${url.search}`, { ...init, headers: withHeader(init, header, template.replace("{secret}", placeholder)) });
     } catch (e) {
       if (refused(e)) throw new Violation("egress_unavailable", `the model gateway's session at ${base} does not answer: the egress proxy closed it or stopped`);
       throw e;
