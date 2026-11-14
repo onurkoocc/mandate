@@ -259,6 +259,13 @@ a library; it has no command line.
 - `crates/mandate-views`: the document model with Markdown and HTML, the
   views of a program (architecture, authority, cost, system) and the diff
   view.
+- `crates/mandate-lib`: the model of a library: its manifest, its digest and
+  its version rules.
+- `crates/mandate-doors`: the JSON doors, one dispatcher over the compiler's
+  functions.
+- `crates/mandate-wasm`: the compiler as a `wasm32-wasip1` command module,
+  which the Node runtime calls.
+- `crates/mandate-cli`: the native command line, the `mandate` binary.
 - `crates/mandate-testkit`: tests only, the gates that hold the crates
   above to the TypeScript compiler.
 

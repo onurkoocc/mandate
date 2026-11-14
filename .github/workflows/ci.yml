@@ -2,20 +2,21 @@ name: ci
 
 on:
   push:
-    branches: [main, "claude/boundary-r*"]
+    branches: [main, "claude/library-r*"]
   pull_request:
 
 # What runs when. A pull request and a push to main run every job. A push to a
-# claude/boundary-r* branch, the slices of the Rust port, runs only the rust
-# and parity jobs: a slice is brought to green on its branch before its pull
-# request is opened, and the jobs that are slow and need PostgreSQL or a real
-# sandbox (test, sandbox, sandbox-windows) are left to the pull request.
+# claude/library-r* branch, the slices of a release, runs only the rust and
+# parity jobs, without a pull request: a slice is brought to green on its
+# branch before its pull request is opened, and the jobs that are slow and need
+# PostgreSQL or a real sandbox (test, sandbox, sandbox-windows) are left to the
+# pull request.
 # A branch with an open pull request is pushed to twice over, as a push and as
 # a pull request, so those two jobs run twice.
 #
 # Every job reads the repository and nothing else. Actions are pinned to full
 # commit SHAs (the tag is in the comment) so a moved tag cannot change what
-# runs; Renovate keeps the pins current. Installs run no lifecycle scripts:
+# runs; the pins are updated by hand, with the tag in the comment. Installs run no lifecycle scripts:
 # none of the packages with an install script is needed by these jobs.
 permissions:
   contents: read
@@ -257,30 +258,18 @@ jobs:
       # --nocapture so that the log shows how many conformance cases the crates ran and skipped.
       - name: Rust tests, against the vectors the TypeScript compiler writes and the conformance cases
         run: cargo test --locked -- --nocapture
-      # mandate-ir for WebAssembly: it is kept buildable for wasm32-wasip1 (release
-      # 0.6 may call the Rust compiler that way), and its tests run there under Node's
-      # WASI, the way a developer machine that cannot run a native test runs them
-      # (scripts/wasi-test.mjs says what that cannot run). Node first.
+      # Node and its build come first: the freshness step below runs the vector scripts, which read the built
+      # TypeScript compiler, and verify-journal is tried against a run the built runtime makes.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.22.1
           cache: npm
-      - name: Build mandate-ir and mandate-syntax for WebAssembly
-        run: cargo build --locked --target wasm32-wasip1 -p mandate-ir -p mandate-syntax
-      - name: mandate-ir tests under Node's WASI
-        run: node scripts/wasi-test.mjs -p mandate-ir -- --nocapture
-      # The syntax gates print how many inputs of vectors/syntax.json the parser reads as TypeScript does.
-      - name: mandate-syntax tests under Node's WASI (the syntax and span gates)
-        run: node scripts/wasi-test.mjs -p mandate-syntax -- --nocapture
-      # The gate prints how many pinned outputs the Rust compiler gives and how many are still pending.
-      - name: mandate-testkit tests under Node's WASI (the golden gate and the ambient-authority scan)
-        run: node scripts/wasi-test.mjs -p mandate-testkit -- --nocapture
+      - run: npm ci --ignore-scripts
+      - run: npm run build
       # The Rust verifier against the TypeScript runtime on a run made now: a
       # fresh export of a real run (PGlite, in process) must be verified, and
       # the same export with one event changed must be chain_broken at that
       # event, each with the report the TypeScript verifier gives, byte for byte.
-      - run: npm ci --ignore-scripts
-      - run: npm run build
       - name: Build verify-journal
         run: cargo build --locked -p verify-journal
       - name: verify-journal verifies a fresh export of a real run, and finds one event changed
@@ -303,73 +292,83 @@ jobs:
           seq="$(cat "$fresh/tampered-seq")"
           grep -A1 '"code": "chain_broken",' "$fresh/rust-tampered.json" | grep -q "\"seq\": $seq\$"
           cmp "$fresh/tampered-report.json" "$fresh/rust-tampered.json"
-      # mandate-check (capabilities, the std tables, governance-class files, paths)
-      # for WebAssembly and its tests under Node's WASI, and its test data: what
-      # scripts/caps-vectors.mjs writes from the TypeScript compiler built above
-      # must be what is committed.
-      - name: Build mandate-check for WebAssembly
-        run: cargo build --locked --target wasm32-wasip1 -p mandate-check
-      - name: mandate-check tests under Node's WASI
-        run: node scripts/wasi-test.mjs -p mandate-check -- --nocapture
-      # mandate-views (the documents: Markdown and HTML, and the document of a diff).
-      - name: Build mandate-views for WebAssembly
-        run: cargo build --locked --target wasm32-wasip1 -p mandate-views
-      - name: mandate-views tests under Node's WASI
-        run: node scripts/wasi-test.mjs -p mandate-views -- --nocapture
-      - name: The test data of mandate-check is what the TypeScript compiler gives now
+      # The test data of the Rust crates is written by the scripts/*-vectors.mjs scripts from the TypeScript compiler
+      # built above, and what each writes must be what is committed. Every script is run, and after each one the
+      # working tree must be as committed: a modified or an untracked file is an error that names the script. The
+      # scripts that read only the committed inputs.json write the expected.json beside it, as the TypeScript gives
+      # it: caps-vectors (capabilities, the std tables, governance-class files, paths), front-vectors (link,
+      # resolveNames, the role checks and check), lock-vectors (the lock, the executor binding checks and the sandbox
+      # requirements), views-vectors (the comparison of two programs, patches, Number(text) and the documents, as
+      # digests of their texts), static-vectors (the static checks, the types and the cost model) and doors-vectors
+      # (the system model's checks, checkPatch, checkSubprogram, checkAmendment and subprogramLinked). A new
+      # scripts/NAME-vectors.mjs is picked up without a change here.
+      - name: The test data of the Rust crates is what the TypeScript compiler gives now
         run: |
-          node scripts/caps-vectors.mjs
-          git diff --exit-code -- crates/mandate-check/tests/data
-          untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/data)"
-          if [ -n "$untracked" ]; then echo "::error::caps-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
-      # scripts/front-vectors.mjs reads only the committed inputs.json and
-      # writes expected.json beside it: what the TypeScript gives for link,
-      # resolveNames, the role checks and check on them.
-      - name: The expectations of mandate-check's front stages are what the TypeScript compiler gives now
+          for script in scripts/*-vectors.mjs; do
+            echo "--- $script"
+            node "$script"
+            changed="$(git status --porcelain)"
+            if [ -n "$changed" ]; then
+              echo "::error::$script changed or wrote files that are not committed:"
+              echo "$changed"
+              git diff
+              exit 1
+            fi
+          done
+      # mandate-ir, mandate-syntax and the other library crates for WebAssembly: they are kept buildable for
+      # wasm32-wasip1, which is what release 0.6 calls the Rust compiler as. The crates are the directories of
+      # crates/ (the package name is the name in each Cargo.toml), so that a new crate is built here and tested
+      # below without a change to this file.
+      - name: Build the crates for WebAssembly
         run: |
-          node scripts/front-vectors.mjs
-          git diff --exit-code -- crates/mandate-check/tests/front
-          untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/front)"
-          if [ -n "$untracked" ]; then echo "::error::front-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
-      # scripts/lock-vectors.mjs reads only the committed inputs.json and
-      # writes expected.json beside it: what the TypeScript gives for the lock,
-      # the executor binding checks and the sandbox requirements on inputs that
-      # reach the branches no stored result reaches.
-      - name: The expectations of mandate-check's lock are what the TypeScript compiler gives now
+          packages=""
+          for manifest in crates/*/Cargo.toml; do
+            crate="$(sed -n 's/^name = "\(.*\)"$/\1/p' "$manifest" | head -n 1)"
+            if [ -z "$crate" ]; then echo "::error::$manifest has no package name"; exit 1; fi
+            case "$crate" in
+              verify-journal | mandate-cli) ;;
+              *) packages="$packages -p $crate" ;;
+            esac
+          done
+          echo "building:$packages"
+          cargo build --locked --target wasm32-wasip1 $packages
+      # The tests of every crate under Node's WASI, the way a developer machine that cannot run a native test runs
+      # them (scripts/wasi-test.mjs says what that cannot run). Every crate of crates/ is run, except verify-journal
+      # and mandate-cli: their tests start processes or read files outside the repository, which WASI preview 1
+      # cannot do (they run natively above). A crate with no test still builds its test executable, which runs 0
+      # tests and exits 0; a crate that built none, or whose executable trapped or exited non-zero, fails the
+      # driver, and so this step, which names the crate and goes on to the next so that one run shows every failure.
+      # The log shows how many conformance cases the crates ran, how many inputs of vectors/syntax.json the parser
+      # reads as TypeScript does, and how many pinned outputs the Rust compiler gives and how many are still pending.
+      - name: Tests of the crates under Node's WASI
         run: |
-          node scripts/lock-vectors.mjs
-          git diff --exit-code -- crates/mandate-check/tests/lock
-          untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/lock)"
-          if [ -n "$untracked" ]; then echo "::error::lock-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
-      # scripts/views-vectors.mjs reads only the committed inputs.json and
-      # writes expected.json beside it: what the TypeScript gives for the
-      # comparison of two programs, patches, Number(text) and the documents,
-      # as digests of the texts it writes.
-      - name: The expectations of mandate-views' vectors are what the TypeScript compiler gives now
+          failed=""
+          for manifest in crates/*/Cargo.toml; do
+            crate="$(sed -n 's/^name = "\(.*\)"$/\1/p' "$manifest" | head -n 1)"
+            if [ -z "$crate" ]; then echo "::error::$manifest has no package name"; exit 1; fi
+            case "$crate" in
+              verify-journal | mandate-cli)
+                echo "--- $crate: not run under WASI (it starts processes or reads files)"
+                continue
+                ;;
+            esac
+            echo "::group::$crate under Node's WASI"
+            if ! node scripts/wasi-test.mjs -p "$crate" -- --nocapture; then
+              echo "::endgroup::"
+              echo "::error::the tests of $crate failed under Node's WASI"
+              failed="$failed $crate"
+            else
+              echo "::endgroup::"
+            fi
+          done
+          if [ -n "$failed" ]; then echo "::error::failed under Node's WASI:$failed"; exit 1; fi
+      # The module the Node runtime will call: the compiler as a WebAssembly command, with a ceiling on its memory
+      # (256 MiB), a 4 MiB stack, and the stack placed first so that an overflow traps instead of overwriting data.
+      - name: Build the WebAssembly module of the compiler (mandate-wasm)
         run: |
-          node scripts/views-vectors.mjs
-          git diff --exit-code -- crates/mandate-views/tests/data
-          untracked="$(git ls-files --others --exclude-standard -- crates/mandate-views/tests/data)"
-          if [ -n "$untracked" ]; then echo "::error::views-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
-      # scripts/static-vectors.mjs reads only the committed inputs.json and
-      # writes expected.json beside it: what the TypeScript gives for its
-      # static checks, its types and its cost model on them.
-      - name: The expectations of mandate-check's static checks are what the TypeScript compiler gives now
-        run: |
-          node scripts/static-vectors.mjs
-          git diff --exit-code -- crates/mandate-check/tests/statics
-          untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/statics)"
-          if [ -n "$untracked" ]; then echo "::error::static-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
-      # scripts/doors-vectors.mjs reads only the committed inputs.json and
-      # writes expected.json beside it: what the TypeScript gives for the
-      # system model's checks and for checkPatch, checkSubprogram,
-      # checkAmendment and subprogramLinked on them.
-      - name: The expectations of mandate-check's front doors are what the TypeScript compiler gives now
-        run: |
-          node scripts/doors-vectors.mjs
-          git diff --exit-code -- crates/mandate-check/tests/doors
-          untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/doors)"
-          if [ -n "$untracked" ]; then echo "::error::doors-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
+          cargo rustc --locked -p mandate-wasm --release --target wasm32-wasip1 --bin mandate-wasm -- \
+            -C link-arg=--max-memory=268435456 -C link-arg=-zstack-size=4194304 -C link-arg=--stack-first
+          ls -l target/wasm32-wasip1/release/mandate-wasm.wasm
 
   # The golden gate of the rust job compares digests, and a digest that differs says nothing about what differs. This
   # job writes the output texts of both compilers into two directories, in the layout vectors/README.md names ("The
@@ -405,7 +404,8 @@ jobs:
         run: |
           want="$(node -e 'const g = JSON.parse(require("fs").readFileSync("compiler/test/golden/outputs.json", "utf8")); console.log(Object.values(g).reduce((n, row) => n + Object.keys(row).length, 0))')"
           echo "the golden file pins $want outputs"
-          if [ "$want" -ne 231 ]; then echo "::error::the golden file pins $want outputs, and this job expects 231: change the number here with the golden file"; exit 1; fi
+          # The outputs of 0.1 to 0.5 are 231: the golden file may grow, and may not shrink.
+          if [ "$want" -lt 231 ]; then echo "::error::the golden file pins $want outputs, fewer than the 231 of releases 0.1 to 0.5: an output was removed"; exit 1; fi
           for side in ts rust; do
             have="$(find "$PARITY/$side" -type f | wc -l)"
             echo "$side: $have files"
