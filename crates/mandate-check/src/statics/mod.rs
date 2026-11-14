@@ -1139,7 +1139,7 @@ impl<'a> Checker<'a> {
             envelope,
             agents,
         };
-        block_cost(&env, stmts, base, &Vec::new())
+        block_cost(&env, stmts, base, &[])
     }
 
     /// `checkBudget(name, d, base, under)`: what the body hands out against
@@ -1323,8 +1323,7 @@ impl<'a> Checker<'a> {
 
     /// `fromTypeExpr(d.type, this)` of a `type` definition.
     pub(crate) fn def_type(d: Definition<'_>) -> Ty {
-        d.type_expr()
-            .map_or(UNKNOWN, |t| from_type_expr(t, &Vec::new()))
+        d.type_expr().map_or(UNKNOWN, |t| from_type_expr(t, &[]))
     }
 
     /// `expectBool(v, path)`.

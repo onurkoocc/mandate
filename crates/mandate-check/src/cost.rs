@@ -436,9 +436,6 @@ fn scale(c: &StaticCost, n: f64) -> StaticCost {
     }
 }
 
-/// The functions being counted around a call: `inFns`, a `Set`.
-pub type InFns = Vec<String>;
-
 /// Upper bound of a block. Inside a called function (`in_fns` not empty),
 /// costs are reported at the call site, `base`: `blockCost(env, stmts,
 /// base, inFns)`.
@@ -447,7 +444,7 @@ pub fn block_cost(
     env: &CostEnv<'_, '_>,
     stmts: &[Value],
     base: &str,
-    in_fns: &InFns,
+    in_fns: &[String],
 ) -> StaticCost {
     let mut total = StaticCost::default();
     let at = |p: String| {
@@ -519,7 +516,7 @@ fn skill_of<'d>(agent: Definition<'d>, skill: &str) -> Option<&'d Value> {
 /// Upper bound of what an expression hands out, delegates and budgeted
 /// functions it runs: `exprCost(env, e, path, inFns)`.
 #[must_use]
-pub fn expr_cost(env: &CostEnv<'_, '_>, e: Expr<'_>, path: &str, in_fns: &InFns) -> StaticCost {
+pub fn expr_cost(env: &CostEnv<'_, '_>, e: Expr<'_>, path: &str, in_fns: &[String]) -> StaticCost {
     let mut c = StaticCost::default();
     let sub = |x: Expr<'_>| expr_cost(env, x, path, in_fns);
     let within = |p: String| {
@@ -653,7 +650,7 @@ pub fn expr_cost(env: &CostEnv<'_, '_>, e: Expr<'_>, path: &str, in_fns: &InFns)
         let counted = !in_fns.iter().any(|n| n == name) && !env.recursive.contains(name);
         let body = || {
             if counted {
-                let mut deeper = in_fns.clone();
+                let mut deeper = in_fns.to_vec();
                 if !deeper.iter().any(|n| n == name) {
                     deeper.push(name.to_owned());
                 }
@@ -714,6 +711,6 @@ pub fn static_cost<'p>(
         &env,
         wf.body(),
         &format!("/defs/{workflow}/body"),
-        &Vec::new(),
+        &[],
     ))
 }

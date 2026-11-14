@@ -22,6 +22,7 @@
     clippy::expect_used,
     clippy::panic,
     clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
     missing_docs
 )]
 

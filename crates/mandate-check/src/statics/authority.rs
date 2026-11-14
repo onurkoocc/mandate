@@ -77,7 +77,7 @@ impl<'a> Checker<'a> {
                 let mut frame = self.const_frame();
                 self.eval_cap(e, &ptr(&[&"defs", &name, &"value"]), &mut frame)
             }
-            Some(e) => caps_of(&self.defs, e, self.cap_opts()),
+            Some(e) => caps_of(self.defs, e, self.cap_opts()),
             None => Vec::new(),
         };
         let caps: Vec<CapVal> = caps
@@ -167,7 +167,7 @@ impl<'a> Checker<'a> {
                     self.untrusted_in_cap_arg(v, &format!("{path}/args/{i}/value"), frame);
                 }
             }
-            let r = caps_from_call(e, &self.defs, self.cap_opts());
+            let r = caps_from_call(e, self.defs, self.cap_opts());
             // R12: report E1002 when r.problem (static.ts 367), and from
             // 0.5 `methodsCheck(e, path)` for net.https (static.ts 368).
             return r.map(|r| r.caps).unwrap_or_default();
@@ -292,24 +292,20 @@ impl<'a> Checker<'a> {
                 continue;
             }
             // R12: per effect, E0408 for a critical one or E0301 for one no capability covers (static.ts 490-506).
-            match s.get("body").and_then(Value::as_array) {
-                None => {
-                    // R12: E0503 when neither the skill nor the agent sets `steps` (static.ts 508-509).
-                }
-                Some(body) => {
-                    let who = format!("{name}.{sn}");
-                    let params = s
-                        .get("params")
-                        .and_then(Value::as_array)
-                        .unwrap_or_default();
-                    let frame =
-                        self.body_frame(Where::Skill, &who, params, Some(caps.clone()), Some(ret));
-                    self.body(body, &frame, &format!("{sb}/body"), true);
-                    let usages = frame.usages();
-                    self.skill_usage.insert(who.clone(), usages.clone());
-                    self.check_usages_declared(&usages, effects, &who);
-                    // R12: the capabilities the usages need count as used (static.ts 516).
-                }
+            // R12: without a body, E0503 when neither the skill nor the agent sets `steps` (static.ts 507-510).
+            if let Some(body) = s.get("body").and_then(Value::as_array) {
+                let who = format!("{name}.{sn}");
+                let params = s
+                    .get("params")
+                    .and_then(Value::as_array)
+                    .unwrap_or_default();
+                let frame =
+                    self.body_frame(Where::Skill, &who, params, Some(caps.clone()), Some(ret));
+                self.body(body, &frame, &format!("{sb}/body"), true);
+                let usages = frame.usages();
+                self.skill_usage.insert(who.clone(), usages.clone());
+                self.check_usages_declared(&usages, effects, &who);
+                // R12: the capabilities the usages need count as used (static.ts 516).
             }
         }
         // R12: W0310 for each capability no skill uses, unless remote (static.ts 519-523).
@@ -530,10 +526,9 @@ impl<'a> Checker<'a> {
         let ep = epistemic(&over.ty);
         let list = unalias(&ep.inner, self);
         let mut elem = UNKNOWN;
+        // R12: over what is neither a List nor unknown, report E0201 at `${path}/over` (static.ts 1231).
         if list.is_named("List") {
             elem = list.arg(0);
-        } else if !matches!(list, crate::ty::Ty::Unknown) {
-            // R12: report E0201 at `${path}/over` (static.ts 1231).
         }
         let level = if ep.level == Level::Verified {
             Level::Plain

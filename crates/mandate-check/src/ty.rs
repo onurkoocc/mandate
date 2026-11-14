@@ -311,7 +311,7 @@ pub type Generics = Vec<(String, Ty)>;
 
 /// The type a type expression stands for: `fromTypeExpr(t, env, generics)`.
 #[must_use]
-pub fn from_type_expr(t: TypeExpr<'_>, generics: &Generics) -> Ty {
+pub fn from_type_expr(t: TypeExpr<'_>, generics: &[(String, Ty)]) -> Ty {
     if t.has(TypeForm::Ref) {
         let r = t.ref_name().unwrap_or_default();
         if r == "?" {
@@ -353,7 +353,7 @@ pub fn from_type_expr(t: TypeExpr<'_>, generics: &Generics) -> Ty {
 /// `fromTypeExpr(t, env)`. A missing type expression is unknown.
 #[must_use]
 pub fn ty_of(t: Option<TypeExpr<'_>>) -> Ty {
-    t.map_or(Ty::Unknown, |t| from_type_expr(t, &Vec::new()))
+    t.map_or(Ty::Unknown, |t| from_type_expr(t, &[]))
 }
 
 /// The `type` of a `type` definition, its refinements peeled:
@@ -399,11 +399,9 @@ fn unalias_at(ty: &Ty, env: &dyn TypeEnv, depth: usize) -> Ty {
         return ty.clone();
     }
     match peeled(d) {
-        Some(te) if te.has(TypeForm::Ref) => unalias_at(
-            &from_type_expr(te, &Vec::new()),
-            env,
-            depth.saturating_add(1),
-        ),
+        Some(te) if te.has(TypeForm::Ref) => {
+            unalias_at(&from_type_expr(te, &[]), env, depth.saturating_add(1))
+        }
         _ => ty.clone(),
     }
 }

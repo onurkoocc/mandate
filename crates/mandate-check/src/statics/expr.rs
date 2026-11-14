@@ -1352,6 +1352,6 @@ impl<'a> Checker<'a> {
         param
             .get("type")
             .and_then(mandate_ir::TypeExpr::of)
-            .map_or(UNKNOWN, |t| from_type_expr(t, &Vec::new()))
+            .map_or(UNKNOWN, |t| from_type_expr(t, &[]))
     }
 }

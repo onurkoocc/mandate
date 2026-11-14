@@ -67,9 +67,8 @@ impl<'a> Checker<'a> {
         let _ = d;
         // R13: E1004 for each parameter that is not a scalar (static.ts 823-827).
         let query = r.get("query");
-        if query.is_some_and(|q| q.get("sql").is_some()) {
-            // R13: the SQL checks, E1004 (static.ts 828-838).
-        } else {
+        // R13: with `sql`, the SQL checks, E1004 (static.ts 828-838), in place of the filter below.
+        if !query.is_some_and(|q| q.get("sql").is_some()) {
             let row = self.ty(r.get("returns").and_then(mandate_ir::TypeExpr::of));
             let mut vars: HashMap<String, Val> = HashMap::new();
             for (f, t) in fields_of(&row, self).unwrap_or_default() {
@@ -144,11 +143,9 @@ impl<'a> Checker<'a> {
                     .filter(|v| v.is(ExprOp::Var))
                     .map(|v| v.name().unwrap_or_default())
                     .unwrap_or_default();
-                match DataClass::from_name(c) {
-                    Some(c) => max_class = c,
-                    None => {
-                        // R13: E1201 "max_class is a data class (…)." at `ap` (static.ts 1533).
-                    }
+                // R13: when it is no data class, E1201 "max_class is a data class (…)." at `ap` (static.ts 1533).
+                if let Some(c) = DataClass::from_name(c) {
+                    max_class = c;
                 }
                 continue;
             }
@@ -159,9 +156,7 @@ impl<'a> Checker<'a> {
                 // R13: E1201 "… takes …" at `ap` (static.ts 1538-1541).
                 continue;
             };
-            if given.contains(&name) {
-                // R13: E1201 "… is given twice." at `ap` (static.ts 1542).
-            }
+            // R13: when `given` holds `name` already, E1201 "… is given twice." at `ap` (static.ts 1542).
             given.push(name);
             // A parameter's value may come from a model or a person: it is
             // bound as a value, never spliced into the query.
@@ -217,13 +212,9 @@ impl<'a> Checker<'a> {
         let plan = self.expr_or_unknown(e.plan(), frame, &format!("{path}/plan"));
         // R13: E1105 when the plan is not verified (static.ts 1826-1828);
         // E0408 outside a workflow (static.ts 1829-1831).
-        match e.idempotent_by() {
-            Some(by) => {
-                self.expr(by, frame, &format!("{path}/idempotent_by"));
-            }
-            None => {
-                // R13: E0403 (static.ts 1833).
-            }
+        // R13: without `idempotent_by`, E0403 (static.ts 1833).
+        if let Some(by) = e.idempotent_by() {
+            self.expr(by, frame, &format!("{path}/idempotent_by"));
         }
         let members: Vec<(&'a str, mandate_ir::ChangesetMember<'a>)> =
             e.changeset_members().collect();
