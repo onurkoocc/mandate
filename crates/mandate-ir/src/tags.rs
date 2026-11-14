@@ -158,3 +158,91 @@ impl ExprOp {
         }
     }
 }
+
+tags! {
+    /// The `op` of a statement (`$defs/Stmt`).
+    StmtOp {
+        Let = "let",
+        Par = "par",
+        If = "if",
+        Loop = "loop",
+        Return = "return",
+        OnError = "on_error",
+        Run = "run",
+        Expr = "expr",
+    }
+}
+
+tags! {
+    /// The `p` of a pattern (`$defs/Pattern`).
+    PatternKind {
+        Wild = "wild",
+        Bind = "bind",
+        Tag = "tag",
+    }
+}
+
+tags! {
+    /// The `by` of an authorization tier (`$defs/Tier`).
+    TierBy {
+        Policy = "policy",
+        Human = "human",
+    }
+}
+
+tags! {
+    /// A form of type (`$defs/TypeExpr`), named by the member that holds it.
+    TypeForm {
+        Ref = "ref",
+        Record = "record",
+        Enum = "enum",
+        Union = "union",
+        Refine = "refine",
+    }
+}
+
+tags! {
+    /// A form of verifier (`$defs/Verifier`), named by the member that holds it.
+    VerifierForm {
+        Static = "static",
+        Call = "call",
+        All = "all",
+    }
+}
+
+tags! {
+    /// A form of a read source's `query` (`$defs/ReadSource`), named by the
+    /// member that holds it.
+    ReadSource {
+        Sql = "sql",
+        Logs = "logs",
+    }
+}
+
+tags! {
+    /// A part of a template or a prompt (`$defs/TemplatePart`), named by the
+    /// member that holds it.
+    TemplatePart {
+        Text = "text",
+        Expr = "expr",
+    }
+}
+
+/// The forms that the schema tells apart by which member is present, not
+/// by a tag's value.
+macro_rules! form_of {
+    ($($name:ident),+) => {
+        $(
+            impl $name {
+                /// The form of `v`: the first of [`Self::ALL`] whose member
+                /// it has. A value the schema accepts has exactly one.
+                #[must_use]
+                pub fn of(v: &crate::Value) -> Option<$name> {
+                    $name::ALL.iter().copied().find(|f| v.get(f.as_str()).is_some())
+                }
+            }
+        )+
+    };
+}
+
+form_of!(TypeForm, VerifierForm, ReadSource, TemplatePart);

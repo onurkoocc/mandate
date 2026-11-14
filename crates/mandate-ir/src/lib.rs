@@ -14,6 +14,29 @@
 //!   `compiler/src/hash.ts`.
 //! - [`Diagnostic`], [`Location`], [`Repair`], [`ptr`], [`has_errors`] and
 //!   [`format_diagnostic`]: `compiler/src/diag.ts`.
+//! - [`load_json`] and [`validate_ir`]: reading a program given as JSON IR,
+//!   `load(text, "json")` in `compiler/src/check.ts` and `validateIr` in
+//!   `compiler/src/ir/validate.ts` (the language, the closed schema, the
+//!   version gates, the number of definitions), with [`nearest_span`].
+//! - [`Schema`]: a JSON Schema validator that gives Ajv's raw errors
+//!   ([`SchemaError`]) in Ajv's order, for the subset of draft 2020-12 the
+//!   two schemas use; [`ir_schema`] and [`lock_schema`] are
+//!   `spec/ir.schema.json` and `spec/lock.schema.json`, embedded when the
+//!   crate is built, and [`lock_schema_diagnostics`] is the E0140 that
+//!   `validateLock` in `compiler/src/lock.ts` makes of a refused lock. Its
+//!   `pattern`s are matched by hand, with no regular expression engine.
+//! - The closed sets of tags the IR schema defines, as enums ([`Language`],
+//!   [`DefKind`], [`ExprOp`], [`StmtOp`], [`PatternKind`], [`TierBy`],
+//!   [`TypeForm`], [`VerifierForm`], [`ReadSource`], [`TemplatePart`]), each
+//!   with `ALL`, `as_str` and `from_tag`; a test fails when the schema and
+//!   the enums differ.
+//! - Typed views of a program over its [`Value`] ([`Program`], [`Import`],
+//!   [`Definition`]). A view is a `Copy` struct that borrows the value and
+//!   has one method per member, which converts it (a tag to its enum, a list
+//!   to an iterator of views); a member that is missing or of another type
+//!   reads as `None` or as nothing, so a view never panics, even on a value
+//!   that was not validated. Views of other constructs follow that pattern
+//!   when a phase needs them.
 //!
 //! And the ECMAScript behaviour the compiler's output depends on, so that no
 //! phase reinvents it: objects that keep their members in ECMAScript order
@@ -33,7 +56,9 @@
 //! - In TypeScript `o["__proto__"] = v` on a plain `{}` sets the prototype
 //!   and adds no member (on an object made by `Object.create(null)`, as the
 //!   JSON reader's are, it adds one); [`JsObject::insert`] and [`Map::insert`]
-//!   always add one, so check how the TypeScript object was made.
+//!   always add one, so check how the TypeScript object was made. Ajv's
+//!   `uniqueItems` meets this: in an array of strings two items
+//!   `"__proto__"` are not found to be the same, and [`Schema`] gives that.
 //!
 //! The crate reads no file, environment variable or clock and starts no
 //! process (a test in `mandate-testkit` holds it to that), and it builds for
@@ -61,6 +86,7 @@ mod lock;
 mod members;
 mod number;
 mod pattern;
+mod program;
 mod reader;
 mod schema;
 mod tags;
@@ -79,12 +105,16 @@ pub use jcs::{canonicalize, compare_utf16, write_json_string};
 pub use js_value::{JsObject, JsValue, stringify, stringify_pretty};
 pub use lock::lock_schema_diagnostics;
 pub use number::{is_integer, is_safe_integer, number_to_string, write_number};
+pub use program::{Definition, Import, Program};
 pub use reader::{Parsed, parse, parse_bytes};
 pub use schema::{
     IR_SCHEMA_TEXT, LOCK_SCHEMA_TEXT, Schema, SchemaError, SchemaOptions, ir_schema,
     ir_schema_errors, lock_schema, lock_schema_errors,
 };
-pub use tags::{DefKind, ExprOp, Language};
+pub use tags::{
+    DefKind, ExprOp, Language, PatternKind, ReadSource, StmtOp, TemplatePart, TierBy, TypeForm,
+    VerifierForm,
+};
 pub use text::{
     is_js_whitespace, sort_utf16, trim, trim_end, trim_start, unique_in_order, utf16_len,
 };

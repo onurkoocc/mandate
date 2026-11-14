@@ -15,6 +15,7 @@ use crate::diag::{Diagnostic, Location, Span, has_errors, ptr_token};
 use crate::jcs::compare_utf16;
 use crate::js_value::{JsObject, JsValue, stringify};
 use crate::limits::DEFINITIONS;
+use crate::program::Program;
 use crate::reader::parse;
 use crate::schema::{SchemaError, ir_schema_errors};
 use crate::tags::{DefKind, ExprOp, Language};
@@ -58,7 +59,7 @@ fn at(spans: Option<&Spans>, path: &str) -> Location {
 /// reader gave: `validateIr(value, spans)`.
 #[must_use]
 pub fn validate_ir(value: &Value, spans: Option<&Spans>) -> Vec<Diagnostic> {
-    let Value::Object(program) = value else {
+    let Some(program) = Program::of(value) else {
         return vec![Diagnostic::new(
             "E0104",
             "A Mandate program must be a JSON object.",
@@ -66,11 +67,10 @@ pub fn validate_ir(value: &Value, spans: Option<&Spans>) -> Vec<Diagnostic> {
             None,
         )];
     };
-    let found = program.get("language");
-    let Some(language) = found.and_then(Language::from_value) else {
-        return vec![unknown_language(found, spans)];
+    let Some(language) = program.language() else {
+        return vec![unknown_language(program.members().get("language"), spans)];
     };
-    let mut out = match ir_schema_errors(value) {
+    let out = match ir_schema_errors(value) {
         Ok(errors) => schema_diagnostics(&errors, spans),
         // The embedded schema always prepares (a test holds it to that);
         // were it not to, nothing is accepted.
@@ -81,25 +81,25 @@ pub fn validate_ir(value: &Value, spans: Option<&Spans>) -> Vec<Diagnostic> {
             None,
         )],
     };
-    if let Some(Value::Object(defs)) = program.get("defs") {
-        let mut gates = Gates {
-            language,
-            spans,
-            out,
-        };
-        gates.newer_constructs(defs);
-        gates.agents(defs);
-        out = gates.out;
-        let n = defs.len();
-        if n > DEFINITIONS {
-            let facts = JsObject::new().with("limit", DEFINITIONS).with("actual", n);
-            out.push(Diagnostic::new(
-                "E0105",
-                format!("Program has {n} definitions; the 0.1 limit is {DEFINITIONS}."),
-                at(spans, "/defs"),
-                Some(facts),
-            ));
-        }
+    // When `defs` is not an object there are no definitions, and none of
+    // this applies, as in TypeScript.
+    let mut gates = Gates {
+        language,
+        spans,
+        out,
+    };
+    gates.newer_constructs(program);
+    gates.agents(program);
+    let mut out = gates.out;
+    let n = program.definitions().count();
+    if n > DEFINITIONS {
+        let facts = JsObject::new().with("limit", DEFINITIONS).with("actual", n);
+        out.push(Diagnostic::new(
+            "E0105",
+            format!("Program has {n} definitions; the 0.1 limit is {DEFINITIONS}."),
+            at(spans, "/defs"),
+            Some(facts),
+        ));
     }
     out
 }
@@ -162,11 +162,11 @@ impl Gates<'_> {
 
     /// `newerConstructs`: the definitions and expressions of `defs` that are
     /// newer than the program's language.
-    fn newer_constructs(&mut self, defs: &Map) {
+    fn newer_constructs(&mut self, program: Program<'_>) {
         let lang = self.language;
-        for (name, d) in defs.iter() {
+        for (name, def) in program.definitions() {
             let mut path = format!("/defs/{}", ptr_token(name));
-            let kind = d.get("kind").and_then(DefKind::from_value);
+            let kind = def.kind();
             if let Some(kind) = kind
                 && !lang.at_least(kind.since())
             {
@@ -180,7 +180,7 @@ impl Gates<'_> {
                 continue;
             }
             if kind == Some(DefKind::Workflow)
-                && let Value::Object(fields) = d
+                && let Some(fields) = def.members()
             {
                 for field in fields.keys() {
                     if let Some(added) = newer(&WORKFLOW_FIELDS, field, lang) {
@@ -194,7 +194,7 @@ impl Gates<'_> {
                     }
                 }
             }
-            self.walk(d, &mut path);
+            self.walk(def.value(), &mut path);
         }
     }
 
@@ -271,13 +271,13 @@ impl Gates<'_> {
 
     /// The fields an agent gained, and `progress.repeats` over
     /// `progress.window`.
-    fn agents(&mut self, defs: &Map) {
+    fn agents(&mut self, program: Program<'_>) {
         let lang = self.language;
-        for (name, d) in defs.iter() {
-            let Value::Object(agent) = d else {
+        for (name, def) in program.definitions() {
+            let Some(agent) = def.members() else {
                 continue;
             };
-            if d.get("kind").and_then(DefKind::from_value) != Some(DefKind::Agent) {
+            if def.kind() != Some(DefKind::Agent) {
                 continue;
             }
             for (field, since) in AGENT_FIELDS {
