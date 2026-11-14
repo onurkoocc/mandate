@@ -108,6 +108,8 @@ version = "0.1.0"
 dependencies = [
  "mandate-check",
  "mandate-ir",
+ "mandate-syntax",
+ "mandate-testkit",
 ]
 
 [[package]]

@@ -452,3 +452,65 @@ fn diff_gate() {
         panic!("{report}");
     }
 }
+
+/// `amendment_envelope` does what `amendmentInput(...).envelope` of
+/// `compiler/test/cases-runner.ts` does: the workflow's envelope with the
+/// patch of the runner applied, or the error it throws (the message of
+/// `applyJsonPatch` for an operation that fails, and one for a workflow that
+/// has no envelope). Each expectation, message included, is what
+/// `amendmentInput` gives on the same input in Node (the functions taken from
+/// the file and run through `node:module`'s `stripTypeScriptTypes`).
+#[test]
+fn the_runners_amendment_input() {
+    let parent = parse(
+        r#"{"defs":{"W":{"kind":"workflow","envelope":{"owner":"o","caps":[1,2],"budget":{"tokens":10},"spawn":{"max_concurrent":2},"approve":{"a":"x"}}},"L":{"kind":"workflow"},"T":{"kind":"type"},"N":{"kind":"workflow","envelope":null}}}"#,
+    )
+    .unwrap()
+    .value;
+    let run = |workflow: &str, patch: &str| {
+        let patch = parse(patch).unwrap().value;
+        common::amendment_envelope(workflow, patch.as_array().unwrap(), &parent)
+            .map(|e| stringify(&JsValue::from(&e)).unwrap())
+    };
+    let ok = |workflow: &str, patch: &str| run(workflow, patch).unwrap();
+    let err = |workflow: &str, patch: &str| run(workflow, patch).unwrap_err();
+    let envelope = r#"{"owner":"o","caps":[1,2],"budget":{"tokens":10},"spawn":{"max_concurrent":2},"approve":{"a":"x"}}"#;
+    assert_eq!(
+        ok("W", r#"[{"op":"replace","path":"/owner","value":"p"}]"#),
+        envelope.replace(r#""owner":"o""#, r#""owner":"p""#)
+    );
+    assert_eq!(
+        ok(
+            "W",
+            r#"[{"op":"add","path":"/caps/-","value":3},{"op":"remove","path":"/approve/a"}]"#
+        ),
+        r#"{"owner":"o","caps":[1,2,3],"budget":{"tokens":10},"spawn":{"max_concurrent":2},"approve":{}}"#
+    );
+    assert_eq!(ok("W", "[]"), envelope);
+    assert_eq!(
+        ok(
+            "W",
+            r#"[{"op":"replace","path":"/budget/tokens","value":99},{"op":"add","path":"/budget/steps","value":4}]"#
+        ),
+        r#"{"owner":"o","caps":[1,2],"budget":{"tokens":99,"steps":4},"spawn":{"max_concurrent":2},"approve":{"a":"x"}}"#
+    );
+    assert_eq!(
+        ok("W", r#"[{"op":"replace","path":"","value":{"owner":"z"}}]"#),
+        r#"{"owner":"z"}"#
+    );
+    // A workflow with no envelope, a definition that is no workflow, none, and one named `constructor`.
+    for workflow in ["L", "T", "Nope", "N", "constructor"] {
+        assert_eq!(
+            err(workflow, "[]"),
+            format!("amendment.workflow: {workflow} is not a workflow with an envelope")
+        );
+    }
+    assert_eq!(
+        err("W", r#"[{"op":"replace","path":"/nope","value":1}]"#),
+        "patch operation 0 (replace /nope): there is no member \"nope\""
+    );
+    assert_eq!(
+        err("W", r#"[{"op":"add","path":"/caps/9","value":1}]"#),
+        "patch operation 0 (add /caps/9): index 9 is out of range"
+    );
+}

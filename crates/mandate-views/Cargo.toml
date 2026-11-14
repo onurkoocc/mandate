@@ -11,5 +11,9 @@ publish.workspace = true
 mandate-ir = { path = "../mandate-ir" }
 mandate-check = { path = "../mandate-check" }
 
+[dev-dependencies]
+mandate-syntax = { path = "../mandate-syntax" }
+mandate-testkit = { path = "../mandate-testkit" }
+
 [lints]
 workspace = true

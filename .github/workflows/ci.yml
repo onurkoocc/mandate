@@ -235,3 +235,13 @@ jobs:
           git diff --exit-code -- crates/mandate-check/tests/lock
           untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/lock)"
           if [ -n "$untracked" ]; then echo "::error::lock-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
+      # scripts/views-vectors.mjs reads only the committed inputs.json and
+      # writes expected.json beside it: what the TypeScript gives for the
+      # comparison of two programs, patches, Number(text) and the documents,
+      # as digests of the texts it writes.
+      - name: The expectations of mandate-views' vectors are what the TypeScript compiler gives now
+        run: |
+          node scripts/views-vectors.mjs
+          git diff --exit-code -- crates/mandate-views/tests/data
+          untracked="$(git ls-files --others --exclude-standard -- crates/mandate-views/tests/data)"
+          if [ -n "$untracked" ]; then echo "::error::views-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
