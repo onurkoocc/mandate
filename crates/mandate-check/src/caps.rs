@@ -124,6 +124,15 @@ impl CapMember {
     }
 }
 
+/// The `maxClass` of a [`CapVal`]: a data class, or a name that is none of
+/// them, which only a value read from JSON has (the run-time authority
+/// decisions, [`crate::grant`], take any name, as their TypeScript does).
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ClassName {
+    Known(DataClass),
+    Other(String),
+}
+
 /// A static capability value: `CapVal`.
 ///
 /// The TypeScript builds these as object literals and copies them with
@@ -142,7 +151,7 @@ pub struct CapVal {
     components: Option<Vec<String>>,
     root: Option<String>,
     scope: Option<Vec<String>>,
-    max_class: Option<DataClass>,
+    max_class: Option<ClassName>,
     tier: Option<String>,
     args_prefix: Option<Vec<Vec<String>>>,
     methods: Option<Vec<String>>,
@@ -221,10 +230,38 @@ impl CapVal {
         self.scope.as_deref()
     }
 
-    /// For `model.infer`: the highest data class it may receive.
+    /// For `model.infer`: the highest data class it may receive; `None` too
+    /// for a `maxClass` that names no data class
+    /// ([`CapVal::max_class_name`] has it).
     #[must_use]
     pub fn max_class(&self) -> Option<DataClass> {
-        self.max_class
+        match &self.max_class {
+            Some(ClassName::Known(c)) => Some(*c),
+            Some(ClassName::Other(_)) | None => None,
+        }
+    }
+
+    /// `maxClass` as written: the name of a data class, or, in a value read
+    /// from JSON, any other name, an empty one included.
+    #[must_use]
+    pub fn max_class_name(&self) -> Option<&str> {
+        self.max_class.as_ref().map(|c| match c {
+            ClassName::Known(c) => c.as_str(),
+            ClassName::Other(name) => name.as_str(),
+        })
+    }
+
+    /// Where `maxClass` stands when [`cap_covers`] compares it: its index in
+    /// `DATA_CLASSES`, one up, and 0 for a name that is none of them, which
+    /// `DATA_CLASSES.indexOf` gives -1; `None` when it is absent or empty,
+    /// since the TypeScript compares only when both are truthy
+    /// (`need.maxClass && cap.maxClass`).
+    fn class_place(&self) -> Option<usize> {
+        match self.max_class.as_ref()? {
+            ClassName::Known(c) => Some(class_rank(*c).saturating_add(1)),
+            ClassName::Other(name) if name.is_empty() => None,
+            ClassName::Other(_) => Some(0),
+        }
     }
 
     /// For `model.infer`: the model tier, e.g. `standard`.
@@ -295,7 +332,18 @@ impl CapVal {
     /// Sets `maxClass`.
     pub fn set_max_class(&mut self, max_class: Option<DataClass>) {
         self.place(CapMember::MaxClass, max_class.is_some());
-        self.max_class = max_class;
+        self.max_class = max_class.map(ClassName::Known);
+    }
+
+    /// Sets `maxClass` to a name as written, which may be none of the data
+    /// classes: [`cap_covers`] ranks such a name below `public`, as
+    /// `DATA_CLASSES.indexOf` does, and does not compare an empty one.
+    pub fn set_max_class_name(&mut self, name: Option<String>) {
+        self.place(CapMember::MaxClass, name.is_some());
+        self.max_class = name.map(|name| match DataClass::from_name(&name) {
+            Some(c) => ClassName::Known(c),
+            None => ClassName::Other(name),
+        });
     }
 
     /// Sets `tier`.
@@ -333,7 +381,7 @@ impl CapVal {
                 CapMember::Effect => Some(JsValue::from(self.effect.as_str())),
                 CapMember::Write => Some(JsValue::from(self.write)),
                 CapMember::Scope => self.scope.as_deref().map(strings),
-                CapMember::MaxClass => self.max_class.map(|c| JsValue::from(c.as_str())),
+                CapMember::MaxClass => self.max_class_name().map(JsValue::from),
                 CapMember::Tier => self.tier.as_deref().map(JsValue::from),
                 CapMember::ArgsPrefix => self
                     .args_prefix
@@ -1163,8 +1211,10 @@ pub fn cap_covers(cap: &CapVal, need: &CapVal) -> bool {
     if !scope_within(&cap.ctor, need.scope(), cap.scope()) {
         return false;
     }
-    if let (Some(n), Some(c)) = (need.max_class, cap.max_class)
-        && class_rank(n) > class_rank(c)
+    // Data classes: compared when both are there and not empty; a name that
+    // is no data class ranks below `public` (see `CapVal::class_place`).
+    if let (Some(n), Some(c)) = (need.class_place(), cap.class_place())
+        && n > c
     {
         return false;
     }

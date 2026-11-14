@@ -45,11 +45,12 @@
 //! - Numbers are the integers of the IR's value domain: the strict reader the
 //!   request is read with refuses any other.
 
-use mandate_ir::{Language, Map, Program, Span, Spans, Value};
+use mandate_ir::{JsObject, Language, Map, Program, Span, Spans, Value};
 use mandate_syntax::SourceKind;
 
 use super::DoorError;
 use crate::caps::{CapOptions, CapVal};
+use crate::grant::Capability;
 use crate::modules::Modules;
 use crate::patch::PatchOp;
 use crate::stdlib::DataClass;
@@ -397,6 +398,55 @@ impl<'a> Members<'a> {
             .collect()
     }
 
+    /// The member `name`, a list of capability values as the run-time
+    /// authority decisions take them ([`authority_cap`]).
+    pub(crate) fn authority_caps(self, name: &str) -> Result<Vec<Capability>, DoorError> {
+        let items = self.array(name)?;
+        items
+            .iter()
+            .enumerate()
+            .map(|(i, v)| {
+                authority_cap(v)
+                    .map_err(|e| DoorError::bad_input(format!("`{}{name}[{i}]`: {e}", self.at)))
+            })
+            .collect()
+    }
+
+    /// The member `name`, a list of lists of capability values as the
+    /// run-time authority decisions take them ([`authority_cap`]).
+    pub(crate) fn authority_cap_lists(self, name: &str) -> Result<Vec<Vec<Capability>>, DoorError> {
+        let lists = self.array(name)?;
+        lists
+            .iter()
+            .enumerate()
+            .map(|(i, list)| {
+                let items = list.as_array().ok_or_else(|| {
+                    DoorError::bad_input(format!(
+                        "`{}{name}[{i}]` is {}, not an array",
+                        self.at,
+                        type_name(list)
+                    ))
+                })?;
+                items
+                    .iter()
+                    .enumerate()
+                    .map(|(j, v)| {
+                        authority_cap(v).map_err(|e| {
+                            DoorError::bad_input(format!("`{}{name}[{i}][{j}]`: {e}", self.at))
+                        })
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// The member `name`, a capability value as the run-time authority
+    /// decisions take it ([`authority_cap`]).
+    pub(crate) fn authority_cap(self, name: &str) -> Result<Capability, DoorError> {
+        authority_cap(self.value(name)?)
+            .map_err(|e| DoorError::bad_input(format!("`{}{name}`: {e}", self.at)))
+    }
+
     /// The member `name`, `CapOptions` (`{ language? }`), when it is there.
     pub(crate) fn opt_cap_options(self, name: &str) -> Result<CapOptions, DoorError> {
         let at = if self.at.is_empty() { "opts." } else { self.at };
@@ -539,4 +589,41 @@ pub(crate) fn cap_val(v: &Value) -> Result<CapVal, String> {
         }
     }
     Ok(cap)
+}
+
+/// A capability value as the run-time authority decisions take it
+/// (`bridge/src/authority.ts`, [`crate::grant`]): the object kept whole,
+/// every member in its order, unknown ones included (of any value, `null`
+/// too, since nothing reads them), for the outputs to carry, and read for
+/// the predicates as [`cap_val`] reads one, with two members read as that
+/// TypeScript reads them: `write` may be any JSON value but `null`, and is
+/// read by its truthiness; `maxClass` may be any string, a name that is no
+/// data class (ranked below `public`) or an empty one (not compared). A
+/// member a capability has, given as `null` or as another JSON type than
+/// its own, is refused, as is a missing `ctor`, `effect` or `write`.
+pub(crate) fn authority_cap(v: &Value) -> Result<Capability, String> {
+    let Value::Object(map) = v else {
+        return Err(format!("a capability is {}, not an object", type_name(v)));
+    };
+    let mut read = map.clone();
+    match map.get("write") {
+        None => return Err("a capability has no `write`".to_owned()),
+        Some(Value::Null) => return Err("a capability's `write` is null".to_owned()),
+        Some(w) => {
+            read.insert("write", Value::Bool(w.is_truthy()));
+        }
+    }
+    let class = match read.remove("maxClass") {
+        None => None,
+        Some(Value::String(name)) => Some(name),
+        Some(other) => {
+            return Err(format!(
+                "a capability's `maxClass` is {}, not a string",
+                type_name(&other)
+            ));
+        }
+    };
+    let mut cap = cap_val(&Value::Object(read))?;
+    cap.set_max_class_name(class);
+    Ok(Capability::read_as(cap, JsObject::from(map)))
 }

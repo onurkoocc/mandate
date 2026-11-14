@@ -15,7 +15,10 @@
 //! - A door is a [`DoorFn`]: `fn(&Value) -> Result<JsValue, DoorError>`.
 //! - Its name is the snake_case of the TypeScript function's
 //!   (`checkSubprogram` is `check_subprogram`); [`Door::ts`] is the
-//!   TypeScript's name, exported by `compiler/src/index.ts`. A door with no
+//!   TypeScript's name, exported by `compiler/src/index.ts`, or, for the
+//!   four run-time authority decisions (`grant`, `narrow`, `mapScopes`,
+//!   `inFlightOverlap`), by `bridge/src/index.ts` (the bridge exports the
+//!   compiler's names too, and these four besides). A door with no
 //!   TypeScript function of its own ([`Door::ts`] is `None`) answers the
 //!   question its TypeScript counterpart is used for, which [`Door::note`]
 //!   says.
@@ -54,8 +57,10 @@
 //! The doors are grouped by what they stand on, in private modules beside
 //! this one: `front` (reading, checking, hashing, printing), `program` (what
 //! a program is made of), `lock` (the lock, the Managed Agents binding, the
-//! sandbox), `patch` (patches, sub-programs, amendments and diffs) and
-//! `tables` (constants and the codes). [`input`], public, reads the input by
+//! sandbox), `patch` (patches, sub-programs, amendments and diffs),
+//! `authority` (the run-time authority decisions of [`crate::grant`], whose
+//! TypeScript is `bridge/src/authority.ts`) and `tables` (constants and the
+//! codes). [`input`], public, reads the input by
 //! the rules above. Each door's doc comment names the TypeScript function and
 //! file it stands for, its input members and its output.
 //!
@@ -82,6 +87,7 @@
 
 use mandate_ir::{JsObject, JsValue, Value};
 
+mod authority;
 mod front;
 pub mod input;
 mod lock;
@@ -145,7 +151,8 @@ pub struct Door {
     /// Its name, such as `check_subprogram`.
     pub name: &'static str,
     /// The TypeScript function it stands for, as `compiler/src/index.ts`
-    /// exports it, such as `checkSubprogram`; `None` for a door that has no
+    /// exports it, such as `checkSubprogram` (or `bridge/src/index.ts`, for
+    /// the run-time authority decisions); `None` for a door that has no
     /// TypeScript function of its own.
     pub ts: Option<&'static str>,
     /// The members of its input: the TypeScript function's parameters, in
@@ -203,8 +210,8 @@ impl Door {
 }
 
 /// Every door, in the order of `doors.json`: reading and checking, the parts
-/// of a program, the lock and the sandbox, patches and diffs, then the
-/// constants and the codes.
+/// of a program, the lock and the sandbox, patches and diffs, the run-time
+/// authority decisions, then the constants and the codes.
 pub static DOORS: &[Door] = &[
     Door::new("load", "load", front::LOAD, front::load),
     Door::new("check", "check", front::CHECK, front::check),
@@ -409,6 +416,20 @@ pub static DOORS: &[Door] = &[
         "envelopeChanges",
         patch::ENVELOPE_CHANGES,
         patch::envelope_changes,
+    ),
+    Door::new("grant", "grant", authority::GRANT, authority::grant),
+    Door::new("narrow", "narrow", authority::NARROW, authority::narrow),
+    Door::new(
+        "map_scopes",
+        "mapScopes",
+        authority::MAP_SCOPES,
+        authority::map_scopes,
+    ),
+    Door::new(
+        "in_flight_overlap",
+        "inFlightOverlap",
+        authority::IN_FLIGHT_OVERLAP,
+        authority::in_flight_overlap,
     ),
     Door::own(
         "explain",
