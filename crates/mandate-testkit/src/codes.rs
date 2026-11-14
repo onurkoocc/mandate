@@ -154,7 +154,7 @@ pub const FAMILIES: &[Family] = &[
     Family {
         glob: "*MDT-E09*",
         codes: "E0902-E0906, W0907",
-        stage: "the targets (target/managed-agents.ts, target/acs.ts), not check",
+        stage: "the targets: E0903-E0905 from bindingChecks (target/managed-agents.ts), which lockChecks runs in check with a lock; E0906, W0907 from target/acs.ts; E0902 from the runtime only",
         slice: "R14 (managed agents); ACS is out of the port",
         ported: false,
     },
