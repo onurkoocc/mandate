@@ -21,7 +21,6 @@ const PENDING: &[&str] = &[
     "check @ *",
     "check --module @ *",
     "check --lock @ *",
-    "fmt @ *",
     "hash @ *",
     "view --format json @ *",
     "view --format md @ *",
@@ -49,6 +48,13 @@ fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
             let mut text = stringify_pretty(&diagnostics).unwrap_or_default();
             text.push('\n');
             Ok(text)
+        }
+        // `printProgram(load(text, kind).program)`.
+        "fmt" => {
+            let program = loaded()?
+                .program
+                .ok_or_else(|| "load gave no program".to_owned())?;
+            mandate_syntax::print_program(&program)
         }
         _ => Err("no Rust implementation yet".to_owned()),
     }
