@@ -1141,5 +1141,108 @@
         "expected": "value"
       }
     }
-  ]
+  ],
+  "check": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0120",
+        "severity": "error",
+        "message": "Module m has no definition 'Missing'.",
+        "at": {
+          "path": "/uses/0/names",
+          "span": [
+            38,
+            16,
+            41,
+            8
+          ]
+        },
+        "docs": "mandate explain MDT-E0120",
+        "facts": {
+          "name": "Missing",
+          "module": "m",
+          "expected": "definition"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "severity": "error",
+        "message": "Unknown name 'zz'.",
+        "at": {
+          "path": "/defs/W/body/0/value",
+          "span": [
+            27,
+            20,
+            30,
+            12
+          ]
+        },
+        "docs": "mandate explain MDT-E0120",
+        "facts": {
+          "name": "zz",
+          "expected": "value"
+        }
+      },
+      {
+        "code": "MDT-E1501",
+        "severity": "error",
+        "message": "A component's owner names the role 'reviewr', but 'reviewr' is not a role this module defines or imports. Define it: role reviewr \"\u2026\" (spec/envelope.md).",
+        "at": {
+          "path": "/defs/b/owner",
+          "span": [
+            15,
+            16,
+            15,
+            25
+          ]
+        },
+        "docs": "mandate explain MDT-E1501",
+        "facts": {
+          "role": "reviewr",
+          "where": "a component's owner",
+          "roles": [
+            "reviewer",
+            "toString"
+          ],
+          "did_you_mean": "reviewer"
+        },
+        "repair": [
+          {
+            "id": "r1",
+            "summary": "Use 'reviewer'",
+            "patch": [
+              {
+                "op": "replace",
+                "path": "/defs/b/owner",
+                "value": "reviewer"
+              }
+            ],
+            "risk": "low"
+          }
+        ]
+      },
+      {
+        "code": "MDT-E1804",
+        "severity": "error",
+        "message": "H, imported from n, holds a net.https capability that allows only some methods, as mandate/0.5 reads it. This program is mandate/0.4, which would read it without the limit, allowing any method. Write the program in mandate/0.5 or later.",
+        "at": {
+          "path": "/uses/1",
+          "span": [
+            43,
+            5,
+            48,
+            6
+          ]
+        },
+        "docs": "mandate explain MDT-E1804",
+        "facts": {
+          "definition": "H",
+          "module": "n",
+          "module_language": "mandate/0.5",
+          "language": "mandate/0.4"
+        }
+      }
+    ]
+  }
 }

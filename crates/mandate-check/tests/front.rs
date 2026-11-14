@@ -2,8 +2,10 @@
 //! written to reach their JavaScript: `tests/front/inputs.json`, and in
 //! `tests/front/expected.json` what `scripts/front-vectors.mjs` has the
 //! TypeScript compiler give for them (`link`, `references`, `resolveNames`,
-//! `roleSites`, `rolesNamed`, `roleChecks`). Each result is compared whole,
-//! as `JSON.stringify(value, null, 2)` text.
+//! `roleSites`, `rolesNamed`, `roleChecks`, and `check` of a program that
+//! has a diagnostic of each stage before the static checks, which holds
+//! their order). Each result is compared whole, as
+//! `JSON.stringify(value, null, 2)` text.
 
 #![allow(
     clippy::unwrap_used,
@@ -13,8 +15,11 @@
     missing_docs
 )]
 
-use mandate_check::{link, references, resolve_names, role_checks, role_sites, roles_named};
+use mandate_check::{
+    CheckOptions, check, link, references, resolve_names, role_checks, role_sites, roles_named,
+};
 use mandate_ir::{Diagnostic, JsObject, JsValue, Program, Value, stringify_pretty};
+use mandate_syntax::SourceKind;
 use mandate_testkit::{compare_text, read_json};
 
 fn strings(xs: &[String]) -> JsValue {
@@ -38,6 +43,16 @@ fn the_stages_before_the_static_checks_are_the_typescript_ones() {
     let roles_linked = link(roles, Some(modules));
     let names = program("names");
     let names_linked = link(names, Some(modules));
+    // `check(JSON.stringify(program, null, 2), "json", { modules })`.
+    let text = stringify_pretty(&JsValue::from(inputs.get("check").unwrap())).unwrap();
+    let checked = check(
+        &text,
+        SourceKind::Json,
+        &CheckOptions {
+            modules: Some(modules),
+            ..CheckOptions::default()
+        },
+    );
 
     let mine: Vec<(&str, JsValue)> = vec![
         (
@@ -100,6 +115,13 @@ fn the_stages_before_the_static_checks_are_the_typescript_ones() {
         (
             "resolve_linked",
             diagnostics(&resolve_names(names, None, Some(&names_linked.defs))),
+        ),
+        (
+            "check",
+            JsObject::new()
+                .with("ok", checked.ok)
+                .with("diagnostics", diagnostics(&checked.diagnostics))
+                .into(),
         ),
     ];
     let mut failures = Vec::new();
