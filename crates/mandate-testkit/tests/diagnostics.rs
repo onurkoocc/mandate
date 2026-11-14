@@ -27,7 +27,7 @@ use std::collections::BTreeMap;
 
 use common::{
     Applied, applied_source, check_text, check_with, kind_named, modules_of, patched_source,
-    read_source, value_text,
+    read_source, run_amendment, run_subprogram, subprogram_case, value_text,
 };
 use mandate_check::Modules;
 use mandate_ir::{Diagnostic, JsValue, Value, stringify, stringify_pretty};
@@ -42,15 +42,7 @@ use mandate_testkit::{
 /// for each front door that is not, and by name the items that still fail
 /// although every code they hold is of a ported family. Every pending item
 /// is held to failing only by omission (`mandate_testkit::run_held_gate`).
-const PENDING: &[&str] = &[
-    // R13: the system model, reads, sub-programs, amendments.
-    "*MDT-E12*",
-    "*MDT-E1705*",
-    "*MDT-E1709*",
-    // R13: the doors of sub-programs and amendments.
-    "check_subprogram @ *",
-    "check_amendment @ *",
-];
+const PENDING: &[&str] = &[];
 
 /// The stored result `expected` (its text) against the diagnostics Rust
 /// gives, for an item whose text differs (`difference`): whether Rust's are
@@ -196,12 +188,6 @@ fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), Miss> {
             lock,
             expected,
         } => {
-            if !matches!(door.as_str(), "check" | "check_patched" | "apply_ops") {
-                return Err(Miss::Excluded {
-                    rule: "its front door (checkSubprogram, checkAmendment) is not ported (R13), so there is no Rust result to hold",
-                    why: format!("the {door} door is not ported"),
-                });
-            }
             let case = read_json(&format!("{dir}/case.json")).map_err(Miss::Differs)?;
             let text = if input.is_empty() {
                 case.get("input")
@@ -217,6 +203,30 @@ fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), Miss> {
             } else {
                 Some(cache.get(modules, modules).map_err(Miss::Differs)?)
             };
+            // `check_subprogram` and `check_amendment`: the input must check
+            // without errors, and is the program the door stands on.
+            if matches!(door.as_str(), "check_subprogram" | "check_amendment") {
+                let mods = mods.ok_or_else(|| Miss::Differs("no modules".to_owned()))?;
+                let parent =
+                    check_with(&text, kind_named(kind), Some(mods), None).map_err(Miss::Differs)?;
+                let (Some(program), true) = (parent.program.as_ref(), parent.ok) else {
+                    return Err(Miss::Differs(
+                        "the parent must check without errors".to_owned(),
+                    ));
+                };
+                let r = match case.get("subprogram") {
+                    Some(sp) => subprogram_case(dir, sp, program)
+                        .and_then(|c| run_subprogram(&c, program, mods)),
+                    None => run_amendment(
+                        case.get("amendment")
+                            .ok_or_else(|| Miss::Differs("no amendment".to_owned()))?,
+                        program,
+                        mods,
+                    ),
+                }
+                .map_err(Miss::Differs)?;
+                return compare_held(expected, &r.text, &r.observed.diagnostics);
+            }
             // `check_patched`: the case's patch applied to the loaded IR,
             // and the patched IR checked as `JSON.stringify` text.
             let (text, kind) = match case.get("patch").and_then(Value::as_array) {

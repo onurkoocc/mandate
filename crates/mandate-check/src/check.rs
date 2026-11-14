@@ -8,13 +8,10 @@
 //! ```
 //!
 //! Every stage runs, in this order. Of the static checks
-//! ([`crate::statics`]) the core (R11) and the authority (R12) are
-//! ported; the system model's diagnostics (R13) are not yet, and
-//! [`UNPORTED`] lists them. Until that list is empty, an `ok` from
-//! [`check`] means "no error from what is ported so far": a result the
-//! TypeScript would give a system-model diagnostic is not its whole result, and where
-//! that diagnostic is an error, the TypeScript stops before the lock checks
-//! while Rust may run them.
+//! ([`crate::statics`]) the core, the authority and the system model are all
+//! ported, and [`UNPORTED`] is empty. The doors that stand on `check`
+//! (`checkPatch`, `checkSubprogram`, `checkAmendment`) are in
+//! [`crate::doors`].
 
 use mandate_ir::{
     Diagnostic, JsObject, JsValue, Location, Map, Program, ProgramHashes, Spans, Value, has_errors,
@@ -31,10 +28,7 @@ use crate::roles::role_checks;
 /// The stages of `check` in `check.ts` that [`check`] does not run yet,
 /// each with the slice of the port that brings it. A slice that ports one
 /// takes it off; the port is complete when the list is empty.
-pub const UNPORTED: &[&str] = &[
-    "staticCheck, the system model's diagnostics (R13: checkSystem, checkRead, dataRead, changeset in check/static.ts)",
-    "the door that gives opts.claim (R13: checkSubprogram; check itself takes the claim, with E1706 of overEnvelope and overModel)",
-];
+pub const UNPORTED: &[&str] = &[];
 
 /// What [`check`] is given besides the text: `CheckOptions`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -48,7 +42,7 @@ pub struct CheckOptions<'a> {
     pub modules: Option<&'a Modules>,
     /// For a lead's sub-program: the envelope its workflow stands under and
     /// its lead's data class, as `checkSubprogram` passes it, `{ envelope,
-    /// lead }` (R13).
+    /// lead }`.
     pub claim: Option<&'a Value>,
 }
 
@@ -320,11 +314,11 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
 
 /// `staticCheck(program, spans, linked.defs, opts.claim)` (Gate 1): the
 /// static checks of `check/static.ts` and what it calls, with the claim of a
-/// sub-program ([`crate::statics`]). The core is ported (R11: types,
-/// expressions, constants, functions, contracts, recursion, budgets, the
-/// node count) and so is the authority (R12: capabilities, agents,
-/// workflows, par, delegation, map, effects, envelopes); the system
-/// model's diagnostics (R13) are not yet, see [`UNPORTED`].
+/// sub-program ([`crate::statics`]). The core (R11: types, expressions,
+/// constants, functions, contracts, recursion, budgets, the node count) and
+/// the system model (R13: providers, reads, change sets) are ported; the
+/// authority (R12: capabilities, agents, workflows, par, delegation, map,
+/// effects, envelopes) are ported.
 fn static_check(
     program: Program<'_>,
     spans: &Spans,

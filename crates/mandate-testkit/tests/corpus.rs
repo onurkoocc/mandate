@@ -40,14 +40,16 @@
 #![allow(clippy::panic, clippy::expect_used, missing_docs)]
 
 use mandate_check::{
-    CheckOptions, ModuleSource, Modules, PatchOp, apply_patch, check, denial_diagnostics,
+    AmendmentInput, CheckOptions, DataClass, ModuleSource, Modules, PatchOp, Room, SubprogramInput,
+    apply_patch, check, check_amendment, check_patch, check_subprogram, denial_diagnostics,
     load_modules, validate_lock,
 };
 use mandate_ir::{Diagnostic, JsValue, Span, Spans, Value, parse, stringify};
 use mandate_syntax::{SourceKind, load};
 use mandate_testkit::corpus::{
     Actual, Corpus, Door, Entry, Input, Kind, Outcome, digest_of, ir_text, render_apply_patch,
-    render_check, render_diagnostics, render_load, render_load_modules, spans_text,
+    render_check, render_check_amendment, render_check_patch, render_check_subprogram,
+    render_diagnostics, render_load, render_load_modules, spans_text,
 };
 use mandate_testkit::{Miss, check_pending, omission, run_held_gate};
 
@@ -57,33 +59,15 @@ use mandate_testkit::{Miss, check_pending, omission, run_held_gate};
 /// `check`: the entries that expect a code of a stage `mandate_check::check`
 /// does not run yet (`mandate_check::UNPORTED`), by family of codes
 /// (`mandate_testkit::codes::FAMILIES`), with the slice that ports it.
-const PENDING_CHECK: &[&str] = &[
-    // R13: the system model, change sets, reads.
-    "*MDT-E1001*",
-    "*MDT-E1003*",
-    "*MDT-E1004*",
-    "*MDT-E1005*",
-    "*MDT-E1006*",
-    "*MDT-E1007*",
-    "*MDT-E11*",
-    "*MDT-E12*",
-    // An entry whose codes are all of ported families, but which the
-    // TypeScript raises in a function of R13: `changeset`, E0403 of a
-    // member without `idempotent_by` (1).
-    "check @ check-9f16a85a913f6058 [MDT-E0403 MDT-W0601]",
-];
-/// `load_modules`: a module that does not check against the others for a
-/// reason of a later slice, by family of codes.
-const PENDING_LOAD_MODULES: &[&str] = &[
-    // R13: the system model.
-    "*MDT-E1001*",
-];
-/// `check_patch`: the patch and subprogram checks, R13.
-const PENDING_CHECK_PATCH: &[&str] = &["check_patch @ *"];
-/// `check_subprogram`: R13.
-const PENDING_CHECK_SUBPROGRAM: &[&str] = &["check_subprogram @ *"];
-/// `check_amendment`: R13.
-const PENDING_CHECK_AMENDMENT: &[&str] = &["check_amendment @ *"];
+const PENDING_CHECK: &[&str] = &[];
+/// `load_modules`.
+const PENDING_LOAD_MODULES: &[&str] = &[];
+/// `check_patch`.
+const PENDING_CHECK_PATCH: &[&str] = &[];
+/// `check_subprogram`.
+const PENDING_CHECK_SUBPROGRAM: &[&str] = &[];
+/// `check_amendment`.
+const PENDING_CHECK_AMENDMENT: &[&str] = &[];
 
 /// The pending list of a door. `acs_target` has none: see [`OUT_OF_SCOPE`].
 fn pending(door: Door) -> &'static [&'static str] {
@@ -209,6 +193,80 @@ fn replay(input: &Input<'_>) -> Result<Actual, String> {
                 r.program.as_ref(),
                 r.hash.as_deref(),
             )))
+        }
+        Input::CheckPatch(p) => {
+            let ops: Vec<PatchOp> = p.ops.iter().map(PatchOp::from_value).collect();
+            let modules = p.modules.as_ref().map(|m| modules_map(m));
+            let r = check_patch(p.program, p.base, &ops, modules.as_ref());
+            Ok(Actual::Result(render_check_patch(
+                r.ok,
+                r.hash.as_deref(),
+                &r.diagnostics,
+                r.governance_js(),
+                r.requires_approval,
+                r.program.as_ref(),
+            )))
+        }
+        Input::CheckSubprogram {
+            parent,
+            modules,
+            workflow,
+            number,
+            base,
+            ops,
+            lead,
+            room,
+        } => {
+            let modules = modules.as_ref().map(|m| modules_map(m));
+            let ops: Vec<PatchOp> = ops.iter().map(PatchOp::from_value).collect();
+            let lead = DataClass::from_name(lead)
+                .ok_or_else(|| format!("lead {lead} is not a data class"))?;
+            let room = Room::from_value(room)?;
+            Ok(
+                match check_subprogram(&SubprogramInput {
+                    parent,
+                    modules: modules.as_ref(),
+                    workflow,
+                    number: *number as f64,
+                    base,
+                    ops: &ops,
+                    lead,
+                    room: &room,
+                }) {
+                    Ok(r) => Actual::Result(render_check_subprogram(
+                        r.ok,
+                        &r.diagnostics,
+                        r.program.as_ref(),
+                        r.hash.as_deref(),
+                        r.workflow.as_deref(),
+                    )),
+                    Err(message) => Actual::Throws(message),
+                },
+            )
+        }
+        Input::CheckAmendment {
+            parent,
+            modules,
+            workflow,
+            envelope,
+        } => {
+            let modules = modules.as_ref().map(|m| modules_map(m));
+            Ok(
+                match check_amendment(&AmendmentInput {
+                    parent,
+                    modules: modules.as_ref(),
+                    workflow,
+                    envelope: *envelope,
+                }) {
+                    Ok(r) => Actual::Result(render_check_amendment(
+                        r.ok,
+                        &r.diagnostics,
+                        r.program.as_ref(),
+                        r.hash.as_deref(),
+                    )),
+                    Err(message) => Actual::Throws(message),
+                },
+            )
         }
         other => Err(format!(
             "the Rust door for {} is not ported yet",

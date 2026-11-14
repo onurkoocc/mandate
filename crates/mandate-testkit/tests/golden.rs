@@ -32,10 +32,7 @@ use mandate_views::{architecture, authority, cost, program_doc, to_html, to_mark
 /// are named by the codes they hold (`check @ <program> [codes]`, see
 /// `mandate_testkit::codes`), and pending by family of codes; each pending
 /// check is held to failing only by omission against its stored result.
-const PENDING: &[&str] = &[
-    // R13: the system model, reads.
-    "*MDT-E12*",
-];
+const PENDING: &[&str] = &[];
 
 /// What the Rust crates print for one pinned output.
 fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
