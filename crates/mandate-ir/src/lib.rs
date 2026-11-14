@@ -31,7 +31,13 @@
 //!   with `ALL`, `as_str` and `from_tag`; a test fails when the schema and
 //!   the enums differ.
 //! - Typed views of a program over its [`Value`] ([`Program`], [`Import`],
-//!   [`Definition`]). A view is a `Copy` struct that borrows the value and
+//!   [`Definition`]; expressions [`Expr`], [`Arg`], [`OnUnmet`],
+//!   [`SwitchCase`], [`ChangesetMember`]; statements [`Stmt`], [`Pattern`],
+//!   [`CallSpec`]; types [`TypeExpr`], [`Param`], [`Variant`]; the parts of
+//!   definitions [`Skill`], [`Remote`], [`Envelope`], [`OnHandler`],
+//!   [`Criterion`], [`Verifier`], [`Read`], [`Tier`], [`TestDef`]; and the
+//!   kinds the capability checks read, [`CapabilityDef`], [`ComponentDef`],
+//!   [`Command`], [`EnvironmentDef`]). A view is a `Copy` struct that borrows the value and
 //!   has one method per member, which converts it (a tag to its enum, a list
 //!   to an iterator of views); a member that is missing or of another type
 //!   reads as `None` or as nothing, so a view never panics, even on a value
@@ -77,6 +83,7 @@
 
 #![forbid(unsafe_code)]
 
+mod def_parts;
 mod defs;
 mod diag;
 mod expr;
@@ -91,17 +98,21 @@ mod pattern;
 mod program;
 mod reader;
 mod schema;
+mod stmt;
 mod tags;
 mod text;
+mod type_expr;
 mod validate;
 mod value;
+mod view;
 
+pub use def_parts::{Criterion, Envelope, OnHandler, Read, Remote, Skill, TestDef, Tier, Verifier};
 pub use defs::{CapabilityDef, Command, ComponentDef, EnvironmentDef};
 pub use diag::{
     Diagnostic, Location, PtrToken, Repair, RepairOp, RepairOpKind, Risk, Severity, Span,
     format_diagnostic, has_errors, ptr, ptr_token,
 };
-pub use expr::{Arg, Expr};
+pub use expr::{Arg, ChangesetMember, Expr, OnUnmet, SwitchCase};
 pub use hash::{
     HashDomain, ProgramHashes, RUNTIME_HASH_VERSION, domain_hash, hash_program, package_hash,
 };
@@ -115,6 +126,7 @@ pub use schema::{
     IR_SCHEMA_TEXT, LOCK_SCHEMA_TEXT, Schema, SchemaError, SchemaOptions, ir_schema,
     ir_schema_errors, lock_schema, lock_schema_errors,
 };
+pub use stmt::{CallSpec, Pattern, Stmt};
 pub use tags::{
     DefKind, ExprOp, Language, PatternKind, ReadSource, StmtOp, TemplatePart, TierBy, TypeForm,
     VerifierForm,
@@ -122,5 +134,6 @@ pub use tags::{
 pub use text::{
     is_js_whitespace, sort_utf16, trim, trim_end, trim_start, unique_in_order, utf16_len,
 };
+pub use type_expr::{Param, TypeExpr, Variant};
 pub use validate::{Loaded, Spans, load_json, nearest_span, validate_ir};
 pub use value::{Int, Map, Value};
