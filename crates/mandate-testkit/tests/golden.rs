@@ -36,13 +36,6 @@ const PENDING: &[&str] = &[
     // R13: the system model, reads.
     "*MDT-E10*",
     "*MDT-E12*",
-    // R11: the cost view of a workflow with an envelope needs the static
-    // cost (`check/cost.ts`), which `mandate_views::cost` refuses until it
-    // calls `mandate_check::static_cost`. Only MigrateAll has such a
-    // workflow, so only its three views wait.
-    "view --format json @ fixtures/envelope/migrate-all.mdt",
-    "view --format md @ fixtures/envelope/migrate-all.mdt",
-    "view --format html @ fixtures/envelope/migrate-all.mdt",
 ];
 
 /// What the Rust crates print for one pinned output.
@@ -143,17 +136,15 @@ fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
                 .filter(|_| r.ok)
                 .ok_or("the program does not check, so it has no views")?;
             if o.output == "view --format json" {
-                let cost = cost(&program, lock.as_ref()).map_err(|e| e.to_string())?;
                 let views = JsObject::new()
                     .with("architecture", architecture(&program).to_js())
                     .with("authority", authority(&program).to_js())
-                    .with("cost", cost.to_js());
+                    .with("cost", cost(&program, lock.as_ref()).to_js());
                 let mut text = stringify_pretty(&JsValue::Object(views)).unwrap_or_default();
                 text.push('\n');
                 return Ok(text);
             }
-            let doc =
-                program_doc(&program, lock.as_ref(), Some(&modules)).map_err(|e| e.to_string())?;
+            let doc = program_doc(&program, lock.as_ref(), Some(&modules));
             Ok(if o.output == "view --format md" {
                 to_markdown(&doc)
             } else {
@@ -264,13 +255,9 @@ fn run(o: &GoldenOutput<'_>, stored: &BTreeMap<(String, String), Value>) -> Resu
         "check --module" => (true, false),
         "check --lock" => (true, true),
         _ => {
-            return match output(o) {
-                Ok(text) => compare_digest(o.digest, &text).map_err(Miss::Differs),
-                Err(why) => Err(Miss::Excluded {
-                    rule: "Rust gives no output for it yet (the cost view of a workflow with an envelope, until it calls the static cost)",
-                    why,
-                }),
-            };
+            return output(o)
+                .and_then(|text| compare_digest(o.digest, &text))
+                .map_err(Miss::Differs);
         }
     };
     let r = checked(o.program, with_modules, with_lock).map_err(Miss::Differs)?;
