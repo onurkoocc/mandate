@@ -82,7 +82,7 @@ pub use schema::{
     IR_SCHEMA_TEXT, LOCK_SCHEMA_TEXT, Schema, SchemaError, SchemaOptions, ir_schema,
     ir_schema_errors, lock_schema, lock_schema_errors,
 };
-pub use tags::Language;
+pub use tags::{DefKind, ExprOp, Language};
 pub use text::{
     is_js_whitespace, sort_utf16, trim, trim_end, trim_start, unique_in_order, utf16_len,
 };

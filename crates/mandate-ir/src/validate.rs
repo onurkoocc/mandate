@@ -14,10 +14,11 @@ use std::collections::{BTreeMap, HashSet};
 use crate::diag::{Diagnostic, Location, Span, has_errors, ptr_token};
 use crate::jcs::compare_utf16;
 use crate::js_value::{JsObject, JsValue, stringify};
+use crate::limits::DEFINITIONS;
 use crate::reader::parse;
 use crate::schema::{SchemaError, ir_schema_errors};
-use crate::tags::Language;
-use crate::value::Value;
+use crate::tags::{DefKind, ExprOp, Language};
+use crate::value::{Map, Value};
 
 /// The spans of a value that was read, by JSON Pointer.
 pub type Spans = BTreeMap<String, Span>;
@@ -66,10 +67,10 @@ pub fn validate_ir(value: &Value, spans: Option<&Spans>) -> Vec<Diagnostic> {
         )];
     };
     let found = program.get("language");
-    if found.and_then(Language::from_value).is_none() {
+    let Some(language) = found.and_then(Language::from_value) else {
         return vec![unknown_language(found, spans)];
-    }
-    match ir_schema_errors(value) {
+    };
+    let mut out = match ir_schema_errors(value) {
         Ok(errors) => schema_diagnostics(&errors, spans),
         // The embedded schema always prepares (a test holds it to that);
         // were it not to, nothing is accepted.
@@ -79,6 +80,242 @@ pub fn validate_ir(value: &Value, spans: Option<&Spans>) -> Vec<Diagnostic> {
             at(spans, ""),
             None,
         )],
+    };
+    if let Some(Value::Object(defs)) = program.get("defs") {
+        let mut gates = Gates {
+            language,
+            spans,
+            out,
+        };
+        gates.newer_constructs(defs);
+        gates.agents(defs);
+        out = gates.out;
+        let n = defs.len();
+        if n > DEFINITIONS {
+            let facts = JsObject::new().with("limit", DEFINITIONS).with("actual", n);
+            out.push(Diagnostic::new(
+                "E0105",
+                format!("Program has {n} definitions; the 0.1 limit is {DEFINITIONS}."),
+                at(spans, "/defs"),
+                Some(facts),
+            ));
+        }
+    }
+    out
+}
+
+/// The fields an agent, a workflow and a budget gained, and the version
+/// that added each: `SINCE.agentFields`, `SINCE.workflowFields` and
+/// `SINCE.budgetFields` in `validate.ts`. (`SINCE.kinds` and `SINCE.ops` are
+/// [`DefKind::since`] and [`ExprOp::since`].)
+const AGENT_FIELDS: [(&str, Language); 2] =
+    [("loop", Language::V0_2), ("progress", Language::V0_2)];
+const WORKFLOW_FIELDS: [(&str, Language); 1] = [("envelope", Language::V0_4)];
+const BUDGET_FIELDS: [(&str, Language); 1] = [("agents", Language::V0_4)];
+
+/// The version that added `field` by `table`, when it is newer than `language`.
+fn newer(table: &[(&str, Language)], field: &str, language: Language) -> Option<Language> {
+    table
+        .iter()
+        .find(|(f, _)| *f == field)
+        .map(|(_, since)| *since)
+        .filter(|since| !language.at_least(*since))
+}
+
+/// An int, dec or money literal below zero (`negativeLiteral`). The text form
+/// of such a literal is a minus sign and a positive literal, which reads back
+/// as `unary neg`, so from 0.5 the IR refuses it.
+fn negative_literal(v: &Map) -> bool {
+    match v.get("op").and_then(ExprOp::from_value) {
+        Some(ExprOp::Int) => v
+            .get("value")
+            .and_then(Value::as_i64)
+            .is_some_and(|n| n < 0),
+        Some(ExprOp::Dec) => v
+            .get("value")
+            .and_then(Value::as_str)
+            .is_some_and(|s| s.starts_with('-')),
+        Some(ExprOp::Money) => v
+            .get("micros")
+            .and_then(Value::as_i64)
+            .is_some_and(|n| n < 0),
+        _ => false,
+    }
+}
+
+/// The version gates of `validateIr`, after the schema's diagnostics.
+struct Gates<'a> {
+    language: Language,
+    spans: Option<&'a Spans>,
+    out: Vec<Diagnostic>,
+}
+
+impl Gates<'_> {
+    fn refuse(&mut self, message: String, path: &str, facts: JsObject) {
+        self.out.push(Diagnostic::new(
+            "E0104",
+            message,
+            at(self.spans, path),
+            Some(facts),
+        ));
+    }
+
+    /// `newerConstructs`: the definitions and expressions of `defs` that are
+    /// newer than the program's language.
+    fn newer_constructs(&mut self, defs: &Map) {
+        let lang = self.language;
+        for (name, d) in defs.iter() {
+            let mut path = format!("/defs/{}", ptr_token(name));
+            let kind = d.get("kind").and_then(DefKind::from_value);
+            if let Some(kind) = kind
+                && !lang.at_least(kind.since())
+            {
+                let since = kind.since();
+                let facts = JsObject::new()
+                    .with("kind", kind.as_str())
+                    .with("language", lang.as_str());
+                let message =
+                    format!("{name}: '{kind}' is a {since} definition; this program is {lang}.");
+                self.refuse(message, &format!("{path}/kind"), facts);
+                continue;
+            }
+            if kind == Some(DefKind::Workflow)
+                && let Value::Object(fields) = d
+            {
+                for field in fields.keys() {
+                    if let Some(added) = newer(&WORKFLOW_FIELDS, field, lang) {
+                        let facts = JsObject::new()
+                            .with("field", field)
+                            .with("language", lang.as_str());
+                        let message = format!(
+                            "Workflow {name}: '{field}' is a {added} field; this program is {lang}."
+                        );
+                        self.refuse(message, &format!("{path}/{}", ptr_token(field)), facts);
+                    }
+                }
+            }
+            self.walk(d, &mut path);
+        }
+    }
+
+    /// Every object under a definition: an `op` newer than the language, a
+    /// negative literal from 0.5, a budget field newer than the language. The
+    /// path grows and shrinks as the walk goes; it is copied only into a
+    /// diagnostic.
+    fn walk(&mut self, v: &Value, path: &mut String) {
+        let lang = self.language;
+        match v {
+            Value::Array(items) => {
+                for (i, x) in items.iter().enumerate() {
+                    let len = path.len();
+                    path.push('/');
+                    path.push_str(&i.to_string());
+                    self.walk(x, path);
+                    path.truncate(len);
+                }
+            }
+            Value::Object(map) => {
+                let op = map.get("op").and_then(ExprOp::from_value);
+                if let Some(op) = op
+                    && !lang.at_least(op.since())
+                {
+                    let since = op.since();
+                    let facts = JsObject::new()
+                        .with("op", op.as_str())
+                        .with("language", lang.as_str());
+                    let message =
+                        format!("'{op}' is a {since} expression; this program is {lang}.");
+                    self.refuse(message, path, facts);
+                }
+                if lang.at_least(Language::V0_5)
+                    && let Some(op) = op
+                    && negative_literal(map)
+                {
+                    let facts = JsObject::new()
+                        .with("op", op.as_str())
+                        .with("language", lang.as_str());
+                    let message = format!(
+                        "A negative '{op}' literal is not allowed in {lang}: from mandate/0.5 a negative literal is written as the negation of a positive one (unary neg)."
+                    );
+                    self.refuse(message, path, facts);
+                }
+                for (k, x) in map.iter() {
+                    // Every budget is written under `budget`: a workflow's,
+                    // an agent's, a skill's, a delegation's.
+                    if k == "budget"
+                        && let Value::Object(budget) = x
+                    {
+                        for field in budget.keys() {
+                            if let Some(added) = newer(&BUDGET_FIELDS, field, lang) {
+                                let facts = JsObject::new()
+                                    .with("field", field)
+                                    .with("language", lang.as_str());
+                                let message = format!(
+                                    "'{field}' is a {added} budget field; this program is {lang}."
+                                );
+                                let at = format!("{path}/budget/{}", ptr_token(field));
+                                self.refuse(message, &at, facts);
+                            }
+                        }
+                    }
+                    let len = path.len();
+                    path.push('/');
+                    path.push_str(&ptr_token(k));
+                    self.walk(x, path);
+                    path.truncate(len);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The fields an agent gained, and `progress.repeats` over
+    /// `progress.window`.
+    fn agents(&mut self, defs: &Map) {
+        let lang = self.language;
+        for (name, d) in defs.iter() {
+            let Value::Object(agent) = d else {
+                continue;
+            };
+            if d.get("kind").and_then(DefKind::from_value) != Some(DefKind::Agent) {
+                continue;
+            }
+            for (field, since) in AGENT_FIELDS {
+                if agent.contains_key(field) && !lang.at_least(since) {
+                    let facts = JsObject::new()
+                        .with("field", field)
+                        .with("language", lang.as_str());
+                    let message = format!(
+                        "Agent {name}: '{field}' is a {since} field; this program is {lang}."
+                    );
+                    self.refuse(
+                        message,
+                        &format!("/defs/{}/{field}", ptr_token(name)),
+                        facts,
+                    );
+                }
+            }
+            let progress = agent.get("progress");
+            let number = |key: &str| match progress.and_then(|p| p.get(key)) {
+                Some(Value::Number(n)) => Some(*n),
+                _ => None,
+            };
+            if let (Some(window), Some(repeats)) = (number("window"), number("repeats"))
+                && repeats > window
+            {
+                let facts = JsObject::new()
+                    .with("window", window)
+                    .with("repeats", repeats);
+                let message = format!(
+                    "Agent {name}: progress.repeats ({repeats}) cannot be more than progress.window ({window})."
+                );
+                self.refuse(
+                    message,
+                    &format!("/defs/{}/progress", ptr_token(name)),
+                    facts,
+                );
+            }
+        }
     }
 }
 

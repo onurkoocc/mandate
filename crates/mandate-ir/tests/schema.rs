@@ -116,24 +116,37 @@ fn diagnostics_text(diagnostics: &[Diagnostic]) -> String {
     ))
 }
 
-/// The cases of invalid IR whose diagnostics need what this crate does not
-/// give yet, with the reason.
-const IR_PENDING: &[&str] = &[
-    // The version gates of `validateIr` come in the next commit.
-    "ir: agent_min: add unknown member \"loop\" to /defs/Support",
-    "ir: agent_min: add unknown member \"progress\" to /defs/Support",
-    "ir: agent_full: /defs/Peer/progress/window = 1",
-];
-
 /// `load(input, "json").diagnostics` of every invalid IR, whole: the schema
 /// diagnostics and those of the version gates, in order.
 #[test]
 fn invalid_ir_diagnostics() {
     let items = named("ir", parted_cases("ir-invalid"));
-    let gate = run_gate("invalid IR diagnostics", IR_PENDING, items, |case| {
+    let gate = run_gate("invalid IR diagnostics", &[], items, |case| {
         let loaded = load_json(str_of(case, "input"));
         if loaded.program.is_some() {
             return Err("the program was accepted".to_owned());
+        }
+        compare_text(
+            &stored(case, "diagnostics"),
+            &diagnostics_text(&loaded.diagnostics),
+        )
+    });
+    if let Err(report) = gate {
+        panic!("{report}");
+    }
+}
+
+/// The version gates of `validateIr`: each row of the `SINCE` tables, the
+/// budget placements, `progress.repeats` and the negative literals, accepted
+/// with no diagnostic or refused with exactly these.
+#[test]
+fn version_gates() {
+    let items = named("gate", cases_of("ir-gates.json"));
+    let gate = run_gate("version gates", &[], items, |case| {
+        let loaded = load_json(str_of(case, "input"));
+        let accepted = str_of(case, "verdict") == "accepted";
+        if accepted != loaded.program.is_some() {
+            return Err(format!("expected {}", str_of(case, "verdict")));
         }
         compare_text(
             &stored(case, "diagnostics"),

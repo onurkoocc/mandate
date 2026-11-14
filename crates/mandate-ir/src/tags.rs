@@ -76,3 +76,85 @@ impl Language {
         self >= since
     }
 }
+
+tags! {
+    /// The `kind` of a definition (`$defs/Def`).
+    DefKind {
+        Type = "type",
+        Capability = "capability",
+        Const = "const",
+        Fn = "fn",
+        Extern = "extern",
+        Effect = "effect",
+        Agent = "agent",
+        Workflow = "workflow",
+        Contract = "contract",
+        Component = "component",
+        Interface = "interface",
+        Environment = "environment",
+        Role = "role",
+    }
+}
+
+impl DefKind {
+    /// The language version that added the kind: `SINCE.kinds` in
+    /// `validate.ts`, 0.1 for a kind it does not list.
+    #[must_use]
+    pub const fn since(self) -> Language {
+        match self {
+            DefKind::Component | DefKind::Interface | DefKind::Environment => Language::V0_3,
+            DefKind::Role => Language::V0_4,
+            _ => Language::V0_1,
+        }
+    }
+}
+
+tags! {
+    /// The `op` of an expression (`$defs/Expr`).
+    ExprOp {
+        Int = "int",
+        Dec = "dec",
+        Text = "text",
+        Bool = "bool",
+        Money = "money",
+        Duration = "duration",
+        List = "list",
+        Set = "set",
+        Template = "template",
+        Prompt = "prompt",
+        Var = "var",
+        Field = "field",
+        Call = "call",
+        Unary = "unary",
+        Binary = "binary",
+        Range = "range",
+        Record = "record",
+        Infer = "infer",
+        Delegate = "delegate",
+        Spawn = "spawn",
+        Await = "await",
+        Verify = "verify",
+        Effect = "effect",
+        Escalate = "escalate",
+        Pause = "pause",
+        Switch = "switch",
+        Try = "try",
+        Block = "block",
+        Changeset = "changeset",
+        Map = "map",
+        Plan = "plan",
+    }
+}
+
+impl ExprOp {
+    /// The language version that added the expression: `SINCE.ops` in
+    /// `validate.ts`, 0.1 for one it does not list.
+    #[must_use]
+    pub const fn since(self) -> Language {
+        match self {
+            ExprOp::Changeset => Language::V0_3,
+            ExprOp::Map | ExprOp::Plan => Language::V0_4,
+            _ => Language::V0_1,
+        }
+    }
+}
