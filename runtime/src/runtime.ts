@@ -229,7 +229,9 @@ export class Runtime {
       throw new Violation("signed_decisions_required", "A mandate/0.4 package does not run in unsigned mode: its decisions are signed records (spec/envelope.md). Take decisions.mode out of the runtime configuration.");
     }
     // A host below the lock's least versions starts nothing of the package: no workspace, no run, no event (unfit_host).
-    await checkFitness(o.pkg.lock, this.hostProbe);
+    // With a scheduler this process only records the run and starts its workflow; the worker that takes the run
+    // checks its own host when it resumes it.
+    if (!this.driver) await checkFitness(o.pkg.lock, this.hostProbe);
     const wf = o.pkg.program.defs[o.workflow];
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
     const linked = linkedProgram(o.pkg.program, o.pkg.modules);
@@ -984,6 +986,9 @@ export class Runtime {
     if (w["kind"] === "timer") return this.drive(runId);
     // A decision expires, and so does an amendment nobody answered: the lead is told, and the envelope stays.
     if (w["kind"] !== "decision" && w["kind"] !== "amendment") return run;
+    // A runtime that resumes the run itself checks its host first, as the resume would: an unfit host expires
+    // nothing, and the wait stays for a fit host to expire (unfit_host). With a scheduler, its worker checks.
+    if (!this.driver) await checkFitness((await this.packaged(run.package_hash)).lock, this.hostProbe);
     await this.db.tx(async (tx) => {
       await this.journal.lock(tx, runId);
       await tx.query("update commands set state = 'failed', error = $3 where run_id = $1 and command_id = $2 and state = 'waiting'", [

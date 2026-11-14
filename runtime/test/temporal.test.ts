@@ -8,18 +8,21 @@
 
 import { randomUUID } from "node:crypto";
 import { check, load, type WorkflowDef } from "@mandate/compiler";
+import { WorkflowFailedError } from "@temporalio/client";
 import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { bundleWorkflowCode, DefaultLogger, Runtime as TemporalRuntime, type WorkflowBundleWithSourceMap } from "@temporalio/worker";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { shownPackage, signDecision } from "../src/decisions.js";
 import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
+import type { HostProbe, HostTool, ToolReading } from "../src/fitness.js";
 import type { ProgramChecker, WorkerChecker } from "../src/plan.js";
 import { buildPackage, Runtime } from "../src/runtime.js";
 import { MxcAdapter } from "../src/sandbox.js";
 import { SimAgents, SimSandboxHost, SimTool, toolUse, wallClock } from "../src/sim.js";
-import { createWorker, TemporalDriver, workflowId, workflowsPath, type RunOptions } from "../src/temporal/index.js";
+import { createWorker, TemporalDriver, UNFIT_ATTEMPTS, workflowId, workflowsPath, type RunOptions } from "../src/temporal/index.js";
 import { isObj, type Value } from "../src/values.js";
-import { closeAll, planChecker, world, type World, UNSIGNED } from "./helpers.js";
+import { FakeHost, FIT, HOST } from "./fake-host.js";
+import { closeAll, LOCK, planChecker, world, type World, UNSIGNED } from "./helpers.js";
 import { commenting, finish, leadChat, program, programAt, submit } from "./planning.js";
 import { BUG, FIXBUG, fixbugAgents, RESULTS, USD, waitOf } from "./fixbug.js";
 import { ASK, FIX, ISSUE, NOTIFY } from "./programs.js";
@@ -45,21 +48,31 @@ afterAll(async () => {
 interface Scheduled extends World {
   control: Runtime;
   driver: TemporalDriver;
-  /** Runs the test body while a worker serves the run's task queue. */
-  serve<T>(body: () => Promise<T>): Promise<T>;
+  /**
+   * Runs the test body while a worker serves the run's task queue: the worker's runtime (`rt`), or with `host` a
+   * worker of its own on that host. A worker serves once, so each call starts a new one.
+   */
+  serve<T>(body: () => Promise<T>, host?: HostProbe): Promise<T>;
 }
 
-async function scheduled(src: string, o: Parameters<typeof world>[1] & { runOptions?: RunOptions } = {}): Promise<Scheduled> {
+async function scheduled(src: string, o: Parameters<typeof world>[1] & { runOptions?: RunOptions; controlHost?: HostProbe; workerHost?: HostProbe } = {}): Promise<Scheduled> {
   const w = await world(src, o);
   const taskQueue = `mandate-${randomUUID()}`;
   // The earlier programs take a decision on the caller's word; a 0.4 program gives the keys it takes signed ones with.
   const decisions = o.decisions ?? UNSIGNED.decisions;
   // The worker's runtime keeps timers durable; control calls share its key, so either can check the evidence.
   const plan = o.plan ? { plan: o.plan } : {};
-  const runtime = new Runtime(w.db, w.adapters, w.faults, undefined, { decisions, durableTimers: true, signer: w.rt.signer, artifacts: w.rt.artifacts, ...plan });
-  const worker = await createWorker({ connection: env.nativeConnection, taskQueue, runtime, workflowBundle: bundle });
+  // Each process reads its own host's tools.
+  const host = (probe: HostProbe | undefined) => (probe ? { hostProbe: probe } : {});
+  const workerRuntime = (probe: HostProbe | undefined) => new Runtime(w.db, w.adapters, w.faults, undefined, { decisions, durableTimers: true, signer: w.rt.signer, artifacts: w.rt.artifacts, ...plan, ...host(probe) });
+  const runtime = workerRuntime(o.workerHost);
   const driver = new TemporalDriver(env.client, taskQueue, o.runOptions);
-  return { ...w, rt: runtime, driver, control: new Runtime(w.db, w.adapters, w.faults, driver, { decisions, signer: w.rt.signer, artifacts: w.rt.artifacts, ...plan }), serve: (body) => worker.runUntil(body()) };
+  const control = new Runtime(w.db, w.adapters, w.faults, driver, { decisions, signer: w.rt.signer, artifacts: w.rt.artifacts, ...plan, ...host(o.controlHost) });
+  const serve = async <T>(body: () => Promise<T>, probe?: HostProbe): Promise<T> => {
+    const worker = await createWorker({ connection: env.nativeConnection, taskQueue, runtime: probe ? workerRuntime(probe) : runtime, workflowBundle: bundle });
+    return worker.runUntil(body());
+  };
+  return { ...w, rt: runtime, driver, control, serve };
 }
 
 /** A 0.4 workflow that maps a list, with no envelope and no role: it asks no person, so it needs no member's key. */
@@ -377,5 +390,118 @@ describe("Temporal schedules runs", () => {
     // Started, woken by the approval, and resumed by Temporal's retry after the crash.
     const leases = (await s.control.journal.events("t9")).filter((e) => e.type === "lease_acquired");
     expect(leases).toHaveLength(3);
+  });
+});
+
+describe("under Temporal the host that is checked is the worker's (spec/boundary.md \"Host fitness\")", () => {
+  const ATTEMPTS = UNFIT_ATTEMPTS;
+  const lock = { ...LOCK, host: HOST };
+  const BELOW = { ...FIT, bwrap: { output: "bubblewrap 0.9.0\n", path: "/usr/bin/bwrap", setuid: false } };
+  const REFUSAL = "unfit_host: This host does not meet the package's lock: bwrap: 0.9.0 found, the lock asks 0.11.0 or later, not setuid. Nothing of the package runs here (spec/boundary.md).";
+  /** How many times a host was checked: each check reads `bwrap`, then `node`. */
+  const checks = (h: FakeHost): number => h.asked.filter((t) => t === "bwrap").length;
+  /** What the run is in PostgreSQL: its row, its events and its commands. */
+  const recorded = async (s: Scheduled, runId: string) => ({
+    run: await s.control.getRun(runId),
+    events: await s.control.journal.events(runId),
+    commands: await s.db.query("select command_id, state, error from commands where run_id = $1 order by command_id", [runId]),
+  });
+  /** How the run's workflow ends within `ms`: its result, its failure, or neither. */
+  const ending = async (s: Scheduled, runId: string, ms: number): Promise<{ result: unknown } | { failure: unknown } | { pending: number }> => {
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<{ pending: number }>((r) => (timer = setTimeout(() => r({ pending: ms }), ms)));
+    try {
+      return await Promise.race([s.driver.result(runId).then((result) => ({ result }), (failure: unknown) => ({ failure })), late]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  /** The workflow failed with `unfit_host` and the refusal the worker's host gave. */
+  const failedUnfit = (end: Awaited<ReturnType<typeof ending>>): void => {
+    expect(end).toHaveProperty("failure");
+    const failure = (end as { failure: unknown }).failure;
+    expect(failure).toBeInstanceOf(WorkflowFailedError);
+    expect((failure as WorkflowFailedError).cause).toMatchObject({ type: "unfit_host", message: REFUSAL, nonRetryable: true });
+  };
+
+  it("a control plane whose host is unfit starts the run, and a fit worker drives it to its end", async () => {
+    const controlHost = new FakeHost({ ...FIT, bwrap: { missing: true } });
+    const workerHost = new FakeHost(FIT);
+    const s = await scheduled(FIX, { lock, controlHost, workerHost });
+    expect((await s.control.startRun({ pkg: s.pkg, workflow: "Fix", input: ISSUE, runId: "h1" })).state).toBe("accepted");
+    expect(await s.serve(() => s.driver.result("h1"))).toEqual({ runId: "h1", state: "succeeded", wakeInMs: null });
+    // The control plane's tools were not read; the worker's were, once, before it took the lease.
+    expect(controlHost.asked).toEqual([]);
+    expect(workerHost.asked).toEqual(["bwrap", "node"]);
+  });
+
+  it(`an unfit worker is tried ${ATTEMPTS} times, then the workflow fails with unfit_host, and the run is as it was`, async () => {
+    const workerHost = new FakeHost(BELOW);
+    const s = await scheduled(FIX, { lock, controlHost: new FakeHost(FIT), workerHost });
+    await s.control.startRun({ pkg: s.pkg, workflow: "Fix", input: ISSUE, runId: "h2" });
+    const before = await recorded(s, "h2");
+    const end = await s.serve(() => ending(s, "h2", 12_000));
+    expect(checks(workerHost)).toBe(ATTEMPTS);
+    failedUnfit(end);
+    // No lease, no state, no event: the run waits, accepted, for a fit worker.
+    expect(await recorded(s, "h2")).toEqual(before);
+    expect(before.run.state).toBe("accepted");
+    expect(s.agents.count()).toBe(0);
+  });
+
+  it("after that failure a wake changes nothing, and starting the run's workflow again lets a fit worker drive it to its end", async () => {
+    const s = await scheduled(FIX, { lock, controlHost: new FakeHost(FIT), workerHost: new FakeHost(BELOW) });
+    await s.control.startRun({ pkg: s.pkg, workflow: "Fix", input: ISSUE, runId: "h3" });
+    failedUnfit(await s.serve(() => ending(s, "h3", 12_000)));
+    const handle = env.client.workflow.getHandle(workflowId("h3"));
+    const failed = await handle.describe();
+    // What every control call does after it records its decision: the closed workflow is not there to be woken.
+    await s.driver.wake("h3");
+    expect((await handle.describe()).runId).toBe(failed.runId);
+    expect((await s.control.getRun("h3")).state).toBe("accepted");
+    // A fit worker serves the queue now. The run's workflow is started again, as StartRun started it, and drives the run.
+    const fit = new FakeHost(FIT);
+    const done = await s.serve(async () => {
+      await s.driver.start("h3");
+      return s.driver.result("h3");
+    }, fit);
+    expect(done).toEqual({ runId: "h3", state: "succeeded", wakeInMs: null });
+    expect((await handle.describe()).runId).not.toBe(failed.runId);
+    expect(checks(fit)).toBe(1);
+    expect(s.agents.count()).toBe(1);
+  });
+
+  it(`an unfit worker that would expire a decision is tried ${ATTEMPTS} times too and writes nothing; a fit worker expires it (R15)`, async () => {
+    const tool = new SimTool("git.comment");
+    // The worker's host is fit for the resume that opens the wait, and falls short from then on.
+    const workerHost = new (class extends FakeHost {
+      override async read(tool: HostTool): Promise<ToolReading> {
+        const r = await super.read(tool);
+        if (tool === "node") this.readings = BELOW;
+        return r;
+      }
+    })(FIT);
+    const s = await scheduled(NOTIFY, { lock, tools: [tool], clock: wallClock, controlHost: new FakeHost(FIT), workerHost });
+    await s.control.startRun({ pkg: s.pkg, workflow: "Notify", input: ISSUE, runId: "h4", authorize: { "git.comment": { by: "human", role: "owner", deadlineMs: 1_000 } } });
+    let before: Awaited<ReturnType<typeof recorded>> | undefined;
+    const end = await s.serve(async () => {
+      await stateOf(s, "h4", "waiting");
+      // The next thing the workflow does is expire the wait, on the unfit host.
+      before = await recorded(s, "h4");
+      return ending(s, "h4", 12_000);
+    });
+    expect(checks(workerHost)).toBe(1 + ATTEMPTS);
+    failedUnfit(end);
+    // The decision did not expire on the unfit host: no wait_expired, the command still waits, the run as it was.
+    expect(await recorded(s, "h4")).toEqual(before);
+    expect(before?.commands).toContainEqual(expect.objectContaining({ state: "waiting" }));
+    const done = await s.serve(async () => {
+      await s.driver.start("h4");
+      return s.driver.result("h4");
+    }, new FakeHost(FIT));
+    expect(done.state).toBe("failed");
+    expect((await s.control.getRun("h4")).error).toEqual({ $tag: "Rejected", $args: ["approval_expired"] });
+    expect((await s.control.journal.events("h4")).filter((e) => e.type === "wait_expired")).toHaveLength(1);
+    expect(tool.executions).toHaveLength(0);
   });
 });

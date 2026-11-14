@@ -12,25 +12,11 @@ import { check, type Lock } from "@mandate/compiler";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { hostShortfalls, meets, parseVersion, systemProbe, versionIn, type HostProbe, type HostTool, type ToolReading } from "../src/fitness.js";
 import { buildPackage, verifyPackage } from "../src/runtime.js";
+import { FakeHost, FIT, HOST } from "./fake-host.js";
 import { closeAll, LOCK, world } from "./helpers.js";
 import { ASK, ISSUE } from "./programs.js";
 
 afterAll(closeAll);
-
-/** A host whose tools read as `readings` says; it records what it was asked. */
-class FakeHost implements HostProbe {
-  readonly asked: HostTool[] = [];
-  constructor(public readings: Partial<Record<HostTool, ToolReading>>) {}
-  async read(tool: HostTool): Promise<ToolReading> {
-    this.asked.push(tool);
-    const r = this.readings[tool];
-    if (!r) throw new Error(`no reading for ${tool}`);
-    return r;
-  }
-}
-
-const FIT: Partial<Record<HostTool, ToolReading>> = { node: { output: "22.23.4" }, bwrap: { output: "bubblewrap 0.11.0\n", path: "/usr/bin/bwrap", setuid: false } };
-const HOST = { node: "22.23.4", bwrap: "0.11.0" };
 
 describe("a version", () => {
   const v = (s: string) => parseVersion(s)!;

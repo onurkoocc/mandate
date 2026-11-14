@@ -9,7 +9,7 @@
 // This file is bundled into Temporal's deterministic workflow sandbox, so it
 // imports nothing but the workflow SDK and types.
 
-import { condition, continueAsNew, defineSignal, proxyActivities, setHandler, sleep, workflowInfo } from "@temporalio/workflow";
+import { ActivityFailure, ApplicationFailure, condition, continueAsNew, defineSignal, proxyActivities, setHandler, sleep, workflowInfo } from "@temporalio/workflow";
 import type { Activities } from "./activities.js";
 
 /** Where a run stands after an activity drove it. */
@@ -34,15 +34,36 @@ export const wakeSignal = defineSignal("wake");
 
 export const WORKFLOW = "mandateRun";
 
+/** The type of the failure a workflow ends with when no worker that took its activity met the package's lock. */
+export const UNFIT_HOST = "unfit_host";
+
 const TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
 const PARKED = new Set(["waiting", "attention_required"]);
 
-const { drive, expire } = proxyActivities<Activities>({
+const activities = proxyActivities<Activities>({
   startToCloseTimeout: "1 hour",
   // A worker that dies is noticed within a heartbeat and the run is resumed elsewhere.
   heartbeatTimeout: "30 seconds",
   retry: { initialInterval: "1 second", backoffCoefficient: 2, maximumInterval: "1 minute" },
 });
+
+/**
+ * Runs an activity. When it was refused on unfit hosts until it was not retried, the workflow fails with that
+ * refusal as its own failure, so whoever looks at the workflow reads `unfit_host` and why. The run is as it was.
+ */
+async function act(activity: "drive" | "expire", runId: string): Promise<Progress> {
+  try {
+    return await activities[activity](runId);
+  } catch (e) {
+    if (e instanceof ActivityFailure && e.cause instanceof ApplicationFailure && e.cause.type === UNFIT_HOST) {
+      throw ApplicationFailure.create({ type: UNFIT_HOST, message: e.cause.message, nonRetryable: true, cause: e });
+    }
+    throw e;
+  }
+}
+
+const drive = (runId: string): Promise<Progress> => act("drive", runId);
+const expire = (runId: string): Promise<Progress> => act("expire", runId);
 
 export async function mandateRun(runId: string, options: RunOptions = {}): Promise<Progress> {
   let woken = false;

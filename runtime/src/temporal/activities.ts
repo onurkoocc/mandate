@@ -4,12 +4,20 @@
 // out older attempts. Activity retries are never the business idempotency
 // (§16.1): commands and actions are deduplicated in PostgreSQL.
 
-import { Context } from "@temporalio/activity";
+import { ApplicationFailure, Context } from "@temporalio/activity";
 import type { RunRow } from "../journal.js";
 import type { Runtime } from "../runtime.js";
 import { Violation } from "../signals.js";
 import { isObj } from "../values.js";
-import type { Progress } from "./workflows.js";
+import { UNFIT_HOST, type Progress } from "./workflows.js";
+
+/**
+ * How many times an activity is tried before a refusal of its worker's host (`unfit_host`) fails the run's workflow.
+ * The tries before the last are retried as any failure is, after 1 s and then 2 s, so a fit worker on the same task
+ * queue can take the activity; the last is not retried. Counted by the activity's attempt, which a worker that died
+ * also raises.
+ */
+export const UNFIT_ATTEMPTS = 3;
 
 export interface Activities {
   /** Takes the run's lease and drives it until it waits, needs attention or ends. */
@@ -24,6 +32,13 @@ export function createActivities(rt: Runtime): Activities {
     const timer = setInterval(() => ctx.heartbeat(), 5_000);
     try {
       return progress(rt, await fn());
+    } catch (e) {
+      // This worker's host does not meet the package's lock: it took nothing and wrote nothing, and the run is as it
+      // was. Another worker may be fit; once the attempts are spent, the failure is not retried and ends the workflow.
+      if (e instanceof Violation && e.code === UNFIT_HOST) {
+        throw ctx.info.attempt < UNFIT_ATTEMPTS ? ApplicationFailure.retryable(e.message, UNFIT_HOST) : ApplicationFailure.nonRetryable(e.message, UNFIT_HOST);
+      }
+      throw e;
     } finally {
       clearInterval(timer);
     }
