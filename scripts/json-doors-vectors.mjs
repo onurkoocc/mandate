@@ -36,6 +36,14 @@
 // (the door then answers bad_input; the message is kept to read). The output
 // text is `doorJson(result)` below, the contract's serialiser. Running it
 // again writes the same bytes.
+//
+// What is written is the TypeScript's answer, which stays at language 0.5.
+// The Rust compiler also reads 0.6, so its `tables` door gives
+// `LANGUAGE_VERSIONS` with "mandate/0.6" at the end and `LANGUAGE_VERSION`
+// "mandate/0.6", and an E0103 lists 0.6 too; the Rust test compares them
+// without that one entry, and counts the calls it does that for
+// (`mandate_testkit::rust_only`; vectors/README.md, "The versions only the
+// Rust compiler reads"). Nothing here changes for it.
 
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";

@@ -20,6 +20,13 @@
 //! compile cases: they are counted as skipped, with the reason (the Rust
 //! verifier runs them in `crates/verify-journal/tests/conformance.rs`).
 //!
+//! A case of language 0.6 (`"language": "mandate/0.6"`), which the
+//! TypeScript runner skips, is run here like the others: its expectation is
+//! written by hand, and the result is compared with it as it is. Every other
+//! case is written for the TypeScript too, and an E0103 in the Rust's result
+//! is compared without the versions only the Rust reads, the cases that
+//! needs counted (`mandate_testkit::rust_only`).
+//!
 //! This supersedes the part of `crates/mandate-ir/tests/conformance.rs` that
 //! ran the cases a JSON reader alone decides; that test keeps the cases
 //! whose pinned hashes `mandate-ir` alone gives.

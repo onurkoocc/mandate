@@ -239,8 +239,11 @@ pub(super) const DOMAIN_HASH: &[&str] = &["domain", "value", "version"];
 /// domain-separated hash of a value.
 ///
 /// Input: `{ domain: "program" | "def" | "package" | "run" | "action" |
-/// "operation" | "request" | "binding" | "decision" | "event", value: any
-/// JSON value, version?: string }` (`"0.1"` when absent).
+/// "operation" | "request" | "binding" | "decision" | "event" | "library",
+/// value: any JSON value, version?: string }` (`"0.1"` when absent). The
+/// domains are `mandate_ir::HashDomain`'s: `library` (language 0.6, hashed
+/// under `"0.6"`) is the Rust's alone, and the TypeScript's `domainHash`,
+/// which takes the name as text, gives the same digest for it.
 /// Output: the hash, a string.
 pub(super) fn domain_hash(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, DOMAIN_HASH)?;

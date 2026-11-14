@@ -26,6 +26,13 @@
 //! where the TypeScript throws, with its message, and takes a program that
 //! was loaded (at most 64 levels deep).
 //!
+//! It also reads the header `mandate @ 0.6` (spec/library.md), which only
+//! the Rust compiler reads: a 0.6 program reads as the same program of 0.5
+//! does, with its `language`; the reserved words do not change, and a
+//! program under an older header reads exactly as before. The only text that
+//! differs for an older program is the list of versions an unknown one's
+//! E0103 names, which has 0.6 in it.
+//!
 //! What another implementation has to copy, and the vectors that hold this crate to it, are
 //! described in `vectors/README.md` ("Reading Mandate text"). In short:
 //!

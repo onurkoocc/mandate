@@ -10,7 +10,11 @@
 //! TypeScript function each door stands for gives for each call, as the door
 //! contract writes it, which `scripts/json-doors-vectors.mjs` writes. Each
 //! call goes through the Rust door, twice, and its output text must be the
-//! TypeScript's, or `bad_input` where the TypeScript throws. Every door must
+//! TypeScript's, or `bad_input` where the TypeScript throws, with one rule:
+//! the Rust reads language 0.6, so the `tables` door's `LANGUAGE_VERSIONS`
+//! and an E0103 are compared without `mandate/0.6`, and its
+//! `LANGUAGE_VERSION` (`mandate/0.6`) as the TypeScript's `mandate/0.5`; the
+//! calls that needs are counted (`mandate_testkit::rust_only`). Every door must
 //! have a call. Then each door is given inputs that are not what it takes and
 //! must answer `bad_input`, never panic; and an optional member that is
 //! `null` must be the same as one left out.
