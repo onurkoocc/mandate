@@ -114,6 +114,18 @@ jobs:
           # The acceptance test leaves its exports here, for the Rust verifier below.
           MANDATE_ACCEPTANCE_OUT: ${{ runner.temp }}/acceptance
         run: npx vitest run test/mxc.test.ts test/sandbox-egress.test.ts test/boundary-acceptance.test.ts test/gate3.test.ts test/workspace.test.ts
+      # The container sandbox host on the runner's own Docker engine (G05, G07): runtime/test/container.test.ts runs its
+      # second part only with MANDATE_CONTAINER=1. The images it runs in are named there by digest. assert-ran.mjs fails
+      # the step if any test of the file was skipped.
+      - name: The container sandbox host on a real Docker engine (G05, G07), run and not skipped
+        working-directory: runtime
+        env:
+          MANDATE_CONTAINER: "1"
+          VITEST_REPORT: ${{ runner.temp }}/container-report.json
+        run: |
+          docker version --format 'engine {{.Server.Os}} {{.Server.Version}}'
+          npx vitest run test/container.test.ts --reporter=verbose --reporter=json --outputFile.json="$VITEST_REPORT"
+          node ../scripts/assert-ran.mjs "$VITEST_REPORT" "the container sandbox host on a real Docker engine"
       # The independent verifier on what the run in the real sandbox left: its journal's export must verify, and the
       # export made after one event was changed in the database must be chain_broken at that event.
       - name: Install the pinned Rust toolchain

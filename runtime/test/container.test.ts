@@ -11,6 +11,7 @@
 // anything runs, a read-only path cannot be written from inside, no host can
 // be reached, and a hung process is killed at its timeout (G05, G07).
 
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -119,6 +120,11 @@ describe("ContainerHost against a fake Docker", () => {
   });
 });
 
+// Both images by digest, so that what CI shows is the same image every time: the one the commands run in, and the one
+// the tool helpers run in when no command image shares their path (the host's default, debian:bookworm-slim, is a tag).
+const NODE_IMAGE = "node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee";
+const HELPER_IMAGE = "debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc";
+
 describe.runIf(process.env["MANDATE_CONTAINER"] === "1")("ContainerHost on a real Docker engine", () => {
   const root = mkdtempSync(join(tmpdir(), "mandate-ctr-live-"));
   const repo = join(root, "repo").replace(/\\/g, "/");
@@ -126,8 +132,21 @@ describe.runIf(process.env["MANDATE_CONTAINER"] === "1")("ContainerHost on a rea
   mkdirSync(src, { recursive: true });
   writeFileSync(join(repo, "README.md"), "kept\n");
   writeFileSync(join(src, "a.ts"), "export const a = 1;\n");
-  const host = new ContainerHost({ images: { node: "node:22-slim" } });
-  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const host = new ContainerHost({ images: { node: NODE_IMAGE }, helperImage: HELPER_IMAGE });
+  afterAll(() => {
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch {
+      // On a Linux engine the container runs as root, so what it wrote (src/deep) is root's and the user that ran the
+      // test cannot remove it: the same engine removes it, from the helper image.
+      try {
+        execFileSync("docker", ["run", "--rm", "--mount", `type=bind,source=${root},target=/r`, HELPER_IMAGE, "rm", "-rf", "/r/repo"], { stdio: "ignore", env: { ...process.env, MSYS_NO_PATHCONV: "1" } });
+        rmSync(root, { recursive: true, force: true });
+      } catch {
+        // A scratch directory left in the temp directory is no failure of what the test shows.
+      }
+    }
+  });
 
   it("an agent's tools work inside the grant, and nothing else does", async () => {
     expect((await host.probe()).network).toBe("deny_all");
