@@ -7,14 +7,16 @@
 //!      → the lock checks (only with a lock and no error so far) → ok, hashes
 //! ```
 //!
-//! The stages after `importedMethods` are not ported yet. Each has a seam
-//! here, a private function with the TypeScript's name and signature that
-//! gives nothing, and [`UNPORTED`] lists them. Until that list is empty, an
-//! `ok` from [`check`] means "no error from the stages ported so far": the
-//! static checks and the lock checks run only when nothing before them gave
-//! an error, so a result with an error from the stages here is the
-//! TypeScript's whole result, and so is one with no diagnostic at all; a
-//! result the TypeScript would give a diagnostic of a later stage is not.
+//! The static checks are not ported yet. They have a seam here, a private
+//! function with the TypeScript's name and signature that gives nothing, and
+//! [`UNPORTED`] lists them. Until that list is empty, an `ok` from [`check`]
+//! means "no error from the stages ported so far": the static checks run only
+//! when nothing before them gave an error, and the lock checks (which are
+//! ported, [`crate::lock`]) run when nothing before them gave one, so a result
+//! with an error from the stages ported is the TypeScript's whole result, and
+//! so is one with no diagnostic at all; a result the TypeScript would give a
+//! diagnostic of the static checks, or in which it stopped at a static error
+//! before the lock checks, is not.
 
 use mandate_ir::{
     Diagnostic, JsObject, JsValue, Location, Map, Program, ProgramHashes, Spans, Value, has_errors,
@@ -23,7 +25,8 @@ use mandate_ir::{
 use mandate_syntax::{SourceKind, load};
 
 use crate::caps::imported_methods;
-use crate::modules::{Linked, Modules, link};
+use crate::lock::{Lock, lock_checks, module_lock_checks, role_lock_checks, validate_lock};
+use crate::modules::{Modules, link};
 use crate::resolve::resolve_names;
 use crate::roles::role_checks;
 
@@ -33,10 +36,6 @@ use crate::roles::role_checks;
 pub const UNPORTED: &[&str] = &[
     "staticCheck (R11-R13: check/static.ts and the checks it calls)",
     "opts.claim (R13: the claim of a lead's sub-program, read by staticCheck)",
-    "validateLock (R14: lock.ts)",
-    "lockChecks (R14: lock.ts)",
-    "roleLockChecks (R14: lock.ts)",
-    "moduleLockChecks (R14: lock.ts)",
 ];
 
 /// What [`check`] is given besides the text: `CheckOptions`.
@@ -282,18 +281,27 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
             opts.claim,
         ));
     }
-    if let Some(lock) = opts.lock
+    // `opts.lock && !hasErrors(diagnostics)`: a lock that is falsy is none.
+    if let Some(lock) = opts.lock.filter(|l| l.is_truthy())
         && !has_errors(&diagnostics)
     {
         let lock_diags = validate_lock(lock);
         if lock_diags.is_empty() {
+            let view = Lock::of(lock);
             // `{ ...loaded.program, defs: linked.defs }`.
             let mut with_linked = program.members().clone();
             with_linked.insert("defs", linked.defs.clone());
             let with_linked = Value::Object(with_linked);
-            diagnostics.extend(lock_checks(&with_linked, lock, &loaded.spans));
-            diagnostics.extend(role_lock_checks(program, &linked, lock, &loaded.spans));
-            diagnostics.extend(module_lock_checks(program, lock, opts.modules));
+            if let Some(with_linked) = Program::of(&with_linked) {
+                diagnostics.extend(lock_checks(with_linked, view, Some(&loaded.spans)));
+            }
+            diagnostics.extend(role_lock_checks(
+                program,
+                &linked,
+                view,
+                Some(&loaded.spans),
+            ));
+            diagnostics.extend(module_lock_checks(program, view, opts.modules));
         } else {
             diagnostics.extend(lock_diags);
         }
@@ -321,43 +329,5 @@ fn static_check(
     claim: Option<&Value>,
 ) -> Vec<Diagnostic> {
     let _ = (program, spans, defs, claim);
-    Vec::new()
-}
-
-/// `validateLock(lock)` (`lock.ts`): the lock against
-/// `spec/lock.schema.json` and the formats its fields need (E0140). Seam:
-/// R14 fills it.
-fn validate_lock(lock: &Value) -> Vec<Diagnostic> {
-    let _ = lock;
-    Vec::new()
-}
-
-/// `lockChecks({ ...program, defs: linked.defs }, lock, spans)`
-/// (`lock.ts`): tiers against the lock, W0504. Seam: R14 fills it.
-fn lock_checks(program: &Value, lock: &Value, spans: &Spans) -> Vec<Diagnostic> {
-    let _ = (program, lock, spans);
-    Vec::new()
-}
-
-/// `roleLockChecks(program, linked, lock, spans)` (`lock.ts`): every role
-/// has a member in the lock (E1502). Seam: R14 fills it.
-fn role_lock_checks(
-    program: Program<'_>,
-    linked: &Linked,
-    lock: &Value,
-    spans: &Spans,
-) -> Vec<Diagnostic> {
-    let _ = (program, linked, lock, spans);
-    Vec::new()
-}
-
-/// `moduleLockChecks(program, lock, modules)` (`lock.ts`): imported modules
-/// pinned by the lock. Seam: R14 fills it.
-fn module_lock_checks(
-    program: Program<'_>,
-    lock: &Value,
-    modules: Option<&Modules>,
-) -> Vec<Diagnostic> {
-    let _ = (program, lock, modules);
     Vec::new()
 }

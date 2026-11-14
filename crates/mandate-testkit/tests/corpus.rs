@@ -22,8 +22,9 @@
 //!
 //! A `check` entry also passes when TypeScript ran a stage Rust does not
 //! have yet and that stage happened to give nothing (its static checks on a
-//! result with no error, its lock checks on one with a lock too); the gate
-//! prints how many of the passing entries are such.
+//! result with no error, and the claim of a sub-program); the gate prints how
+//! many of the passing entries are such. The lock checks are ported, so they
+//! are not among them.
 //!
 //! Two things are neither passed nor pending, and are counted and printed
 //! (`corpus <door>: excluded N: ...`): the entries in [`EXCLUDED`], by id
@@ -33,12 +34,14 @@
 
 #![allow(clippy::panic, clippy::expect_used, missing_docs)]
 
-use mandate_check::{CheckOptions, ModuleSource, Modules, check, load_modules};
+use mandate_check::{
+    CheckOptions, ModuleSource, Modules, check, denial_diagnostics, load_modules, validate_lock,
+};
 use mandate_ir::{Diagnostic, JsValue, Span, Spans, Value, parse};
 use mandate_syntax::{SourceKind, load};
 use mandate_testkit::corpus::{
-    Actual, Corpus, Door, Entry, Input, Kind, digest_of, ir_text, render_check, render_load,
-    render_load_modules, spans_text,
+    Actual, Corpus, Door, Entry, Input, Kind, digest_of, ir_text, render_check, render_diagnostics,
+    render_load, render_load_modules, spans_text,
 };
 use mandate_testkit::{check_pending, run_gate};
 
@@ -52,7 +55,9 @@ const PENDING_CHECK: &[&str] = &[
     // R11: the static core (types, expressions, budgets, cost).
     "*MDT-E02*",
     "*MDT-W02*",
-    "*MDT-E05*",
+    "*MDT-E0501*",
+    "*MDT-E0502*",
+    "*MDT-E0503*",
     // R12: the static authority (capabilities, delegation, effects, envelopes, methods).
     "*MDT-E03*",
     "*MDT-W0310*",
@@ -66,20 +71,18 @@ const PENDING_CHECK: &[&str] = &[
     "*MDT-E10*",
     "*MDT-E11*",
     "*MDT-E12*",
-    // R14: the lock.
-    "*MDT-E014*",
-    "*MDT-W0504*",
-    "*MDT-E1502*",
-    "*MDT-E1802*",
-    "*MDT-E1803*",
-    // R14: the managed-agents binding checks, which lockChecks runs.
-    "*MDT-E09*",
     // R11: the static checks' limit of 1000 expanded nodes per workflow. Its
     // code, MDT-E0105, is also the reader's and validateIr's, which are
     // ported, so no family glob can hold these two without holding entries
     // that pass; they are listed by name.
     "check @ check-2842daaeba080270 [MDT-E0105]",
     "check @ check-b187ac8a2a6ae914 [MDT-E0105]",
+    // R11: the static checks' E0504, a delegation in two currencies. Its code
+    // is also lockChecks's (R14, ported: an agent's budget in another currency
+    // than its tier's price, check-c4ffe3ea342c6686), so the family cannot be
+    // listed, and the two items that hold the static one are named.
+    "check @ check-1faa2e350148856e [MDT-E0504]",
+    "check @ check-b962fd7ab4c2a149 [MDT-E0504]",
 ];
 /// `load_modules`: a module that does not check against the others for a
 /// reason of a later slice, by family of codes.
@@ -95,10 +98,6 @@ const PENDING_CHECK_SUBPROGRAM: &[&str] = &["check_subprogram @ *"];
 const PENDING_CHECK_AMENDMENT: &[&str] = &["check_amendment @ *"];
 /// `apply_patch`: R13.
 const PENDING_APPLY_PATCH: &[&str] = &["apply_patch @ *"];
-/// `validate_lock`: the lock checks, R14.
-const PENDING_VALIDATE_LOCK: &[&str] = &["validate_lock @ *"];
-/// `denial_diagnostics`: the sandbox target, R15.
-const PENDING_DENIAL_DIAGNOSTICS: &[&str] = &["denial_diagnostics @ *"];
 
 /// The pending list of a door. `acs_target` has none: see [`OUT_OF_SCOPE`].
 fn pending(door: Door) -> &'static [&'static str] {
@@ -110,9 +109,9 @@ fn pending(door: Door) -> &'static [&'static str] {
         Door::CheckSubprogram => PENDING_CHECK_SUBPROGRAM,
         Door::CheckAmendment => PENDING_CHECK_AMENDMENT,
         Door::ApplyPatch => PENDING_APPLY_PATCH,
-        Door::ValidateLock => PENDING_VALIDATE_LOCK,
+        Door::ValidateLock => &[],
         Door::AcsTarget => &[],
-        Door::DenialDiagnostics => PENDING_DENIAL_DIAGNOSTICS,
+        Door::DenialDiagnostics => &[],
     }
 }
 
@@ -194,6 +193,19 @@ fn replay(input: &Input<'_>) -> Result<Actual, String> {
                 .collect();
             Ok(Actual::Result(render_load_modules(&modules, &problems)))
         }
+        // `validateLock(value)`; a value that is not there is `undefined`, which
+        // the schema refuses as it refuses `null`.
+        Input::ValidateLock { value } => Ok(Actual::Result(render_diagnostics(&validate_lock(
+            value.unwrap_or(&Value::Null),
+        )))),
+        // `denialDiagnostics(program, report)`, which throws a `TypeError` for
+        // a report it cannot read.
+        Input::DenialDiagnostics { program, report } => {
+            Ok(match denial_diagnostics(program, report) {
+                Ok(diagnostics) => Actual::Result(render_diagnostics(&diagnostics)),
+                Err(message) => Actual::Throws(message),
+            })
+        }
         other => Err(format!(
             "the Rust door for {} is not ported yet",
             other.door().name()
@@ -230,14 +242,15 @@ fn run(corpus: &Corpus, entry: &Entry) -> Result<(), String> {
 /// Says how many of the `check` entries that pass did so although the
 /// TypeScript ran a stage that `mandate_check::check` does not run yet
 /// (`mandate_check::UNPORTED`): a stored result with no error is one the
-/// static checks ran on (and gave nothing); one with no error and a lock is
-/// one the lock checks ran on too; one with a claim is one whose claim the
-/// static checks read. Such an entry passes because that stage happened to
-/// give nothing, so the numbers are printed rather than hidden.
+/// static checks ran on (and gave nothing); one with a claim is one whose
+/// claim the static checks read. Such an entry passes because that stage
+/// happened to give nothing, so the numbers are printed rather than hidden.
+/// (The lock checks, which a result with no error and a lock ran, are in
+/// Rust: they are checked, not counted.)
 fn print_unported_stages(corpus: &Corpus, title: &str, passed: &[&Entry]) {
-    let (mut statics, mut locks, mut claims) = (0_usize, 0_usize, 0_usize);
+    let (mut statics, mut claims) = (0_usize, 0_usize);
     for entry in passed {
-        let Ok(Input::Check { lock, claim, .. }) = corpus.input(entry) else {
+        let Ok(Input::Check { claim, .. }) = corpus.input(entry) else {
             continue;
         };
         let ok = match &entry.outcome {
@@ -246,16 +259,13 @@ fn print_unported_stages(corpus: &Corpus, title: &str, passed: &[&Entry]) {
         };
         if ok {
             statics = statics.saturating_add(1);
-            if lock.is_some() {
-                locks = locks.saturating_add(1);
-            }
         }
         if claim.is_some() {
             claims = claims.saturating_add(1);
         }
     }
     println!(
-        "{title}: of the {} that pass, {statics} have no error, so TypeScript ran its static checks on them (R11-R13, not in Rust yet), {locks} of those with a lock, so it ran its lock checks too (R14), and {claims} have a claim (R13)",
+        "{title}: of the {} that pass, {statics} have no error, so TypeScript ran its static checks on them (R11-R13, not in Rust yet), and {claims} have a claim (R13)",
         passed.len()
     );
 }

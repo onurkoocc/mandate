@@ -16,10 +16,11 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::{check_text, check_with, modules_of, read_source};
-use mandate_ir::{Diagnostic, JsValue, Loaded, canonicalize, stringify_pretty};
+use mandate_check::{requirements_to_js, sandbox_requirements};
+use mandate_ir::{Diagnostic, JsObject, JsValue, Loaded, canonicalize, stringify_pretty};
 use mandate_syntax::{kind_of, load};
 use mandate_testkit::{
-    Golden, GoldenOutput, compare_digest, item_name, read_text, result_codes, run_gate,
+    Golden, GoldenOutput, compare_digest, item_name, read_json, read_text, result_codes, run_gate,
     stored_programs,
 };
 
@@ -37,7 +38,6 @@ const PENDING: &[&str] = &[
     "view --format md @ *",
     "view --format html @ *",
     "view --against itself @ *",
-    "sandbox @ *",
 ];
 
 /// What the Rust crates print for one pinned output.
@@ -81,6 +81,31 @@ fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
                 .hashes
                 .ok_or("the program does not check, so it has no hashes")?;
             let mut text = stringify_pretty(&JsValue::Object(hashes.to_js())).unwrap_or_default();
+            text.push('\n');
+            Ok(text)
+        }
+        // `JSON.stringify({ program: checked.hashes.program, requirements:
+        // sandboxRequirements(p, mods, lock) }, null, 2) + "\n"`, for a program
+        // that checks with its modules and its lock, if it has one.
+        "sandbox" => {
+            let files = module_files_of(o.program);
+            let modules = modules_of(&files, &files)?;
+            let lock_path = lock_file_of(o.program);
+            let lock = lock_path.as_deref().map(read_json).transpose()?;
+            let r = check_with(
+                &read_source(o.program)?,
+                kind_of(o.program),
+                Some(&modules),
+                lock_path.as_deref(),
+            )?;
+            let (Some(program), Some(hashes)) = (&r.program, &r.hashes) else {
+                return Err("the program does not check, so it has no sandbox".to_owned());
+            };
+            let requirements = sandbox_requirements(program, Some(&modules), lock.as_ref());
+            let out = JsObject::new()
+                .with("program", hashes.program.as_str())
+                .with("requirements", requirements_to_js(&requirements));
+            let mut text = stringify_pretty(&JsValue::Object(out)).unwrap_or_default();
             text.push('\n');
             Ok(text)
         }

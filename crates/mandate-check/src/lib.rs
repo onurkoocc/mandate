@@ -5,10 +5,10 @@
 //! So far it holds the front door and the stages before the static checks:
 //!
 //! - [`check`](mod@check): [`check()`], [`load_modules`], [`CheckOptions`],
-//!   [`CheckResult`], `compiler/src/check.ts` lines 60–131. The stages after
-//!   `importedMethods` are seams that give nothing yet, listed in
-//!   [`UNPORTED`]: until it is empty, an `ok` from [`check()`] means no
-//!   error from the stages ported so far.
+//!   [`CheckResult`], `compiler/src/check.ts` lines 60–131. The static checks
+//!   are a seam that gives nothing yet, listed in [`UNPORTED`]: until it is
+//!   empty, an `ok` from [`check()`] means no error from the stages ported so
+//!   far.
 //! - [`modules`]: [`link`], [`linked_program`] and [`references`],
 //!   `compiler/src/modules.ts`: the definitions a program sees with its
 //!   imported modules ([`Linked`], [`Modules`]).
@@ -16,6 +16,16 @@
 //!   every diagnostic that has one), `compiler/src/resolve/resolve.ts`.
 //! - [`roles`]: [`role_checks`], [`role_sites`] and [`roles_named`],
 //!   `compiler/src/check/roles.ts`.
+//! - [`lock`]: the lock, `compiler/src/lock.ts`: [`Lock`], [`validate_lock`],
+//!   [`own`], [`packaged_lock`], [`per_call_bound`], [`model_tiers`] and the
+//!   checks that need it ([`lock_checks`], [`sandbox_lock_checks`],
+//!   [`role_lock_checks`], [`module_lock_checks`]), run by [`check()`] given a lock.
+//! - [`managed_agents`]: the Managed Agents binding,
+//!   `compiler/src/target/managed-agents.ts` ([`agent_models`],
+//!   [`binding_checks`]).
+//! - [`sandbox`]: sandbox requirements, `compiler/src/target/sandbox.ts`
+//!   ([`sandbox_requirements`], [`requirement_for`], [`floor_for`],
+//!   [`co_tenancy_for`], [`denial_diagnostics`], [`ISOLATION_LEVELS`]).
 //!
 //! And what every later check stands on:
 //!
@@ -54,16 +64,28 @@
 pub mod caps;
 pub mod check;
 pub mod governance;
+pub mod lock;
+pub mod managed_agents;
 pub mod modules;
 pub mod path;
 pub mod posix;
 pub mod resolve;
 pub mod roles;
+pub mod sandbox;
 pub mod stdlib;
 
 pub use check::{
     CheckOptions, CheckResult, LoadedModules, ModuleProblem, ModuleSource, UNPORTED, check,
     load_modules,
+};
+pub use lock::{
+    LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, Lock, ModelLock, PerCallBound, Tariff,
+    lock_at_least, lock_checks, model_tiers, module_lock_checks, own, packaged_lock,
+    per_call_bound, role_lock_checks, sandbox_lock_checks, validate_lock,
+};
+pub use managed_agents::{
+    AgentModels, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, MA_MAX_CLASS, ProfileLevel,
+    agent_models, binding_checks,
 };
 pub use modules::{Linked, Modules, link, linked_program, references};
 pub use resolve::{
@@ -71,6 +93,12 @@ pub use resolve::{
     resolve_names,
 };
 pub use roles::{RoleSite, RoleValue, role_checks, role_sites, roles_named};
+pub use sandbox::{
+    CoTenancy, Egress, ExecGrant, Filesystem, ISOLATION_LEVELS, Isolation, IsolationLevel,
+    ModelGrant, Network, RequirementOptions, SANDBOX_DENIALS_FORMAT, SANDBOX_REQUIREMENT_FORMAT,
+    SANDBOX_REQUIREMENT_FORMAT_0_2, SandboxRequirement, Subject, co_tenancy_for,
+    denial_diagnostics, floor_for, requirement_for, requirements_to_js, sandbox_requirements,
+};
 
 pub use caps::{
     CapMember, CapOptions, CapResult, CapVal, HTTP_METHODS, MethodProblem, MethodProblemKind,

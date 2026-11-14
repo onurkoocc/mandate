@@ -19,14 +19,15 @@
 //! the static authority (part of `check/static.ts`, `check/envelope.ts`),
 //! R13 the system model, change sets, sub-programs, amendments and patches
 //! (the rest of `check/static.ts`, `check/subprogram.ts`,
-//! `check/amendment.ts`, `patch/patch.ts`), R14 the lock (`lock.ts`,
-//! `target/managed-agents.ts`), R15 the sandbox and the views.
+//! `check/amendment.ts`, `patch/patch.ts`), R14 the lock and the sandbox
+//! (`lock.ts`, `target/managed-agents.ts`, `target/sandbox.ts`), R15 the views.
 //!
-//! Two codes are raised in two stages of different slices, and no stored
-//! result holds either today: E0105 (the reader and `validateIr`, R6; the
-//! static checks' limit of expanded nodes, R11) and E0504 (`check/static.ts`,
-//! R11; `lock.ts`, R14). A gate whose items come to hold one names the item
-//! itself.
+//! Two codes are raised in two stages of different slices: E0105 (the reader
+//! and `validateIr`, R6; the static checks' limit of expanded nodes, R11) and
+//! E0504 (`check/static.ts`, R11; `lock.ts`, R14). Each has the row of the
+//! stage that is ported, so that no gate lists its family as pending, and the
+//! items the other stage gives are named one by one in the gates that hold
+//! them (the corpus's `check`).
 
 /// One row of the table: a family of codes, where it is raised, and the
 /// slice of the port that brings it.
@@ -72,7 +73,7 @@ pub const FAMILIES: &[Family] = &[
         codes: "E0140-E0142",
         stage: "validateLock and lockChecks (lock.ts)",
         slice: "R14",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E02*",
@@ -105,9 +106,9 @@ pub const FAMILIES: &[Family] = &[
     Family {
         glob: "*MDT-W0311*",
         codes: "W0311",
-        stage: "sandboxRequirements (target/sandbox.ts), not check",
-        slice: "R15",
-        ported: false,
+        stage: "denialDiagnostics (target/sandbox.ts), not check",
+        slice: "R14",
+        ported: true,
     },
     Family {
         glob: "*MDT-E04*",
@@ -117,18 +118,39 @@ pub const FAMILIES: &[Family] = &[
         ported: false,
     },
     Family {
-        glob: "*MDT-E05*",
-        codes: "E0501-E0504",
+        glob: "*MDT-E0501*",
+        codes: "E0501",
         stage: "staticCheck: budgets and cost (check/static.ts, check/cost.ts)",
         slice: "R11",
         ported: false,
+    },
+    Family {
+        glob: "*MDT-E0502*",
+        codes: "E0502",
+        stage: "staticCheck: budgets and cost (check/static.ts, check/cost.ts)",
+        slice: "R11",
+        ported: false,
+    },
+    Family {
+        glob: "*MDT-E0503*",
+        codes: "E0503",
+        stage: "staticCheck: budgets and cost (check/static.ts, check/cost.ts)",
+        slice: "R11",
+        ported: false,
+    },
+    Family {
+        glob: "*MDT-E0504*",
+        codes: "E0504",
+        stage: "lockChecks: an agent's budget in another currency than its tier's price (lock.ts, R14); also staticCheck: a delegation in two currencies (check/static.ts, R11), whose items a gate names itself",
+        slice: "R14",
+        ported: true,
     },
     Family {
         glob: "*MDT-W0504*",
         codes: "W0504",
         stage: "lockChecks (lock.ts)",
         slice: "R14",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E06*",
@@ -156,7 +178,7 @@ pub const FAMILIES: &[Family] = &[
         codes: "E0902-E0906, W0907",
         stage: "the targets: E0903-E0905 from bindingChecks (target/managed-agents.ts), which lockChecks runs in check with a lock; E0906, W0907 from target/acs.ts; E0902 from the runtime only",
         slice: "R14 (managed agents); ACS is out of the port",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E10*",
@@ -191,7 +213,7 @@ pub const FAMILIES: &[Family] = &[
         codes: "E1502",
         stage: "roleLockChecks (lock.ts)",
         slice: "R14",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1503*",
@@ -219,14 +241,14 @@ pub const FAMILIES: &[Family] = &[
         codes: "E1802",
         stage: "lockChecks (lock.ts)",
         slice: "R14",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1803*",
         codes: "E1803",
         stage: "lockChecks (lock.ts)",
         slice: "R14",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1804*",
