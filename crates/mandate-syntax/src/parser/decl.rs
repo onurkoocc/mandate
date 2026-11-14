@@ -12,9 +12,11 @@
 
 use std::collections::HashSet;
 
+use mandate_ir::Language;
+
 use super::{
-    ABOVE_AND, DATA_CLASSES, INTERFACE_PROTOCOLS, LANGUAGE_VERSIONS, Parser, Res, describe,
-    fail_at, in_plain_object, is_p, is_reserved, is_w, num_node, sorted_set, unknown_class,
+    ABOVE_AND, DATA_CLASSES, INTERFACE_PROTOCOLS, Parser, Res, describe, fail_at, in_plain_object,
+    is_p, is_reserved, is_w, num_node, sorted_set, unknown_class,
 };
 use crate::lexer::{Fail, TokKind, Token};
 use crate::node::{Node, O, Obj, obj, sort_canon};
@@ -1106,11 +1108,8 @@ impl<'a> Parser<'a> {
     }
 
     fn unknown_budget_field(&self, key: &str, kt: &Token) -> Fail {
-        let from_04 = LANGUAGE_VERSIONS
-            .iter()
-            .position(|v| *v == self.language)
-            .is_some_and(|at| at >= 3);
-        let fields = if from_04 {
+        // `atLeast(this.language, "mandate/0.4")`.
+        let fields = if self.language.at_least(Language::V0_4) {
             "tokens, spend, time, steps or agents"
         } else {
             "tokens, spend, time or steps"

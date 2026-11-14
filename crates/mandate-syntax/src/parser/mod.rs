@@ -19,7 +19,7 @@ mod decl;
 mod expr;
 
 use mandate_ir::{
-    Diagnostic, JsObject, JsValue, Location,
+    Diagnostic, JsObject, JsValue, Language, Location,
     limits::{JSON_DEPTH, SOURCE_BYTES},
     sort_utf16, unique_in_order,
 };
@@ -141,19 +141,13 @@ pub const RESERVED: [&str; 34] = [
     "false",
 ];
 
-/// `LANGUAGE_VERSIONS` in `compiler/src/ir/types.ts`.
-pub(crate) const LANGUAGE_VERSIONS: [&str; 5] = [
-    "mandate/0.1",
-    "mandate/0.2",
-    "mandate/0.3",
-    "mandate/0.4",
-    "mandate/0.5",
-];
-
-/// `DATA_CLASSES` in `compiler/src/std/std.ts`.
+/// `DATA_CLASSES` in `compiler/src/std/std.ts`. A copy until the checks
+/// (`mandate-check`) give them; a unit test holds it to the schema's three
+/// enums of data classes.
 pub(crate) const DATA_CLASSES: [&str; 4] = ["public", "internal", "confidential", "restricted"];
 
-/// `INTERFACE_PROTOCOLS` in `compiler/src/ir/types.ts`.
+/// `INTERFACE_PROTOCOLS` in `compiler/src/ir/types.ts`. A copy; a unit test
+/// holds it to the schema's enum of an interface's `protocol`.
 pub(crate) const INTERFACE_PROTOCOLS: [&str; 5] =
     ["openapi", "mcp_tools", "oauth", "event", "db_schema"];
 
@@ -228,7 +222,7 @@ pub(crate) struct Parser<'a> {
     i: usize,
     /// The version the file declares; a message names the fields that
     /// version has.
-    language: &'static str,
+    language: Language,
     /// What the parser found while it read on: `MDT-E0103`, `MDT-E0121`,
     /// `MDT-E0120`.
     pub(crate) diagnostics: Vec<Diagnostic>,
@@ -246,7 +240,7 @@ impl<'a> Parser<'a> {
         Parser {
             toks,
             i: 0,
-            language: "mandate/0.1",
+            language: Language::V0_1,
             diagnostics: Vec::new(),
             in_test: false,
             depth: 0,
@@ -472,7 +466,7 @@ impl<'a> Parser<'a> {
     pub(crate) fn program(&mut self) -> Res<O> {
         let start = self.t();
         // `mandate @ 0.2` names the language version; a file without it is 0.1.
-        let mut language = "mandate/0.1";
+        let mut language = Language::V0_1;
         if self.is_w("mandate") && is_p(self.la(1), "@") {
             let lang_tok = self.bump();
             self.bump();
@@ -480,7 +474,8 @@ impl<'a> Parser<'a> {
                 return Err(self.expected("a language version after 'mandate @'"));
             }
             let v = format!("mandate/{}", self.bump().text);
-            match LANGUAGE_VERSIONS.iter().find(|known| **known == v) {
+            // `isLanguageVersion(v)`.
+            match Language::from_tag(&v) {
                 Some(known) => {
                     self.language = known;
                     language = known;
@@ -543,7 +538,7 @@ impl<'a> Parser<'a> {
         }
 
         let mut program = obj()
-            .with("language", language)
+            .with("language", language.as_str())
             .with("module", module)
             .with("version", version)
             .with("defs", defs);
@@ -591,10 +586,10 @@ impl<'a> Parser<'a> {
 
 /// `MDT-E0103` for a language line this compiler does not read.
 fn unsupported_language(v: &str, lang_tok: &Token) -> Diagnostic {
-    let quoted: Vec<String> = LANGUAGE_VERSIONS.iter().map(|x| format!("'{x}'")).collect();
-    let expected: Vec<JsValue> = LANGUAGE_VERSIONS
+    let quoted: Vec<String> = Language::ALL.iter().map(|x| format!("'{x}'")).collect();
+    let expected: Vec<JsValue> = Language::ALL
         .iter()
-        .map(|x| JsValue::from(*x))
+        .map(|x| JsValue::from(x.as_str()))
         .collect();
     let facts = JsObject::new().with("expected", expected).with("found", v);
     Diagnostic::new(
@@ -617,4 +612,69 @@ fn no_workflow(target: &str, tok: &Token) -> Diagnostic {
         Location::span(token_span(tok)),
         Some(facts),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use mandate_ir::{IR_SCHEMA_TEXT, Value, parse};
+
+    use super::{DATA_CLASSES, INTERFACE_PROTOCOLS};
+
+    /// The value at a JSON Pointer of `v` (no token here needs unescaping).
+    fn get<'v>(v: &'v Value, pointer: &str) -> Option<&'v Value> {
+        pointer.split('/').skip(1).try_fold(v, |v, token| match v {
+            Value::Array(items) => items.get(token.parse::<usize>().ok()?),
+            _ => v.get(token),
+        })
+    }
+
+    /// The strings of the `enum` at `pointer` under `base`.
+    fn enum_at<'v>(base: Option<&'v Value>, pointer: &str) -> Option<Vec<&'v str>> {
+        get(base?, pointer)?
+            .as_array()?
+            .iter()
+            .map(Value::as_str)
+            .collect()
+    }
+
+    /// The branch of `$defs/Def` for definitions of `kind`.
+    fn definition<'v>(schema: Option<&'v Value>, kind: &str) -> Option<&'v Value> {
+        get(schema?, "/$defs/Def/oneOf")?
+            .as_array()?
+            .iter()
+            .find(|b| get(b, "/properties/kind/const").and_then(Value::as_str) == Some(kind))
+    }
+
+    /// The parser's copies of closed sets are the embedded schema's, value for
+    /// value and in order, so that a schema that adds one fails here.
+    #[test]
+    fn the_private_copies_are_the_schemas_enums() {
+        let schema = parse(IR_SCHEMA_TEXT).ok().map(|p| p.value);
+        let schema = schema.as_ref();
+        assert!(schema.is_some(), "the embedded schema reads");
+        let classes = Some(DATA_CLASSES.to_vec());
+        assert_eq!(
+            enum_at(
+                schema,
+                "/$defs/Envelope/properties/spawn/properties/max_class/enum"
+            ),
+            classes,
+            "an envelope's spawn.max_class"
+        );
+        assert_eq!(
+            enum_at(definition(schema, "type"), "/properties/class/enum"),
+            classes,
+            "a type's class"
+        );
+        assert_eq!(
+            enum_at(definition(schema, "environment"), "/properties/class/enum"),
+            classes,
+            "an environment's class"
+        );
+        assert_eq!(
+            enum_at(definition(schema, "interface"), "/properties/protocol/enum"),
+            Some(INTERFACE_PROTOCOLS.to_vec()),
+            "an interface's protocol"
+        );
+    }
 }
