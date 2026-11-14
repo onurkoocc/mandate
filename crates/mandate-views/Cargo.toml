@@ -1,6 +1,6 @@
 [package]
 name = "mandate-views"
-description = "The documents of the Rust Mandate compiler: the Markdown and the HTML of a view, and the document of a semantic diff, giving the same text as the TypeScript compiler"
+description = "The views of the Rust Mandate compiler: the architecture, authority, cost and system views of a program, their document as Markdown and as HTML, and the document of a semantic diff, giving the same text as the TypeScript compiler"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

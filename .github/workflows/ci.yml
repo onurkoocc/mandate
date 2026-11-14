@@ -7,11 +7,11 @@ on:
 
 # What runs when. A pull request and a push to main run every job. A push to a
 # claude/boundary-r* branch, the slices of the Rust port, runs only the rust
-# job: a slice is brought to green on its branch before its pull request is
-# opened, and the jobs that are slow and need PostgreSQL or a real sandbox
-# (test, sandbox, sandbox-windows) are left to the pull request.
+# and parity jobs: a slice is brought to green on its branch before its pull
+# request is opened, and the jobs that are slow and need PostgreSQL or a real
+# sandbox (test, sandbox, sandbox-windows) are left to the pull request.
 # A branch with an open pull request is pushed to twice over, as a push and as
-# a pull request, so its rust job runs twice.
+# a pull request, so those two jobs run twice.
 #
 # Every job reads the repository and nothing else. Actions are pinned to full
 # commit SHAs (the tag is in the comment) so a moved tag cannot change what
