@@ -17,7 +17,7 @@ import { digests, json, lockOf, moduleFilesOf, modulesOf, outputs, PROGRAMS } fr
 import { lockFileOf, readRepo, repoRoot } from "./helpers.js";
 
 /** The number of distinct codes the stored results hold; it changes only with a new case or a changed compiler. */
-const EXPECTED_CODES_SEEN = 44;
+const EXPECTED_CODES_SEEN = 46;
 const DIR = "vectors/diagnostics/";
 /** A file stays well under the 1 MiB the Rust reader accepts, and the test below says 900 KB. */
 const PART_LIMIT = 800_000;
@@ -279,7 +279,7 @@ describe("diagnostic vectors for other implementations", () => {
   describe("conformance cases", () => {
     it("holds one vector for every compile case, in the order of the names", () => {
       const compile = caseDirs().filter((n) => readCase(n).kind === "compile");
-      expect(cv.length).toBe(123);
+      expect(cv.length).toBe(125);
       expect(cv.map((v) => v.name)).toEqual(compile);
       expect(new Set(cv.map((v) => v.name)).size).toBe(cv.length);
     });
@@ -287,7 +287,7 @@ describe("diagnostic vectors for other implementations", () => {
     it("counts the cases by front door, and says which kinds of case it leaves out", () => {
       const byDoor: Record<string, number> = {};
       for (const v of cv) byDoor[v.door] = (byDoor[v.door] ?? 0) + 1;
-      expect(byDoor).toEqual({ apply_ops: 4, check: 69, check_amendment: 5, check_patched: 36, check_subprogram: 9 });
+      expect(byDoor).toEqual({ apply_ops: 4, check: 71, check_amendment: 5, check_patched: 36, check_subprogram: 9 });
       const other: Record<string, number> = {};
       for (const n of caseDirs()) {
         const k = readCase(n).kind;

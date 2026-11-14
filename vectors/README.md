@@ -329,7 +329,7 @@ uses `text`; the members stay in the format for a compiler that gives one.
 `{ "format": "mandate/vectors/diagnostics/conformance/0.1", "part": N, "parts":
 M, "cases": [ … ] }`. The cases are in one order across the parts, by `name` in
 UTF-16 order. There is one vector for every `compile` case of `conformance/`
-(123; the 16 `journal` cases are about the runtime's verifier and have none).
+(125; the 16 `journal` cases are about the runtime's verifier and have none).
 A case:
 
 - `name`: the case's `id`, which is its directory `conformance/<name>/`;
@@ -619,3 +619,447 @@ Errors and limits.
 Printing: `fmt` sorts definitions by kind and name, writes two-space
 indents, and drops comments; the vectors give the text, and the four that do
 not read back.
+
+## diff/
+
+What the views that compare two things give, when something did change. The golden
+file pins only `view --against` a program with itself, which shows no change; these
+files hold, for 183 pairs of programs (and of locks), the result of every comparing
+function the CLI or the runtime reaches, for the Rust port of those views to match
+member for member and, for the documents, character for character. They are written
+by `compiler/test/diff-vectors.test.ts` (the written pairs are in
+`compiler/test/diff-pairs.ts`), which fails when a file differs from what the compiler
+gives now; `MANDATE_UPDATE_VECTORS=1 npm test` writes them again, and
+`MANDATE_VECTORS_REPORT=1` also prints the coverage table. The files are ASCII, each
+under 900 KB (split into numbered parts of at most about 700 KB), nesting up to 64,
+integers only, no duplicate key, no lone surrogate, and about 1.1 MB in all; the test
+asserts it. The inputs that exist are not copied: a vector names them, and the Rust
+test reads the same files of `conformance/`, `fixtures/` and `compiler/test/fixtures/`.
+Only the written pairs carry program text.
+
+### The comparing functions
+
+All are in `compiler/src/views/views.ts` (the HTML and the Markdown in `views/doc.ts`).
+Programs are the checked IR (`Program`); a `Lock` is the parsed lock file.
+
+- `semanticDiff(before, after, locks?)` returns the `DiffView` `{ format, kind: "diff",
+  from, to, governance, behavior, unchanged }`: `from` and `to` are `{ module, version,
+  language, hash }` (`programRef`), `governance` and `behavior` are lists of `{ path,
+  text }`, `unchanged` a list of strings. `locks` is `{ before?, after? }`. It takes no
+  modules: it compares the programs as they are. Reached by `mandate view <file>
+  --against <old file>` (`--format json` prints `JSON.stringify(view, null, 2)` and a
+  newline; the locks are the lock files next to the two files, as `readLock` finds them;
+  both programs are checked, the new one with its lock, with the `--module` files);
+  by the MCP tool `mandate.project` with `view: "diff"` (no locks); by the runtime in
+  `runtime/src/package.ts` (`checkAmended`: `diff` of an amendment) and in
+  `runtime/src/views.ts` (the authority of a change set: the `text` of each governance
+  change of a Mandate file the set lands).
+- `diffDoc(before, after, locks?)` returns the `Doc` of that view: title, three meta
+  lines and `diffBlocks(view)`. `toMarkdown(doc)` and `toHtml(doc)` (`doc.ts`) render it.
+  Reached by `mandate view <file> --against <old file>` with `--format md` (the default)
+  or `--format html`.
+- `lockDiff(before?, after?)` returns a list of `{ path, text }`: the members and the
+  role holders two locks bind. `lockLimitsDiff(before?, after?)` returns `{ governance,
+  behavior }`, two such lists: what two locks of format 0.5 ask of the host and of the
+  sandboxes. Both are only called by `semanticDiff` (when `locks` is given); they are
+  exported, and the runtime does not call them.
+- `governanceChanges(before, after, modules)` returns a list of `{ kind, path, text }`:
+  the governance changes of the program, each with its kind (`capability_added`,
+  `budget_increased`, `criterion_removed`, `criterion_changed`, `require_changed`,
+  `irreversible_added`, `system_model_changed`, `envelope_changed`,
+  `remote_agent_added`, `remote_binding_changed`, `kind_changed`). It is what
+  `semanticDiff` shows as `governance`, less the locks', but it is given `modules`
+  and opens a capability over a component or an environment into what it stands for.
+  Reached by `mandate patch <file> <patch>` and the MCP tool `mandate.apply_patch`
+  (`applyPatch`, after the patch is applied to the program as loaded, with the
+  `--module` files), and by the runtime in `runtime/src/plan.ts` (the kinds of a
+  sub-program).
+- `envelopeChanges(before, after, workflow, modules)` returns a list of `{ path, text }`:
+  what changed in one workflow's envelope, line by line. Reached only by the runtime
+  (`runtime/src/package.ts`, `checkAmended`, for the amendment of an envelope); the CLI
+  does not call it. Nothing, when the workflow has no envelope on one side.
+
+There is no other function that takes two of something. (`checkAmendment` compares an
+envelope with its amendment but returns diagnostics, in `diagnostics/`;
+`governanceFiles` takes the files of one change and is not a comparison.) Every function
+above is exercised by the vectors; `lockDiff` and `lockLimitsDiff` only in the cases that
+give a lock.
+
+### cases-N.json
+
+`{ "format": "mandate/vectors/diff/cases/0.1", "part": N, "parts": M, "cases": [ … ] }`.
+The cases are in one order across the parts: the conformance patches, the conformance
+amendments, the repository pairs, the lock pairs and the written pairs, each group in
+the order the test builds it (by `name` in UTF-16 order for the conformance cases; the
+order of `compiler/test/diff-pairs.ts` for the written ones). A case:
+
+- `name`: unique. A conformance case's id; a repository pair's name; for a lock pair
+  `<before lock path> -> <after lock path>`; a written pair's name.
+- `source`: `conformance_patch`, `conformance_amendment`, `repository`, `lock`
+  or `written`.
+- `note`: one sentence about the pair.
+- `before`, `after`: where each program is (below).
+- `modules`: repository paths of the modules (`loadModules`, all together, each
+  checked against the others) the programs are checked with, `[]` for none. They are
+  also what `governanceChanges` and `envelopeChanges` are given as `modules`;
+  `semanticDiff` is given none.
+- `locks`: `{ "before", "after" }`, each `null` or `{ "file" }` (a repository path) or
+  `{ "text" }` (the text of a lock file). If both are `null`, `semanticDiff` and
+  `diffDoc` are called without `locks`, and the case has no `lock_diff` and no
+  `lock_limits_diff`. Otherwise `locks` is `{ before?, after? }` with the parsed lock
+  of each side that has one (a missing member is a missing lock).
+- `results`, `texts`: the value of each result, as the compiler gives it (below);
+  `texts` holds a result with a number that is not an integer as its exact text
+  (`JSON.stringify(value, null, 2)` and a newline) under the same name, and the name is
+  then not in `results`. This is the exception that `diagnostics/` has; no case uses it
+  today (`cases_with_other_numbers` in `summary.json` is empty): a change shows an amount
+  as text (`0.5 USD`, `20m`), never as a number.
+- `markdown`: `toMarkdown(diffDoc(before, after, locks))`, whole.
+- `html_sha256`, `html_length`: the lowercase hex SHA-256 of the UTF-8 of
+  `toHtml(diffDoc(before, after, locks))`, and its length in UTF-16 code units.
+- `html`: that text, whole, only for the cases of `conformance_patch`,
+  `conformance_amendment` and `repository`, and for 14 written pairs (`spares-added`,
+  `spares-removed`, `kind-changed`, `cap-host-and-methods-widened`,
+  `agent-budget-raised`, `contract-criterion-removed`, `envelope-all-at-once`,
+  `envelope-added`, `system-component-fields-changed`, `linked-capabilities-widened`,
+  `lock-member-added`, `lock-limits-all-at-once`, `lock-absent-before`,
+  `special-characters`). Every other case has only the digest: the page around the
+  table is the same, and the pairs above show every kind of block and every escape.
+
+A side is one of:
+
+- `{ "file", "kind" }`: the program in that repository file, `kind` `mdt` or `json`.
+- `{ "text", "kind" }`: the program in that text (the written pairs).
+- `{ "file", "kind", "patch_of": "<id>" }` (only `after`, of `conformance_patch`): the
+  program of `file` after the patch of `conformance/<id>/case.json` is applied, as the
+  case's front door does (the case's `base` makes it `applyOps`; without one, an RFC
+  6902 patch of the loaded IR) and the patched IR is checked. `before` of the case is
+  the same `file` as loaded: it need not check (a patch may be what makes it check),
+  and the Rust side loads it as it loads the base of the case in `diagnostics/`.
+- `{ "file", "kind", "amend_of": "<id>" }` (only `after`, of `conformance_amendment`):
+  the program of `file` (which checks, with `modules`) with the envelope of the case's
+  `amendment.workflow` replaced by the case's envelope (that workflow's envelope with the
+  case's `amendment.patch` applied), the whole checked as JSON text. The amended program
+  checks in all five cases, though the amendment of `E1709*` narrows an envelope and is
+  refused by `checkAmendment`; the vectors still compare the two programs.
+
+The programs are checked with `check(text, kind, { modules })` and must have no error
+(the base of a `conformance_patch` only loads). No lock is given to `check`: the locks
+are inputs of the comparing functions only.
+
+`results` has these members, in this order:
+
+- `diff`: `semanticDiff(before, after, locks)`, the `DiffView`.
+- `governance_changes`: `governanceChanges(before, after, modules)`.
+- `envelope_changes`: a list `{ "workflow", "changes" }`, one for every workflow that
+  both programs define, by name in UTF-16 order, `changes` being `envelopeChanges(before,
+  after, workflow, modules)` (empty when a workflow has no envelope on one side, or no
+  change).
+- `lock_diff`, `lock_limits_diff`: `lockDiff(locks.before, locks.after)` and
+  `lockLimitsDiff(locks.before, locks.after)`, only where a lock is given.
+
+Every result is a value in the compiler's member order (`DiffView`: `format`, `kind`,
+`from`, `to`, `governance`, `behavior`, `unchanged`; `from` and `to`: `module`, `version`,
+`language`, `hash`; a change: `path`, `text`; a kinded change: `kind`, `path`, `text`).
+Lists are in the order the compiler gives them, which the port must copy (below).
+
+### The pairs, by source
+
+- `conformance_patch` (7): the cases that patch a program and whose patched program
+  checks: `E1801d`, `E1801e`, `E1804a`, `S12b`, `V02b`, `V03c`, `V04b`. The other 33
+  patch cases (of 40: 36 `check_patched`, 4 `apply_ops`) refuse the patched program on
+  purpose and are left out (`conformance_cases_left_out` in `summary.json`).
+- `conformance_amendment` (5): `E1709`, `E1709a`, `E1709b`, `E1709c`, `N04`, the
+  program of `conformance/N01/parent.mdt` and the same with the amended envelope.
+- `repository` (5): `fixtures/fixbug/fixbug.mdt` and `fixtures/fixbug-target/fixbug.mdt`
+  (versions of one program: both ways); the `.mdt` and the `.ir.json` of the first (the
+  same program: no change); `fixtures/system/land.mdt` and `loosen-ci.mdt` (the second
+  is the variant of the first that loosens a component's CI: both ways, with the
+  system model as `modules`). The locks next to the files are given. The other programs
+  of `fixtures/` are not versions of one another.
+- `lock` (19): each lock file of the repository against itself (the program it goes
+  with is both sides: `fetch.mdt` for `fixtures/boundary/mandate.lock.json` and the
+  `E1802*` and `E1803` locks, `reach.mdt`, the two `fixbug` programs and `migrate-all.mdt`
+  with `fixtures/envelope/domain.mdt` for `E1502`), and the fixture's own lock of
+  `fetch.mdt` against each other lock of the same program that differs (both ways).
+- `written` (147): pairs for what those do not reach, from `compiler/test/diff-pairs.ts`:
+  small programs and their changed versions, and locks with them. A written pair stores
+  its texts; `kind` is `mdt`; locks are `{ "text" }`. No lock holds a value that looks
+  like a key: credentials are named `MADE_UP…`.
+
+### summary.json
+
+`{ format, cases, by_source, cases_with_other_numbers, conformance_cases_left_out,
+coverage }`. `coverage` lists, for each kind of change the code can report, `{ kind,
+section, cases, first_case }` (plus `unreachable` and a reason for the kinds no input
+reaches). `section` is where the change is read: `G` the `diff`'s `governance` (and
+`governance_changes`), `B` its `behavior`, `E` `envelope_changes`, `K` the kinds in
+`governance_changes`, `U` the `unchanged` lines. The test fails when a kind that is not
+marked `unreachable` has no case, when one marked `unreachable` has one, and when a
+change in the stored outputs belongs to no kind. The kinds are made from the code's own
+lists where it has them (the definition kinds, the budget dimensions, the data classes
+and `GovernanceChangeKind`, which the test reads from the source) and written by hand
+for each text the code builds.
+
+### What a port must copy
+
+The order of a list is part of the result.
+
+- `semanticDiff`: the definitions of both programs by name in UTF-16 order (uppercase
+  before lowercase, `PR` before `Patch`), and for each its changes in the order of the
+  code: the definition's kind, then by kind. A capability: the scopes (paired by
+  constructor, and for `exec` by its command list), then added, other, removed; added
+  and other are governance, removed is behavior (`… (narrowed)`); a capability whose
+  scopes show nothing but whose definition changed is `~ capability N changed`. An agent
+  or a workflow: capabilities added (by position in the new list, `+ N: <cap>`),
+  narrowed, budgets (raised: governance; lowered: behavior), then for an agent its
+  skills by name and `role, loop strategy or progress thresholds changed` (one text for
+  the role, the model, the loop and the progress together) and the remote binding; for
+  a workflow the steps (`+ step:` for each label of the new list that the old list does
+  not have, then `- step:`; labels, not positions), the body changed with the same steps,
+  the envelope, `ensures`, the handlers. Locks come last: `lockDiff` (members by name,
+  then role holders by role then member), then `lockLimitsDiff`'s governance, then its
+  behavior after the program's.
+- A budget is shown dimension by dimension in the order spend, tokens, steps, time,
+  agents. Amounts: tokens, steps and agents as integers; time as the view's own
+  `duration` (whole hours `2h`, else whole minutes `20m`, else whole seconds `90s`,
+  else `1500ms`; there are no days, and zero is `0h`); spend as `micros / 1_000_000` in JavaScript's
+  number printing followed by the currency (`0.5 USD`, `1.25 USD`, `35.5 USD`); a
+  dimension without a limit as `no limit`. Two currencies are not compared: a change
+  of currency is a governance change. In `envelopeChanges` all the raised lines come
+  before all the lowered ones.
+- Paths are JSON Pointers with `~` as `~0` and `/` as `~1` in a name (`ptrToken`); a
+  changed capability of a workflow's envelope is at `…/envelope/caps/<i>` when added and
+  at `…/envelope/caps` (no index) when removed.
+- What counts as changed: two definitions are the same if their canonical text is the
+  same, whatever the order of members in the source; a capability's fs path inside an
+  old path adds nothing, and an old path inside a new one is not taken away; methods
+  widen if some method is new or none was named; versions compare segment by segment
+  with a missing segment as 0 (`22.23` is `22.23.0`); an isolation floor and co-tenancy
+  are compared as each data class has them in effect (a floor for `public` holds for all
+  four classes), so a floor change on one class shows as several lines.
+- `unchanged` has up to four lines, in this order: `external effects unchanged: <names>`
+  or `no external effects, before or after` (when the sorted external effects of the
+  workflows are equal), `contracts and their criteria unchanged`, `no authority added`
+  (when no governance text starts with `+` or has `tier`, `data class` or `: methods `
+  in it), `no budget raised` (when no governance text has `.budget.`).
+- Markdown (`mdEscape`): in a heading, a paragraph or a plain list item, each of
+  `\ ` * _ [ ] < > | ~` gets a backslash and a line break becomes a space; a change and
+  the meta values are inline code spans with a space inside each fence, the fence
+  one backtick longer than any run inside, and a `|` inside changed to `¦` (U+00A6) and
+  a line break to a space; so `A|B` is `A¦B`, and a backtick in a name makes a
+  two-backtick fence. The title is `<to.module>: <from.version> → <to.version>` (U+2192),
+  the meta lines are `From`, `To` and `View` (`mandate/view/0.1, generated from the two
+  programs`), the paragraph is `From <hash> to <hash>.`, an empty list is `none`
+  (changes) or `—` (U+2014, unchanged). HTML (`htmlEscape`): `& < > " '` become
+  `&amp; &lt; &gt; &quot; &#39;`; a change is `<li><span class="mono">…</span></li>`.
+  The page and its style are in `doc.ts` and are the same for every case.
+
+### Oddities pinned, not fixed
+
+The port carries these over as they are. All are cases of the written pairs.
+
+- `no authority added` and `no budget raised` look at the governance texts only. A
+  changed envelope is the one line `~ W: envelope changed`, so a diff that raises an
+  envelope's budget or adds a capability to it (`envelope-budget-raised`,
+  `envelope-cap-added`) says `no authority added` and `no budget raised`; the same for
+  `~ capability N changed` (`cap-spend-raised`) and `argument prefixes` (`cap-exec-args-prefix-added`).
+- Steps are compared as a set of labels: a second `delegate` to the same skill, or
+  reordered steps, is `the body changed, with the same steps` (`workflow-step-repeated`).
+- A lock's `models`, `tariffs`, `modules` and `bindings` are not compared at all
+  (`lock-models-and-tariffs-not-compared`: no change at all).
+- `semanticDiff` does not open a capability over a component or an environment (it is
+  given no modules): `~ capability Repos changed`; `governanceChanges` with the modules
+  says which repository, path or command (`linked-capabilities-widened`).
+- Narrowing an `exec` capability's command list, or changing any argument prefix, is a
+  governance change (`capability_added`) both ways.
+- Two kinds of text are never produced although the code has a branch for them: the
+  `command` label of a scope (an `exec` capability is paired by its command list) and
+  `s without a static scope (unbounded)` (a scope that was static and is not).
+
+## corpus/
+
+The compiled corpus: every call that the compiler's own tests (`compiler/test/*.test.ts`)
+make to a front door of the compiler, with its input and its whole result, for
+another compiler to make again and match. The tests build their inputs in code, so,
+unlike `diagnostics/`, an entry carries its inputs: an entry and the shared items it
+names are enough to make the call again.
+
+### How it is made
+
+`compiler/vitest.config.ts` has a collecting mode, on when `MANDATE_CORPUS=1` or
+`MANDATE_UPDATE_VECTORS=1`. In it, every test file but `corpus.test.ts` runs first,
+with `compiler/test/corpus-record.ts` as a setup file: it replaces the modules that
+export a front door with the same modules whose door functions note each call (its
+arguments as they come in, its return value as it goes out) and return what the door
+returned, unchanged. A call that a door makes of another door, through another module,
+is part of the outer call and is not noted again. Each test file writes what it noted
+to a temporary directory. Then `compiler/test/corpus.test.ts` runs alone, merges the
+notes and writes (with `MANDATE_UPDATE_VECTORS=1`) or compares (with `MANDATE_CORPUS=1`)
+the files below. Without the mode the suite runs as it always has, and `corpus.test.ts`
+checks the stored entries alone. How each door's arguments and return value are stored
+is in `compiler/test/corpus-doors.ts`.
+
+To write the corpus again after a change to the compiler or to a test:
+`MANDATE_UPDATE_VECTORS=1 npm test` (or `npm test -w compiler`), the same command as
+for every other vector file. Running it twice gives the same files: the entries are
+sorted by `id`, the shared items by key, the notes by test file, and nothing depends on
+the order in which vitest ran the files.
+
+`corpus.test.ts` asserts:
+
+- in every run, that every entry, made again from its stored input, gives exactly its
+  stored result, compared as text (staleness; the test names each entry that does not;
+  about 2 s);
+- in every run, the limits below, that every shared item an entry names exists and
+  every shared item is named, and that `summary.json` counts what the entries hold;
+- in every run, that every code of `compiler/src/codes.ts` occurs in a stored result of
+  the corpus or of `diagnostics/`, except the codes no input of a front door can give
+  (`NOT_REACHABLE` in the test, with the reason for each, and only `MDT-E0902` today: the
+  runtime raises it when a sandbox host cannot enforce an agent's requirement, and
+  nothing in `compiler/src` gives it);
+- in the collecting mode, that every test file wrote its notes and that the files are
+  exactly what the suite calls now (completeness): a test that makes a new call fails it
+  until the corpus is written again.
+
+Every file is ASCII strict JSON within the Rust reader's limits: under 900 KB (a list is
+split into numbered parts when a part would pass 800 KB), nesting up to 64, integers
+only, no duplicate key, no lone surrogate (a character outside the BMP is its
+surrogate pair of `\u` escapes). The corpus is at most 3 MiB in all; the test asserts
+all of it.
+
+### The front doors
+
+A front door is a function of `compiler/src` that a user of the compiler calls (a CLI
+command, a tool of the MCP server, the runtime) with what it was given (a text, a lock,
+a patch, a program, a report) and that returns diagnostics. The doors, by the name an
+entry carries:
+
+| Door | Function | Called by |
+|---|---|---|
+| `load` | `load(text, kind)` | `mandate load`, `ir`, `fmt`, `mandate.apply_patch` |
+| `check` | `check(text, kind, { modules, lock, claim })` | `mandate check`, `hash`, `view`, `sandbox`, `target`, `mandate.check`, the runtime |
+| `load_modules` | `loadModules(sources)` | `--module`, the runtime's CLI |
+| `check_patch` | `checkPatch(program, base, ops, modules)` | `mandate.apply_patch` |
+| `apply_patch` | `applyPatch(program, base, ops, modules)` | `mandate patch` |
+| `check_subprogram` | `checkSubprogram(input)` | the runtime's `check_program` and `submit_program` |
+| `check_amendment` | `checkAmendment(input)` | the runtime's `request_amendment` |
+| `validate_lock` | `validateLock(value)` | the runtime, on a package's lock (and `check`, given a lock) |
+| `acs_target` | `acsTarget(program, modules, lock)` | `mandate target acs` |
+| `denial_diagnostics` | `denialDiagnostics(program, report)` | `mandate check --denials` |
+
+The other exported functions that return diagnostics are inner phases of a door, and
+the door reaches all they can say, so they are not recorded even where a test calls them
+directly: `parseStrictJson` (`load` of JSON returns its diagnostics as they are;
+`reader.json` has its vectors), `parseMdt` and `validateIr` (`load`), `link`,
+`resolveNames`, `roleChecks`, `importedMethods` and `staticCheck` (`check`),
+`lockChecks`, `roleLockChecks`, `moduleLockChecks`, `sandboxLockChecks` and
+`bindingChecks` (`check` with a lock; the runtime also calls the last two on a package
+it has checked), `applyOps` (`apply_patch` and `check_subprogram`), `subprogramShape`
+and `containment` (`check_subprogram`), `narrowings` (`check_amendment`). The MCP
+server (`McpServer`, `callTool`) is a transport: its tools call `check`, `load`,
+`loadModules` and `checkPatch`, and those calls are recorded as theirs.
+
+The calls of the five test files that write vectors of their own
+(`diagnostic-vectors.test.ts`, `diff-vectors.test.ts`, `schema-vectors.test.ts`,
+`syntax-vectors.test.ts`, `vectors.test.ts`) are left out: what they call is in those
+vectors already.
+
+### entries-N.json
+
+`{ "format": "mandate/vectors/corpus/entries/0.1", "part": N, "parts": M, "entries": [
+… ] }`, one entry on each line, the entries in one order across the parts (by `id`, in
+UTF-16 order). An entry:
+
+- `id`: `<door>-<16 hex digits>`, the first 16 hex digits of the SHA-256 of the door,
+  a line feed and the compact JSON text of `input`. Unique; the staleness test names an
+  entry by it;
+- `door`: one of the doors above;
+- `files`: the test files that made the call (repository paths, in UTF-16 order). The
+  same call made by several tests is one entry;
+- `input`: the arguments, by name (below). A member that is not there is an argument
+  that was not given (or `undefined`): the door takes its default;
+- then exactly one of `result` (the return value, below), `result_text` (for a return
+  value that holds a number that is not an integer: its exact text, `JSON.stringify` of
+  the value as `result` would hold it; no entry has one today) and `throws` (the message
+  of the error the door threw: `checkAmendment` and `checkSubprogram` throw for a
+  `workflow` that is not a workflow with an envelope).
+
+The inputs, by door. **T** is the key of a shared text, **V** the key of a shared JSON
+value, and `modules` is `{ <module name>: V, … }` in the order the call gave them (the
+loaded modules, `Record<name, Program>`, each module's IR):
+
+- `load`: `source` (T), `kind` (`"mdt"` or `"json"`);
+- `check`: `source` (T), `kind`, `modules`, `lock` (V, the lock as a value), `claim` (the
+  option `checkSubprogram` passes, inline; no entry has one today);
+- `load_modules`: `sources`, `[{ file, kind, text (T) }, …]`, in order; `file` is the
+  name given for messages;
+- `check_patch` and `apply_patch`: `program` (V, the IR the patch applies to), `base`,
+  `ops` (the RFC 6902 operations, inline), `modules`;
+- `check_subprogram`: `parent` (V), `modules`, `workflow`, `number`, `base`, `ops`,
+  `lead`, `room` (inline, as `SubprogramInput` has them);
+- `check_amendment`: `parent` (V), `modules`, `workflow`, `envelope` (inline, any JSON
+  value: it is a lead's writing);
+- `validate_lock`: `value` (inline, any JSON value);
+- `acs_target`: `program` (V), `modules`, `lock` (V);
+- `denial_diagnostics`: `program` (V), `report` (inline).
+
+A result is the return value as plain JSON (what `JSON.stringify` keeps of it), every
+member in the compiler's order, with three exceptions: a program's IR is not stored but
+its digest, and so is a span table and each module that `loadModules` returns. A digest
+is `sha256:` and the hex SHA-256 of a compact JSON text as `JSON.stringify` writes it
+(no space; in strings `\"`, `\\`, `\b`, `\f`, `\n`, `\r`, `\t`, `\u00xx` in lower case for
+the other characters below U+0020, every other character as itself, hashed as UTF-8):
+of the IR in the member order the compiler built it (as in JavaScript, member names
+that are array indices come first, in numeric order), and of a span table as `[[pointer,
+[startLine, startCol, endLine, endCol]], …]` sorted by pointer in UTF-16 order. The
+IR is left out because it is the size of the input and is pinned elsewhere (`hashes`,
+and `programs/` for the golden programs); the diagnostics, `ok` and the hashes are
+always stored whole. The results, by door:
+
+- `load`: `{ program?, spans, diagnostics }` (`program` when the input was read);
+- `check`: `{ program?, spans, diagnostics, ok, hashes? }` (`hashes`, `{ program, defs }`,
+  when `ok`);
+- `load_modules`: `{ modules: { <name>: digest, … }, problems: [{ file, diagnostics },
+  …] }`;
+- `check_patch`: `{ ok, hash?, diagnostics, governance, requires_approval, program? }`;
+- `apply_patch`: `{ ok, diagnostics, governance, program?, hash? }`;
+- `check_subprogram`: `{ ok, diagnostics, program?, hash?, workflow? }`;
+- `check_amendment`: `{ ok, diagnostics, program?, hash? }`;
+- `validate_lock` and `denial_diagnostics`: the array of diagnostics;
+- `acs_target`: the whole target, `{ format, acs_version, program, binding, agents,
+  profile, diagnostics }` (`program` and `binding` are hashes; `agents` holds each
+  manifest and Rego text).
+
+A diagnostic is as in `diagnostics/`: `code`, `severity`, `message`, `at` (`path`,
+`span`), `docs`, and `facts` and `repair` where it has them, in that order as the
+compiler builds it.
+
+### shared-N.json
+
+`{ "format": "mandate/vectors/corpus/shared/0.1", "part": N, "parts": M, "items": { …
+} }`, one item on each line, by key in UTF-16 order across the parts. The texts and
+the values that entries name, each stored once however many entries name it. The key
+is the first 16 hex digits of the SHA-256 of the item's compact JSON text (of the text
+as a JSON string, with its quotes, or of the value). An item is one of:
+
+- `{ "text": "…" }`: a text;
+- `{ "parts": [[piece, count], …] }`: a text over 4096 code units that repeats, as
+  pieces: each piece repeated `count` times, all joined (the 1 MiB inputs of the tests
+  of the limits);
+- `{ "value": … }`: a JSON value: a program's or a module's IR, or a lock.
+
+### summary.json
+
+`{ format, calls, distinct_calls, entries, shared, by_door, by_file, by_code, left_out,
+not_recorded }`: `calls`, the calls the suite made to a door (each test's, as often as it
+made them); `distinct_calls`, how many distinct ones; `entries` and `shared`, how many
+of each are stored; `by_door`, entries by door (every door, in the order above);
+`by_file`, entries by test file; `by_code`, diagnostics in stored results by code;
+`left_out`, `[{ id, door, files, reason }]`, the distinct calls not stored, with why;
+`not_recorded`, calls whose arguments could not be noted at all, by reason. A call is
+left out when the same input gave two results, when its input or result holds a lone
+surrogate or a credential-shaped string (which the repository's secret scanner would
+refuse), when its input holds a number that is not an integer (which the Rust reader
+refuses: one call of `lock.test.ts` today), or when, made again from what would be
+stored, it gives another result.

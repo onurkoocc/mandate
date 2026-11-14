@@ -194,6 +194,33 @@
       }
     },
     {
+      "name": "E0108",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0108",
+            "severity": "error",
+            "message": "Expected an object key but found '}'.",
+            "at": {
+              "span": [1, 66, 1, 67],
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E0108"
+          }
+        ]
+      }
+    },
+    {
       "name": "E0220",
       "kind": "compile",
       "door": "check_patched",
@@ -294,6 +321,33 @@
               "workflow": "W",
               "skill": "Outer.wrap"
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0233",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0233",
+            "severity": "error",
+            "message": "A Choice may have at most 255 options; Kind has 256.",
+            "at": {
+              "path": "/defs/decide/body/0/value/type",
+              "span": [26, 9, 26, 21]
+            },
+            "docs": "mandate explain MDT-E0233"
           }
         ]
       }

@@ -20,6 +20,13 @@ environment.
   twice, and a gate of no items. Every item is evaluated, none may panic,
   and the gate prints `<title>: ran N, passed M, pending K`.
 
+- `corpus`: the compiled corpus, `vectors/corpus/`. `Corpus::load` reads it
+  and checks it against its summary, `Corpus::input` builds the arguments of
+  an entry for its door, the `render_*` functions write what a Rust door
+  returned as the corpus stores it (a program, a span table and a module as
+  digests), and `compare` compares it with the stored result and says where
+  they first differ. `tests/corpus.rs` is its gate, one per door.
+
 Every function returns its failure as text instead of panicking: under WASI
 a panic aborts the whole test executable. Its types are for integration
 tests: a unit test inside a crate's `src` that used them would see two copies

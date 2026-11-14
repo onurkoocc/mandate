@@ -2,8 +2,9 @@
 //! writes it again: the repository and its files ([`repo`], [`read_text`],
 //! [`read_json`], [`subdirectories`], [`files`]), digests ([`sha256`]), the
 //! golden digests of the TypeScript compiler's outputs ([`Golden`]), the
-//! comparison of texts ([`compare_text`], [`compare_digest`]) and the
-//! pending-list rule of a gate test ([`run_gate`]).
+//! comparison of texts ([`compare_text`], [`compare_digest`]), the
+//! pending-list rule of a gate test ([`run_gate`]) and the compiled corpus of
+//! the TypeScript compiler's calls to its front doors ([`corpus`]).
 //!
 //! It is a dev-dependency only, and it may read files and the environment;
 //! the library crates may not. Every function returns its failures as text
@@ -17,6 +18,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod corpus;
 mod gate;
 mod golden;
 
