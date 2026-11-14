@@ -20,8 +20,8 @@
 // beyond 2^53, NaN written as null) is compared as text. Running it again
 // writes the same bytes. A `check` is compared on the
 // diagnostics of the lock (E0140-E0142, E0504 and W0504, E0903-E0905, E1502,
-// E1802, E1803) and on `ok`; it stops when a `check` gives an error of a stage
-// the Rust port does not have yet (the static checks), since `ok` would differ.
+// E1802, E1803) and on `ok`; it stops when a `check` gives an error of any
+// other stage, since these inputs are meant to reach the lock alone.
 
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -55,7 +55,7 @@ const modulesOf = (names) =>
     }),
   );
 
-/** The codes of the stages the Rust port has: a check is compared on these alone. */
+/** The codes of the lock's stages: a check is compared on these alone. */
 const LOCK_CODES = /^MDT-(E014[012]|W0504|E0504|E090[345]|E1502|E180[23])$/;
 
 const section = (items, run) => {
@@ -82,9 +82,9 @@ const noThrow = (items, run) => {
 
 const checks = noThrow(inputs.checks, (c) => {
   const r = check(inputs.programs[c.program], "mdt", { modules: modulesOf(c.modules), lock: c.lock });
-  // A warning of the static checks is left out; an error of theirs would change `ok` and is refused.
+  // A warning of the static checks is left out; an error of any other stage would change `ok` and is refused.
   const stray = r.diagnostics.filter((d) => !LOCK_CODES.test(d.code) && d.severity === "error");
-  if (stray.length) throw new Error(`the check ${c.id} gives ${stray.map((d) => d.code).join(", ")}, which the Rust port does not have yet`);
+  if (stray.length) throw new Error(`the check ${c.id} gives ${stray.map((d) => d.code).join(", ")}, which is not a code of the lock`);
   return { ok: r.ok, diagnostics: r.diagnostics.filter((d) => LOCK_CODES.test(d.code)) };
 });
 

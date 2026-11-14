@@ -7,10 +7,9 @@
 //!      → the lock checks (only with a lock and no error so far) → ok, hashes
 //! ```
 //!
-//! Every stage runs, in this order. Of the static checks
-//! ([`crate::statics`]) the core, the authority and the system model are all
-//! ported, and [`UNPORTED`] is empty. The doors that stand on `check`
-//! (`checkPatch`, `checkSubprogram`, `checkAmendment`) are in
+//! Every stage runs, in this order, and `ok` means there is no error from any
+//! of them (the static checks are [`crate::statics`]). The doors that stand
+//! on `check` (`checkPatch`, `checkSubprogram`, `checkAmendment`) are in
 //! [`crate::doors`].
 
 use mandate_ir::{
@@ -25,16 +24,11 @@ use crate::modules::{Modules, link};
 use crate::resolve::resolve_names;
 use crate::roles::role_checks;
 
-/// The stages of `check` in `check.ts` that [`check`] does not run yet,
-/// each with the slice of the port that brings it. A slice that ports one
-/// takes it off; the port is complete when the list is empty.
-pub const UNPORTED: &[&str] = &[];
-
 /// What [`check`] is given besides the text: `CheckOptions`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct CheckOptions<'a> {
     /// The lock file (spec/lock.md), as read. With it, tiers are checked
-    /// against it and W0504 is computed (R14).
+    /// against it and W0504 is computed.
     pub lock: Option<&'a Value>,
     /// Imported modules the caller has loaded, by name, such as a system
     /// model (design doc 9 §2.1). Their definitions are linked in; a module
@@ -205,8 +199,7 @@ fn with_exact_span(d: Diagnostic, spans: &Spans) -> Diagnostic {
 /// `roleChecks`, `importedMethods`, then the static checks only if there is
 /// no error so far, then, given a lock and still no error, the lock checks
 /// (`validateLock` and, when it finds nothing, `lockChecks`,
-/// `roleLockChecks` and `moduleLockChecks`). Until [`UNPORTED`] is empty,
-/// `ok` means no error from what is ported so far.
+/// `roleLockChecks` and `moduleLockChecks`).
 #[must_use]
 pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResult {
     let loaded = load(text, kind);
@@ -314,11 +307,11 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
 
 /// `staticCheck(program, spans, linked.defs, opts.claim)` (Gate 1): the
 /// static checks of `check/static.ts` and what it calls, with the claim of a
-/// sub-program ([`crate::statics`]). The core (R11: types, expressions,
-/// constants, functions, contracts, recursion, budgets, the node count) and
-/// the system model (R13: providers, reads, change sets) are ported; the
-/// authority (R12: capabilities, agents, workflows, par, delegation, map,
-/// effects, envelopes) are ported.
+/// sub-program ([`crate::statics`]): the core (types, expressions,
+/// constants, functions, contracts, recursion, budgets, the node count), the
+/// authority (capabilities, agents, workflows, par, delegation, map,
+/// effects, envelopes) and the system model (providers, reads, change
+/// sets).
 fn static_check(
     program: Program<'_>,
     spans: &Spans,

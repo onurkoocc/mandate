@@ -13,9 +13,8 @@
 //! where the case stores it, the whole text.
 //!
 //! The programs are what `mandate_check::check` gives for the side's text
-//! with the case's modules and no lock; the static checks are not ported
-//! yet, which does not matter here because every stored program checks in
-//! TypeScript and `check` gives the loaded program unchanged. A side
+//! with the case's modules and no lock (every stored program checks in
+//! TypeScript, and `check` gives the loaded program unchanged). A side
 //! `patch_of` is the case's patch applied (`applyOps` with the case's
 //! `base`, else the RFC 6902 patch of the runner, `common::apply_json_patch`),
 //! and a side `amend_of` is the parent with its workflow's envelope replaced
@@ -53,7 +52,9 @@ use mandate_syntax::{SourceKind, load};
 use mandate_testkit::{compare_text, read_json, run_gate, sha256};
 use mandate_views::{diff_doc, to_html, to_markdown};
 
-/// What the gate has left pending, and why: nothing.
+/// The pairs the Rust does not give yet: none. What the list is for now: a
+/// new rule of the language is written first as a vector, listed here, and
+/// the list is shortened by the commit that makes the Rust pass it.
 const PENDING: &[&str] = &[];
 
 const CASE_MEMBERS: [&str; 12] = [

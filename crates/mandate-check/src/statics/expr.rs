@@ -1,10 +1,10 @@
-//! The typer of expressions, slice R11: `expectBool`, `typeClass`, `use`,
+//! The typer of expressions: `expectBool`, `typeClass`, `use`,
 //! `expr`, `exprInner` and the forms it calls (`prompt`, `field`, `call`,
 //! `record`, `infer`, `verify`, `switchExpr`), and the leaves the other
-//! slices call too (`person`, `critical`, `waits`, `asksApproval`,
+//! parts call too (`person`, `critical`, `waits`, `asksApproval`,
 //! `fnWaits`, `approvedByHuman`, `isModuleRoot`, `tagsOf`,
-//! `variantFields`). `exprInner` calls the authority slice's `delegate`,
-//! `map` and `effectCall`, the system slice's `changeset` and `dataRead`,
+//! `variantFields`). `exprInner` calls the authority's `delegate`,
+//! `map` and `effectCall`, the system model's `changeset` and `dataRead`,
 //! and the authority's `evalCap` for `cap.narrow(…)`.
 
 use std::collections::{HashMap, HashSet};
@@ -1216,7 +1216,7 @@ impl<'a> Checker<'a> {
         self.expr_or_unknown(c.then(), &mut inner, &at)
     }
 
-    // ── the leaves the other slices call too ────────────────────────────
+    // ── the leaves the other parts call too ────────────────────────────
 
     /// `person(frame, path, what, via)`: a step that waits for a person
     /// inside a map's body (E1708); outside a map, nothing.

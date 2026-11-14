@@ -1,6 +1,6 @@
 //! Reads, canonicalises and hashes Mandate IR exactly as the TypeScript
-//! reference compiler does, and holds what every ported phase of that
-//! compiler shares.
+//! reference compiler does, and holds what the other crates of the Rust
+//! compiler share.
 //!
 //! A program's hash is an identity that approvals and the runtime bind to, so
 //! a second implementation must give the same bytes and the same hashes. This
@@ -67,7 +67,8 @@
 //!   quotes half of a surrogate pair, it holds U+FFFD: the text form of the
 //!   diagnostic is what TypeScript's becomes in UTF-8, but in JSON output
 //!   TypeScript writes an escape such as `\ud83d` and [`stringify`] writes
-//!   U+FFFD. Such inputs are a listed exception of the acceptance gate.
+//!   U+FFFD. No vector has such an input (`vectors/README.md`, "Where the Rust
+//!   compiler is not held to the TypeScript").
 //! - In TypeScript `o["__proto__"] = v` on a plain `{}` sets the prototype
 //!   and adds no member (on an object made by `Object.create(null)`, as the
 //!   JSON reader's are, it adds one); [`JsObject::insert`] and [`Map::insert`]

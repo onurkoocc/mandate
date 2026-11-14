@@ -5,8 +5,8 @@
 //! stored results of its checks ([`stored_cases`], [`stored_programs`]), the
 //! comparison of texts ([`compare_text`], [`compare_digest`]), the
 //! pending-list rule of a gate test ([`run_gate`]), the table of which
-//! slice of the port brings each diagnostic code, by which the gates name
-//! their items ([`codes`]: [`item_name`], [`FAMILIES`], [`check_pending`])
+//! stage of the compiler raises each diagnostic code, by which the gates
+//! name their items ([`codes`]: [`item_name`], [`FAMILIES`], [`check_pending`])
 //! and the compiled corpus of the TypeScript compiler's calls to its front
 //! doors ([`corpus`]).
 //!

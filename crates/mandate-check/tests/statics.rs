@@ -5,8 +5,8 @@
 //!
 //! - `check` of each program, its `{ ok, diagnostics }` as
 //!   `JSON.stringify` text, byte for byte; a program marked `held` (its
-//!   result has diagnostics of a later slice) is held to giving the
-//!   expected diagnostics with some left out, in order, and must not pass
+//!   result has a diagnostic of a rule the Rust does not give yet; none
+//!   today) is held to giving the expected diagnostics with some left out, in order, and must not pass
 //!   whole (then its mark is taken off);
 //! - `staticCost` of every workflow of every program that loads and of the
 //!   fixtures listed, and `leadClasses` of every program that checks;
@@ -39,7 +39,9 @@ use mandate_testkit::{omission, read_json};
 const DIR: &str = "crates/mandate-check/tests/statics";
 
 /// The checks TypeScript throws on, which a Rust result cannot be, with
-/// what Rust gives instead: a known difference of the port.
+/// what Rust gives instead: a known difference between the two compilers
+/// (`vectors/README.md`, "Where the Rust compiler is not held to the
+/// TypeScript").
 const THROWS_IN_TYPESCRIPT: &[(&str, &str)] = &[(
     // `NUMERIC_WIDENING[ua.name] ?? []` in ty.ts reads Object.prototype's
     // toString, a function, whose `.includes` is not one: `check` throws a

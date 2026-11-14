@@ -4,7 +4,7 @@
 //! `scripts/doors-vectors.mjs` has the TypeScript compiler answer the inputs
 //! of `crates/mandate-check/tests/doors/inputs.json` and writes the answers
 //! to `expected.json` beside it; this test gives the same inputs to the Rust
-//! and compares: the codes of the slice and each branch of a rule that has
+//! and compares: the codes of each rule and each branch of a rule that has
 //! several, the doors' order and shape (what they throw, what they leave
 //! out), the locations in the re-written JSON text, and the JavaScript the
 //! code depends on (sorting by UTF-16 code units, the white space `trim`
@@ -13,10 +13,10 @@
 //! An answer is held as the digest of the text the door's result is written
 //! as (a program as its own digest), with the code and path of each
 //! diagnostic to read a difference by. An entry that is `held` is one whose
-//! TypeScript result holds a diagnostic of a rule the port does not have yet
+//! TypeScript result holds a diagnostic of a rule the Rust does not give yet
 //! (none today): its whole result is kept and Rust's must be it
-//! with some diagnostics left out, in order; once the rule is in, the mark
-//! comes off (this test fails an entry that passes whole while marked).
+//! with some diagnostics left out, in order; once the Rust gives the rule,
+//! the mark comes off (this test fails an entry that passes whole while marked).
 
 #![allow(
     clippy::unwrap_used,

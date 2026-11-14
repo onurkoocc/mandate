@@ -9,33 +9,27 @@
 //! `corpus <door>: ran N, passed M, pending K`, over the entries of that
 //! door, named `<door> @ <id> [<codes>]` (the codes are those of the stored
 //! result, sorted, so a pending list can name a family: `*MDT-E03*`).
-//! Six doors exist in Rust: `load` (`mandate_syntax::load`), `check`,
-//! `load_modules`, `validate_lock`, `denial_diagnostics` and `apply_patch`
-//! (`mandate_check`; `apply_patch` runs no static check, so none of its
-//! entries is pending).
-//! The entries of `check` and `load_modules` are pending only by the family
-//! of codes of a stage not ported yet (`mandate_check::UNPORTED`; the
-//! families are `mandate_testkit::codes::FAMILIES`, and
-//! `mandate_testkit::check_pending` holds each list to them), with the slice
-//! named beside each, and by name the entries that fail although every code
-//! they hold is of a ported family, with the function of the later slice
-//! that gives it; the other doors of Rust have none pending. Every other door is pending as a whole, with the
-//! slice that will end it named below.
-//! Plugging a door in takes two edits in this file: an arm in [`replay`],
-//! and taking the door's pattern off its pending list (or narrowing it to
-//! the entries that still fail).
+//! Every door of the corpus but one is run against Rust: `load`
+//! (`mandate_syntax::load`), `check`, `load_modules`, `check_patch`,
+//! `check_subprogram`, `check_amendment`, `validate_lock`,
+//! `denial_diagnostics` and `apply_patch` (`mandate_check`). The one that is
+//! not is `acs_target`, in [`OUT_OF_SCOPE`].
 //!
-//! A `check` entry also passes when TypeScript ran a stage Rust does not
-//! have yet and that stage happened to give nothing (its static checks on a
-//! result with no error, and the claim of a sub-program); the gate prints how
-//! many of the passing entries are such. The lock checks are ported, so they
-//! are not among them.
+//! The pending lists below are empty. What they are for now: a new rule of
+//! the language is written first as a conformance case or a vector, so that
+//! its entries are in the corpus and the TypeScript gives them; they are
+//! listed as pending, by the family of codes they hold
+//! (`mandate_testkit::codes::FAMILIES`; `mandate_testkit::check_pending`
+//! holds each list to the table) or by name, and the list is shortened by the
+//! commit that makes the Rust pass them. A pending entry is held to failing
+//! only by omission.
 //!
 //! Two things are neither passed nor pending, and are counted and printed
 //! (`corpus <door>: excluded N: ...`): the entries in [`EXCLUDED`], by id
-//! and with the reason, which are not run; and the doors in [`OUT_OF_SCOPE`].
-//! An excluded id that names no entry fails the gate, and so does a total
-//! that is not the corpus's: nothing leaves the gate unseen.
+//! and with the reason, which are not run (none today); and the doors in
+//! [`OUT_OF_SCOPE`] (`acs_target`, 2 entries). An excluded id that names no
+//! entry fails the gate, and so does a total that is not the corpus's:
+//! nothing leaves the gate unseen.
 
 #![allow(clippy::panic, clippy::expect_used, missing_docs)]
 
@@ -54,11 +48,10 @@ use mandate_testkit::corpus::{
 use mandate_testkit::{Miss, check_pending, omission, run_held_gate};
 
 // ---------------------------------------------------------------------------
-// What is not ported yet, by door, and what is not compared
+// The pending lists, by door, and what is not compared
 
-/// `check`: the entries that expect a code of a stage `mandate_check::check`
-/// does not run yet (`mandate_check::UNPORTED`), by family of codes
-/// (`mandate_testkit::codes::FAMILIES`), with the slice that ports it.
+/// `check`: the entries the Rust does not give yet, by family of codes
+/// (`mandate_testkit::codes::FAMILIES`) or by name. None.
 const PENDING_CHECK: &[&str] = &[];
 /// `load_modules`.
 const PENDING_LOAD_MODULES: &[&str] = &[];
@@ -86,8 +79,8 @@ fn pending(door: Door) -> &'static [&'static str] {
 }
 
 /// Entries that are not run, by id, with the reason: a call whose result
-/// cannot be compared with Rust's. The kinds that were looked for in the
-/// `load` entries, none of which the corpus has:
+/// cannot be compared with Rust's. None. The kinds that were looked for in
+/// the `load` entries, none of which the corpus has:
 ///
 /// - a call the TypeScript parser dies on with `RangeError` (stack
 ///   overflow) where Rust refuses with `MDT-E0105` on purpose: the corpus
@@ -102,7 +95,7 @@ const EXCLUDED: &[(&str, &str)] = &[];
 /// Doors that are not compared at all, with the reason.
 const OUT_OF_SCOPE: &[(Door, &str)] = &[(
     Door::AcsTarget,
-    "the ACS/Rego target stays in TypeScript for release 0.5; it is not part of the Rust port",
+    "the ACS/Rego target stays in TypeScript for release 0.5; the Rust compiler does not have it",
 )];
 
 // ---------------------------------------------------------------------------
@@ -112,8 +105,8 @@ const OUT_OF_SCOPE: &[(Door, &str)] = &[(
 /// stores it. This is where a door is plugged in: one arm, which calls the
 /// Rust door, and builds the result with the `render_*` function of its
 /// shape in `mandate_testkit::corpus` (or `Actual::Throws(message)` for a
-/// call that raises). A door without an arm gives `Err`, and is on its
-/// pending list.
+/// call that raises). A door without an arm gives `Err` (`acs_target`, which
+/// is never replayed: see [`OUT_OF_SCOPE`]).
 fn replay(input: &Input<'_>) -> Result<Actual, String> {
     match input {
         Input::Load { source, kind } => Ok(Actual::Result(render_load(&load(
@@ -269,7 +262,7 @@ fn replay(input: &Input<'_>) -> Result<Actual, String> {
             )
         }
         other => Err(format!(
-            "the Rust door for {} is not ported yet",
+            "the Rust compiler has no door for {}",
             other.door().name()
         )),
     }
@@ -299,7 +292,7 @@ fn run(corpus: &Corpus, entry: &Entry) -> Result<(), Miss> {
         .input(entry)
         .map_err(|e| Miss::Differs(format!("{}: {e}", from())))?;
     let actual = replay(&input).map_err(|e| Miss::Excluded {
-        rule: "the door is not ported, so there is no Rust result to hold",
+        rule: "the Rust compiler has no door for it, so there is no Rust result to hold",
         why: format!("{}: {e}", from()),
     })?;
     mandate_testkit::corpus::compare(entry, &actual).map_err(|why| held(entry, &actual, why))
@@ -383,37 +376,6 @@ fn held(entry: &Entry, actual: &Actual, why: String) -> Miss {
     Miss::Omits(why)
 }
 
-/// Says how many of the `check` entries that pass did so although the
-/// TypeScript ran a stage that `mandate_check::check` does not run yet
-/// (`mandate_check::UNPORTED`): a stored result with no error is one the
-/// static checks ran on (and gave nothing); one with a claim is one whose
-/// claim the static checks read. Such an entry passes because that stage
-/// happened to give nothing, so the numbers are printed rather than hidden.
-/// (The lock checks, which a result with no error and a lock ran, are in
-/// Rust: they are checked, not counted.)
-fn print_unported_stages(corpus: &Corpus, title: &str, passed: &[&Entry]) {
-    let (mut statics, mut claims) = (0_usize, 0_usize);
-    for entry in passed {
-        let Ok(Input::Check { claim, .. }) = corpus.input(entry) else {
-            continue;
-        };
-        let ok = match &entry.outcome {
-            mandate_testkit::corpus::Outcome::Result(r) => r.get("ok") == Some(&Value::Bool(true)),
-            _ => false,
-        };
-        if ok {
-            statics = statics.saturating_add(1);
-        }
-        if claim.is_some() {
-            claims = claims.saturating_add(1);
-        }
-    }
-    println!(
-        "{title}: of the {} that pass, {statics} have no error, so TypeScript ran its static checks on them (the core, R11, and the authority, R12, are in Rust; the system model's diagnostics, R13, are not yet), and {claims} have a claim (R13)",
-        passed.len()
-    );
-}
-
 /// The totals of the gates of all doors.
 #[derive(Default)]
 struct Totals {
@@ -465,19 +427,9 @@ fn gate(corpus: &Corpus, door: Door, totals: &mut Totals) -> Result<(), String> 
         );
     }
 
-    let mut passed: Vec<&Entry> = Vec::new();
-    let gate = run_held_gate(&title, pending(door), items, |entry| {
-        let r = run(corpus, entry);
-        if r.is_ok() {
-            passed.push(entry);
-        }
-        r
-    });
+    let gate = run_held_gate(&title, pending(door), items, |entry| run(corpus, entry));
     if let Err(report) = gate {
         problems.push(report);
-    }
-    if door == Door::Check {
-        print_unported_stages(corpus, &title, &passed);
     }
     if problems.is_empty() {
         Ok(())

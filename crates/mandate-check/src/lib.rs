@@ -2,11 +2,11 @@
 //! reference compiler, which remains the specification: the same
 //! diagnostics, codes, messages and `facts`, byte for byte.
 //!
-//! So far it holds the front door and the stages before the static checks:
+//! It holds the front door, the stages before the static checks, the static
+//! checks, and the lock and the sandbox requirements that stand on them:
 //!
 //! - [`check`](mod@check): [`check()`], [`load_modules`], [`CheckOptions`],
-//!   [`CheckResult`], `compiler/src/check.ts` lines 60–131. Of the static
-//!   checks all three slices are ported ([`UNPORTED`] is empty).
+//!   [`CheckResult`], `compiler/src/check.ts` lines 60–131.
 //! - [`doors`]: the front doors that stand on `check`, `compiler/src/check.ts`
 //!   lines 133–279: [`check_patch`], [`check_subprogram`], [`check_amendment`]
 //!   and [`subprogram_linked`], with [`subprogram`] (a lead's sub-program:
@@ -40,7 +40,7 @@
 //!   `compiler/src/check/cost.ts` ([`static_cost`], [`micros_text`]); and
 //!   [`walk`]: the tree walkers both share ([`reads_var`]).
 //!
-//! And what every later check stands on:
+//! And what every check stands on:
 //!
 //! - [`caps`]: what a capability expression means and the relations between
 //!   capabilities, `compiler/src/check/caps.ts` ([`caps_of`],
@@ -121,8 +121,7 @@ pub use statics::{lead_classes, static_check};
 pub use walk::reads_var;
 
 pub use check::{
-    CheckOptions, CheckResult, LoadedModules, ModuleProblem, ModuleSource, UNPORTED, check,
-    load_modules,
+    CheckOptions, CheckResult, LoadedModules, ModuleProblem, ModuleSource, check, load_modules,
 };
 pub use diff::{
     BudgetChanges, Change, Classified, DiffView, GovernanceChangeKind, KindedChange, Locks,

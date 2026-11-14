@@ -3,8 +3,7 @@
 //! field is) read by `mandate-syntax`, and compared exactly with what
 //! `load(text, "mdt")` gave in TypeScript.
 //!
-//! Three gates, so that what the parser alone determines is checked now for
-//! every input, and what needs a later slice is listed by name:
+//! Three gates:
 //!
 //! - `syntax vectors: what the parser reads`, every input: whether a program
 //!   comes back; when one does, its IR as JSON text in the parser's member
@@ -38,11 +37,14 @@ use common::{depth_of, json, rows, same_lines, vector_rows};
 
 const SYNTAX: &str = "vectors/syntax.json";
 
-/// The inputs whose diagnostics from `load` are not given yet. None.
+/// The inputs whose diagnostics from `load` the Rust does not give yet: none.
+/// (A pending list is for a new rule of the language: it is written first as
+/// a vector, listed here, and taken off by the commit that makes the Rust
+/// read it.)
 const PENDING_LOAD: &[&str] = &[];
 
 /// Nothing: every input that reads without an error prints as the
-/// TypeScript prints it (`compiler/src/print/printer.ts`, slice R8).
+/// TypeScript prints it (`compiler/src/print/printer.ts`).
 const PENDING_FMT: &[&str] = &[];
 
 /// One vector: what TypeScript gave, and what the Rust parser and `load`

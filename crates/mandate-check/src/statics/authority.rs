@@ -1,4 +1,4 @@
-//! The static authority, slice R12: capabilities, agents and their skills,
+//! The static authority: capabilities, agents and their skills,
 //! workflows, `par`, delegation, `map`, effects, and the envelope's rules
 //! of `compiler/src/check/envelope.ts`.
 //!

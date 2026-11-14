@@ -1,9 +1,7 @@
 //! The documents of the Rust Mandate compiler: the human projections of a
 //! program (Doc 4 §15) as Markdown and as one self-contained HTML page,
-//! ported from the TypeScript reference compiler, which remains the
-//! specification: the same text, byte for byte.
-//!
-//! So far it holds:
+//! written from the TypeScript reference compiler, which remains the
+//! specification: the same text, byte for byte. It holds:
 //!
 //! - [`doc`]: the document model ([`Doc`], [`Block`], [`Cell`]) and its two
 //!   renderings ([`to_markdown`], [`to_html`], with [`md_escape`],
@@ -20,7 +18,7 @@
 //!   ([`delegate_budget`], [`Sum`]), `system` ([`has_system`]), and
 //!   `program_doc`, which puts them in one document. [`shown`] holds the
 //!   small texts they are written in ([`show`], [`list`], [`mermaid_text`],
-//!   [`type_text`]). The envelope card is not ported: it stays in TypeScript
+//!   [`type_text`]). The envelope card is not in this crate: it stays in TypeScript
 //!   for 0.5.
 //!
 //! The cost view counts the delegations a workflow with an envelope may

@@ -11,8 +11,14 @@
 //! pending item to failing only by omission: what the Rust gives must be
 //! what the TypeScript gives with some diagnostics left out, in the same
 //! order ([`omission`]), never a diagnostic the TypeScript does not give.
-//! So an item is pending only because a later slice is missing, not because
-//! the slices that are in got something wrong.
+//! So an item is pending only because the Rust does not give it yet, not
+//! because what it does give is wrong.
+//!
+//! Every pending list is empty now: the Rust gives everything the stored
+//! results hold. The lists stay for the next rule of the language. A new rule
+//! is written first as a conformance case or a vector, listed as pending in
+//! the gates that run it, and the list is shortened by the commit that makes
+//! the Rust pass it.
 
 use std::collections::HashSet;
 

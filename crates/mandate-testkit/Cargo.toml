@@ -1,6 +1,6 @@
 [package]
 name = "mandate-testkit"
-description = "What the tests of the Rust Mandate crates share: the repository, its vectors and golden digests, and the pending-list rule of the gate tests"
+description = "What the tests of the Rust Mandate crates share, and the gates that hold the Rust compiler to the TypeScript's stored results: the repository and its vectors, the golden digests, the compiled corpus, the table of diagnostic codes and the pending-list rule"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

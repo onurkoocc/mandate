@@ -25,10 +25,10 @@
 // An answer is the sha256 of the JSON.stringify text of what the check or the
 // door returns (a program as the sha256 of its text), with the code and path of
 // each diagnostic, or the message of the Error it throws. An entry marked
-// `held` is one whose result holds a diagnostic of a rule the Rust port does
-// not have yet (none today): its whole text is kept too, so that the
-// Rust is held to it with some diagnostics left out; take the mark off, and the
-// text, when the rule is ported. Running it again writes the same bytes.
+// `held` is one whose result holds a diagnostic of a rule the Rust does not
+// give yet (none today): its whole text is kept too, so that the Rust is held
+// to it with some diagnostics left out; take the mark off, and the text, when
+// the Rust gives the rule. Running it again writes the same bytes.
 
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -108,7 +108,7 @@ const modulesOf = (m) => (m ? Object.fromEntries(Object.entries(m).map(([name, p
  * The result of `f()`: the digest of its JSON text, with each program as its own
  * digest, and the code and path of each diagnostic to read a difference by; for an
  * entry marked `held` (the TypeScript's result holds a diagnostic of a rule the
- * Rust does not have yet), the diagnostics whole too. Or the message `f` throws.
+ * Rust does not give yet), the diagnostics whole too. Or the message `f` throws.
  */
 function attempt(f, held) {
   try {

@@ -1,13 +1,14 @@
 //! The golden gate: what the Rust compiler prints for each program pinned
 //! in `compiler/test/golden/outputs.json` must have the digest the
 //! TypeScript compiler's output has there (see `compiler/test/golden.test.ts`
-//! for what each output is). Release 0.5 closes when `PENDING` is empty.
+//! for what each output is). With `MANDATE_GOLDEN_OUT` set it also writes
+//! every text, for the `parity` job of CI (`vectors/README.md`, "The golden
+//! output texts").
 //!
 //! It lives in this crate because the outputs come from every compiler
 //! crate (`load` and `fmt` from the syntax, `check` and `hash` from the
 //! checks, the views from the views): the testkit depends on none of them,
-//! so its tests can take each as a dev-dependency as it is written, and no
-//! test moves when an output moves from one crate to another.
+//! so no test moves when an output moves from one crate to another.
 
 #![allow(clippy::panic, clippy::expect_used, missing_docs)]
 
@@ -28,7 +29,9 @@ use mandate_testkit::{
 use mandate_views::{architecture, authority, cost, program_doc, to_html, to_markdown};
 
 /// The outputs the Rust crates do not give yet, as `<output> @ <program>`
-/// patterns. Shorten it in the commit that makes an item pass. The checks
+/// patterns: none. What the list is for now: a new rule of the language is
+/// written first as a conformance case or a vector, listed here, and the
+/// list is shortened by the commit that makes the Rust pass it. The checks
 /// are named by the codes they hold (`check @ <program> [codes]`, see
 /// `mandate_testkit::codes`), and pending by family of codes; each pending
 /// check is held to failing only by omission against its stored result.
