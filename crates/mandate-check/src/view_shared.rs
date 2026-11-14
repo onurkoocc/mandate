@@ -500,12 +500,16 @@ pub fn effect_info(program: Program<'_>, name: &str) -> EffectInfo {
 /// `duration(ms)`: `1h`, `20m`, `5s` or `1500ms`.
 #[must_use]
 pub fn duration(ms: i64) -> String {
-    if ms % 3_600_000 == 0 {
-        format!("{}h", ms / 3_600_000)
-    } else if ms % 60_000 == 0 {
-        format!("{}m", ms / 60_000)
-    } else if ms % 1000 == 0 {
-        format!("{}s", ms / 1000)
+    // `ms % unit === 0` and `ms / unit`, with a unit that is never zero.
+    let whole = |unit: i64| {
+        (ms.checked_rem(unit) == Some(0)).then(|| ms.checked_div(unit).unwrap_or_default())
+    };
+    if let Some(h) = whole(3_600_000) {
+        format!("{h}h")
+    } else if let Some(m) = whole(60_000) {
+        format!("{m}m")
+    } else if let Some(s) = whole(1000) {
+        format!("{s}s")
     } else {
         format!("{ms}ms")
     }
