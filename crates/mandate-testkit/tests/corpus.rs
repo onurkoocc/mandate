@@ -193,7 +193,7 @@ fn corpus_gates() {
             failures.push(format!("the excluded id {id} names no entry"));
         }
     }
-    for door in [Door::Load] {
+    for door in Door::ALL {
         if let Err(report) = gate(&corpus, door, &mut totals) {
             failures.push(report);
         }
@@ -202,6 +202,13 @@ fn corpus_gates() {
         "corpus: {} entries, ran {}, excluded {}",
         totals.entries, totals.ran, totals.excluded
     );
+    if totals.entries != corpus.entries.len() {
+        failures.push(format!(
+            "the doors hold {} entries, the corpus has {}",
+            totals.entries,
+            corpus.entries.len()
+        ));
+    }
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }
 
