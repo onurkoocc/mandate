@@ -16,8 +16,7 @@
 //!   the diagnostics of `mandate_syntax::load`, the parser's followed by the
 //!   schema validation's, and `ok`.
 //! - `syntax vectors: fmt`, every input that reads without an error: the
-//!   text `mandate fmt` prints and whether it reads back. The printer is not
-//!   ported yet.
+//!   text `mandate fmt` prints and whether it reads back.
 
 #![allow(
     clippy::panic,
@@ -29,9 +28,11 @@
 
 mod common;
 
-use mandate_ir::{Diagnostic, JsValue, Loaded, Value, canonicalize, has_errors, stringify};
-use mandate_syntax::{ParseResult, SourceKind, parse_mdt};
-use mandate_testkit::{read_json, run_gate, sha256};
+use mandate_ir::{
+    Diagnostic, JsObject, JsValue, Loaded, Value, canonicalize, has_errors, stringify,
+};
+use mandate_syntax::{ParseResult, SourceKind, parse_mdt, print_program};
+use mandate_testkit::{compare_text, read_json, run_gate, sha256};
 
 use common::{depth_of, json, rows, same_lines, vector_rows};
 
@@ -40,9 +41,9 @@ const SYNTAX: &str = "vectors/syntax.json";
 /// The inputs whose diagnostics from `load` are not given yet. None.
 const PENDING_LOAD: &[&str] = &[];
 
-/// Every input that reads without an error: `fmt` and `fmt_roundtrip` need
-/// the printer (`compiler/src/print/printer.ts`), slice R8.
-const PENDING_FMT: &[&str] = &["*"];
+/// Nothing: every input that reads without an error prints as the
+/// TypeScript prints it (`compiler/src/print/printer.ts`, slice R8).
+const PENDING_FMT: &[&str] = &[];
 
 /// One vector: what TypeScript gave, and what the Rust parser and `load`
 /// give for its input.
@@ -213,9 +214,59 @@ fn check_load(case: &Case) -> Result<(), String> {
     Ok(())
 }
 
-/// The third gate: what `fmt` prints.
-fn check_fmt(_case: &Case) -> Result<(), String> {
-    Err("the printer is not ported yet".to_owned())
+/// `fmt_roundtrip` as `syntax-vectors.ts` computes it: `true`, or
+/// `{ reads, same_ir, stable }` with the diagnostics of the second reading
+/// when it did not read.
+fn roundtrip(printed: &str, canonical: &str) -> JsValue {
+    let Loaded {
+        program: again,
+        diagnostics,
+        ..
+    } = mandate_syntax::load(printed, SourceKind::Mdt);
+    let reads = again.is_some() && !has_errors(&diagnostics);
+    let same_ir = reads && again.as_ref().is_some_and(|p| canonicalize(p) == canonical);
+    let stable = reads
+        && again
+            .as_ref()
+            .is_some_and(|p| print_program(p).is_ok_and(|text| text == printed));
+    if reads && same_ir && stable {
+        return JsValue::Bool(true);
+    }
+    let mut out = JsObject::new()
+        .with("reads", reads)
+        .with("same_ir", same_ir)
+        .with("stable", stable);
+    if !reads {
+        out = out.with(
+            "diagnostics",
+            JsValue::Array(diagnostics.iter().map(Diagnostic::to_js).collect()),
+        );
+    }
+    JsValue::Object(out)
+}
+
+/// The third gate: what `fmt` prints, and whether it reads back.
+fn check_fmt(case: &Case) -> Result<(), String> {
+    let v = &case.vector;
+    let program = case
+        .read
+        .program
+        .as_ref()
+        .ok_or("TypeScript prints a program, Rust reads none")?;
+    let printed = match print_program(program) {
+        Ok(printed) => printed,
+        Err(message) => {
+            return same_lines(
+                "fmt_error",
+                &[str_field(v, "fmt_error")?.to_owned()],
+                &[message],
+            );
+        }
+    };
+    compare_text(str_field(v, "fmt")?, &printed).map_err(|e| format!("fmt: {e}"))?;
+    let expected = v.get("fmt_roundtrip").ok_or("no fmt_roundtrip")?;
+    let actual = stringify(&roundtrip(&printed, &canonicalize(program))).unwrap_or_default();
+    same_lines("fmt_roundtrip", &[json(expected)], &[actual])
 }
 
 fn name_of(vector: &Value) -> String {

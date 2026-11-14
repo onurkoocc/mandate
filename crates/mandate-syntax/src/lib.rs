@@ -16,6 +16,16 @@
 //! ([`mandate_ir::validate_ir`]), whose diagnostics come after
 //! [`ParseResult::diagnostics`]; for JSON, [`mandate_ir::load_json`].
 //!
+//! [`print_program`] is the other direction, `printProgram` in
+//! `compiler/src/print/printer.ts`, which is what `mandate fmt` prints: IR
+//! as text, definitions grouped by kind and sorted by name, two-space
+//! indents, no comments (they are not part of the IR). It gives the TypeScript
+//! printer's text byte for byte, odd results included: the text of a
+//! comparison in parentheses on the left of a comparison reads back as another
+//! program, as it does in TypeScript (four vectors record this). It is `Err`
+//! where the TypeScript throws, with its message, and takes a program that
+//! was loaded (at most 64 levels deep).
+//!
 //! What a port has to copy, and the vectors that hold this crate to it, are
 //! described in `vectors/README.md` ("Reading Mandate text"). In short:
 //!
@@ -66,12 +76,14 @@ mod lexer;
 mod load;
 mod node;
 mod parser;
+mod printer;
 mod sourcemap;
 
 use mandate_ir::{Diagnostic, Value};
 
 pub use load::{SourceKind, kind_of, load};
 pub use parser::RESERVED;
+pub use printer::print_program;
 pub use sourcemap::SourceMap;
 
 /// What [`parse_mdt`] gives: `ParseResult` in `parser.ts`, with its span
