@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { check, type Modules } from "@mandate/compiler";
+import { check, type Modules } from "@mandate/bridge";
 import { build } from "esbuild";
 import { expect } from "vitest";
 import { ISSUE } from "./programs.js";
@@ -32,7 +32,7 @@ export async function planChecker(entry = "../src/plan-worker.ts", maxMb?: numbe
     platform: "node",
     format: "esm",
     target: "node22",
-    alias: { "@mandate/compiler": here("../../compiler/src/index.ts") },
+    alias: { "@mandate/bridge": here("../../bridge/src/index.ts") },
     external: ["ajv", "ajv/*", "ajv-formats"],
     plugins: [
       {

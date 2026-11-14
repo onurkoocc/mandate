@@ -6,7 +6,7 @@
 // `par > 1` no two items may write overlapping scopes. Each rule is shown by
 // one run that keeps it and one that breaks it.
 
-import { check, kindOf, loadModules, type Modules } from "@mandate/compiler";
+import { check, kindOf, loadModules, type Modules } from "@mandate/bridge";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
@@ -595,7 +595,7 @@ describe("MigrateAll's map: 24 repositories, 24 migrators", () => {
       });
     const alice = EvidenceSigner.generate();
     const bob = EvidenceSigner.generate();
-    const { hashProgram } = await import("@mandate/compiler");
+    const { hashProgram } = await import("@mandate/bridge");
     const lock = {
       modules: { "company.domain": hashProgram(domain as never).program },
       members: { alice: { keys: [alice.keyId] }, bob: { keys: [bob.keyId] } },

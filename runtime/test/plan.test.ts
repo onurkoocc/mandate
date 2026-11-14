@@ -8,7 +8,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Program, SubprogramInput } from "@mandate/compiler";
+import type { Program, SubprogramInput } from "@mandate/bridge";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { readConfig, runtimeOptions, type RuntimeConfig } from "../src/control.js";

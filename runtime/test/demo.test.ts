@@ -12,7 +12,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { check, hashProgram, kindOf, load, loadModules, toMarkdown, type Json, type Modules, type Program } from "@mandate/compiler";
+import { check, hashProgram, kindOf, load, loadModules, toMarkdown, type Json, type Modules, type Program } from "@mandate/bridge";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ChatModel, TurnRequest } from "../src/adapters.js";
 import { AnthropicModel } from "../src/anthropic.js";

@@ -7,7 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { check, type Lock } from "@mandate/compiler";
+import { check, type Lock } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import type { ModelAdapter, TurnRequest } from "../src/adapters.js";
 import { GitHubPullRequests } from "../src/github.js";

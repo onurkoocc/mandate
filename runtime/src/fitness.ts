@@ -22,7 +22,7 @@
 import { spawn } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, resolve } from "node:path";
-import type { Lock } from "@mandate/compiler";
+import type { Lock } from "@mandate/bridge";
 import { childEnv } from "./env.js";
 import { Violation } from "./signals.js";
 

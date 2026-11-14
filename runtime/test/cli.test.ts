@@ -118,11 +118,14 @@ describe("the control CLI (K19)", () => {
     expect(r.err).toContain("usage:");
   });
 
-  it("is reached through the mandate binary: the compiler's CLI hands it every command it has, and no other", () => {
-    // The compiler cannot import the runtime, so its CLI keeps the names. A command missing there is one nobody can call.
-    const binary = readFileSync(new URL("../../compiler/src/cli.ts", import.meta.url), "utf8");
-    const handed = binary.match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m);
-    expect(handed).not.toBeNull();
-    expect((JSON.parse(handed![1]!) as string[]).sort()).toEqual([...CONTROL_COMMANDS].sort());
+  it("is reached through the mandate binary: its command line hands it every command it has, and no other", () => {
+    // The binary cannot depend on the runtime, which depends on the bridge it lives in, so its command line keeps the
+    // names. A command missing there is one nobody can call. The binary is the bridge's; the compiler's own (`mandate-ts`) keeps the same list.
+    for (const file of ["../../bridge/src/cli.ts", "../../compiler/src/cli.ts"]) {
+      const binary = readFileSync(new URL(file, import.meta.url), "utf8");
+      const handed = binary.match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m);
+      expect(handed, file).not.toBeNull();
+      expect((JSON.parse(handed![1]!) as string[]).sort(), file).toEqual([...CONTROL_COMMANDS].sort());
+    }
   });
 });

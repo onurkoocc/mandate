@@ -3,7 +3,7 @@
 // and its workers. Shared by the tests of `plan` (plan.test.ts) and of the
 // schedulers that drive a run through one (temporal.test.ts).
 
-import { load, type Program } from "@mandate/compiler";
+import { load, type Program } from "@mandate/bridge";
 import { expect } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { shownPackage, signDecision } from "../src/decisions.js";

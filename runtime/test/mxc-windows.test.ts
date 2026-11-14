@@ -18,7 +18,7 @@ import { createServer, type AddressInfo, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { denialDiagnostics, requirementFor, type SandboxRequirement } from "@mandate/compiler";
+import { denialDiagnostics, requirementFor, type SandboxRequirement } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { MxcAdapter, type MxcPolicy } from "../src/sandbox.js";
 import { WindowsMxcHost, winQuote, type WindowsContainerRequest, type WindowsMxcSdk } from "../src/mxc-windows.js";

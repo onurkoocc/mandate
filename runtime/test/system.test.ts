@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { buildPackage, verifyPackage } from "../src/runtime.js";
 import { closeAll, world } from "./helpers.js";
 import { ACME_SOURCE, acmeModule, acmeModules, lockFor, TWO_COMPONENTS } from "./acme.js";
-import { check } from "@mandate/compiler";
+import { check } from "@mandate/bridge";
 
 afterAll(closeAll);
 

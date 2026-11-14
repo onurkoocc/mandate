@@ -30,7 +30,7 @@
 // that came from a model, a tool or a person's answer is shown as untrusted
 // plain content (G09).
 
-import { architecture, architectureBlocks, authority, authorityBlocks, check, governanceFiles, hashProgram, linkedProgram, printProgram, programRef, rolesNamed, semanticDiff, VIEW_FORMAT, type Block, type Cell, type ComponentDef, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/compiler";
+import { architecture, architectureBlocks, authority, authorityBlocks, check, governanceFiles, hashProgram, linkedProgram, printProgram, programRef, rolesNamed, semanticDiff, VIEW_FORMAT, type Block, type Cell, type ComponentDef, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/bridge";
 import { eventClass, sectionClass, shows, stepClass, TRACE_KINDS, type Audience, type ViewClass } from "./classes.js";
 import { authorizationId } from "./decisions.js";
 import { costDims, type BudgetReport, type ChangesetRow, type EvidenceRow, type HaltRow } from "./journal.js";

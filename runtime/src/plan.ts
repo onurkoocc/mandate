@@ -66,7 +66,7 @@ import {
   type Room,
   type SubprogramCheck,
   type SubprogramInput,
-} from "@mandate/compiler";
+} from "@mandate/bridge";
 import type { Outcome, ToolSpec } from "./adapters.js";
 import { refOf, sha256Of, type ArtifactScope, type ArtifactStore } from "./artifacts.js";
 import type { Admission, CommandRow, Journal } from "./journal.js";

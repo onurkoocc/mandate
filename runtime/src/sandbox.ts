@@ -11,7 +11,7 @@
 
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { ISOLATION_LEVELS, type IsolationLevel, type SandboxRequirement } from "@mandate/compiler";
+import { ISOLATION_LEVELS, type IsolationLevel, type SandboxRequirement } from "@mandate/bridge";
 import type { AgentAdapter, DelegateRequest, Outcome } from "./adapters.js";
 import { CREDENTIAL_NAME, validHost } from "./egress/config.js";
 import { Violation } from "./signals.js";

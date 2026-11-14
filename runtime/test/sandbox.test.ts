@@ -2,7 +2,7 @@
 // §7.5, §11.3, §16.1). A host that cannot enforce a requirement refuses to
 // start the agent; it never runs it with less isolation (INV-11, G05).
 
-import { check, sandboxRequirements, type SandboxRequirement } from "@mandate/compiler";
+import { check, sandboxRequirements, type SandboxRequirement } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { MxcAdapter, SandboxedAgents, type Enforceable, type MxcOptions } from "../src/sandbox.js";
 import { FULL_SANDBOX, SimAgents, SimSandboxHost, SimTool } from "../src/sim.js";

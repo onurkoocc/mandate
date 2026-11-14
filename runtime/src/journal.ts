@@ -11,7 +11,7 @@
 // worker that re-runs the workflow body finds earlier results instead of
 // calling the outside world again (R01, R13).
 
-import { BUDGET_DIMENSIONS, budgetAmount, type Budget } from "@mandate/compiler";
+import { BUDGET_DIMENSIONS, budgetAmount, type Budget } from "@mandate/bridge";
 import type { Cost, Outcome } from "./adapters.js";
 import { decisionId, type SignedDecision, type StoredDecision } from "./decisions.js";
 import type { EvidenceRecord } from "./evidence.js";

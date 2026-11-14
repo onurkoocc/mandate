@@ -8,7 +8,10 @@ The page describes the runtime of releases 0.1 to 0.5. The parts that came
 with 0.4 and 0.5 are specified in [`envelope.md`](envelope.md) and
 [`boundary.md`](boundary.md); here they are named where they touch the
 runtime's storage, load-time checks, control API, control CLI and
-configuration, and linked.
+configuration, and linked. Release 0.6 is specified in
+[`library.md`](library.md) and not implemented: the runtime refuses a 0.6
+package today (`unsupported_language`), and what 0.6 will change here is
+listed under [Release 0.6](#release-06-specified-not-implemented).
 
 ## Scope
 
@@ -1186,6 +1189,50 @@ The same mechanisms are tested under Temporal against a local dev server:
 - reconciliation (R04);
 - a caller whose host is unfit, and a worker whose host is unfit, for
   `drive` and for `expire`, with the run brought back by a fit worker.
+
+## Release 0.6 (specified, not implemented)
+
+*None of this section is implemented yet; the rules are in
+[`library.md`](library.md). A package of 0.1 to 0.5 runs as above.*
+
+- **Load.** A 0.6 package carries the manifest and modules of every
+  library its lock pins. `StartRun` refuses one whose library does not
+  hash to its pin (`library_digest_mismatch`) or is revoked
+  (`library_revoked`, read from `libraries.revoked` in
+  `mandate.runtime.json`), and runs the compiler's checks again, closed
+  imports and library pins among them (`load_verification_failed`).
+  Until each 0.6 construct is implemented, a package that uses it is
+  refused by its name (`unsupported_language`).
+- **The stored expansion.** A run of a program that applies a pattern
+  stores the expansion when it starts and names it in its manifest,
+  `expanded`. A resume and a replay run the stored expansion, never a new
+  one; one that is missing or does not hash to the manifest is
+  `expansion_mismatch`.
+- **Connectors.** A `read_only` or `live` start asks each connector's
+  server for its tools and refuses a schema that differs from the lock's
+  digest (`tool_schema_mismatch`); a resume asks again and stops the run as
+  `attention_required` on a difference. A connector's calls go only
+  through the egress proxy (`no_egress_for_connector`), from the control
+  plane: an agent's read tools run in the runtime, not in its sandbox. A
+  design run answers read tools from samples (`PolicyDenied(no_samples)`).
+- **The review wait.** `human.review` opens one wait of kind `review` for a
+  list; it is decided by a signed decision of kind `review` (`mandate
+  review <run> --revision N --key FILE --waive … --decline …`), refused
+  as `incomplete_review` when it does not decide every open item once. Past
+  its deadline the wait goes once to `escalate_to`; past the second, every
+  open item is declined. A waiver is an evidence record of method
+  `waiver` beside the failed one, accepted for a `Verified` value only
+  with a valid decision of a role the criterion names.
+- **The batch commit step.** An item's critical effect in a map is
+  authorized by policy alone, under an operation key named by the map
+  and the item's key; one that would need a person fails with
+  `PolicyDenied(person_in_map)`, and `StartRun` refuses a run whose policy
+  would ask one.
+- **A resume** of a run whose package carries a revoked library stops the
+  run as `attention_required` (`library_revoked`).
+- **The compiler** is called through the bridge, as an in-process
+  WebAssembly module, for every language version
+  ([`library.md`](library.md#the-bridge)).
 
 ## Not in this runtime yet
 
