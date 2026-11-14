@@ -505,7 +505,28 @@ impl<'a> Checker<'a> {
     /// core's `person`), and with a `budget` the core's `overBudget`
     /// (E0504); E0501 of the map's budget is R12's.
     pub(crate) fn map(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let over = self.expr_or_unknown(e.over(), frame, &format!("{path}/over"));
+        let over = self.operand(e.over(), frame, path, "over");
+        let inner = self.map_frame(e, frame, path, &over);
+        // R12: E0714 for a supervision other than fail_fast (static.ts 1260-1262).
+        let usages_before = frame.usage_count();
+        let at = super::sub(path, "body");
+        let body = self.body(e.body(), &inner, &at, false);
+        self.map_after(e, frame, path, &inner, usages_before);
+        Val {
+            ty: named("List", vec![named("Outcome", vec![body.ty])]),
+            cls: over.cls.max(body.cls),
+        }
+    }
+
+    /// The frame a map's body is typed in: the element bound, `inMap`, and
+    /// the map's `with caps` in `handed` and `avail`.
+    fn map_frame(
+        &mut self,
+        e: Expr<'a>,
+        frame: &Frame<'a>,
+        path: &str,
+        over: &Val,
+    ) -> Box<Frame<'a>> {
         let ep = epistemic(&over.ty);
         let list = unalias(&ep.inner, self);
         let mut elem = UNKNOWN;
@@ -525,7 +546,7 @@ impl<'a> Checker<'a> {
         };
         let mut vars = HashMap::new();
         vars.insert(e.bind().unwrap_or_default().to_owned(), item);
-        let mut inner = Self::child(frame, vars);
+        let mut inner = Self::child_box(frame, vars);
         inner.in_map = Some(path.to_owned());
         // `with caps K`: inside the body, K takes the place of the
         // capability kinds it names.
@@ -563,9 +584,20 @@ impl<'a> Checker<'a> {
                 inner.avail = Some(Rc::new(a));
             }
         }
-        // R12: E0714 for a supervision other than fail_fast (static.ts 1260-1262).
-        let usages_before = frame.usage_count();
-        let body = self.body(e.body(), &inner, &format!("{path}/body"), false);
+        inner
+    }
+
+    /// What a map checks once its body is typed: its bound, the people its
+    /// items would wait for (E1708, the core's `person`), what its items may
+    /// write, and its budget (the core's `overBudget`, E0504).
+    fn map_after(
+        &mut self,
+        e: Expr<'a>,
+        frame: &Frame<'a>,
+        path: &str,
+        inner: &Frame<'a>,
+        usages_before: usize,
+    ) {
         let usages = frame.usages_from(usages_before);
         // R12: E1702 for a map with no bound, E1703 for a `par` above the envelope's (static.ts 1269-1280).
         // A person is asked once about the list, after the map (E1708). A
@@ -575,15 +607,11 @@ impl<'a> Checker<'a> {
                 continue;
             }
             self.asked_in_map.insert(u.path.clone());
-            self.person(&inner, &u.path, "human step", None);
+            self.person(inner, &u.path, "human step", None);
         }
         // R12: with `par k > 1`, E0320 for what every item can write (static.ts 1290-1304).
         if let Some(b) = e.get("budget").and_then(Budget::of) {
             self.map_budget(e, b, path, frame.envelope);
-        }
-        Val {
-            ty: named("List", vec![named("Outcome", vec![body.ty])]),
-            cls: over.cls.max(body.cls),
         }
     }
 
@@ -627,11 +655,18 @@ impl<'a> Checker<'a> {
     /// Every report written in `delegate`, `given` and `delegateRest` is
     /// R12's.
     pub(crate) fn delegate(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let mut args: Vec<Val> = Vec::new();
-        for (i, a) in e.arg_values().iter().enumerate() {
-            let at = format!("{path}/args/{i}/value");
-            args.push(self.expr_or_unknown(a.get("value").and_then(Expr::of), frame, &at));
-        }
+        let args = self.call_args(e, frame, path);
+        self.delegate_with(e, frame, path, &args)
+    }
+
+    /// A delegation, its arguments typed (`args`).
+    fn delegate_with(
+        &mut self,
+        e: Expr<'a>,
+        frame: &mut Frame<'a>,
+        path: &str,
+        args: &[Val],
+    ) -> Val {
         // In a sub-program, what an agent is handed is the lead's writing.
         let cls = self.floor.max(max_class(args.iter().map(|a| a.cls)));
         let agent_name = e.agent().unwrap_or_default();
@@ -772,11 +807,18 @@ impl<'a> Checker<'a> {
     /// the environments an `env.*` effect names), and the effect's return
     /// type; the other reports are R12's.
     pub(crate) fn effect_call(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let mut args: Vec<Val> = Vec::new();
-        for (i, a) in e.arg_values().iter().enumerate() {
-            let at = format!("{path}/args/{i}/value");
-            args.push(self.expr_or_unknown(a.get("value").and_then(Expr::of), frame, &at));
-        }
+        let args = self.call_args(e, frame, path);
+        self.effect_call_with(e, frame, path, &args)
+    }
+
+    /// An effect call, its arguments typed (`args`).
+    fn effect_call_with(
+        &mut self,
+        e: Expr<'a>,
+        frame: &mut Frame<'a>,
+        path: &str,
+        args: &[Val],
+    ) -> Val {
         let cls = max_class(args.iter().map(|a| a.cls));
         let name = e.name().unwrap_or_default();
         let decl = self.def_of(name, DefKind::Effect);

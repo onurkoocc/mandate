@@ -138,17 +138,16 @@ impl TypeEnv for Env<'_> {
 /// or `{ k: "unknown" }`.
 fn ty_of(v: &Value) -> Ty {
     match v.get("k").and_then(Value::as_str) {
-        Some("named") => Ty::Named {
-            name: v.get("name").and_then(Value::as_str).unwrap().to_owned(),
-            args: v
-                .get("args")
+        Some("named") => Ty::named_lit(
+            v.get("name").and_then(Value::as_str).unwrap(),
+            v.get("args")
                 .and_then(Value::as_array)
                 .unwrap_or_default()
                 .iter()
                 .map(ty_of)
                 .collect(),
-            lit: v.get("lit").and_then(Value::as_str).map(str::to_owned),
-        },
+            v.get("lit").and_then(Value::as_str).map(str::to_owned),
+        ),
         Some("record") => Ty::Record {
             fields: v
                 .get("fields")

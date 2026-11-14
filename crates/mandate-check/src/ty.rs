@@ -31,26 +31,32 @@ use mandate_ir::{TypeExpr, TypeForm, Value, write_json_string};
 
 use crate::path::path_problem;
 
-/// A type as the checker sees it: `Ty`.
+/// A type as the checker sees it: `Ty`. A named type is boxed, so that a
+/// `Ty` is small: the checker's frames hold several each, and the deepest
+/// program nests as many frames as the stack allows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ty {
     /// `{ k: "unknown" }`.
     Unknown,
-    /// `{ k: "named", name, args, lit? }`. `lit` is a text literal's value,
-    /// so that it can stand where a Path is expected (K68).
-    Named {
-        /// The name.
-        name: String,
-        /// The type arguments.
-        args: Vec<Ty>,
-        /// A text literal's value.
-        lit: Option<String>,
-    },
+    /// `{ k: "named", name, args, lit? }`.
+    Named(Box<NamedTy>),
     /// `{ k: "record", fields }`, the fields in the order of the object.
     Record {
         /// The fields, by name.
         fields: Vec<(String, Ty)>,
     },
+}
+
+/// A named type: `{ k: "named", name, args, lit? }`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NamedTy {
+    /// The name.
+    pub name: String,
+    /// The type arguments.
+    pub args: Vec<Ty>,
+    /// A text literal's value, so that it can stand where a Path is
+    /// expected (K68).
+    pub lit: Option<String>,
 }
 
 /// `UNKNOWN`.
@@ -59,11 +65,7 @@ pub const UNKNOWN: Ty = Ty::Unknown;
 /// `named(name, ...args)`.
 #[must_use]
 pub fn named(name: &str, args: Vec<Ty>) -> Ty {
-    Ty::Named {
-        name: name.to_owned(),
-        args,
-        lit: None,
-    }
+    Ty::named_lit(name, args, None)
 }
 
 /// `named(name)`, with no arguments.
@@ -85,11 +87,21 @@ pub fn text_ty() -> Ty {
 }
 
 impl Ty {
+    /// `{ k: "named", name, args, lit }`.
+    #[must_use]
+    pub fn named_lit(name: &str, args: Vec<Ty>, lit: Option<String>) -> Ty {
+        Ty::Named(Box::new(NamedTy {
+            name: name.to_owned(),
+            args,
+            lit,
+        }))
+    }
+
     /// The name of a named type.
     #[must_use]
     pub fn name(&self) -> Option<&str> {
         match self {
-            Ty::Named { name, .. } => Some(name),
+            Ty::Named(n) => Some(&n.name),
             _ => None,
         }
     }
@@ -105,7 +117,7 @@ impl Ty {
     #[must_use]
     pub fn arg(&self, i: usize) -> Ty {
         match self {
-            Ty::Named { args, .. } => args.get(i).cloned().unwrap_or(Ty::Unknown),
+            Ty::Named(n) => n.args.get(i).cloned().unwrap_or(Ty::Unknown),
             _ => Ty::Unknown,
         }
     }
@@ -114,7 +126,7 @@ impl Ty {
     #[must_use]
     pub fn args(&self) -> &[Ty] {
         match self {
-            Ty::Named { args, .. } => args,
+            Ty::Named(n) => &n.args,
             _ => &[],
         }
     }
@@ -123,7 +135,7 @@ impl Ty {
     #[must_use]
     pub fn lit(&self) -> Option<&str> {
         match self {
-            Ty::Named { lit, .. } => lit.as_deref(),
+            Ty::Named(n) => n.lit.as_deref(),
             _ => None,
         }
     }
@@ -194,7 +206,8 @@ pub fn epistemic(ty: &Ty) -> Epistemic {
     let mut contract: Option<String> = None;
     let mut cur = ty;
     let mut saw_verified = false;
-    while let Ty::Named { name, args, .. } = cur {
+    while let Ty::Named(n) = cur {
+        let (name, args) = (&n.name, &n.args);
         if name == "Inferred" || name == "Untrusted" {
             let l = if name == "Inferred" {
                 Level::Inferred
@@ -209,8 +222,8 @@ pub fn epistemic(ty: &Ty) -> Epistemic {
         }
         if name == "Verified" {
             saw_verified = true;
-            if let Some(Ty::Named { name: c, .. }) = args.get(1) {
-                contract = Some(c.clone());
+            if let Some(Ty::Named(c)) = args.get(1) {
+                contract = Some(c.name.clone());
             }
             cur = args.first().unwrap_or(&UNKNOWN);
             continue;
@@ -258,12 +271,12 @@ pub fn join_level(a: Level, b: Level) -> Level {
 pub fn show(ty: &Ty) -> String {
     match ty {
         Ty::Unknown => "?".to_owned(),
-        Ty::Named { name, args, .. } => {
-            if args.is_empty() {
-                name.clone()
+        Ty::Named(n) => {
+            if n.args.is_empty() {
+                n.name.clone()
             } else {
-                let args: Vec<String> = args.iter().map(show).collect();
-                format!("{name}<{}>", args.join(", "))
+                let args: Vec<String> = n.args.iter().map(show).collect();
+                format!("{}<{}>", n.name, args.join(", "))
             }
         }
         Ty::Record { fields } => {
@@ -372,13 +385,13 @@ pub fn unalias(ty: &Ty, env: &dyn TypeEnv) -> Ty {
 }
 
 fn unalias_at(ty: &Ty, env: &dyn TypeEnv, depth: usize) -> Ty {
-    let Ty::Named { name, .. } = ty else {
+    let Ty::Named(n) = ty else {
         return ty.clone();
     };
     if depth > UNALIAS_DEPTH {
         return ty.clone();
     }
-    let Some(d) = env.type_def(name) else {
+    let Some(d) = env.type_def(&n.name) else {
         return ty.clone();
     };
     // `d.generics` is truthy when it is there, an empty list too.
@@ -401,8 +414,9 @@ pub fn fields_of(ty: &Ty, env: &dyn TypeEnv) -> Option<Vec<(String, Ty)>> {
     let u = unalias(ty, env);
     match &u {
         Ty::Record { fields } => Some(fields.clone()),
-        Ty::Named { name, args, .. } => {
-            let d = env.type_def(name)?;
+        Ty::Named(n) => {
+            let args = &n.args;
+            let d = env.type_def(&n.name)?;
             let te = peeled(d)?;
             if !te.has(TypeForm::Record) {
                 return None;
@@ -521,17 +535,9 @@ fn same_shape(a: &Ty, e: &Ty, env: &dyn TypeEnv, full_a: &Ty, full_e: &Ty) -> Op
         code: "E0201",
         message: format!("Expected {} but got {}.", show(full_e), show(full_a)),
     };
-    if let (
-        Ty::Named {
-            name: an,
-            args: aa,
-            lit,
-        },
-        Ty::Named {
-            name: en, args: ea, ..
-        },
-    ) = (&ua, &ue)
-    {
+    if let (Ty::Named(na), Ty::Named(ne)) = (&ua, &ue) {
+        let (an, aa, lit) = (&na.name, &na.args, &na.lit);
+        let (en, ea) = (&ne.name, &ne.args);
         // A text literal is a Path where one is expected, if it keeps the Path rule.
         if an == "Text" && en == "Path" {
             if let Some(lit) = lit {
@@ -578,11 +584,11 @@ fn same_shape(a: &Ty, e: &Ty, env: &dyn TypeEnv, full_a: &Ty, full_e: &Ty) -> Op
 #[must_use]
 pub fn mentions<'n>(ty: &Ty, names: &[&'n str]) -> Option<&'n str> {
     match ty {
-        Ty::Named { name, args, .. } => {
-            if let Some(n) = names.iter().find(|n| **n == name.as_str()) {
+        Ty::Named(t) => {
+            if let Some(n) = names.iter().find(|n| **n == t.name.as_str()) {
                 return Some(n);
             }
-            args.iter().find_map(|a| mentions(a, names))
+            t.args.iter().find_map(|a| mentions(a, names))
         }
         Ty::Record { fields } => fields.iter().find_map(|(_, v)| mentions(v, names)),
         Ty::Unknown => None,

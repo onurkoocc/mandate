@@ -13,7 +13,7 @@ use mandate_ir::{
     DefKind, Expr, ExprOp, JsObject, Language, Pattern, PatternKind, Value, VerifierForm,
 };
 
-use super::{Checker, Frame, Usage, Val, callee_is, max_class};
+use super::{Checker, Frame, Usage, Val, callee_is, max_class, sub, sub_i};
 use crate::caps::callee_path;
 use crate::path::path_problem;
 use crate::stdlib::{
@@ -42,6 +42,14 @@ fn unverified(l: Level) -> Level {
     } else {
         l
     }
+}
+
+/// The types the arms of a switch bind, `armType`: none, `opt` for
+/// `Confident` of a decision outcome, or the fields of a variant.
+enum Arm {
+    None,
+    Confident(Ty),
+    Variant(Ty),
 }
 
 /// A pattern's kind.
@@ -91,7 +99,8 @@ impl<'a> Checker<'a> {
     fn type_class_seen(&self, ty: &Ty, seen: &mut HashSet<String>) -> DataClass {
         let mut best = DataClass::Public;
         match ty {
-            Ty::Named { name, args, .. } => {
+            Ty::Named(n) => {
+                let (name, args) = (&n.name, &n.args);
                 if let Some(d) = self.def_of(name, DefKind::Type)
                     && !seen.contains(name)
                 {
@@ -128,177 +137,268 @@ impl<'a> Checker<'a> {
 
     /// `expr(e, frame, path)`: the value of `e`, its class raised to at
     /// least the class of its type.
+    ///
+    /// It is `exprInner` too: every form is a function of its own, called
+    /// from here, so that each level of nesting costs as few and as small
+    /// frames as it can (a debug build gives every local of a function a
+    /// place in its frame).
     pub(crate) fn expr(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
         let v = self.expr_inner(e, frame, path);
+        self.raised(v)
+    }
+
+    /// `{ ty: v.ty, cls: maxClass(v.cls, typeClass(v.ty)) }`.
+    fn raised(&self, v: Val) -> Val {
         let cls = v.cls.max(self.type_class(&v.ty));
         Val { ty: v.ty, cls }
     }
 
     /// `exprInner(e, frame, path)`.
+    #[inline(always)]
     fn expr_inner(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
         let Some(op) = e.op() else {
             return Val::unknown();
         };
         match op {
-            ExprOp::Int => Val::public(named0("Int")),
-            ExprOp::Dec => Val::public(named0("Dec")),
-            ExprOp::Text => Val::public(Ty::Named {
-                name: "Text".to_owned(),
-                args: Vec::new(),
-                lit: e.text().map(str::to_owned),
-            }),
-            ExprOp::Bool => Val::public(bool_ty()),
-            ExprOp::Money => Val::public(named0("Money")),
-            ExprOp::Duration => Val::public(named0("Duration")),
-            ExprOp::List | ExprOp::Set => {
-                let mut items: Vec<Val> = Vec::new();
-                for (i, x) in e.item_values().iter().enumerate() {
-                    let at = format!("{path}/items/{i}");
-                    items.push(match Expr::of(x) {
-                        Some(x) => self.expr(x, frame, &at),
-                        None => Val::unknown(),
-                    });
-                }
-                // The items' type is the first item's; among text
-                // literals, the first that is not a Path, so that none
-                // passes for one.
-                let bad = items
-                    .iter()
-                    .find(|x| x.ty.lit().is_some_and(|l| path_problem(l).is_some()));
-                let plain_text = items
-                    .iter()
-                    .find(|x| x.ty.is_named("Text") && x.ty.lit().is_none());
-                let item = plain_text.or(bad).or(items.first());
-                let ty = item.map_or(UNKNOWN, |x| x.ty.clone());
-                let name = if op == ExprOp::List { "List" } else { "Set" };
-                Val {
-                    ty: named(name, vec![ty]),
-                    cls: max_class(items.iter().map(|x| x.cls)),
-                }
-            }
-            ExprOp::Template => {
-                let mut cls = DataClass::Public;
-                for (i, p) in e.parts().iter().enumerate() {
-                    if p.get("expr").is_some()
-                        && let Some(x) = p.get("expr").and_then(Expr::of)
-                    {
-                        let v = self.expr(x, frame, &format!("{path}/parts/{i}/expr"));
-                        cls = cls.max(v.cls);
-                    }
-                }
-                Val { ty: text_ty(), cls }
-            }
+            ExprOp::Int
+            | ExprOp::Dec
+            | ExprOp::Text
+            | ExprOp::Bool
+            | ExprOp::Money
+            | ExprOp::Duration => Self::literal(e, op),
+            ExprOp::List | ExprOp::Set => self.list(e, op, frame, path),
+            ExprOp::Template => self.template(e, frame, path),
             ExprOp::Prompt => self.prompt(e, frame, path),
-            ExprOp::Var => {
-                let name = e.name().unwrap_or_default();
-                if let Some(v) = Self::lookup(name, &frame.scope) {
-                    return v;
-                }
-                match self.def(name).and_then(|d| d.kind()) {
-                    Some(DefKind::Const) => self.const_val(name),
-                    Some(DefKind::Capability) => Val::public(named0("Capability")),
-                    _ => Val::unknown(),
-                }
-            }
+            ExprOp::Var => self.var(e, frame),
             ExprOp::Field => self.field(e, frame, path),
             ExprOp::Call => self.call(e, frame, path),
-            ExprOp::Unary => {
-                let v = self.expr_or_unknown(e.operand(), frame, &format!("{path}/of"));
-                let lvl = epistemic(&v.ty).level;
-                if e.get("uop").and_then(Value::as_str) == Some("not") {
-                    return Val {
-                        ty: with_level(bool_ty(), unverified(lvl), None),
-                        cls: v.cls,
-                    };
-                }
-                v
-            }
-            ExprOp::Binary => {
-                let l = self.expr_or_unknown(e.left(), frame, &format!("{path}/left"));
-                let r = self.expr_or_unknown(e.right(), frame, &format!("{path}/right"));
-                let el = epistemic(&l.ty);
-                let lvl = join_level(el.level, epistemic(&r.ty).level);
-                let cls = l.cls.max(r.cls);
-                let arith = matches!(
-                    e.get("bop").and_then(Value::as_str),
-                    Some("+" | "-" | "*" | "/")
-                );
-                let inner = if arith { el.inner } else { bool_ty() };
-                Val {
-                    ty: with_level(inner, lvl, None),
-                    cls,
-                }
-            }
-            ExprOp::Range => {
-                self.expr_or_unknown(e.from(), frame, &format!("{path}/from"));
-                self.expr_or_unknown(e.to(), frame, &format!("{path}/to"));
-                Val::unknown()
-            }
+            ExprOp::Unary => self.unary(e, frame, path),
+            ExprOp::Binary => self.binary(e, frame, path),
+            ExprOp::Range => self.range(e, frame, path),
             ExprOp::Record => self.record(e, frame, path),
             ExprOp::Infer => self.infer(e, frame, path),
             ExprOp::Delegate => self.delegate(e, frame, path),
-            ExprOp::Plan => {
-                // The lead's skill is typed and granted as a delegation of
-                // it is. A plan has no `caps`, `timeout` or `supervise`, so
-                // `delegate` reads it as `{ op: "delegate", agent, skill,
-                // args, budget? }`.
-                let v = self.delegate(e, frame, path);
-                match self.leads.iter_mut().find(|(p, _)| p == path) {
-                    Some(slot) => slot.1 = v.cls,
-                    None => self.leads.push((path.to_owned(), v.cls)),
-                }
-                v
-            }
+            ExprOp::Plan => self.plan(e, frame, path),
             ExprOp::Map => self.map(e, frame, path),
-            ExprOp::Spawn => {
-                let message = if self.at_least(Language::V0_4) {
-                    "There is no 'spawn'. An agent plans work while a run is going with 'plan Agent.skill(…) within envelope', in a workflow that has an envelope; use delegate, par or a bounded map for work known beforehand (spec/envelope.md \"plan\", V05)."
-                } else {
-                    "Dynamic spawn is not available in 0.1; use delegate, par, or a bounded map (§9.1, V05)."
-                };
-                self.report("E0711", message, path, None);
-                for (i, a) in e.arg_values().iter().enumerate() {
-                    let at = format!("{path}/args/{i}/value");
-                    self.expr_or_unknown(a.get("value").and_then(Expr::of), frame, &at);
-                }
-                Val::unknown()
-            }
-            ExprOp::Await => {
-                self.expr_or_unknown(e.operand(), frame, &format!("{path}/of"));
-                Val::unknown()
-            }
+            ExprOp::Spawn => self.spawn(e, frame, path),
+            ExprOp::Await => self.await_expr(e, frame, path),
             ExprOp::Verify => self.verify(e, frame, path),
             ExprOp::Effect => self.effect_call(e, frame, path),
             ExprOp::Changeset => self.changeset(e, frame, path),
-            ExprOp::Escalate => {
-                self.person(frame, path, "escalate", None);
-                self.expr_or_unknown(e.to(), frame, &format!("{path}/to"));
-                Val::unknown()
-            }
-            ExprOp::Pause => {
-                match e.then() {
-                    Some(t) => {
-                        self.expr(t, frame, &format!("{path}/then"));
-                    }
-                    None => self.person(frame, path, "pause", None),
-                }
-                Val::unknown()
-            }
+            ExprOp::Escalate => self.escalate(e, frame, path),
+            ExprOp::Pause => self.pause(e, frame, path),
             ExprOp::Switch => self.switch_expr(e, frame, path),
-            ExprOp::Try => {
-                let v = self.expr_or_unknown(e.operand(), frame, &format!("{path}/of"));
-                let ep = epistemic(&v.ty);
-                let inner = if ep.inner.is_named("Result") {
-                    ep.inner.arg(0)
-                } else {
-                    UNKNOWN
-                };
-                Val {
-                    ty: with_level(inner, unverified(ep.level), None),
-                    cls: v.cls,
-                }
+            ExprOp::Try => self.try_expr(e, frame, path),
+            ExprOp::Block => self.body(e.body(), frame, &sub(path, "body"), false),
+        }
+    }
+
+    /// A literal: `int`, `dec`, `text` (with its value as `lit`), `bool`,
+    /// `money`, `duration`.
+    fn literal(e: Expr<'a>, op: ExprOp) -> Val {
+        Val::public(match op {
+            ExprOp::Int => named0("Int"),
+            ExprOp::Dec => named0("Dec"),
+            ExprOp::Text => Ty::named_lit("Text", Vec::new(), e.text().map(str::to_owned)),
+            ExprOp::Bool => bool_ty(),
+            ExprOp::Money => named0("Money"),
+            _ => named0("Duration"),
+        })
+    }
+
+    /// A `list` or `set`: the items' type is the first item's; among text
+    /// literals, the first that is not a Path, so that none passes for one.
+    fn list(&mut self, e: Expr<'a>, op: ExprOp, frame: &mut Frame<'a>, path: &str) -> Val {
+        let mut items: Vec<Val> = Vec::new();
+        for (i, x) in e.item_values().iter().enumerate() {
+            let at = sub_i(path, "items", i, "");
+            items.push(self.expr_or_unknown(Expr::of(x), frame, &at));
+        }
+        Self::list_of(&items, op)
+    }
+
+    fn list_of(items: &[Val], op: ExprOp) -> Val {
+        let bad = items
+            .iter()
+            .find(|x| x.ty.lit().is_some_and(|l| path_problem(l).is_some()));
+        let plain_text = items
+            .iter()
+            .find(|x| x.ty.is_named("Text") && x.ty.lit().is_none());
+        let item = plain_text.or(bad).or(items.first());
+        let ty = item.map_or(UNKNOWN, |x| x.ty.clone());
+        let name = if op == ExprOp::List { "List" } else { "Set" };
+        Val {
+            ty: named(name, vec![ty]),
+            cls: max_class(items.iter().map(|x| x.cls)),
+        }
+    }
+
+    /// A `template`: text, of the highest class of its parts.
+    fn template(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        let mut cls = DataClass::Public;
+        for (i, p) in e.parts().iter().enumerate() {
+            if let Some(x) = p.get("expr").and_then(Expr::of) {
+                let at = sub_i(path, "parts", i, "/expr");
+                let v = self.expr(x, frame, &at);
+                cls = cls.max(v.cls);
             }
-            ExprOp::Block => self.body(e.body(), frame, &format!("{path}/body"), false),
+        }
+        Val { ty: text_ty(), cls }
+    }
+
+    /// A `var`: a variable in scope, a constant, a capability, or unknown.
+    fn var(&mut self, e: Expr<'a>, frame: &Frame<'a>) -> Val {
+        let name = e.name().unwrap_or_default();
+        if let Some(v) = Self::lookup(name, &frame.scope) {
+            return v;
+        }
+        match self.def(name).and_then(|d| d.kind()) {
+            Some(DefKind::Const) => self.const_val(name),
+            Some(DefKind::Capability) => Val::public(named0("Capability")),
+            _ => Val::unknown(),
+        }
+    }
+
+    /// A `unary`: `not` is a Bool known as its operand is (a verified one
+    /// becomes plain); any other operator gives its operand.
+    fn unary(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        let at = sub(path, "of");
+        let v = self.expr_or_unknown(e.operand(), frame, &at);
+        Self::unary_of(e, v)
+    }
+
+    fn unary_of(e: Expr<'a>, v: Val) -> Val {
+        if e.get("uop").and_then(Value::as_str) == Some("not") {
+            let lvl = epistemic(&v.ty).level;
+            return Val {
+                ty: with_level(bool_ty(), unverified(lvl), None),
+                cls: v.cls,
+            };
+        }
+        v
+    }
+
+    /// A `binary`: an arithmetic one has its left operand's inner type, any
+    /// other is a Bool, known as the weaker operand is.
+    fn binary(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        let l = self.operand(e.left(), frame, path, "left");
+        let at = sub(path, "right");
+        let r = match e.right() {
+            Some(x) => self.expr(x, frame, &at),
+            None => Val::unknown(),
+        };
+        Self::binary_of(e, &l, &r)
+    }
+
+    /// `expr(e, frame, path/tail)`, an operand typed in a frame of its own.
+    pub(crate) fn operand(
+        &mut self,
+        e: Option<Expr<'a>>,
+        frame: &mut Frame<'a>,
+        path: &str,
+        tail: &str,
+    ) -> Val {
+        let at = sub(path, tail);
+        self.expr_or_unknown(e, frame, &at)
+    }
+
+    fn binary_of(e: Expr<'a>, l: &Val, r: &Val) -> Val {
+        let el = epistemic(&l.ty);
+        let lvl = join_level(el.level, epistemic(&r.ty).level);
+        let arith = matches!(
+            e.get("bop").and_then(Value::as_str),
+            Some("+" | "-" | "*" | "/")
+        );
+        let inner = if arith { el.inner } else { bool_ty() };
+        Val {
+            ty: with_level(inner, lvl, None),
+            cls: l.cls.max(r.cls),
+        }
+    }
+
+    /// A `range`: both ends typed, the range unknown.
+    fn range(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        let at = sub(path, "from");
+        self.expr_or_unknown(e.from(), frame, &at);
+        let at = sub(path, "to");
+        self.expr_or_unknown(e.to(), frame, &at);
+        Val::unknown()
+    }
+
+    /// A `plan`: the lead's skill typed and granted as a delegation of it
+    /// is, and the class of what the lead receives kept in `leads`. A plan
+    /// has no `caps`, `timeout` or `supervise`, so `delegate` reads it as
+    /// `{ op: "delegate", agent, skill, args, budget? }`.
+    fn plan(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        let v = self.delegate(e, frame, path);
+        match self.leads.iter_mut().find(|(p, _)| p == path) {
+            Some(slot) => slot.1 = v.cls,
+            None => self.leads.push((path.to_owned(), v.cls)),
+        }
+        v
+    }
+
+    /// A `spawn`, refused (E0711), its arguments typed.
+    fn spawn(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        let message = if self.at_least(Language::V0_4) {
+            "There is no 'spawn'. An agent plans work while a run is going with 'plan Agent.skill(…) within envelope', in a workflow that has an envelope; use delegate, par or a bounded map for work known beforehand (spec/envelope.md \"plan\", V05)."
+        } else {
+            "Dynamic spawn is not available in 0.1; use delegate, par, or a bounded map (§9.1, V05)."
+        };
+        self.report("E0711", message, path, None);
+        for (i, a) in e.arg_values().iter().enumerate() {
+            let at = sub_i(path, "args", i, "/value");
+            self.expr_or_unknown(a.get("value").and_then(Expr::of), frame, &at);
+        }
+        Val::unknown()
+    }
+
+    /// An `await`: its operand typed, the value unknown.
+    fn await_expr(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        let at = sub(path, "of");
+        self.expr_or_unknown(e.operand(), frame, &at);
+        Val::unknown()
+    }
+
+    /// An `escalate`: it waits for a person (E1708 in a map), and whom it
+    /// asks is typed.
+    fn escalate(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        self.person(frame, path, "escalate", None);
+        let at = sub(path, "to");
+        self.expr_or_unknown(e.to(), frame, &at);
+        Val::unknown()
+    }
+
+    /// A `pause`: with `then`, that typed; without, it waits for a person.
+    fn pause(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        match e.then() {
+            Some(t) => {
+                let at = sub(path, "then");
+                self.expr(t, frame, &at);
+            }
+            None => self.person(frame, path, "pause", None),
+        }
+        Val::unknown()
+    }
+
+    /// A `try` (`x?`): the `T` of a `Result<T>`, known as `x` is (a verified
+    /// one becomes plain).
+    fn try_expr(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        let at = sub(path, "of");
+        let v = self.expr_or_unknown(e.operand(), frame, &at);
+        Self::try_of(v)
+    }
+
+    fn try_of(v: Val) -> Val {
+        let ep = epistemic(&v.ty);
+        let inner = if ep.inner.is_named("Result") {
+            ep.inner.arg(0)
+        } else {
+            UNKNOWN
+        };
+        Val {
+            ty: with_level(inner, unverified(ep.level), None),
+            cls: v.cls,
         }
     }
 
@@ -313,26 +413,10 @@ impl<'a> Checker<'a> {
             let Some(x) = p.get("expr").and_then(Expr::of) else {
                 continue;
             };
-            let pp = format!("{path}/parts/{i}/expr");
-            let is_quote = x.is(ExprOp::Call) && callee_is(x, "quote");
+            let pp = sub_i(path, "parts", i, "/expr");
             let v = self.expr(x, frame, &pp);
             cls = cls.max(v.cls);
-            let lvl = epistemic(&v.ty).level;
-            if !is_quote && matches!(lvl, Level::Untrusted | Level::Inferred) {
-                let what = if lvl == Level::Untrusted {
-                    "Untrusted content"
-                } else {
-                    "Model output"
-                };
-                self.report(
-                    "E0215",
-                    format!(
-                        "{what} cannot appear in the instruction part of a prompt; pass it as data with quote(…) (R5, §5.4)."
-                    ),
-                    &pp,
-                    Some(JsObject::new().with("level", lvl.as_str())),
-                );
-            }
+            self.prompt_part(x, &v, &pp);
         }
         Val {
             ty: named0("Prompt"),
@@ -340,14 +424,47 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// E0215 for a part of a prompt's instructions that is untrusted or
+    /// model output and not quoted.
+    fn prompt_part(&mut self, x: Expr<'a>, v: &Val, pp: &str) {
+        let is_quote = x.is(ExprOp::Call) && callee_is(x, "quote");
+        let lvl = epistemic(&v.ty).level;
+        if !is_quote && matches!(lvl, Level::Untrusted | Level::Inferred) {
+            let what = if lvl == Level::Untrusted {
+                "Untrusted content"
+            } else {
+                "Model output"
+            };
+            self.report(
+                "E0215",
+                format!(
+                    "{what} cannot appear in the instruction part of a prompt; pass it as data with quote(…) (R5, §5.4)."
+                ),
+                pp,
+                Some(JsObject::new().with("level", lvl.as_str())),
+            );
+        }
+    }
+
     /// `field(e, frame, path)`: a member of a value (E0202), or nothing for
     /// a module's member such as `fs.read`.
     fn field(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
         // Module members (fs.read, human.ask) are not values with fields.
-        if callee_path(e).is_some_and(|p| !p.is_empty()) && self.is_module_root(e, frame) {
+        if self.is_module_member(e, frame) {
             return Val::unknown();
         }
-        let base = self.expr_or_unknown(e.operand(), frame, &format!("{path}/of"));
+        let at = sub(path, "of");
+        let base = self.expr_or_unknown(e.operand(), frame, &at);
+        self.field_of(e, base, path)
+    }
+
+    /// `calleePath(e) && isModuleRoot(e, frame)`.
+    fn is_module_member(&self, e: Expr<'a>, frame: &Frame<'a>) -> bool {
+        callee_path(e).is_some_and(|p| !p.is_empty()) && self.is_module_root(e, frame)
+    }
+
+    /// The member `e.name` of the value `base`.
+    fn field_of(&mut self, e: Expr<'a>, base: Val, path: &str) -> Val {
         let ep = epistemic(&base.ty);
         let Some(fields) = fields_of(&ep.inner, self) else {
             return Val {
@@ -414,12 +531,23 @@ impl<'a> Checker<'a> {
     /// a decision policy, `peek` (W0207), `quote`, `len`, `data.read` or
     /// `cap.narrow(…)`.
     fn call(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let p = e.callee().and_then(callee_path);
+        let args = self.call_args(e, frame, path);
+        self.call_with(e, frame, path, args)
+    }
+
+    /// The values of a call's arguments, typed in order.
+    pub(crate) fn call_args(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Vec<Val> {
         let mut args: Vec<Val> = Vec::new();
         for (i, a) in e.arg_values().iter().enumerate() {
-            let at = format!("{path}/args/{i}/value");
+            let at = sub_i(path, "args", i, "/value");
             args.push(self.expr_or_unknown(a.get("value").and_then(Expr::of), frame, &at));
         }
+        args
+    }
+
+    /// The call `e`, its arguments typed (`args`).
+    fn call_with(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str, args: Vec<Val>) -> Val {
+        let p = e.callee().and_then(callee_path);
         let cls = max_class(args.iter().map(|a| a.cls));
         let local = p
             .as_deref()
@@ -427,55 +555,98 @@ impl<'a> Checker<'a> {
                 !p.is_empty() && !p.contains('.') && Self::lookup(p, &frame.scope).is_none()
             })
             .and_then(|p| self.def(p));
-        if let (Some(d), Some(p)) = (
-            local.filter(|d| d.kind() == Some(DefKind::Fn)),
-            p.as_deref(),
-        ) {
-            let params = d.params();
-            if args.len() != params.len() {
-                self.report(
-                    "E0201",
-                    format!(
-                        "{p} takes {} argument(s) but got {}.",
-                        params.len(),
-                        args.len()
-                    ),
-                    path,
-                    None,
-                );
-            }
-            for (i, param) in params.iter().enumerate() {
-                if let Some(a) = args.get(i) {
-                    let t = self.ty(param.get("type").and_then(mandate_ir::TypeExpr::of));
-                    self.expect(&a.ty, &t, &format!("{path}/args/{i}/value"));
-                }
-            }
-            if frame.in_map.is_some()
-                && let Some(what) = self.fn_waits(p, &mut HashSet::new())
-            {
-                self.person(frame, path, &what, Some(p));
-            }
-            // What the function does is done here, with what the call hands
-            // it: a model call or a delegation in it may receive the
-            // arguments, so it has at least their class.
-            for u in self.fn_usages(p) {
-                let sends = u.effect == "Model" || u.effect == "Delegate";
-                let mut u2 = u.clone();
-                u2.path = path.to_owned();
-                if sends {
-                    u2.cls = Some(cls.max(u.cls.unwrap_or(DataClass::Public)));
-                }
-                if u.effect == "Delegate" {
-                    u2.via = Some(u.via.clone().unwrap_or_else(|| p.to_owned()));
-                }
-                Self::use_effect(frame, u2);
-            }
-            return Val {
-                ty: self.ty(d.returns()),
-                cls,
-            };
+        match (local.filter(|d| d.kind() == Some(DefKind::Fn)), p) {
+            (Some(d), Some(p)) => self.call_fn(d, &p, frame, path, &args, cls),
+            (_, p) => self.call_other(e, p.unwrap_or_default(), frame, path, &args, cls),
         }
-        let p = p.unwrap_or_default();
+    }
+
+    /// A call of the program's function `p` (`d`): its arguments against
+    /// its parameters (E0201 and the rest of `assignable`), what in it waits
+    /// for a person in a map (E1708), and what it does, done here.
+    fn call_fn(
+        &mut self,
+        d: mandate_ir::Definition<'a>,
+        p: &str,
+        frame: &mut Frame<'a>,
+        path: &str,
+        args: &[Val],
+        cls: DataClass,
+    ) -> Val {
+        self.call_fn_args(d, p, path, args);
+        if frame.in_map.is_some() {
+            self.fn_waits_in_map(p, frame, path);
+        }
+        // What the function does is done here, with what the call hands it:
+        // a model call or a delegation in it may receive the arguments, so it
+        // has at least their class.
+        let usages = self.fn_usages(p);
+        Self::call_usages(frame, usages, p, path, cls);
+        Val {
+            ty: self.ty(d.returns()),
+            cls,
+        }
+    }
+
+    /// The arguments of a call of `p` against its parameters.
+    fn call_fn_args(&mut self, d: mandate_ir::Definition<'a>, p: &str, path: &str, args: &[Val]) {
+        let params = d.params();
+        if args.len() != params.len() {
+            self.report(
+                "E0201",
+                format!(
+                    "{p} takes {} argument(s) but got {}.",
+                    params.len(),
+                    args.len()
+                ),
+                path,
+                None,
+            );
+        }
+        for (i, param) in params.iter().enumerate() {
+            if let Some(a) = args.get(i) {
+                let t = self.param_type(param);
+                self.expect(&a.ty, &t, &sub_i(path, "args", i, "/value"));
+            }
+        }
+    }
+
+    /// `fnWaits(p)` and, when the function holds something that waits for a
+    /// person, E1708 at the call.
+    fn fn_waits_in_map(&mut self, p: &str, frame: &Frame<'a>, path: &str) {
+        if let Some(what) = self.fn_waits(p, &mut HashSet::new()) {
+            self.person(frame, path, &what, Some(p));
+        }
+    }
+
+    /// A function's usages, used at the call: `{ ...u, path, cls?, via? }`.
+    fn call_usages(frame: &Frame<'a>, usages: Vec<Usage>, p: &str, path: &str, cls: DataClass) {
+        for u in usages {
+            let sends = u.effect == "Model" || u.effect == "Delegate";
+            let mut u2 = u.clone();
+            u2.path = path.to_owned();
+            if sends {
+                u2.cls = Some(cls.max(u.cls.unwrap_or(DataClass::Public)));
+            }
+            if u.effect == "Delegate" {
+                u2.via = Some(u.via.clone().unwrap_or_else(|| p.to_owned()));
+            }
+            Self::use_effect(frame, u2);
+        }
+    }
+
+    /// A call of anything but the program's own function: `quote`, `len`,
+    /// `peek` (W0207), a decision policy, `data.read`, a std function,
+    /// `cap.narrow(…)`, or something unknown.
+    fn call_other(
+        &mut self,
+        e: Expr<'a>,
+        p: String,
+        frame: &mut Frame<'a>,
+        path: &str,
+        args: &[Val],
+        cls: DataClass,
+    ) -> Val {
         match p.as_str() {
             "quote" => return Val { ty: text_ty(), cls },
             "len" => {
@@ -562,6 +733,22 @@ impl<'a> Checker<'a> {
     /// `record(e, frame, path)`: a record of a local type, field by field
     /// (E0202, E0203), never of a protected type (E0213).
     fn record(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        let fields = self.record_fields(e, path);
+        let mut acc = Val {
+            ty: UNKNOWN,
+            cls: DataClass::Public,
+        };
+        let mut level = Level::Plain;
+        for (fname, fe) in e.fields() {
+            let at = sub(&sub(path, "fields"), fname);
+            let v = self.expr_or_unknown(Expr::of(fe), frame, &at);
+            level = self.record_field(e, fields.as_deref(), fname, v, &at, level, &mut acc);
+        }
+        self.record_end(e, fields.as_deref(), path, level, acc.cls)
+    }
+
+    /// The fields of a record's type (E0213 for a protected type first).
+    fn record_fields(&mut self, e: Expr<'a>, path: &str) -> Option<Vec<(String, Ty)>> {
         let type_name = e.record_type().unwrap_or_default();
         if is_protected_type(type_name) {
             self.report(
@@ -569,51 +756,69 @@ impl<'a> Checker<'a> {
                 format!(
                     "{type_name} cannot be constructed by a program; only the runtime produces it (§5.2, S08)."
                 ),
-                &format!("{path}/type"),
+                &sub(path, "type"),
                 None,
             );
         }
-        let target = named0(type_name);
-        let fields = fields_of(&target, self);
-        let mut level = Level::Plain;
-        let mut cls = DataClass::Public;
-        let given: Vec<(&'a str, &'a Value)> = e.fields().collect();
-        for (fname, fe) in &given {
-            let at = format!("{path}/fields/{fname}");
-            let v = match Expr::of(fe) {
-                Some(x) => self.expr(x, frame, &at),
-                None => Val::unknown(),
-            };
-            cls = cls.max(v.cls);
-            let ep = epistemic(&v.ty);
-            level = join_level(level, ep.level);
-            if let Some(fields) = &fields {
-                match field(fields, fname) {
-                    None => {
-                        let names: Vec<mandate_ir::JsValue> =
-                            fields.iter().map(|(k, _)| k.as_str().into()).collect();
-                        self.report(
-                            "E0202",
-                            format!("{type_name} has no field '{fname}'."),
-                            &at,
-                            Some(JsObject::new().with("fields", names)),
-                        );
-                    }
-                    Some(ft) => {
-                        // R6: the record carries its parts' taint, so
-                        // compare the parts at the field's own level.
-                        let ft = ft.clone();
-                        let actual = with_level(ep.inner, epistemic(&ft).level, None);
-                        self.expect(&actual, &ft, &at);
-                    }
+        fields_of(&named0(type_name), self)
+    }
+
+    /// One field of a record, its value typed (`v`): its class and level
+    /// into the record's, and it against the type's field (E0202, and the
+    /// rest of `assignable` at the field's own level, R6). The record's
+    /// level so far.
+    #[allow(clippy::too_many_arguments)]
+    fn record_field(
+        &mut self,
+        e: Expr<'a>,
+        fields: Option<&[(String, Ty)]>,
+        fname: &str,
+        v: Val,
+        at: &str,
+        level: Level,
+        acc: &mut Val,
+    ) -> Level {
+        acc.cls = acc.cls.max(v.cls);
+        let ep = epistemic(&v.ty);
+        let level = join_level(level, ep.level);
+        if let Some(fields) = fields {
+            match field(fields, fname) {
+                None => {
+                    let names: Vec<mandate_ir::JsValue> =
+                        fields.iter().map(|(k, _)| k.as_str().into()).collect();
+                    let type_name = e.record_type().unwrap_or_default();
+                    self.report(
+                        "E0202",
+                        format!("{type_name} has no field '{fname}'."),
+                        at,
+                        Some(JsObject::new().with("fields", names)),
+                    );
+                }
+                Some(ft) => {
+                    let ft = ft.clone();
+                    let actual = with_level(ep.inner, epistemic(&ft).level, None);
+                    self.expect(&actual, &ft, at);
                 }
             }
         }
-        if let Some(fields) = &fields {
+        level
+    }
+
+    /// The fields a record leaves out (E0203), and its value.
+    fn record_end(
+        &mut self,
+        e: Expr<'a>,
+        fields: Option<&[(String, Ty)]>,
+        path: &str,
+        level: Level,
+        cls: DataClass,
+    ) -> Val {
+        let type_name = e.record_type().unwrap_or_default();
+        if let Some(fields) = fields {
             let missing: Vec<&str> = fields
                 .iter()
                 .map(|(k, _)| k.as_str())
-                .filter(|k| !given.iter().any(|(g, _)| g == k))
+                .filter(|k| !e.fields().any(|(g, _)| g == *k))
                 .collect();
             if !missing.is_empty() {
                 self.report(
@@ -633,7 +838,7 @@ impl<'a> Checker<'a> {
             }
         }
         Val {
-            ty: with_level(target, level, None),
+            ty: with_level(named0(type_name), level, None),
             cls,
         }
     }
@@ -641,10 +846,15 @@ impl<'a> Checker<'a> {
     /// `infer(e, frame, path)`: model output (`Inferred<T>`), never a
     /// protected type (E0213); a `Choice` is a `Decision` (E0233, W0232).
     fn infer(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let from = self.expr_or_unknown(e.from(), frame, &format!("{path}/from"));
+        let from = self.operand(e.from(), frame, path, "from");
         if let Some(u) = e.using() {
-            self.expr(u, frame, &format!("{path}/using"));
+            self.operand(Some(u), frame, path, "using");
         }
+        self.infer_of(e, frame, path, &from)
+    }
+
+    /// An `infer`, what it reads typed (`from`).
+    fn infer_of(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str, from: &Val) -> Val {
         let mut target = self.ty(e.type_expr());
         if let Some(prot) = mentions(&target, &PROTECTED_TYPES) {
             self.report(
@@ -752,12 +962,34 @@ impl<'a> Checker<'a> {
     /// `verify(e, frame, path)`: `Verified<T, C>` of a value checked against
     /// contract `C`.
     fn verify(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let v = self.expr_or_unknown(e.value_expr(), frame, &format!("{path}/value"));
-        let mut args: Vec<Val> = Vec::new();
-        for (i, a) in e.arg_values().iter().enumerate() {
-            let at = format!("{path}/args/{i}/value");
-            args.push(self.expr_or_unknown(a.get("value").and_then(Expr::of), frame, &at));
+        let v = self.operand(e.value_expr(), frame, path, "value");
+        let args = self.call_args(e, frame, path);
+        self.verify_args(e, frame, path, &args);
+        if let Some(u) = e.on_unmet() {
+            self.verify_unmet(u, frame, path);
         }
+        let contract = e.contract().unwrap_or_default();
+        Val {
+            ty: with_level(epistemic(&v.ty).inner, Level::Verified, Some(contract)),
+            cls: v.cls,
+        }
+    }
+
+    /// `on unmet(bind) => then`, typed with `bind` a `List<Text>`.
+    fn verify_unmet(&mut self, u: mandate_ir::OnUnmet<'a>, frame: &Frame<'a>, path: &str) {
+        let mut vars = HashMap::new();
+        vars.insert(
+            u.bind().unwrap_or_default().to_owned(),
+            Val::public(named("List", vec![text_ty()])),
+        );
+        let mut inner = Self::child_box(frame, vars);
+        let at = sub(path, "on_unmet/then");
+        self.expr_or_unknown(u.then(), &mut inner, &at);
+    }
+
+    /// A `verify`'s arguments against its contract's parameters (E0201 and
+    /// the rest of `assignable`), and E1708 for a contract a person approves.
+    fn verify_args(&mut self, e: Expr<'a>, frame: &Frame<'a>, path: &str, args: &[Val]) {
         let contract = e.contract().unwrap_or_default();
         if let Some(c) = self.def_of(contract, DefKind::Contract) {
             let params = c.params();
@@ -786,25 +1018,30 @@ impl<'a> Checker<'a> {
         if self.asks_approval(contract) {
             self.person(frame, path, &format!("verify against {contract}"), None);
         }
-        if let Some(u) = e.on_unmet() {
-            let mut vars = HashMap::new();
-            vars.insert(
-                u.bind().unwrap_or_default().to_owned(),
-                Val::public(named("List", vec![text_ty()])),
-            );
-            let mut inner = Self::child(frame, vars);
-            self.expr_or_unknown(u.then(), &mut inner, &format!("{path}/on_unmet/then"));
-        }
-        Val {
-            ty: with_level(epistemic(&v.ty).inner, Level::Verified, Some(contract)),
-            cls: v.cls,
-        }
     }
 
     /// `switchExpr(e, frame, path)`: model output does not steer control
     /// flow unverified (E0210, E0231), and every variant is handled (E0230).
     fn switch_expr(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let subj = self.expr_or_unknown(e.on(), frame, &format!("{path}/on"));
+        let subj = self.operand(e.on(), frame, path, "on");
+        let arm = self.switch_checks(e, &subj, path);
+        let mut result: Option<Val> = None;
+        for (i, c) in e.cases().enumerate() {
+            let binds = self.switch_binds(c, &subj, &arm);
+            let v = self.switch_case(c, frame, binds, path, i);
+            if result.is_none() {
+                result = Some(v);
+            }
+        }
+        result.unwrap_or(Val {
+            ty: UNKNOWN,
+            cls: subj.cls,
+        })
+    }
+
+    /// What a switch is on, against how it is known and its cases (E0231,
+    /// E0210, E0230); the types its arms bind.
+    fn switch_checks(&mut self, e: Expr<'a>, subj: &Val, path: &str) -> Arm {
         let ep = epistemic(&subj.ty);
         let cases: Vec<mandate_ir::SwitchCase<'a>> = e.cases().collect();
         let is_tag = |c: &mandate_ir::SwitchCase<'a>, tag: &str| {
@@ -817,11 +1054,6 @@ impl<'a> Checker<'a> {
                 Some(PatternKind::Wild | PatternKind::Bind)
             )
         });
-        enum Arm {
-            None,
-            Confident(Ty),
-            Variant(Ty),
-        }
         let mut arm = Arm::None;
         if ep.inner.is_named("Decision") {
             self.report(
@@ -933,44 +1165,55 @@ impl<'a> Checker<'a> {
             }
             arm = Arm::Variant(ep.inner.clone());
         }
-        let mut result: Option<Val> = None;
-        for (i, c) in cases.iter().enumerate() {
-            let mut binds = HashMap::new();
-            match &arm {
-                Arm::None => {
-                    bind_pattern(c.pattern(), &subj.ty, &|_| Vec::new(), &mut binds, subj.cls)
-                }
-                Arm::Confident(opt) => bind_pattern(
-                    c.pattern(),
-                    &subj.ty,
-                    &|tag| {
-                        if tag == "Confident" {
-                            vec![opt.clone()]
-                        } else {
-                            Vec::new()
-                        }
-                    },
-                    &mut binds,
-                    subj.cls,
-                ),
-                Arm::Variant(inner) => bind_pattern(
-                    c.pattern(),
-                    &subj.ty,
-                    &|tag| self.variant_fields(inner, tag),
-                    &mut binds,
-                    subj.cls,
-                ),
-            }
-            let mut inner = Self::child(frame, binds);
-            let v = self.expr_or_unknown(c.then(), &mut inner, &format!("{path}/cases/{i}/then"));
-            if result.is_none() {
-                result = Some(v);
-            }
+        arm
+    }
+
+    /// The names a case's pattern binds, of the arm's types.
+    fn switch_binds(
+        &self,
+        c: mandate_ir::SwitchCase<'a>,
+        subj: &Val,
+        arm: &Arm,
+    ) -> HashMap<String, Val> {
+        let mut binds = HashMap::new();
+        match arm {
+            Arm::None => bind_pattern(c.pattern(), &subj.ty, &|_| Vec::new(), &mut binds, subj.cls),
+            Arm::Confident(opt) => bind_pattern(
+                c.pattern(),
+                &subj.ty,
+                &|tag| {
+                    if tag == "Confident" {
+                        vec![opt.clone()]
+                    } else {
+                        Vec::new()
+                    }
+                },
+                &mut binds,
+                subj.cls,
+            ),
+            Arm::Variant(inner) => bind_pattern(
+                c.pattern(),
+                &subj.ty,
+                &|tag| self.variant_fields(inner, tag),
+                &mut binds,
+                subj.cls,
+            ),
         }
-        result.unwrap_or(Val {
-            ty: UNKNOWN,
-            cls: subj.cls,
-        })
+        binds
+    }
+
+    /// One case's `then`, typed with what its pattern binds.
+    fn switch_case(
+        &mut self,
+        c: mandate_ir::SwitchCase<'a>,
+        frame: &Frame<'a>,
+        binds: HashMap<String, Val>,
+        path: &str,
+        i: usize,
+    ) -> Val {
+        let mut inner = Self::child_box(frame, binds);
+        let at = sub_i(path, "cases", i, "/then");
+        self.expr_or_unknown(c.then(), &mut inner, &at)
     }
 
     // ── the leaves the other slices call too ────────────────────────────

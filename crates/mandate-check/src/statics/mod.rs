@@ -618,23 +618,26 @@ impl<'a> Checker<'a> {
         }
         self.const_vals.insert(name.to_owned(), Memo::Pending);
         let d = self.def(name);
-        let base = ptr(&[&"defs", &name]);
-        let mut frame = self.const_frame();
-        frame.def = name.to_owned();
-        let at = format!("{base}/value");
-        let v = match d.and_then(Definition::value_expr) {
-            Some(e) => self.expr(e, &mut frame, &at),
-            None => Val::unknown(),
-        };
-        let mut out = v.clone();
-        if let Some(t) = d.and_then(Definition::type_expr) {
-            let t = self.ty(Some(t));
-            self.expect(&v.ty, &t, &at);
-            out = Val { ty: t, cls: v.cls };
-        }
+        let mut frame = self.const_frame_box(name);
+        let at = sub(&ptr(&[&"defs", &name]), "value");
+        let v = self.expr_or_unknown(d.and_then(Definition::value_expr), &mut frame, &at);
+        let out = self.const_typed(d, v, &at);
         self.const_vals
             .insert(name.to_owned(), Memo::Done(out.clone()));
         out
+    }
+
+    /// A constant's value as it is known: of its declared type, when it has
+    /// one.
+    fn const_typed(&mut self, d: Option<Definition<'a>>, v: Val, at: &str) -> Val {
+        match d.and_then(Definition::type_expr) {
+            Some(t) => {
+                let t = self.ty(Some(t));
+                self.expect(&v.ty, &t, at);
+                Val { ty: t, cls: v.cls }
+            }
+            None => v,
+        }
     }
 
     /// `isCriticalEffect(name)`.
@@ -683,15 +686,41 @@ impl<'a> Checker<'a> {
                 .insert(name.to_owned(), Memo::Done(Vec::new()));
             return Vec::new();
         };
+        let frame = self.fn_frame(name, d);
         let base = ptr(&[&"defs", &name]);
-        let returns = self.ty(d.returns());
-        let frame = self.body_frame(Where::Fn, name, d.params(), None, Some(returns));
-        self.body(d.body(), &frame, &format!("{base}/body"), true);
+        let at = sub(&base, "body");
+        self.body(d.body(), &frame, &at, true);
         let usages = frame.usages();
+        self.fn_declared(name, d, &base, &usages);
+        self.fn_usage
+            .insert(name.to_owned(), Memo::Done(usages.clone()));
+        usages
+    }
+
+    /// The frame a function's body is typed in.
+    /// Boxed, as the frame of `constVal`: a chain of calls nests it.
+    #[inline(never)]
+    fn fn_frame(&self, name: &str, d: Definition<'a>) -> Box<Frame<'a>> {
+        let returns = self.ty(d.returns());
+        Box::new(self.body_frame(Where::Fn, name, d.params(), None, Some(returns)))
+    }
+
+    /// `{ ...constFrame(), def: name }` of `constVal`, boxed: a chain of
+    /// constants nests it.
+    #[inline(never)]
+    fn const_frame_box(&self, name: &str) -> Box<Frame<'a>> {
+        let mut frame = Box::new(self.const_frame());
+        frame.def = name.to_owned();
+        frame
+    }
+
+    /// What `fnUsages` checks once a function's body is typed: the effects
+    /// it declares exist and cover what it uses, or it is not public.
+    fn fn_declared(&mut self, name: &str, d: Definition<'a>, base: &str, usages: &[Usage]) {
         match d.value().get("effects").and_then(Value::as_array) {
             Some(effects) => {
-                self.effect_names(effects, &format!("{base}/effects"));
-                self.check_usages_declared(&usages, effects, &format!("fn {name}"));
+                self.effect_names(effects, &sub(base, "effects"));
+                self.check_usages_declared(usages, effects, &format!("fn {name}"));
             }
             None => {
                 if truthy(d.value().get("pub")) {
@@ -700,15 +729,12 @@ impl<'a> Checker<'a> {
                         format!(
                             "Public function '{name}' must declare its effects with '! {{ … }}' (§6.2)."
                         ),
-                        &base,
+                        base,
                         None,
                     );
                 }
             }
         }
-        self.fn_usage
-            .insert(name.to_owned(), Memo::Done(usages.clone()));
-        usages
     }
 
     /// `checkContract(name, d, base)`: contract parameters are the subjects
@@ -874,6 +900,13 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// [`Checker::child`], boxed: made in a frame of its own, so that the
+    /// caller's frame holds a pointer and not a whole `Frame`.
+    #[inline(never)]
+    pub(crate) fn child_box(frame: &Frame<'a>, vars: HashMap<String, Val>) -> Box<Frame<'a>> {
+        Box::new(Self::child(frame, vars))
+    }
+
     /// `lookup(name, scope)`.
     pub(crate) fn lookup(name: &str, scope: &Scope) -> Option<Val> {
         let mut s = Some(scope);
@@ -896,113 +929,174 @@ impl<'a> Checker<'a> {
         base: &str,
         result: bool,
     ) -> Val {
-        let mut frame = Self::child(outer, HashMap::new());
+        // Boxed: a block nested in a block nests this frame, and a `Frame` is
+        // large.
+        let mut frame = Self::child_box(outer, HashMap::new());
         let mut last = Val::unknown();
         for (i, s) in stmts.iter().enumerate() {
-            let path = format!("{base}/{i}");
+            let path = sub_n(base, i);
             last = Val::unknown();
-            let Some(s) = Stmt::of(s) else { continue };
-            match s.op() {
-                Some(StmtOp::Let) => {
-                    let at = format!("{path}/value");
-                    let v = self.expr_or_unknown(s.value(), &mut frame, &at);
-                    let mut bound = v.clone();
-                    if let Some(t) = s.type_expr() {
-                        let t = self.ty(Some(t));
-                        self.expect(&v.ty, &t, &at);
-                        bound = Val { ty: t, cls: v.cls };
-                    }
-                    let mut vars = HashMap::new();
-                    vars.insert(s.name().unwrap_or_default().to_owned(), bound);
-                    frame = Self::child(&frame, vars);
-                }
-                Some(StmtOp::Par) => {
-                    let vars = self.par(s, &mut frame, &path);
-                    frame = Self::child(&frame, vars);
-                }
-                Some(StmtOp::If) => {
-                    let at = format!("{path}/cond");
-                    let v = self.expr_or_unknown(s.cond(), &mut frame, &at);
-                    self.expect_bool(&v, &at);
-                    self.body(s.then_block(), &frame, &format!("{path}/then"), false);
-                    if let Some(e) = s.else_block() {
-                        self.body(e, &frame, &format!("{path}/else"), false);
-                    }
-                }
-                Some(StmtOp::Loop) => {
-                    let m = s.members();
-                    if !m.contains_key("max_iter") && !m.contains_key("until") {
-                        self.report(
-                            "E0502",
-                            "A loop needs 'max_iter' or 'until' (§8.6).",
-                            &path,
-                            None,
-                        );
-                    }
-                    if let Some(u) = s.until() {
-                        let at = format!("{path}/until");
-                        let v = self.expr(u, &mut frame, &at);
-                        self.expect_bool(&v, &at);
-                    }
-                    self.body(s.body(), &frame, &format!("{path}/body"), false);
-                }
-                Some(StmtOp::Return) => {
-                    let at = format!("{path}/value");
-                    let v = self.expr_or_unknown(s.value(), &mut frame, &at);
-                    if let (Some(returns), Some(_)) = (frame.returns.clone(), s.value()) {
-                        self.expect(&v.ty, &returns, &at);
-                    }
-                }
-                Some(StmtOp::OnError) => {
-                    let then = s.then_expr();
-                    let pattern = s.pattern();
-                    if let Some(p) = pattern
-                        && p.kind() == Some(PatternKind::Tag)
-                        && p.tag() == Some("UnknownOutcome")
-                    {
-                        let strategy = then.and_then(|t| match t.op() {
-                            Some(ExprOp::Call) => t.callee().and_then(callee_path),
-                            Some(ExprOp::Var) => t.name().map(str::to_owned),
-                            _ => None,
-                        });
-                        if strategy.as_deref() != Some("reconcile") {
-                            self.report(
-                                "E0712",
-                                "UnknownOutcome can only be handled with reconcile; restarting could repeat an external effect (§8.7, V06).",
-                                &format!("{path}/then"),
-                                None,
-                            );
-                        }
-                    }
-                    let mut names = Vec::new();
-                    pattern_vars(pattern, &mut names);
-                    let binds: HashMap<String, Val> =
-                        names.into_iter().map(|n| (n, Val::unknown())).collect();
-                    let mut inner = Self::child(&frame, binds);
-                    self.expr_or_unknown(then, &mut inner, &format!("{path}/then"));
-                }
-                Some(StmtOp::Run) => {
-                    self.expr_or_unknown(s.target(), &mut frame, &format!("{path}/target"));
-                }
-                Some(StmtOp::Expr) => {
-                    last = self.expr_or_unknown(s.value(), &mut frame, &format!("{path}/value"));
-                }
-                None => {}
+            if let Some(s) = Stmt::of(s)
+                && let Some(v) = self.stmt(s, &mut frame, &path)
+            {
+                last = v;
             }
         }
-        if result
-            && let Some(tail) = stmts.last().and_then(Stmt::of)
-            && tail.op() == Some(StmtOp::Expr)
-            && let Some(returns) = &outer.returns
-        {
-            let at = format!("{base}/{}/value", stmts.len().saturating_sub(1));
-            self.expect(&last.ty, returns, &at);
+        if result {
+            self.body_result(stmts, outer, base, &last);
         }
         last
     }
 
+    /// The tail of a definition's body against its declared return type.
+    fn body_result(&mut self, stmts: &[Value], outer: &Frame<'a>, base: &str, last: &Val) {
+        if let Some(tail) = stmts.last().and_then(Stmt::of)
+            && tail.op() == Some(StmtOp::Expr)
+            && let Some(returns) = &outer.returns
+        {
+            let at = sub_n(base, stmts.len().saturating_sub(1));
+            self.expect(&last.ty, returns, &sub(&at, "value"));
+        }
+    }
+
+    /// One statement of a block in `frame`, which a `let` or a `par`
+    /// replaces with its child; the value of an `expr` statement.
+    fn stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) -> Option<Val> {
+        match s.op() {
+            Some(StmtOp::Let) => self.let_stmt(s, frame, path),
+            Some(StmtOp::Par) => self.par_stmt(s, frame, path),
+            Some(StmtOp::If) => self.if_stmt(s, frame, path),
+            Some(StmtOp::Loop) => self.loop_stmt(s, frame, path),
+            Some(StmtOp::Return) => self.return_stmt(s, frame, path),
+            Some(StmtOp::OnError) => self.on_error_stmt(s, frame, path),
+            Some(StmtOp::Run) => {
+                self.operand(s.target(), frame, path, "target");
+            }
+            Some(StmtOp::Expr) => return Some(self.operand(s.value(), frame, path, "value")),
+            None => {}
+        }
+        None
+    }
+
+    /// `par`: its branches' values bound in a child of the frame.
+    fn par_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+        let vars = self.par(s, frame, path);
+        *frame = Self::child(frame, vars);
+    }
+
+    /// `let`: the value, against the declared type if any, bound in a child
+    /// of the frame.
+    fn let_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+        let at = sub(path, "value");
+        let v = self.expr_or_unknown(s.value(), frame, &at);
+        let bound = self.declared(s, v, &at);
+        let mut vars = HashMap::new();
+        vars.insert(s.name().unwrap_or_default().to_owned(), bound);
+        *frame = Self::child(frame, vars);
+    }
+
+    /// A `let`'s value as bound: of its declared type, when it has one.
+    fn declared(&mut self, s: Stmt<'a>, v: Val, at: &str) -> Val {
+        match s.type_expr() {
+            Some(t) => {
+                let t = self.ty(Some(t));
+                self.expect(&v.ty, &t, at);
+                Val { ty: t, cls: v.cls }
+            }
+            None => v,
+        }
+    }
+
+    /// `if`: the condition a Bool, both blocks typed.
+    fn if_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+        self.condition(s.cond(), frame, path, "cond");
+        let at = sub(path, "then");
+        self.body(s.then_block(), frame, &at, false);
+        if let Some(e) = s.else_block() {
+            let at = sub(path, "else");
+            self.body(e, frame, &at, false);
+        }
+    }
+
+    /// A condition typed and held to `Bool`.
+    fn condition(&mut self, e: Option<Expr<'a>>, frame: &mut Frame<'a>, path: &str, tail: &str) {
+        let at = sub(path, tail);
+        let v = self.expr_or_unknown(e, frame, &at);
+        self.expect_bool(&v, &at);
+    }
+
+    /// `loop`: bounded (E0502), `until` a Bool, the body typed.
+    fn loop_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+        let m = s.members();
+        if !m.contains_key("max_iter") && !m.contains_key("until") {
+            self.report(
+                "E0502",
+                "A loop needs 'max_iter' or 'until' (§8.6).",
+                path,
+                None,
+            );
+        }
+        if let Some(u) = s.until() {
+            self.condition(Some(u), frame, path, "until");
+        }
+        let at = sub(path, "body");
+        self.body(s.body(), frame, &at, false);
+    }
+
+    /// `return`: the value against the enclosing body's return type.
+    fn return_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+        let at = sub(path, "value");
+        let v = self.expr_or_unknown(s.value(), frame, &at);
+        if let (Some(returns), Some(_)) = (frame.returns.clone(), s.value()) {
+            self.expect(&v.ty, &returns, &at);
+        }
+    }
+
+    /// `on error(pattern) => then`: an UnknownOutcome only reconciled
+    /// (E0712), `then` typed with the pattern's names bound to unknown.
+    fn on_error_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+        let then = s.then_expr();
+        let pattern = s.pattern();
+        self.unknown_outcome(pattern, then, path);
+        let mut names = Vec::new();
+        pattern_vars(pattern, &mut names);
+        let binds: HashMap<String, Val> = names.into_iter().map(|n| (n, Val::unknown())).collect();
+        let mut inner = Self::child_box(frame, binds);
+        let at = sub(path, "then");
+        self.expr_or_unknown(then, &mut inner, &at);
+    }
+
+    /// E0712: `on error(UnknownOutcome)` handled by anything but reconcile.
+    fn unknown_outcome(
+        &mut self,
+        pattern: Option<Pattern<'a>>,
+        then: Option<Expr<'a>>,
+        path: &str,
+    ) {
+        if let Some(p) = pattern
+            && p.kind() == Some(PatternKind::Tag)
+            && p.tag() == Some("UnknownOutcome")
+        {
+            let strategy = then.and_then(|t| match t.op() {
+                Some(ExprOp::Call) => t.callee().and_then(callee_path),
+                Some(ExprOp::Var) => t.name().map(str::to_owned),
+                _ => None,
+            });
+            if strategy.as_deref() != Some("reconcile") {
+                self.report(
+                    "E0712",
+                    "UnknownOutcome can only be handled with reconcile; restarting could repeat an external effect (§8.7, V06).",
+                    &sub(path, "then"),
+                    None,
+                );
+            }
+        }
+    }
+
     /// `expr(e)` of a member that should be there, or the unknown value when
-    /// it is not (an IR that was not validated).
+    /// it is not (an IR that was not validated). Inlined, so that it costs no
+    /// frame on the path of the recursion.
+    #[inline(always)]
     pub(crate) fn expr_or_unknown(
         &mut self,
         e: Option<Expr<'a>>,
@@ -1269,6 +1363,30 @@ fn visit<'a>(
     }
     stack.pop();
     state.insert(n, true);
+}
+
+/// `${path}/${tail}`. The paths are built in functions of their own, so
+/// that the frames on the path of the recursion do not each hold what
+/// formatting takes.
+#[inline(never)]
+pub(crate) fn sub(path: &str, tail: &str) -> String {
+    let mut out = String::with_capacity(path.len().saturating_add(tail.len()).saturating_add(1));
+    out.push_str(path);
+    out.push('/');
+    out.push_str(tail);
+    out
+}
+
+/// `${path}/${member}/${i}${tail}`.
+#[inline(never)]
+pub(crate) fn sub_i(path: &str, member: &str, i: usize, tail: &str) -> String {
+    format!("{path}/{member}/{i}{tail}")
+}
+
+/// `${path}/${i}`.
+#[inline(never)]
+pub(crate) fn sub_n(path: &str, i: usize) -> String {
+    format!("{path}/{i}")
 }
 
 /// JavaScript's truth of an optional IR member: there, and not `false`,
