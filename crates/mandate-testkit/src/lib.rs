@@ -17,6 +17,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod corpus;
 mod gate;
 mod golden;
 
