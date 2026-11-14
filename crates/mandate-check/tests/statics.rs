@@ -89,6 +89,14 @@ fn diagnostic_texts(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// A workflow's static cost as the script lists it: the program's name, the
+/// workflow, and the cost as JSON text.
+type CostLine = (String, String, String);
+
+/// A program's lead classes as the script lists them: the program's name and
+/// the classes as JSON text.
+type LeadsLine = (String, String);
+
 /// What `static_cost` and `lead_classes` give for every workflow of a
 /// loaded program, as the script lists them.
 fn costs_and_leads(
@@ -96,7 +104,7 @@ fn costs_and_leads(
     program: &Value,
     modules: &Modules,
     leads_too: bool,
-) -> (Vec<(String, String, String)>, Option<(String, String)>) {
+) -> (Vec<CostLine>, Option<LeadsLine>) {
     let p = Program::of(program).unwrap();
     let linked = link(p, Some(modules));
     let mut costs = Vec::new();
