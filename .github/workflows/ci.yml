@@ -85,9 +85,15 @@ jobs:
           npx vitest run test/acs.test.ts --reporter=verbose --reporter=json --outputFile.json="$VITEST_REPORT"
           node ../scripts/assert-ran.mjs "$VITEST_REPORT" "the generated Rego on a real OPA"
 
+  # On two Ubuntu releases, so that what is enforced (the sandbox, and its egress through the proxy alone) is shown on a
+  # second kernel and a second Bubblewrap and slirp4netns. A failure of one release does not stop the other.
   sandbox:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -171,6 +177,11 @@ jobs:
         env:
           MANDATE_MXC: "1"
         run: npx vitest run test/mxc-windows.test.ts test/workspace.test.ts
+      # Tests with a branch that runs only on Windows: another drive and a UNC path refused, a junction where a link is
+      # made, `docker` found as an .exe, the egress proxy's admin channel as a named pipe, and no SIGTERM to catch.
+      - name: The Windows branches of the path, environment and egress tests
+        working-directory: runtime
+        run: npx vitest run test/paths.test.ts test/child-env.test.ts test/egress-cli.test.ts
 
   rust:
     runs-on: ubuntu-latest
