@@ -20,10 +20,9 @@ const PENDING: &[&str] = &[
     "check @ *",
     "check --module @ *",
     "check --lock @ *",
-    // A program given as JSON IR is loaded and canonicalised by mandate-ir;
-    // one in Mandate text needs the parser (R7).
+    // A program given as JSON IR is loaded by mandate-ir; the diagnostics of
+    // one in Mandate text need the parser and the schema together.
     "load @ *.mdt",
-    "ir --canonical @ *.mdt",
     "fmt @ *",
     "hash @ *",
     "view --format json @ *",
@@ -49,6 +48,14 @@ fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
             let mut text = stringify_pretty(&diagnostics).unwrap_or_default();
             text.push('\n');
             Ok(text)
+        }
+        // `canonicalize(load(text, "mdt").program)`: `load` gives the
+        // parser's program whatever the schema says.
+        "ir --canonical" => {
+            let read = mandate_syntax::parse_mdt(&read_text(o.program)?);
+            read.program
+                .map(|program| canonicalize(&program))
+                .ok_or_else(|| format!("does not read: {:?}", read.diagnostics))
         }
         _ => Err("no Rust implementation yet".to_owned()),
     }
