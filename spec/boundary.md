@@ -1467,7 +1467,8 @@ The letters P, T and L are kept for later releases.
   the runtime and the `mandate` CLI use the TypeScript compiler. The
   envelope card (`mandate view --card`), the ACS/Rego target and the MCP
   server are not ported. These start the plan for 0.6. A few written
-  inputs are known to differ; they are listed in `conformance/README.md`.
+  inputs are known to differ; they are listed in `vectors/README.md`
+  ("Where the Rust compiler is not held to the TypeScript").
 - **New isolation backends.** 0.5 adds the level and the refusal, not a
   host that gives more than `process`.
 - **Sandbox egress on Windows**, TLS interception, and `git`, PostgreSQL

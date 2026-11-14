@@ -280,7 +280,8 @@ WASI):
 A diagnostic is the same when its code, severity, message, location,
 `docs`, `facts` and `repair` are the same and it is in the same place in
 the order. A few written inputs are known to differ; the tests list them by
-name, and `conformance/README.md` lists them too.
+name, and [`vectors/README.md`](vectors/README.md) lists them too ("Where
+the Rust compiler is not held to the TypeScript").
 
 What stays in TypeScript, and starts the plan for 0.6: the runtime and the
 `mandate` CLI use the TypeScript compiler, and the envelope card
