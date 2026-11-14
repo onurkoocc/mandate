@@ -226,6 +226,39 @@ fn golden_programs_given_as_json_load_as_their_vectors_say() {
     }
 }
 
+/// `uniqueItems` as Ajv 8.20.0 gives it where no vector shows it (the
+/// expected errors are Ajv's, for these inputs): an array whose `items` has
+/// a scalar `type` is walked from the end by text, so `i` is the earlier
+/// index and two `"__proto__"` items are not found to be the same; any
+/// other array is compared deeply, and `i` is the later index.
+#[test]
+fn unique_items_as_ajv_finds_duplicates() {
+    let component = |governance: &str| {
+        format!(
+            r#"{{"language":"mandate/0.5","module":"m","version":"0.1","defs":{{"c":{{"kind":"component","repo":"a/b","root":"/x","lang":"ts","owner":"o","governance":{governance}}}}}}}"#
+        )
+    };
+    let errors_of = |text: &str| {
+        let value = parse(text).expect("strict JSON").value;
+        let errors = ir_schema_errors(&value).expect("the IR schema");
+        mandate_ir::stringify(&JsValue::Array(
+            errors.iter().map(SchemaError::to_js).collect(),
+        ))
+        .unwrap_or_default()
+    };
+    assert_eq!(errors_of(&component(r#"["__proto__","__proto__"]"#)), "[]");
+    assert_eq!(
+        errors_of(&component(r#"["a","b","a","b"]"#)),
+        r##"[{"instancePath":"/defs/c/governance","schemaPath":"#/oneOf/9/properties/governance/uniqueItems","keyword":"uniqueItems","params":{"i":1,"j":3},"message":"must NOT have duplicate items (items ## 3 and 1 are identical)"}]"##
+    );
+    assert_eq!(
+        errors_of(
+            r#"{"language":"mandate/0.5","module":"m","version":"0.1","uses":[{"module":"x","names":["__proto__","B","__proto__","B"]}],"defs":{}}"#
+        ),
+        r##"[{"instancePath":"/uses/0/names","schemaPath":"#/properties/uses/items/properties/names/uniqueItems","keyword":"uniqueItems","params":{"i":3,"j":1},"message":"must NOT have duplicate items (items ## 1 and 3 are identical)"}]"##
+    );
+}
+
 /// A keyword the validator does not implement is refused when the schema is
 /// prepared, wherever it is.
 #[test]
