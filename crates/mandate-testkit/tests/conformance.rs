@@ -1,6 +1,9 @@
 //! The conformance gate: every compile case of `conformance/` whose front
-//! door is `check` goes through `mandate_check::check` with its modules and
-//! its lock, and the result must meet the case's `expect` under the rule of
+//! door is `check` or `check_patched` goes through `mandate_check::check`
+//! with its modules and its lock (a `check_patched` case: its input loaded,
+//! the case's RFC 6902 `patch` applied to the IR as the TypeScript runner
+//! applies it, `common::apply_json_patch`, and the patched IR checked as
+//! `JSON.stringify` text), and the result must meet the case's `expect` under the rule of
 //! `conformance/README.md` ("How a result is compared"): `ok`; the
 //! diagnostics in order, one to one, by code and path (a diagnostic without
 //! a path is at `""`); `facts` as a subset, each deeply equal; `hashes`
@@ -9,8 +12,9 @@
 //!
 //! An item is named `<door> @ conformance/<id> [codes]`, the codes being
 //! those the case expects (see `mandate_testkit::codes`). The cases of the
-//! other doors (a `patch`, with or without `base`, a `subprogram`, an
-//! `amendment`) are items too, pending by door until R13 ports them; a case
+//! other doors (a `patch` with a `base`, which goes through `applyOps`, a
+//! `subprogram`, an `amendment`) are items too, pending by door until R13
+//! ports them; a case
 //! with a lock goes through `check` like the others, its lock passed to the
 //! seam that R14 fills. The journal cases are not compile cases: they are
 //! counted as skipped, with the reason (the Rust verifier runs them in
@@ -33,9 +37,10 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use common::{check_with, kind_named, modules_of, read_source};
+use common::{check_with, kind_named, modules_of, patched_source, read_source};
 use mandate_check::CheckResult;
 use mandate_ir::{JsValue, Value, canonicalize, parse, stringify};
+use mandate_syntax::SourceKind;
 use mandate_testkit::{check_pending, item_name, read_json, repo_path, run_gate, subdirectories};
 
 /// The items the Rust compiler does not give yet: a glob for each family of
@@ -58,7 +63,6 @@ const PENDING: &[&str] = &[
     "*MDT-E1802*",
     "*MDT-E1803*",
     // R13: the doors of patches, sub-programs and amendments.
-    "check_patched @ *",
     "apply_ops @ *",
     "check_subprogram @ *",
     "check_amendment @ *",
@@ -174,7 +178,7 @@ struct Case {
 /// together (they must load), the lock read, then `check`; and the case's
 /// `language`, when it gives one, is the one the program declares.
 fn run(c: &Case) -> Result<(), String> {
-    if c.door != "check" {
+    if c.door != "check" && c.door != "check_patched" {
         return Err(format!("the {} door is not ported", c.door));
     }
     let dir = format!("conformance/{}", c.id);
@@ -202,6 +206,12 @@ fn run(c: &Case) -> Result<(), String> {
         .get("lock")
         .and_then(Value::as_str)
         .map(|l| repo_path(&dir, l));
+    // `check_patched`: the patch applied to the loaded IR, and the patched
+    // IR checked as JSON text.
+    let (text, kind) = match case.get("patch").and_then(Value::as_array) {
+        Some(patch) => (patched_source(&text, kind, patch)?, SourceKind::Json),
+        None => (text, kind),
+    };
     let result = check_with(&text, kind, Some(&modules), lock.as_deref())?;
     if let Some(language) = case.get("language").and_then(Value::as_str) {
         // A program that does not load still declares a language: from the
@@ -226,7 +236,7 @@ fn run(c: &Case) -> Result<(), String> {
         };
         let declared = match program_language {
             Some(l) => Some(l),
-            None if kind == mandate_syntax::SourceKind::Json => match from_text() {
+            None if kind == SourceKind::Json => match from_text() {
                 Some(l) => l,
                 None => Some(language.to_owned()),
             },
@@ -305,4 +315,98 @@ fn conformance_gate() {
     if let Err(report) = gate {
         panic!("{report}");
     }
+}
+
+/// `apply_json_patch` does what `applyJsonPatch` of
+/// `compiler/test/cases-runner.ts` does on the edges the cases do not all
+/// reach: `-` is the end only for `add`, an index has no leading zero and
+/// stays within the array, `replace` and `remove` need a member that is
+/// there, the root can be replaced but not removed, a member that is there
+/// keeps its place, and the operations are checked in order with the
+/// operation named in the message. Each expectation, message included, is
+/// what `applyJsonPatch` gives on the same input in Node (its functions
+/// taken from the file and run through `node:module`'s
+/// `stripTypeScriptTypes`).
+#[test]
+fn the_runners_json_patch() {
+    let doc = parse(r#"{"a":[1,2],"b":{"x":1,"y":2}}"#).unwrap().value;
+    let ops = |text: &str| parse(text).unwrap().value;
+    let apply = |text: &str| {
+        common::apply_json_patch(&doc, ops(text).as_array().unwrap()).map(|v| canonical_order(&v))
+    };
+    let ok = |text: &str| apply(text).unwrap();
+    assert_eq!(
+        ok(r#"[{"op":"add","path":"/a/-","value":3}]"#),
+        r#"{"a":[1,2,3],"b":{"x":1,"y":2}}"#
+    );
+    assert_eq!(
+        ok(r#"[{"op":"add","path":"/a/0","value":0}]"#),
+        r#"{"a":[0,1,2],"b":{"x":1,"y":2}}"#
+    );
+    assert_eq!(
+        ok(r#"[{"op":"add","path":"/b/x","value":9}]"#),
+        r#"{"a":[1,2],"b":{"x":9,"y":2}}"#
+    );
+    assert_eq!(
+        ok(r#"[{"op":"add","path":"/b/z","value":3}]"#),
+        r#"{"a":[1,2],"b":{"x":1,"y":2,"z":3}}"#
+    );
+    assert_eq!(
+        ok(r#"[{"op":"replace","path":"/a/1","value":5}]"#),
+        r#"{"a":[1,5],"b":{"x":1,"y":2}}"#
+    );
+    assert_eq!(
+        ok(r#"[{"op":"remove","path":"/b/x"}]"#),
+        r#"{"a":[1,2],"b":{"y":2}}"#
+    );
+    assert_eq!(
+        ok(r#"[{"op":"replace","path":"","value":{"c":1}}]"#),
+        r#"{"c":1}"#
+    );
+    let err = |text: &str| apply(text).unwrap_err();
+    assert_eq!(
+        err(r#"[{"op":"remove","path":"/a/0"},{"op":"replace","path":"/a/-","value":1}]"#),
+        "patch operation 1 (replace /a/-): \"-\" is not an array index"
+    );
+    assert_eq!(
+        err(r#"[{"op":"remove","path":"/a/01"}]"#),
+        "patch operation 0 (remove /a/01): \"01\" is not an array index"
+    );
+    assert_eq!(
+        err(r#"[{"op":"add","path":"/a/3","value":1}]"#),
+        "patch operation 0 (add /a/3): index 3 is out of range"
+    );
+    assert_eq!(
+        err(r#"[{"op":"replace","path":"/a/2","value":1}]"#),
+        "patch operation 0 (replace /a/2): index 2 is out of range"
+    );
+    assert_eq!(
+        err(r#"[{"op":"replace","path":"/b/z","value":1}]"#),
+        "patch operation 0 (replace /b/z): there is no member \"z\""
+    );
+    assert_eq!(
+        err(r#"[{"op":"add","path":"/c/z","value":1}]"#),
+        "patch operation 0 (add /c/z): there is no member \"c\""
+    );
+    assert_eq!(
+        err(r#"[{"op":"remove","path":""}]"#),
+        "patch operation 0 (remove ): the document root cannot be removed"
+    );
+    assert_eq!(
+        err(r#"[{"op":"move","path":"/a"}]"#),
+        "patch operation 0 (move /a): op \"move\" is not supported; use add, replace or remove"
+    );
+    assert_eq!(
+        err(r#"[{"op":"add","path":"a","value":1}]"#),
+        "patch operation 0 (add a): \"a\" is not a JSON Pointer"
+    );
+    assert_eq!(
+        err(r#"[{"op":"add","path":"/a/0/x","value":1}]"#),
+        "patch operation 0 (add /a/0/x): the parent is not an object or an array"
+    );
+}
+
+/// The value as compact JSON in its member order, as `JSON.stringify`.
+fn canonical_order(v: &Value) -> String {
+    stringify(&JsValue::from(v)).unwrap()
 }
