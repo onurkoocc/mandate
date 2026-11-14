@@ -28,8 +28,6 @@
 
 mod common;
 
-use std::collections::BTreeMap;
-
 use mandate_ir::{
     Diagnostic, JsObject, JsValue, Loaded, Value, canonicalize, has_errors, stringify,
 };
@@ -216,24 +214,15 @@ fn check_load(case: &Case) -> Result<(), String> {
     Ok(())
 }
 
-/// `load(text, "mdt")`: the program, when the text reads, and all the
-/// diagnostics, the parser's first.
-// replace with mandate_syntax::load once it exists
-fn load_text(text: &str) -> (Option<Value>, Vec<Diagnostic>) {
-    let read = parse_mdt(text);
-    let mut diagnostics = read.diagnostics.clone();
-    if let Some(program) = &read.program {
-        let spans = BTreeMap::from(&read.spans);
-        diagnostics.extend(mandate_ir::validate_ir(program, Some(&spans)));
-    }
-    (read.program, diagnostics)
-}
-
 /// `fmt_roundtrip` as `syntax-vectors.ts` computes it: `true`, or
 /// `{ reads, same_ir, stable }` with the diagnostics of the second reading
 /// when it did not read.
 fn roundtrip(printed: &str, canonical: &str) -> JsValue {
-    let (again, diagnostics) = load_text(printed);
+    let Loaded {
+        program: again,
+        diagnostics,
+        ..
+    } = mandate_syntax::load(printed, SourceKind::Mdt);
     let reads = again.is_some() && !has_errors(&diagnostics);
     let same_ir = reads && again.as_ref().is_some_and(|p| canonicalize(p) == canonical);
     let stable = reads

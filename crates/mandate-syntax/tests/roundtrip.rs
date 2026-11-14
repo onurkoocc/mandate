@@ -8,8 +8,15 @@
 //! must read back to the same canonical IR; and printing that again must give
 //! the same text. These do not say the text is the TypeScript's (the vectors
 //! and the golden outputs do), only that the printer is the inverse of the
-//! parser on real programs. A file that does not round trip in TypeScript
-//! either is pinned by name in `PENDING` with the reason.
+//! parser on real programs.
+//!
+//! Some files under `conformance/` are inputs the cases expect to be refused
+//! (a lexical error, say). Such a file is excluded by rule, not by name: it
+//! must give at least one error and no program, and it is printed with the
+//! codes it gave. A file excluded that reads after all fails the gate, so does
+//! one that is refused with a program or with no error. A file that does not
+//! round trip in TypeScript either would be pinned by name in `PENDING`
+//! with the reason; none is.
 
 #![allow(
     clippy::panic,
@@ -19,31 +26,12 @@
     missing_docs
 )]
 
-use std::collections::BTreeMap;
-
-use mandate_ir::{Diagnostic, Value, canonicalize, has_errors};
-use mandate_syntax::{parse_mdt, print_program};
+use mandate_ir::{canonicalize, has_errors};
+use mandate_syntax::{SourceKind, load, print_program};
 use mandate_testkit::{files, read_text, run_gate, subdirectories};
 
-/// Files that do not round trip, by path, with the reason.
-const PENDING: &[&str] = &[
-    // Not a program: the case `S11j` is that a non-ASCII identifier is
-    // refused (`MDT-E0101`), so the file does not read, in TypeScript too.
-    "conformance/S11j/program.mdt",
-];
-
-/// `load(text, "mdt")`: the program, when the text reads, and all the
-/// diagnostics, the parser's first.
-// replace with mandate_syntax::load once it exists
-fn load_text(text: &str) -> (Option<Value>, Vec<Diagnostic>) {
-    let read = parse_mdt(text);
-    let mut diagnostics = read.diagnostics.clone();
-    if let Some(program) = &read.program {
-        let spans = BTreeMap::from(&read.spans);
-        diagnostics.extend(mandate_ir::validate_ir(program, Some(&spans)));
-    }
-    (read.program, diagnostics)
-}
+/// Files that do not round trip, by path, with the reason. None.
+const PENDING: &[&str] = &[];
 
 /// The `.mdt` files directly in `dir`, as paths from the repository root.
 fn mdt_files(dir: &str) -> Vec<String> {
@@ -64,18 +52,47 @@ fn mdt_files_below(dir: &str) -> Vec<String> {
         .collect()
 }
 
+/// What a file that is not a program to print gave: `Some(codes)` for a file
+/// refused as the rule requires (at least one error, no program), where
+/// `Err` is a file that reads, or is refused another way.
+fn refused(path: &str) -> Result<Option<Vec<String>>, String> {
+    let loaded = load(&read_text(path)?, SourceKind::Mdt);
+    let reads = loaded.program.is_some() && !has_errors(&loaded.diagnostics);
+    if reads {
+        return Ok(None);
+    }
+    if loaded.program.is_some() || !has_errors(&loaded.diagnostics) {
+        return Err(format!(
+            "{path}: does not read, but is not refused as an input is (no program, at least one error): {:?}",
+            loaded.diagnostics
+        ));
+    }
+    Ok(Some(
+        loaded
+            .diagnostics
+            .iter()
+            .map(|d| d.code.to_string())
+            .collect(),
+    ))
+}
+
 fn round_trip(path: &str) -> Result<(), String> {
     let text = read_text(path)?;
-    let (program, diagnostics) = load_text(&text);
-    let program = match program {
-        Some(program) if !has_errors(&diagnostics) => program,
-        _ => return Err(format!("does not read: {diagnostics:?}")),
+    let loaded = load(&text, SourceKind::Mdt);
+    let program = match loaded.program {
+        Some(program) if !has_errors(&loaded.diagnostics) => program,
+        _ => return Err(format!("does not read: {:?}", loaded.diagnostics)),
     };
     let printed = print_program(&program)?;
-    let (again, diagnostics) = load_text(&printed);
-    let again = match again {
-        Some(again) if !has_errors(&diagnostics) => again,
-        _ => return Err(format!("the printed text does not read: {diagnostics:?}")),
+    let loaded = load(&printed, SourceKind::Mdt);
+    let again = match loaded.program {
+        Some(again) if !has_errors(&loaded.diagnostics) => again,
+        _ => {
+            return Err(format!(
+                "the printed text does not read: {:?}",
+                loaded.diagnostics
+            ));
+        }
     };
     if canonicalize(&again) != canonicalize(&program) {
         return Err("the printed text reads as another program".to_owned());
@@ -92,13 +109,35 @@ fn fmt_round_trips() {
     paths.extend(mdt_files_below("fixtures"));
     paths.extend(mdt_files("compiler/test/fixtures/syntax"));
     paths.extend(mdt_files_below("conformance"));
+    let mut problems: Vec<String> = Vec::new();
+    let mut excluded: Vec<(String, Vec<String>)> = Vec::new();
+    let mut programs: Vec<String> = Vec::new();
+    for path in paths {
+        match refused(&path) {
+            Ok(None) => programs.push(path),
+            Ok(Some(codes)) => excluded.push((path, codes)),
+            Err(why) => problems.push(why),
+        }
+    }
+    let named: Vec<String> = excluded
+        .iter()
+        .map(|(path, codes)| format!("{path} ({})", codes.join(", ")))
+        .collect();
+    println!(
+        "excluded {}: does not read (refused with no program): {}",
+        excluded.len(),
+        named.join("; ")
+    );
     let gate = run_gate(
         "fmt round trip: fixtures and conformance programs",
         PENDING,
-        paths.into_iter().map(|p| (p.clone(), p)),
+        programs.into_iter().map(|p| (p.clone(), p)),
         |p| round_trip(p),
     );
     if let Err(report) = gate {
-        panic!("{report}");
+        problems.push(report);
+    }
+    if !problems.is_empty() {
+        panic!("{}", problems.join("\n"));
     }
 }
