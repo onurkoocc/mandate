@@ -11,10 +11,13 @@
 // (G07), the runtime's environment and the user's clipboard stay out, and an
 // agent loop does its work through the sandbox.
 
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type AddressInfo, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { denialDiagnostics, requirementFor, type SandboxRequirement } from "@mandate/compiler";
 import { afterAll, describe, expect, it } from "vitest";
 import { MxcAdapter, type MxcPolicy } from "../src/sandbox.js";
@@ -228,6 +231,89 @@ describe.runIf(REAL)("WindowsMxcHost with an AppContainer on this host (G05, G07
     expect(r.stdout).toContain("blocked http://1.1.1.1");
     expect(r.stdout).not.toContain("reached");
     expect(hostReaches, "the test host has no network, so blocking proves less").toBe(true);
+  });
+
+  // K9: two things on the host that a sandboxed process might reach without any network access: a named pipe and a
+  // listener on the loopback address. Each is served by this test process, and each is measured twice with the same
+  // probe: from outside the sandbox (the control, which must reach it, or the probe is what is broken) and from inside.
+  // The measurement is pinned below; the decision on record is that a measurement that comes out reachable is not
+  // fixed in the host but recorded as a limit (spec/sandbox.md) and pinned here, which is the one value to change.
+  const K9 = { pipe: "unreachable", tcp4: "unreachable", tcp6: "unreachable" } as const;
+
+  /** A program for `node -e` that opens one endpoint and prints `reachable` or `unreachable <why>`; it ends at once either way. */
+  const probe = (endpoint: { path: string } | { host: string; port: number }): string =>
+    `const s = require('net').connect(${JSON.stringify(endpoint)}); const done = (r) => { console.log(r); process.exit(0); }; s.on('connect', () => done('reachable')); s.on('error', (e) => done('unreachable ' + e.code)); setTimeout(() => done('unreachable timeout'), 8000);`;
+
+  /** The probe run outside the sandbox: the same node, the same program. */
+  // Asynchronous: this process serves the endpoint, and a blocked event loop would not take the connection.
+  const outsideProbe = async (endpoint: Parameters<typeof probe>[0]): Promise<string> => (await promisify(execFile)(process.execPath, ["-e", probe(endpoint)], { encoding: "utf8", timeout: 20_000 })).stdout.trim();
+  /** A moment for a connection that was made to arrive at the server before it is counted. */
+  const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 300));
+
+  /** A server this process holds, with the number of connections it has taken. */
+  async function serving(listen: (server: Server) => Promise<void>): Promise<{ server: Server; taken: () => number; close: () => Promise<void> }> {
+    let n = 0;
+    const server = createServer((socket) => {
+      n++;
+      socket.on("error", () => {});
+      socket.end("served\n");
+    });
+    await listen(server);
+    return { server, taken: () => n, close: () => new Promise((r) => server.close(() => r())) };
+  }
+
+  it("cannot open a named pipe that this test process serves, while a process outside the sandbox can (K9)", async () => {
+    const path = `\\\\.\\pipe\\mandate-k9-${randomBytes(6).toString("hex")}`;
+    const s = await serving((server) => new Promise((ok, fail) => (server.once("error", fail), server.listen(path, ok))));
+    try {
+      const control = await outsideProbe({ path });
+      await settle();
+      expect([control, s.taken()], "the control, outside the sandbox: the probe and the pipe work").toEqual(["reachable", 1]);
+      const { handle } = await open();
+      const r = await node(handle, probe({ path }));
+      expect(r.exitCode, r.stderr).toBe(0);
+      await settle();
+      const inside = r.stdout.trim().split(/\r?\n/).pop()!;
+      console.log(`K9 named pipe ${path}: outside the sandbox ${control}; inside the AppContainer ${inside}; connections taken ${s.taken()} (1 is the control's)`);
+      expect(inside.split(" ")[0], `the AppContainer measured ${inside} against the named pipe`).toBe(K9.pipe);
+      expect(s.taken(), "connections the pipe took: the sandbox's attempt did not arrive").toBe(K9.pipe === "unreachable" ? 1 : 2);
+    } finally {
+      await s.close();
+    }
+  });
+
+  it("cannot connect to a TCP listener this test process holds on the loopback address, while a process outside the sandbox can (K9)", async () => {
+    const measured: string[] = [];
+    for (const [name, host] of [
+      ["tcp4", "127.0.0.1"],
+      ["tcp6", "::1"],
+    ] as const) {
+      const s = await serving((server) => new Promise((ok, fail) => (server.once("error", fail), server.listen(0, host, ok)))).catch((e: NodeJS.ErrnoException) => {
+        // No ::1 on this host: say so, and measure what there is. 127.0.0.1 has no such way out.
+        if (name === "tcp4") throw e;
+        console.log(`K9 ${name}: not measured, this host cannot listen on ${host} (${e.code})`);
+        return undefined;
+      });
+      if (!s) continue;
+      try {
+        const port = (s.server.address() as AddressInfo).port;
+        const control = await outsideProbe({ host, port });
+        await settle();
+        expect([control, s.taken()], `the control, outside the sandbox: the probe and the listener on ${host} work`).toEqual(["reachable", 1]);
+        const { handle } = await open();
+        const r = await node(handle, probe({ host, port }));
+        expect(r.exitCode, r.stderr).toBe(0);
+        await settle();
+        const inside = r.stdout.trim().split(/\r?\n/).pop()!;
+        console.log(`K9 ${name} ${host}:${port}: outside the sandbox ${control}; inside the AppContainer ${inside}; connections taken ${s.taken()} (1 is the control's)`);
+        expect(inside.split(" ")[0], `the AppContainer measured ${inside} against ${host}:${port}`).toBe(K9[name]);
+        expect(s.taken(), `connections ${host}:${port} took: the sandbox's attempt did not arrive`).toBe(K9[name] === "unreachable" ? 1 : 2);
+        measured.push(name);
+      } finally {
+        await s.close();
+      }
+    }
+    expect(measured, "the IPv4 loopback was measured").toContain("tcp4");
   });
 
   it("starts the process with none of the runtime's environment, and keeps the user's clipboard out (K7)", async () => {
