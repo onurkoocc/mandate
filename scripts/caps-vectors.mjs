@@ -8,15 +8,30 @@
 // (crates/mandate-check/tests/vectors.rs reads the files).
 //
 //   npm ci --ignore-scripts && npm run build    (once: it reads compiler/dist)
-//   node scripts/caps-vectors.mjs
+//   node scripts/caps-vectors.mjs               (what CI runs)
+//   node scripts/caps-vectors.mjs --rescan      (takes in new programs)
 //
-// The files (it removes the .json files it finds there first):
+// The programs it reads are the ones the committed list sources.json names,
+// not whatever fixtures/, conformance/ and vectors/programs/ hold: the data
+// is a function of the TypeScript compiler and that list, so a change that
+// adds a conformance case does not change it, and CI does not fail on the
+// change that adds the case. A source on the list that is missing, or no
+// longer a compile case or a program that loads, is an error. Sources the
+// directories hold and the list does not are counted in one line and left
+// out; `--rescan` makes the list again from the directories (in the order it
+// reads them) and then writes the data, which is the deliberate step that
+// takes them in.
+//
+// The files (it removes the data parts it finds there first, not sources.json):
+//   sources.json       the list of programs, rewritten only by --rescan
 //   std.json           the std tables and constants, whole
-//   programs-<k>.json  the capability expressions of every program under
-//                      fixtures/, conformance/ (each compile case's input,
-//                      patched, with its modules) and vectors/programs/,
-//                      read in their programs' linked definitions, and the
-//                      relations between the capabilities each one holds
+//   programs-<k>.json  the capability expressions of every listed program:
+//                      fixtures (with the other listed fixtures of their
+//                      directory as modules), conformance compile cases
+//                      (each case's input, patched, with its modules) and
+//                      pinned programs of vectors/programs/, read in their
+//                      programs' linked definitions, and the relations
+//                      between the capabilities each one holds
 //   edges-<k>.json     hand-written edges, one or more for each branch
 //   sweep-<k>.json     a pseudo-random sweep (fixed seed) of the relations
 //                      on paths and capabilities, the glob matcher,
@@ -162,78 +177,161 @@ function files(dir, out = []) {
   return out;
 }
 
-/** Each program: its source, the program, and the modules it is read with. */
-function programs() {
-  const out = [];
-  const byDir = new Map();
-  const loadFile = (rel) => {
-    const kind = rel.endsWith(".mdt") ? "mdt" : "json";
-    return loadSource(readText(rel), kind);
-  };
-  // fixtures/: each program, with the others of its directory as modules.
-  for (const rel of files("fixtures")) {
-    if (!rel.endsWith(".mdt") && !rel.endsWith(".ir.json")) continue;
-    const p = loadFile(rel);
-    if (!p) continue;
-    const dir = rel.slice(0, rel.lastIndexOf("/"));
-    if (!byDir.has(dir)) byDir.set(dir, []);
-    byDir.get(dir).push([rel, p]);
+// The programs are the ones sources.json lists, not whatever the
+// directories hold: a conformance case added by another change must not
+// change this data. `--rescan` makes the list again from the directories.
+//
+// A source is { "fixture": <path> }, { "conformance": <case directory> } or
+// { "vector": <path> }, in the order they are read: fixtures in the order of
+// a walk of fixtures/ (each read with the other listed fixtures of its
+// directory as modules), conformance compile cases (each case's input,
+// patched, with its modules), then pinned programs of vectors/programs/
+// (each read with the other listed ones as modules).
+
+const SOURCES = "crates/mandate-check/tests/data/sources.json";
+const SOURCES_FORMAT = "mandate-check/caps-sources/0.1";
+const RESCAN = "node scripts/caps-vectors.mjs --rescan";
+
+const loadFile = (rel) => loadSource(readText(rel), rel.endsWith(".mdt") ? "mdt" : "json");
+
+/** A fixture's program, or why there is none. */
+function fixture(rel) {
+  if (!rel.endsWith(".mdt") && !rel.endsWith(".ir.json")) return { why: "it is not a .mdt or .ir.json file" };
+  let p;
+  try {
+    p = loadFile(rel);
+  } catch {
+    return { why: "it cannot be read" };
   }
-  for (const [, list] of byDir) {
-    for (const [rel, p] of list) {
+  return p ? { program: p } : { why: "it does not load" };
+}
+
+/** A conformance compile case's program, patched, and its modules, or why there is none. */
+function conformanceCase(dir) {
+  const caseRel = `${dir}/case.json`;
+  let c;
+  try {
+    c = JSON.parse(readText(caseRel));
+  } catch {
+    return { why: "it has no case.json that can be read" };
+  }
+  if (c.kind !== "compile" || !c.input) return { why: "it is not a compile case" };
+  const base = `${dir}/`;
+  const resolve = (f) => fileURLToPath(new URL(f, new URL(base, root))).replace(/\\/g, "/");
+  const relOf = (f) => posix.normalize(`${base}${f}`);
+  let p;
+  try {
+    p = c.input.text !== undefined ? loadSource(c.input.text, c.input.kind) : loadSource(readFileSync(resolve(c.input.file), "utf8"), c.input.kind);
+  } catch {
+    p = undefined;
+  }
+  if (!p) return { why: "its input does not load" };
+  if (c.patch) {
+    try {
+      p = applyOps(p, c.patch);
+    } catch {
+      return { why: "its patch does not apply" };
+    }
+  }
+  const modules = {};
+  for (const f of c.modules ?? []) {
+    let m;
+    try {
+      m = loadSource(readFileSync(resolve(f), "utf8"), f.endsWith(".mdt") ? "mdt" : "json");
+    } catch {
+      m = undefined;
+    }
+    if (m && !Object.hasOwn(modules, m.module)) modules[m.module] = m;
+  }
+  return { name: `${caseRel} (${c.input.file ? relOf(c.input.file) : "text"})`, program: p, modules };
+}
+
+/** A pinned program of vectors/programs/, or why there is none. */
+function vector(rel) {
+  let p;
+  try {
+    p = loadSource(JSON.parse(readText(rel)).canonical, "json");
+  } catch {
+    return { why: "it cannot be read" };
+  }
+  return p ? { program: p } : { why: "it does not load" };
+}
+
+const READ = { fixture, conformance: conformanceCase, vector };
+const idOf = (s) => {
+  const [kind] = Object.keys(s);
+  return `${kind} ${s[kind]}`;
+};
+
+/** The sources the directories hold today, in the order they are read. */
+function scanSources() {
+  const out = [];
+  for (const rel of files("fixtures")) if ((rel.endsWith(".mdt") || rel.endsWith(".ir.json")) && fixture(rel).program) out.push({ fixture: rel });
+  for (const name of readdirSync(new URL("conformance", root)).sort()) {
+    const dir = `conformance/${name}`;
+    if (statSync(new URL(dir, root)).isDirectory() && conformanceCase(dir).program) out.push({ conformance: dir });
+  }
+  for (const name of readdirSync(new URL("vectors/programs", root)).sort()) {
+    const rel = `vectors/programs/${name}`;
+    if (vector(rel).program) out.push({ vector: rel });
+  }
+  return out;
+}
+
+/** The committed list, or the one --rescan makes and writes. */
+function sourceList(rescan) {
+  if (rescan) {
+    const list = scanSources();
+    mkdirSync(new URL("crates/mandate-check/tests/data/", root), { recursive: true });
+    writeFileSync(new URL(SOURCES, root), `{\n"format": "${SOURCES_FORMAT}",\n"generator": "${GENERATOR}",\n"sources": [\n${list.map((s) => JSON.stringify(s)).join(",\n")}\n]\n}\n`);
+    return list;
+  }
+  let file;
+  try {
+    file = JSON.parse(readText(SOURCES));
+  } catch (e) {
+    throw new Error(`cannot read ${SOURCES} (${e.message}); \`${RESCAN}\` writes it from the directories`);
+  }
+  if (file.format !== SOURCES_FORMAT) throw new Error(`${SOURCES} is not of format ${SOURCES_FORMAT}; \`${RESCAN}\` writes it again`);
+  const list = file.sources;
+  // What the directories hold and the list does not: taken in only by --rescan.
+  const listed = new Set(list.map(idOf));
+  const unlisted = scanSources().filter((s) => !listed.has(idOf(s)));
+  if (unlisted.length) {
+    const names = unlisted.length <= 5 ? ` (${unlisted.map(idOf).join(", ")})` : "";
+    process.stdout.write(`${unlisted.length} source(s) in the directories are not in ${SOURCES}${names}; \`${RESCAN}\` takes them in\n`);
+  }
+  return list;
+}
+
+/** Each program: its source, the program, and the modules it is read with. */
+function programs(list) {
+  const read = list.map((s) => {
+    const kinds = Object.keys(s);
+    const kind = kinds[0];
+    const got = kinds.length === 1 && Object.hasOwn(READ, kind) ? READ[kind](s[kind]) : { why: "it is not a source this script knows" };
+    if (!got.program) throw new Error(`${SOURCES} lists ${idOf(s)}, but ${got.why}; run \`${RESCAN}\` to make the list again from the directories`);
+    return { kind, at: s[kind], ...got };
+  });
+  const out = [];
+  // fixtures/: each program, with the other listed ones of its directory as modules.
+  const byDir = new Map();
+  for (const r of read.filter((r) => r.kind === "fixture")) {
+    const dir = r.at.slice(0, r.at.lastIndexOf("/"));
+    if (!byDir.has(dir)) byDir.set(dir, []);
+    byDir.get(dir).push([r.at, r.program]);
+  }
+  for (const [, group] of byDir) {
+    for (const [rel, p] of group) {
       const modules = {};
-      for (const [other, m] of list) if (other !== rel && !Object.hasOwn(modules, m.module)) modules[m.module] = m;
+      for (const [other, m] of group) if (other !== rel && !Object.hasOwn(modules, m.module)) modules[m.module] = m;
       out.push([rel, p, modules]);
     }
   }
   // conformance/: each case's input, patched, with its modules.
-  for (const dir of readdirSync(new URL("conformance", root)).sort()) {
-    const caseRel = `conformance/${dir}/case.json`;
-    let c;
-    try {
-      c = JSON.parse(readText(caseRel));
-    } catch {
-      continue;
-    }
-    if (c.kind !== "compile" || !c.input) continue;
-    const base = `conformance/${dir}/`;
-    const resolve = (f) => fileURLToPath(new URL(f, new URL(base, root))).replace(/\\/g, "/");
-    const relOf = (f) => posix.normalize(`${base}${f}`);
-    let p = c.input.text !== undefined ? loadSource(c.input.text, c.input.kind) : (() => {
-      try {
-        return loadSource(readFileSync(resolve(c.input.file), "utf8"), c.input.kind);
-      } catch {
-        return undefined;
-      }
-    })();
-    if (!p) continue;
-    if (c.patch) {
-      try {
-        p = applyOps(p, c.patch);
-      } catch {
-        continue;
-      }
-    }
-    const modules = {};
-    for (const f of c.modules ?? []) {
-      let m;
-      try {
-        m = loadSource(readFileSync(resolve(f), "utf8"), f.endsWith(".mdt") ? "mdt" : "json");
-      } catch {
-        m = undefined;
-      }
-      if (m && !Object.hasOwn(modules, m.module)) modules[m.module] = m;
-    }
-    out.push([`${caseRel} (${c.input.file ? relOf(c.input.file) : "text"})`, p, modules]);
-  }
-  // vectors/programs/: each canonical program, with the others as modules.
-  const vectors = [];
-  for (const name of readdirSync(new URL("vectors/programs", root)).sort()) {
-    const rel = `vectors/programs/${name}`;
-    const vec = JSON.parse(readText(rel));
-    const p = loadSource(vec.canonical, "json");
-    if (p) vectors.push([rel, p]);
-  }
+  for (const r of read.filter((r) => r.kind === "conformance")) out.push([r.name, r.program, r.modules]);
+  // vectors/programs/: each pinned program, with the other listed ones as modules.
+  const vectors = read.filter((r) => r.kind === "vector").map((r) => [r.at, r.program]);
   for (const [rel, p] of vectors) {
     const modules = {};
     for (const [other, m] of vectors) if (other !== rel && !Object.hasOwn(modules, m.module)) modules[m.module] = m;
@@ -270,12 +368,12 @@ function table(defs) {
 
 const CTOR_NAMES = new Set([...Object.keys(std.CAP_CTORS), "component.read", "component.write", "component.exec", "component.repo"]);
 
-function programCases() {
+function programCases(list) {
   const { cases, add, thrown } = collector();
   const rel = collector();
   const tables = [];
   const sources = [];
-  for (const [source, program, modules] of programs()) {
+  for (const [source, program, modules] of programs(list)) {
     const linked = link(program, modules);
     const defs = linked.defs;
     const language = program.language;
@@ -1019,15 +1117,15 @@ function writeCases(source, header, cases) {
   }
 }
 
-const p = programCases();
+const p = programCases(sourceList(process.argv.slice(2).includes("--rescan")));
 const e = edgeCases();
 const sp = sweepPaths();
 const sc = sweepCaps();
 
-// The directory is this script's: what it wrote before goes, so that a part
-// that is no longer written does not stay.
+// The directory is this script's: the data parts it wrote before go, so that a part
+// that is no longer written does not stay (sources.json is kept).
 mkdirSync(DATA, { recursive: true });
-for (const name of readdirSync(DATA)) if (name.endsWith(".json")) rmSync(new URL(name, DATA));
+for (const name of readdirSync(DATA)) if (/^(std|(programs|edges|sweep)-\d+)\.json$/.test(name)) rmSync(new URL(name, DATA));
 write("std.json", fileText("std.json", { format: FORMAT, generator: GENERATOR, std: stdTables() }));
 writeCases("programs", { sources: p.sources, tables: p.tables }, [...p.cases, ...p.rel]);
 writeCases("edges", { tables: e.tables }, e.cases);
