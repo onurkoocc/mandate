@@ -632,7 +632,7 @@ impl<'a> Resolver<'a> {
         if t.has(TypeForm::Ref) {
             let r = t.ref_name().unwrap_or_default();
             if !self.is_type(r, generics) {
-                let mut candidates: Vec<&str> = self.builtin_types.iter().copied().collect();
+                let mut candidates: Vec<&str> = self.builtin_types.to_vec();
                 candidates.extend(self.defs_of_kind(DefKind::Type));
                 candidates.extend(self.imported.iter().copied());
                 candidates.extend(generics.iter().copied());
