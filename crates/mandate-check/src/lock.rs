@@ -42,8 +42,7 @@
 
 use mandate_ir::{
     DefKind, Definition, Diagnostic, Expr, Import, JsObject, JsValue, Location, Map, Program,
-    Spans, Value, compare_utf16, hash_program, number_to_string, ptr, sort_utf16, trim,
-    unique_in_order,
+    Spans, Value, compare_utf16, hash_program, number_to_string, ptr, sort_utf16, unique_in_order,
 };
 pub use mandate_ir::{
     LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, lock_at_least, lock_schema_diagnostics,
@@ -350,56 +349,9 @@ fn to_number(v: &JsValue) -> f64 {
     }
 }
 
-/// `StringToNumber`: white space trimmed, `""` is 0, `0x`, `0o` and `0b`
-/// integers, `Infinity` with an optional sign, a decimal literal; anything
-/// else `NaN`.
+/// `StringToNumber`, which is [`crate::js_number::js_to_number`]: `Number(s)`.
 fn string_to_number(s: &str) -> f64 {
-    let t = trim(s);
-    if t.is_empty() {
-        return 0.0;
-    }
-    for (prefix, radix) in [
-        ("0x", 16_u32),
-        ("0X", 16),
-        ("0o", 8),
-        ("0O", 8),
-        ("0b", 2),
-        ("0B", 2),
-    ] {
-        if let Some(digits) = t.strip_prefix(prefix) {
-            let radix_f = f64::from(radix);
-            return if digits.is_empty() {
-                f64::NAN
-            } else {
-                digits
-                    .chars()
-                    .try_fold(0.0_f64, |acc, c| {
-                        c.to_digit(radix).map(|d| acc * radix_f + f64::from(d))
-                    })
-                    .unwrap_or(f64::NAN)
-            };
-        }
-    }
-    let (sign, unsigned) = match t.strip_prefix('-') {
-        Some(rest) => (-1.0, rest),
-        None => (1.0, t.strip_prefix('+').unwrap_or(t)),
-    };
-    if unsigned == "Infinity" {
-        return sign * f64::INFINITY;
-    }
-    // Rust also reads `inf`, `nan` and `infinity`: only a literal that starts
-    // with a digit or a point, and has nothing else but its characters.
-    let literal = unsigned
-        .chars()
-        .next()
-        .is_some_and(|c| c.is_ascii_digit() || c == '.')
-        && unsigned
-            .chars()
-            .all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'));
-    if !literal {
-        return f64::NAN;
-    }
-    unsigned.parse::<f64>().map_or(f64::NAN, |x| sign * x)
+    crate::js_number::js_to_number(s)
 }
 
 /// `Math.max(...xs)`: `-Infinity` for none, `NaN` when any is.

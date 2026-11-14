@@ -3,7 +3,9 @@
 //! with its modules and its lock (a `check_patched` case: its input loaded,
 //! the case's RFC 6902 `patch` applied to the IR as the TypeScript runner
 //! applies it, `common::apply_json_patch`, and the patched IR checked as
-//! `JSON.stringify` text), and the result must meet the case's `expect` under the rule of
+//! `JSON.stringify` text; an `apply_ops` case, a patch with a `base`:
+//! `mandate_check::apply_ops`, whose refusal (E0130, E0131) is the result, else
+//! the patched IR checked the same way), and the result must meet the case's `expect` under the rule of
 //! `conformance/README.md` ("How a result is compared"): `ok`; the
 //! diagnostics in order, one to one, by code and path (a diagnostic without
 //! a path is at `""`); `facts` as a subset, each deeply equal; `hashes`
@@ -12,10 +14,8 @@
 //!
 //! An item is named `<door> @ conformance/<id> [codes]`, the codes being
 //! those the case expects (see `mandate_testkit::codes`). The cases of the
-//! other doors (a `patch` with a `base`, which goes through `applyOps`, a
-//! `subprogram`, an `amendment`) are items too, pending by door until R13
-//! ports them; a case
-//! with a lock goes through `check` like the others, its lock passed to the
+//! other doors (a `subprogram`, an `amendment`) are items too, pending by door
+//! until R13 ports them; a case with a lock goes through `check` like the others, its lock passed to the
 //! seam that R14 fills. The journal cases are not compile cases: they are
 //! counted as skipped, with the reason (the Rust verifier runs them in
 //! `crates/verify-journal/tests/conformance.rs`).
@@ -37,7 +37,9 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use common::{check_with, kind_named, modules_of, patched_source, read_source};
+use common::{
+    Applied, applied_source, check_with, kind_named, modules_of, patched_source, read_source,
+};
 use mandate_check::CheckResult;
 use mandate_ir::{JsValue, Value, canonicalize, parse, stringify};
 use mandate_syntax::SourceKind;
@@ -59,8 +61,7 @@ const PENDING: &[&str] = &[
     "*MDT-E07*",
     "*MDT-E17*",
     "*MDT-E1801*",
-    // R13: the doors of patches, sub-programs and amendments.
-    "apply_ops @ *",
+    // R13: the doors of sub-programs and amendments.
     "check_subprogram @ *",
     "check_amendment @ *",
 ];
@@ -175,7 +176,7 @@ struct Case {
 /// together (they must load), the lock read, then `check`; and the case's
 /// `language`, when it gives one, is the one the program declares.
 fn run(c: &Case) -> Result<(), String> {
-    if c.door != "check" && c.door != "check_patched" {
+    if !matches!(c.door, "check" | "check_patched" | "apply_ops") {
         return Err(format!("the {} door is not ported", c.door));
     }
     let dir = format!("conformance/{}", c.id);
@@ -206,6 +207,25 @@ fn run(c: &Case) -> Result<(), String> {
     // `check_patched`: the patch applied to the loaded IR, and the patched
     // IR checked as JSON text.
     let (text, kind) = match case.get("patch").and_then(Value::as_array) {
+        // `apply_ops`: `applyOps(program, base, patch)`; if it refuses the patch (E0130, E0131)
+        // that is the result, else the patched IR is checked.
+        Some(patch) if c.door == "apply_ops" => {
+            let base = case.get("base").and_then(Value::as_str).ok_or("no base")?;
+            match applied_source(&text, kind, base, patch)? {
+                Applied::Source(patched) => (patched, SourceKind::Json),
+                Applied::Refused(refused) => {
+                    let problems = compare_result(case.get("expect").ok_or("no expect")?, &refused);
+                    return if problems.is_empty() {
+                        Ok(())
+                    } else {
+                        Err(problems.join(
+                            "
+    ",
+                        ))
+                    };
+                }
+            }
+        }
         Some(patch) => (patched_source(&text, kind, patch)?, SourceKind::Json),
         None => (text, kind),
     };

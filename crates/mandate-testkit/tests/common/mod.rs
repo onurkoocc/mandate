@@ -4,8 +4,10 @@
 
 #![allow(dead_code, clippy::expect_used, clippy::panic, missing_docs)]
 
-use mandate_check::{CheckOptions, CheckResult, ModuleSource, Modules, check, load_modules};
-use mandate_ir::{JsValue, Value, stringify_pretty};
+use mandate_check::{
+    CheckOptions, CheckResult, ModuleSource, Modules, PatchOp, apply_ops, check, load_modules,
+};
+use mandate_ir::{JsValue, Spans, Value, stringify_pretty};
 use mandate_syntax::{SourceKind, kind_of};
 use mandate_testkit::{read_bytes, read_json};
 
@@ -236,4 +238,94 @@ pub fn patched_source(text: &str, kind: SourceKind, patch: &[Value]) -> Result<S
     };
     let patched = apply_json_patch(&program, patch)?;
     mandate_ir::stringify(&JsValue::from(&patched)).ok_or_else(|| "no JSON text".to_owned())
+}
+
+/// What the door `apply_ops` of a conformance case gives before the patched
+/// program is checked (`runCompileCase`): the text to check, or the result
+/// that is the case's when `applyOps` refuses the patch.
+pub enum Applied {
+    /// The patched IR as `JSON.stringify(applied.program)` writes it, to be
+    /// checked as JSON.
+    Source(String),
+    /// `{ ok: false, diagnostics }`: the stale base (E0130) or the operation
+    /// that failed (E0131), or what the patched program is refused for.
+    Refused(CheckResult),
+}
+
+/// The door `apply_ops` of `runCompileCase`: the input loaded, which must
+/// load without errors, and `applyOps(program, base, patch)` called.
+pub fn applied_source(
+    text: &str,
+    kind: SourceKind,
+    base: &str,
+    patch: &[Value],
+) -> Result<Applied, String> {
+    let before = mandate_syntax::load(text, kind);
+    let program = match before.program {
+        Some(p) if !mandate_ir::has_errors(&before.diagnostics) => p,
+        _ => {
+            return Err("the input of a patch case must load before the patch".to_owned());
+        }
+    };
+    let ops: Vec<PatchOp> = patch.iter().map(PatchOp::from_value).collect();
+    let applied = apply_ops(&program, base, &ops);
+    match applied.program {
+        Some(p) => mandate_ir::stringify(&JsValue::from(&p))
+            .map(Applied::Source)
+            .ok_or_else(|| "no JSON text".to_owned()),
+        None => Ok(Applied::Refused(CheckResult {
+            program: None,
+            spans: Spans::new(),
+            diagnostics: applied.diagnostics,
+            ok: false,
+            hashes: None,
+        })),
+    }
+}
+
+/// The envelope `amendmentInput(a, parent, modules).envelope` of
+/// `compiler/test/cases-runner.ts` gives: the envelope of the workflow
+/// `workflow` of `parent`, with the RFC 6902 `patch` applied by
+/// [`apply_json_patch`]. The workflow must be a workflow with an envelope.
+pub fn amendment_envelope(
+    workflow: &str,
+    patch: &[Value],
+    parent: &Value,
+) -> Result<Value, String> {
+    let envelope = parent
+        .get("defs")
+        .and_then(|defs| defs.get(workflow))
+        .filter(|wf| wf.get("kind").and_then(Value::as_str) == Some("workflow"))
+        .and_then(|wf| wf.get("envelope"))
+        .filter(|e| !matches!(e, Value::Null | Value::Bool(false)));
+    let Some(envelope) = envelope else {
+        return Err(format!(
+            "amendment.workflow: {workflow} is not a workflow with an envelope"
+        ));
+    };
+    apply_json_patch(envelope, patch)
+}
+
+/// The program the diff vectors compare an amendment with: `{ ...parent,
+/// defs: { ...parent.defs, [workflow]: { ...parent.defs[workflow], envelope } } }`,
+/// each member that is there keeping its place.
+pub fn amended_program(parent: &Value, workflow: &str, envelope: Value) -> Result<Value, String> {
+    let mut program = parent
+        .as_object()
+        .ok_or("the parent is not an object")?
+        .clone();
+    let mut defs = parent
+        .get("defs")
+        .and_then(Value::as_object)
+        .ok_or("the parent has no defs")?
+        .clone();
+    let mut wf = defs
+        .get(workflow)
+        .and_then(Value::as_object)
+        .ok_or("the workflow is not defined")?
+        .clone();
+    wf.insert("envelope", envelope);
+    defs.insert(workflow, Value::Object(wf));
+    program.insert("defs", Value::Object(defs));
+    Ok(Value::Object(program))
 }

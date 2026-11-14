@@ -26,7 +26,8 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::{
-    check_text, check_with, kind_named, modules_of, patched_source, read_source, value_text,
+    Applied, applied_source, check_text, check_with, kind_named, modules_of, patched_source,
+    read_source, value_text,
 };
 use mandate_check::Modules;
 use mandate_ir::{Diagnostic, JsValue, Value, stringify_pretty};
@@ -55,8 +56,7 @@ const PENDING: &[&str] = &[
     // R13: the system model, change sets, reads.
     "*MDT-E10*",
     "*MDT-E12*",
-    // R13: the doors of patches, sub-programs and amendments.
-    "apply_ops @ *",
+    // R13: the doors of sub-programs and amendments.
     "check_subprogram @ *",
     "check_amendment @ *",
 ];
@@ -170,7 +170,7 @@ fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), String> {
             lock,
             expected,
         } => {
-            if door != "check" && door != "check_patched" {
+            if !matches!(door.as_str(), "check" | "check_patched" | "apply_ops") {
                 return Err(format!("the {door} door is not ported"));
             }
             let case = read_json(&format!("{dir}/case.json"))?;
@@ -191,6 +191,17 @@ fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), String> {
             // `check_patched`: the case's patch applied to the loaded IR,
             // and the patched IR checked as `JSON.stringify` text.
             let (text, kind) = match case.get("patch").and_then(Value::as_array) {
+                // `apply_ops`: `applyOps(program, base, patch)`; a refused patch (E0130, E0131) is
+                // the result, else the patched IR is checked.
+                Some(patch) if door == "apply_ops" => {
+                    let base = case.get("base").and_then(Value::as_str).ok_or("no base")?;
+                    match applied_source(&text, kind_named(kind), base, patch)? {
+                        Applied::Source(patched) => (patched, SourceKind::Json),
+                        Applied::Refused(refused) => {
+                            return compare_text(expected, &check_text(&refused));
+                        }
+                    }
+                }
                 Some(patch) if door == "check_patched" => (
                     patched_source(&text, kind_named(kind), patch)?,
                     SourceKind::Json,

@@ -49,6 +49,10 @@
 //!   that was not validated. Views of other constructs follow that pattern
 //!   when a phase needs them.
 //!
+//! - [`BUDGET_DIMENSIONS`], [`budget_amount`], [`WorkflowBounds`] and
+//!   [`workflow_bounds`]: the functions of `compiler/src/ir/types.ts` that
+//!   read a budget and a workflow's bounds (its envelope's, when it has one).
+//!
 //! And the ECMAScript behaviour the compiler's output depends on, so that no
 //! phase reinvents it: objects that keep their members in ECMAScript order
 //! ([`Map`], [`JsObject`]); the output value [`JsValue`] with `undefined`, and
@@ -107,6 +111,7 @@ mod stmt;
 mod tags;
 mod text;
 mod type_expr;
+mod types;
 mod validate;
 mod value;
 mod view;
@@ -143,5 +148,6 @@ pub use text::{
     is_js_whitespace, sort_utf16, trim, trim_end, trim_start, unique_in_order, utf16_len,
 };
 pub use type_expr::{Param, TypeExpr, Variant};
+pub use types::{BUDGET_DIMENSIONS, WorkflowBounds, budget_amount, workflow_bounds};
 pub use validate::{Loaded, Spans, load_json, nearest_span, validate_ir};
 pub use value::{Int, Map, Value};

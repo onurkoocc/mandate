@@ -33,6 +33,7 @@ const LIBRARIES: &[(&str, &[&str])] = &[
     ("mandate-ir", &[]),
     ("mandate-check", &[]),
     ("mandate-syntax", &[]),
+    ("mandate-views", &[]),
     ("verify-journal", &["main.rs"]),
 ];
 

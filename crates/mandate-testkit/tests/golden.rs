@@ -16,7 +16,7 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::{check_text, check_with, modules_of, read_source};
-use mandate_check::{requirements_to_js, sandbox_requirements};
+use mandate_check::{requirements_to_js, sandbox_requirements, semantic_diff};
 use mandate_ir::{Diagnostic, JsObject, JsValue, Loaded, canonicalize, stringify_pretty};
 use mandate_syntax::{kind_of, load};
 use mandate_testkit::{
@@ -37,7 +37,6 @@ const PENDING: &[&str] = &[
     "view --format json @ *",
     "view --format md @ *",
     "view --format html @ *",
-    "view --against itself @ *",
 ];
 
 /// What the Rust crates print for one pinned output.
@@ -106,6 +105,20 @@ fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
                 .with("program", hashes.program.as_str())
                 .with("requirements", requirements_to_js(&requirements));
             let mut text = stringify_pretty(&JsValue::Object(out)).unwrap_or_default();
+            text.push('\n');
+            Ok(text)
+        }
+        // `json(semanticDiff(p, p))` of the program as `check` gives it with its
+        // modules and its lock (`lockOf`), when it checks: no locks and no modules
+        // are given to the diff.
+        "view --against itself" => {
+            let r = checked(o.program, true, lock_file_of(o.program).is_some())?;
+            let program = r
+                .program
+                .filter(|_| r.ok)
+                .ok_or("the program does not check, so it has no views")?;
+            let mut text = stringify_pretty(&semantic_diff(&program, &program, None).to_js())
+                .unwrap_or_default();
             text.push('\n');
             Ok(text)
         }
