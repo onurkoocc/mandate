@@ -9,8 +9,10 @@
 //! `corpus <door>: ran N, passed M, pending K`, over the entries of that
 //! door, named `<door> @ <id> [<codes>]` (the codes are those of the stored
 //! result, sorted, so a pending list can name a family: `*MDT-E03*`).
-//! Five doors exist in Rust: `load` (`mandate_syntax::load`), `check`,
-//! `load_modules`, `validate_lock` and `denial_diagnostics` (`mandate_check`).
+//! Six doors exist in Rust: `load` (`mandate_syntax::load`), `check`,
+//! `load_modules`, `validate_lock`, `denial_diagnostics` and `apply_patch`
+//! (`mandate_check`; `apply_patch` runs no static check, so none of its
+//! entries is pending).
 //! The entries of `check` and `load_modules` are pending only by the family
 //! of codes of a stage not ported yet (`mandate_check::UNPORTED`; the
 //! families are `mandate_testkit::codes::FAMILIES`, and
@@ -37,12 +39,14 @@
 #![allow(clippy::panic, clippy::expect_used, missing_docs)]
 
 use mandate_check::{
-    CheckOptions, ModuleSource, Modules, check, denial_diagnostics, load_modules, validate_lock,
+    CheckOptions, ModuleSource, Modules, PatchOp, apply_patch, check, denial_diagnostics,
+    load_modules, validate_lock,
 };
 use mandate_ir::{Diagnostic, JsValue, Span, Spans, Value, parse};
 use mandate_syntax::{SourceKind, load};
 use mandate_testkit::corpus::{
-    Actual, Corpus, Door, Entry, Input, Kind, digest_of, ir_text, render_check, render_diagnostics,
+    Actual, Corpus, Door, Entry, Input, Kind, digest_of, ir_text, render_apply_patch, render_check,
+    render_diagnostics,
     render_load, render_load_modules, spans_text,
 };
 use mandate_testkit::{check_pending, run_gate};
@@ -98,8 +102,6 @@ const PENDING_CHECK_PATCH: &[&str] = &["check_patch @ *"];
 const PENDING_CHECK_SUBPROGRAM: &[&str] = &["check_subprogram @ *"];
 /// `check_amendment`: R13.
 const PENDING_CHECK_AMENDMENT: &[&str] = &["check_amendment @ *"];
-/// `apply_patch`: R13.
-const PENDING_APPLY_PATCH: &[&str] = &["apply_patch @ *"];
 
 /// The pending list of a door. `acs_target` has none: see [`OUT_OF_SCOPE`].
 fn pending(door: Door) -> &'static [&'static str] {
@@ -110,7 +112,7 @@ fn pending(door: Door) -> &'static [&'static str] {
         Door::CheckPatch => PENDING_CHECK_PATCH,
         Door::CheckSubprogram => PENDING_CHECK_SUBPROGRAM,
         Door::CheckAmendment => PENDING_CHECK_AMENDMENT,
-        Door::ApplyPatch => PENDING_APPLY_PATCH,
+        Door::ApplyPatch => &[],
         Door::ValidateLock => &[],
         Door::AcsTarget => &[],
         Door::DenialDiagnostics => &[],
@@ -207,6 +209,24 @@ fn replay(input: &Input<'_>) -> Result<Actual, String> {
                 Ok(diagnostics) => Actual::Result(render_diagnostics(&diagnostics)),
                 Err(message) => Actual::Throws(message),
             })
+        }
+        Input::ApplyPatch(p) => {
+            let ops: Vec<PatchOp> = p.ops.iter().map(PatchOp::from_value).collect();
+            let modules = p.modules.as_ref().map(|m| modules_map(m));
+            let r = apply_patch(p.program, p.base, &ops, modules.as_ref());
+            let governance = JsValue::Array(
+                r.governance
+                    .iter()
+                    .map(mandate_check::GovernanceChange::to_js)
+                    .collect(),
+            );
+            Ok(Actual::Result(render_apply_patch(
+                r.ok,
+                &r.diagnostics,
+                governance,
+                r.program.as_ref(),
+                r.hash.as_deref(),
+            )))
         }
         other => Err(format!(
             "the Rust door for {} is not ported yet",

@@ -1,0 +1,15 @@
+[package]
+name = "mandate-views"
+description = "The documents of the Rust Mandate compiler: the Markdown and the HTML of a view, and the document of a semantic diff, ported from the TypeScript compiler"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mandate-ir = { path = "../mandate-ir" }
+mandate-check = { path = "../mandate-check" }
+
+[lints]
+workspace = true

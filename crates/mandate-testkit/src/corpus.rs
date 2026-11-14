@@ -1128,6 +1128,32 @@ fn render_program_result(
     rendered
 }
 
+/// The result of `apply_patch`: `{ ok, diagnostics, governance, program?,
+/// hash? }`, `governance` as the compiler gives it (a list of `{ kind, path,
+/// detail }`) and `program`, when the patch was applied, as its digest.
+#[must_use]
+pub fn render_apply_patch(
+    ok: bool,
+    diagnostics: &[Diagnostic],
+    governance: JsValue,
+    program: Option<&Value>,
+    hash: Option<&str>,
+) -> Rendered {
+    let mut rendered = Rendered::new(JsValue::Undefined);
+    let mut object = JsObject::new()
+        .with("ok", ok)
+        .with("diagnostics", diagnostics_js(diagnostics))
+        .with("governance", governance);
+    if let Some(program) = program {
+        object.insert("program", rendered.digest("program", ir_text(program)));
+    }
+    if let Some(hash) = hash {
+        object.insert("hash", hash);
+    }
+    rendered.value = JsValue::Object(object);
+    rendered
+}
+
 /// The result of `load_modules`: `{ modules: { <name>: digest, ... },
 /// problems: [{ file, diagnostics }, ...] }`; `modules` in the order the
 /// compiler built them, and `problems` as `(file, diagnostics)`.

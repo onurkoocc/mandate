@@ -205,6 +205,11 @@ jobs:
         run: cargo build --locked --target wasm32-wasip1 -p mandate-check
       - name: mandate-check tests under Node's WASI
         run: node scripts/wasi-test.mjs -p mandate-check -- --nocapture
+      # mandate-views (the documents: Markdown and HTML, and the document of a diff).
+      - name: Build mandate-views for WebAssembly
+        run: cargo build --locked --target wasm32-wasip1 -p mandate-views
+      - name: mandate-views tests under Node's WASI
+        run: node scripts/wasi-test.mjs -p mandate-views -- --nocapture
       - name: The test data of mandate-check is what the TypeScript compiler gives now
         run: |
           node scripts/caps-vectors.mjs
