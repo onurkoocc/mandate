@@ -1,0 +1,19 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104b",
+  "kind": "compile",
+  "title": "A program declared 0.5 with a negative money literal is refused at the literal.",
+  "spec": ["spec/ir.md#what-05-adds"],
+  "language": "mandate/0.5",
+  "input": {
+    "text": "{\"language\":\"mandate/0.5\",\"module\":\"m\",\"version\":\"0.1\",\"defs\":{\"Refund\":{\"kind\":\"const\",\"value\":{\"op\":\"money\",\"micros\":-1500000,\"currency\":\"USD\"}}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E0104", "path": "/defs/Refund/value", "facts": { "op": "money", "language": "mandate/0.5" } }
+    ]
+  }
+}

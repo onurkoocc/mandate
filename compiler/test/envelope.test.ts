@@ -6,7 +6,7 @@
 // change. Each rule is shown on one change to a program that checks.
 
 import { describe, expect, it } from "vitest";
-import { check, kindOf, loadModules } from "../src/check.js";
+import { check as checkAll, kindOf, loadModules } from "../src/check.js";
 import { hashProgram } from "../src/hash.js";
 import type { Program } from "../src/ir/types.js";
 import { canonicalize } from "../src/json/jcs.js";
@@ -16,7 +16,7 @@ import { RESERVED } from "../src/parse/parser.js";
 import { applyPatch } from "../src/patch/patch.js";
 import { printProgram } from "../src/print/printer.js";
 import { architecture, authority, cost, semanticDiff } from "../src/views/views.js";
-import { readRepo } from "./helpers.js";
+import { checkLessMoved as check, readRepo } from "./helpers.js";
 
 const MIGRATE_ALL = readRepo("fixtures/envelope/migrate-all.mdt");
 const DOMAIN = "fixtures/envelope/domain.mdt";
@@ -55,22 +55,30 @@ function returningTheMap(returns: string): string {
 }
 
 describe("MigrateAll, the spec's example", () => {
-  it("checks with its domain module, without a diagnostic, warnings included", () => {
-    const r = check(MIGRATE_ALL, "mdt", { modules: modules() });
+  // The contract Moved is there for the sub-programs (spec/envelope.md). Its two static criteria read the run's
+  // values, so they are run-time checks, and each says so with a warning. These are the only diagnostics of the
+  // fixture; the tests of this file and of the others that read it use checkLessMoved, which drops them.
+  const MOVED = [
+    ["MDT-W0601", "/defs/Moved/accept/moved/by/static"],
+    ["MDT-W0601", "/defs/Moved/accept/nothing_left/by/static"],
+  ];
+
+  it("checks with its domain module, with no diagnostic but the two warnings of its contract", () => {
+    const r = checkAll(MIGRATE_ALL, "mdt", { modules: modules() });
     expect(r.ok).toBe(true);
-    expect(r.diagnostics.map((d) => `${d.code} ${d.message}`)).toEqual([]);
+    expect(r.diagnostics.map((d) => [d.code, d.at.path])).toEqual(MOVED);
     expect(r.program!.language).toBe("mandate/0.4");
   });
 
   it("checks without its domain module too, which is then opaque", () => {
-    const r = check(MIGRATE_ALL, "mdt");
+    const r = checkAll(MIGRATE_ALL, "mdt");
     expect(r.ok).toBe(true);
-    expect(r.diagnostics.map((d) => `${d.code} ${d.message}`)).toEqual([]);
+    expect(r.diagnostics.map((d) => [d.code, d.at.path])).toEqual(MOVED);
   });
 
   it("has a pinned program hash", () => {
     // A change to this hash is a change to the IR of 0.4 and needs a reason in the commit that makes it.
-    expect(check(MIGRATE_ALL, "mdt", { modules: modules() }).hashes!.program).toBe("sha256:c6ca75ca9aed59eca642c289b5b503fba33889d68dea3b75839c87087a8b0e18");
+    expect(check(MIGRATE_ALL, "mdt", { modules: modules() }).hashes!.program).toBe("sha256:7c9c2702362efca6e0a4d861f4c855b845e9c013d0768410e944683d7cc778a4");
   });
 
   it("prints to text that reads back to the same IR and hash, and printing again changes nothing", () => {

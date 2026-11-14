@@ -27,6 +27,16 @@ function getValidator(): ValidateFunction {
   return validator;
 }
 
+/**
+ * The raw errors of the validator `validateIr` uses, for `value` as it stands, in Ajv's order. It exists for the
+ * vectors (vectors/README.md): another implementation of the schema is checked against these. `validateIr` does
+ * not call it, and does not run the validator at all for a document that is not an object or has no known language.
+ */
+export function irSchemaErrors(value: Json): ErrorObject[] {
+  const validate = getValidator();
+  return validate(value) ? [] : [...(validate.errors ?? [])];
+}
+
 export function validateIr(value: Json, spans?: Map<string, Span>): Diagnostic[] {
   const at = (path: string): { path: string; span?: Span } => {
     const span = nearestSpan(spans, path);
@@ -89,15 +99,33 @@ export function validateIr(value: Json, spans?: Map<string, Span>): Diagnostic[]
  * (design doc 9); 0.4 roles, the envelope, `map`, `plan` and the `agents`
  * budget dimension (spec/envelope.md). An older program that uses one is
  * refused by name (E0104), not read with another meaning. A version adds its
- * constructs here.
+ * constructs here. Exported for the vectors (vectors/README.md), which have a case for every row.
  */
-const SINCE: Record<"kinds" | "ops" | "agentFields" | "workflowFields" | "budgetFields", Record<string, LanguageVersion>> = {
+export const SINCE: Record<"kinds" | "ops" | "agentFields" | "workflowFields" | "budgetFields", Record<string, LanguageVersion>> = {
   kinds: { ...Object.fromEntries(SYSTEM_KINDS.map((k) => [k, "mandate/0.3" as const])), role: "mandate/0.4" },
   ops: { changeset: "mandate/0.3", map: "mandate/0.4", plan: "mandate/0.4" },
   agentFields: { loop: "mandate/0.2", progress: "mandate/0.2" },
   workflowFields: { envelope: "mandate/0.4" },
   budgetFields: { agents: "mandate/0.4" },
 };
+
+/**
+ * An int, dec or money literal below zero. The text form of such a literal is
+ * a minus sign and a positive literal, which reads back as `unary neg`, so the
+ * IR and its text would hash differently. From 0.5 the IR refuses it.
+ */
+function negativeLiteral(v: { [k: string]: Json }): boolean {
+  switch (v["op"]) {
+    case "int":
+      return typeof v["value"] === "number" && v["value"] < 0;
+    case "dec":
+      return typeof v["value"] === "string" && v["value"].startsWith("-");
+    case "money":
+      return typeof v["micros"] === "number" && v["micros"] < 0;
+    default:
+      return false;
+  }
+}
 
 /** The definitions and expressions of `defs` that are newer than `lang`. */
 function newerConstructs(defs: { [k: string]: Json }, lang: LanguageVersion, at: (p: string) => { path: string; span?: Span }): Diagnostic[] {
@@ -111,6 +139,9 @@ function newerConstructs(defs: { [k: string]: Json }, lang: LanguageVersion, at:
     else if (v && typeof v === "object") {
       const since = newer(SINCE.ops, v["op"]);
       if (since) out.push(diag("E0104", `'${String(v["op"])}' is a ${since} expression; this program is ${lang}.`, at(path), { facts: { op: v["op"]!, language: lang } }));
+      if (atLeast(lang, "mandate/0.5") && negativeLiteral(v)) {
+        out.push(diag("E0104", `A negative '${String(v["op"])}' literal is not allowed in ${lang}: from mandate/0.5 a negative literal is written as the negation of a positive one (unary neg).`, at(path), { facts: { op: v["op"]!, language: lang } }));
+      }
       for (const [k, x] of Object.entries(v)) {
         // Every budget is written under `budget`: a workflow's, an agent's, a skill's, a delegation's.
         if (k === "budget" && x && typeof x === "object" && !Array.isArray(x)) {

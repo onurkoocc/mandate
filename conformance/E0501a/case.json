@@ -16,7 +16,9 @@
         "code": "MDT-E0501",
         "path": "/defs/MigrateAll/envelope/budget",
         "facts": { "agents": { "limit": 150, "declared_by_children": 151 } }
-      }
+      },
+      { "code": "MDT-W0601", "path": "/defs/Moved/accept/moved/by/static" },
+      { "code": "MDT-W0601", "path": "/defs/Moved/accept/nothing_left/by/static" }
     ]
   }
 }

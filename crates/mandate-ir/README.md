@@ -12,7 +12,24 @@ ports these modules, which remain the specification:
 - `Diagnostic`, `Location`, `Repair`, `ptr`, `has_errors`, `format_diagnostic`:
   `compiler/src/diag.ts`. `Diagnostic::to_js` is the object `diag()` builds,
   with the member order of `at` that each call site writes (`Location`'s
-  constructors name them).
+  constructors name them);
+- `load_json`, `validate_ir`, `nearest_span`: reading a program given as JSON
+  IR, `load(text, "json")` in `compiler/src/check.ts` and `validateIr` in
+  `compiler/src/ir/validate.ts` (E0103, E0104 of the schema and of the version
+  gates, E0105), with the same diagnostics in the same order;
+- `Schema`, `ir_schema`, `lock_schema`, `ir_schema_errors`,
+  `lock_schema_errors`: a JSON Schema validator for the subset of draft
+  2020-12 that `spec/ir.schema.json` and `spec/lock.schema.json` use (both
+  embedded at build time), which gives Ajv 8.20.0's raw errors in Ajv's
+  order; it refuses a schema with a keyword it does not implement. Its
+  patterns are matched by hand (`src/pattern.rs`).
+  `lock_schema_diagnostics` is the E0140 `validateLock` gives a lock the
+  schema refuses;
+- `Language`, `DefKind`, `ExprOp`, `StmtOp`, `PatternKind`, `TierBy`,
+  `TypeForm`, `VerifierForm`, `ReadSource`, `TemplatePart`: the closed sets
+  of tags of the IR schema (`tests/tags.rs` fails when they and the schema
+  differ), and `Program`, `Import`, `Definition`: typed views of the top of
+  a program, which never panic on a value that was not validated.
 
 And the ECMAScript behaviour the compiler's output depends on, so that no
 ported phase reinvents it:
@@ -40,10 +57,11 @@ The crate reads no file, environment variable or clock and starts no process;
 `crates/mandate-testkit/tests/authority.rs` holds it to that. Its one
 dependency is `sha2`. `cargo test` checks it against the vectors in
 [`../../vectors`](../../vectors/README.md), which the TypeScript compiler
-writes. It also runs the conformance cases in
-[`../../conformance`](../../conformance/README.md) that need only the reader and the
-hashes (`tests/conformance.rs`); the others need a compiler, and the test prints
-how many it ran and how many it skipped.
+writes; `tests/schema.rs` holds the validator to the raw errors and
+diagnostics of `vectors/schema/`. It also runs the conformance cases in
+[`../../conformance`](../../conformance/README.md) that loading JSON IR and the
+hashes decide (`tests/conformance.rs`); the others need a compiler, and the test
+prints how many it ran and how many it skipped.
 
 ## Running the tests without a native executable
 
