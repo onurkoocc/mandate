@@ -31,7 +31,7 @@
 // binding's `harness_tokens` allows for it.
 
 import Anthropic from "@anthropic-ai/sdk";
-import { bindingChecks, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, type Lock, type ManagedAgentsBinding, type ModelLock, type Program, type Tariff, agentModels } from "@mandate/compiler";
+import { bindingChecks, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, type Lock, type ManagedAgentsBinding, type ModelLock, type Program, type Tariff, agentModels } from "@mandate/bridge";
 import type { ChatModel, Cost, Executor, OpenRequest, Outcome, ToolSpec, TurnBound, TurnRequest } from "./adapters.js";
 import { boundOf, failure, priceUsage } from "./anthropic.js";
 import { Violation } from "./signals.js";

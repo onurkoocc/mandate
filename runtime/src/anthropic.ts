@@ -17,7 +17,7 @@
 // the lock does not name. A refusal is reported as a fault instead.
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { Lock, ModelLock, Program, Tariff } from "@mandate/compiler";
+import type { Lock, ModelLock, Program, Tariff } from "@mandate/bridge";
 import type { ChatModel, Cost, InferRequest, ModelAdapter, Outcome, TurnBound, TurnRequest } from "./adapters.js";
 import { denialOf } from "./gateway.js";
 import { typeSchema } from "./schema.js";

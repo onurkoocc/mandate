@@ -50,7 +50,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
-import { calleePath, rolesNamed, type Expr, type Lock, type Program, type Stmt } from "@mandate/compiler";
+import { calleePath, rolesNamed, type Expr, type Lock, type Program, type Stmt } from "@mandate/bridge";
 import type { Adapters, Outcome } from "./adapters.js";
 import type { Db } from "./db.js";
 import { payloadOf, shownPackage, signDecision, type SignedDecision } from "./decisions.js";

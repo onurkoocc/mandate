@@ -18,7 +18,7 @@
 import pg from "pg";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { DATA_CLASSES, type DataClass, type Expr } from "@mandate/compiler";
+import { DATA_CLASSES, type DataClass, type Expr } from "@mandate/bridge";
 import type { Outcome, ReadBroker, ReadRequest } from "./adapters.js";
 import { digest, isObj, type Obj, type Value } from "./values.js";
 

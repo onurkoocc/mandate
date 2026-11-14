@@ -17,7 +17,7 @@
 // this file (`attr`, `OtlpSpan`, `body`), kept in one place so that a detail of the wire format is corrected once.
 
 import { createHash } from "node:crypto";
-import { modelTiers, type Program } from "@mandate/compiler";
+import { modelTiers, type Program } from "@mandate/bridge";
 import { eventClass } from "./classes.js";
 import type { Db, Row, Tx } from "./db.js";
 import { TERMINAL } from "./journal.js";

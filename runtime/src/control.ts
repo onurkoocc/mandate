@@ -45,7 +45,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseStrictJson, type Lock, type Program } from "@mandate/compiler";
+import { parseStrictJson, type Lock, type Program } from "@mandate/bridge";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Adapters, Executor, ToolAdapter, VerifierAdapter } from "./adapters.js";
 import { managedAgentsExecutor, sdkApi } from "./managed-agents.js";

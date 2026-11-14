@@ -5,7 +5,7 @@
 // package also needs every role it names bound to a member in its lock.
 
 import { readFileSync } from "node:fs";
-import { check, hashProgram, loadModules, type Json, type Modules, type Program } from "@mandate/compiler";
+import { check, hashProgram, loadModules, type Json, type Modules, type Program } from "@mandate/bridge";
 import { describe, expect, it } from "vitest";
 import { buildPackage, isSigned04, notRunYet, RUNTIME_LANGUAGES, verifyPackage, type Lock, type Package } from "../src/runtime.js";
 import { Violation } from "../src/signals.js";

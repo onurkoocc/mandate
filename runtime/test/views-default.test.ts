@@ -8,7 +8,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { check, load, toHtml, toMarkdown, type WorkflowDef } from "@mandate/compiler";
+import { check, load, toHtml, toMarkdown, type WorkflowDef } from "@mandate/bridge";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { signDecision } from "../src/decisions.js";

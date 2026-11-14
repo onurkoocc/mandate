@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { check, printProgram, type Def, type Modules } from "@mandate/compiler";
+import { check, printProgram, type Def, type Modules } from "@mandate/bridge";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { main } from "../src/cli.js";
 import { GitHubMerges } from "../src/github-merge.js";

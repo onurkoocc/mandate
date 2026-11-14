@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, existsSync, readFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { check, type Lock } from "@mandate/compiler";
+import { check, type Lock } from "@mandate/bridge";
 import { build } from "esbuild";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Adapters } from "../src/adapters.js";
@@ -40,7 +40,7 @@ async function bundle(entry: string, name: string): Promise<string> {
     platform: "node",
     format: "esm",
     target: "node22",
-    alias: { "@mandate/compiler": here("../../compiler/src/index.ts") },
+    alias: { "@mandate/bridge": here("../../bridge/src/index.ts") },
     external: ["pg", "@electric-sql/pglite", "@anthropic-ai/sdk", "@temporalio/*", "ajv", "ajv/*", "ajv-formats", "@microsoft/mxc-sdk", "@microsoft/mxc-sdk/*"],
     logLevel: "error",
   });

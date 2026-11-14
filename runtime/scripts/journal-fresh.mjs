@@ -16,7 +16,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { check } from "@mandate/compiler";
+import { check } from "@mandate/bridge";
 import { buildPackage, EvidenceSigner, openDb, Runtime, simulate, verifyExport } from "../dist/index.js";
 
 const [dir, seedArg] = process.argv.slice(2);

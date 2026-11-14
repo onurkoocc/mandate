@@ -7,7 +7,7 @@
 // the amendment stands as the journal recorded it. Each rule is shown by one
 // run that keeps it and one that breaks it.
 
-import { check, load, type WorkflowDef } from "@mandate/compiler";
+import { check, load, type WorkflowDef } from "@mandate/bridge";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { shownPackage, signDecision, type DecisionKind, type Shown } from "../src/decisions.js";

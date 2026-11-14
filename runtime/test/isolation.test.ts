@@ -5,7 +5,7 @@
 // planned as it always was, whatever the host reports.
 
 import { readFileSync } from "node:fs";
-import { check, requirementFor, type CapVal, type Lock, type Program } from "@mandate/compiler";
+import { check, requirementFor, type CapVal, type Lock, type Program } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { TrustedKeys } from "../src/evidence.js";
 import { buildPackage, notRunYet, verifyPackage } from "../src/runtime.js";

@@ -3,7 +3,7 @@
 // among it; an export resumes from a cursor and fails without touching a run. The collector is in this process, on
 // the loopback address: no test contacts a network.
 
-import type { Lock } from "@mandate/compiler";
+import type { Lock } from "@mandate/bridge";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from "node:http";

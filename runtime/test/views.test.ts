@@ -3,8 +3,8 @@
 // as plain content, never as a control (G09), and a view that the run has
 // moved past says so, while a decision taken on it is refused (G10).
 
-import { check } from "@mandate/compiler";
-import { toHtml, toMarkdown } from "@mandate/compiler";
+import { check } from "@mandate/bridge";
+import { toHtml, toMarkdown } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import type { RunRow } from "../src/journal.js";
 import { SimAgents, SimTool } from "../src/sim.js";

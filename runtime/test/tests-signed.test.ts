@@ -10,7 +10,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { check, type Program } from "@mandate/compiler";
+import { check, type Program } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { main } from "../src/cli.js";
 import { runTests, type TestResult } from "../src/testing.js";
