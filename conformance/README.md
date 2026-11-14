@@ -3,7 +3,8 @@
 A case is one small, checkable claim about a Mandate compiler: this input, with
 these modules and this lock, gives these diagnostics. The files here are meant to
 be read by any implementation. The TypeScript reference compiler reads them in
-`compiler/test/cases.test.ts`; the Rust compiler will read the same files.
+`compiler/test/cases.test.ts`, and the Rust compiler reads the same files (see
+"What the Rust crates run" below).
 
 A journal case (J01–J16) is a claim about a journal verifier instead: this export
 of a run's journal, under these public keys, gives this report (spec/journal.md).
@@ -232,20 +233,66 @@ it was given as it was (S12).
 |---|---|---|
 | TypeScript compiler | every `compile` case | `compiler/test/cases.test.ts` |
 | TypeScript runtime | every `journal` case | `runtime/test/journal-cases.test.ts` |
-| Rust `mandate-ir` | the `compile` cases that need only the reader and the hashes (below) | `crates/mandate-ir/tests/conformance.rs` |
+| Rust compiler | every `compile` case, through the front door its kind names | `crates/mandate-testkit/tests/conformance.rs` |
+| Rust `mandate-ir` | the six `compile` cases whose hashes need only the reader (below) | `crates/mandate-ir/tests/conformance.rs` |
 | Rust `verify-journal` | every `journal` case, through its library and its binary | `crates/verify-journal/tests/conformance.rs` |
 
-`crates/verify-journal/tests/conformance.rs` finds the journal cases by
-their `kind`, verifies each export under its keys, and compares the report
-with the case's as JSON values, and the binary's output with the report file
-byte for byte; it prints how many it ran.
+**The Rust compiler.** `conformance_gate` in
+`crates/mandate-testkit/tests/conformance.rs` reads every directory of
+`conformance/` and runs each `compile` case through the door its fields name
+(the same names as `doorOf` in `compiler/test/diagnostic-vectors.test.ts`):
 
-`crates/mandate-ir/tests/conformance.rs` runs, with the Rust crate alone, the
-cases that need only the strict JSON reader and the hashes, and counts the rest
-as skipped, with the reason. It runs a `compile` case with a JSON input and none
-of `patch`, `modules`, `lock`, `subprogram`, `amendment` and `base`, when either
-every diagnostic it expects has a reader code (E0102, E0105, E0106, E0107,
-E0108), or it expects `ok` with `hashes` and no diagnostics.
+- a case with `amendment`: `check_amendment`; with `subprogram`:
+  `check_subprogram`;
+- a case with `patch` and `base`: `apply_ops` (a refusal, E0130 or E0131, is
+  the result; otherwise the patched IR is checked);
+- a case with `patch` and no `base`: the RFC 6902 patch is applied to the IR as
+  `compiler/test/cases-runner.ts` applies it, and the patched IR is checked as
+  JSON text (`check_patched`);
+- every other case: `check`, with the case's modules and lock.
+
+The result is compared with `expect` by the rule of "How a result is compared"
+above and nothing else: `ok`; the diagnostics in order, one to one, by `code`
+and `path`; `facts` as a subset, each deeply equal; `hashes` exactly when
+given. Messages and spans are not compared here; `vectors/diagnostics/` holds
+the TypeScript's whole result for each of these cases (and for every golden
+program), and the diagnostics gate (`crates/mandate-testkit/tests/diagnostics.rs`)
+compares the Rust's result with it whole, byte for byte.
+
+The gate prints what it ran, and the `journal` cases, which are not compile
+cases, as skipped:
+
+```
+conformance cases: ran 125, passed 125, pending 0
+conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
+  skipped 16: journal cases: a run's journal, which crates/verify-journal checks
+```
+
+(141 cases: 125 `compile`, 16 `journal`; no case has the kind `run` yet.) A case
+that fails is named as `<door> @ conformance/<id> [codes]` with every
+difference. `pending` is the number of cases a list in the test holds back; the
+list is empty, and what it is for now is this: a new rule of the language is
+written first as a case here, listed as pending, and the list is shortened by
+the commit that makes the Rust pass it. A pending case is held to failing only
+by leaving diagnostics out, never by giving one the TypeScript does not.
+
+What the gates compare, and what the Rust compiler is not held to, is in
+`vectors/README.md`, "Where the Rust compiler is not held to the TypeScript".
+
+**`verify-journal`.** `crates/verify-journal/tests/conformance.rs` finds the
+journal cases by their `kind`, verifies each export under its keys, and compares
+the report with the case's as JSON values, and the binary's output with the
+report file byte for byte; it prints how many it ran. It starts the binary, so
+it runs natively (CI's `rust` job), not under WebAssembly.
+
+**`mandate-ir`.** `crates/mandate-ir/tests/conformance.rs` runs, with the Rust
+crate alone, the cases that need only the strict JSON reader and the hashes, and
+counts the rest as skipped, with the reason (it prints `ran 6, skipped 135 (of
+141)`). It runs a `compile` case with a JSON input and none of `patch`,
+`modules`, `lock`, `subprogram`, `amendment` and `base`, when it expects `ok`
+with `hashes` and no diagnostics (E0104c, S10a, S10b, S11a, S11b, S11m): the
+reader must accept the input with no diagnostic and the hashes must be the
+case's.
 
 ## Adding a case
 
@@ -263,3 +310,8 @@ npm test --workspace compiler
 
 or only the cases: `cd compiler && npx vitest run test/cases`. The journal
 cases: `cd runtime && npx vitest run test/journal-cases`.
+
+The Rust compiler's cases: `cargo test -p mandate-testkit --test conformance --
+--nocapture`, or, where a native test cannot run, `node scripts/wasi-test.mjs -p
+mandate-testkit --test conformance -- --nocapture`. The journal cases need a
+native run: `cargo test -p verify-journal --test conformance`.
