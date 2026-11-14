@@ -824,10 +824,10 @@ impl<'a> Checker<'a> {
                         None,
                     );
                 }
-            } else if has(p, VerifierForm::Call) {
-                if let Some(c) = p.get("call").and_then(Expr::of) {
-                    self.expr(c, frame, &format!("{pp}/call"));
-                }
+            } else if has(p, VerifierForm::Call)
+                && let Some(c) = p.get("call").and_then(Expr::of)
+            {
+                self.expr(c, frame, &format!("{pp}/call"));
             }
         }
     }

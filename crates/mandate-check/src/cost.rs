@@ -133,16 +133,19 @@ fn truthy(x: f64) -> bool {
 /// `Math.max(a, b)`: NaN when either is, and `+0` over `-0`.
 #[must_use]
 pub fn js_max(a: f64, b: f64) -> f64 {
-    if a.is_nan() || b.is_nan() {
-        f64::NAN
-    } else if a > b {
-        a
-    } else if b > a {
-        b
-    } else if a.is_sign_negative() {
-        b
-    } else {
-        a
+    match a.partial_cmp(&b) {
+        // Either is NaN.
+        None => f64::NAN,
+        Some(std::cmp::Ordering::Greater) => a,
+        Some(std::cmp::Ordering::Less) => b,
+        // Equal, which `+0` and `-0` are: the positive one.
+        Some(std::cmp::Ordering::Equal) => {
+            if a.is_sign_negative() {
+                b
+            } else {
+                a
+            }
+        }
     }
 }
 

@@ -537,19 +537,20 @@ fn same_shape(a: &Ty, e: &Ty, env: &dyn TypeEnv, full_a: &Ty, full_e: &Ty) -> Op
         let (an, aa, lit) = (&na.name, &na.args, &na.lit);
         let (en, ea) = (&ne.name, &ne.args);
         // A text literal is a Path where one is expected, if it keeps the Path rule.
-        if an == "Text" && en == "Path" {
-            if let Some(lit) = lit {
-                return path_problem(lit).map(|why| {
-                    let mut quoted = String::new();
-                    write_json_string(&mut quoted, lit);
-                    Problem {
-                        code: "E0204",
-                        message: format!(
-                            "{quoted} is not a Path: {why}. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment."
-                        ),
-                    }
-                });
-            }
+        if an == "Text"
+            && en == "Path"
+            && let Some(lit) = lit
+        {
+            return path_problem(lit).map(|why| {
+                let mut quoted = String::new();
+                write_json_string(&mut quoted, lit);
+                Problem {
+                    code: "E0204",
+                    message: format!(
+                        "{quoted} is not a Path: {why}. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment."
+                    ),
+                }
+            });
         }
         if an != en && !widens_to(an).contains(&en.as_str()) {
             return Some(mismatch());
