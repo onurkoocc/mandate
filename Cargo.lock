@@ -83,10 +83,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "mandate-syntax"
+version = "0.1.0"
+dependencies = [
+ "mandate-ir",
+ "mandate-testkit",
+]
+
+[[package]]
 name = "mandate-testkit"
 version = "0.1.0"
 dependencies = [
  "mandate-ir",
+ "mandate-syntax",
  "sha2",
 ]
 

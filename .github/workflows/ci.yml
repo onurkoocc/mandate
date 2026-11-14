@@ -159,10 +159,13 @@ jobs:
         with:
           node-version: 24.22.1
           cache: npm
-      - name: Build mandate-ir for WebAssembly
-        run: cargo build --locked --target wasm32-wasip1 -p mandate-ir
+      - name: Build mandate-ir and mandate-syntax for WebAssembly
+        run: cargo build --locked --target wasm32-wasip1 -p mandate-ir -p mandate-syntax
       - name: mandate-ir tests under Node's WASI
         run: node scripts/wasi-test.mjs -p mandate-ir -- --nocapture
+      # The syntax gates print how many inputs of vectors/syntax.json the parser reads as TypeScript does.
+      - name: mandate-syntax tests under Node's WASI (the syntax and span gates)
+        run: node scripts/wasi-test.mjs -p mandate-syntax -- --nocapture
       # The gate prints how many pinned outputs the Rust compiler gives and how many are still pending.
       - name: mandate-testkit tests under Node's WASI (the golden gate and the ambient-authority scan)
         run: node scripts/wasi-test.mjs -p mandate-testkit -- --nocapture

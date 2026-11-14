@@ -309,7 +309,8 @@ function generate(): Map<string, string> {
 
 /** The vector files on disk, as repository paths. */
 function committed(): string[] {
-  const top = existsSync(repoRoot + VECTORS) ? readdirSync(repoRoot + VECTORS).filter((f) => f.endsWith(".json")).map((f) => VECTORS + f) : [];
+  // syntax.json is written by syntax-vectors.test.ts.
+  const top = existsSync(repoRoot + VECTORS) ? readdirSync(repoRoot + VECTORS).filter((f) => f.endsWith(".json") && f !== "syntax.json").map((f) => VECTORS + f) : [];
   const programs = existsSync(repoRoot + PROGRAMS_DIR) ? readdirSync(repoRoot + PROGRAMS_DIR).map((f) => PROGRAMS_DIR + f) : [];
   return [...top, ...programs].sort();
 }

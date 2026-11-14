@@ -11,7 +11,8 @@
 
 #![allow(clippy::panic, clippy::expect_used, missing_docs)]
 
-use mandate_ir::{Diagnostic, JsValue, canonicalize, load_json, stringify_pretty};
+use mandate_ir::{Diagnostic, JsValue, Loaded, canonicalize, stringify_pretty};
+use mandate_syntax::{kind_of, load};
 use mandate_testkit::{Golden, GoldenOutput, compare_digest, read_text, run_gate};
 
 /// The outputs the Rust crates do not give yet, as `<output> @ <program>`
@@ -20,10 +21,6 @@ const PENDING: &[&str] = &[
     "check @ *",
     "check --module @ *",
     "check --lock @ *",
-    // A program given as JSON IR is loaded and canonicalised by mandate-ir;
-    // one in Mandate text needs the parser (R7).
-    "load @ *.mdt",
-    "ir --canonical @ *.mdt",
     "fmt @ *",
     "hash @ *",
     "view --format json @ *",
@@ -35,15 +32,18 @@ const PENDING: &[&str] = &[
 
 /// What the Rust crates print for one pinned output.
 fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
+    // `load(text, kindOf(file))`.
+    let loaded =
+        || -> Result<Loaded, String> { Ok(load(&read_text(o.program)?, kind_of(o.program))) };
     match o.output {
-        // `canonicalize(load(text, "json").program)`.
-        "ir --canonical" if o.program.ends_with(".json") => load_json(&read_text(o.program)?)
+        // `canonicalize(load(text, kind).program)`.
+        "ir --canonical" => loaded()?
             .program
             .map(|program| canonicalize(&program))
             .ok_or_else(|| "load gave no program".to_owned()),
-        // `JSON.stringify(load(text, "json").diagnostics, null, 2) + "\n"`.
-        "load" if o.program.ends_with(".json") => {
-            let loaded = load_json(&read_text(o.program)?);
+        // `JSON.stringify(load(text, kind).diagnostics, null, 2) + "\n"`.
+        "load" => {
+            let loaded = loaded()?;
             let diagnostics =
                 JsValue::Array(loaded.diagnostics.iter().map(Diagnostic::to_js).collect());
             let mut text = stringify_pretty(&diagnostics).unwrap_or_default();

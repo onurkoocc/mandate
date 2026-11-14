@@ -32,6 +32,7 @@ use mandate_testkit::{files, read_text, subdirectories};
 const LIBRARIES: &[(&str, &[&str])] = &[
     ("mandate-ir", &[]),
     ("mandate-check", &[]),
+    ("mandate-syntax", &[]),
     ("verify-journal", &["main.rs"]),
 ];
 

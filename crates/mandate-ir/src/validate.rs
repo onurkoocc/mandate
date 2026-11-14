@@ -434,15 +434,19 @@ fn schema_diagnostics(errors: &[SchemaError], spans: Option<&Spans>) -> Vec<Diag
     out
 }
 
-/// What [`load_json`] gives: `LoadResult` in `check.ts`.
+/// What `load` gives: `LoadResult` in `check.ts`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Loaded {
-    /// The program, when it was read and has no error.
+    /// The program. From JSON ([`load_json`]): when it was read and has no
+    /// error. From Mandate text (`load` in `mandate-syntax`): whenever the
+    /// parser gave one, whatever the schema says.
     pub program: Option<Value>,
     /// Each value's span in the text, by JSON Pointer; empty when the reader
     /// refused the text.
     pub spans: Spans,
-    /// The reader's diagnostics, or those of [`validate_ir`].
+    /// The diagnostics. From JSON: the reader's, or else those of
+    /// [`validate_ir`]. From Mandate text: the parser's, then those of
+    /// [`validate_ir`].
     pub diagnostics: Vec<Diagnostic>,
 }
 
