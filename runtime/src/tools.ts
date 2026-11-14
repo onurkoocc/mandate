@@ -12,7 +12,7 @@
 // answer; the sandbox is what holds.
 
 import { posix } from "node:path";
-import type { CapVal } from "@mandate/compiler";
+import type { CapVal, SandboxRequirement } from "@mandate/compiler";
 import type { ToolSpec } from "./adapters.js";
 import type { ExecRequest, ExecResult } from "./sandbox.js";
 import type { JsonSchema } from "./schema.js";
@@ -57,7 +57,26 @@ export function scopeOf(grants: CapVal[]): Scope {
 const STR = { type: "string" };
 const obj = (properties: Record<string, unknown>, required: string[]): JsonSchema => ({ type: "object", properties, required, additionalProperties: false });
 
-export function toolsFor(grants: CapVal[], result: JsonSchema): AgentTools {
+/**
+ * The hosts a sandbox reaches only with `http://` URLs: the ones its requirement binds a credential to or restricts
+ * the methods of. The egress proxy adds the credential and checks the method on a request it can read, which an
+ * `https://` URL is not (it arrives as a CONNECT tunnel, which the proxy refuses for such a host). Each host once, in
+ * the order of JavaScript's `<` on strings, which compares UTF-16 code units: the same on every machine, with no
+ * locale in it, and the order the compiler sorts a requirement's hosts in. Empty for a requirement of format 0.1,
+ * which has neither field.
+ */
+export function plainHttpHosts(requirement: Pick<SandboxRequirement, "network" | "egress">): string[] {
+  const hosts = new Set([...Object.keys(requirement.network.methods ?? {}), ...Object.keys(requirement.egress?.credentials ?? {})]);
+  return [...hosts].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/**
+ * The tools an agent is offered. `requirement` is the sandbox requirement it runs under; it adds one sentence to
+ * `run`, and only for an agent that has a host `plainHttpHosts` names. A tool's description is part of the digest of
+ * the request a model call is journaled under, so for every other agent the text of every tool must stay exactly what
+ * it was before the sentence existed (runtime/test/tools.test.ts pins it).
+ */
+export function toolsFor(grants: CapVal[], result: JsonSchema, requirement?: Pick<SandboxRequirement, "network" | "egress">): AgentTools {
   const scope = scopeOf(grants);
   const specs: ToolSpec[] = [];
   const list = (xs: string[]): string => xs.join(", ");
@@ -82,11 +101,13 @@ export function toolsFor(grants: CapVal[], result: JsonSchema): AgentTools {
   if (scope.exec.length) {
     const allowed = scope.exec.map((e) => (e.argsPrefix ? e.argsPrefix.map((p) => [e.command, ...p].join(" ")).join("; ") : `${e.command} …`) + (e.root ? ` (in ${e.root})` : "")).join("; ");
     const roots = [...new Set(scope.exec.flatMap((e) => (e.root ? [e.root] : [])))];
+    const plain = requirement ? plainHttpHosts(requirement) : [];
     specs.push({
       name: "run",
       description:
         `Run a command and get its exit code and output. Allowed: ${allowed} (further arguments may follow).` +
-        (roots.length > 1 ? ` Name the working copy it runs in with cwd: one of ${list(roots)}.` : ""),
+        (roots.length > 1 ? ` Name the working copy it runs in with cwd: one of ${list(roots)}.` : "") +
+        (plain.length ? ` Reach ${list(plain)} with http:// URLs, not https://: the connection is made over TLS for you, and an https:// URL to such a host is refused and counted as a violation.` : ""),
       input_schema: obj({ command: STR, args: { type: "array", items: STR }, ...(roots.length > 1 ? { cwd: STR } : {}) }, ["command", "args"]) as Value,
     });
   }

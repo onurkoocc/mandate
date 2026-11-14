@@ -746,8 +746,21 @@ job shows it there on every run (`runtime/test/sandbox-egress.test.ts`).*
   request; these are limits, not exceptions:
   - an `https://` request to a host with a credential or a method limit is
     a `CONNECT`, which is denied (`connect_not_allowed`) and counted. The
-    runtime does not tell the model how its hosts are reached: a program's
-    own instructions to its agent have to say `http://` for such a host;
+    runtime tells the model one thing, as one sentence in the description
+    of its `run` tool: "Reach *hosts* with http:// URLs, not https://: the
+    connection is made over TLS for you, and an https:// URL to such a
+    host is refused and counted as a violation." *hosts* are the hosts of
+    the agent's sandbox requirement that have a credential bound or a
+    method limit, each once, in the order of their names as UTF-16 code
+    units (no locale), and never a credential's name. The sentence is there
+    only for an agent that has such a host and a `run` tool, an agent
+    bound to an executor included; for every other agent the text of every
+    tool is what it was before, byte for byte, because a tool's
+    description is part of the digest by which a waiting run replays its
+    model calls. The rest is the program's own instructions to its agent:
+    what a host is for, its paths, and what to do with an answer. A host
+    with neither a credential nor a method limit is not named; the model
+    may reach it with either scheme;
   - anything that connects to a session's local port, which other local
     processes on the host can (No crossing, above), has its denied
     requests counted against that sandbox;

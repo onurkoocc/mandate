@@ -124,7 +124,7 @@ export async function runAgentLoop(task: LoopTask, io: LoopIO): Promise<Outcome>
   const refused = (unsupported: string[]): Outcome => ({ error: { tag: "PolicyDenied", args: [{ reason: "unsupported_sandbox_profile", code: "MDT-E0902", agent: task.agent, unsupported }] }, cost: {} });
   if ("unsupported" in planned) return refused(planned.unsupported);
   const resultSchema = typeSchema(task.program, task.returns);
-  const tools = withExtra(toolsFor(task.grants, resultSchema), task.extra ?? []);
+  const tools = withExtra(toolsFor(task.grants, resultSchema, task.sandbox), task.extra ?? []);
   const host = io.sandbox.o.host;
   const loop = new Loop(task, io, tools, resultSchema);
   let handle: string | undefined;

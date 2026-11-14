@@ -30,6 +30,7 @@ import { serveAdmin, type AdminServer } from "../src/egress/admin.js";
 import { egressConfig } from "../src/egress/config.js";
 import { EgressProxy, type DenialReason, type SessionRequest } from "../src/egress/proxy.js";
 import { EgressLink } from "../src/gateway.js";
+import { deployManagedAgents, managedAgentsExecutor } from "../src/managed-agents.js";
 import { MxcHost, SANDBOX_SESSION_TTL_MS, type MxcContainerRequest, type MxcSdk } from "../src/mxc.js";
 import { WindowsMxcHost, type WindowsContainerRequest, type WindowsMxcSdk } from "../src/mxc-windows.js";
 import { Runtime } from "../src/runtime.js";
@@ -39,7 +40,9 @@ import { Violation } from "../src/signals.js";
 import { adapter, EgressSdk, fetcher, SUPPORTED } from "./egress-sdk.js";
 import { adminPath, http, OTHER_SECRET, portOf, SECRET, seenHeader, send, world as egressWorld, type World as EgressWorld } from "./egress-world.js";
 import { closeAll, world as runtimeWorld } from "./helpers.js";
+import { FakeManagedAgents } from "./fake-managed-agents.js";
 import { LOCK as MODELS_LOCK } from "./models.js";
+import { BEFORE_HTTP_SENTENCE_EXECUTOR } from "./tools-before-http-sentence.js";
 
 const net = (hosts: string[], methods?: string[]): CapVal => ({ ctor: "net.https", effect: "Net", write: false, scope: hosts, ...(methods ? { methods } : {}) });
 const FETCH: CapVal = { ctor: "exec", effect: "Exec", write: false, scope: ["fetch"] };
@@ -579,6 +582,50 @@ describe("sandbox egress in a run", () => {
     where.cleanup();
   });
 
+  it("runs a step's process again in a new sandbox after the proxy did not say what it denied: the request the first process got through is sent again", async () => {
+    const r = await egressRun((n) => (n === 1 ? [run("GET http://api.github.com/repos/acme/app")] : [toolUse("f", "finish", { result: "done" })]));
+    // The proxy does not answer the read of the session's denials, once: the step is left unfinished and the run stops for a person.
+    vi.spyOn(r.hostLink, "denials").mockRejectedValueOnce(new Violation("egress_unavailable", "the egress proxy did not say what it denied session sbx.made-up"));
+    const stopped = await r.rt.startRun({ pkg: r.pkg, workflow: "Fetch", input: { task: "t" }, runId: "eg-reread", tenant: "acme" });
+    expect(stopped.state, JSON.stringify(stopped.attention ?? stopped.error)).toBe("attention_required");
+    expect(stopped.attention).toMatchObject({ violation: "egress_unavailable", message: expect.stringMatching(/did not say what it denied/) });
+    // The first process ran, got its request through, and its sandbox and session are gone; the step has no result.
+    expect(r.sdk.spawned).toHaveLength(1);
+    expect(w.up.seen.map((s) => `${s.method} ${s.url}`)).toEqual(["GET /repos/acme/app"]);
+    expect(opened).toHaveLength(1);
+    expect(closed).toEqual(opened.map((s) => s.session));
+    expect(await r.rt.journal.command("eg-reread", `${D}/step/0/tool/0`)).toMatchObject({ state: "dispatched", result: null });
+    expect(await r.violations("eg-reread")).toEqual([]);
+
+    const resumed = await r.rt.resume("eg-reread");
+    expect(resumed.state, JSON.stringify(resumed.attention ?? resumed.error)).toBe("succeeded");
+    // The step's process ran again, in a new sandbox with a new proxy session of its own, and the upstream saw the same request twice.
+    expect(r.sdk.spawned).toHaveLength(2);
+    expect(opened.map((s) => [s.run, s.tenant, s.command])).toEqual([
+      ["eg-reread", "acme", D],
+      ["eg-reread", "acme", D],
+    ]);
+    expect(new Set(opened.map((s) => s.session)).size).toBe(2);
+    expect(r.sdk.spawned[0]!.network.runtimeConfig?.networkProxy).not.toBe(r.sdk.spawned[1]!.network.runtimeConfig?.networkProxy);
+    expect(closed).toEqual(opened.map((s) => s.session));
+    expect(w.up.seen.map((s) => `${s.method} ${s.url} ${seenHeader(s, "authorization")[0]}`)).toEqual([`GET /repos/acme/app Bearer ${SECRET}`, `GET /repos/acme/app Bearer ${SECRET}`]);
+    // Nothing was denied, so no violation; the step now has the result of the second process.
+    expect(await r.violations("eg-reread")).toEqual([]);
+    expect(((await r.rt.journal.command("eg-reread", `${D}/step/0/tool/0`))?.result as unknown as ExecResult).stdout).toBe("GET http://api.github.com/repos/acme/app 200 ok\n");
+    expect((await r.rt.verifyJournal("eg-reread")).status).toBe("verified");
+  });
+
+  it("tells the model of the hosts it reaches only with http://, in the description of run, for an agent whose lock binds a credential or limits the methods", async () => {
+    const r = await egressRun(() => [toolUse("f", "finish", { result: "done" })]);
+    const ended = await r.rt.startRun({ pkg: r.pkg, workflow: "Fetch", input: { task: "t" }, runId: "eg-told", tenant: "acme" });
+    expect(ended.state, JSON.stringify(ended.attention ?? ended.error)).toBe("succeeded");
+    const tools = r.chat.calls[0]!.tools;
+    expect(tools.find((t) => t.name === "run")!.description).toBe(
+      "Run a command and get its exit code and output. Allowed: fetch … (further arguments may follow). Reach api.github.com with http:// URLs, not https://: the connection is made over TLS for you, and an https:// URL to such a host is refused and counted as a violation.",
+    );
+    expect(JSON.stringify(tools)).not.toContain("github\"");
+  });
+
   it("a cancel revokes the sandbox's session: the process's next request is denied, and that denial is no violation", async () => {
     let entered!: () => void;
     const inside = new Promise<void>((ok) => (entered = ok));
@@ -689,6 +736,81 @@ workflow Fetch(task: Text) -> Inferred<Text>
     expect(JSON.stringify(ended.error)).toContain('"unsupported":["credential model for api.github.com"]');
     expect(r.chat.calls).toEqual([]);
     expect(r.sdk.spawned).toEqual([]);
+  });
+});
+
+// ── An agent bound to an executor ────────────────────────────────────────────
+
+/** RUN_SRC's agent with a host of any method: the lock cannot bind a credential to an agent bound to an executor (E1802), so it has none. */
+const BOUND_SRC = RUN_SRC.replace("egress.run", "egress.bound").replace(", methods: [GET]", "").replace("tokens: 100k, spend: 1 USD", "tokens: 2M, spend: 20 USD").replace("spend: 2 USD }", "spend: 30 USD }");
+const BOUND_LOCK: Lock = {
+  modules: {},
+  models: { standard: { provider: "anthropic", model: "claude-opus-5-5", effort: "high", max_input_tokens: 100_000, max_output_tokens: 128_000 } },
+  tariffs: { "claude-opus-5-5": { currency: "USD", as_of: "2026-10-10", micros_per_mtok: { input: 4_000_000, output: 20_000_000, cache_read: 200_000, cache_write: 5_000_000 } } },
+};
+
+/**
+ * A run of BOUND_SRC whose agent is bound to the fake Managed Agents: its turns are the fake's, scripted by `script`,
+ * and each of its tools runs in an MxcHost of the runtime's own, with the fake SDK and the egress proxy.
+ */
+async function executorRun(script: (n: number) => ReturnType<typeof toolUse>[], src = BOUND_SRC) {
+  const fake = new FakeManagedAgents((_messages, n) => script(n));
+  const program = check(src, "mdt").program!;
+  const binding = await deployManagedAgents({ program, lock: BOUND_LOCK, api: fake, now: () => 0 });
+  const lock: Lock = { ...BOUND_LOCK, bindings: { "managed-agents": binding } };
+  const rw = await runtimeWorld(src, { lock, decisions: { mode: "signed" } });
+  const sdk = new EgressSdk();
+  const host = new MxcHost({ sdk, egress: link() });
+  const local = new SimChat(() => {
+    throw new Error("a bound agent never talks to the local model");
+  });
+  rw.adapters.loop = { chat: local, sandbox: adapter(host), executor: managedAgentsExecutor({ binding, lock, api: fake, pollMs: 1, title: "test" }), stopPollMs: 60_000 };
+  const rt = new Runtime(rw.db, rw.adapters, rw.faults, undefined, { decisions: { mode: "signed" } });
+  return { ...rw, rt, fake, sdk, host, local };
+}
+
+describe("sandbox egress for an agent bound to an executor", () => {
+  it("runs its tools in the runtime's sandbox, which reaches its hosts through a proxy session of its own and carries no credential", async () => {
+    const r = await executorRun((n) => (n === 1 ? [run("GET http://api.github.com/repos/acme/app")] : [toolUse("f", "finish", { result: "done" })]));
+    const ended = await r.rt.startRun({ pkg: r.pkg, workflow: "Fetch", input: { task: "t" }, runId: "eg-bound", tenant: "acme" });
+    expect(ended.state, JSON.stringify(ended.attention ?? ended.error)).toBe("succeeded");
+
+    // The turns were the executor's, not the local model's; the tool's process ran here, in the runtime's sandbox.
+    expect(r.fake.sessions.size).toBe(1);
+    expect(r.local.calls).toEqual([]);
+    expect(r.sdk.spawned).toHaveLength(1);
+    expect(r.sdk.spawned[0]!.command).toBe("fetch GET http://api.github.com/repos/acme/app");
+
+    // The sandbox has a proxy session opened for it, for this run and tenant, for exactly the agent's host: any method, no credential.
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatchObject({ run: "eg-bound", tenant: "acme", command: D, kind: "forward", destinations: [{ host: "api.github.com", methods: null, credential: null }] });
+    expect(r.sdk.spawned[0]!.network.runtimeConfig?.networkProxy).toMatch(/^http:\/\//);
+    expect(closed).toEqual(opened.map((s) => s.session));
+
+    // The process's request went through that session to the upstream, and nothing put a credential in it: not in the sandbox's environment, not on the request.
+    const env = r.sdk.spawned[0]!.environment ?? {};
+    expect(Object.keys(env).filter((k) => k.startsWith("MANDATE_EGRESS_PLACEHOLDER_"))).toEqual([]);
+    expect(w.up.seen.map((s) => `${s.method} ${s.url}`)).toEqual(["GET /repos/acme/app"]);
+    expect(seenHeader(w.up.seen[0]!, "authorization")).toEqual([]);
+    const tool = await r.rt.journal.command("eg-bound", `${D}/step/0/tool/0`);
+    expect((tool?.result as unknown as ExecResult).stdout).toBe("GET http://api.github.com/repos/acme/app 200 ok\n");
+    expect(JSON.stringify(await r.rt.journal.events("eg-bound"))).not.toContain(SECRET);
+  });
+});
+
+describe("the tools of an agent bound to an executor, whose session is given them", () => {
+  const sessionTools = (r: Awaited<ReturnType<typeof executorRun>>): string => JSON.stringify(([...r.fake.sessions.values()][0]!.body["agent"] as { tools: unknown }).tools);
+
+  it("are byte for byte what they were before the sentence about http://, when its hosts are plain", async () => {
+    const r = await executorRun(() => [toolUse("f", "finish", { result: "done" })]);
+    expect((await r.rt.startRun({ pkg: r.pkg, workflow: "Fetch", input: { task: "t" }, runId: "eg-bound-plain", tenant: "acme" })).state).toBe("succeeded");
+    expect(sessionTools(r)).toBe(BEFORE_HTTP_SENTENCE_EXECUTOR);
+  });
+
+  it("tell it of a host whose methods are limited, which it reaches with http:// like any agent", async () => {
+    const r = await executorRun(() => [toolUse("f", "finish", { result: "done" })], RUN_SRC.replace("egress.run", "egress.bound").replace("tokens: 100k, spend: 1 USD", "tokens: 2M, spend: 20 USD").replace("spend: 2 USD }", "spend: 30 USD }"));
+    expect((await r.rt.startRun({ pkg: r.pkg, workflow: "Fetch", input: { task: "t" }, runId: "eg-bound-limited", tenant: "acme" })).state).toBe("succeeded");
+    expect(sessionTools(r)).toBe(BEFORE_HTTP_SENTENCE_EXECUTOR.replace("(further arguments may follow).", "(further arguments may follow). Reach api.github.com with http:// URLs, not https://: the connection is made over TLS for you, and an https:// URL to such a host is refused and counted as a violation."));
   });
 });
 
