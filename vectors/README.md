@@ -8,7 +8,8 @@ differs from what the compiler gives now, and read by the Rust tests in
 `MANDATE_UPDATE_VECTORS=1 npm test`.
 
 The other directories here (`schema/`, `diagnostics/`, `diff/`, `corpus/`,
-`syntax.json`, `spans/`, `programs/`) and the golden file
+`syntax.json`, `spans/`, `programs/`, and `codes.json`, which
+`scripts/codes-vectors.mjs` writes) and the golden file
 (`compiler/test/golden/outputs.json`) are read in the same way, each by the
 Rust test that its section names. Together they define what "the same
 diagnostics" means for the Rust compiler, and the last section, "Where the
@@ -66,6 +67,25 @@ canonical text.
   names);
 - `package`: `{ name, program_hash, lock, hash }`, `lock` being the lock as a
   package carries it, as text.
+
+## codes.json
+
+`{ "format": "mandate/vectors/codes/0.1", "codes": [ { "code", "title",
+"explain" } ] }`: the table of diagnostic codes of the TypeScript compiler
+(`CODES` in `compiler/src/codes.ts`, what `mandate explain` prints), in the
+table's order, with the code as diagnostics carry it (`MDT-E0103`). It is
+written by `node scripts/codes-vectors.mjs` from the built compiler (CI runs
+every `scripts/*-vectors.mjs` and fails when the tree changes; `vectors.test.ts`
+leaves the file alone), and read by the test `codes` in
+`crates/mandate-ir/tests/vectors.rs`.
+
+The table of the Rust compiler is `crates/mandate-ir/src/codes.rs`, a constant
+with one row for each code and the compiler that is the reference for it. The
+test holds the rows whose reference is the TypeScript to this file: the same
+codes, in the same order, with the same texts. A row whose reference is Rust (a
+code added in language 0.6 or later, which the TypeScript compiler, frozen at
+0.5, does not have) is not compared, and is not in this file; the test fails if
+it is.
 
 ## programs/
 
@@ -1119,6 +1139,7 @@ the compiler's order. The gates that do this:
 | conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 125 | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
+| JSON doors | the output text of every call of `crates/*/tests/json_doors/inputs.json`, each through a door of `doors.json` beside it and through the TypeScript function it stands for, serialised by the door contract (`scripts/json-doors-vectors.mjs`, its function `doorJson`); every door has a call | 140 calls, 42 doors | `crates/mandate-check/tests/json_doors.rs` |
 
 Each gate prints `ran N, passed M, pending K`. A pending item is held to failing by
 omission only (the Rust gives the stored diagnostics with some left out, in order, and

@@ -74,6 +74,18 @@
 //!   report the governance changes they make.
 //! - [`js_number`]: what JavaScript's `Number(string)` gives.
 //!
+//! And the way in from a host:
+//!
+//! - [`json_doors`]: the JSON doors of this crate, `mandate-ir` and
+//!   `mandate-syntax`, through which the Node runtime calls the compiler (by
+//!   the WebAssembly module of `mandate-wasm`): one pure function from a JSON
+//!   object to a JSON value per function of `compiler/src/index.ts` that the
+//!   runtime, the command line and the MCP server call, named in snake_case,
+//!   whose output is what `JSON.stringify` gives for the TypeScript
+//!   function's result, and `tables` for the constants. The module states the
+//!   contract; the table is [`json_doors::DOORS`], and the same list as data
+//!   is `crates/mandate-check/tests/json_doors/doors.json`.
+//!
 //! The JavaScript semantics they depend on are imitated where they occur and
 //! said so there: sorting without a comparator by UTF-16 code units, `Set`
 //! and `Map` in insertion order, the truthiness of an empty string, the
@@ -84,8 +96,9 @@
 //! and starts no process (a test in `mandate-testkit` holds it to that), and
 //! it builds for `wasm32-wasip1`. Its tests compare it with what the
 //! TypeScript gives on the inputs `scripts/caps-vectors.mjs`,
-//! `scripts/front-vectors.mjs`, `scripts/lock-vectors.mjs` and
-//! `scripts/static-vectors.mjs` write; the gates of `mandate-testkit` hold
+//! `scripts/front-vectors.mjs`, `scripts/lock-vectors.mjs`,
+//! `scripts/static-vectors.mjs`, `scripts/doors-vectors.mjs` and
+//! `scripts/json-doors-vectors.mjs` write; the gates of `mandate-testkit` hold
 //! [`check()`] to the stored results of the TypeScript's.
 
 #![forbid(unsafe_code)]
@@ -98,6 +111,7 @@ pub mod diff;
 pub mod doors;
 pub mod governance;
 pub mod js_number;
+pub mod json_doors;
 pub mod lock;
 pub mod lock_diff;
 pub mod managed_agents;
