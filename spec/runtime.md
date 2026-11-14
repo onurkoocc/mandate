@@ -158,6 +158,14 @@ A delegate reserves the budget written at the call, else the skill's, else
 the agent's: the same budget the compiler adds up for E0501. `time` is a
 deadline, not a ledger dimension, so it is not reserved.
 
+Among siblings that run at the same time (the branches of a `par`, the
+items of a `map`) the order in which they reserve is not defined: a
+reservation goes to whichever sibling takes the run's row lock first. When
+the budget covers only some of them, which sibling gets `BudgetExceeded`
+can differ between runs and between stores (PGlite and PostgreSQL were
+seen to differ). Results and decisions of a `map` are in input order;
+reservations are not.
+
 When a reservation does not fit, the run does not fail. Each time this
 happens is a numbered episode, recorded as a `budget_exceeded` event:
 
@@ -923,7 +931,7 @@ mandate approve <run> --revision N --key FILE [--member NAME]
 mandate decline <run> --revision N --key FILE [--member NAME]
 mandate answer <run> --revision N --key FILE [--member NAME] <text>
 mandate cancel <run> [--key FILE]
-mandate reconcile <run> <operation> --key FILE [--member NAME]
+mandate reconcile <run> <operation> [--key FILE] [--member NAME]
 mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
 mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
 mandate decision <run> <digest>
@@ -943,6 +951,10 @@ mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER
 mandate drift --module MODEL --component NAME=DIR… [--json]
 mandate deploy <program> --target managed-agents [--lock FILE] [--agents A,B] [--name PREFIX] [--harness-tokens N]
 ```
+
+`reconcile` is signed when `--key` is given. A run of a signed package (a
+0.4 program, or a runtime configured for signed decisions) requires the key;
+for any other run it may be left out.
 
 `deploy` writes an executor binding into the lock; it needs
 `CLAUDE_API_KEY` and no configuration ([`executors.md`](executors.md)).

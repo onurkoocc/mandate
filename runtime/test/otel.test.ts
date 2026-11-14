@@ -952,11 +952,16 @@ workflow Ask() -> Untrusted<Text>
   it("follows until SIGINT, then stops and exits 0", async () => {
     await mandate(["run", join(dir, "ask.mdt"), "--workflow", "Ask", "--input", "{}", "--run-id", "c3"]);
     const c = await collector();
-    let said = false;
-    const running = mandate(["otel", "export", "--endpoint", c.url, "--run", "c3", "--follow"], (out) => (said = out.includes(" sent ")));
+    // The run waits, so its journal does not grow: its last event is where the command's cursor must get to.
+    const total = (JSON.parse((await mandate(["journal", "export", "c3"])).out) as { events: unknown[] }).events.length;
+    let upTo = 0;
+    const running = mandate(["otel", "export", "--endpoint", c.url, "--run", "c3", "--follow"], (out) => {
+      for (const m of out.matchAll(/ to (\d+) sent/g)) upTo = Math.max(upTo, Number(m[1]));
+    });
     // The collector having the post is not the command having the answer: a stop before that abandons the post and the
-    // report is empty. The command says what it sent only after the answer, and writes its cursor with no wait a stop could cut.
-    await until(() => said, "the command's report of the post");
+    // report is empty. The command says what it sent only after the answer, and writes its cursor with no wait a stop
+    // could cut, so a report that reaches the run's last event means the cursor is there. One send may not hold the journal.
+    await until(() => upTo >= total, "the command's report that it sent up to the run's last event");
     process.emit("SIGINT");
     const r = await running;
     expect([r.code, r.err]).toEqual([0, ""]);

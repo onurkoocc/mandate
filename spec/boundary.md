@@ -181,8 +181,10 @@ With the lock, `mandate check` also reports:
   agent of the program (`not_an_agent`), a remote agent (`remote`), an
   agent the lock binds to an executor such as Managed Agents
   (`executor`), or a host none of the agent's own `net.https`
-  capabilities holds (`host_not_held`). Only an agent that runs in the
-  runtime's sandbox reaches a host through the proxy. The path is into
+  capabilities holds (`host_not_held`). The tools of an agent bound to an
+  executor also run in the runtime's sandbox and reach its `net.https` hosts
+  through the proxy session, but the lock cannot bind a credential to such an
+  agent, so a binding naming one is refused. The path is into
   the lock: `/egress/<agent>`, or `/egress/<agent>/<host>` for a host.
 - **E1803** when `isolation` or `egress` is in a lock checked with a
   program of 0.1 to 0.4. Only a 0.5 program has requirement 0.2, so the
@@ -1108,10 +1110,11 @@ was asked of the role:
 - **What it waits for**, whole, when the wait is asked of `R`: the role
   its request names. What `R` is asked to decide on is shown to it as
   `mandate status` shows it, the subject or the question included: the
-  program put that before `R`. This is the one place a role's view shows
-  content. A wait asked of another role, or of none, shows that the run
-  waits, and nothing else. A question of a program before 0.4 names no
-  role in its wait, so it is asked of no role this view can name.
+  program put that before `R`. This and the halt below (its reason and who
+  halted) are the two places a role's view shows content. A wait asked of
+  another role, or of none, shows that the run waits, and nothing else. A
+  question of a program before 0.4 names no role in its wait, so it is
+  asked of no role this view can name.
 - **The decisions asked of `R`**: each decision whose wait was asked of
   `R` (`wait_opened`), and each decision on no wait made in `R`'s role (the
   envelope's approval, a cancel, a raise of the limits), with its member,

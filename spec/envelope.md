@@ -260,7 +260,7 @@ mandate approve      <run> --revision N --key FILE [--member NAME]
 mandate decline      <run> --revision N --key FILE [--member NAME]
 mandate answer       <run> --revision N --key FILE [--member NAME] <text>
 mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
-mandate reconcile    <run> <operation> --key FILE [--member NAME]
+mandate reconcile    <run> <operation> [--key FILE] [--member NAME]
 mandate cancel       <run> [--key FILE]
 mandate decision     <run> <digest>                            # a decision the run took, as its signed record
 mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
@@ -272,6 +272,9 @@ mandate amend        <run> --revision N --key FILE [--member NAME] (approve | de
 ([below](#amendments-n04)). `approve` signs a decision of kind `amend`
 and `decline` one of kind `decline`, for the package hash `mandate status`
 shows. It is always signed: only a 0.4 run has an amendment.
+
+`reconcile` is signed when `--key` is given; a signed package requires the
+key, and for any other run it may be left out.
 
 `--member` is needed only when a key id is listed under more than one
 member, which the lock forbids, so in practice never. The CLI finds the
@@ -472,7 +475,13 @@ approval serves every run of that package.
 reserves one when it is dispatched: a first attempt, each restart, and a
 degrade fallback. A delegation that does not fit is `BudgetExceeded` and
 goes to the run's budget handler, as today. Two siblings cannot both
-reserve the last one (R07, N02).
+reserve the last one (R07, N02). Which of them gets it is not defined:
+among siblings that run at the same time (the branches of a `par`, the
+items of a `map`) a reservation goes to whichever sibling takes the run's
+row lock first, so when the budget covers only some of them, which sibling
+gets `BudgetExceeded` can differ between runs and between stores (PGlite and
+PostgreSQL were seen to differ). A map's decisions and results are in input
+order; its reservations are not.
 
 - **Spent when sent.** An attempt's agent is settled when the attempt
   ends, whatever came of it: a result, a failure or a timeout. No adapter

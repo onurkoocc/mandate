@@ -1,5 +1,5 @@
 // The control CLI (Doc 4 §16.1; BACKLOG K19): a person runs a program and
-// answers it from a terminal, until the views of P2-14 exist.
+// answers it from a terminal. `mandate show` gives the run's views.
 //
 //   mandate run <program> --workflow W --input <json> [--run-id ID] [--limit spend=20USD,tokens=2M]
 //   mandate status <run> [--json]
