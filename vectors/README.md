@@ -419,3 +419,203 @@ programs; `diagnostics` every diagnostic of every stored result (a diagnostic
 that a `check` and a `check_module` both give is counted twice); `by_code` the
 diagnostics by code, for the codes that occur; `codes_in_no_result` the codes of
 `compiler/src/codes.ts` that occur in no stored result.
+
+## Reading Mandate text: syntax.json and spans/
+
+These pin what the lexer and the parser (`compiler/src/parse/`) give, for
+the Rust port to match: the IR with its member order, the table that maps
+each JSON Pointer of the IR to the span of text it came from, every
+diagnostic in full, and the text `fmt` prints. They are written by
+`compiler/test/syntax-vectors.test.ts` (the inputs are in
+`compiler/test/syntax-cases/`), which also asserts what they cover: every
+message the lexer and the parser can give, every construct of the IR and
+each optional part of it (read from `spec/ir.schema.json`), every literal
+and token form. A message that no input can reach is listed in the test with
+the reason; there are five, each a check that cannot fail because the parser
+has already seen what it asks for.
+
+### syntax.json
+
+`{ "format": "mandate/vectors/syntax/0.1", "vectors": [ … ] }`. Each vector
+is what `load(text, "mdt")` (`compiler/src/check.ts`) gives for one text: the
+parser, then the validation of the IR it builds against the schema. Fields,
+in the order the file lists them:
+
+- `name`: starts with the section the input belongs to; unique.
+- the input, exactly one of `input` (the text; line breaks and carriage
+  returns are in the JSON string as escapes, so what the file holds is what
+  the reader is given) or `input_parts` (`[[text, count], …]`, each text
+  repeated `count` times and joined, as in `reader.json`, for the few inputs
+  too large to write out; the size limit counts the UTF-8 bytes of the joined
+  text).
+- `ok`: true when `load` gave a program and no diagnostic has severity
+  `error`.
+- `diagnostics`: every diagnostic `load` gave, in order, each with all its
+  fields (`code`, `severity`, `message`, `at` with `span` and/or `path`,
+  `docs`, `facts`, `repair`; only those the compiler sets). In order: first
+  what the parser pushed while it read on (`MDT-E0103`, `MDT-E0121`, in the
+  order they were found, then `MDT-E0120` for each handler without a
+  workflow), then those of the schema validation. When the parser stops, the
+  only diagnostic is the one that stopped it (see below). Spans are
+  `[startLine, startCol, endLine, endCol]`, 1-based, end exclusive.
+- when `load` gave a program (a vector can be `ok: false` and have one: the
+  parser's own diagnostics and the schema's do not take the program away):
+  - `canonical`: the canonical text of the IR, or, when it is longer than
+    1500 characters, `canonical_sha256`, the hex SHA-256 of its UTF-8;
+  - `ir`: the IR in the parser's member order, as `load` gives it (a
+    JSON round trip of what the parser built, so no null-prototype objects).
+    Left out when the canonical text is given by its digest or the IR is
+    nested more than 61 deep (the reader refuses nesting over 64 and the IR
+    sits three levels down in this file); then `ir_depth` is its depth, the
+    way the strict reader counts it (the root is 1);
+  - `spans`: the pointer-to-span table as `[pointer, startLine, startCol,
+    endLine, endCol]` rows, one per entry, by pointer in UTF-16 code-unit
+    order; or, when the rows written as compact JSON, one per line, come to
+    more than 1500 characters, `spans_count` and `spans_sha256`: the hex
+    SHA-256 of those rows written as `["/p",1,2,3,4]` (no spaces), joined
+    with a line feed, no final one;
+- when also `ok`: `fmt`, what `printProgram` prints for the IR (`mandate
+  fmt`), and `fmt_roundtrip`: `true` when that text reads back with no error,
+  to the same canonical IR, and printing that IR gives the same text again;
+  otherwise `{ reads, same_ir, stable }` (three booleans) with `diagnostics`
+  of the reading when it failed. If printing throws: `fmt_error`, the
+  message. Four vectors do not round trip (a comparison in parentheses on
+  the left of a comparison: the printer writes it without them); no vector
+  has `fmt_error`. They record what the reference does; nothing was fixed.
+
+A vector with no `canonical` and no `canonical_sha256` is one the parser
+refused: `load` gave no program and an empty span table.
+
+The TypeScript lexer quotes the character it did not expect as one UTF-16
+code unit. For a character outside the Basic Multilingual Plane in code, that
+is half of a pair, so its message holds a lone surrogate, which no vector can
+carry. There is no such vector. The Rust lexer writes U+FFFD there.
+
+### spans/
+
+One file per program in `programs/`, named like it (the JSON program, `fixbug.ir.json`,
+has one too, from the strict JSON reader): `{ format:
+"mandate/vectors/spans/0.1", source, kind, count, spans }`, `spans` being
+the rows described above, `count` their number. Every table is in full (the
+largest, `fixbug.ir.json`, is 64 KB; the files come to 194 KB). Nothing reads
+the table in insertion order: every phase looks a pointer up, and
+`nearestSpan` goes up to the parent pointer when there is no entry, so the
+order of rows is only sorted for the file.
+
+### What an implementation has to copy
+
+Spans.
+
+- A span runs from the first character of the node's first token to just
+  after the last character of the last token the parser consumed for it.
+  Lines break at line feed only; a carriage return, a tab and every UTF-16
+  code unit are one column each (a character outside the BMP is two). The end
+  of input is a token of no width, at the position after the last character.
+- Only the objects the parser builds have an entry; arrays and maps (`defs`,
+  `tests`, `params`, `args`, `body`, `caps`, `effects`, `items`, `parts`,
+  `cases`, `fields`, `branches`, `members`, `skills`, `reads`, `authorize`,
+  `approve`, `handlers`, `order`, `changes`, `uses`) and scalars have none,
+  nor do the wrappers `{ "text" }` and `{ "expr" }` of a template part (the
+  `expr` inside has one), `progress`, `spawn`, a `command`, a tier, and the
+  `all` of a verifier. Diagnostics later look a pointer up and take the
+  nearest entry above it.
+- The program starts at its first token (the `mandate` of a language line, or
+  `module`; comments before it do not count) and ends at the last token of the
+  file. A definition starts at its first token (`pub`, `role`, `agent`, `test`,
+  …) and ends at its last. A handler (`on e in W => x`) is `/defs/W/on/N`
+  and starts at `on`.
+- Where a node starts is not always its first keyword: a parameter, a skill,
+  a read, a changeset member, a type's variant and a named argument start at
+  their name; a criterion at `accept` or `invariant`; a `budget`, `envelope`
+  and `on unmet` at their word; a remote binding at the expression it binds.
+- A parenthesised expression has the span of what is inside, without the
+  parentheses; the operation or call it is part of starts at the parenthesis.
+  A chain `a + b + c`, `a.b(c)?` is left associative and every node of it
+  starts at the first token of the whole chain. A prefix operator
+  (`not`, `-`) starts at itself.
+- A node marked twice keeps the last span. Arrays that are sorted (`caps`,
+  `effects`, `requires_caps`, `uses`, `names`, `provides`, `consumes`,
+  `governance`) are sorted before the table is made: an entry's pointer
+  carries the index the node has in the sorted array.
+- Inside an interpolation, positions are real positions in the file: the
+  nested lexer starts at the character after `{`, columns go on, and a line
+  break inside (which a single-line string allows there) counts.
+
+Member order.
+
+- The IR is built in the order the code assigns, not always in source order.
+  `program`: `language`, `module`, `version`, `defs`, then `uses`, then
+  `tests`. `const`: `kind`, `value`, then `type`. `type`: `kind`, `type`,
+  `generics`, `class`. `fn`: `kind`, `params`, `returns`, `body`, then `pub`,
+  `effects`, `budget`. `extern`: `kind`, `lang`, `file`, `symbol`, `params`,
+  `returns`, `effects`, `idempotent_by`. `effect`: `kind`, `params`,
+  `returns`, then its options in source order (`requires_caps` at the first
+  one). `agent`: `kind`, `caps`, `skills`, then `role`, `model`, `budget`,
+  `loop`, `progress` in source order, or `remote` for a remote agent (its
+  keys: `bind`, then `version`, `require`, `trust` in source order). `skill`: `params`, `returns`, `effects`,
+  `budget`, `body`. `workflow`: `kind`, `params`, `returns`, `caps`, `body`,
+  then `budget`, `envelope`, `ensures`, and last `on`. `contract`: `kind`,
+  `params`, `accept`, then `require` and `invariant` where first seen.
+  `component`: the four required fields first, then the others in source
+  order; `environment`: `kind`, `class`, then `reads` and `authorize` where
+  first seen. `test`: `body` first, then `handlers`, though `handlers` come
+  first in the text. `par`: `branches`, then `supervise`, though `supervise`
+  comes first. `let`: `name`, `value`, then `type`. `loop`: `body`, then
+  `max_iter` or `until`. `delegate`: `agent`, `skill`, `args`, then its
+  options in source order; `map`: `bind`, `over`, `body`, then options in
+  source order; `changeset`: `plan`, `members`, `order`, `approver`, then
+  `changes` where first seen and `idempotent_by`; `infer`: `type`, `from`,
+  `using`; `verify`: `value`, `contract`, `args`, `on_unmet`; `effect`:
+  `name`, `args`, `idempotent_by`, `compensate`. A `budget`, `envelope`,
+  `spawn` or `progress` has its keys in source order.
+- A map (`defs`, `fields`, `branches`, `tests`, …) lists its keys in order of
+  first appearance; a repeated key keeps its first place and takes the last
+  value. A JavaScript object lists integer-like keys first, ascending: the
+  one map whose keys are free text, `tests`, shows it (`"9"`, `"10"`, then
+  the rest), and so does `fmt`, which follows it.
+
+Numbers and strings.
+
+- Digits may have `_` between them (not in a fraction). A `.` belongs to a
+  number only when a digit follows it. An integer or the whole part is read
+  as a base-10 number and must be at most 2^53-1. A suffix is the run of
+  letters after the number: `k`, `M` give an integer; `ms`, `s`, `m`, `h`,
+  `d` a duration in milliseconds; a fraction is allowed when the result is a
+  whole number of base units (exact arithmetic); any other run of letters is
+  an unknown suffix (`20USD`, `1e3`, `0x10`). A decimal keeps its text
+  (leading and trailing zeros), without `_`.
+- `-1` is `unary neg` of `1`; there are no negative literals.
+- An integer or decimal followed by an identifier of exactly three capital
+  letters, on any line, is money: micro-units are the whole part times a
+  million (or the digits with the fraction padded to six places); more than
+  six places, or past 2^53-1, is an error at the number.
+- The escapes are `\n \t \r \" \\ \{ \}`; anything else is an error at the
+  character after it. A string with no interpolation is `text` (an empty one
+  too); otherwise `template` with `parts` (text pieces joined, empty ones
+  left out); `prompt"…"` is always `prompt`. A single-line string may not
+  hold a line feed, a `"""` string may.
+- An interpolation is the raw text between `{` and the matching `}` (braces
+  counted, a `"` inside is an error), read by a new lexer and parser: their
+  nesting count starts at 0, and `budget` messages name the 0.1 fields
+  whatever the file's version. Words inside it that follow the expression are
+  an error ("Unexpected … in interpolation").
+
+Errors and limits.
+
+- The parser stops at the first error it cannot read past, and the diagnostics
+  it had pushed (`E0103`, `E0121`, `E0120`) are lost with it. The lexer runs
+  over the whole file before the parser starts, so a lexical error anywhere
+  is the one reported, even when a syntax error comes before it. A string's
+  interpolation is read only when the parser reaches the string.
+- A lexical error spans one column at the offending character (a number or
+  string error at its first character; an invalid escape after the escape
+  letter; an unterminated interpolation just after `{`). A syntax error
+  spans the token the parser is at, or an earlier token the message names.
+- Input over 1048576 UTF-8 bytes: `MDT-E0105`, no `at`. Text nested 64 deep
+  (parentheses, blocks, types, patterns, operands of `not` and `-`): `MDT-E0105`
+  at the token. After parsing, the first value in canonical order nested more
+  than 64 deep in the IR: `MDT-E0105` with its `path` and the nearest span.
+
+Printing: `fmt` sorts definitions by kind and name, writes two-space
+indents, and drops comments; the vectors give the text, and the four that do
+not read back.
