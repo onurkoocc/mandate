@@ -11,8 +11,8 @@
 
 #![allow(clippy::panic, clippy::expect_used, missing_docs)]
 
-use mandate_ir::canonicalize;
-use mandate_testkit::{Golden, GoldenOutput, compare_digest, read_json, run_gate};
+use mandate_ir::{Diagnostic, JsValue, canonicalize, load_json, stringify_pretty};
+use mandate_testkit::{Golden, GoldenOutput, compare_digest, read_text, run_gate};
 
 /// The outputs the Rust crates do not give yet, as `<output> @ <program>`
 /// patterns. Shorten it in the commit that makes an item pass.
@@ -20,9 +20,9 @@ const PENDING: &[&str] = &[
     "check @ *",
     "check --module @ *",
     "check --lock @ *",
-    "load @ *",
-    // A program given as JSON IR is read and canonicalised by mandate-ir;
+    // A program given as JSON IR is loaded and canonicalised by mandate-ir;
     // one in Mandate text needs the parser (R7).
+    "load @ *.mdt",
     "ir --canonical @ *.mdt",
     "fmt @ *",
     "hash @ *",
@@ -37,8 +37,16 @@ const PENDING: &[&str] = &[
 fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
     match o.output {
         // `canonicalize(load(text, "json").program)`.
-        "ir --canonical" if o.program.ends_with(".json") => {
-            read_json(o.program).map(|value| canonicalize(&value))
+        "ir --canonical" if o.program.ends_with(".json") => load_json(&read_text(o.program)?)
+            .program
+            .map(|program| canonicalize(&program))
+            .ok_or_else(|| "load gave no program".to_owned()),
+        // `JSON.stringify(load(text, "json").diagnostics, null, 2) + "\n"`.
+        "load" if o.program.ends_with(".json") => {
+            let loaded = load_json(&read_text(o.program)?);
+            let diagnostics =
+                JsValue::Array(loaded.diagnostics.iter().map(Diagnostic::to_js).collect());
+            Ok(stringify_pretty(&diagnostics).unwrap_or_default() + "\n")
         }
         _ => Err("no Rust implementation yet".to_owned()),
     }

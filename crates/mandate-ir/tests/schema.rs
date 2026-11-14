@@ -186,6 +186,46 @@ fn lock_diagnostics() {
     }
 }
 
+/// The `load` result of each golden program given as JSON IR
+/// (`vectors/diagnostics/golden-N.json`), whole.
+#[test]
+fn golden_programs_given_as_json_load_as_their_vectors_say() {
+    let first = read_json("vectors/diagnostics/golden-1.json").expect("the vectors");
+    let parts = first.get("parts").and_then(Value::as_i64).expect("parts");
+    let mut items: Vec<(String, Value)> = Vec::new();
+    for n in 1..=parts {
+        let file = if n == 1 {
+            first.clone()
+        } else {
+            read_json(&format!("vectors/diagnostics/golden-{n}.json")).expect("a part")
+        };
+        for program in file
+            .get("programs")
+            .and_then(Value::as_array)
+            .expect("programs")
+        {
+            let path = str_of(program, "program");
+            if path.ends_with(".json") {
+                items.push((format!("load @ {path}"), program.clone()));
+            }
+        }
+    }
+    let gate = run_gate("golden load vectors", &[], items, |program| {
+        let text = mandate_testkit::read_text(str_of(program, "program"))?;
+        let want = program
+            .get("results")
+            .and_then(|r| r.get("load"))
+            .ok_or("no load")?;
+        compare_text(
+            &pretty(&JsValue::from(want)),
+            &diagnostics_text(&load_json(&text).diagnostics),
+        )
+    });
+    if let Err(report) = gate {
+        panic!("{report}");
+    }
+}
+
 /// A keyword the validator does not implement is refused when the schema is
 /// prepared, wherever it is.
 #[test]
