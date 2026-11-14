@@ -3,7 +3,7 @@
 // to before it runs it. It trusts nobody who built one, itself included: an
 // amended package (spec/envelope.md "Amendments") passes it like any other.
 
-import { atLeast, bindingChecks, canonicalize, check, checkAmendment, envelopeChanges, hashProgram, link, linkedProgram, LOCK_FIELDS_0_5, LOCK_FORMAT, modelTiers, packageHash, roleLockChecks, sandboxLockChecks, semanticDiff, validateLock, type AmendmentCheck, type AmendmentInput, type Change, type DiffView, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { atLeast, bindingChecks, canonicalize, check, checkAmendment, envelopeChanges, hashProgram, link, linkedProgram, LOCK_FIELDS_0_5, LOCK_FORMAT, modelTiers, packageHash, roleLockChecks, sandboxLockChecks, semanticDiff, validateLock, type AmendmentCheck, type AmendmentInput, type Change, type DiffView, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { Violation } from "./signals.js";
 
 /** An amendment as the runtime checks it: with the lock of the run's package, which the amended package keeps. */

@@ -3,7 +3,7 @@
 // decision, no step's request or result, no trace. Words planted where only those can carry them show it. The audit
 // view shows everything, with every event and the chain's status, and is the one view that verifies the chain.
 
-import { load, toHtml, toMarkdown, type WorkflowDef } from "@mandate/compiler";
+import { load, toHtml, toMarkdown, type WorkflowDef } from "@mandate/bridge";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { eventClass, EVENT_CLASSES, SECTION_CLASSES } from "../src/classes.js";

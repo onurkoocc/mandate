@@ -11,7 +11,7 @@
 
 import { chmodSync, existsSync, lstatSync, unlinkSync } from "node:fs";
 import { connect, createServer, type Server, type Socket } from "node:net";
-import { parseStrictJson } from "@mandate/compiler";
+import { parseStrictJson } from "@mandate/bridge";
 import { Violation } from "../signals.js";
 import { EGRESS_FORMAT, isPipe } from "./config.js";
 import { EgressError, type Destination, type EgressProxy, type RevokeScope, type SessionRequest } from "./proxy.js";

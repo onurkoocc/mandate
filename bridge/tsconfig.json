@@ -1,0 +1,9 @@
+{
+  "extends": "../compiler/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "outDir": "dist",
+    "paths": { "@mandate/compiler": ["../compiler/src/index.ts"] }
+  },
+  "include": ["src", "test"]
+}

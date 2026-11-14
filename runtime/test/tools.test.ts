@@ -2,7 +2,7 @@
 // (K8; design doc 9 §2.2): an agent that reads several components and tests
 // one runs the tests where they are, and one that tests two names which.
 
-import { capsOf, check, linkedProgram, requirementFor, type CapVal } from "@mandate/compiler";
+import { capsOf, check, linkedProgram, requirementFor, type CapVal } from "@mandate/bridge";
 import { describe, expect, it } from "vitest";
 import { commandFor, Denied, plainHttpHosts, toolsFor } from "../src/tools.js";
 import { BEFORE_HTTP_SENTENCE } from "./tools-before-http-sentence.js";

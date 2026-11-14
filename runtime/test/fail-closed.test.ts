@@ -5,7 +5,7 @@
 // the egress proxy (sandbox-egress.test.ts); every other host refuses them.
 
 import { readFileSync } from "node:fs";
-import { check, hashProgram, load, loadModules, requirementFor, type CapVal, type Json, type Lock, type Program } from "@mandate/compiler";
+import { check, hashProgram, load, loadModules, requirementFor, type CapVal, type Json, type Lock, type Program } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { TrustedKeys } from "../src/evidence.js";
 import { buildPackage, notRunYet, verifyPackage } from "../src/runtime.js";

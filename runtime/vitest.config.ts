@@ -3,8 +3,10 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
-    // Test against the compiler's sources, so no build is needed first.
-    alias: { "@mandate/compiler": fileURLToPath(new URL("../compiler/src/index.ts", import.meta.url)) },
+    // Test against the sources of the bridge and, behind it, the compiler, so no build is needed first. A pattern,
+    // because the bridge's own import of the compiler goes through this alias too (this package never names the
+    // compiler: seam.test.ts).
+    alias: [{ find: /^@mandate\/([a-z]+)$/, replacement: `${fileURLToPath(new URL("..", import.meta.url))}$1/src/index.ts` }],
   },
   test: {
     include: ["test/**/*.test.ts"],

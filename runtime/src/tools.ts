@@ -12,7 +12,7 @@
 // answer; the sandbox is what holds.
 
 import { posix } from "node:path";
-import type { CapVal, SandboxRequirement } from "@mandate/compiler";
+import type { CapVal, SandboxRequirement } from "@mandate/bridge";
 import type { ToolSpec } from "./adapters.js";
 import type { ExecRequest, ExecResult } from "./sandbox.js";
 import type { JsonSchema } from "./schema.js";

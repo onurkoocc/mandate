@@ -3,7 +3,7 @@
 // criterion declares, so the two cannot differ: a record's method is one the
 // program says, never one the record says.
 
-import { calleePath, type Def, type Verifier } from "@mandate/compiler";
+import { calleePath, type Def, type Verifier } from "@mandate/bridge";
 import { digest } from "./values.js";
 
 /**

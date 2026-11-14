@@ -56,7 +56,7 @@ import {
   type TypeExpr,
   type Verifier,
   type WorkflowDef,
-} from "@mandate/compiler";
+} from "@mandate/bridge";
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationsRequired, recordProblem, type AttestationRule } from "./attestation.js";

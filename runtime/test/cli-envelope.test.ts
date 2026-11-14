@@ -9,7 +9,7 @@
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { card, check, type Lock } from "@mandate/compiler";
+import { card, check, type Lock } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { main } from "../src/cli.js";
 

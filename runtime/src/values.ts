@@ -10,7 +10,7 @@
 // enforce: which contract a value was verified against, and its evidence.
 
 import { createHash } from "node:crypto";
-import type { HashDomain } from "@mandate/compiler";
+import type { HashDomain } from "@mandate/bridge";
 
 export type Value = null | boolean | number | string | Value[] | { [k: string]: Value };
 

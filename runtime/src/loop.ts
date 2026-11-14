@@ -35,7 +35,7 @@
 // `partial` lists the files the loop wrote, so a person or a restart can use
 // them.
 
-import type { CapVal, LoopStrategy, Param, Program, Progress, SandboxRequirement, TypeExpr } from "@mandate/compiler";
+import type { CapVal, LoopStrategy, Param, Program, Progress, SandboxRequirement, TypeExpr } from "@mandate/bridge";
 import type { ChatModel, Cost, Outcome, ToolSpec, TurnRequest } from "./adapters.js";
 import type { ViolationKind } from "./journal.js";
 import { SandboxRefused, SESSION_ENDED, type ExecRequest, type ExecResult, type MxcAdapter } from "./sandbox.js";

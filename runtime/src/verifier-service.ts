@@ -20,7 +20,7 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
-import type { Lock, Program } from "@mandate/compiler";
+import type { Lock, Program } from "@mandate/bridge";
 import type { CheckBinding, CheckResult, Cost, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { statementOf, type Attestation } from "./attestation.js";
 import { childEnv } from "./env.js";

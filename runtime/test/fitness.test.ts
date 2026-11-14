@@ -8,7 +8,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { check, type Lock } from "@mandate/compiler";
+import { check, type Lock } from "@mandate/bridge";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { hostShortfalls, meets, parseVersion, systemProbe, versionIn, type HostProbe, type HostTool, type ToolReading } from "../src/fitness.js";
 import { buildPackage, verifyPackage } from "../src/runtime.js";

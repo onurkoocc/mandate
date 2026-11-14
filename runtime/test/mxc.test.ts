@@ -19,7 +19,7 @@ import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
-import { requirementFor, type SandboxRequirement } from "@mandate/compiler";
+import { requirementFor, type SandboxRequirement } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { HOST_RUNTIME_DIRS, MASK_CHECK, maskCheck, MxcHost, shellQuote, type MxcContainerRequest, type MxcSdk } from "../src/mxc.js";
 import { MxcAdapter, type MxcPolicy } from "../src/sandbox.js";

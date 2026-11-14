@@ -10,7 +10,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { check } from "@mandate/compiler";
+import { check } from "@mandate/bridge";
 import { buildPackage, EvidenceSigner, EXPORT_LIMITS, openDb, Runtime, simulate, verifyExport } from "../dist/index.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "conformance");

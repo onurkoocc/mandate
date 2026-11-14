@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { check, type Program } from "@mandate/compiler";
+import { check, type Program } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { runTests } from "../src/testing.js";
 import { closeAll, LOCK, world } from "./helpers.js";

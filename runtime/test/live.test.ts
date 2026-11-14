@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { check } from "@mandate/compiler";
+import { check } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { AnthropicModel, priceUsage } from "../src/anthropic.js";
 import { GitHubPullRequests } from "../src/github.js";

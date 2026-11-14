@@ -7,7 +7,7 @@
 // a stored record or program that no longer is what the journal names is
 // not shown as if it were.
 
-import { check, load, toHtml, toMarkdown, type WorkflowDef } from "@mandate/compiler";
+import { check, load, toHtml, toMarkdown, type WorkflowDef } from "@mandate/bridge";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { signDecision } from "../src/decisions.js";
