@@ -7,6 +7,13 @@ differs from what the compiler gives now, and read by the Rust tests in
 `crates/mandate-ir/tests/vectors.rs`. To write them again:
 `MANDATE_UPDATE_VECTORS=1 npm test`.
 
+The other directories here (`schema/`, `diagnostics/`, `diff/`, `corpus/`,
+`syntax.json`, `spans/`, `programs/`) and the golden file
+(`compiler/test/golden/outputs.json`) are read in the same way, each by the
+Rust test that its section names. Together they define what "the same
+diagnostics" means for the Rust compiler, and the last section, "Where the
+Rust compiler is not held to the TypeScript", lists what they do not reach.
+
 They are not conformance cases (`conformance/`): a case states a rule and
 is checked against the spec; a vector records what the reference
 implementation does, down to the message text and the column.
@@ -240,13 +247,25 @@ first in numeric order, then the others in the order written.
   `minimum`, `maximum`: `{ comparison: ">=" or "<=", limit }`, `must be >= <n>`,
   `must be <= <n>`; `minLength`, `maxLength`: `{ limit }`, `must NOT have fewer
   than <n> characters`, `must NOT have more than <n> characters`; `minItems`:
-  `{ limit }`, `must NOT have fewer than <n> items`; `uniqueItems`: `{ i, j }`
-  with `j` the earlier index, `must NOT have duplicate items (items ## <j> and
-  <i> are identical)`; `minProperties`: `{ limit }`, `must NOT have fewer than
+  `{ limit }`, `must NOT have fewer than <n> items`; `uniqueItems`: `{ i, j }`,
+  `must NOT have duplicate items (items ## <j> and <i> are identical)`, where `i` and `j` are the
+  indexes of two equal items and which is the earlier depends on the `items` schema (below); `minProperties`: `{ limit }`, `must NOT have fewer than
   <n> properties`; `propertyNames`: `{ propertyName }`, `property name must be
   valid`; `oneOf`: `{ passingSchemas: null }`, `must match exactly one schema in
   oneOf`; `discriminator`: as above. The errors raised inside a `propertyNames`
   subschema carry `propertyName` too (the name that failed).
+- **`uniqueItems`, which index is which.** The params are `{ i, j }` and the message
+  names `j` first, whichever is the earlier. When the `items` schema has a scalar
+  `type` of its own (`{ "type": "string", … }`, as the lock's `members.*.keys`), Ajv
+  walks from the end with an object keyed by the item's text: `i` is the earlier index
+  and `j` the later (`[K, K]` gives `{ i: 0, j: 1 }`, "items ## 1 and 0"), and an item
+  `"__proto__"` is never found again, since assigning to `__proto__` of `{}` sets no
+  member. Otherwise (an `items` that is a `$ref`, such as `Name`) it compares the items
+  deeply: `i` is the later index and `j` the largest earlier index of an equal item
+  (`uses/0/names` `[a, b, b]` gives `{ i: 2, j: 1 }`, "items ## 1 and 2"). Both stop at
+  the first pair. The raw errors in `schema/ir-invalid-1.json` and `schema/lock-invalid.json`
+  show both; `crates/mandate-ir/tests/schema.rs` shows the `"__proto__"` case, which no
+  vector reaches.
 - **A keyword that applies to one kind of value is not run on another**: a
   `pattern` on a number, a `minimum` on a string, an `items` on an object. The
   `type` error alone is given.
@@ -288,7 +307,7 @@ no tariff, in that order.
 ## The golden output texts (`MANDATE_GOLDEN_OUT`)
 
 The golden file (`compiler/test/golden/outputs.json`) pins the output texts of
-24 programs by digest. When the environment variable `MANDATE_GOLDEN_OUT`
+21 programs by digest. When the environment variable `MANDATE_GOLDEN_OUT`
 names a directory, `compiler/test/golden.test.ts` also writes every text to
 `<dir>/<program path>/<output file name>`, for a job to compare with another
 compiler's texts by `diff -ru`: `<program path>` is the repository path of the
@@ -299,8 +318,22 @@ output file name is the output's name with each space replaced by `_`:
 `view_--against_itself`, `sandbox` (231 files; a program has only the outputs
 the golden file pins for it). The bytes are exactly those that are hashed (UTF-8,
 no newline added), and the directory is created. Nothing is written when the
-variable is not set, and nothing of these texts is committed. The Rust side
-writes the same layout. The texts come from `compiler/test/golden-outputs.ts`.
+variable is not set, and nothing of these texts is committed. This is the one
+place that says the layout; the Rust side (`write_text` in
+`crates/mandate-testkit/tests/golden.rs`, run by the golden gate) refers here
+and writes the same one. The texts come from
+`compiler/test/golden-outputs.ts`.
+
+The `parity` job of `.github/workflows/ci.yml` writes both directories (the
+TypeScript with `npx vitest run test/golden.test.ts` in `compiler`, the Rust
+with `cargo test -p mandate-testkit --test golden`, each with
+`MANDATE_GOLDEN_OUT` set), checks that each holds as many files as the golden
+file pins outputs (231), and runs `diff -ru` on them: any difference fails the
+job and is shown. Under `scripts/wasi-test.mjs` the variable must name a
+directory inside the repository (for example `target/parity/rust`, which git
+ignores), since that is the only directory the WebAssembly test can write to;
+the script passes it on as the path inside the guest. A relative directory is
+taken by the Rust test from the repository root.
 
 ## diagnostics/
 
@@ -316,7 +349,9 @@ test`) writes them again. The files are within the limits of the reader (ASCII,
 each under 900 KB and split into numbered parts when a file would pass 800 KB,
 nesting up to 64, integers only, no duplicate key, no lone surrogate); the test
 asserts all of it. The inputs are not copied: a vector names them, and the Rust
-test reads the same files of `conformance/` and `fixtures/`.
+gate (`crates/mandate-testkit/tests/diagnostics.rs`) reads the same files of
+`conformance/` and `fixtures/`, and compares what `mandate_check::check` gives
+with the stored result whole.
 
 A result is a value in the compiler's member order, not text. The exception is a
 result that holds a number that is not an integer (a cost, a ratio), which JSON
@@ -423,7 +458,7 @@ diagnostics by code, for the codes that occur; `codes_in_no_result` the codes of
 ## Reading Mandate text: syntax.json and spans/
 
 These pin what the lexer and the parser (`compiler/src/parse/`) give, for
-the Rust port to match: the IR with its member order, the table that maps
+the Rust compiler to match (`crates/mandate-syntax/tests/syntax.rs` and `spans.rs`): the IR with its member order, the table that maps
 each JSON Pointer of the IR to the span of text it came from, every
 diagnostic in full, and the text `fmt` prints. They are written by
 `compiler/test/syntax-vectors.test.ts` (the inputs are in
@@ -625,7 +660,7 @@ not read back.
 What the views that compare two things give, when something did change. The golden
 file pins only `view --against` a program with itself, which shows no change; these
 files hold, for 183 pairs of programs (and of locks), the result of every comparing
-function the CLI or the runtime reaches, for the Rust port of those views to match
+function the CLI or the runtime reaches, which the Rust compiler matches (`crates/mandate-testkit/tests/diff_vectors.rs`)
 member for member and, for the documents, character for character. They are written
 by `compiler/test/diff-vectors.test.ts` (the written pairs are in
 `compiler/test/diff-pairs.ts`), which fails when a file differs from what the compiler
@@ -1063,3 +1098,95 @@ surrogate or a credential-shaped string (which the repository's secret scanner w
 refuse), when its input holds a number that is not an integer (which the Rust reader
 refuses: one call of `lock.test.ts` today), or when, made again from what would be
 stored, it gives another result.
+
+## Where the Rust compiler is not held to the TypeScript
+
+### What "the same diagnostics" means
+
+A gate holds the Rust compiler to a stored result of the TypeScript with every
+member of it, in order, as text; nothing is masked. For a result of `check` and
+the doors that stand on it that is `ok`, `hashes` and every diagnostic whole
+(`code`, `severity`, `message`, `at` with its path and span, `docs`, `facts` and
+`repair`), in the order the compiler gives them, with the members of each in
+the compiler's order. The gates that do this:
+
+| Gate | Against | Items | Test |
+|---|---|---|---|
+| golden outputs | the digest of each output text of every program (`check`, `load`, `ir --canonical`, `fmt`, `hash`, the views, `sandbox`) | 231 | `crates/mandate-testkit/tests/golden.rs` |
+| diagnostic vectors | the whole result of every compile case of `conformance/` and of the checks of every golden program | 193 | `crates/mandate-testkit/tests/diagnostics.rs` |
+| diff vectors | the results of the comparing functions and the documents of 183 pairs | 183 | `crates/mandate-testkit/tests/diff_vectors.rs` |
+| corpus | every call the TypeScript's own tests make to a front door, input and whole result | 1226 (1224 run) | `crates/mandate-testkit/tests/corpus.rs` |
+| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 125 | `crates/mandate-testkit/tests/conformance.rs` |
+| syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
+| written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
+
+Each gate prints `ran N, passed M, pending K`. A pending item is held to failing by
+omission only (the Rust gives the stored diagnostics with some left out, in order, and
+nothing else); every pending list is empty, and a gate fails when a pending item
+passes or a list names no item. The `parity` job of CI (see "The golden output
+texts") shows the difference when a golden output does not match.
+
+Two of these compare less than a whole result, for a reason: the conformance gate
+leaves messages and spans to the diagnostic vectors, which run the same cases; and
+the `check` calls of `scripts/lock-vectors.mjs` are compared on the diagnostics of
+the lock (E0140 to E0142, E0504, W0504, E0903 to E0905, E1502, E1802, E1803) and on
+`ok`, since their inputs are written to reach the lock alone.
+
+### What they do not reach
+
+Everything the Rust compiler is knowingly not held to, with how many and where it is
+listed by name. Each list is in the test that holds the Rust to the rest, and a test
+fails when an entry of a list passes or names nothing.
+
+- **The `acs_target` door of the corpus: 2 entries, excluded.** The ACS/Rego target
+  (`compiler/src/target/acs.ts`) is not ported in release 0.5; it stays in TypeScript.
+  `OUT_OF_SCOPE` in `crates/mandate-testkit/tests/corpus.rs`, and the gate prints
+  `corpus acs_target: ran 0, excluded 2`. The corpus total reads `1226 entries, ran
+  1224, excluded 2`. `EXCLUDED` in the same file, for single entries, is empty. The
+  envelope card of the views (in `compiler/src/views/views.ts`) is not in the Rust
+  crates either, for the same reason.
+- **`KNOWN_PATCH_DIFFERENCES` in `crates/mandate-views/tests/vectors.rs`: 8 of the 129
+  written patch inputs.** Four set `__proto__` as the last token of an `add`
+  (`proto-add-defs`, `proto-add-root`, `proto-then-add`, `proto-smuggle-plain`): in
+  JavaScript that sets the prototype of a plain object, whose members the schema
+  validation then sees; Rust has no prototypes, adds no member, and the patch does
+  nothing. Four have a `path` or `op` that is not a string (`path-missing`,
+  `path-number`, `path-null`, `path-array`): the TypeScript throws a `TypeError` and
+  puts the value itself in `at.path`; Rust reads it as the text a template would
+  give. The gate prints `patches: 8 of 129 known to differ`.
+- **`THROWS_IN_TYPESCRIPT` in `crates/mandate-check/tests/statics.rs`: 1 of the 38
+  written checks.** A type named like a member of `Object.prototype` (`a type named
+  toString where another is expected`): `NUMERIC_WIDENING[ua.name] ?? []` reads a
+  function, and the TypeScript throws a `TypeError`. Rust has no such member and gives
+  the E0201 for the mismatch, which the test holds to the documented text.
+- **The deepest programs: 11 shapes** (`deep` in `crates/mandate-check/tests/statics/inputs.json`,
+  the test `the_deepest_programs_that_load_are_checked_as_the_typescript_checks_them`).
+  Each is a program as deep as one that loads can be (64 definitions, an IR 64 deep).
+  Node's default stack is too small for the TypeScript to check most of them (it throws
+  `RangeError`), so `scripts/static-vectors.mjs` checks them in a worker thread with a
+  256 MB stack and stores the digest of the result; the Rust is held to that digest within
+  a stated stack (1 MiB under WebAssembly, 8 MiB natively). The reading of text has a
+  limit of its own: the TypeScript reads the arguments of a call and the fields of a
+  record literal without counting their nesting until V8's stack runs out (some 2,600
+  to 3,000 levels), and throws `RangeError`; the Rust refuses the 65th level with
+  `MDT-E0105`, as it does for every other nesting. The same holds for the canonical
+  text of a capability that is a sum 200,000 long. These three are in
+  `crates/mandate-syntax/tests/deep.rs` (`calls_nested_as_deep_as_the_size_limit`,
+  `records_nested_as_deep_as_the_size_limit`, `a_capability_too_deep_for_typescript_to_sort`),
+  where the Rust's diagnostic is written down; no vector carries these inputs.
+- **The `fmt` round trip excludes 1 program of 75: `conformance/S11j/program.mdt`.**
+  `crates/mandate-syntax/tests/roundtrip.rs` prints `excluded 1: does not read
+  (refused with no program): conformance/S11j/program.mdt (MDT-E0101)`. The case expects
+  that refusal; a file excluded by this rule must give an error and no program, and
+  one that reads after all fails the gate. The 74 others are read, printed, read back to
+  the same canonical IR, and printed to the same text.
+- **A lone UTF-16 surrogate.** A Rust string cannot hold one, so where the TypeScript's
+  message quotes half of a surrogate pair (an unexpected character outside the Basic
+  Multilingual Plane) the Rust holds U+FFFD, and no vector has such an input or
+  message (`reader.json`, `syntax.json`); `crates/mandate-ir/tests/api.rs` says what the
+  Rust gives. The corpus leaves out a call whose input or result holds one (none today).
+- **One corpus call: 1 of the 1227 distinct calls.** The `validate_lock` call of
+  `compiler/test/lock.test.ts` whose input holds a number that is not an integer, which
+  the strict reader refuses (`left_out` in `vectors/corpus/summary.json`). The same
+  `summary.json` says that a call is also left out when it gave two results or holds a
+  credential-shaped string; none does.

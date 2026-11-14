@@ -1,6 +1,6 @@
 [package]
 name = "mandate-check"
-description = "The checks of the Rust Mandate compiler, ported from the TypeScript one: the front door check, modules, name resolution and roles, capabilities, the standard library's tables, governance-class files, paths, the lock, the Managed Agents binding checks and the sandbox requirements so far"
+description = "The checks of the Rust Mandate compiler, giving the same diagnostics as the TypeScript compiler: the front doors (check, check_patch, check_subprogram, check_amendment), modules, name resolution, roles, capabilities, the static checks, the lock, the Managed Agents binding, the sandbox requirements, the comparison of two programs and structural patches"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

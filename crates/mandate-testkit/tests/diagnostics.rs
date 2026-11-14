@@ -37,11 +37,12 @@ use mandate_testkit::{
     run_held_gate, stored_cases, stored_programs,
 };
 
-/// The items the Rust compiler does not give yet: a glob for each family of
-/// codes whose stage is not ported (the slice that ports it beside it), one
-/// for each front door that is not, and by name the items that still fail
-/// although every code they hold is of a ported family. Every pending item
-/// is held to failing only by omission (`mandate_testkit::run_held_gate`).
+/// The items the Rust compiler does not give yet: none. What the list is for
+/// now: a new rule of the language is written first as a conformance case or
+/// a vector, listed here (a glob for a family of codes the Rust does not
+/// give, or an item by name), and the list is shortened by the commit that
+/// makes the Rust pass it. Every pending item is held to failing only by
+/// omission (`mandate_testkit::run_held_gate`).
 const PENDING: &[&str] = &[];
 
 /// The stored result `expected` (its text) against the diagnostics Rust

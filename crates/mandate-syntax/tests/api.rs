@@ -1,4 +1,4 @@
-//! The public API as the slices after the parser use it: the printer reads
+//! The public API as the crates after the parser use it: the printer reads
 //! `ParseResult::program`; `check` reads a program of either form through
 //! `load`. (The crate documentation's example, which the WebAssembly test
 //! run cannot run, is checked here too.)

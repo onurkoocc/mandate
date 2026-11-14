@@ -7,11 +7,11 @@ on:
 
 # What runs when. A pull request and a push to main run every job. A push to a
 # claude/boundary-r* branch, the slices of the Rust port, runs only the rust
-# job: a slice is brought to green on its branch before its pull request is
-# opened, and the jobs that are slow and need PostgreSQL or a real sandbox
-# (test, sandbox, sandbox-windows) are left to the pull request.
+# and parity jobs: a slice is brought to green on its branch before its pull
+# request is opened, and the jobs that are slow and need PostgreSQL or a real
+# sandbox (test, sandbox, sandbox-windows) are left to the pull request.
 # A branch with an open pull request is pushed to twice over, as a push and as
-# a pull request, so its rust job runs twice.
+# a pull request, so those two jobs run twice.
 #
 # Every job reads the repository and nothing else. Actions are pinned to full
 # commit SHAs (the tag is in the comment) so a moved tag cannot change what
@@ -50,6 +50,13 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
+      # The compiled corpus (vectors/corpus/) is complete: the suite runs again with every call it makes to a front door
+      # of the compiler recorded, and corpus.test.ts fails if that is not exactly what the corpus holds, so a new test
+      # that calls a door cannot leave the corpus incomplete (vectors/README.md, "corpus/", "How it is made").
+      - name: The compiled corpus holds every call the compiler's tests make to a front door
+        run: npm test -w compiler
+        env:
+          MANDATE_CORPUS: "1"
       - name: Runtime tests on PostgreSQL
         run: npm test -w runtime
         env:
@@ -363,3 +370,46 @@ jobs:
           git diff --exit-code -- crates/mandate-check/tests/doors
           untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/doors)"
           if [ -n "$untracked" ]; then echo "::error::doors-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
+
+  # The golden gate of the rust job compares digests, and a digest that differs says nothing about what differs. This
+  # job writes the output texts of both compilers into two directories, in the layout vectors/README.md names ("The
+  # golden output texts": <program path>/<output name, spaces as _>), and compares them with diff -ru: any difference
+  # fails it and is shown. Both directories must hold exactly as many files as the golden file pins outputs, so that
+  # a side which wrote less cannot pass by leaving out what would differ.
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: The TypeScript compiler writes its output texts
+        working-directory: compiler
+        env:
+          MANDATE_GOLDEN_OUT: ${{ runner.temp }}/parity/ts
+        run: npx vitest run test/golden.test.ts
+      - name: The Rust compiler writes its output texts
+        env:
+          MANDATE_GOLDEN_OUT: ${{ runner.temp }}/parity/rust
+        run: cargo test --locked -p mandate-testkit --test golden -- --nocapture
+      - name: The two directories hold the same files and the same bytes
+        env:
+          PARITY: ${{ runner.temp }}/parity
+        run: |
+          want="$(node -e 'const g = JSON.parse(require("fs").readFileSync("compiler/test/golden/outputs.json", "utf8")); console.log(Object.values(g).reduce((n, row) => n + Object.keys(row).length, 0))')"
+          echo "the golden file pins $want outputs"
+          if [ "$want" -ne 231 ]; then echo "::error::the golden file pins $want outputs, and this job expects 231: change the number here with the golden file"; exit 1; fi
+          for side in ts rust; do
+            have="$(find "$PARITY/$side" -type f | wc -l)"
+            echo "$side: $have files"
+            if [ "$have" -ne "$want" ]; then echo "::error::$side wrote $have files, not $want"; exit 1; fi
+          done
+          diff -ru "$PARITY/ts" "$PARITY/rust"
+          echo "the $want output texts are the same"

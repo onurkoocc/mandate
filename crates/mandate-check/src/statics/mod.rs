@@ -6,15 +6,15 @@
 //! type, how it is known (§5.2) and its data class (§5.5), and records which
 //! effects it uses.
 //!
-//! The port is in three slices, one file each, all of them `impl` blocks of
+//! The checker is in three parts, one file each, all of them `impl` blocks of
 //! the one [`Checker`]:
 //!
-//! - the core (this file and `expr.rs`, slice R11): the state, the pass
+//! - the core (this file and `expr.rs`): the state, the pass
 //!   order of `run`, constants, functions, contracts, recursion, statements,
 //!   the typer of expressions, budgets and the node count;
-//! - the authority (`authority.rs`, slice R12): capabilities, agents,
+//! - the authority (`authority.rs`): capabilities, agents,
 //!   workflows, delegation, `map`, `par`, effects and envelopes;
-//! - the system model (`system.rs`, slice R13): providers, working copies,
+//! - the system model (`system.rs`): providers, working copies,
 //!   declared reads, `data.read` and change sets, and `leadClasses`.
 //!
 //! The diagnostics come out in the order the checker meets them, never
@@ -321,8 +321,8 @@ pub(crate) struct Enveloped {
     pub(crate) usages: Rc<RefCell<Vec<Usage>>>,
 }
 
-/// The checker: `class Checker`. Its fields are those of all three slices;
-/// each slice reads and writes its own.
+/// The checker: `class Checker`. Its fields are those of all three parts;
+/// each part reads and writes its own.
 pub(crate) struct Checker<'a> {
     /// `out`: every diagnostic, in the order reported.
     out: Vec<Diagnostic>,
@@ -338,24 +338,25 @@ pub(crate) struct Checker<'a> {
     /// `floor`: in a sub-program, the class of what its lead received;
     /// `public` elsewhere.
     pub(crate) floor: DataClass,
-    /// R12, `capDefs`: what each capability definition evaluates to.
+    /// Authority, `capDefs`: what each capability definition evaluates to.
     pub(crate) cap_defs: HashMap<String, Vec<CapVal>>,
-    /// R11, `fnUsage`: the effects each function uses.
+    /// Core, `fnUsage`: the effects each function uses.
     fn_usage: HashMap<String, Memo<Vec<Usage>>>,
-    /// R12, `skillUsage`: what the body of each of the program's own skills
+    /// Authority, `skillUsage`: what the body of each of the program's own skills
     /// uses, by `Agent.skill`.
     pub(crate) skill_usage: HashMap<String, Vec<Usage>>,
-    /// R12, `askedInMap`: the `human.*` steps already reported as standing
+    /// Authority, `askedInMap`: the `human.*` steps already reported as standing
     /// in a map's body (E1708).
     pub(crate) asked_in_map: HashSet<String>,
-    /// R12, `enveloped`: the program's workflows with an envelope, in push
+    /// Authority, `enveloped`: the program's workflows with an envelope, in push
     /// order.
     pub(crate) enveloped: Vec<Enveloped>,
-    /// R11, `constVals`.
+    /// Core, `constVals`.
     const_vals: HashMap<String, Memo<Val>>,
-    /// R11, `recursive`: the functions and workflows on a call cycle.
+    /// Core, `recursive`: the functions and workflows on a call cycle.
     pub(crate) recursive: HashSet<String>,
-    /// R12 writes it (`plan`), R13 reads it (`leadClasses`), `leads`: the
+    /// The authority writes it (`plan`), the system model reads it
+    /// (`leadClasses`), `leads`: the
     /// data class of what each `plan` hands its lead, by the plan's path,
     /// in insertion order (a `Map`).
     pub(crate) leads: Vec<(String, DataClass)>,

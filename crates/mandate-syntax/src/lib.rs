@@ -1,6 +1,6 @@
 //! Reads Mandate text (`.mdt`) into IR exactly as the TypeScript reference
 //! compiler does: the same IR, members in the same order, the same table of
-//! spans, the same diagnostics. It ports, and is specified by:
+//! spans, the same diagnostics. It is written from, and held to:
 //!
 //! - `compiler/src/parse/lexer.ts`, the lexer;
 //! - `compiler/src/parse/parser.ts`, the parser, which lowers straight into
@@ -26,7 +26,7 @@
 //! where the TypeScript throws, with its message, and takes a program that
 //! was loaded (at most 64 levels deep).
 //!
-//! What a port has to copy, and the vectors that hold this crate to it, are
+//! What another implementation has to copy, and the vectors that hold this crate to it, are
 //! described in `vectors/README.md` ("Reading Mandate text"). In short:
 //!
 //! - Positions count UTF-16 code units from 1; only a line feed breaks a

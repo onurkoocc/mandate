@@ -1,4 +1,4 @@
-//! The system model, slice R13 (design doc 9 §2, §3, §5): providers and
+//! The system model (design doc 9 §2, §3, §5): providers and
 //! working copies, governance patterns, declared reads and their tiers
 //! (`checkSystem`, `checkRead`), `data.read` (`dataRead`), change sets
 //! (`changeset`, `findCycle`), and `leadClasses`, which reads what `plan`
