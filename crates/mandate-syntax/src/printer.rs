@@ -1455,3 +1455,6 @@ fn quote_parts(parts: &[Value], force_triple: bool, ind: &str) -> Printed {
         Ok(format!("\"{body}\""))
     }
 }
+
+#[cfg(test)]
+mod tests;
