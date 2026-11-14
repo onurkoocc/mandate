@@ -1,0 +1,168 @@
+// A program written to reach the branches of the ACS target
+// (compiler/src/target/acs.ts) that the fixtures of the repository do not:
+// scripts/acs-vectors.mjs reads this file, edits it, and has the TypeScript
+// compiler write the target; crates/mandate-views/tests/acs.rs has the Rust
+// do the same. It is an input of the vectors only; it runs nothing. The
+// script loads it (parses it into the IR) and does not check it: the target
+// is computed from the IR whatever the checker says.
+//
+// One agent for each thing the target does differently: no capability, only
+// a read, only a write, both, commands with and without argument prefixes,
+// a network host, models of two tiers and of every data class, effects that
+// stay with the runtime, a capability with no static scope, a spend in euros,
+// budgets in the skills, and paths and commands that JSON.stringify escapes.
+
+mandate @ 0.5
+
+module example.acs @ 0.1
+
+use std.{fs, exec, model, net, git, money}
+
+capability RepoRead   = fs.read("/work/repo")
+capability Nested     = fs.read("/work/repo/src/deep")
+capability SrcWrite   = fs.write("/work/repo/src")
+capability DocsWrite  = fs.write("/work/docs")
+capability Prefixed   = exec(commands: ["mvn"], args_prefix: [["-q", "test"], ["-q", "verify"]])
+capability AnyMvn     = exec(commands: ["mvn"])
+capability Npm        = exec(commands: ["npm", "10", "constructor", "9"], args_prefix: [["ci"]])
+capability Api        = net.https(hosts: ["api.example.com", "b.example.com"], methods: [GET, POST])
+capability Brain      = model.infer(tier: standard)
+capability Cheap      = model.infer(tier: economy, max_class: confidential)
+capability Deep       = model.infer(tier: standard, max_class: restricted)
+capability Open       = model.infer(tier: economy, max_class: public)
+capability AnyTier    = model.infer(max_class: confidential)
+capability Pr         = git.pr("acme/app")
+capability Cash       = money.spend(max: 20 USD, per: workflow_run)
+capability Anywhere   = fs.read(base)
+capability Quoted     = fs.read("/work/q\"uo\\te")
+capability Accented   = fs.write("/work/ünï/日本/😀")
+capability Odd        = exec(commands: ["a\"b", "c\\d", "é", "😀"])
+
+agent Bare {
+  role   "Has no capability at all."
+  skill idle(x: Text) -> Text ! {}
+}
+
+agent Reader {
+  role   "Only reads."
+  caps   RepoRead, Nested
+  budget { tokens: 1000 }
+  skill look(x: Text) -> Text ! {Fs.Read}
+}
+
+agent Writer {
+  role   "Only writes."
+  caps   SrcWrite, DocsWrite
+  budget { time: 90s }
+  skill put(x: Text) -> Text ! {Fs.Write}
+}
+
+agent Both {
+  role   "Reads and writes; the write is inside the read."
+  caps   RepoRead, SrcWrite, Brain
+  budget { tokens: 2000, time: 2m, spend: 1.5 USD, steps: 4 }
+  skill both(x: Text) -> Inferred<Text> ! {Fs.Read, Fs.Write, Model}
+}
+
+agent Runner {
+  role   "Runs commands: one with prefixes, one without, and the union of the two."
+  caps   Prefixed, AnyMvn, Npm
+  budget { spend: 0.000001 USD }
+  skill run(x: Text) -> Text ! {Exec}
+}
+
+agent Prefixes {
+  role   "Only prefixes."
+  caps   Prefixed
+  skill run(x: Text) -> Text ! {Exec}
+}
+
+agent Caller {
+  role   "Reaches a host and calls a model of each class."
+  caps   Api, Brain, Cheap, Deep, Open
+  budget { tokens: 5, time: 1ms, spend: 3 USD }
+  skill call(x: Text) -> Inferred<Text> ! {Net, Model}
+}
+
+agent Cheapskate {
+  role   "A model of one tier, and the lowest class."
+  caps   Open
+  skill think(x: Text) -> Inferred<Text> ! {Model}
+}
+
+agent Tierless {
+  role   "A model of no tier: the lock has nothing to name for it."
+  caps   AnyTier, Open
+  skill think(x: Text) -> Inferred<Text> ! {Model}
+}
+
+agent Effects {
+  role   "Effects stay with the runtime."
+  caps   Pr, Cash
+  skill pay(x: Text) -> Text ! {}
+}
+
+agent Unscoped {
+  role   "A capability with no static scope."
+  caps   Anywhere, RepoRead
+  skill look(x: Text) -> Text ! {Fs.Read}
+}
+
+agent Euro {
+  role   "Spends in euros."
+  caps   RepoRead
+  budget { spend: 2 EUR }
+  skill look(x: Text) -> Text ! {Fs.Read}
+}
+
+agent Skilled {
+  role   "Budgets in the skills are folded into the agent's."
+  caps   RepoRead, Brain
+  budget { tokens: 100, time: 1s, spend: 1 USD }
+  skill big(x: Text) -> Inferred<Text> ! {Fs.Read, Model}
+  skill small(x: Text) -> Inferred<Text> ! {Fs.Read, Model}
+}
+
+agent SkillsOnly {
+  role   "No budget of its own."
+  caps   RepoRead
+  skill a(x: Text) -> Text ! {Fs.Read}
+  skill b(x: Text) -> Text ! {Fs.Read}
+}
+
+agent Escapes {
+  role   "Paths and commands that JSON.stringify escapes."
+  caps   Quoted, Accented, Odd
+  skill go(x: Text) -> Text ! {Fs.Read, Fs.Write, Exec}
+}
+
+agent Dup {
+  role   "Package names that collide: DUP, Dup, dup and dup_ all become dup."
+  caps   RepoRead
+  skill go(x: Text) -> Text ! {Fs.Read}
+}
+
+agent dup {
+  role   "Collides with Dup."
+  caps   RepoRead
+  skill go(x: Text) -> Text ! {Fs.Read}
+}
+
+agent dup_ {
+  role   "Collides with both."
+  caps   RepoRead
+  skill go(x: Text) -> Text ! {Fs.Read}
+}
+
+agent DUP {
+  role   "The first of the four."
+  caps   RepoRead
+  skill go(x: Text) -> Text ! {Fs.Read}
+}
+
+workflow Run(x: Text) -> Text
+  caps   RepoRead
+  budget { time: 1h }
+{
+  delegate Reader.look(x)
+}
