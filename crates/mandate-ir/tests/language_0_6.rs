@@ -284,9 +284,7 @@ fn the_two_fields_of_0_6_are_held_to_their_shape() {
         ["MDT-E0140 at /libraries/a.b/version"]
     );
     assert_eq!(
-        shape(&format!(
-            r#","libraries":{{"a.b":{{"version":"1.0.0","digest":"sha256:short","modules":{{}}}}}}"#
-        )),
+        shape(r#","libraries":{"a.b":{"version":"1.0.0","digest":"sha256:short","modules":{}}}"#),
         [
             "MDT-E0140 at /libraries/a.b/digest",
             "MDT-E0140 at /libraries/a.b/modules"
