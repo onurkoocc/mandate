@@ -60,10 +60,92 @@ jobs:
           node compiler/dist/cli.js check fixtures/fixbug/fixbug.ir.json
           node compiler/dist/cli.js sandbox fixtures/fixbug/fixbug.ir.json > /dev/null
           node compiler/dist/cli.js test fixtures/fixbug/fixbug.mdt
+      # A real OPA for the generated Rego (compiler/test/acs.test.ts, X05). The binary is the static Linux build of one
+      # release, from the project's GitHub releases; its sha256 is the one the release publishes next to it
+      # (opa_linux_amd64_static.sha256), fixed here and checked before the binary is run. 1.4.2 is the version the test
+      # names for the Docker image, so the two ways of running it are the same OPA.
+      - name: Install OPA 1.4.2 (static Linux binary, sha256 checked)
+        env:
+          OPA_VERSION: "1.4.2"
+          OPA_SHA256: 2c0ccdbbe0b8e2a5d12d9c42d92f1f34f494ffb32d1f3c4ddc36101be637d66f
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/opa" "https://github.com/open-policy-agent/opa/releases/download/v${OPA_VERSION}/opa_linux_amd64_static"
+          echo "$OPA_SHA256  $RUNNER_TEMP/opa" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/opa"
+          "$RUNNER_TEMP/opa" version
+      # npm test above skipped the gated part of this file. Here MANDATE_OPA names the binary, the reporter lists each
+      # test, and assert-ran.mjs fails the step if any test of the file was skipped, so a green step means the generated
+      # Rego was evaluated by the real OPA.
+      - name: The generated Rego on a real OPA (X05), run and not skipped
+        working-directory: compiler
+        env:
+          MANDATE_OPA: ${{ runner.temp }}/opa
+          VITEST_REPORT: ${{ runner.temp }}/acs-report.json
+        run: |
+          npx vitest run test/acs.test.ts --reporter=verbose --reporter=json --outputFile.json="$VITEST_REPORT"
+          node ../scripts/assert-ran.mjs "$VITEST_REPORT" "the generated Rego on a real OPA"
+      # A real OpenTelemetry Collector for `mandate otel export` (runtime/test/otel-collector.test.ts). The image is the
+      # collector's core distribution, whose manifest lists the `file` exporter, pinned by the digest of its manifest
+      # list (the same on ghcr.io and Docker Hub). It runs as the runner's own user, so that the file it writes to the
+      # mounted directory can be read by the test, and its port is published on the loopback address only. Its
+      # configuration is in the repository: it takes OTLP over HTTP and writes each request as a line of JSON.
+      - name: Start an OpenTelemetry Collector 0.165.0 (core distribution, image pinned by digest)
+        env:
+          COLLECTOR_IMAGE: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector:0.165.0@sha256:34b24b740c3c88d3467740e8642a397c13898ef76d7295c5425164c482ed1b73
+        run: |
+          mkdir -p "$RUNNER_TEMP/otel-out"
+          docker run -d --name otel-collector --user "$(id -u):$(id -g)" \
+            -p 127.0.0.1:4318:4318 \
+            -v "$PWD/runtime/test/otel-collector.yaml:/etc/otelcol/config.yaml:ro" \
+            -v "$RUNNER_TEMP/otel-out:/out" \
+            "$COLLECTOR_IMAGE"
+          # Ready when the receiver answers at all (a GET of the traces path is answered 405): not when the container is up.
+          for i in $(seq 1 60); do
+            if [ "$(docker inspect --format '{{.State.Running}}' otel-collector)" != "true" ]; then
+              echo "::error::the collector container stopped before it was ready"
+              docker logs otel-collector
+              exit 1
+            fi
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4318/v1/traces || true)"
+            if [ "$code" != "000" ]; then echo "the collector's receiver answered $code after $i s"; exit 0; fi
+            sleep 1
+          done
+          echo "::error::the collector's receiver did not answer within 60 s"
+          docker logs otel-collector
+          exit 1
+      # The export is sent to that collector and what the collector wrote is compared with the run's journal. The
+      # reporter lists the test and assert-ran.mjs fails the step if it was skipped.
+      - name: mandate otel export against the real OpenTelemetry Collector, run and not skipped
+        working-directory: runtime
+        env:
+          MANDATE_OTEL_COLLECTOR: http://127.0.0.1:4318
+          MANDATE_OTEL_COLLECTOR_OUT: ${{ runner.temp }}/otel-out/spans.json
+          VITEST_REPORT: ${{ runner.temp }}/otel-collector-report.json
+        run: |
+          npx vitest run test/otel-collector.test.ts --reporter=verbose --reporter=json --outputFile.json="$VITEST_REPORT"
+          node ../scripts/assert-ran.mjs "$VITEST_REPORT" "mandate otel export against a real OpenTelemetry Collector"
+      - name: The collector's log and file (shown when the step above failed)
+        if: failure()
+        run: |
+          echo "--- docker logs otel-collector"
+          docker logs otel-collector || true
+          echo "--- $RUNNER_TEMP/otel-out"
+          ls -l "$RUNNER_TEMP/otel-out" || true
+          echo "--- first 4000 bytes of spans.json"
+          head -c 4000 "$RUNNER_TEMP/otel-out/spans.json" || true
+      - name: Stop the OpenTelemetry Collector
+        if: always()
+        run: docker rm -f otel-collector
 
+  # On two Ubuntu releases, so that what is enforced (the sandbox, and its egress through the proxy alone) is shown on a
+  # second kernel and a second Bubblewrap and slirp4netns. A failure of one release does not stop the other.
   sandbox:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,6 +172,18 @@ jobs:
           # The acceptance test leaves its exports here, for the Rust verifier below.
           MANDATE_ACCEPTANCE_OUT: ${{ runner.temp }}/acceptance
         run: npx vitest run test/mxc.test.ts test/sandbox-egress.test.ts test/boundary-acceptance.test.ts test/gate3.test.ts test/workspace.test.ts
+      # The container sandbox host on the runner's own Docker engine (G05, G07): runtime/test/container.test.ts runs its
+      # second part only with MANDATE_CONTAINER=1. The images it runs in are named there by digest. assert-ran.mjs fails
+      # the step if any test of the file was skipped.
+      - name: The container sandbox host on a real Docker engine (G05, G07), run and not skipped
+        working-directory: runtime
+        env:
+          MANDATE_CONTAINER: "1"
+          VITEST_REPORT: ${{ runner.temp }}/container-report.json
+        run: |
+          docker version --format 'engine {{.Server.Os}} {{.Server.Version}}'
+          npx vitest run test/container.test.ts --reporter=verbose --reporter=json --outputFile.json="$VITEST_REPORT"
+          node ../scripts/assert-ran.mjs "$VITEST_REPORT" "the container sandbox host on a real Docker engine"
       # The independent verifier on what the run in the real sandbox left: its journal's export must verify, and the
       # export made after one event was changed in the database must be chain_broken at that event.
       - name: Install the pinned Rust toolchain
@@ -135,6 +229,11 @@ jobs:
         env:
           MANDATE_MXC: "1"
         run: npx vitest run test/mxc-windows.test.ts test/workspace.test.ts
+      # Tests with a branch that runs only on Windows: another drive and a UNC path refused, a junction where a link is
+      # made, `docker` found as an .exe, the egress proxy's admin channel as a named pipe, and no SIGTERM to catch.
+      - name: The Windows branches of the path, environment and egress tests
+        working-directory: runtime
+        run: npx vitest run test/paths.test.ts test/child-env.test.ts test/egress-cli.test.ts
 
   rust:
     runs-on: ubuntu-latest

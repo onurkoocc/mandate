@@ -1325,6 +1325,20 @@ Configuration (`mandate.runtime.json`):
   allow-list is enforced before start. A linked dependency directory is
   mounted in its place, read-only, with tmpfs cache directories. It is
   probed and planned like MXC (isolation `container`).
+  **Known limit: who the container's process is.** It starts the
+  container with no `--user`, so the process is root inside it, but with
+  every capability dropped, `CAP_DAC_OVERRIDE` among them. On a native Linux
+  engine a bind mount keeps the host's ownership and modes, so that root is
+  an ordinary user to the files: it cannot create or change anything in a
+  write path that only its owner may write (a tool's write exits non-zero,
+  "Permission denied"), and what it does create is owned by root. Reads
+  work where the files are world-readable. Docker Desktop's file sharing
+  and a rootless engine do not enforce ownership this way, so the limit does
+  not show there. Today an operator gives the container a workspace its
+  process can write (mode 777 on the write paths, or paths owned by root).
+  This is not fixed: starting the container as the runtime's own uid and gid
+  is the change that would remove it. `runtime/test/container.test.ts` pins
+  the behaviour on a Linux engine (`WRITES_OWNER_ONLY_PATH`).
 - `ci` reads GitHub Actions (MANDATE_GITHUB_TOKEN). Attestation
   verification is a pluggable hook (`GitHubCi.attest`); without one, every
   result is unattested.
