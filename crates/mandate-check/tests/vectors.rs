@@ -4,7 +4,10 @@
 //! arguments and the TypeScript's result; the Rust result must be the same
 //! JSON, member for member. A gate per source (the programs of the
 //! repository, the hand-written edges, the pseudo-random sweep) prints
-//! `ran N, passed M, pending K`; nothing is pending.
+//! `ran N, passed M, pending K`; nothing is pending. The programs are the
+//! ones the committed list `tests/data/sources.json` names, not a listing of
+//! the directories, so that a change adding a conformance case does not
+//! change this data (`--rescan` takes new ones in).
 
 #![allow(
     clippy::arithmetic_side_effects,
