@@ -7,15 +7,21 @@
 // (crates/mandate-check/tests/json_doors.rs) gives the same inputs to its doors
 // and compares the output text.
 //
-//   npm ci --ignore-scripts && npm run build    (once: it reads compiler/dist)
+//   npm ci --ignore-scripts && npm run build    (once: it reads compiler/dist
+//                                                and bridge/dist)
 //   node scripts/json-doors-vectors.mjs
 //
 // doors.json is `{ format: "mandate/doors/0.1", doors: [{ name, ts, params,
 // note? }] }`: a door's name, the function of compiler/src/index.ts it stands
 // for (null for a door that has none of its own: its meaning is computed here
 // from TypeScript functions, `OWN` below), and the members of its input, the
-// function's parameters in order. inputs.json is `{ calls: [{ name, door,
-// input }] }`; the function is called with `params.map((p) => input[p])`,
+// function's parameters in order. A function the compiler does not export is
+// looked for in the bridge (bridge/src/index.ts, built to bridge/dist), which
+// exports the compiler's names and, besides them, the run-time authority
+// decisions of bridge/src/authority.ts (`grant`, `narrow`, `mapScopes`,
+// `inFlightOverlap`); a name neither exports is an error. inputs.json is
+// `{ calls: [{ name, door, input }] }`; the function is called with
+// `params.map((p) => input[p])`,
 // except that a parameter whose TypeScript type is a Set or a Map (listed in
 // `COLLECTIONS` below; the door takes the array or the object the contract
 // writes it as) is given as one.
@@ -42,6 +48,10 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const root = new URL("..", import.meta.url);
 const compiler = await import(new URL("compiler/dist/index.js", root).href);
+const bridge = await import(new URL("bridge/dist/index.js", root).href);
+
+/** The TypeScript function named `ts`: the compiler's, or, when the compiler exports none, the bridge's. */
+const tsFunction = (ts) => (typeof compiler[ts] === "function" ? compiler[ts] : typeof bridge[ts] === "function" ? bridge[ts] : undefined);
 
 // ---------------------------------------------------------------------------
 // The contract's serialiser: the output of a door, as text.
@@ -217,8 +227,9 @@ for (const crate of readdirSync(crates).sort()) {
       if (!Object.hasOwn(OWN, door.name)) throw new Error(`${crate}: the door ${door.name} has no TypeScript function and no meaning here`);
       f = () => OWN[door.name](input);
     } else {
-      if (typeof compiler[door.ts] !== "function") throw new Error(`${crate}: the compiler exports no function ${door.ts}`);
-      f = () => compiler[door.ts](...door.params.map((p) => argument(door.name, input, p)));
+      const fn = tsFunction(door.ts);
+      if (!fn) throw new Error(`${crate}: neither the compiler nor the bridge exports a function ${door.ts}`);
+      f = () => fn(...door.params.map((p) => argument(door.name, input, p)));
     }
     let result;
     try {

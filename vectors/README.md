@@ -8,8 +8,9 @@ differs from what the compiler gives now, and read by the Rust tests in
 `MANDATE_UPDATE_VECTORS=1 npm test`.
 
 The other directories here (`schema/`, `diagnostics/`, `diff/`, `corpus/`,
-`syntax.json`, `spans/`, `programs/`, and `codes.json`, which
-`scripts/codes-vectors.mjs` writes) and the golden file
+`syntax.json`, `spans/`, `programs/`, `codes.json`, which
+`scripts/codes-vectors.mjs` writes, and `authority/`, which
+`scripts/authority-vectors.mjs` writes) and the golden file
 (`compiler/test/golden/outputs.json`) are read in the same way, each by the
 Rust test that its section names. Together they define what "the same
 diagnostics" means for the Rust compiler, and the last section, "Where the
@@ -86,6 +87,54 @@ codes, in the same order, with the same texts. A row whose reference is Rust (a
 code added in language 0.6 or later, which the TypeScript compiler, frozen at
 0.5, does not have) is not compared, and is not in this file; the test fails if
 it is.
+
+## authority/
+
+`authority/cases.json` is `{ "format": "mandate/vectors/authority/0.1",
+"generator", "seed", "counts", "cases": [ { "fn", "input", "output" } ] }`, one
+case a line (in a directory of its own, since `compiler/test/vectors.test.ts`
+holds the files at the top of `vectors/` to the ones it writes): generated cases of
+the four run-time authority decisions of `bridge/src/authority.ts` (`grant`,
+`narrow`, `mapScopes`, `inFlightOverlap`), each an input of the function and
+the output the built TypeScript gives for it (read back from its JSON text).
+`counts` is how many cases of each function end in each kind of result: the
+member names of the result object (`available`, `granted`, `refused`; `caps`,
+`partial`, `notText`, `refused`; `items,writes`, `partial`, `refused`), and for
+`inFlightOverlap` `clear` or `refused`. It is written by `node
+scripts/authority-vectors.mjs` from the built bridge (CI runs every
+`scripts/*-vectors.mjs` and fails when the tree changes), and read by
+`crates/mandate-check/tests/authority.rs`, which gives each input to the JSON
+door of its function (`grant`, `narrow`, `map_scopes`, `in_flight_overlap`, as
+`{ input }`), twice, and holds its output to the recorded one, as a JSON value
+and as text, and the counts to the cases. The same test holds the doors to the
+recorded cases of `bridge/test/authority-cases.json`, read where they are (the
+bridge's own test holds the TypeScript to that file).
+
+The cases come from a generator in the script, seeded with the `seed` written
+here, which reads no clock and no `Math.random`, so the file is the same each
+time. It is aimed at where a port goes wrong: scopes made of a small alphabet of
+path segments (`.`, `..`, empty segments, trailing slashes, relative paths,
+non-ASCII and astral characters, `\`, `:` and NUL), so that containment and
+overlap happen; every kind of capability, with and without each member, unknown
+members, member orders of their own, and `write`, `maxClass`, `name` and `tier`
+given values that are falsy, empty or not booleans; capabilities derived from
+what the context holds, so that a fair share lie inside it; layered `given` and
+`handed`; remote and local agents; granted lists long enough to exercise the
+stable sort with equal keys (three of 64 members or more), with keys that differ
+only by an escape, by UTF-16 code unit against code point, or by an empty scope;
+narrowing arguments of every JSON type at every position; maps with `par` 1 and
+above; and sub-programs whose command the map's path starts with (left out),
+equals, or extends without a `/`. The script fails when a kind of result is
+under 5% of its function's cases, when no granted list has 64 members, or when
+the file passes 1,000,000 bytes; it prints the counts, and finer ones (which
+refusal, how long a granted list).
+
+Every input is inside the contract that `bridge/src/authority.ts` states and its
+code reads: a `write` that is not a boolean is read by truthiness there, so the
+cases have some (never `null`, which the doors refuse). What the doors answer
+outside the contract (`bad_input`: a member left out, `null` where a member is
+absent or has a type, a member of another JSON type) is held by
+`crates/mandate-check/tests/json_doors.rs`, not here.
 
 ## programs/
 
@@ -1139,7 +1188,8 @@ the compiler's order. The gates that do this:
 | conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 125 | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
-| JSON doors | the output text of every call of `crates/*/tests/json_doors/inputs.json`, each through a door of `doors.json` beside it and through the TypeScript function it stands for, serialised by the door contract (`scripts/json-doors-vectors.mjs`, its function `doorJson`); every door has a call | 142 calls, 42 doors | `crates/mandate-check/tests/json_doors.rs` |
+| JSON doors | the output text of every call of `crates/*/tests/json_doors/inputs.json`, each through a door of `doors.json` beside it and through the TypeScript function it stands for, serialised by the door contract (`scripts/json-doors-vectors.mjs`, its function `doorJson`); every door has a call | 159 calls, 46 doors | `crates/mandate-check/tests/json_doors.rs` |
+| run-time authority decisions | the output of every recorded case of `bridge/test/authority-cases.json` and every generated case of `authority/cases.json` (see its section), through the JSON door of its function, twice, as a value and as text | 167 and 1227 | `crates/mandate-check/tests/authority.rs` |
 
 Each gate prints `ran N, passed M, pending K`. A pending item is held to failing by
 omission only (the Rust gives the stored diagnostics with some left out, in order, and
