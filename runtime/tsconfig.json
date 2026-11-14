@@ -3,7 +3,9 @@
   "compilerOptions": {
     "rootDir": "..",
     "outDir": "dist",
-    "paths": { "@mandate/compiler": ["../compiler/src/index.ts"] }
+    // Sources, so no build is needed first. The pattern, not two names, because the bridge's own import of the
+    // compiler is resolved with this file's paths too, and this package must not name the compiler (seam.test.ts).
+    "paths": { "@mandate/*": ["../*/src/index.ts"] }
   },
   "include": ["src", "test"]
 }

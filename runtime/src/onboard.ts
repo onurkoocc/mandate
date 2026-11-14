@@ -17,7 +17,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { check, requirementFor, type CapVal, type Command, type Def, type Program } from "@mandate/compiler";
+import { check, requirementFor, type CapVal, type Command, type Def, type Program } from "@mandate/bridge";
 import type { CheckBinding, CheckLog, CheckResult, SystemFacts, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { checkout, git, LINKED, snapshot, tail } from "./boundary.js";
 import type { MxcAdapter } from "./sandbox.js";

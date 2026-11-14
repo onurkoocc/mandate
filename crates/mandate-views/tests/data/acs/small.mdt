@@ -1,0 +1,34 @@
+// A small program for the ACS vectors (scripts/acs-vectors.mjs): the cases
+// that vary a lock, a budget, an agent's name or what the program holds
+// start from it and edit it in the IR. It is an input of the vectors only;
+// it runs nothing, and the script does not check it.
+
+mandate @ 0.5
+
+module example.small @ 0.1
+
+use std.{fs, model}
+
+capability RepoRead = fs.read("/work/repo")
+capability Brain    = model.infer(tier: standard)
+capability Cheap    = model.infer(tier: economy, max_class: confidential)
+capability Ctor     = model.infer(tier: constructor)
+
+agent M {
+  role   "Reads and calls a model of two tiers."
+  caps   RepoRead, Brain, Cheap
+  budget { tokens: 10 }
+  skill think(x: Text) -> Inferred<Text> ! {Fs.Read, Model}
+}
+
+agent N {
+  role   "Reads only."
+  caps   RepoRead
+  skill look(x: Text) -> Text ! {Fs.Read}
+}
+
+agent C {
+  role   "A model of the tier named constructor."
+  caps   Ctor
+  skill think(x: Text) -> Inferred<Text> ! {Model}
+}

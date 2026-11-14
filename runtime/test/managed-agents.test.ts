@@ -5,7 +5,7 @@
 // tool runs in the runtime's own sandbox (the bridge). Replay calls neither
 // the service nor the sandbox.
 
-import { check, type Lock, type ManagedAgentsBinding, type Program } from "@mandate/compiler";
+import { check, type Lock, type ManagedAgentsBinding, type Program } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { DEFAULT_HARNESS_TOKENS, deployManagedAgents, inlineRefs, managedAgentsExecutor, ManagedAgentsChat } from "../src/managed-agents.js";

@@ -13,7 +13,7 @@ import type { Modules } from "../src/modules.js";
 import { printProgram } from "../src/print/printer.js";
 import { sandboxRequirements } from "../src/target/sandbox.js";
 import { toHtml, toMarkdown } from "../src/views/doc.js";
-import { architecture, authority, cost, programDoc, semanticDiff } from "../src/views/views.js";
+import { architecture, authority, card, cardDoc, cost, envelopeWorkflows, programDoc, semanticDiff } from "../src/views/views.js";
 import { lockFileOf, readRepo, syntaxFixtures } from "./helpers.js";
 
 /** Every program in the repository. */
@@ -97,6 +97,16 @@ export function outputs(file: string, mods: Modules): Record<string, string> {
     out["view --format html"] = toHtml(doc);
     out["view --against itself"] = json(semanticDiff(p, p));
     out["sandbox"] = json({ program: checked.hashes!.program, requirements: sandboxRequirements(p, mods, lock) });
+    // `mandate view --card` (cli.ts) is of the one workflow with an envelope, which a program that has one workflow with
+    // an envelope has by default; it is given the modules and the lock as the command line gives them.
+    const enveloped = envelopeWorkflows(p);
+    if (enveloped.length === 1) {
+      const name = enveloped[0]!;
+      const opts = { modules: mods, ...(lock ? { lock } : {}) };
+      out["view --card --format json"] = json(card(p, name, opts));
+      out["view --card --format md"] = toMarkdown(cardDoc(p, name, opts)!);
+      out["view --card --format html"] = toHtml(cardDoc(p, name, opts)!);
+    }
   }
   return out;
 }

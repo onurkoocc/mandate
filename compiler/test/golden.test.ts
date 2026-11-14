@@ -73,7 +73,7 @@ describe("the output texts written for a comparison", () => {
       const pinned = JSON.parse(readFileSync(GOLDEN, "utf8")) as Record<string, Record<string, string>>;
       const expected = Object.entries(pinned).flatMap(([file, row]) => Object.keys(row).map((name) => `${file}/${outputFileName(name)}`));
       expect(written.sort()).toEqual(expected.sort());
-      expect(written.length).toBe(231);
+      expect(written.length).toBe(234);
       for (const [file, row] of Object.entries(pinned)) {
         for (const [name, digest] of Object.entries(row)) expect(sha256Of(readFileSync(join(dir, file, outputFileName(name)), "utf8")), `${file} ${name}`).toBe(digest);
       }

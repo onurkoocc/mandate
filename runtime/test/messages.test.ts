@@ -1,7 +1,7 @@
 // Inbound messages and package verification (Doc 4 §3.5, §8.9; R03, S09).
 
 import { readFileSync } from "node:fs";
-import { check } from "@mandate/compiler";
+import { check } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { buildPackage, verifyPackage, type Lock } from "../src/runtime.js";
 import { isObj } from "../src/values.js";

@@ -18,8 +18,23 @@
 //!   ([`delegate_budget`], [`Sum`]), `system` ([`has_system`]), and
 //!   `program_doc`, which puts them in one document. [`shown`] holds the
 //!   small texts they are written in ([`show`], [`list`], [`mermaid_text`],
-//!   [`type_text`]). The envelope card is not in this crate: it stays in TypeScript
-//!   for 0.5.
+//!   [`type_text`]).
+//! - [`card`]: the envelope card of a workflow, the one-page summary of its
+//!   envelope for the person who approves it ([`card()`], [`card_doc`],
+//!   [`envelope_workflows`], [`CardView`]); it stayed in TypeScript for 0.5
+//!   and is ported in 0.6.
+//! - [`acs`]: the ACS target, `compiler/src/target/acs.ts`: each local agent
+//!   written as an Agent Control Specification manifest and a Rego policy
+//!   ([`acs_target`], [`AcsTarget`], [`AcsAgent`]), with the profile of what an
+//!   ACS host alone guarantees ([`ACS_PROFILE`], [`ACS_PROFILE_NOTES`]); it
+//!   stayed in TypeScript for 0.5 and is ported in 0.6. The Rego is the
+//!   TypeScript's byte for byte; CI evaluates the TypeScript's on a real OPA.
+//! - [`json_doors`]: the JSON doors of this crate, the second table of doors
+//!   after `mandate_check::json_doors` (whose contract they keep): the views,
+//!   the documents, their Markdown and HTML, the card and the ACS target as
+//!   functions from a JSON value to a JSON value, with the readers that take a
+//!   document or a view back from its JSON. The dispatcher of `mandate-doors`
+//!   merges the two tables.
 //!
 //! The cost view counts the delegations a workflow with an envelope may
 //! start as the checker does, with `mandate_check::static_cost`
@@ -34,19 +49,31 @@
 
 #![forbid(unsafe_code)]
 
+pub mod acs;
 pub mod architecture;
 pub mod authority;
+pub mod card;
 pub mod cost;
 pub mod diff;
 pub mod doc;
+pub mod json_doors;
 pub mod program_doc;
 pub mod shown;
 pub mod system;
 
+pub use acs::{
+    ACS_PROFILE, ACS_PROFILE_NOTES, ACS_TARGET_FORMAT, ACS_VERSION, AcsAgent, AcsProfileRow,
+    AcsTarget, acs_target,
+};
 pub use architecture::{
     ArchitectureView, WorkflowArchitecture, architecture, architecture_blocks, mermaid,
 };
 pub use authority::{AuthorityRow, AuthorityView, authority, authority_blocks, late_kinds};
+pub use card::{
+    CardApproval, CardApproves, CardBudgetRow, CardBudgetText, CardHanded, CardMap, CardMember,
+    CardPlan, CardPlanNumbers, CardTouches, CardView, CardWait, card, card_blocks, card_doc,
+    envelope_workflows,
+};
 pub use cost::{
     BudgetFrom, CostRow, CostView, DelegateBudget, Sum, WorkflowCost, cost, cost_blocks,
     delegate_budget,

@@ -5,7 +5,7 @@
 // is the check's result.
 
 import { parentPort } from "node:worker_threads";
-import { checkSubprogram, type SubprogramInput } from "@mandate/compiler";
+import { checkSubprogram, type SubprogramInput } from "@mandate/bridge";
 import { checkAmended, type AmendedInput } from "./package.js";
 
 parentPort?.on("message", (m: { id: number; input?: SubprogramInput; amendment?: AmendedInput }) => {

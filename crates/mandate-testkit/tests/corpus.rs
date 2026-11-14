@@ -9,11 +9,12 @@
 //! `corpus <door>: ran N, passed M, pending K`, over the entries of that
 //! door, named `<door> @ <id> [<codes>]` (the codes are those of the stored
 //! result, sorted, so a pending list can name a family: `*MDT-E03*`).
-//! Every door of the corpus but one is run against Rust: `load`
+//! Every door of the corpus is run against Rust: `load`
 //! (`mandate_syntax::load`), `check`, `load_modules`, `check_patch`,
 //! `check_subprogram`, `check_amendment`, `validate_lock`,
-//! `denial_diagnostics` and `apply_patch` (`mandate_check`). The one that is
-//! not is `acs_target`, in [`OUT_OF_SCOPE`].
+//! `denial_diagnostics` and `apply_patch` (`mandate_check`), and
+//! `acs_target` (`mandate_views::acs_target`, the whole target as the corpus
+//! stores it: manifests, Rego and diagnostics).
 //!
 //! The pending lists below are empty. What they are for now: a new rule of
 //! the language is written first as a conformance case or a vector, so that
@@ -27,9 +28,9 @@
 //! Two things are neither passed nor pending, and are counted and printed
 //! (`corpus <door>: excluded N: ...`): the entries in [`EXCLUDED`], by id
 //! and with the reason, which are not run (none today); and the doors in
-//! [`OUT_OF_SCOPE`] (`acs_target`, 2 entries). An excluded id that names no
-//! entry fails the gate, and so does a total that is not the corpus's:
-//! nothing leaves the gate unseen.
+//! [`OUT_OF_SCOPE`] (none today: the Rust compiler has every door). An
+//! excluded id that names no entry fails the gate, and so does a total that
+//! is not the corpus's: nothing leaves the gate unseen.
 
 #![allow(clippy::panic, clippy::expect_used, missing_docs)]
 
@@ -41,11 +42,12 @@ use mandate_check::{
 use mandate_ir::{Diagnostic, JsValue, Span, Spans, Value, parse, stringify};
 use mandate_syntax::{SourceKind, load};
 use mandate_testkit::corpus::{
-    Actual, Corpus, Door, Entry, Input, Kind, Outcome, digest_of, ir_text, render_apply_patch,
-    render_check, render_check_amendment, render_check_patch, render_check_subprogram,
-    render_diagnostics, render_load, render_load_modules, spans_text,
+    Actual, Corpus, Door, Entry, Input, Kind, Outcome, Rendered, digest_of, ir_text,
+    render_apply_patch, render_check, render_check_amendment, render_check_patch,
+    render_check_subprogram, render_diagnostics, render_load, render_load_modules, spans_text,
 };
 use mandate_testkit::{Miss, check_pending, omission, run_held_gate};
+use mandate_views::acs_target;
 
 // ---------------------------------------------------------------------------
 // The pending lists, by door, and what is not compared
@@ -62,7 +64,8 @@ const PENDING_CHECK_SUBPROGRAM: &[&str] = &[];
 /// `check_amendment`.
 const PENDING_CHECK_AMENDMENT: &[&str] = &[];
 
-/// The pending list of a door. `acs_target` has none: see [`OUT_OF_SCOPE`].
+/// The pending list of a door. Only the doors that have an entry named above
+/// have one.
 fn pending(door: Door) -> &'static [&'static str] {
     match door {
         Door::Load => &[],
@@ -92,11 +95,9 @@ fn pending(door: Door) -> &'static [&'static str] {
 /// Each item is `(id, reason)`; one that names no entry fails the gate.
 const EXCLUDED: &[(&str, &str)] = &[];
 
-/// Doors that are not compared at all, with the reason.
-const OUT_OF_SCOPE: &[(Door, &str)] = &[(
-    Door::AcsTarget,
-    "the ACS/Rego target stays in TypeScript for release 0.5; the Rust compiler does not have it",
-)];
+/// Doors that are not compared at all, with the reason. None: the ACS/Rego
+/// target, which was the one, is ported (`mandate_views::acs_target`).
+const OUT_OF_SCOPE: &[(Door, &str)] = &[];
 
 // ---------------------------------------------------------------------------
 // The doors
@@ -105,8 +106,8 @@ const OUT_OF_SCOPE: &[(Door, &str)] = &[(
 /// stores it. This is where a door is plugged in: one arm, which calls the
 /// Rust door, and builds the result with the `render_*` function of its
 /// shape in `mandate_testkit::corpus` (or `Actual::Throws(message)` for a
-/// call that raises). A door without an arm gives `Err` (`acs_target`, which
-/// is never replayed: see [`OUT_OF_SCOPE`]).
+/// call that raises). A door without an arm gives `Err` (none today: every
+/// door has one).
 fn replay(input: &Input<'_>) -> Result<Actual, String> {
     match input {
         Input::Load { source, kind } => Ok(Actual::Result(render_load(&load(
@@ -261,10 +262,16 @@ fn replay(input: &Input<'_>) -> Result<Actual, String> {
                 },
             )
         }
-        other => Err(format!(
-            "the Rust compiler has no door for {}",
-            other.door().name()
-        )),
+        // `acsTarget(program, modules, lock)`: the whole target.
+        Input::AcsTarget {
+            program,
+            modules,
+            lock,
+        } => {
+            let modules = modules.as_ref().map(|m| modules_map(m));
+            let target = acs_target(program, modules.as_ref(), *lock);
+            Ok(Actual::Result(Rendered::new(target.to_js())))
+        }
     }
 }
 

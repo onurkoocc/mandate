@@ -17,25 +17,27 @@ import {
   BUDGET_DIMENSIONS,
   budgetAmount,
   calleePath,
-  capCovers,
   capsOf,
   classRank,
   type DataClass,
   DECISION_POLICIES,
   governanceFiles,
+  grant,
   hashProgram,
+  inFlightOverlap,
   leadClasses,
+  mapScopes,
   modelTiers,
+  narrow,
   PROGRESS_DEFAULTS,
   requirementFor,
-  scopeWithin,
-  showCap,
   STD_EFFECTS,
   STD_FNS,
   subprogramLinked,
   workflowBounds,
-  writesOverlap,
   type Arg,
+  type AuthorityContext,
+  type Refusal,
   type Tier,
   type Budget,
   type CapVal,
@@ -56,7 +58,7 @@ import {
   type TypeExpr,
   type Verifier,
   type WorkflowDef,
-} from "@mandate/compiler";
+} from "@mandate/bridge";
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationsRequired, recordProblem, type AttestationRule } from "./attestation.js";
@@ -619,33 +621,26 @@ export class Interpreter {
     else tooLong();
     const par = Math.max(1, e.par ?? 1);
 
-    const outer = this.available(ctx);
-    const items: Ctx[] = [];
-    const writes: CapVal[][] = [];
+    // Each item's `with caps` is evaluated in turn, and what it is handed is decided by the bridge (`mapScopes`):
+    // after each item, whether it lies inside the context, so that one outside stops the evaluation there; then,
+    // with every item, what each is handed and whether two of them write the same place.
+    const context = this.context(ctx);
+    const evaluated: Ctx[] = [];
+    const caps: CapVal[][] = [];
     for (let i = 0; i < over.length; i++) {
-      let item: Ctx = { ...ctx, scope: { vars: new Map([[e.bind, over[i]!]]), parent: ctx.scope } };
+      const item: Ctx = { ...ctx, scope: { vars: new Map([[e.bind, over[i]!]]), parent: ctx.scope } };
       const given: CapVal[] = [];
       for (let j = 0; j < (e.caps ?? []).length; j++) given.push(...(await this.capsAt(e.caps![j]!, item, `${path}[${i}]/caps/${j}`)));
-      for (const g of given) {
-        if (!outer.some((a) => capCovers(a, g))) throw new Fault("PolicyDenied", [{ reason: "outside_authority", map: path, item: i, capability: showCap(g) }]);
-      }
-      if (given.length) {
-        const kinds = new Set(given.map((g) => g.ctor));
-        item = { ...item, item: { given: [...(ctx.item?.given ?? []), given], handed: [...(ctx.item?.handed ?? []).filter((c) => !kinds.has(c.ctor)), ...given] } };
-      }
-      items.push(item);
-      writes.push(given.filter((c) => c.write));
+      caps.push(given);
+      const checked = mapScopes({ map: path, par, context, items: caps, complete: false });
+      if ("refused" in checked) throw refusal(checked.refused);
+      evaluated.push(item);
     }
-    if (par > 1) {
-      for (let i = 0; i < writes.length; i++) {
-        for (let j = i + 1; j < writes.length; j++) {
-          for (const a of writes[i]!) {
-            const b = writes[j]!.find((c) => writesOverlap(a, c));
-            if (b) throw new Fault("Rejected", ["overlapping_scopes", { map: path, items: [i, j], left: showCap(a), right: showCap(b) }]);
-          }
-        }
-      }
-    }
+    const scopes = mapScopes({ map: path, par, context, items: caps, complete: true });
+    if ("refused" in scopes) throw refusal(scopes.refused);
+    if ("partial" in scopes) throw new Error(`map ${path}: the bridge did not decide its items`);
+    const items = evaluated.map((item, i): Ctx => (scopes.items[i] ? { ...item, item: scopes.items[i] } : item));
+    const writes = scopes.writes;
     const holder = (i: number): string => `${path}[${i}]`;
     const start = async (): Promise<void> => {
       if (!this.o.replay) await this.o.journal.mapStarted(this.o.runId, this.o.fence, { map: path, items: over.length, par });
@@ -728,19 +723,13 @@ export class Interpreter {
     const at = `${path}/in_flight`;
     const row = await journal.command(runId, at);
     if (this.o.replay || row?.state === "failed") return void (row && replayed(row, at));
-    const programs = (await this.shared.programs!()).filter((p) => !path.startsWith(`${p.admission.command}/`));
-    for (const [i, held] of writes.entries()) {
-      for (const a of held) {
-        for (const p of programs) {
-          const b = p.writes.find((c) => writesOverlap(a, c));
-          if (!b) continue;
-          if ((await journal.events(runId)).some((ev) => ev.type === "map_started" && isObj(ev.data) && ev.data["map"] === path)) return;
-          const f = new Fault("Rejected", ["overlapping_scopes", { map: path, items: [i], left: showCap(a), right: showCap(b), program: p.admission.command }]);
-          await this.command(at, "refusal", { refused: f.tag }, undefined, async () => ({ error: { tag: f.tag, args: f.args }, cost: {} }));
-          throw f;
-        }
-      }
-    }
+    const programs = (await this.shared.programs!()).map((p) => ({ command: p.admission.command, writes: p.writes }));
+    const { overlap } = inFlightOverlap({ map: path, writes, programs });
+    if (!overlap) return;
+    if ((await journal.events(runId)).some((ev) => ev.type === "map_started" && isObj(ev.data) && ev.data["map"] === path)) return;
+    const f = refusal(overlap);
+    await this.command(at, "refusal", { refused: f.tag }, undefined, async () => ({ error: { tag: f.tag, args: f.args }, cost: {} }));
+    throw f;
   }
 
   /**
@@ -757,22 +746,25 @@ export class Interpreter {
     const base = bases[0];
     // A capability that stands for several cannot be narrowed as one (MDT-E1002): it stays without a scope, which no sandbox accepts.
     if (!base || bases.length !== 1) return this.caps(e);
-    const scope: string[] = [];
+    // The arguments are evaluated in turn, and the bridge (`narrow`) decides: after each one, whether a value it
+    // names is refused, so that one stops the evaluation there; then, with every argument, the narrowed capability.
+    const values: Value[] = [];
+    const args: Value[] = [];
+    const decided = (complete: boolean): CapVal[] | undefined => {
+      const r = narrow({ base, args, complete });
+      if ("refused" in r) throw refusal(r.refused);
+      if ("notText" in r) throw new Violation("bad_scope", `narrow takes text or a path, and ${path}/args/${r.notText}/value is ${show(values[r.notText]!)}.`);
+      return "caps" in r ? r.caps : undefined;
+    };
     for (let i = 0; i < e.args.length; i++) {
       const v = unwrap(await this.expr(e.args[i]!.value, ctx, `${path}/args/${i}/value`));
-      const named = Array.isArray(v) ? v.map(unwrap) : [v];
-      for (const s of named) {
-        if (typeof s !== "string") throw new Violation("bad_scope", `narrow takes text or a path, and ${path}/args/${i}/value is ${show(v)}.`);
-        const files = base.ctor.startsWith("fs.");
-        if (files && /[\\:\0]/.test(s)) throw new Fault("PolicyDenied", [{ reason: "outside_capability", capability: showCap(base), requested: [s] }]);
-        if (files && !s.startsWith("/") && base.scope) scope.push(...base.scope.map((b) => `${b.replace(/\/+$/, "")}/${s}`));
-        else scope.push(s);
-      }
+      values.push(v);
+      args.push(Array.isArray(v) ? v.map(unwrap) : v);
+      decided(false);
     }
-    if (!scopeWithin(base.ctor, scope, base.scope)) {
-      throw new Fault("PolicyDenied", [{ reason: "outside_capability", capability: showCap(base), requested: scope }]);
-    }
-    return [{ ...base, scope, name: `${base.name ?? base.ctor}.narrow` }];
+    const caps = decided(true);
+    if (!caps) throw new Error(`narrow at ${path}: the bridge did not decide it`);
+    return caps;
   }
 
   private variable(name: string, ctx: Ctx): Value {
@@ -1422,48 +1414,40 @@ export class Interpreter {
 
   /**
    * Capabilities handed to a delegate: A.caps ∩ avail(ctx), with `with caps` narrowing its own kinds (C2, §9.1).
-   * An agent capability is in avail(ctx) when one of the workflow's (its envelope's, when it has one) covers it, as the compiler reads it
-   * (capCovers): its scope by segment after `.` and `..`, and no higher data class, other tier or wider arguments.
+   * An agent capability is in avail(ctx) when one of the workflow's (its envelope's, when it has one) covers it: its
+   * scope by segment after `.` and `..`, and no higher data class, other tier or wider arguments.
    *
    * `own` is the delegation's `with caps`. Inside a map's body the map's `with caps` is handed to the delegation as
    * if it had named it: for each kind the agent holds at least as widely and the delegation names none of its own
    * (spec/envelope.md "map"). What the delegation names itself lies inside the context, which for a map item is what
    * the map handed that item; a scope chosen at run time is held to that here, since the checker could only hold it
    * to the capability it narrows.
+   *
+   * The bridge decides it (`grant`); a refusal is raised here.
    */
   private grants(agentName: string, own: CapVal[], ctx: Ctx, under?: Epoch): CapVal[] {
     const agent = this.def(agentName) as Extract<Def, { kind: "agent" }>;
-    const avail = this.available(ctx, under);
-    const inside = (c: CapVal): boolean => avail.some((a) => capCovers(a, c));
-    const held = agent.caps.flatMap((c) => this.caps(c));
-    let out = held.filter(inside);
-    for (const g of own) {
-      if (!inside(g)) throw new Fault("PolicyDenied", [{ reason: "outside_authority", delegate: agentName, capability: showCap(g) }]);
-    }
-    const named = new Set(own.map((g) => g.ctor));
-    const given = [...own, ...(ctx.item?.handed ?? []).filter((k) => !named.has(k.ctor) && (!!agent.remote || held.some((a) => capCovers(a, k))))];
-    if (given.length) {
-      const kinds = new Set(given.map((g) => g.ctor));
-      out = [...out.filter((c) => !kinds.has(c.ctor)), ...given];
-    }
-    const key = (c: CapVal): string => JSON.stringify(c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor });
-    return out.sort((a, b) => (key(a) < key(b) ? -1 : 1));
+    const r = grant({ context: this.context(ctx, under), delegation: { agent: agentName, held: agent.caps.flatMap((c) => this.caps(c)), remote: !!agent.remote, own } });
+    if ("refused" in r) throw refusal(r.refused);
+    return r.granted;
+  }
+
+  /** avail(ctx), as the bridge reads it (`grant`): what is available in the context, for its model tiers. */
+  private available(ctx: Ctx): CapVal[] {
+    return grant({ context: this.context(ctx), delegation: null }).available;
   }
 
   /**
-   * avail(ctx): the capabilities of the workflow whose body is running, its envelope's when it has one (C2). Inside
-   * a map's body, what the maps around the item left of them: each map's `with caps` stand in place of the kinds
-   * they name. `under` is the package to read the run's envelope from, when it is not the run's package now: an
-   * amendment replaces that envelope and nothing else, and a sub-program is bounded by its own capabilities.
+   * The context a command stands in, as the authority decisions of the bridge read it. Its bounds are the
+   * capabilities of the workflow whose body is running, its envelope's when it has one (C2): what they stand for,
+   * which is read and not decided. `under` is the package to read the run's envelope from, when it is not the run's
+   * package now: an amendment replaces that envelope and nothing else, and a sub-program is bounded by its own
+   * capabilities. Inside a map's body, what the maps around the item gave and hand (`mapScopes`), which the bridge
+   * lets stand in place of the kinds they name.
    */
-  private available(ctx: Ctx, under?: Epoch): CapVal[] {
+  private context(ctx: Ctx, under?: Epoch): AuthorityContext {
     const bounds = under?.envelope && !this.o.sub ? (under.envelope.caps ?? []) : workflowBounds(this.workflowDef(ctx.workflow)).caps;
-    let avail = bounds.flatMap((c) => this.caps(c));
-    for (const given of ctx.item?.given ?? []) {
-      const kinds = new Set(given.map((g) => g.ctor));
-      avail = [...avail.filter((c) => !kinds.has(c.ctor)), ...given];
-    }
-    return avail;
+    return { bounds: bounds.flatMap((c) => this.caps(c)), given: ctx.item?.given ?? [], handed: ctx.item?.handed ?? [] };
   }
 
   /** What a capability expression stands for, over the program's definitions and its linked system model. */
@@ -2274,6 +2258,11 @@ function retryAfter(fault: Value): number {
 function queueFull(fault: { args?: Value[] }): boolean {
   const a = fault.args?.[0];
   return isObj(a ?? null) && (a as Obj)["queue_full"] === true;
+}
+
+/** A refusal of the bridge's authority decisions, as the fault the program sees. */
+function refusal(r: Refusal): Fault {
+  return new Fault(r.tag, r.args);
 }
 
 function replayed(row: CommandRow | undefined, id: string): Value {

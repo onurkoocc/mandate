@@ -1,0 +1,26 @@
+// The program of the second test of compiler/test/acs.test.ts (case X05):
+// an agent whose spend budget is in euros, left out of the ACS target with
+// E0906. Its lock (tariff in euros) is `eur` in inputs.json. The source is
+// the test's, as it is written there.
+
+mandate @ 0.3
+
+module acs.eur @ 0.1
+
+use std.{fs, model}
+
+capability RepoRead = fs.read("/work/repo")
+capability ModelStd = model.infer(tier: standard)
+
+agent Reader {
+  caps   RepoRead, ModelStd
+  budget { tokens: 100k, spend: 2 EUR, steps: 4 }
+  skill look(task: Text) -> Inferred<Text> ! {Fs.Read, Model}
+}
+
+workflow Look(task: Text) -> Inferred<Text>
+  caps   RepoRead, ModelStd
+  budget { time: 1h }
+{
+  delegate Reader.look(task)
+}

@@ -34,8 +34,8 @@ use mandate_ir::{
 use mandate_syntax::{SourceKind, kind_of, load};
 use mandate_testkit::{read_json, read_text, sha256};
 use mandate_views::{
-    Block, Cell, Doc, architecture, authority, cost, diff_doc, has_system, program_doc, system,
-    to_html, to_markdown,
+    Block, Cell, Doc, architecture, authority, card, card_doc, cost, diff_doc, envelope_workflows,
+    has_system, program_doc, system, to_html, to_markdown,
 };
 
 const INPUTS: &str = "crates/mandate-views/tests/data/inputs.json";
@@ -867,4 +867,156 @@ fn the_views_of_a_program_are_the_typescripts() {
         }
     }
     report("views", inputs.len(), problems);
+}
+
+// ---- the envelope card ----------------------------------------------------------------------------------
+
+/// The lines of the card the expectations hold beside the digests: the same
+/// text the script builds from the object it gets (`cards()`).
+fn card_lines(v: &mandate_views::CardView) -> Vec<CardLines> {
+    let number = |n: Option<f64>| n.map_or("-".to_owned(), number_to_string);
+    let maps = v
+        .maps
+        .iter()
+        .map(|m| {
+            let handed: Vec<String> = m
+                .handed
+                .iter()
+                .map(|h| {
+                    format!(
+                        "{} [{}] {} {}",
+                        h.cap,
+                        h.kinds.join("+"),
+                        h.scope
+                            .as_ref()
+                            .map_or("?".to_owned(), |scope| scope.join("+")),
+                        h.by_item
+                    )
+                })
+                .collect();
+            format!(
+                "{} over {}: max {} par {} -> {} | {}",
+                m.bind,
+                m.over,
+                number(m.max),
+                number_to_string(m.par),
+                m.delegates.join(","),
+                handed.join("; ")
+            )
+        })
+        .collect();
+    let plans = v
+        .plans
+        .iter()
+        .map(|p| format!("{}: {} ({})", p.lead, p.budget, p.from.as_str()))
+        .collect();
+    let spends = v
+        .spends
+        .iter()
+        .map(|r| {
+            let currency = r
+                .currency
+                .as_deref()
+                .filter(|c| !c.is_empty())
+                .map_or(String::new(), |c| format!(" {c}"));
+            format!(
+                "{}{currency}: {} | {} | {}",
+                r.dimension, r.text.envelope, r.text.r#static, r.text.left
+            )
+        })
+        .collect();
+    let waits = v
+        .waits
+        .iter()
+        .map(|w| format!("{} {} {} [{}]", w.kind, w.role, w.r#in, w.members.join(",")))
+        .collect();
+    let approvals = v
+        .approvals
+        .iter()
+        .map(|a| format!("{} {} [{}]", a.effect, a.role, a.members.join(",")))
+        .collect();
+    let named = |slot: &'static str, lines: Vec<String>| CardLines { slot, lines };
+    vec![
+        named("maps", maps),
+        named("plans", plans),
+        named("spends", spends),
+        named("waits", waits),
+        named("approvals", approvals),
+    ]
+}
+
+/// One list of the card's lines in the expectations, under its name there.
+struct CardLines {
+    slot: &'static str,
+    lines: Vec<String>,
+}
+
+#[test]
+fn the_cards_of_envelopes_are_the_typescripts() {
+    let d = data();
+    let inputs = d.inputs.get("cards").and_then(Value::as_array).unwrap();
+    let locks = d.inputs.get("card_locks").unwrap();
+    let expected = d.expected.get("cards").unwrap();
+    let mut problems = Vec::new();
+    for c in inputs {
+        let name = text(c, "name");
+        let workflow = text(c, "workflow");
+        let program = program_of(&d.inputs, c.get("program").unwrap());
+        // The lock inline (any value, `null` included) or by name.
+        let lock: Option<&Value> = match c.get("lock_ref") {
+            Some(r) => Some(locks.get(r.as_str().unwrap()).unwrap()),
+            None => c.get("lock"),
+        };
+        let modules = modules_of(&strings(c.get("modules")));
+        let given = (c.get("modules_omitted") != Some(&Value::Bool(true))).then_some(&modules);
+        let want = expected.get(name).unwrap();
+        let mut wrong: Vec<String> = Vec::new();
+
+        let view = card(&program, workflow, lock, given);
+        let doc = card_doc(&program, workflow, lock, given);
+        let workflows = envelope_workflows(&program).join(",");
+        if want.get("workflows").and_then(Value::as_str) != Some(workflows.as_str()) {
+            wrong.push(format!("envelope workflows {workflows:?}"));
+        }
+        if view.is_some() != doc.is_some() {
+            wrong.push("card and card_doc disagree".to_owned());
+        }
+        let defined = want.get("defined") == Some(&Value::Bool(true));
+        if defined != view.is_some() {
+            wrong.push(format!("a card is {}, expected {defined}", view.is_some()));
+        }
+        if let (Some(view), Some(doc), true) = (&view, &doc, defined) {
+            let mut check = |slot: &str, got: String| {
+                if want.get(slot).and_then(Value::as_str) != Some(got.as_str()) {
+                    wrong.push(format!("{slot} gives {}", head(&got)));
+                }
+            };
+            check(
+                "steps",
+                format!("{}: {}", view.steps.len(), digest(&view.steps.join("\n"))),
+            );
+            check("text", view.approves.text.clone());
+            check("package", digest(&view.package));
+            check("json", digest(&(pretty(&view.to_js()) + "\n")));
+            let markdown = to_markdown(doc);
+            let html = to_html(doc);
+            check("markdown", digest(&markdown));
+            check("html", digest(&html));
+            if want.get("html_length").and_then(Value::as_i64)
+                != i64::try_from(utf16_len(&html)).ok()
+            {
+                wrong.push("html_length".to_owned());
+            }
+            for CardLines { slot, lines } in card_lines(view) {
+                let wanted = strings(want.get(slot));
+                if lines != wanted {
+                    wrong.push(format!("{slot}: {}", first_difference(&lines, &wanted)));
+                }
+            }
+        }
+        if !wrong.is_empty() {
+            problems.push(format!("{name}: {}", wrong.join("; ")));
+        }
+    }
+    report("cards", inputs.len(), problems);
 }

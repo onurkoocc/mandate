@@ -8,7 +8,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { check } from "@mandate/compiler";
+import { check } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { GitHubMerges } from "../src/github-merge.js";
 import type { RunRow } from "../src/journal.js";

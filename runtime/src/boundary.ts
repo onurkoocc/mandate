@@ -32,7 +32,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { globRegExp, requirementFor, type CapVal } from "@mandate/compiler";
+import { globRegExp, requirementFor, type CapVal } from "@mandate/bridge";
 import type { CheckBinding, CheckLog, CheckResult, CheckSubject, SystemFacts, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { sha256Of } from "./artifacts.js";
 import { childEnv, DOCKER_ENV } from "./env.js";
