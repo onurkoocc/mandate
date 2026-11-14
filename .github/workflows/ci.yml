@@ -211,3 +211,12 @@ jobs:
           git diff --exit-code -- crates/mandate-check/tests/data
           untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/data)"
           if [ -n "$untracked" ]; then echo "::error::caps-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
+      # scripts/front-vectors.mjs reads only the committed inputs.json and
+      # writes expected.json beside it: what the TypeScript gives for link,
+      # resolveNames, the role checks and check on them.
+      - name: The expectations of mandate-check's front stages are what the TypeScript compiler gives now
+        run: |
+          node scripts/front-vectors.mjs
+          git diff --exit-code -- crates/mandate-check/tests/front
+          untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/front)"
+          if [ -n "$untracked" ]; then echo "::error::front-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
