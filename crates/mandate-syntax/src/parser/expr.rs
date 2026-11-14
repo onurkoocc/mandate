@@ -1301,3 +1301,49 @@ fn name_pattern(name: String) -> O {
         obj().with("p", "bind").with("name", name)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{is_currency, starts_upper, strip_magnitude};
+
+    #[test]
+    fn currency_pattern() {
+        // /^[A-Z]{3}$/
+        for ok in ["USD", "EUR", "ABC", "ZZZ"] {
+            assert!(is_currency(ok), "{ok}");
+        }
+        for bad in [
+            "", "US", "USDX", "usd", "UsD", "U1D", "U_D", "\u{c4}BC", "U D",
+        ] {
+            assert!(!is_currency(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn capital_pattern() {
+        // /^[A-Z]/
+        for ok in ["A", "Ab", "Z9", "ABC"] {
+            assert!(starts_upper(ok), "{ok}");
+        }
+        for bad in ["", "a", "_A", "9A", "\u{c9}t\u{e9}", "@A"] {
+            assert!(!starts_upper(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn magnitude_suffix_pattern() {
+        // s.replace(/[kM]$/, "")
+        for (text, stripped) in [
+            ("2k", "2"),
+            ("1.5M", "1.5"),
+            ("15", "15"),
+            ("1kk", "1k"),
+            ("k", ""),
+            ("1m", "1m"),
+            ("1K", "1K"),
+            ("1.50", "1.50"),
+        ] {
+            assert_eq!(strip_magnitude(text), stripped, "{text}");
+        }
+    }
+}
