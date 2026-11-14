@@ -10,9 +10,10 @@
 //! at [`JSON_DEPTH`] levels (`nest`). An interpolation is read by a parser of
 //! its own whose count starts again at zero, and an interpolation cannot
 //! hold a string, so the deepest the recursion goes is twice that. The
-//! functions on the path of that recursion keep their frames small: what
-//! only an error needs (the text of a message) is made in a function of its
-//! own, and each kind of expression is read by a function of its own.
+//! arguments of a call and the fields of a record literal, which `nest` does
+//! not count, have a count of their own here ([`Parser::enter_postfix`]),
+//! which the TypeScript does not have. The functions on the path of the
+//! recursion keep their frames small (see [`expr`]).
 
 mod decl;
 mod expr;
@@ -235,6 +236,9 @@ pub(crate) struct Parser<'a> {
     /// How many expressions, types, blocks, patterns and operators the
     /// parser is inside.
     depth: usize,
+    /// How many call argument lists and record literals the parser is inside
+    /// (Rust only; see [`Parser::enter_postfix`]).
+    postfix_depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -246,6 +250,7 @@ impl<'a> Parser<'a> {
             diagnostics: Vec::new(),
             in_test: false,
             depth: 0,
+            postfix_depth: 0,
         }
     }
 
@@ -400,6 +405,32 @@ impl<'a> Parser<'a> {
 
     fn leave(&mut self) {
         self.depth = self.depth.saturating_sub(1);
+    }
+
+    /// One level deeper into the arguments of a call or the fields of a
+    /// record literal, which the TypeScript reads without `nest`: `f(f(…))`
+    /// and `T { a: T { … } }` are refused there only after they are read, by
+    /// the depth of their IR, and past some three thousand levels V8's stack
+    /// runs out (a `RangeError`, which `parseMdt` throws on). This port
+    /// cannot follow it there without running out of stack itself, so it
+    /// refuses, as `nest` does, the [`JSON_DEPTH`]th level, counted on from
+    /// the enclosing text into an interpolation.
+    ///
+    /// No input that TypeScript reads is refused here: every such level adds
+    /// at least two levels to the IR (`fields`, or `args` and an argument), so
+    /// one 64 deep is far deeper than the IR may be. What differs is the
+    /// diagnostic: TypeScript gives the `MDT-E0105` of the IR's depth, at its
+    /// first value too deep, or a syntax error that comes later in the text.
+    fn enter_postfix(&mut self) -> Res<()> {
+        if self.postfix_depth >= JSON_DEPTH {
+            return Err(self.too_deep());
+        }
+        self.postfix_depth = self.postfix_depth.saturating_add(1);
+        Ok(())
+    }
+
+    fn leave_postfix(&mut self) {
+        self.postfix_depth = self.postfix_depth.saturating_sub(1);
     }
 
     fn too_deep(&self) -> Fail {

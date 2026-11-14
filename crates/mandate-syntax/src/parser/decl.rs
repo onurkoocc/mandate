@@ -1036,54 +1036,73 @@ impl<'a> Parser<'a> {
         Ok(p)
     }
 
+    /// `budget { tokens: n, spend: 20 USD, … }`. A budget can be read inside
+    /// an expression (a delegation's, a `map`'s, a `plan`'s), so its value is
+    /// read in a lean frame and checked in another.
     pub(super) fn budget(&mut self) -> Res<O> {
         let start = self.expect_w("budget")?;
         self.expect_p("{")?;
         let mut b = obj();
         while !self.is_p("}") {
-            let kt = self.t();
-            let key = self.ident("a budget field")?;
-            self.expect_p(":")?;
-            let vt = self.t();
-            let v = self.primary(false)?;
-            if in_plain_object(&b, &key) {
-                self.dup("budget field", &key, kt);
-            }
-            let op = v.str("op");
-            match key.as_str() {
-                "tokens" | "steps" | "agents" => {
-                    if op != Some("int") {
-                        return Err(bad_budget(&key, "an integer", vt));
-                    }
-                    b.set(&key, scalar(&v, "value"));
-                }
-                "spend" => {
-                    if op != Some("money") {
-                        return Err(bad_budget(
-                            &key,
-                            "an amount with a currency, e.g. 20 USD",
-                            vt,
-                        ));
-                    }
-                    let spend = obj()
-                        .with("micros", scalar(&v, "micros"))
-                        .with("currency", scalar(&v, "currency"));
-                    b.set("spend", spend);
-                }
-                "time" => {
-                    if op != Some("duration") {
-                        return Err(bad_budget(&key, "a duration, e.g. 15m", vt));
-                    }
-                    b.set("time", obj().with("ms", scalar(&v, "ms")));
-                }
-                _ => return Err(self.unknown_budget_field(&key, kt)),
-            }
+            self.budget_field(&mut b)?;
             if !self.eat_p(",") {
                 break;
             }
         }
         self.expect_p("}")?;
         Ok(self.at(b, start))
+    }
+
+    fn budget_field(&mut self, b: &mut Obj) -> Res<()> {
+        let kt = self.t();
+        let key = self.ident("a budget field")?;
+        self.expect_p(":")?;
+        let vt = self.t();
+        let v = self.primary(false)?;
+        self.set_budget_field(b, &key, kt, vt, &v)
+    }
+
+    fn set_budget_field(
+        &mut self,
+        b: &mut Obj,
+        key: &str,
+        kt: &Token,
+        vt: &Token,
+        v: &Obj,
+    ) -> Res<()> {
+        if in_plain_object(b, key) {
+            self.dup("budget field", key, kt);
+        }
+        let op = v.str("op");
+        match key {
+            "tokens" | "steps" | "agents" => {
+                if op != Some("int") {
+                    return Err(bad_budget(key, "an integer", vt));
+                }
+                b.set(key, scalar(v, "value"));
+            }
+            "spend" => {
+                if op != Some("money") {
+                    return Err(bad_budget(
+                        key,
+                        "an amount with a currency, e.g. 20 USD",
+                        vt,
+                    ));
+                }
+                let spend = obj()
+                    .with("micros", scalar(v, "micros"))
+                    .with("currency", scalar(v, "currency"));
+                b.set("spend", spend);
+            }
+            "time" => {
+                if op != Some("duration") {
+                    return Err(bad_budget(key, "a duration, e.g. 15m", vt));
+                }
+                b.set("time", obj().with("ms", scalar(v, "ms")));
+            }
+            _ => return Err(self.unknown_budget_field(key, kt)),
+        }
+        Ok(())
     }
 
     fn unknown_budget_field(&self, key: &str, kt: &Token) -> Fail {
