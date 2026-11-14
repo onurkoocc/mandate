@@ -13,8 +13,8 @@
 //!   digest), and the parser's own diagnostics, which `load` puts first;
 //!   when none does, the diagnostics in full, which are the parser's alone.
 //! - `syntax vectors: the diagnostics of load`, every input that reads: all
-//!   its diagnostics and `ok`. The parser's are followed by the schema
-//!   validation's, which is not ported yet.
+//!   the diagnostics of `mandate_syntax::load`, the parser's followed by the
+//!   schema validation's, and `ok`.
 //! - `syntax vectors: fmt`, every input that reads without an error: the
 //!   text `mandate fmt` prints and whether it reads back. The printer is not
 //!   ported yet.
@@ -29,43 +29,27 @@
 
 mod common;
 
-use mandate_ir::{Diagnostic, JsValue, Value, canonicalize, has_errors, stringify};
-use mandate_syntax::{ParseResult, parse_mdt};
+use mandate_ir::{Diagnostic, JsValue, Loaded, Value, canonicalize, has_errors, stringify};
+use mandate_syntax::{ParseResult, SourceKind, parse_mdt};
 use mandate_testkit::{read_json, run_gate, sha256};
 
 use common::{depth_of, json, rows, same_lines, vector_rows};
 
 const SYNTAX: &str = "vectors/syntax.json";
 
-/// The inputs whose diagnostics from `load` include the schema
-/// validation's (`validateIr` in `compiler/src/ir/validate.ts`), which is
-/// being ported to `mandate-ir` in slice R6: each has `MDT-E0104` after
-/// what the parser gives. Their IR, canonical text, span table and parser
-/// diagnostics are checked by the first gate.
-const PENDING_LOAD: &[&str] = &[
-    "smallest: a changeset",
-    "value: a role in a 0.1 file: the schema step says it needs 0.4",
-    "system: an interface with an empty spec string",
-    "duplicate: a duplicate enum member",
-    "after an error: parse diagnostics come before schema diagnostics",
-    "after an error: a program that reads and fails the schema: the program and its spans come back",
-    "after an error: a program that reads and fails the schema in two places: the diagnostics follow the schema's order",
-    "after an error: a program that reads, with a parse diagnostic and schema diagnostics",
-    "after an error: a schema diagnostic on a node with no span of its own is placed at the nearest enclosing node",
-    "after an error: a 0.4 definition in a 0.1 file: a version diagnostic from the schema step",
-    "after an error: a 0.3 definition in a 0.1 file",
-    "after an error: a 0.2 field in a 0.1 file",
-];
+/// The inputs whose diagnostics from `load` are not given yet. None.
+const PENDING_LOAD: &[&str] = &[];
 
 /// Every input that reads without an error: `fmt` and `fmt_roundtrip` need
 /// the printer (`compiler/src/print/printer.ts`), slice R8.
 const PENDING_FMT: &[&str] = &["*"];
 
-/// One vector: its name, its input, what TypeScript gave, and what the Rust
-/// parser gives.
+/// One vector: what TypeScript gave, and what the Rust parser and `load`
+/// give for its input.
 struct Case {
     vector: Value,
     read: ParseResult,
+    loaded: Loaded,
 }
 
 /// The text a vector stands for: `input`, or `input_parts` expanded as
@@ -216,13 +200,13 @@ fn check_load(case: &Case) -> Result<(), String> {
     same_lines(
         "diagnostics",
         &vector_diagnostics(v)?,
-        &diagnostics_text(&case.read.diagnostics),
+        &diagnostics_text(&case.loaded.diagnostics),
     )?;
     let ok = v
         .get("ok")
         .and_then(|o| JsValue::from(o).as_bool())
         .ok_or("no ok")?;
-    let actual = case.read.program.is_some() && !has_errors(&case.read.diagnostics);
+    let actual = case.loaded.program.is_some() && !has_errors(&case.loaded.diagnostics);
     if ok != actual {
         return Err(format!("ok is {ok}, Rust gives {actual}"));
     }
@@ -260,11 +244,13 @@ fn syntax_vectors() {
         match input_of(vector) {
             Ok(input) => {
                 let read = parse_mdt(&input);
+                let loaded = mandate_syntax::load(&input, SourceKind::Mdt);
                 cases.push((
                     name,
                     Case {
                         vector: vector.clone(),
                         read,
+                        loaded,
                     },
                 ));
             }

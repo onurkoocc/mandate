@@ -10,9 +10,11 @@
 //!
 //! [`parse_mdt`] is `parseMdt` followed by `sourceMap` and the plain-JSON
 //! copy that `load` in `compiler/src/check.ts` makes: what `load(text, "mdt")`
-//! gives before the schema validation. `load` for text is [`parse_mdt`], then
-//! the validation of [`ParseResult::program`] against the schema, whose
-//! diagnostics come after [`ParseResult::diagnostics`].
+//! gives before the schema validation. [`load`] is the front door for both
+//! forms of a program: for text, [`parse_mdt`], then the validation of
+//! [`ParseResult::program`] against the schema
+//! ([`mandate_ir::validate_ir`]), whose diagnostics come after
+//! [`ParseResult::diagnostics`]; for JSON, [`mandate_ir::load_json`].
 //!
 //! What a port has to copy, and the vectors that hold this crate to it, are
 //! described in `vectors/README.md` ("Reading Mandate text"). In short:
@@ -61,12 +63,14 @@
 #![forbid(unsafe_code)]
 
 mod lexer;
+mod load;
 mod node;
 mod parser;
 mod sourcemap;
 
 use mandate_ir::{Diagnostic, Value};
 
+pub use load::{SourceKind, kind_of, load};
 pub use parser::RESERVED;
 pub use sourcemap::SourceMap;
 
