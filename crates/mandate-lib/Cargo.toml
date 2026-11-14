@@ -1,0 +1,17 @@
+[package]
+name = "mandate-lib"
+description = "The model of a Mandate library: its manifest, its digest and its version rules"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mandate-ir = { path = "../mandate-ir" }
+
+[dev-dependencies]
+mandate-testkit = { path = "../mandate-testkit" }
+
+[lints]
+workspace = true

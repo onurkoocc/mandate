@@ -1,0 +1,21 @@
+[package]
+name = "mandate-doors"
+description = "The JSON doors of the Rust Mandate compiler: one dispatcher over the compiler's functions, for the WebAssembly module and the command line"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mandate-ir = { path = "../mandate-ir" }
+mandate-syntax = { path = "../mandate-syntax" }
+mandate-check = { path = "../mandate-check" }
+mandate-views = { path = "../mandate-views" }
+mandate-lib = { path = "../mandate-lib" }
+
+[dev-dependencies]
+mandate-testkit = { path = "../mandate-testkit" }
+
+[lints]
+workspace = true

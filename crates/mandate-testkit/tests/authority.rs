@@ -12,8 +12,10 @@
 //!
 //! The sources are scanned as text, with comments, strings (raw and byte
 //! strings too) and character literals left out, and a `std::{...}` group is
-//! looked into. Each crate of the compiler adds itself to `LIBRARIES` when it
-//! is written; a file that is not library code is exempted there by name.
+//! looked into. Every crate of `crates/` is scanned, found by listing the
+//! directory, so that a new crate is checked by default; a `src/main.rs` is
+//! not library code and is exempted, and a crate that holds such authority on
+//! purpose is named in `EXCLUDED`.
 //! The workspace has no `clippy.toml`, so no `disallowed-methods` rule backs
 //! this up.
 
@@ -27,15 +29,18 @@
 
 use mandate_testkit::{files, read_text, subdirectories};
 
-/// Each library crate, and the files under its `src/` that are not library
-/// code (a command line's `main.rs`).
-const LIBRARIES: &[(&str, &[&str])] = &[
-    ("mandate-ir", &[]),
-    ("mandate-check", &[]),
-    ("mandate-syntax", &[]),
-    ("mandate-views", &[]),
-    ("verify-journal", &["main.rs"]),
+/// The crates of `crates/` that are not checked, because they hold such
+/// authority on purpose. Every other crate is checked, so a new crate is
+/// checked until it is put here.
+const EXCLUDED: &[&str] = &[
+    // The test kit reads the repository's files and its environment: it is
+    // what gives the other crates' tests the inputs the crates must not read.
+    "mandate-testkit",
 ];
+
+/// The files under a crate's `src/` that are not library code: the `main.rs`
+/// of a command (a binary may read files and start processes).
+const NOT_LIBRARY: &[&str] = &["main.rs"];
 
 /// The modules of `std` that give ambient authority.
 const MODULES: [&str; 6] = ["fs", "env", "process", "net", "os", "path"];
@@ -291,10 +296,11 @@ fn the_scan_finds_what_it_looks_for() {
 fn library_crates_hold_no_ambient_authority() {
     let mut problems = Vec::new();
     let mut scanned = 0;
-    for (krate, exempt) in LIBRARIES {
+    let crates = subdirectories("crates").expect("the crates directory");
+    for krate in crates.iter().filter(|k| !EXCLUDED.contains(&k.as_str())) {
         let dir = format!("crates/{krate}/src");
         for file in rust_files(&dir) {
-            if exempt.contains(&file.as_str()) {
+            if NOT_LIBRARY.contains(&file.as_str()) {
                 continue;
             }
             scanned += 1;

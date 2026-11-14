@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 mandate-ir = { path = "../mandate-ir" }
 mandate-syntax = { path = "../mandate-syntax" }
+mandate-lib = { path = "../mandate-lib" }
 
 [dev-dependencies]
 mandate-testkit = { path = "../mandate-testkit" }
