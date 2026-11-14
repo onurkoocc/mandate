@@ -421,28 +421,46 @@ for p in paths:
 print(json.dumps(out))
 `;
 
-/** Walks every directory the process can see (but /proc and /sys), bounded in time; prints the unix sockets found. */
+/**
+ * Walks the directories the process can see (all but /proc and /sys), bounded in time, and prints the unix sockets
+ * found. Arguments: the time limit in seconds, then the places to walk (none: everything, from /). Where sockets live
+ * (/run, /var/run, /tmp, /var/tmp, /dev/shm, /dev) is walked first whatever the places, so that a walk that runs out of
+ * time on a large tree has covered those, and "cut" says that it did run out.
+ */
 const WALK = String.raw`
-import json, os, stat, time
-t0, walked, found, cut, stack = time.time(), 0, [], False, ["/"]
-while stack:
-    d = stack.pop()
-    try:
-        entries = list(os.scandir(d))
-    except OSError:
+import json, os, stat, sys, time
+limit, roots = float(sys.argv[1]), sys.argv[2:] or ["/"]
+t0, walked, found, cut, done = time.time(), 0, [], False, set()
+FIRST = ["/run", "/var/run", "/tmp", "/var/tmp", "/dev/shm", "/dev"]
+# A place to walk first only when it is under one of the places asked for, and a real directory (/var/run is a link to /run).
+inside = lambda p: any(r == "/" or p == r or p.startswith(r.rstrip("/") + "/") for r in roots)
+order = [p for p in FIRST if inside(p) and os.path.isdir(p) and not os.path.islink(p)] + roots
+for start in order:
+    if start in done:
         continue
-    for e in entries:
-        walked += 1
+    stack = [start]
+    while stack and not cut:
+        d = stack.pop()
+        if d in done:
+            continue
+        done.add(d)
         try:
-            if e.is_dir(follow_symlinks=False):
-                if e.path not in ("/proc", "/sys"):
-                    stack.append(e.path)
-            elif not e.is_file(follow_symlinks=False) and not e.is_symlink() and stat.S_ISSOCK(e.stat(follow_symlinks=False).st_mode):
-                found.append(e.path)
+            entries = list(os.scandir(d))
         except OSError:
-            pass
-    if time.time() - t0 > 80:
-        cut = True
+            continue
+        for e in entries:
+            walked += 1
+            try:
+                if e.is_dir(follow_symlinks=False):
+                    if e.path not in ("/proc", "/sys"):
+                        stack.append(e.path)
+                elif not e.is_file(follow_symlinks=False) and not e.is_symlink() and stat.S_ISSOCK(e.stat(follow_symlinks=False).st_mode):
+                    found.append(e.path)
+            except OSError:
+                pass
+        if time.time() - t0 > limit:
+            cut = True
+    if cut:
         break
 print(json.dumps({"walked": walked, "sockets": found, "cut": cut, "seconds": round(time.time() - t0, 1), "top": sorted(os.listdir("/"))}))
 `;
@@ -565,14 +583,19 @@ describe.runIf(REAL)("no service socket of the host reaches a Bubblewrap sandbox
     expect(r).toMatchObject({ exitCode: 0, stdout: "end\n" });
   });
 
-  it("finds no unix socket anywhere it can see", { timeout: 240_000 }, async () => {
-    const control = JSON.parse(await unmasked(["python3", "-c", WALK], 100_000)) as Record<string, unknown>;
-    console.log(`[sockets] walk of a sandbox without the masks: ${JSON.stringify(control)}`);
-    expect(control["sockets"]).toContain(RESOLVER[0]);
+  it("finds no unix socket anywhere it can see", { timeout: 330_000 }, async () => {
+    // The control shows that the walk finds a socket where the masks are absent. It needs /run for that, where the
+    // resolver's socket is: a walk of the whole host would be a walk of whatever the runner image holds, and it was
+    // that walk, cut by its time limit before it reached /run, that failed this test once.
+    const control = JSON.parse(await unmasked(["python3", "-c", WALK, "60", "/run"], 100_000)) as Record<string, unknown>;
+    console.log(`[sockets] walk of /run in a sandbox without the masks: ${JSON.stringify(control)}`);
+    expect(control["sockets"], "the walk finds the resolver's socket where the masks are absent").toContain(RESOLVER[0]);
+    // What the sandbox can see is walked whole, from /, with a generous limit: the runner image has millions of
+    // entries and a slow disk can take minutes over them. The places sockets live are walked first, then the rest.
     const { handle } = await open();
-    const walk = await python(handle, WALK, [], 100_000);
+    const walk = await python(handle, WALK, ["240"], 270_000);
     console.log(`[sockets] walk of a sandbox: ${JSON.stringify(walk)}`);
-    expect(walk["cut"], "the walk ran out of time").toBe(false);
+    expect(walk["cut"], `the walk ran out of its 240 s before it had seen everything: ${JSON.stringify({ walked: walk["walked"], seconds: walk["seconds"] })}`).toBe(false);
     expect(walk["walked"] as number).toBeGreaterThan(1000);
     expect(walk["sockets"]).toEqual([]);
   });
