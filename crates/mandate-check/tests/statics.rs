@@ -14,8 +14,9 @@
 //!   `microsText` of amounts past 2^53, negative, fractional and not
 //!   finite;
 //! - the deepest programs that load, one of each form that nests, checked
-//!   within the stack a test thread has, against the digest of what the
-//!   TypeScript gives them with a stack large enough.
+//!   within a stated stack (WebAssembly's 1 MiB; natively 8 MiB, since a
+//!   debug build's frames do not fit a test thread's 2 MiB), against the
+//!   digest of what the TypeScript gives them with a stack large enough.
 
 #![allow(
     clippy::unwrap_used,
@@ -261,9 +262,38 @@ fn ty_of(v: &Value) -> Ty {
     }
 }
 
+/// The stack the deepest programs are checked within natively: what a main
+/// thread has on Linux and macOS. The 2 MiB of a test thread is not enough
+/// for a debug build on a 64-bit target, whose frames are several times
+/// those of the WebAssembly build.
+#[cfg(not(target_arch = "wasm32"))]
+const NATIVE_STACK: usize = 8 * 1024 * 1024;
+
+/// Runs `f` within the stack the deepest programs are held to. Under
+/// WebAssembly that is the module's own stack, 1 MiB, on the thread the test
+/// is on (there are no others).
+#[cfg(target_arch = "wasm32")]
+fn within_the_stack<T>(f: impl FnOnce() -> T) -> T {
+    f()
+}
+
+/// Runs `f` within the stack the deepest programs are held to: natively a
+/// thread of [`NATIVE_STACK`].
+#[cfg(not(target_arch = "wasm32"))]
+fn within_the_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .stack_size(NATIVE_STACK)
+            .spawn_scoped(s, f)
+            .unwrap()
+            .join()
+            .unwrap()
+    })
+}
+
 /// The deepest programs that load (64 definitions, an IR 64 deep): the
-/// static checks recurse as deep as a program lets them, within the stack a
-/// test thread has (2 MiB natively, 1 MiB under WASM), and give what the
+/// static checks recurse as deep as a program lets them, within a stated
+/// stack (1 MiB under WASM, [`NATIVE_STACK`] natively), and give what the
 /// TypeScript gives with a stack large enough (Node's default is not: it
 /// throws on most of these).
 #[test]
@@ -286,16 +316,17 @@ fn the_deepest_programs_that_load_are_checked_as_the_typescript_checks_them() {
         let name = format!("{shape}:{fns}:{depth}");
         assert_eq!(w.get("name").and_then(Value::as_str), Some(name.as_str()));
         let text = deep_program(shape, fns, depth);
-        let r = check(&text, SourceKind::Mdt, &CheckOptions::default());
-        let got = mandate_testkit::sha256(&result_text(r.ok, &r.diagnostics));
+        let (ok, count, got) = within_the_stack(|| {
+            let r = check(&text, SourceKind::Mdt, &CheckOptions::default());
+            let got = mandate_testkit::sha256(&result_text(r.ok, &r.diagnostics));
+            (r.ok, r.diagnostics.len(), got)
+        });
         let digest = w.get("digest").and_then(Value::as_str);
         if digest != Some(got.as_str()) {
             failures.push(format!(
-                "{name}: expected ok {:?} with {:?} diagnostics ({digest:?}), got ok {} with {} ({got})",
+                "{name}: expected ok {:?} with {:?} diagnostics ({digest:?}), got ok {ok} with {count} ({got})",
                 w.get("ok"),
                 w.get("diagnostics").and_then(Value::as_i64),
-                r.ok,
-                r.diagnostics.len()
             ));
         }
     }
