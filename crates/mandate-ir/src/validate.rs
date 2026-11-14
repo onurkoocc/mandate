@@ -365,15 +365,15 @@ fn schema_diagnostics(errors: &[SchemaError], spans: Option<&Spans>) -> Vec<Diag
         let first = paths.partition_point(|p| *p < prefix.as_str());
         paths.get(first).is_some_and(|p| p.starts_with(&prefix))
     };
-    let mut sorted = relevant.clone();
+    let mut sorted: Vec<(usize, &SchemaError)> = relevant.iter().map(|e| (depth(e), *e)).collect();
     // Stable, as `Array.prototype.sort` is: equal depths keep Ajv's order.
-    sorted.sort_by_key(|e| Reverse(depth(e)));
-    let max_depth = sorted.first().map_or(0, |e| depth(e));
+    sorted.sort_by_key(|(d, _)| Reverse(*d));
+    let max_depth = sorted.first().map_or(0, |(d, _)| *d);
     let mut out: Vec<Diagnostic> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    for e in sorted {
+    for (d, e) in sorted {
         // Drop shallower errors that are only a consequence of a deeper one.
-        if has_below(&e.instance_path) && depth(e) < max_depth {
+        if d < max_depth && has_below(&e.instance_path) {
             continue;
         }
         let param = |key: &str| {
@@ -426,8 +426,10 @@ fn schema_diagnostics(errors: &[SchemaError], spans: Option<&Spans>) -> Vec<Diag
     }
     // By UTF-16 code units, not by the locale; stable.
     out.sort_by(|a, b| {
-        let path = |d: &Diagnostic| d.at.path.clone().unwrap_or_default();
-        compare_utf16(&path(a), &path(b))
+        compare_utf16(
+            a.at.path.as_deref().unwrap_or_default(),
+            b.at.path.as_deref().unwrap_or_default(),
+        )
     });
     out
 }
