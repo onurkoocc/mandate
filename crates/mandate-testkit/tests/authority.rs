@@ -29,7 +29,11 @@ use mandate_testkit::{files, read_text, subdirectories};
 
 /// Each library crate, and the files under its `src/` that are not library
 /// code (a command line's `main.rs`).
-const LIBRARIES: &[(&str, &[&str])] = &[("mandate-ir", &[]), ("verify-journal", &["main.rs"])];
+const LIBRARIES: &[(&str, &[&str])] = &[
+    ("mandate-ir", &[]),
+    ("mandate-check", &[]),
+    ("verify-journal", &["main.rs"]),
+];
 
 /// The modules of `std` that give ambient authority.
 const MODULES: [&str; 6] = ["fs", "env", "process", "net", "os", "path"];
