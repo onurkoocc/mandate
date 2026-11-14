@@ -1,0 +1,30 @@
+# The configuration of the OpenTelemetry Collector that runtime/test/otel-collector.test.ts is shown against in CI
+# (.github/workflows/ci.yml, the `test` job). It receives OTLP over HTTP, which is what `mandate otel export` posts
+# (POST <endpoint>/v1/traces, JSON), and writes every request it accepts as one line of OTLP JSON to a file, which the
+# test reads back. The `file` exporter is in the collector's core distribution (distributions/otelcol/manifest.yaml of
+# opentelemetry-collector-releases lists it), so the image the workflow pins is the core one, not the contrib one.
+#
+# The collector runs in a container whose only writable place is the mounted /out; the workflow starts it as the
+# runner's own user, so that the file it writes is one the test can read.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        # Inside the container: the workflow publishes the port on the runner's loopback address only.
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  file:
+    path: /out/spans.json
+    # The default is one second. The test waits for the file anyway; a short interval keeps it short.
+    flush_interval: 200ms
+  # The collector's own log shows each request it took; the workflow prints it when the test fails.
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [file, debug]
