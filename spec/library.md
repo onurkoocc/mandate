@@ -17,6 +17,7 @@ loads it (`unsupported_language`).
 | `mandate add`, `upgrade`, `publish`; the `libraries` configuration; `library_digest_mismatch`, `library_revoked` | RL8, B7, B8, RP5 | specified; not implemented |
 | `std.patterns`: `BatchWithExceptions`, `FanOutMerge`, `MakerChecker` | RL8 | specified; not implemented |
 | Connectors in the language: `connector`, tool classes, `tool.call` and its coverage, the fix of `requires caps` (B12); E1401 to E1408 | RL5 | specified; not implemented |
+| What is sent to a connector: E0220 for a tool's arguments and for what an agent that holds tools receives; held at run time by the check at load | RL5 | specified; not implemented |
 | Connectors at run time: the MCP client, connector gateways, schema digests at start and resume, samples in design runs, `mandate connector pin` | B6, B9 | specified; not implemented |
 | `human.review` and `waive by` in the language; E1504 to E1508 | RL6 | specified; not implemented |
 | The review wait and decision, escalation and expiry, waiver evidence, what `Verified` accepts, the value binding (B25); `mandate review` | B10 | specified; not implemented |
@@ -695,7 +696,8 @@ pub connector mailbox = mcp("https://mail.acme.example/mcp")
   compares it at run time: the schema digests are what is checked.
 - **`class`** is the data class of everything the connector's tools
   return. A result reaching a model that may not receive that class is
-  E0220, as for any value.
+  E0220, as for any value. What is sent to the connector is held to it too
+  ([below](#what-is-sent-to-a-connector)).
 - **Closed.** Only the tools a connector declares can be called. A tool
   the server lists and the connector does not declare does not exist for
   the program.
@@ -827,6 +829,37 @@ failure, by its code, without the server's text. In a 0.6 package the
 runtime escapes `<` and `>` in the data a task hands a model, a tool's
 result included (B28); a package of 0.1 to 0.5 sends the bytes it sent
 before, so that a replay of a run that is going on does not change.
+
+### What is sent to a connector
+
+*This rule is this page's, beyond the design document: the design classes
+what a connector returns, and says nothing of what is sent to it.* A
+connector's `class` bounds what goes to it as a model capability's
+`max_class` bounds what goes to a model. In a 0.6 program:
+
+- **A tool's arguments.** An argument of a tool call, a read as an
+  expression or a write as an `effect`, may not carry data of a class
+  above its connector's `class`: sending more is E0220, at the argument,
+  with the facts `data_class` and `allowed` as for a model.
+- **What an agent is handed.** A delegation, or a `map` that delegates,
+  hands an agent data of a class; what an agent receives can reach the
+  arguments of the tools its loop calls. So what an agent receives is held
+  to the `class` of every connector whose tools its grant holds, as it is
+  held to its model capability's `max_class`: an agent that receives data
+  of a class above one of them is E0220, at the delegation. In a
+  sub-program, a class that comes from what the lead received is E1706,
+  `dimension: "data_class"`, as for a model.
+- **At run time** the rule is held as E0220 is held for a model today:
+  the runtime runs the compiler's checks again when it loads the package,
+  and refuses one that breaks it (`load_verification_failed`). The runtime
+  does not track the class of a value as it runs, for a model or for a
+  connector, so there is no refusal of one call by its class; 0.6 adds
+  none.
+
+The acceptance program keeps the rule: both its connectors are
+`confidential`, the invoices come from the mailbox as `confidential` data,
+the matcher's model may receive `confidential` data, and what the matcher
+makes and the commit sends to the ERP is of that class.
 
 ### The lock binding and schema digests
 
@@ -992,6 +1025,14 @@ Declined<T>   = { index: Int, value: Inferred<T>, unmet: List<Text>, by: Option<
   `C` has at least one. A role that could waive nothing is E1508.
 - **Never in a map body.** `human.review` is a `human.*` step, so a map's
   body holds none (E1708, INV-18). A batch asks once, after its map.
+- **Not counted against `time`.** A review's wait is counted against no
+  budget's `time`, as a `human.approve`'s `deadline` is not today: the
+  static bound adds up the time of what delegations and functions reserve,
+  and a wait for a person reserves nothing (`compiler/src/check/cost.ts`;
+  the checker only requires a deadline to be a `Duration`). What bounds the
+  wait is its own deadline, fixed when the wait opens, and with
+  `escalate_to` one more: at most twice `deadline` in all. The card shows
+  that bound beside the budget's `time`.
 - `Review` and `Declined` are built-in type names from 0.6; an earlier
   program that names one gets E0120, as before.
 
@@ -1368,6 +1409,7 @@ checks how many it skipped:
 | E1301 to E1307 | One mutation each | each code |
 | T01 | `tool.call(erp, list_open_orders)` does not cover `post_draft_invoice` (B12) | E0301 (E0301a) |
 | T02 | An agent holding a write tool | E1406 |
+| T06 | A mutation that raises the class of a tool's argument above its connector's `class`, and one that raises the class of what an agent holding a tool receives | E0220 |
 | E1401 to E1405, E1407, E1408 | One mutation each | each code |
 | H06 | A review over a verifying map checks; one wait | — |
 | H07 | A review role outside the `waive by` roles | E1508 |
@@ -1450,9 +1492,11 @@ workflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(
 ```
 
 What its card can say: at most 60 items; 60 × 0.30 USD = 18 USD ≤
-20 USD; at most one decision for the accountant, about the invoices whose
-total is off by more than 2%, and after a day the same decision for the
-finance lead; an invoice whose vendor is not the order's is declined
+20 USD; 2 hours for the work, while the review waits apart from that, at
+most one day and one more after the escalation (a review is counted
+against no `time`, [above](#humanreview)); at most one decision for the
+accountant, about the invoices whose total is off by more than 2%, and
+after a day the same decision for the finance lead; an invoice whose vendor is not the order's is declined
 without asking; every accepted invoice posted as a draft, as its own
 action, authorized by policy and idempotent by `invoice_no`; nobody asked
 about one invoice.
@@ -1493,6 +1537,9 @@ The three acceptance criteria of 0.6:
 - Fetching a library from git or OCI, a registry service, signed
   publication, an organization's policy module, and `extern` in a
   library.
+- An MCP server that needs `initialize` and a session: the runtime speaks
+  only the stateless revision the repository's own server calls modern
+  (`2026-07-28`), so such a server is not reached in 0.6.
 - MCP servers started over stdio; MCP resources, prompts and sampling;
   showing a server's tool descriptions to a model; `mandate connector
   draft`; an ACS declaration for connector tools (`mandate target acs`
