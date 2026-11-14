@@ -46,7 +46,9 @@ fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
             let loaded = load_json(&read_text(o.program)?);
             let diagnostics =
                 JsValue::Array(loaded.diagnostics.iter().map(Diagnostic::to_js).collect());
-            Ok(stringify_pretty(&diagnostics).unwrap_or_default() + "\n")
+            let mut text = stringify_pretty(&diagnostics).unwrap_or_default();
+            text.push('\n');
+            Ok(text)
         }
         _ => Err("no Rust implementation yet".to_owned()),
     }
