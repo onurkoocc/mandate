@@ -266,8 +266,8 @@ The Rust compiler is held to the TypeScript one byte for byte, by tests
 that run in CI natively and as WebAssembly (`wasm32-wasip1`, under Node's
 WASI):
 
-- all 231 pinned outputs of `compiler/test/golden/outputs.json` (11 outputs
-  of each of 21 programs), by `sha256`;
+- all 231 pinned outputs of `compiler/test/golden/outputs.json` (21
+  programs, ten to twelve outputs each), by `sha256`;
 - all 125 `compile` cases of `conformance/`;
 - the stored results in [`vectors/`](vectors/README.md): the syntax and
   span vectors, the schema vectors, 193 diagnostic vectors, 183 diff
