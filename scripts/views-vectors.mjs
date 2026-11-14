@@ -35,6 +35,18 @@
 //             by UTF-16 code units and by code points, Mermaid text that
 //             escapes, systems of every type form, imported modules, and
 //             documents of a program with no workflow and no agent
+//   cards     card and cardDoc (the envelope card, `mandate view --card`) of a
+//             workflow of tests/data/cards.mdt, or of that program edited, or
+//             of MigrateAll, with a lock and modules or without: an envelope
+//             with every dimension, without a budget, a budget without spend
+//             or in another currency, without approvals, owner, spawn or caps;
+//             the numbers grouped, in hours, zero, negative left; maps with no
+//             max, with a scope the run chooses or none known, over every kind
+//             of expression; plans from the call, the skill, the agent or none;
+//             a wait for a person in the body, a function, a contract, a
+//             supervision and a change set, with members bound; locks that
+//             are not locks; a workflow with no envelope, that is no workflow,
+//             that does not exist
 //
 //   npm ci --ignore-scripts && npm run build    (once: it reads compiler/dist)
 //   node scripts/views-vectors.mjs              (writes expected.json)
@@ -56,7 +68,7 @@ const { kindOf, load, loadModules } = await dist("check.js");
 const { hashProgram } = await dist("hash.js");
 const { parseStrictJson } = await dist("json/strict-json.js");
 const { applyOps, applyPatch } = await dist("patch/patch.js");
-const { architecture, authority, cost, diffDoc, envelopeChanges, governanceChanges, hasSystem, lockDiff, lockLimitsDiff, programDoc, semanticDiff, system } = await dist("views/views.js");
+const { architecture, authority, card, cardDoc, cost, diffDoc, envelopeChanges, envelopeWorkflows, governanceChanges, hasSystem, lockDiff, lockLimitsDiff, programDoc, semanticDiff, system } = await dist("views/views.js");
 const { toHtml, toMarkdown } = await dist("views/doc.js");
 
 const dir = new URL("crates/mandate-views/tests/data/", root);
@@ -253,7 +265,52 @@ function views() {
   return out;
 }
 
-const out = { format: "mandate/views-vectors/expected/0.1", numbers: numbers(), docs: docs(), patches: patches(), diffs: diffs(), graphs: graphs(), fixtures: fixtures(), views: views() };
+/**
+ * The envelope card of a workflow (`mandate view --card`): card and cardDoc with the lock and the modules of the case.
+ * A lock is given inline (`lock`, which may be null, an array or an object that is no lock) or by name (`lock_ref`, from
+ * `card_locks`); `modules` are given as `--module` gives them, or not at all with `modules_omitted`. A workflow that has
+ * no card is held as that: neither function gives anything.
+ */
+function cards() {
+  const out = {};
+  for (const c of inputs.cards) {
+    const p = programOf(c.program);
+    const lockInput = c.lock_ref !== undefined ? inputs.card_locks[c.lock_ref] : c.lock;
+    const lock = lockInput === undefined ? undefined : strict(lockInput);
+    const opts = { ...(c.modules_omitted ? {} : { modules: modulesOf(c.modules) }), ...(lock !== undefined ? { lock } : {}) };
+    const v = card(p, c.workflow, opts);
+    const doc = cardDoc(p, c.workflow, opts);
+    if (v === undefined || doc === undefined) {
+      if (v !== doc) throw new Error(`${c.name}: card and cardDoc disagree`);
+      out[c.name] = { defined: false, workflows: envelopeWorkflows(p).join(",") };
+      continue;
+    }
+    const markdown = toMarkdown(doc);
+    const html = toHtml(doc);
+    const num = (n) => (n === null ? "-" : String(n));
+    out[c.name] = {
+      defined: true,
+      workflows: envelopeWorkflows(p).join(","),
+      steps: `${v.does.steps.length}: ${digest(v.does.steps.join("\n"))}`,
+      maps: v.does.maps.map((m) => `${m.bind} over ${m.over}: max ${num(m.max)} par ${m.par} -> ${m.delegates.join(",")} | ${m.handed.map((h) => `${h.cap} [${h.kinds.join("+")}] ${h.scope === null ? "?" : h.scope.join("+")} ${h.by_item}`).join("; ")}`),
+      plans: v.does.plans.map((p) => `${p.lead}: ${p.budget} (${p.from})`),
+      spends: v.spends.map((r) => `${r.dimension}${r.currency ? ` ${r.currency}` : ""}: ${r.text.envelope} | ${r.text.static} | ${r.text.left}`),
+      waits: v.asks.waits.map((w) => `${w.kind} ${w.role} ${w.in} [${w.members.join(",")}]`),
+      approvals: v.asks.approvals.map((a) => `${a.effect} ${a.role} [${a.members.join(",")}]`),
+      text: v.approves.text,
+      // The package hash is held as a digest of itself: it is a hash of the program and the lock, not a thing to read.
+      package: digest(v.package),
+      json: digest(pretty(v) + "\n"),
+      markdown: digest(markdown),
+      html: digest(html),
+      html_length: html.length,
+    };
+    if (show === c.name) console.log(pretty(v) + "\n" + markdown);
+  }
+  return out;
+}
+
+const out = { format: "mandate/views-vectors/expected/0.1", numbers: numbers(), docs: docs(), patches: patches(), diffs: diffs(), graphs: graphs(), fixtures: fixtures(), views: views(), cards: cards() };
 if (show === undefined) {
   const ascii = (text) => text.replace(/[^\x00-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
   const line = (x) => ascii(JSON.stringify(x));

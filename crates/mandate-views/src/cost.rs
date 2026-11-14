@@ -506,7 +506,7 @@ impl<'a> Walk<'a> {
 
 /// The delegation a `plan` is costed as: `{ op: "delegate", agent, skill,
 /// args, ...(budget ? { budget } : {}) }`.
-fn delegate_of_plan(e: Expr<'_>) -> Value {
+pub(crate) fn delegate_of_plan(e: Expr<'_>) -> Value {
     let mut m = Map::new();
     m.insert("op", "delegate");
     for key in ["agent", "skill", "args"] {
