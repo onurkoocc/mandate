@@ -56,7 +56,7 @@ impl Linked {
 /// collide with "module function toString() { [native code] }". The port
 /// does not fix that.
 fn object_prototype_text(name: &str) -> Option<String> {
-    const FUNCTIONS: [&str; 11] = [
+    const FUNCTIONS: [&str; 10] = [
         "__defineGetter__",
         "__defineSetter__",
         "hasOwnProperty",
@@ -67,7 +67,6 @@ fn object_prototype_text(name: &str) -> Option<String> {
         "toString",
         "valueOf",
         "toLocaleString",
-        "constructor",
     ];
     match name {
         "__proto__" => Some("[object Object]".to_owned()),
@@ -268,5 +267,60 @@ fn walk_references(v: &Value, out: &mut Vec<String>) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::object_prototype_text;
+
+    /// What `String(({})[name])` gives in Node for every own property of
+    /// `Object.prototype` (`Object.getOwnPropertyNames`), and for a name it
+    /// does not have.
+    #[test]
+    fn what_a_plain_object_finds_on_its_prototype() {
+        let node = [
+            ("constructor", "function Object() { [native code] }"),
+            (
+                "__defineGetter__",
+                "function __defineGetter__() { [native code] }",
+            ),
+            (
+                "__defineSetter__",
+                "function __defineSetter__() { [native code] }",
+            ),
+            (
+                "hasOwnProperty",
+                "function hasOwnProperty() { [native code] }",
+            ),
+            (
+                "__lookupGetter__",
+                "function __lookupGetter__() { [native code] }",
+            ),
+            (
+                "__lookupSetter__",
+                "function __lookupSetter__() { [native code] }",
+            ),
+            (
+                "isPrototypeOf",
+                "function isPrototypeOf() { [native code] }",
+            ),
+            (
+                "propertyIsEnumerable",
+                "function propertyIsEnumerable() { [native code] }",
+            ),
+            ("toString", "function toString() { [native code] }"),
+            ("valueOf", "function valueOf() { [native code] }"),
+            ("__proto__", "[object Object]"),
+            (
+                "toLocaleString",
+                "function toLocaleString() { [native code] }",
+            ),
+        ];
+        for (name, text) in node {
+            assert_eq!(object_prototype_text(name).as_deref(), Some(text), "{name}");
+        }
+        assert_eq!(object_prototype_text("nope"), None);
+        assert_eq!(object_prototype_text("tostring"), None);
     }
 }

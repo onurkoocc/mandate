@@ -557,6 +557,9 @@ pub fn role_checks(
 mod tests {
     use super::{article, subject};
 
+    /// The expectations are what `subject` and `article` of
+    /// `compiler/dist/check/roles.js` (module-private, taken out of its
+    /// text with `new Function`) give on the same inputs.
     #[test]
     fn subjects_and_articles() {
         assert_eq!(subject("a component's owner"), "A component's owner");

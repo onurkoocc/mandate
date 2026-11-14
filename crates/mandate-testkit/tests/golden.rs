@@ -107,9 +107,12 @@ fn module_files_of(program: &str) -> Vec<String> {
 /// `compiler/test/helpers.ts`, `<name>.lock.json` beside it, else
 /// `mandate.lock.json` beside it, the first that exists.
 fn lock_file_of(program: &str) -> Option<String> {
-    let dir = program.rfind('/').map_or("", |at| &program[..=at]);
-    let file = &program[dir.len()..];
-    let name = file.rfind('.').map_or(file, |at| &file[..at]);
+    let (dir, file) = match program.rsplit_once('/') {
+        Some((dir, file)) => (format!("{dir}/"), file),
+        None => (String::new(), program),
+    };
+    // `.replace(/\.[^.]*$/, "")`.
+    let name = file.rsplit_once('.').map_or(file, |(name, _)| name);
     [
         format!("{dir}{name}.lock.json"),
         format!("{dir}mandate.lock.json"),
