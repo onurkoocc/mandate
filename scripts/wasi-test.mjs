@@ -24,7 +24,8 @@
 // itself, and nothing in `.cargo/` can change what a native `cargo test` does.
 //
 // The repository root is preopened as `/repo` and the environment variable
-// MANDATE_REPO=/repo is set in the WASI environment; the tests read it. Node
+// MANDATE_REPO=/repo is set in the WASI environment; the tests read it (and
+// MANDATE_GOLDEN_OUT, when set on the host, as a path inside the repository). Node
 // cannot preopen a directory read-only, so "read-only" is a convention of the
 // tests, which only read. Needs: the target (`rust-toolchain.toml` lists it,
 // `rustup toolchain install` installs it), cargo on PATH, and Node 22 or later.
@@ -51,7 +52,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, writeSync } from 'node:fs';
-import { basename, resolve } from 'node:path';
+import { basename, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WASI } from 'node:wasi';
 
@@ -170,6 +171,20 @@ function withReaddir(imports, hostRoot) {
   };
 }
 
+// MANDATE_GOLDEN_OUT (the golden gate writes its output texts there, for a
+// comparison with the TypeScript compiler's) is passed on as the same directory
+// seen from inside the guest: it must lie inside the repository, the only
+// directory the guest can write to.
+const guestEnv = { MANDATE_REPO: '/repo' };
+if (process.env.MANDATE_GOLDEN_OUT) {
+  const inside = relative(root, resolve(process.env.MANDATE_GOLDEN_OUT));
+  if (inside === '' || inside.startsWith('..') || resolve(inside) === inside || /^[A-Za-z]:/.test(inside)) {
+    say('MANDATE_GOLDEN_OUT must name a directory inside the repository under WASI');
+    process.exit(1);
+  }
+  guestEnv.MANDATE_GOLDEN_OUT = '/repo/' + inside.split(sep).join('/');
+}
+
 // 2. Run each one under WASI.
 let exitCode = 0;
 for (const { name, path } of executables) {
@@ -177,7 +192,7 @@ for (const { name, path } of executables) {
   const wasi = new WASI({
     version: 'preview1',
     args: [basename(path), ...libtestArgs],
-    env: { MANDATE_REPO: '/repo' },
+    env: guestEnv,
     preopens: { '/repo': root },
     returnOnExit: true,
   });

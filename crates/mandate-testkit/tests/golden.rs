@@ -243,21 +243,50 @@ fn held(stored: &Value, actual: &[Diagnostic], difference: String) -> Miss {
     }
 }
 
+/// When the environment variable `MANDATE_GOLDEN_OUT` names a directory,
+/// writes the text of an output to `<dir>/<program path>/<output file
+/// name>`, where the output file name is the output's name with each space
+/// replaced by `_`. This is the layout `compiler/test/golden-outputs.ts`
+/// writes (`writeOutputs`; `vectors/README.md`, "The golden output texts"),
+/// so that `diff -ru` pairs the two directories. Nothing is written when the
+/// variable is not set. A relative directory is taken from the repository
+/// root: under WebAssembly the repository is the only directory the test can
+/// write to, and `scripts/wasi-test.mjs` passes the variable on as a path in
+/// it.
+fn write_text(o: &GoldenOutput<'_>, text: &str) -> Result<(), String> {
+    let Some(dir) = std::env::var_os("MANDATE_GOLDEN_OUT").filter(|d| !d.is_empty()) else {
+        return Ok(());
+    };
+    let file = mandate_testkit::repo().join(
+        std::path::Path::new(&dir)
+            .join(o.program)
+            .join(o.output.replace(' ', "_")),
+    );
+    if let Some(parent) = file.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    }
+    std::fs::write(&file, text).map_err(|e| format!("{}: {e}", file.display()))
+}
+
 /// One pinned output against its digest, held to omission when it is a
-/// check (`stored` are the stored results of the checks).
+/// check (`stored` are the stored results of the checks). The text is
+/// written first when `MANDATE_GOLDEN_OUT` is set (`write_text`), whether or
+/// not it has the digest.
 fn run(o: &GoldenOutput<'_>, stored: &BTreeMap<(String, String), Value>) -> Result<(), Miss> {
     let (with_modules, with_lock) = match o.output {
         "check" => (false, false),
         "check --module" => (true, false),
         "check --lock" => (true, true),
         _ => {
-            return output(o)
-                .and_then(|text| compare_digest(o.digest, &text))
-                .map_err(Miss::Differs);
+            let text = output(o).map_err(Miss::Differs)?;
+            write_text(o, &text).map_err(Miss::Differs)?;
+            return compare_digest(o.digest, &text).map_err(Miss::Differs);
         }
     };
     let r = checked(o.program, with_modules, with_lock).map_err(Miss::Differs)?;
-    compare_digest(o.digest, &check_text(&r)).map_err(|why| {
+    let text = check_text(&r);
+    write_text(o, &text).map_err(Miss::Differs)?;
+    compare_digest(o.digest, &text).map_err(|why| {
         let slot = o.output.replace(" --", "_");
         match stored.get(&(o.program.to_owned(), slot)) {
             Some(v) => held(v, &r.diagnostics, why),

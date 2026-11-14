@@ -288,7 +288,7 @@ no tariff, in that order.
 ## The golden output texts (`MANDATE_GOLDEN_OUT`)
 
 The golden file (`compiler/test/golden/outputs.json`) pins the output texts of
-24 programs by digest. When the environment variable `MANDATE_GOLDEN_OUT`
+21 programs by digest. When the environment variable `MANDATE_GOLDEN_OUT`
 names a directory, `compiler/test/golden.test.ts` also writes every text to
 `<dir>/<program path>/<output file name>`, for a job to compare with another
 compiler's texts by `diff -ru`: `<program path>` is the repository path of the
@@ -299,8 +299,22 @@ output file name is the output's name with each space replaced by `_`:
 `view_--against_itself`, `sandbox` (231 files; a program has only the outputs
 the golden file pins for it). The bytes are exactly those that are hashed (UTF-8,
 no newline added), and the directory is created. Nothing is written when the
-variable is not set, and nothing of these texts is committed. The Rust side
-writes the same layout. The texts come from `compiler/test/golden-outputs.ts`.
+variable is not set, and nothing of these texts is committed. This is the one
+place that says the layout; the Rust side (`write_text` in
+`crates/mandate-testkit/tests/golden.rs`, run by the golden gate) refers here
+and writes the same one. The texts come from
+`compiler/test/golden-outputs.ts`.
+
+The `parity` job of `.github/workflows/ci.yml` writes both directories (the
+TypeScript with `npx vitest run test/golden.test.ts` in `compiler`, the Rust
+with `cargo test -p mandate-testkit --test golden`, each with
+`MANDATE_GOLDEN_OUT` set), checks that each holds as many files as the golden
+file pins outputs (231), and runs `diff -ru` on them: any difference fails the
+job and is shown. Under `scripts/wasi-test.mjs` the variable must name a
+directory inside the repository (for example `target/parity/rust`, which git
+ignores), since that is the only directory the WebAssembly test can write to;
+the script passes it on as the path inside the guest. A relative directory is
+taken by the Rust test from the repository root.
 
 ## diagnostics/
 
