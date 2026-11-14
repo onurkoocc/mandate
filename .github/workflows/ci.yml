@@ -60,6 +60,30 @@ jobs:
           node compiler/dist/cli.js check fixtures/fixbug/fixbug.ir.json
           node compiler/dist/cli.js sandbox fixtures/fixbug/fixbug.ir.json > /dev/null
           node compiler/dist/cli.js test fixtures/fixbug/fixbug.mdt
+      # A real OPA for the generated Rego (compiler/test/acs.test.ts, X05). The binary is the static Linux build of one
+      # release, from the project's GitHub releases; its sha256 is the one the release publishes next to it
+      # (opa_linux_amd64_static.sha256), fixed here and checked before the binary is run. 1.4.2 is the version the test
+      # names for the Docker image, so the two ways of running it are the same OPA.
+      - name: Install OPA 1.4.2 (static Linux binary, sha256 checked)
+        env:
+          OPA_VERSION: "1.4.2"
+          OPA_SHA256: 2c0ccdbbe0b8e2a5d12d9c42d92f1f34f494ffb32d1f3c4ddc36101be637d66f
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/opa" "https://github.com/open-policy-agent/opa/releases/download/v${OPA_VERSION}/opa_linux_amd64_static"
+          echo "$OPA_SHA256  $RUNNER_TEMP/opa" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/opa"
+          "$RUNNER_TEMP/opa" version
+      # npm test above skipped the gated part of this file. Here MANDATE_OPA names the binary, the reporter lists each
+      # test, and assert-ran.mjs fails the step if any test of the file was skipped, so a green step means the generated
+      # Rego was evaluated by the real OPA.
+      - name: The generated Rego on a real OPA (X05), run and not skipped
+        working-directory: compiler
+        env:
+          MANDATE_OPA: ${{ runner.temp }}/opa
+          VITEST_REPORT: ${{ runner.temp }}/acs-report.json
+        run: |
+          npx vitest run test/acs.test.ts --reporter=verbose --reporter=json --outputFile.json="$VITEST_REPORT"
+          node ../scripts/assert-ran.mjs "$VITEST_REPORT" "the generated Rego on a real OPA"
 
   sandbox:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
