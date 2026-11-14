@@ -26,7 +26,8 @@
 
 use mandate_ir::{
     Definition, Expr, ExprOp, JsObject, JsValue, Map, Program, Stmt, StmtOp, Value, canonicalize,
-    compare_utf16, hash_program, number_to_string, sort_utf16, unique_in_order, write_json_string,
+    compare_utf16, hash_program, number_to_string, sort_utf16, unique_in_order, workflow_bounds,
+    write_json_string,
 };
 
 use crate::caps::{CapOptions, CapVal, callee_path, cap_covers, caps_of, show_cap};
@@ -53,19 +54,6 @@ pub fn js_text(v: Option<&Value>) -> String {
         || "undefined".to_owned(),
         |v| JsValue::from(v).to_js_string(),
     )
-}
-
-/// ECMAScript truthiness of a member: false for a missing one, `null`,
-/// `false`, `0` and the empty string.
-#[must_use]
-pub fn truthy(v: Option<&Value>) -> bool {
-    match v {
-        None | Some(Value::Null) => false,
-        Some(Value::Bool(b)) => *b,
-        Some(Value::Number(n)) => n.get() != 0,
-        Some(Value::String(s)) => !s.is_empty(),
-        Some(_) => true,
-    }
 }
 
 /// `j(v)`: the canonical text of a value, which the views compare and show.
@@ -209,58 +197,6 @@ pub fn handed_by(program: Program<'_>, outer: &[CapVal], map: Expr<'_>) -> Vec<C
     out
 }
 
-/// The bounds of a workflow: what it may hold and spend, from its envelope
-/// when it has one. `workflowBounds(d)` of `ir/types.ts`.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct WorkflowBounds<'a> {
-    /// The capability expressions.
-    pub caps: &'a [Value],
-    /// Where they are, as a path inside the definition.
-    pub caps_at: &'static str,
-    /// The budget, when there is one.
-    pub budget: Option<&'a Value>,
-    /// Where it is.
-    pub budget_at: &'static str,
-}
-
-/// `workflowBounds(d)`: the workflow's own `caps` and `budget`, or those of
-/// its envelope when it has one (which then hold the caps the workflow's own
-/// list no longer does).
-#[must_use]
-pub fn workflow_bounds(d: &Value) -> WorkflowBounds<'_> {
-    match d.get("envelope").filter(|e| truthy(Some(e))) {
-        None => WorkflowBounds {
-            caps: Definition::of(d).caps(),
-            caps_at: "caps",
-            budget: d.get("budget").filter(|b| truthy(Some(b))),
-            budget_at: "budget",
-        },
-        Some(e) => WorkflowBounds {
-            caps: e.get("caps").and_then(Value::as_array).unwrap_or_default(),
-            caps_at: "envelope/caps",
-            budget: e.get("budget").filter(|b| truthy(Some(b))),
-            budget_at: "envelope/budget",
-        },
-    }
-}
-
-/// The dimensions of a budget, in the order of `BUDGET_DIMENSIONS`.
-pub const BUDGET_DIMENSIONS: [&str; 5] = ["tokens", "steps", "time", "spend", "agents"];
-
-/// What a budget gives one dimension, as a number: tokens, steps and agents
-/// as counts, time in milliseconds, spend in micro-units of its currency.
-/// `budgetAmount(b, dim)`.
-#[must_use]
-pub fn budget_amount(b: Option<&Value>, dim: &str) -> Option<i64> {
-    let b = b?;
-    match dim {
-        "tokens" | "steps" | "agents" => b.get(dim)?.as_i64(),
-        "time" => b.get("time")?.get("ms")?.as_i64(),
-        "spend" => b.get("spend")?.get("micros")?.as_i64(),
-        _ => None,
-    }
-}
-
 /// What a delegation is granted at run time: the agent's capabilities inside
 /// the workflow's, `with caps` replacing its kinds (C2). `handed` is what a
 /// map around the delegation hands it: one of those replaces a kind too,
@@ -283,7 +219,7 @@ pub fn grant_of(
         .collect();
     let mut given = widest(program, with_caps);
     let own: Vec<String> = given.iter().map(|g| g.ctor().to_owned()).collect();
-    let remote = truthy(agent.get("remote"));
+    let remote = agent.get("remote").is_some_and(Value::is_truthy);
     for k in handed {
         if !own.iter().any(|c| c == k.ctor()) && (remote || held.iter().any(|a| cap_covers(a, k))) {
             given.push(k.clone());
@@ -484,9 +420,9 @@ pub fn effect_info(program: Program<'_>, name: &str) -> EffectInfo {
         .get(name)
         .filter(|d| d.get("kind").and_then(Value::as_str) == Some("effect"))
     {
-        let irreversible = truthy(d.get("irreversible"));
+        let irreversible = d.get("irreversible").is_some_and(Value::is_truthy);
         return EffectInfo {
-            critical: truthy(d.get("critical")) || irreversible,
+            critical: d.get("critical").is_some_and(Value::is_truthy) || irreversible,
             irreversible,
         };
     }
@@ -791,7 +727,9 @@ impl<'a> Graph<'a> {
                     .map(|ms| format!("timeout {}", duration(ms)));
                 let detail: Vec<String> = [
                     Some(short_caps(&grant)),
-                    truthy(e.get("isolated")).then(|| "isolated".to_owned()),
+                    e.get("isolated")
+                        .is_some_and(Value::is_truthy)
+                        .then(|| "isolated".to_owned()),
                     supervision(e),
                     timeout,
                 ]
@@ -892,10 +830,10 @@ impl<'a> Graph<'a> {
                 } else if info.critical {
                     detail.push("critical".to_owned());
                 }
-                if truthy(e.get("idempotent_by")) {
+                if e.get("idempotent_by").is_some_and(Value::is_truthy) {
                     detail.push("idempotent".to_owned());
                 }
-                if let Some(c) = e.get("compensate").filter(|c| truthy(Some(c))) {
+                if let Some(c) = e.get("compensate").filter(|c| c.is_truthy()) {
                     detail.push(format!("compensation offered: {}", js_text(Some(c))));
                 }
                 vec![self.add(ArchKind::Effect, js_text(name), detail, &prev)]

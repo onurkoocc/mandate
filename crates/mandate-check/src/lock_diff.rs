@@ -8,14 +8,14 @@
 //! nothing. Where the TypeScript would throw on such a lock (a member that is
 //! not a list where it calls `includes`), nothing is compared here instead.
 //!
-//! Three pieces of `compiler/src/target/sandbox.ts` are copied here, each
-//! marked, because that file is ported by another slice: `ISOLATION_LEVELS`,
-//! `floorFor` and `coTenancyFor`.
+//! The isolation floors and the co-tenancy of a data class are the sandbox
+//! module's (`floorFor` and `coTenancyFor` of `compiler/src/target/sandbox.ts`).
 
 use mandate_ir::{Map, Value, ptr_token, sort_utf16, unique_in_order};
 
 use crate::diff::Change;
-use crate::stdlib::{DATA_CLASSES, DataClass, class_rank};
+use crate::sandbox::{CoTenancy, IsolationLevel, co_tenancy_for, floor_for};
+use crate::stdlib::DATA_CLASSES;
 use crate::view_shared::js_text;
 
 /// A member of a lock that is an object: `lock?.members`.
@@ -60,12 +60,8 @@ pub fn lock_diff(before: Option<&Value>, after: Option<&Value>) -> Vec<Change> {
     let bm = object(before, "members");
     let am = object(after, "members");
     for m in names(bm, am) {
-        let b = bm
-            .and_then(|x| x.get(&m))
-            .filter(|v| crate::view_shared::truthy(Some(v)));
-        let a = am
-            .and_then(|x| x.get(&m))
-            .filter(|v| crate::view_shared::truthy(Some(v)));
+        let b = bm.and_then(|x| x.get(&m)).filter(|v| v.is_truthy());
+        let a = am.and_then(|x| x.get(&m)).filter(|v| v.is_truthy());
         let path = format!("/members/{}", ptr_token(&m));
         match (b, a) {
             // An added member's keys come with it, and a removed member's keys go with it: one line each.
@@ -129,65 +125,6 @@ pub struct LockLimitsDiff {
     pub behavior: Vec<Change>,
 }
 
-// R14: the public one in the sandbox module replaces this copy.
-/// `ISOLATION_LEVELS`: isolation levels, weakest first (spec/boundary.md
-/// "Isolation level and host fitness").
-const ISOLATION_LEVELS: [&str; 4] = ["process", "user_kernel", "microvm", "dedicated_host"];
-
-/// `ISOLATION_LEVELS.indexOf(level)`: `-1` for a name that is none.
-fn level_index(level: &str) -> isize {
-    ISOLATION_LEVELS
-        .iter()
-        .position(|l| *l == level)
-        .and_then(|i| isize::try_from(i).ok())
-        .unwrap_or(-1)
-}
-
-// R14: the public one in the sandbox module replaces this copy.
-/// The stronger of two isolation levels: `higher(a, b)` of `sandbox.ts`.
-fn higher<'a>(a: &'a str, b: &'a str) -> &'a str {
-    if level_index(b) > level_index(a) {
-        b
-    } else {
-        a
-    }
-}
-
-// R14: the public one in the sandbox module replaces this copy.
-/// `own(o, k)` of `sandbox.ts`: `o[k]` when `k` is a key of `o` itself.
-fn own<'a>(o: Option<&'a Value>, k: &str) -> Option<&'a Value> {
-    o?.as_object()?.get(k)
-}
-
-// R14: the public one in the sandbox module replaces this copy.
-/// The isolation floor a lock's `isolation` gives data of class `c`: the
-/// highest floor it sets for `c` or any less sensitive class, since a floor
-/// holds for every class above the one it names. `process` when it sets none.
-/// `floorFor(iso, c)` of `sandbox.ts`.
-fn floor_for<'a>(iso: Option<&'a Value>, c: DataClass) -> &'a str {
-    let floor = iso.and_then(|i| i.get("floor"));
-    DATA_CLASSES
-        .iter()
-        .filter(|x| class_rank(**x) <= class_rank(c))
-        .fold("process", |a, x| {
-            // `own(iso?.floor, x) ?? "process"`: a level that is no string is none of the levels.
-            let level = own(floor, x.as_str()).map_or("process", |v| v.as_str().unwrap_or(""));
-            higher(a, level)
-        })
-}
-
-// R14: the public one in the sandbox module replaces this copy.
-/// Whether a sandbox with data of class `c` may share its host: not when the
-/// lock forbids it for `c` or any less sensitive class. `coTenancyFor(iso,
-/// c)` of `sandbox.ts`, `forbidden` as `true`.
-fn co_tenancy_forbidden(iso: Option<&Value>, c: DataClass) -> bool {
-    let co = iso.and_then(|i| i.get("co_tenancy"));
-    DATA_CLASSES.iter().any(|x| {
-        class_rank(*x) <= class_rank(c)
-            && own(co, x.as_str()).and_then(Value::as_str) == Some("forbidden")
-    })
-}
-
 /// `x.split(".").map(Number)`: a version's segments as JavaScript reads them.
 fn segments(x: &str) -> Vec<f64> {
     x.split('.').map(crate::js_number::js_to_number).collect()
@@ -210,6 +147,13 @@ fn version_below(x: &str, y: &str) -> bool {
         }
     }
     false
+}
+
+/// `ISOLATION_LEVELS.indexOf(level)`: `-1` for a name that is no level.
+fn level_index(level: &str) -> isize {
+    IsolationLevel::from_name(level)
+        .and_then(|l| isize::try_from(l.index()).ok())
+        .unwrap_or(-1)
 }
 
 /// `level(x, y)`: whether `x` is a lower isolation level than `y`.
@@ -294,8 +238,8 @@ pub fn lock_limits_diff(before: Option<&Value>, after: Option<&Value>) -> LockLi
             &mut out,
             format!("/isolation/floor/{}", ptr_token(cls.as_str())),
             &format!("isolation.floor.{cls} in effect"),
-            Some(floor_for(bi, cls)),
-            Some(floor_for(ai, cls)),
+            Some(floor_for(bi, cls).as_str()),
+            Some(floor_for(ai, cls).as_str()),
             level_below,
             "process",
             None,
@@ -314,8 +258,8 @@ pub fn lock_limits_diff(before: Option<&Value>, after: Option<&Value>) -> LockLi
         Some("process"),
     );
     for cls in DATA_CLASSES {
-        let b = co_tenancy_forbidden(bi, cls);
-        let a = co_tenancy_forbidden(ai, cls);
+        let b = co_tenancy_for(bi, cls) == CoTenancy::Forbidden;
+        let a = co_tenancy_for(ai, cls) == CoTenancy::Forbidden;
         if b == a {
             continue;
         }

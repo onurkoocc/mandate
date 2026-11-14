@@ -80,10 +80,10 @@ pub mod caps;
 pub mod check;
 pub mod diff;
 pub mod governance;
-pub mod lock;
-pub mod managed_agents;
 pub mod js_number;
+pub mod lock;
 pub mod lock_diff;
+pub mod managed_agents;
 pub mod modules;
 pub mod patch;
 pub mod path;
@@ -98,22 +98,22 @@ pub use check::{
     CheckOptions, CheckResult, LoadedModules, ModuleProblem, ModuleSource, UNPORTED, check,
     load_modules,
 };
-pub use lock::{
-    LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, Lock, ModelLock, PerCallBound, Tariff,
-    lock_at_least, lock_checks, model_tiers, module_lock_checks, own, packaged_lock,
-    per_call_bound, role_lock_checks, sandbox_lock_checks, validate_lock,
-};
-pub use managed_agents::{
-    AgentModels, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, MA_MAX_CLASS, ProfileLevel,
-    agent_models, binding_checks,
-};
 pub use diff::{
     BudgetChanges, Change, Classified, DiffView, GovernanceChangeKind, KindedChange, Locks,
     ScopeDiff, budget_changes, classify, envelope_changes, governance_changes, scope_diff,
     scope_diffs, semantic_diff, shown_caps, steps, system_changes,
 };
 pub use js_number::js_to_number;
+pub use lock::{
+    LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, Lock, ModelLock, PerCallBound, Tariff,
+    lock_at_least, lock_checks, model_tiers, module_lock_checks, own, packaged_lock,
+    per_call_bound, role_lock_checks, sandbox_lock_checks, validate_lock,
+};
 pub use lock_diff::{LockLimitsDiff, lock_diff, lock_limits_diff};
+pub use managed_agents::{
+    AgentModels, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, MA_MAX_CLASS, ProfileLevel,
+    agent_models, binding_checks,
+};
 pub use modules::{Linked, Modules, link, linked_program, references};
 pub use patch::{GovernanceChange, OpsResult, PatchOp, PatchResult, apply_ops, apply_patch};
 pub use resolve::{
@@ -128,11 +128,10 @@ pub use sandbox::{
     denial_diagnostics, floor_for, requirement_for, requirements_to_js, sandbox_requirements,
 };
 pub use view_shared::{
-    ArchEdge, ArchKind, ArchNode, Authority, BUDGET_DIMENSIONS, EffectInfo, Graph, ProgramRef,
-    VIEW_FORMAT, WorkflowBounds, authority_of, budget_amount, caps_in, chosen_at_run_time,
-    criteria, defs_of, duration, effect_info, grant_of, handed_by, is_system, j, j_or_null,
-    js_text, json_string, kind_text, method_of, micros_text, program_ref, short_caps, supervision,
-    truthy, view_children, widest, workflow_bounds, workflow_effects,
+    ArchEdge, ArchKind, ArchNode, Authority, EffectInfo, Graph, ProgramRef, VIEW_FORMAT,
+    authority_of, caps_in, chosen_at_run_time, criteria, defs_of, duration, effect_info, grant_of,
+    handed_by, is_system, j, j_or_null, js_text, json_string, kind_text, method_of, micros_text,
+    program_ref, short_caps, supervision, view_children, widest, workflow_effects,
 };
 
 pub use caps::{

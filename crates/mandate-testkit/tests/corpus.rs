@@ -46,8 +46,7 @@ use mandate_ir::{Diagnostic, JsValue, Span, Spans, Value, parse};
 use mandate_syntax::{SourceKind, load};
 use mandate_testkit::corpus::{
     Actual, Corpus, Door, Entry, Input, Kind, digest_of, ir_text, render_apply_patch, render_check,
-    render_diagnostics,
-    render_load, render_load_modules, spans_text,
+    render_diagnostics, render_load, render_load_modules, spans_text,
 };
 use mandate_testkit::{check_pending, run_gate};
 

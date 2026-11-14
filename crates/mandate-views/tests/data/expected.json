@@ -1,6 +1,6 @@
 {
   "format": "mandate/views-vectors/expected/0.1",
-  "numbers": ["0","0","1","1","1","1","NaN","NaN","1","1","0","1","0.1","NaN","1.5","NaN","1","100","100","0.01","NaN","NaN","Infinity","0","-0","1","-1","NaN","NaN","-0","0","0","1","31","NaN","NaN","NaN","NaN","1","2","NaN","7","15","NaN","NaN","NaN","NaN","Infinity","Infinity","-Infinity","NaN","NaN","NaN","NaN","NaN","NaN","NaN","NaN","22","22.23","NaN","NaN","9007199254740992","1.2345678901234568e+29","0.1","0.000001","1e-7","123456789.12345679","18446744073709552000","1.461501637330903e+48","1.1805916207174113e+21"],
+  "numbers": ["0","0","1","1","1","1","NaN","NaN","1","1","0","1","0.1","NaN","1.5","NaN","1","100","100","0.01","NaN","NaN","Infinity","0","-0","1","-1","NaN","NaN","-0","0","0","1","31","NaN","NaN","NaN","NaN","1","2","NaN","7","15","NaN","NaN","NaN","NaN","Infinity","Infinity","-Infinity","NaN","NaN","NaN","NaN","NaN","NaN","NaN","NaN","22","22.23","NaN","NaN","9007199254740992","1.2345678901234568e+29","0.1","0.000001","1e-7","123456789.12345679","18446744073709552000","1152921504606847200","9007199254740992","1.461501637330903e+48","1.1805916207174113e+21"],
   "docs": {
     "every-block": {"markdown":"# Title with \\`ticks\\`, \\|pipes\\| and \\<tags\\>\n\n- **Key:** ` value `\n- **K\\|e\\`y\\*:** `` va`lu\u00a6e x ``\n- **:** `  `\n\n## Heading \\*one\\* \\`x\\`\n\nParagraph with \\<b\\>html\\</b\\> & 'quotes' \"too\" and a break\n\n> A note \\| with \\~ marks\\_\n\n- plain\n- `` mono `x` ``\n- ` untrusted <b> `\n- ` both `\n- neither\n\n\n| A\\|B | C\\`D |\n|---|---|\n| x | ` y\u00a6z ` |\n| ` <u> ` | w |\n|  |\n\n|  |\n||\n\n```ts\nplain code\n```\n\n`````md\nhas ``` fence and ```` longer ````\n`````\n\n```text\nx\n```\n\n```\n``\n` `` ``\n```\n\n```\n\n```\n","html_sha256":"5a512ffdb83089c8","html_length":2546},
     "nasty-0": {"markdown":"# plain\n\n- **plain:** ` plain `\n\n## plain\n\nplain\n\n> plain\n\n- plain\n- ` plain `\n- ` plain `\n\n| plain |\n|---|\n| plain | ` plain ` |\n\n```\nplain\n```\n\n```text\nplain\n```\n","html_sha256":"cf2617e71cd89b99","html_length":1762},
@@ -99,6 +99,8 @@
     "proto-remove": {"ok":false,"codes":["MDT-E0131"],"governance":0,"apply_ops":"3b45ec7731c7a9f0","apply_patch":"eb7e92a66a04cdb5"},
     "proto-through": {"ok":false,"codes":["MDT-E0131"],"governance":0,"apply_ops":"3d6fe8131cd89c67","apply_patch":"33ccd96badf8e327"},
     "proto-then-add": {"ok":false,"codes":["MDT-E0104"],"governance":0,"apply_ops":"9fe3b413e07de9fb","apply_patch":"265f6f05a40e662a"},
+    "proto-smuggle": {"ok":false,"codes":["MDT-E0104"],"governance":0,"apply_ops":"6d8e3c05e066c2c7","apply_patch":"651b1fe842b247db"},
+    "proto-smuggle-plain": {"ok":true,"codes":[],"governance":0,"apply_ops":"9244bc2cb2b31d4b","apply_patch":"299bf10cda589793"},
     "constructor-add": {"ok":true,"codes":[],"governance":0,"apply_ops":"7d12bb897d369c63","apply_patch":"c73819a27a5946c9"},
     "constructor-replace": {"ok":false,"codes":["MDT-E0131"],"governance":0,"apply_ops":"510f6f70e8e8b9da","apply_patch":"670abf21d9ff1b7a"},
     "tostring-through": {"ok":false,"codes":["MDT-E0131"],"governance":0,"apply_ops":"27341f1a05b01f5c","apply_patch":"c9b6d27ee5c4d0d0"},

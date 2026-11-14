@@ -69,7 +69,7 @@
     "0.000001",
     "0.0000001",
     "123456789.123456789",
-    "0x10000000000000000",
+    "0x10000000000000000","0x1000000000000081","0x20000000000001",
     "0xffffffffffffffffffffffffffffffffffffffff",
     "0b1111111111111111111111111111111111111111111111111111111111111111111111"
   ],
@@ -188,6 +188,8 @@
     {"name":"proto-remove","program":{"file":"fixtures/fixbug/fixbug.mdt"},"base":"current","ops":[{"op":"remove","path":"/defs/__proto__"}]},
     {"name":"proto-through","program":{"file":"fixtures/fixbug/fixbug.mdt"},"base":"current","ops":[{"op":"add","path":"/defs/__proto__/kind","value":"type"}]},
     {"name":"proto-then-add","program":{"file":"fixtures/fixbug/fixbug.mdt"},"base":"current","ops":[{"op":"add","path":"/defs/__proto__","value":{"kind":"type","type":{"ref":"Int"}}},{"op":"add","path":"/defs/Y","value":{"kind":"type","type":{"ref":"Int"}}}]},
+    {"name":"proto-smuggle","program":{"file":"fixtures/fixbug/fixbug.mdt"},"base":"current","ops":[{"op":"add","path":"/defs/Y","value":{}},{"op":"add","path":"/defs/Y/__proto__","value":{"kind":"type","type":{"ref":"Int"}}}]},
+    {"name":"proto-smuggle-plain","program":{"file":"fixtures/fixbug/fixbug.mdt"},"base":"current","ops":[{"op":"add","path":"/defs/Y","value":{}},{"op":"add","path":"/defs/Y/__proto__","value":{"kind":"type","type":{"ref":"Int"}}}],"plain":true},
     {"name":"constructor-add","program":{"file":"fixtures/fixbug/fixbug.mdt"},"base":"current","ops":[{"op":"add","path":"/defs/constructor","value":{"kind":"type","type":{"ref":"Int"}}}]},
     {"name":"constructor-replace","program":{"file":"fixtures/fixbug/fixbug.mdt"},"base":"current","ops":[{"op":"replace","path":"/defs/constructor","value":{"kind":"type","type":{"ref":"Int"}}}]},
     {"name":"tostring-through","program":{"file":"fixtures/fixbug/fixbug.mdt"},"base":"current","ops":[{"op":"add","path":"/defs/toString/kind","value":"type"}]},

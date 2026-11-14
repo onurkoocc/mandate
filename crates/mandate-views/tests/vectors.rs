@@ -352,6 +352,15 @@ const KNOWN_PATCH_DIFFERENCES: &[(&str, &str)] = &[
         "proto-then-add",
         "the prototype of the definitions is seen by the validation",
     ),
+    // The operations here are plain objects, as the MCP server and the tests have them (the strict
+    // reader of `mandate patch` makes objects with no prototype, where `__proto__` is a member, and
+    // that input, `proto-smuggle`, matches): a definition `{}` is given the prototype `{ kind, type }`,
+    // the validation passes it (ok, with the hash of a program whose definition is `{}`), and only
+    // `checkPatch`, which checks the program again as text, refuses it.
+    (
+        "proto-smuggle-plain",
+        "a definition that is not valid passes the validation of applyOps",
+    ),
     // `path` and `op` that are no strings: the TypeScript throws a TypeError at `path.startsWith`
     // (its message names what it read) and puts the value itself in `at.path`. Rust reads the
     // value as the text a template gives (`undefined`, `5`, `null`, `a`), and the pointer fails to be one.

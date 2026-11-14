@@ -1,7 +1,9 @@
 //! `Number(string)` as ECMAScript reads a string (`StringToNumber`), for the
 //! places the compiler gives a string to `Number` or to `.map(Number)`: a
-//! version's segments in the diff of two locks, and an array index in a JSON
-//! Patch.
+//! version's segments in the diff of two locks, an array index in a JSON
+//! Patch, and the numbers of a lock that was not validated (`lock.rs`). It is
+//! the one implementation: a hexadecimal, octal or binary literal is read
+//! exactly (and rounded once), as V8 rounds it.
 
 /// The digits of a numeric literal in `radix`, as a double: `None` when
 /// `digits` is empty or has a character that is no digit of the radix.

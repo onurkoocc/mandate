@@ -16,17 +16,16 @@
 //! notes at [`semantic_diff`]).
 
 use mandate_ir::{
-    Definition, JsObject, JsValue, Map, Program, Value, canonicalize, ptr_token, sort_utf16,
-    unique_in_order,
+    Definition, JsObject, JsValue, Map, Program, Value, budget_amount, canonicalize, ptr_token,
+    sort_utf16, unique_in_order, workflow_bounds,
 };
 
 use crate::caps::{CapVal, show_cap, within};
 use crate::lock_diff::{lock_diff, lock_limits_diff};
 use crate::modules::{Modules, linked_program};
 use crate::view_shared::{
-    Graph, ProgramRef, VIEW_FORMAT, budget_amount, caps_in, defs_of, duration, is_system, j,
-    j_or_null, js_text, json_string, kind_text, method_of, micros_text, program_ref, truthy,
-    workflow_bounds, workflow_effects,
+    Graph, ProgramRef, VIEW_FORMAT, caps_in, defs_of, duration, is_system, j, j_or_null, js_text,
+    json_string, kind_text, method_of, micros_text, program_ref, workflow_effects,
 };
 
 /// One change: where it is, and what it is.
@@ -350,10 +349,8 @@ pub fn budget_changes(name: &str, before: Option<&Value>, after: Option<&Value>)
     let mut out = BudgetChanges::default();
     let was = before
         .and_then(|b| b.get("spend"))
-        .filter(|s| truthy(Some(s)));
-    let now = after
-        .and_then(|b| b.get("spend"))
-        .filter(|s| truthy(Some(s)));
+        .filter(|s| s.is_truthy());
+    let now = after.and_then(|b| b.get("spend")).filter(|s| s.is_truthy());
     let cur = now
         .and_then(|s| s.get("currency"))
         .or(was.and_then(|s| s.get("currency")))
@@ -444,7 +441,7 @@ fn envelope_of<'a>(p: Program<'a>, workflow: &str) -> Option<&'a Value> {
         .get(workflow)
         .filter(|d| d.get("kind").and_then(Value::as_str) == Some("workflow"))?
         .get("envelope")
-        .filter(|e| truthy(Some(e)))
+        .filter(|e| e.is_truthy())
 }
 
 /// What changed in a workflow's envelope, line by line: what the one
@@ -746,13 +743,13 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                     path,
                     format!("+ {a_kind} {name} (system model)"),
                 );
-            } else if a_kind == "agent" && truthy(a.get("remote")) {
+            } else if a_kind == "agent" && a.get("remote").is_some_and(Value::is_truthy) {
                 out.gov(
                     GovernanceChangeKind::RemoteAgentAdded,
                     path,
                     format!("+ remote agent {name}"),
                 );
-            } else if a_kind == "effect" && truthy(a.get("irreversible")) {
+            } else if a_kind == "effect" && a.get("irreversible").is_some_and(Value::is_truthy) {
                 out.gov(
                     GovernanceChangeKind::IrreversibleAdded,
                     path,
@@ -770,7 +767,7 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                             format!("+ {name}: {}", shown_caps(la, c)),
                         );
                     }
-                    if truthy(a.get("envelope")) {
+                    if a.get("envelope").is_some_and(Value::is_truthy) {
                         out.gov(
                             GovernanceChangeKind::EnvelopeChanged,
                             format!("{path}/envelope"),
@@ -875,7 +872,9 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
             }
             "contract" => contract_changes(&mut out, name, &path, b, a),
             "effect" => {
-                if truthy(a.get("irreversible")) && !truthy(b.get("irreversible")) {
+                if a.get("irreversible").is_some_and(Value::is_truthy)
+                    && !b.get("irreversible").is_some_and(Value::is_truthy)
+                {
                     out.gov(
                         GovernanceChangeKind::IrreversibleAdded,
                         path,
@@ -1012,9 +1011,9 @@ fn workflow_changes(
     }
     // The envelope is what a person approved for the run: any change to it is theirs to see (spec/envelope.md).
     if j_or_null(b.get("envelope")) != j_or_null(a.get("envelope")) {
-        let how = if !truthy(b.get("envelope")) {
+        let how = if !b.get("envelope").is_some_and(Value::is_truthy) {
             "added"
-        } else if !truthy(a.get("envelope")) {
+        } else if !a.get("envelope").is_some_and(Value::is_truthy) {
             "removed"
         } else {
             "changed"

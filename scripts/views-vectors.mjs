@@ -124,7 +124,9 @@ function patches() {
     const program = programOf(p.program);
     const base = p.base === "current" ? hashProgram(program).program : p.base === "stale" ? `sha256:${"0".repeat(64)}` : p.base;
     const modules = modulesOf(p.modules);
-    const ops = strict(p.ops);
+    // Operations as the strict reader makes them (mandate patch), or, with "plain", as JSON.parse makes them
+    // (the MCP server, the tests): a __proto__ member of such a value is a prototype, and of the first, a member.
+    const ops = p.plain ? p.ops : strict(p.ops);
     const applied = applyOps(program, base, ops);
     const patched = applyPatch(program, base, ops, modules);
     const programText = (x) => (x === undefined ? null : digest(JSON.stringify(x)));
