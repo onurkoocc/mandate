@@ -1,5 +1,5 @@
-// The `mandate` binary's hand-off to the runtime's CLI, as compiler/src/cli.ts
-// makes it, for a test that runs a control command as a child process.
+// The `mandate` binary's hand-off to the runtime's CLI, as bridge/src/cli.ts
+// (the binary) makes it, for a test that runs a control command as a child process.
 
 import { main } from "../../src/cli.js";
 
