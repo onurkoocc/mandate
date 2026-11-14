@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104c",
+  "kind": "compile",
+  "title": "The same negative literals in a program declared 0.4 are accepted, and keep the hashes they always had.",
+  "spec": ["spec/ir.md#what-05-adds"],
+  "language": "mandate/0.4",
+  "input": {
+    "text": "{\"language\":\"mandate/0.4\",\"module\":\"m\",\"version\":\"0.1\",\"defs\":{\"Debt\":{\"kind\":\"const\",\"value\":{\"op\":\"int\",\"value\":-5}},\"Refund\":{\"kind\":\"const\",\"value\":{\"op\":\"money\",\"micros\":-1500000,\"currency\":\"USD\"}}}}",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "hashes": {
+      "program": "sha256:363d99a713aeb50ae4fe76a59a08481bf29dc8fcb366f32a7fa49370457303f5",
+      "defs": {
+        "Debt": "sha256:3ad4c39793a44b20fece5de23960e50a45ce170f90d707884226f44bb2b4384f",
+        "Refund": "sha256:aa6faaaa066d5ee4ac642f5bda2554c47b45b864ccbd22dde20d436f8aebfd2f"
+      }
+    }
+  }
+}

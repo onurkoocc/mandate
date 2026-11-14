@@ -5,7 +5,7 @@
 // change (golden.test.ts pins them).
 
 import { describe, expect, it } from "vitest";
-import { check, kindOf, loadModules } from "../src/check.js";
+import { kindOf, loadModules } from "../src/check.js";
 import { domainHash, hashProgram } from "../src/hash.js";
 import type { Program } from "../src/ir/types.js";
 import type { Json } from "../src/json/strict-json.js";
@@ -13,7 +13,7 @@ import type { Lock } from "../src/lock.js";
 import type { Modules } from "../src/modules.js";
 import { toHtml, toMarkdown } from "../src/views/doc.js";
 import { card, cardDoc, envelopeWorkflows } from "../src/views/views.js";
-import { readRepo } from "./helpers.js";
+import { checkLessMoved as check, readRepo } from "./helpers.js";
 
 const MIGRATE_ALL = readRepo("fixtures/envelope/migrate-all.mdt");
 const DOMAIN = "fixtures/envelope/domain.mdt";

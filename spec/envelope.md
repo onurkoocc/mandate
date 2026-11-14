@@ -331,6 +331,15 @@ capability Build    = exec(commands: ["npm"], args_prefix: [["ci"], ["test"]])
 capability ModelStd = model.infer(tier: standard)
 capability Merge    = git.pr("company/backend", "company/frontend")
 
+contract Moved(repo: Repo, s: Summary) {
+  accept moved "The migrator reports what it moved"
+    by static len(s.migrated) >= 1
+  accept nothing_left "Nothing of the repository is left to move"
+    by static len(s.left) == 0
+  accept release_approved "The release manager accepts the change"
+    by human.approve(role: release_manager)
+}
+
 agent Migrator {
   role   "Moves one repository to the new logging API."
   caps   RepoRead, SrcWrite, Build, ModelStd
@@ -360,6 +369,14 @@ workflow MigrateAll(repos: List<Repo>) -> Inferred<Summary>
   plan Lead.finish(repos, done) within envelope
 }
 ```
+
+`Moved` is there for the sub-programs. `git.merge` takes a verified value
+and, being irreversible, one a person approved (E0405), and a sub-program
+may use its parent's contracts but define none (E1705): without a contract in
+the parent, nothing a lead plans could ever merge. Its two `static` criteria
+read the summary, which exists only in a run, so they are run-time checks
+and `mandate check` says so of each with a warning (W0601); the example has
+no other diagnostic.
 
 ### What it declares
 

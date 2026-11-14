@@ -12,12 +12,17 @@
 //! an ECMAScript string. Columns count code units, and a message that quotes
 //! "the character found" quotes one code unit. When that unit is half of a
 //! surrogate pair, the TypeScript message holds a lone surrogate, which a Rust
-//! string cannot; this reader writes U+FFFD there, which is what the
-//! TypeScript message becomes when it is written out as UTF-8.
+//! string cannot; this reader writes U+FFFD there. That is exact for the text
+//! form of the diagnostic (`formatDiagnostic`), which is what the TypeScript
+//! message becomes when it is written out as UTF-8. It is not exact for the
+//! JSON outputs: `JSON.stringify` writes the lone surrogate as an escape such
+//! as `\ud83d`, and [`crate::stringify`] writes U+FFFD. Inputs of this kind
+//! are a listed exception of the acceptance gate, not a difference to fix.
 
 use std::collections::{BTreeMap, HashSet};
 
 use crate::diag::{Diagnostic, Location, Span, ptr_token};
+use crate::js_value::JsObject;
 use crate::limits::{JSON_DEPTH, SOURCE_BYTES};
 use crate::value::{Int, Map, Value};
 
@@ -39,9 +44,9 @@ pub struct Parsed {
 /// phase's diagnostics.
 pub fn parse(text: &str) -> Result<Parsed, Vec<Diagnostic>> {
     if text.len() > SOURCE_BYTES {
-        let mut facts = Map::new();
-        facts.insert("limit", Int::from_usize_saturating(SOURCE_BYTES));
-        facts.insert("actual", Int::from_usize_saturating(text.len()));
+        let facts = JsObject::new()
+            .with("limit", SOURCE_BYTES)
+            .with("actual", text.len());
         return Err(vec![Diagnostic::new(
             "E0105",
             format!("Input exceeds the {SOURCE_BYTES}-byte source limit."),
@@ -137,17 +142,18 @@ impl Reader<'_> {
         code: &str,
         message: impl Into<String>,
         path: Option<&str>,
-        facts: Option<Map>,
+        facts: Option<JsObject>,
     ) -> Fail {
-        let at = Location {
-            def: None,
-            path: path.map(str::to_owned),
-            span: Some(Span {
-                start_line: self.line,
-                start_col: self.col,
-                end_line: self.line,
-                end_col: self.col.saturating_add(1),
-            }),
+        let span = Span {
+            start_line: self.line,
+            start_col: self.col,
+            end_line: self.line,
+            end_col: self.col.saturating_add(1),
+        };
+        // `{ span }`, and `path` set after it when there is one.
+        let at = match path {
+            Some(path) => Location::span_path(span, path),
+            None => Location::span(span),
         };
         Box::new(Diagnostic::new(code, message, at, facts))
     }
@@ -219,8 +225,7 @@ impl Reader<'_> {
 
     fn value(&mut self, path: &str, depth: usize) -> Result<Value, Fail> {
         if depth > JSON_DEPTH {
-            let mut facts = Map::new();
-            facts.insert("limit", Int::from_usize_saturating(JSON_DEPTH));
+            let facts = JsObject::new().with("limit", JSON_DEPTH);
             let message = format!("JSON nesting exceeds the depth limit of {JSON_DEPTH}.");
             return Err(self.fail("E0105", message, Some(path), Some(facts)));
         }
@@ -263,12 +268,13 @@ impl Reader<'_> {
 
     fn object(&mut self, path: &str, depth: usize) -> Result<Map, Fail> {
         self.expect(b'{')?;
-        let mut out = Map::new();
+        // The members as read; the object puts them in ECMAScript order once.
+        let mut out: Vec<(String, Value)> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
         self.ws();
         if self.peek() == Some(0x7d) {
             self.advance();
-            return Ok(out);
+            return Ok(Map::new());
         }
         let inner = depth.saturating_add(1);
         loop {
@@ -281,18 +287,14 @@ impl Reader<'_> {
             let key = self.string(path)?;
             let member = format!("{path}/{}", ptr_token(&key));
             if seen.contains(&key) {
-                let mut facts = Map::new();
-                facts.insert("key", key.as_str());
-                let at = Location {
-                    def: None,
-                    path: Some(member),
-                    span: Some(Span {
-                        start_line: key_line,
-                        start_col: key_col,
-                        end_line: self.line,
-                        end_col: self.col,
-                    }),
+                let facts = JsObject::new().with("key", key.as_str());
+                let span = Span {
+                    start_line: key_line,
+                    start_col: key_col,
+                    end_line: self.line,
+                    end_col: self.col,
                 };
+                let at = Location::path_span(member, Some(span));
                 let message = format!(
                     "Duplicate object key \"{key}\". Duplicate keys are rejected before schema validation."
                 );
@@ -303,14 +305,14 @@ impl Reader<'_> {
             self.expect(b':')?;
             self.ws();
             let value = self.value(&member, inner)?;
-            out.push_new(key, value);
+            out.push((key, value));
             self.ws();
             if self.peek() == Some(0x2c) {
                 self.advance();
                 continue;
             }
             self.expect(b'}')?;
-            return Ok(out);
+            return Ok(Map::from_unique(out));
         }
     }
 
@@ -445,11 +447,7 @@ impl Reader<'_> {
             }
         }
         let lexeme = self.lexeme(len);
-        let lexeme_facts = || {
-            let mut facts = Map::new();
-            facts.insert("lexeme", lexeme.as_str());
-            Some(facts)
-        };
+        let lexeme_facts = || Some(JsObject::new().with("lexeme", lexeme.as_str()));
         if !integral {
             let message = format!(
                 "Number {lexeme} is not an integer. IR numbers are integers; write decimals as strings and money as integer micro-units."

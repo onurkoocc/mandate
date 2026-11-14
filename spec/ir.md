@@ -16,6 +16,8 @@ A conforming reader rejects, rather than repairs:
 - a 0.2 field in a 0.1 program, or a 0.3 or 0.4 definition, field or
   expression in an older program (E0104);
 - any field the schema does not define (E0104);
+- from 0.5, an `int`, `dec` or `money` literal below zero (E0104; see "What
+  0.5 adds");
 - duplicate object keys, before schema validation (E0102);
 - numbers that are not integers within ±(2^53−1), and `-0` (E0106).
   Decimals travel as strings (`{"op":"dec","value":"0.85"}`), money as
@@ -155,3 +157,13 @@ call, `{ "name": "methods", "value": { "op": "list", "items": [{ "op": "var",
 "name": "GET" }] } }`; before 0.5 it is read, kept and hashed, and means
 nothing. What 0.5 adds to the language, the lock and the sandbox requirement
 is in [`boundary.md`](boundary.md).
+
+0.5 does refuse one thing the schema still allows: a negative literal. The
+text form of `{"op":"int","value":-5}` is `-5`, and the text reader reads
+`-5` as `unary neg` over the literal `5`, which hashes differently; text and IR
+would not keep one hash. So from 0.5 an `int` literal with a negative `value`,
+a `dec` literal whose `value` starts with `-` and a `money` literal with a
+negative `micros` are each refused with E0104, at the literal, wherever it
+stands. A negative number is written `{"op":"unary","uop":"neg","of":
+{"op":"int","value":5}}`, which is what the text `-5` reads as. A program of
+0.1 to 0.4 is read as before, and keeps its hash.

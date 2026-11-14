@@ -12,7 +12,6 @@
 )]
 
 use std::fs;
-use std::path::Path;
 
 use verify_journal::{
     Code, EXPORT_BYTES, EXPORT_DEPTH, Json, ReadError, Status, canonical, public_keys_in,
@@ -236,14 +235,9 @@ fn n(x: f64) -> Json {
     Json::Number(x)
 }
 
-/// A file of the conformance case J01. MANDATE_REPO is set by
-/// scripts/wasi-test.mjs, where the compile-time path does not exist.
+/// A file of the conformance case J01.
 fn j01_file(name: &str) -> std::path::PathBuf {
-    let root = match std::env::var_os("MANDATE_REPO") {
-        Some(root) => std::path::PathBuf::from(root),
-        None => Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
-    };
-    root.join("conformance/J01").join(name)
+    mandate_testkit::path("conformance/J01").join(name)
 }
 
 fn j01() -> Json {

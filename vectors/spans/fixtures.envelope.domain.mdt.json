@@ -1,0 +1,20 @@
+{
+  "format": "mandate/vectors/spans/0.1",
+  "source": "fixtures/envelope/domain.mdt",
+  "kind": "mdt",
+  "count": 12,
+  "spans": [
+    ["", 5, 1, 10, 71],
+    ["/defs/Repo", 9, 1, 9, 42],
+    ["/defs/Repo/type", 9, 16, 9, 42],
+    ["/defs/Repo/type/record/name", 9, 24, 9, 28],
+    ["/defs/Repo/type/record/root", 9, 36, 9, 40],
+    ["/defs/Summary", 10, 1, 10, 71],
+    ["/defs/Summary/type", 10, 16, 10, 71],
+    ["/defs/Summary/type/record/left", 10, 46, 10, 56],
+    ["/defs/Summary/type/record/left/args/0", 10, 51, 10, 55],
+    ["/defs/Summary/type/record/migrated", 10, 28, 10, 38],
+    ["/defs/Summary/type/record/migrated/args/0", 10, 33, 10, 37],
+    ["/defs/Summary/type/record/notes", 10, 65, 10, 69]
+  ]
+}

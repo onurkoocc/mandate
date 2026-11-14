@@ -1,0 +1,1211 @@
+{
+  "format": "mandate/vectors/diff/summary/0.1",
+  "cases": 183,
+  "by_source": {
+    "conformance_amendment": 5,
+    "conformance_patch": 7,
+    "lock": 19,
+    "repository": 5,
+    "written": 147
+  },
+  "cases_with_other_numbers": [],
+  "conformance_cases_left_out": [
+    "E0104",
+    "E0220",
+    "E0220a",
+    "E0220b",
+    "E0320a",
+    "E0501a",
+    "E0501b",
+    "E0701",
+    "E1501",
+    "E1701",
+    "E1701a",
+    "E1702",
+    "E1702a",
+    "E1703",
+    "E1704",
+    "E1704a",
+    "E1707",
+    "E1708",
+    "E1708a",
+    "E1801",
+    "E1801a",
+    "E1801b",
+    "E1802b",
+    "E1802c",
+    "E1803",
+    "S12a",
+    "S12c",
+    "S12d",
+    "V01a",
+    "V01b",
+    "V03",
+    "V03d",
+    "V07a"
+  ],
+  "coverage": [
+    {
+      "kind": "def.type.added",
+      "section": "B",
+      "cases": 3,
+      "first_case": "S12b"
+    },
+    {
+      "kind": "def.type.removed",
+      "section": "B",
+      "cases": 2,
+      "first_case": "fixbug-target-to-fixbug"
+    },
+    {
+      "kind": "def.capability.added",
+      "section": "G",
+      "cases": 2,
+      "first_case": "fixbug-target-to-fixbug"
+    },
+    {
+      "kind": "def.capability.removed",
+      "section": "B",
+      "cases": 2,
+      "first_case": "fixbug-to-fixbug-target"
+    },
+    {
+      "kind": "def.const.added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "spares-added"
+    },
+    {
+      "kind": "def.const.removed",
+      "section": "B",
+      "cases": 1,
+      "first_case": "spares-removed"
+    },
+    {
+      "kind": "def.fn.added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "spares-added"
+    },
+    {
+      "kind": "def.fn.removed",
+      "section": "B",
+      "cases": 1,
+      "first_case": "spares-removed"
+    },
+    {
+      "kind": "def.extern.added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "spares-added"
+    },
+    {
+      "kind": "def.extern.removed",
+      "section": "B",
+      "cases": 1,
+      "first_case": "spares-removed"
+    },
+    {
+      "kind": "def.effect.added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "spares-added"
+    },
+    {
+      "kind": "def.effect.removed",
+      "section": "B",
+      "cases": 2,
+      "first_case": "spares-removed"
+    },
+    {
+      "kind": "def.agent.added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "spares-added"
+    },
+    {
+      "kind": "def.agent.removed",
+      "section": "B",
+      "cases": 1,
+      "first_case": "spares-removed"
+    },
+    {
+      "kind": "def.workflow.added",
+      "section": "B",
+      "cases": 4,
+      "first_case": "land-to-loosen-ci"
+    },
+    {
+      "kind": "def.workflow.removed",
+      "section": "B",
+      "cases": 4,
+      "first_case": "land-to-loosen-ci"
+    },
+    {
+      "kind": "def.contract.added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "spares-added"
+    },
+    {
+      "kind": "def.contract.removed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "spares-removed"
+    },
+    {
+      "kind": "def.component.added",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-parts-added"
+    },
+    {
+      "kind": "def.component.removed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-parts-removed"
+    },
+    {
+      "kind": "def.interface.added",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-parts-added"
+    },
+    {
+      "kind": "def.interface.removed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-parts-removed"
+    },
+    {
+      "kind": "def.environment.added",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-parts-added"
+    },
+    {
+      "kind": "def.environment.removed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-parts-removed"
+    },
+    {
+      "kind": "def.role.added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "spares-added"
+    },
+    {
+      "kind": "def.role.removed",
+      "section": "B",
+      "cases": 1,
+      "first_case": "spares-removed"
+    },
+    {
+      "kind": "def.type.changed",
+      "section": "B",
+      "cases": 5,
+      "first_case": "fixbug-to-fixbug-target"
+    },
+    {
+      "kind": "def.const.changed",
+      "section": "B",
+      "cases": 1,
+      "first_case": "const-changed"
+    },
+    {
+      "kind": "def.extern.changed",
+      "section": "B",
+      "cases": 1,
+      "first_case": "extern-changed"
+    },
+    {
+      "kind": "def.role.changed",
+      "section": "B",
+      "cases": 1,
+      "first_case": "role-changed"
+    },
+    {
+      "kind": "def.kind_changed",
+      "section": "G",
+      "cases": 2,
+      "first_case": "kind-changed"
+    },
+    {
+      "kind": "def.agent.remote_added",
+      "section": "G",
+      "cases": 1,
+      "first_case": "spares-added"
+    },
+    {
+      "kind": "def.effect.irreversible_added",
+      "section": "G",
+      "cases": 1,
+      "first_case": "irreversible-effect-added"
+    },
+    {
+      "kind": "def.effect.became_irreversible",
+      "section": "G",
+      "cases": 1,
+      "first_case": "effect-became-irreversible"
+    },
+    {
+      "kind": "def.effect.changed",
+      "section": "B",
+      "cases": 2,
+      "first_case": "effect-changed"
+    },
+    {
+      "kind": "def.fn.changed",
+      "section": "B",
+      "cases": 4,
+      "first_case": "V02b"
+    },
+    {
+      "kind": "cap.read_path_added",
+      "section": "G",
+      "cases": 2,
+      "first_case": "cap-read-path-added"
+    },
+    {
+      "kind": "cap.write_path_added",
+      "section": "G",
+      "cases": 3,
+      "first_case": "V03c"
+    },
+    {
+      "kind": "cap.network_host_added",
+      "section": "G",
+      "cases": 1,
+      "first_case": "cap-host-and-methods-widened"
+    },
+    {
+      "kind": "cap.repository_added",
+      "section": "G",
+      "cases": 5,
+      "first_case": "fixbug-to-fixbug-target"
+    },
+    {
+      "kind": "cap.other_scope_added",
+      "section": "G",
+      "cases": 1,
+      "first_case": "linked-capabilities-widened"
+    },
+    {
+      "kind": "cap.command_added",
+      "section": "G",
+      "cases": 0,
+      "first_case": null,
+      "unreachable": "an exec capability is paired with its other version by its commands, so a command is never added to one that was there; a changed list is a removed capability and an added one"
+    },
+    {
+      "kind": "cap.unbounded",
+      "section": "G",
+      "cases": 0,
+      "first_case": null,
+      "unreachable": "a scope that was static and is not needs a capability argument the checker cannot read as constant, and the checker refuses one"
+    },
+    {
+      "kind": "cap.whole_added",
+      "section": "G",
+      "cases": 4,
+      "first_case": "fixbug-to-fixbug-target"
+    },
+    {
+      "kind": "cap.removed_narrowed",
+      "section": "B",
+      "cases": 12,
+      "first_case": "V03c"
+    },
+    {
+      "kind": "cap.model_tier",
+      "section": "G",
+      "cases": 2,
+      "first_case": "V04b"
+    },
+    {
+      "kind": "cap.data_class",
+      "section": "G",
+      "cases": 3,
+      "first_case": "V04b"
+    },
+    {
+      "kind": "cap.argument_prefixes",
+      "section": "G",
+      "cases": 4,
+      "first_case": "cap-exec-args-prefix-added"
+    },
+    {
+      "kind": "cap.methods_widened",
+      "section": "G",
+      "cases": 5,
+      "first_case": "E1801d"
+    },
+    {
+      "kind": "cap.methods_narrowed",
+      "section": "B",
+      "cases": 2,
+      "first_case": "cap-host-and-methods-narrowed"
+    },
+    {
+      "kind": "cap.changed_unreadable",
+      "section": "G",
+      "cases": 5,
+      "first_case": "land-to-loosen-ci"
+    },
+    {
+      "kind": "cap.defined_added_with_scope",
+      "section": "G",
+      "cases": 2,
+      "first_case": "fixbug-target-to-fixbug"
+    },
+    {
+      "kind": "agent_workflow.cap_added",
+      "section": "G",
+      "cases": 7,
+      "first_case": "land-to-loosen-ci"
+    },
+    {
+      "kind": "agent_workflow.cap_narrowed",
+      "section": "B",
+      "cases": 4,
+      "first_case": "agent-cap-removed"
+    },
+    {
+      "kind": "workflow.added.cap",
+      "section": "G",
+      "cases": 4,
+      "first_case": "land-to-loosen-ci"
+    },
+    {
+      "kind": "budget.fn_raised",
+      "section": "G",
+      "cases": 1,
+      "first_case": "fn-budget-raised"
+    },
+    {
+      "kind": "budget.agent_or_workflow_raised",
+      "section": "G",
+      "cases": 8,
+      "first_case": "agent-budget-raised"
+    },
+    {
+      "kind": "workflow.added.envelope",
+      "section": "G",
+      "cases": 1,
+      "first_case": "envelope-workflow-added"
+    },
+    {
+      "kind": "budget.tokens.raised",
+      "section": "G",
+      "cases": 2,
+      "first_case": "agent-budget-raised"
+    },
+    {
+      "kind": "budget.tokens.lowered",
+      "section": "B",
+      "cases": 1,
+      "first_case": "agent-budget-lowered"
+    },
+    {
+      "kind": "budget.tokens.limit_removed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "workflow-budget-steps-removed"
+    },
+    {
+      "kind": "budget.tokens.limit_added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "workflow-budget-steps-added"
+    },
+    {
+      "kind": "budget.steps.raised",
+      "section": "G",
+      "cases": 2,
+      "first_case": "agent-budget-raised"
+    },
+    {
+      "kind": "budget.steps.lowered",
+      "section": "B",
+      "cases": 2,
+      "first_case": "agent-budget-lowered"
+    },
+    {
+      "kind": "budget.steps.limit_removed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "workflow-budget-steps-removed"
+    },
+    {
+      "kind": "budget.steps.limit_added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "workflow-budget-steps-added"
+    },
+    {
+      "kind": "budget.time.raised",
+      "section": "G",
+      "cases": 2,
+      "first_case": "agent-budget-raised"
+    },
+    {
+      "kind": "budget.time.lowered",
+      "section": "B",
+      "cases": 2,
+      "first_case": "agent-budget-lowered"
+    },
+    {
+      "kind": "budget.time.limit_removed",
+      "section": "G",
+      "cases": 2,
+      "first_case": "agent-budget-limit-removed"
+    },
+    {
+      "kind": "budget.time.limit_added",
+      "section": "B",
+      "cases": 2,
+      "first_case": "agent-budget-limit-added"
+    },
+    {
+      "kind": "budget.spend.raised",
+      "section": "G",
+      "cases": 2,
+      "first_case": "agent-budget-raised"
+    },
+    {
+      "kind": "budget.spend.lowered",
+      "section": "B",
+      "cases": 2,
+      "first_case": "agent-budget-lowered"
+    },
+    {
+      "kind": "budget.spend.limit_removed",
+      "section": "G",
+      "cases": 2,
+      "first_case": "agent-budget-limit-removed"
+    },
+    {
+      "kind": "budget.spend.limit_added",
+      "section": "B",
+      "cases": 2,
+      "first_case": "agent-budget-limit-added"
+    },
+    {
+      "kind": "budget.agents.raised",
+      "section": "G",
+      "cases": 1,
+      "first_case": "workflow-budget-agents-doubled"
+    },
+    {
+      "kind": "budget.agents.lowered",
+      "section": "B",
+      "cases": 1,
+      "first_case": "workflow-budget-agents-halved"
+    },
+    {
+      "kind": "budget.agents.limit_removed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "workflow-budget-agents-removed"
+    },
+    {
+      "kind": "budget.agents.limit_added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "workflow-budget-agents-raised"
+    },
+    {
+      "kind": "budget.spend.currency_changed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "agent-budget-currency-changed"
+    },
+    {
+      "kind": "budget.skill_raised",
+      "section": "G",
+      "cases": 1,
+      "first_case": "agent-skill-budget-raised"
+    },
+    {
+      "kind": "budget.skill_lowered",
+      "section": "B",
+      "cases": 1,
+      "first_case": "agent-skill-budget-lowered"
+    },
+    {
+      "kind": "skill.removed",
+      "section": "B",
+      "cases": 1,
+      "first_case": "agent-skill-removed"
+    },
+    {
+      "kind": "skill.added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "agent-skill-added"
+    },
+    {
+      "kind": "skill.changed",
+      "section": "B",
+      "cases": 1,
+      "first_case": "agent-skill-changed"
+    },
+    {
+      "kind": "agent.role_loop_progress_or_model_changed",
+      "section": "B",
+      "cases": 6,
+      "first_case": "fixbug-to-fixbug-target"
+    },
+    {
+      "kind": "agent.remote_binding_changed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "remote-binding-changed"
+    },
+    {
+      "kind": "workflow.step_added",
+      "section": "B",
+      "cases": 2,
+      "first_case": "V03c"
+    },
+    {
+      "kind": "workflow.step_removed",
+      "section": "B",
+      "cases": 2,
+      "first_case": "V03c"
+    },
+    {
+      "kind": "workflow.body_changed_same_steps",
+      "section": "B",
+      "cases": 3,
+      "first_case": "workflow-step-repeated"
+    },
+    {
+      "kind": "workflow.envelope_added",
+      "section": "G",
+      "cases": 1,
+      "first_case": "envelope-added"
+    },
+    {
+      "kind": "workflow.envelope_removed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "envelope-removed"
+    },
+    {
+      "kind": "workflow.envelope_changed",
+      "section": "G",
+      "cases": 26,
+      "first_case": "E1709"
+    },
+    {
+      "kind": "workflow.ensures_changed",
+      "section": "B",
+      "cases": 2,
+      "first_case": "workflow-ensures-changed"
+    },
+    {
+      "kind": "workflow.handlers_changed",
+      "section": "B",
+      "cases": 2,
+      "first_case": "workflow-handler-added"
+    },
+    {
+      "kind": "contract.accept_removed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "contract-criterion-removed"
+    },
+    {
+      "kind": "contract.invariant_removed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "contract-invariant-removed"
+    },
+    {
+      "kind": "contract.criterion_method_changed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "contract-criterion-method-changed"
+    },
+    {
+      "kind": "contract.accept_added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "contract-criterion-added"
+    },
+    {
+      "kind": "contract.invariant_added",
+      "section": "B",
+      "cases": 1,
+      "first_case": "contract-invariant-added"
+    },
+    {
+      "kind": "contract.require_changed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "contract-require-changed"
+    },
+    {
+      "kind": "system.component.repo",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-component-fields-changed"
+    },
+    {
+      "kind": "system.component.root",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-component-fields-changed"
+    },
+    {
+      "kind": "system.component.lang",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-component-fields-changed"
+    },
+    {
+      "kind": "system.component.owner",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-component-fields-changed"
+    },
+    {
+      "kind": "system.component.build",
+      "section": "G",
+      "cases": 3,
+      "first_case": "system-component-fields-changed"
+    },
+    {
+      "kind": "system.component.test",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-component-fields-changed"
+    },
+    {
+      "kind": "system.component.provides",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-component-fields-changed"
+    },
+    {
+      "kind": "system.component.consumes",
+      "section": "G",
+      "cases": 3,
+      "first_case": "system-component-fields-changed"
+    },
+    {
+      "kind": "system.component.governance",
+      "section": "G",
+      "cases": 3,
+      "first_case": "system-component-fields-changed"
+    },
+    {
+      "kind": "system.interface.protocol",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-interface-changed"
+    },
+    {
+      "kind": "system.interface.spec",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-interface-changed"
+    },
+    {
+      "kind": "system.environment.class",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-environment-changed"
+    },
+    {
+      "kind": "system.environment.reads",
+      "section": "G",
+      "cases": 3,
+      "first_case": "system-environment-changed"
+    },
+    {
+      "kind": "system.environment.authorize",
+      "section": "G",
+      "cases": 1,
+      "first_case": "system-environment-changed"
+    },
+    {
+      "kind": "lock.member_added",
+      "section": "G",
+      "cases": 5,
+      "first_case": "lock-member-added"
+    },
+    {
+      "kind": "lock.member_added_one_key",
+      "section": "G",
+      "cases": 4,
+      "first_case": "lock-member-key-single"
+    },
+    {
+      "kind": "lock.member_removed",
+      "section": "G",
+      "cases": 3,
+      "first_case": "lock-member-removed"
+    },
+    {
+      "kind": "lock.key_added",
+      "section": "G",
+      "cases": 1,
+      "first_case": "lock-member-keys-changed"
+    },
+    {
+      "kind": "lock.key_removed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "lock-member-keys-changed"
+    },
+    {
+      "kind": "lock.role_holder_added",
+      "section": "G",
+      "cases": 3,
+      "first_case": "lock-role-holder-added"
+    },
+    {
+      "kind": "lock.role_holder_removed",
+      "section": "G",
+      "cases": 2,
+      "first_case": "lock-role-holder-removed"
+    },
+    {
+      "kind": "lock.host_lowered_version",
+      "section": "G",
+      "cases": 1,
+      "first_case": "lock-host-lowered"
+    },
+    {
+      "kind": "lock.host_raised_version",
+      "section": "B",
+      "cases": 2,
+      "first_case": "lock-host-raised"
+    },
+    {
+      "kind": "lock.host_minimum_removed",
+      "section": "G",
+      "cases": 2,
+      "first_case": "lock-absent-after"
+    },
+    {
+      "kind": "lock.host_minimum_added",
+      "section": "B",
+      "cases": 2,
+      "first_case": "lock-absent-before"
+    },
+    {
+      "kind": "lock.floor.public.lowered",
+      "section": "G",
+      "cases": 1,
+      "first_case": "lock-isolation-floor-public-removed"
+    },
+    {
+      "kind": "lock.floor.public.raised",
+      "section": "B",
+      "cases": 1,
+      "first_case": "lock-isolation-floor-public"
+    },
+    {
+      "kind": "lock.co_tenancy.public.relaxed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "lock-isolation-co-tenancy-public-relaxed"
+    },
+    {
+      "kind": "lock.co_tenancy.public.tightened",
+      "section": "B",
+      "cases": 1,
+      "first_case": "lock-isolation-co-tenancy-public"
+    },
+    {
+      "kind": "lock.floor.internal.lowered",
+      "section": "G",
+      "cases": 1,
+      "first_case": "lock-isolation-floor-public-removed"
+    },
+    {
+      "kind": "lock.floor.internal.raised",
+      "section": "B",
+      "cases": 1,
+      "first_case": "lock-isolation-floor-public"
+    },
+    {
+      "kind": "lock.co_tenancy.internal.relaxed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "lock-isolation-co-tenancy-public-relaxed"
+    },
+    {
+      "kind": "lock.co_tenancy.internal.tightened",
+      "section": "B",
+      "cases": 1,
+      "first_case": "lock-isolation-co-tenancy-public"
+    },
+    {
+      "kind": "lock.floor.confidential.lowered",
+      "section": "G",
+      "cases": 3,
+      "first_case": "lock-absent-after"
+    },
+    {
+      "kind": "lock.floor.confidential.raised",
+      "section": "B",
+      "cases": 3,
+      "first_case": "lock-absent-before"
+    },
+    {
+      "kind": "lock.co_tenancy.confidential.relaxed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "lock-isolation-co-tenancy-public-relaxed"
+    },
+    {
+      "kind": "lock.co_tenancy.confidential.tightened",
+      "section": "B",
+      "cases": 1,
+      "first_case": "lock-isolation-co-tenancy-public"
+    },
+    {
+      "kind": "lock.floor.restricted.lowered",
+      "section": "G",
+      "cases": 4,
+      "first_case": "lock-absent-after"
+    },
+    {
+      "kind": "lock.floor.restricted.raised",
+      "section": "B",
+      "cases": 3,
+      "first_case": "lock-absent-before"
+    },
+    {
+      "kind": "lock.co_tenancy.restricted.relaxed",
+      "section": "G",
+      "cases": 4,
+      "first_case": "lock-absent-after"
+    },
+    {
+      "kind": "lock.co_tenancy.restricted.tightened",
+      "section": "B",
+      "cases": 3,
+      "first_case": "lock-absent-before"
+    },
+    {
+      "kind": "lock.untrusted_network.lowered",
+      "section": "G",
+      "cases": 1,
+      "first_case": "lock-isolation-network-floor-lowered"
+    },
+    {
+      "kind": "lock.untrusted_network.raised",
+      "section": "B",
+      "cases": 2,
+      "first_case": "lock-isolation-network-floor"
+    },
+    {
+      "kind": "lock.egress.added",
+      "section": "G",
+      "cases": 9,
+      "first_case": "fixtures/boundary/mandate.lock.json -> conformance/E1802/mandate.lock.json"
+    },
+    {
+      "kind": "lock.egress.changed",
+      "section": "G",
+      "cases": 1,
+      "first_case": "lock-egress-credential-changed"
+    },
+    {
+      "kind": "lock.egress.removed",
+      "section": "B",
+      "cases": 8,
+      "first_case": "conformance/E1802/mandate.lock.json -> fixtures/boundary/mandate.lock.json"
+    },
+    {
+      "kind": "envelope.owner",
+      "section": "E",
+      "cases": 2,
+      "first_case": "envelope-owner-changed"
+    },
+    {
+      "kind": "envelope.cap_added",
+      "section": "E",
+      "cases": 2,
+      "first_case": "envelope-cap-added"
+    },
+    {
+      "kind": "envelope.cap_removed",
+      "section": "E",
+      "cases": 2,
+      "first_case": "E1709a"
+    },
+    {
+      "kind": "envelope.budget.tokens.raised",
+      "section": "E",
+      "cases": 2,
+      "first_case": "N04"
+    },
+    {
+      "kind": "envelope.budget.tokens.lowered",
+      "section": "E",
+      "cases": 3,
+      "first_case": "E1709"
+    },
+    {
+      "kind": "envelope.budget.steps.raised",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-raised"
+    },
+    {
+      "kind": "envelope.budget.steps.lowered",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-lowered"
+    },
+    {
+      "kind": "envelope.budget.time.raised",
+      "section": "E",
+      "cases": 2,
+      "first_case": "envelope-budget-raised"
+    },
+    {
+      "kind": "envelope.budget.time.lowered",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-lowered"
+    },
+    {
+      "kind": "envelope.budget.spend.raised",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-raised"
+    },
+    {
+      "kind": "envelope.budget.spend.lowered",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-lowered"
+    },
+    {
+      "kind": "envelope.budget.agents.raised",
+      "section": "E",
+      "cases": 3,
+      "first_case": "N04"
+    },
+    {
+      "kind": "envelope.budget.agents.lowered",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-lowered"
+    },
+    {
+      "kind": "envelope.budget.tokens.limit_removed",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-limits-removed"
+    },
+    {
+      "kind": "envelope.budget.tokens.limit_added",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-limits-added"
+    },
+    {
+      "kind": "envelope.budget.steps.limit_removed",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-limits-removed"
+    },
+    {
+      "kind": "envelope.budget.steps.limit_added",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-limits-added"
+    },
+    {
+      "kind": "envelope.budget.time.limit_removed",
+      "section": "E",
+      "cases": 2,
+      "first_case": "E1709b"
+    },
+    {
+      "kind": "envelope.budget.time.limit_added",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-time-added"
+    },
+    {
+      "kind": "envelope.budget.spend.limit_removed",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-limits-removed"
+    },
+    {
+      "kind": "envelope.budget.spend.limit_added",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-limits-added"
+    },
+    {
+      "kind": "envelope.budget.agents.limit_removed",
+      "section": "E",
+      "cases": 0,
+      "first_case": null,
+      "unreachable": "an envelope must give its agents budget (E1701), so it cannot lose or gain that limit"
+    },
+    {
+      "kind": "envelope.budget.agents.limit_added",
+      "section": "E",
+      "cases": 0,
+      "first_case": null,
+      "unreachable": "an envelope must give its agents budget (E1701), so it cannot lose or gain that limit"
+    },
+    {
+      "kind": "envelope.budget.currency_changed",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-budget-currency-changed"
+    },
+    {
+      "kind": "envelope.spawn.max_concurrent_changed",
+      "section": "E",
+      "cases": 4,
+      "first_case": "E1709c"
+    },
+    {
+      "kind": "envelope.spawn.max_concurrent_unbounded",
+      "section": "E",
+      "cases": 2,
+      "first_case": "envelope-spawn-concurrency-unbounded"
+    },
+    {
+      "kind": "envelope.spawn.max_concurrent_bounded",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-spawn-concurrency-bounded"
+    },
+    {
+      "kind": "envelope.spawn.max_class",
+      "section": "E",
+      "cases": 3,
+      "first_case": "envelope-spawn-class-changed"
+    },
+    {
+      "kind": "envelope.approve_added",
+      "section": "E",
+      "cases": 2,
+      "first_case": "envelope-approve-added"
+    },
+    {
+      "kind": "envelope.approve_removed",
+      "section": "E",
+      "cases": 2,
+      "first_case": "envelope-approve-removed"
+    },
+    {
+      "kind": "envelope.approve_changed",
+      "section": "E",
+      "cases": 1,
+      "first_case": "envelope-approve-changed"
+    },
+    {
+      "kind": "kind.capability_added",
+      "section": "K",
+      "cases": 31,
+      "first_case": "E1801d"
+    },
+    {
+      "kind": "kind.budget_increased",
+      "section": "K",
+      "cases": 10,
+      "first_case": "agent-budget-raised"
+    },
+    {
+      "kind": "kind.criterion_removed",
+      "section": "K",
+      "cases": 3,
+      "first_case": "spares-removed"
+    },
+    {
+      "kind": "kind.criterion_changed",
+      "section": "K",
+      "cases": 1,
+      "first_case": "contract-criterion-method-changed"
+    },
+    {
+      "kind": "kind.require_changed",
+      "section": "K",
+      "cases": 1,
+      "first_case": "contract-require-changed"
+    },
+    {
+      "kind": "kind.irreversible_added",
+      "section": "K",
+      "cases": 2,
+      "first_case": "irreversible-effect-added"
+    },
+    {
+      "kind": "kind.system_model_changed",
+      "section": "K",
+      "cases": 9,
+      "first_case": "system-component-fields-changed"
+    },
+    {
+      "kind": "kind.envelope_changed",
+      "section": "K",
+      "cases": 29,
+      "first_case": "E1709"
+    },
+    {
+      "kind": "kind.remote_agent_added",
+      "section": "K",
+      "cases": 1,
+      "first_case": "spares-added"
+    },
+    {
+      "kind": "kind.remote_binding_changed",
+      "section": "K",
+      "cases": 1,
+      "first_case": "remote-binding-changed"
+    },
+    {
+      "kind": "kind.kind_changed",
+      "section": "K",
+      "cases": 2,
+      "first_case": "kind-changed"
+    },
+    {
+      "kind": "unchanged.external_effects_same",
+      "section": "U",
+      "cases": 6,
+      "first_case": "V03c"
+    },
+    {
+      "kind": "unchanged.no_external_effects",
+      "section": "U",
+      "cases": 175,
+      "first_case": "E1801d"
+    },
+    {
+      "kind": "unchanged.contracts",
+      "section": "U",
+      "cases": 173,
+      "first_case": "E1801d"
+    },
+    {
+      "kind": "unchanged.no_authority_added",
+      "section": "U",
+      "cases": 142,
+      "first_case": "E1804a"
+    },
+    {
+      "kind": "unchanged.no_budget_raised",
+      "section": "U",
+      "cases": 173,
+      "first_case": "E1801d"
+    }
+  ]
+}

@@ -11,6 +11,10 @@
   "patch": [{ "op": "replace", "path": "/defs/MigrateAll/caps", "value": [{ "op": "var", "name": "RepoRead" }] }],
   "expect": {
     "ok": false,
-    "diagnostics": [{ "code": "MDT-E1701", "path": "/defs/MigrateAll/caps", "facts": { "field": "caps" } }]
+    "diagnostics": [
+      { "code": "MDT-E1701", "path": "/defs/MigrateAll/caps", "facts": { "field": "caps" } },
+      { "code": "MDT-W0601", "path": "/defs/Moved/accept/moved/by/static" },
+      { "code": "MDT-W0601", "path": "/defs/Moved/accept/nothing_left/by/static" }
+    ]
   }
 }

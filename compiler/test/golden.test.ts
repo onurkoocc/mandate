@@ -1,118 +1,35 @@
-// What the compiler says about every program written before 0.4 is pinned
+// What the compiler says about every program in the repository is pinned
 // here, by digest: a 0.1 to 0.3 program reads, checks, hashes, prints and
 // shows exactly as it did. A later version adds to the language; it does not
-// change what an earlier program means. The 0.5 fixture is pinned beside them,
-// so what 0.5 says of it changes only with a reason too.
+// change what an earlier program means. The programs of 0.4 and 0.5 (the
+// MigrateAll example with its domain module, and the two programs of
+// fixtures/boundary) are pinned beside them, so what the compiler says of
+// them changes only with a reason too. A Rust compiler must give these same
+// digests (release 0.5).
 //
 // The digests are in golden/outputs.json. A change to one of them is a change
 // to an earlier version's behavior and needs a reason in the commit that
 // makes it. To write the file again: MANDATE_UPDATE_GOLDEN=1 npm test.
 
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { check, kindOf, load, loadModules } from "../src/check.js";
-import { canonicalize } from "../src/json/jcs.js";
-import { parseStrictJson, type Json } from "../src/json/strict-json.js";
-import type { Lock } from "../src/lock.js";
-import type { Modules } from "../src/modules.js";
-import { printProgram } from "../src/print/printer.js";
-import { sandboxRequirements } from "../src/target/sandbox.js";
-import { toHtml, toMarkdown } from "../src/views/doc.js";
-import { architecture, authority, cost, programDoc, semanticDiff } from "../src/views/views.js";
-import { readRepo, repoRoot, syntaxFixtures } from "./helpers.js";
+import { allOutputs, digests, json, outputFileName, PROGRAMS, sha256Of, writeOutputs } from "./golden-outputs.js";
+import { repoRoot } from "./helpers.js";
 
 const GOLDEN = `${repoRoot}compiler/test/golden/outputs.json`;
 
-/** Every program in the repository written in 0.1 to 0.3, and the 0.5 fixture. */
-const PROGRAMS = [
-  "fixtures/fixbug/fixbug.mdt",
-  "fixtures/fixbug/fixbug.ir.json",
-  "fixtures/fixbug-target/fixbug.mdt",
-  "fixtures/system/acme.system.mdt",
-  "fixtures/system/audience.mdt",
-  "fixtures/system/incident.mdt",
-  "fixtures/system/land.mdt",
-  "fixtures/system/loosen-ci.mdt",
-  "fixtures/system/onboard.mdt",
-  "fixtures/system/repos.mdt",
-  ...syntaxFixtures(),
-  // 0.5 (spec/boundary.md): methods, sandbox requirement 0.2 and lock 0.5.
-  "fixtures/boundary/fetch.mdt",
-];
-
-/** The system models the task programs import, as `--module` gives them. */
-const MODULE_FILES = ["fixtures/system/acme.system.mdt", "fixtures/system/repos.mdt"];
-
-function modules(): Modules {
-  const { modules, problems } = loadModules(MODULE_FILES.map((file) => ({ file, text: readRepo(file), kind: kindOf(file) })));
-  expect(problems).toEqual([]);
-  return modules;
-}
-
-function lockOf(file: string): Lock | undefined {
-  const path = `${dirname(repoRoot + file)}/mandate.lock.json`;
-  if (!existsSync(path)) return undefined;
-  const parsed = parseStrictJson(readFileSync(path, "utf8"));
-  if (!parsed.ok) throw new Error(`${path} is not strict JSON`);
-  return parsed.value.value as unknown as Lock;
-}
-
-const json = (v: unknown): string => JSON.stringify(v, null, 2) + "\n";
-
-/** What each command of the CLI prints for one program, by name. */
-function outputs(file: string, mods: Modules): Record<string, string> {
-  const text = readRepo(file);
-  const kind = kindOf(file);
-  const out: Record<string, string> = {};
-  const lock = lockOf(file);
-
-  const checkOutput = (r: ReturnType<typeof check>): string => json({ ok: r.ok, ...(r.hashes ? { hashes: r.hashes } : {}), diagnostics: r.diagnostics });
-  const plain = check(text, kind);
-  out["check"] = checkOutput(plain);
-  const linked = check(text, kind, { modules: mods });
-  out["check --module"] = checkOutput(linked);
-  if (lock) out["check --lock"] = checkOutput(check(text, kind, { modules: mods, lock }));
-
-  const loaded = load(text, kind);
-  out["load"] = json(loaded.diagnostics);
-  if (loaded.program) {
-    out["ir --canonical"] = canonicalize(loaded.program as unknown as Json);
-    out["fmt"] = printProgram(loaded.program);
-  }
-  if (plain.hashes) out["hash"] = json(plain.hashes);
-
-  const checked = lock ? check(text, kind, { modules: mods, lock }) : linked;
-  if (checked.ok && checked.program) {
-    const p = checked.program;
-    out["view --format json"] = json({ architecture: architecture(p), authority: authority(p), cost: cost(p, lock) });
-    const doc = programDoc(p, lock, mods);
-    out["view --format md"] = toMarkdown(doc);
-    out["view --format html"] = toHtml(doc);
-    out["view --against itself"] = json(semanticDiff(p, p));
-    out["sandbox"] = json({ program: checked.hashes!.program, requirements: sandboxRequirements(p, mods, lock) });
-  }
-  return out;
-}
-
-function digests(): Record<string, Record<string, string>> {
-  const mods = modules();
-  const all: Record<string, Record<string, string>> = {};
-  for (const file of PROGRAMS) {
-    const row: Record<string, string> = {};
-    for (const [name, text] of Object.entries(outputs(file, mods))) row[name] = `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
-    all[file] = row;
-  }
-  return all;
-}
-
-describe("programs of 0.1 to 0.3", () => {
+describe("every program in the repository", () => {
   const now = digests();
 
   if (process.env["MANDATE_UPDATE_GOLDEN"] === "1") {
     writeFileSync(GOLDEN, json(now));
   }
+  // MANDATE_GOLDEN_OUT=<dir> writes every output text to <dir>/<program path>/<output file name> (vectors/README.md),
+  // for a job that compares them with another compiler's by `diff -ru`. Nothing is written when it is not set.
+  const outDir = process.env["MANDATE_GOLDEN_OUT"];
+  if (outDir) writeOutputs(outDir);
   const pinned = JSON.parse(readFileSync(GOLDEN, "utf8")) as Record<string, Record<string, string>>;
 
   it("pins every program in the repository", () => {
@@ -133,5 +50,35 @@ describe("programs of 0.1 to 0.3", () => {
     }
     const shown = PROGRAMS.filter((f) => "view --format json" in now[f]!);
     expect(shown.length).toBeGreaterThanOrEqual(PROGRAMS.length - 1);
+  });
+});
+
+describe("the output texts written for a comparison", () => {
+  it("have one file name for each output of each program", () => {
+    const all = allOutputs();
+    const names = new Set<string>();
+    for (const [file, texts] of Object.entries(all)) {
+      const files = Object.keys(texts).map(outputFileName);
+      expect(new Set(files).size, file).toBe(files.length);
+      for (const f of files) names.add(`${file}/${f}`);
+    }
+    expect(names.size).toBe(Object.values(all).reduce((n, t) => n + Object.keys(t).length, 0));
+    expect(outputFileName("view --format json")).toBe("view_--format_json");
+  });
+
+  it("are files whose digests are the pinned ones", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mandate-golden-"));
+    try {
+      const written = writeOutputs(dir);
+      const pinned = JSON.parse(readFileSync(GOLDEN, "utf8")) as Record<string, Record<string, string>>;
+      const expected = Object.entries(pinned).flatMap(([file, row]) => Object.keys(row).map((name) => `${file}/${outputFileName(name)}`));
+      expect(written.sort()).toEqual(expected.sort());
+      expect(written.length).toBe(231);
+      for (const [file, row] of Object.entries(pinned)) {
+        for (const [name, digest] of Object.entries(row)) expect(sha256Of(readFileSync(join(dir, file, outputFileName(name)), "utf8")), `${file} ${name}`).toBe(digest);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
