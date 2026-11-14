@@ -8,7 +8,7 @@ use mandate_ir::{Definition, JsObject, JsValue, Value};
 use super::DoorError;
 use super::front::{diagnostics_js, ir};
 use super::input::args;
-use super::program::{program_of, strings_js};
+use super::program::strings_js;
 use crate::lock::Lock;
 use crate::modules::Linked;
 use crate::sandbox::{RequirementOptions, Subject};
@@ -40,7 +40,7 @@ pub(super) const ROLE_LOCK_CHECKS: &[&str] = &["program", "linked", "lock", "spa
 /// Output: the diagnostics.
 pub(super) fn role_lock_checks(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, ROLE_LOCK_CHECKS)?;
-    let program = program_of(a.object("program")?)?;
+    let program = a.program_view("program")?;
     let l = a.members("linked", "linked.")?;
     let defs = l.map("defs")?.clone();
     let origin = l
@@ -60,7 +60,7 @@ pub(super) fn role_lock_checks(input: &Value) -> Result<JsValue, DoorError> {
         origin,
         diagnostics: Vec::new(),
     };
-    let lock = Lock::of(a.object("lock")?);
+    let lock = Lock::of(a.lock("lock")?);
     let spans = a.opt_spans("spans")?;
     Ok(diagnostics_js(&crate::lock::role_lock_checks(
         program,
@@ -80,8 +80,8 @@ pub(super) const SANDBOX_LOCK_CHECKS: &[&str] = &["program", "lock"];
 /// Output: the diagnostics.
 pub(super) fn sandbox_lock_checks(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, SANDBOX_LOCK_CHECKS)?;
-    let program = program_of(a.object("program")?)?;
-    let lock = Lock::of(a.object("lock")?);
+    let program = a.program_view("program")?;
+    let lock = Lock::of(a.lock("lock")?);
     Ok(diagnostics_js(&crate::lock::sandbox_lock_checks(
         program, lock,
     )))
@@ -97,8 +97,8 @@ pub(super) const BINDING_CHECKS: &[&str] = &["program", "lock", "spans"];
 /// Output: the diagnostics.
 pub(super) fn binding_checks(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, BINDING_CHECKS)?;
-    let program = program_of(a.object("program")?)?;
-    let lock = Lock::of(a.object("lock")?);
+    let program = a.program_view("program")?;
+    let lock = Lock::of(a.lock("lock")?);
     let spans = a.opt_spans("spans")?;
     Ok(diagnostics_js(&crate::managed_agents::binding_checks(
         program,
@@ -117,7 +117,7 @@ pub(super) const MODEL_TIERS: &[&str] = &["program"];
 /// Output: the tiers, each once, in the order found (a `Set`).
 pub(super) fn model_tiers(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, MODEL_TIERS)?;
-    let program = program_of(a.object("program")?)?;
+    let program = a.program_view("program")?;
     Ok(strings_js(&crate::lock::model_tiers(program)))
 }
 
@@ -133,7 +133,7 @@ pub(super) const PACKAGED_LOCK: &[&str] = &["lock"];
 pub(super) fn packaged_lock(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, PACKAGED_LOCK)?;
     Ok(ir(&Value::Object(crate::lock::packaged_lock(
-        a.opt_value("lock"),
+        a.opt_lock("lock"),
     ))))
 }
 
@@ -148,7 +148,7 @@ pub(super) const AGENT_MODELS: &[&str] = &["program", "agent"];
 /// Output: `{ tiers, maxClass }`.
 pub(super) fn agent_models(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, AGENT_MODELS)?;
-    let program = program_of(a.object("program")?)?;
+    let program = a.program_view("program")?;
     let agent = Definition::of(a.object("agent")?);
     let m = crate::managed_agents::agent_models(program, agent);
     Ok(JsObject::new()
@@ -167,9 +167,9 @@ pub(super) const SANDBOX_REQUIREMENTS: &[&str] = &["program", "modules", "lock"]
 /// Output: `{ <agent>: SandboxRequirement }`, by agent name sorted.
 pub(super) fn sandbox_requirements(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, SANDBOX_REQUIREMENTS)?;
-    let program = a.object("program")?;
+    let program = a.program("program")?;
     let modules = a.opt_modules("modules")?;
-    let lock = a.opt_value("lock");
+    let lock = a.opt_lock("lock");
     let r = crate::sandbox::sandbox_requirements(program, modules, lock);
     Ok(crate::sandbox::requirements_to_js(&r).into())
 }
@@ -197,7 +197,7 @@ pub(super) fn requirement_for(input: &Value) -> Result<JsValue, DoorError> {
     let mut opts = RequirementOptions::default();
     if let Some(o) = a.opt_members("opts", "opts.")? {
         opts.language = o.opt_language("language")?;
-        opts.lock = o.opt_value("lock");
+        opts.lock = o.opt_lock("lock");
     }
     let r = crate::sandbox::requirement_for(subject, &caps, timeout_ms, &opts);
     Ok(r.to_js().into())
@@ -215,7 +215,7 @@ pub(super) const DENIAL_DIAGNOSTICS: &[&str] = &["program", "report"];
 /// denial that is `null`).
 pub(super) fn denial_diagnostics(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, DENIAL_DIAGNOSTICS)?;
-    let program = a.object("program")?;
+    let program = a.program("program")?;
     let report = a.value("report")?;
     crate::sandbox::denial_diagnostics(program, report)
         .map(|d| diagnostics_js(&d))

@@ -104,7 +104,7 @@ pub(super) fn check(input: &Value) -> Result<JsValue, DoorError> {
     let kind = a.kind("kind")?;
     let mut opts = CheckOptions::default();
     if let Some(o) = a.opt_members("opts", "opts.")? {
-        opts.lock = o.opt_value("lock");
+        opts.lock = o.opt_lock("lock");
         opts.modules = o.opt_modules("modules")?;
         opts.claim = o.opt_object("claim")?;
     }
@@ -270,7 +270,7 @@ pub(super) const PRINT_PROGRAM: &[&str] = &["p"];
 /// interpolation).
 pub(super) fn print_program(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, PRINT_PROGRAM)?;
-    let p = a.object("p")?;
+    let p = a.program("p")?;
     mandate_syntax::print_program(p)
         .map(JsValue::String)
         .map_err(DoorError::bad_input)

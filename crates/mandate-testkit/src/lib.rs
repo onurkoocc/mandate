@@ -6,9 +6,11 @@
 //! comparison of texts ([`compare_text`], [`compare_digest`]), the
 //! pending-list rule of a gate test ([`run_gate`]), the table of which
 //! stage of the compiler raises each diagnostic code, by which the gates
-//! name their items ([`codes`]: [`item_name`], [`FAMILIES`], [`check_pending`])
-//! and the compiled corpus of the TypeScript compiler's calls to its front
-//! doors ([`corpus`]).
+//! name their items ([`codes`]: [`item_name`], [`FAMILIES`], [`check_pending`]),
+//! the compiled corpus of the TypeScript compiler's calls to its front
+//! doors ([`corpus`]), and the tests of a crate's table of JSON doors
+//! ([`json_doors`]: the references of its inputs to files, the comparison
+//! with the TypeScript's answers, the malformed inputs).
 //!
 //! It is a dev-dependency only, and it may read files and the environment;
 //! the library crates may not. Every function returns its failures as text
@@ -27,6 +29,7 @@ pub mod corpus;
 mod diagnostic_vectors;
 mod gate;
 mod golden;
+pub mod json_doors;
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
