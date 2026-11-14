@@ -1,7 +1,7 @@
 //! The public API as the slices after the parser use it: the printer reads
-//! `ParseResult::program`; `load` for text takes the program and its source
-//! map to the schema validation. (The crate documentation's example, which
-//! the WebAssembly test run cannot run, is checked here too.)
+//! `ParseResult::program`; `check` reads a program of either form through
+//! `load`. (The crate documentation's example, which the WebAssembly test
+//! run cannot run, is checked here too.)
 
 #![allow(
     clippy::panic,
@@ -13,8 +13,8 @@
 
 use std::collections::BTreeMap;
 
-use mandate_ir::{Span, canonicalize};
-use mandate_syntax::{RESERVED, SourceMap, parse_mdt};
+use mandate_ir::{Span, canonicalize, nearest_span};
+use mandate_syntax::{RESERVED, SourceKind, SourceMap, kind_of, load, parse_mdt};
 
 fn span(a: usize, b: usize, c: usize, d: usize) -> Span {
     Span {
@@ -98,4 +98,77 @@ fn the_reserved_words() {
     assert_eq!(RESERVED.len(), 34);
     assert!(RESERVED.contains(&"workflow"));
     assert!(!RESERVED.contains(&"role"));
+}
+
+const ROLE_IN_0_1: &str = "module m @ 0.1\nlet a = 1\nlet a = 2\nrole r \"d\"\n";
+
+/// `load(text, "mdt")` as `check` calls it: the program comes back although
+/// the schema refuses it, the parser's diagnostics before the schema's, and
+/// the schema's placed at the nearest span the parser gave.
+#[test]
+fn load_of_text_keeps_the_program_whatever_the_schema_says() {
+    assert_eq!(kind_of("fixtures/fixbug/fixbug.mdt"), SourceKind::Mdt);
+    let loaded = load(ROLE_IN_0_1, SourceKind::Mdt);
+    assert!(loaded.program.is_some());
+    let found: Vec<(&str, &str, Option<&str>)> = loaded
+        .diagnostics
+        .iter()
+        .map(|d| (d.code.as_str(), d.message.as_str(), d.at.path.as_deref()))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            ("MDT-E0121", "Duplicate definition 'a'.", None),
+            (
+                "MDT-E0104",
+                "r: 'role' is a mandate/0.4 definition; this program is mandate/0.1.",
+                Some("/defs/r/kind")
+            ),
+        ]
+    );
+    let role = span(4, 1, 4, 11);
+    assert_eq!(loaded.spans.get("/defs/r"), Some(&role));
+    assert_eq!(loaded.diagnostics[1].at.span, Some(role));
+    assert_eq!(
+        nearest_span(Some(&loaded.spans), "/defs/r/kind"),
+        Some(role)
+    );
+
+    let refused = load("module m @ 0.1\nlet = 1\n", SourceKind::Mdt);
+    assert!(refused.program.is_none());
+    assert!(refused.spans.is_empty());
+    assert_eq!(refused.diagnostics.len(), 1);
+}
+
+/// `load(text, "json")`: no program when the schema refuses it, but the
+/// spans; a program when it does not.
+#[test]
+fn load_of_json_gives_no_program_with_an_error() {
+    assert_eq!(kind_of("fixtures/fixbug/fixbug.ir.json"), SourceKind::Json);
+    let text = r#"{"language": "mandate/0.1", "module": "m", "version": "0.1",
+        "defs": {"r": {"kind": "role", "description": "d"}}}"#;
+    let refused = load(text, SourceKind::Json);
+    assert!(refused.program.is_none());
+    assert_eq!(refused.diagnostics.len(), 1);
+    assert_eq!(refused.diagnostics[0].code, "MDT-E0104");
+    assert_eq!(
+        refused.diagnostics[0].at.path.as_deref(),
+        Some("/defs/r/kind")
+    );
+    assert!(refused.spans.contains_key("/defs/r/kind"));
+
+    let accepted = load(
+        &text.replace("mandate/0.1", "mandate/0.4"),
+        SourceKind::Json,
+    );
+    assert!(
+        accepted.diagnostics.is_empty(),
+        "{:?}",
+        accepted.diagnostics
+    );
+    let program = accepted.program.expect("a program");
+    assert_eq!(
+        program.get("defs").map(canonicalize).as_deref(),
+        Some(r#"{"r":{"description":"d","kind":"role"}}"#)
+    );
 }
