@@ -8,8 +8,8 @@ use crate::architecture::{architecture, architecture_blocks};
 use crate::authority::{authority, authority_blocks};
 use crate::cost::{ViewError, cost, cost_blocks};
 use crate::doc::{Block, Doc};
-use crate::shown::is_kind;
 use crate::system::{has_system, system, system_blocks};
+use mandate_check::is_kind;
 
 /// The program's views as one document, headed by the hash they show: the
 /// architecture, the authority and the cost, then the system when the program

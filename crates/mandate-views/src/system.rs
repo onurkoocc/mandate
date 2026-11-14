@@ -117,14 +117,13 @@ impl SystemView {
     /// environments, mermaid }`.
     #[must_use]
     pub fn to_js(&self) -> JsValue {
-        let array = |items: Vec<JsValue>| JsValue::Array(items);
         JsObject::new()
             .with("format", VIEW_FORMAT)
             .with("kind", "system")
             .with("program", self.program.to_js())
             .with(
                 "modules",
-                array(
+                JsValue::Array(
                     self.modules
                         .iter()
                         .map(|(m, h)| {
@@ -138,7 +137,7 @@ impl SystemView {
             )
             .with(
                 "components",
-                array(
+                JsValue::Array(
                     self.components
                         .iter()
                         .map(|c| {
@@ -160,7 +159,7 @@ impl SystemView {
             )
             .with(
                 "interfaces",
-                array(
+                JsValue::Array(
                     self.interfaces
                         .iter()
                         .map(|i| {
@@ -180,7 +179,7 @@ impl SystemView {
             )
             .with(
                 "environments",
-                array(
+                JsValue::Array(
                     self.environments
                         .iter()
                         .map(|e| {
@@ -189,7 +188,7 @@ impl SystemView {
                                 .with("class", e.class.as_str())
                                 .with(
                                     "reads",
-                                    array(
+                                    JsValue::Array(
                                         e.reads
                                             .iter()
                                             .map(|r| {
@@ -207,7 +206,7 @@ impl SystemView {
                                 )
                                 .with(
                                     "authorize",
-                                    array(
+                                    JsValue::Array(
                                         e.authorize
                                             .iter()
                                             .map(|a| {

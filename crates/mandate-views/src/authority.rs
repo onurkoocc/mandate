@@ -11,12 +11,12 @@
 
 use mandate_check::{
     Authority, CapVal, ProgramRef, VIEW_FORMAT, authority_of, caps_in, chosen_at_run_time, defs_of,
-    grant_of, handed_by, program_ref, widest, workflow_effects,
+    grant_of, handed_by, is_kind, program_ref, widest, workflow_effects,
 };
 use mandate_ir::{Definition, Expr, ExprOp, JsObject, JsValue, Program, Value, workflow_bounds};
 
 use crate::doc::{Block, Cell};
-use crate::shown::{is_kind, list, sorted_defs, texts};
+use crate::shown::{list, sorted_defs, texts};
 
 /// One row of the authority view: `AuthorityRow`.
 #[derive(Clone, Debug, PartialEq, Eq)]

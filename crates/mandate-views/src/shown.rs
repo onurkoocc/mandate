@@ -154,12 +154,6 @@ pub fn sorted_defs(program: Program<'_>) -> Vec<(&str, &Value)> {
     defs
 }
 
-/// Whether the definition `d` is of kind `kind`: `d.kind === kind`.
-#[must_use]
-pub fn is_kind(d: &Value, kind: &str) -> bool {
-    d.get("kind").and_then(Value::as_str) == Some(kind)
-}
-
 /// The text a member of the IR is in a template, as a `JsValue` for the
 /// output of a view: `undefined` when it is missing.
 #[must_use]

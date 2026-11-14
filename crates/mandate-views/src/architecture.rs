@@ -4,11 +4,13 @@
 //! `architectureBlocks`, lines 1513-1526). The graph is
 //! [`mandate_check::Graph`], which the semantic diff also stands on.
 
-use mandate_check::{ArchEdge, ArchKind, ArchNode, Graph, ProgramRef, VIEW_FORMAT, program_ref};
+use mandate_check::{
+    ArchEdge, ArchKind, ArchNode, Graph, ProgramRef, VIEW_FORMAT, is_kind, program_ref,
+};
 use mandate_ir::{Definition, JsObject, JsValue, Program, Value, workflow_bounds};
 
 use crate::doc::{Block, Cell};
-use crate::shown::{is_kind, list, mermaid_text, show, sorted_defs};
+use crate::shown::{list, mermaid_text, show, sorted_defs};
 
 /// One workflow in the architecture view: `WorkflowArchitecture`.
 #[derive(Clone, Debug, PartialEq, Eq)]

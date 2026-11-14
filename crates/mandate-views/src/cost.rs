@@ -18,16 +18,16 @@
 use std::fmt;
 
 use mandate_check::{
-    CapVal, Lock, ProgramRef, VIEW_FORMAT, defs_of, grant_of, handed_by, js_text, per_call_bound,
-    program_ref, to_number, view_children,
+    CapVal, Lock, ProgramRef, VIEW_FORMAT, defs_of, grant_of, handed_by, is_kind, js_text,
+    per_call_bound, program_ref, to_number, view_children,
 };
 use mandate_ir::{
     Definition, Expr, ExprOp, JsObject, JsValue, Map, Program, Stmt, StmtOp, Value, compare_utf16,
     number_to_string, workflow_bounds,
 };
 
-use crate::doc::Block;
-use crate::shown::{is_kind, num, num_or, show, sorted_defs};
+use crate::doc::{Block, Cell};
+use crate::shown::{num, num_or, show, sorted_defs};
 
 /// Why a view cannot be given: a part of the TypeScript it stands on is not
 /// ported yet.
@@ -596,7 +596,6 @@ pub fn cost(program: &Value, lock: Option<&Value>) -> Result<CostView, ViewError
 /// The blocks of the cost in a document: `costBlocks(v)`.
 #[must_use]
 pub fn cost_blocks(v: &CostView) -> Vec<Block> {
-    use crate::doc::Cell;
     let mut out = vec![Block::H("Cost (static upper bound)".to_owned())];
     for w in &v.workflows {
         out.push(Block::P(format!(

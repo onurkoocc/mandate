@@ -941,7 +941,8 @@ impl<'a> Graph<'a> {
 }
 
 /// Whether the definition `d` has `kind`: `d?.kind === kind`.
-fn is_kind(d: &Value, kind: &str) -> bool {
+#[must_use]
+pub fn is_kind(d: &Value, kind: &str) -> bool {
     d.get("kind").and_then(Value::as_str) == Some(kind)
 }
 
