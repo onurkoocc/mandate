@@ -245,3 +245,12 @@ jobs:
           git diff --exit-code -- crates/mandate-views/tests/data
           untracked="$(git ls-files --others --exclude-standard -- crates/mandate-views/tests/data)"
           if [ -n "$untracked" ]; then echo "::error::views-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
+      # scripts/static-vectors.mjs reads only the committed inputs.json and
+      # writes expected.json beside it: what the TypeScript gives for its
+      # static checks, its types and its cost model on them.
+      - name: The expectations of mandate-check's static checks are what the TypeScript compiler gives now
+        run: |
+          node scripts/static-vectors.mjs
+          git diff --exit-code -- crates/mandate-check/tests/statics
+          untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/statics)"
+          if [ -n "$untracked" ]; then echo "::error::static-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi

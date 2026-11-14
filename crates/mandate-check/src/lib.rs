@@ -81,8 +81,9 @@
 //! Like `mandate-ir`, the crate reads no file, environment variable or clock
 //! and starts no process (a test in `mandate-testkit` holds it to that), and
 //! it builds for `wasm32-wasip1`. Its tests compare it with what the
-//! TypeScript gives on the inputs `scripts/caps-vectors.mjs` and
-//! `scripts/front-vectors.mjs` write; the gates of `mandate-testkit` hold
+//! TypeScript gives on the inputs `scripts/caps-vectors.mjs`,
+//! `scripts/front-vectors.mjs`, `scripts/lock-vectors.mjs` and
+//! `scripts/static-vectors.mjs` write; the gates of `mandate-testkit` hold
 //! [`check()`] to the stored results of the TypeScript's.
 
 #![forbid(unsafe_code)]
