@@ -591,7 +591,6 @@
     },
     {
       "name": "an approval in a block, before an irreversible effect",
-      "held": "R12: E0405 and E0201 of effectCall decide this result, and approved is what decides E0405",
       "mdt": [
         "mandate @ 0.2",
         "module m @ 0.1",

@@ -8,11 +8,11 @@
 //! ```
 //!
 //! Every stage runs, in this order. Of the static checks
-//! ([`crate::statics`]) the core is ported; the authority's diagnostics
-//! (R12) and the system model's (R13) are not yet, and [`UNPORTED`] lists
-//! them. Until that list is empty, an `ok` from [`check`] means "no error
-//! from what is ported so far": a result the TypeScript would give an
-//! authority or a system-model diagnostic is not its whole result, and where
+//! ([`crate::statics`]) the core (R11) and the authority (R12) are
+//! ported; the system model's diagnostics (R13) are not yet, and
+//! [`UNPORTED`] lists them. Until that list is empty, an `ok` from
+//! [`check`] means "no error from what is ported so far": a result the
+//! TypeScript would give a system-model diagnostic is not its whole result, and where
 //! that diagnostic is an error, the TypeScript stops before the lock checks
 //! while Rust may run them.
 
@@ -32,9 +32,8 @@ use crate::roles::role_checks;
 /// each with the slice of the port that brings it. A slice that ports one
 /// takes it off; the port is complete when the list is empty.
 pub const UNPORTED: &[&str] = &[
-    "staticCheck, the authority's diagnostics (R12: capabilities, agents, the authority rules of workflows, par, delegation, map, effects; check/static.ts and check/envelope.ts)",
     "staticCheck, the system model's diagnostics (R13: checkSystem, checkRead, dataRead, changeset in check/static.ts)",
-    "opts.claim beyond the lead's class (R12: E1706 of overEnvelope and overModel; R13: checkSubprogram, which gives the claim)",
+    "the door that gives opts.claim (R13: checkSubprogram; check itself takes the claim, with E1706 of overEnvelope and overModel)",
 ];
 
 /// What [`check`] is given besides the text: `CheckOptions`.
@@ -323,8 +322,9 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
 /// static checks of `check/static.ts` and what it calls, with the claim of a
 /// sub-program ([`crate::statics`]). The core is ported (R11: types,
 /// expressions, constants, functions, contracts, recursion, budgets, the
-/// node count); the authority's diagnostics (R12) and the system model's
-/// (R13) are not yet, see [`UNPORTED`].
+/// node count) and so is the authority (R12: capabilities, agents,
+/// workflows, par, delegation, map, effects, envelopes); the system
+/// model's diagnostics (R13) are not yet, see [`UNPORTED`].
 fn static_check(
     program: Program<'_>,
     spans: &Spans,

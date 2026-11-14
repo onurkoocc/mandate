@@ -53,41 +53,12 @@ use mandate_testkit::{
 /// although every code they hold is of a ported family. Every pending item
 /// is held to failing only by omission (`mandate_testkit::run_held_gate`).
 const PENDING: &[&str] = &[
-    // R12: the static authority (capabilities, delegation, effects, envelopes, methods).
-    "*MDT-E022*",
-    "*MDT-E03*",
-    "*MDT-W0310*",
-    "*MDT-E0408*",
-    "*MDT-E070*",
-    "*MDT-E1701*",
-    "*MDT-E1702*",
-    "*MDT-E1703*",
-    "*MDT-E1704*",
-    "*MDT-E1706*",
-    "*MDT-E1707*",
-    "*MDT-E1801*",
     // R13: sub-programs and amendments.
     "*MDT-E1705*",
     "*MDT-E1709*",
     // R13: the doors of sub-programs and amendments.
     "check_subprogram @ *",
     "check_amendment @ *",
-    // Cases whose codes are all of ported families, but which the core does
-    // not give, because the TypeScript raises them in a function of a later
-    // slice (`statics/authority.rs` gives none of its own diagnostics yet).
-    // R12, `checkAgent`: E0213, a skill returns Evidence (1).
-    "check @ conformance/S08a [MDT-E0213]",
-    // R12, `checkExtern`: E0213, host code returns Verified (1).
-    "check @ conformance/S08d [MDT-E0213]",
-    // R12, `effectCall`: E0210 of an argument against a critical effect's
-    // parameter (5).
-    "check_patched @ conformance/V01a [MDT-E0210 MDT-W0601]",
-    "check_patched @ conformance/V01b [MDT-E0210 MDT-W0601]",
-    "check @ conformance/V01c [MDT-E0210]",
-    "check @ conformance/V01d [MDT-E0210]",
-    "check @ conformance/V08a [MDT-E0210]",
-    // R12, `mapBudget`: E0501 of a map's budget (1).
-    "check_patched @ conformance/E0501b [MDT-E0501]",
 ];
 
 /// The front door a compile case goes through, as `doorOf` in
