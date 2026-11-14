@@ -29,6 +29,12 @@
 //!   ACS host alone guarantees ([`ACS_PROFILE`], [`ACS_PROFILE_NOTES`]); it
 //!   stayed in TypeScript for 0.5 and is ported in 0.6. The Rego is the
 //!   TypeScript's byte for byte; CI evaluates the TypeScript's on a real OPA.
+//! - [`json_doors`]: the JSON doors of this crate, the second table of doors
+//!   after `mandate_check::json_doors` (whose contract they keep): the views,
+//!   the documents, their Markdown and HTML, the card and the ACS target as
+//!   functions from a JSON value to a JSON value, with the readers that take a
+//!   document or a view back from its JSON. The dispatcher of `mandate-doors`
+//!   merges the two tables.
 //!
 //! The cost view counts the delegations a workflow with an envelope may
 //! start as the checker does, with `mandate_check::static_cost`
@@ -50,6 +56,7 @@ pub mod card;
 pub mod cost;
 pub mod diff;
 pub mod doc;
+pub mod json_doors;
 pub mod program_doc;
 pub mod shown;
 pub mod system;
