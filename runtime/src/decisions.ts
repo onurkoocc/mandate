@@ -26,7 +26,7 @@
 import { createPublicKey, type KeyObject } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { Lock } from "@mandate/compiler";
+import type { Lock } from "@mandate/bridge";
 import { EvidenceSigner, keyIdOf, TrustedKeys, type EvidenceRecord } from "./evidence.js";
 import { Violation } from "./signals.js";
 import { digest, isObj, type Value } from "./values.js";

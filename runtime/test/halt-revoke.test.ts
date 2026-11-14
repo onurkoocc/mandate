@@ -15,7 +15,7 @@ import { Runtime } from "../src/runtime.js";
 import { adminPath, world as egressWorld, type World as EgressWorld } from "./egress-world.js";
 import { closeAll, UNSIGNED, world as runtimeWorld } from "./helpers.js";
 import { LOCK } from "./models.js";
-import { check } from "@mandate/compiler";
+import { check } from "@mandate/bridge";
 
 const dir = mkdtempSync(join(tmpdir(), "mandate-halt-revoke-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));

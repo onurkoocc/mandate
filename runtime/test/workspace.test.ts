@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { check } from "@mandate/compiler";
+import { check } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { MxcHost } from "../src/mxc.js";
@@ -188,7 +188,7 @@ describe.runIf(REAL)("two agents on two components in real sandboxes (B3)", () =
       expect(String(m3?.["content"])).toMatch(/outside what you may write/);
 
       // The sandbox itself holds the line, not only the runtime's check: McpDev's policy cannot write core.
-      const plan = await sandbox.plan(w.agents.calls.length ? w.agents.calls[0]!.sandbox! : (await import("@mandate/compiler")).sandboxRequirements(program, modules)["McpDev"]!);
+      const plan = await sandbox.plan(w.agents.calls.length ? w.agents.calls[0]!.sandbox! : (await import("@mandate/bridge")).sandboxRequirements(program, modules)["McpDev"]!);
       if (!("policy" in plan)) throw new Error(plan.unsupported.join("; "));
       const handle = await host.create(plan.policy);
       try {

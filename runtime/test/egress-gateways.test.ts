@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { check } from "@mandate/compiler";
+import { check } from "@mandate/bridge";
 import { build } from "esbuild";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Adapters, ToolAdapter } from "../src/adapters.js";
@@ -420,7 +420,7 @@ describe("the verifier's process", () => {
       platform: "node",
       format: "esm",
       target: "node22",
-      alias: { "@mandate/compiler": here("../../compiler/src/index.ts") },
+      alias: { "@mandate/bridge": here("../../bridge/src/index.ts") },
       external: ["pg", "@electric-sql/pglite", "@anthropic-ai/sdk", "@temporalio/*", "ajv", "ajv/*", "ajv-formats", "@microsoft/mxc-sdk", "@microsoft/mxc-sdk/*"],
       logLevel: "error",
     });

@@ -2,7 +2,7 @@
 // the module, a lock that pins it, and small programs that work on it.
 
 import { readFileSync } from "node:fs";
-import { check, hashProgram, type Json, type Lock, type Modules, type Program } from "@mandate/compiler";
+import { check, hashProgram, type Json, type Lock, type Modules, type Program } from "@mandate/bridge";
 
 export const ACME_SOURCE = readFileSync(new URL("../../fixtures/system/acme.system.mdt", import.meta.url), "utf8");
 

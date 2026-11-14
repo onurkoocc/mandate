@@ -6,7 +6,7 @@
 // under `approve` is authorized only by a decision of the role named there.
 // Each rule is shown by one run or one record that breaks it.
 
-import { card, check, link, LOCK_FORMAT, rolesNamed, type Lock as LockFile } from "@mandate/compiler";
+import { card, check, link, LOCK_FORMAT, rolesNamed, type Lock as LockFile } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { DECISION_FORMAT, payloadOf, shownPackage, signDecision, type DecisionKind, type DecisionRecord, type SignedDecision } from "../src/decisions.js";
 import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";

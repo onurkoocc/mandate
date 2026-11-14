@@ -22,7 +22,7 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Lock } from "@mandate/compiler";
+import type { Lock } from "@mandate/bridge";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { main } from "../src/cli.js";
 import { openDb, type Db } from "../src/db.js";

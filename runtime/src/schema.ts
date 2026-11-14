@@ -11,7 +11,7 @@
 // `company.domain`) accepts any JSON value.
 
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
-import { PATH_PATTERN, type Def, type Expr, type Program, type TypeExpr } from "@mandate/compiler";
+import { PATH_PATTERN, type Def, type Expr, type Program, type TypeExpr } from "@mandate/bridge";
 import type { Value } from "./values.js";
 
 export type JsonSchema = Record<string, unknown>;

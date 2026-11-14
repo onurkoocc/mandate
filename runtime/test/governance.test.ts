@@ -6,7 +6,7 @@
 // set view shows these files as a class of their own.
 
 import { readFileSync } from "node:fs";
-import { toMarkdown } from "@mandate/compiler";
+import { toMarkdown } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import type { PreparedFile } from "../src/adapters.js";
 import type { RunRow } from "../src/journal.js";

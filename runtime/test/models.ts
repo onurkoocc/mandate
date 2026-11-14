@@ -1,7 +1,7 @@
 // Programs and the lock for the model adapter tests, offline and live.
 
 import { readFileSync } from "node:fs";
-import type { Lock } from "@mandate/compiler";
+import type { Lock } from "@mandate/bridge";
 
 const FIXBUG_LOCK = JSON.parse(readFileSync(new URL("../../fixtures/fixbug/mandate.lock.json", import.meta.url), "utf8")) as Lock;
 /** FixBug's lock (fixtures/fixbug/mandate.lock.json) as a package carries it. */

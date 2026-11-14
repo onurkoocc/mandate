@@ -14,7 +14,7 @@
 // and the package; `verifyExport` checks one with nothing but the public keys.
 
 import { createPublicKey, verify, type KeyObject } from "node:crypto";
-import { hashProgram, packageHash, type Json } from "@mandate/compiler";
+import { hashProgram, packageHash, type Json } from "@mandate/bridge";
 import type { Db, Row, Tx } from "./db.js";
 import { keyIdOf } from "./evidence.js";
 import { Violation } from "./signals.js";

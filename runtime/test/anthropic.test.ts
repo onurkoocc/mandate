@@ -3,7 +3,7 @@
 // program runs against the real API in live.test.ts (MANDATE_LIVE=1).
 
 import type Anthropic from "@anthropic-ai/sdk";
-import { check } from "@mandate/compiler";
+import { check } from "@mandate/bridge";
 import { afterAll, describe, expect, it } from "vitest";
 import { AnthropicModel, boundOf, forApi, priceUsage, type AnthropicClient } from "../src/anthropic.js";
 import { closeAll, world } from "./helpers.js";

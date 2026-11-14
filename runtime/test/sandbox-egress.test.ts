@@ -22,7 +22,7 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TLSSocket } from "node:tls";
-import { check, requirementFor, type CapVal, type Lock, type SandboxRequirement } from "@mandate/compiler";
+import { check, requirementFor, type CapVal, type Lock, type SandboxRequirement } from "@mandate/bridge";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Adapters } from "../src/adapters.js";
 import { adaptersFor, readConfig, type RuntimeConfig } from "../src/control.js";

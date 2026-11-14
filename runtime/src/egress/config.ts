@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { dirname, isAbsolute, resolve } from "node:path";
-import { parseStrictJson } from "@mandate/compiler";
+import { parseStrictJson } from "@mandate/bridge";
 import { Violation } from "../signals.js";
 
 /** The admin protocol's version, which `hello` answers with. */
