@@ -10,6 +10,14 @@
 //!
 //! The TypeScript lexer's regular expressions are ported by hand; each port
 //! carries its pattern and has a unit test.
+//!
+//! A comment is dropped, as in the TypeScript. A comment that starts with
+//! `///` is also kept on the side, as a [`DocLine`]
+//! ([`Lexer::tokenize_with_docs`]): in a program of language 0.6 it is a doc
+//! line, which the parser gives to the definition it stands before
+//! (spec/library.md "Doc lines"). The tokens are the same whatever the
+//! comments are, so a program of 0.1 to 0.5, whose parser does not look at
+//! the doc lines, reads exactly as before.
 
 use mandate_ir::{Diagnostic, Location, Span, is_safe_integer};
 
@@ -61,6 +69,41 @@ pub(crate) struct Token {
     pub(crate) col: usize,
     pub(crate) end_line: usize,
     pub(crate) end_col: usize,
+}
+
+/// A comment that starts with `///`: where it is, and its text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct DocLine {
+    /// The line and column of its first `/`.
+    pub(crate) line: usize,
+    pub(crate) col: usize,
+    /// The column just past its last code unit (a carriage return before
+    /// the line feed included).
+    pub(crate) end_col: usize,
+    /// What follows `///`, less one space when there is one, and less the
+    /// carriage return of a line that ends in `\r\n`: the line ending is not
+    /// part of the text, so a file reads the same with either.
+    pub(crate) text: String,
+    /// Nothing but blanks stands before it on its line: it is a line that
+    /// starts with `///`, not a comment after something else.
+    pub(crate) own_line: bool,
+}
+
+impl DocLine {
+    /// The span of its `///`.
+    pub(crate) fn span(&self) -> Span {
+        Span {
+            start_line: self.line,
+            start_col: self.col,
+            end_line: self.line,
+            end_col: self.end_col,
+        }
+    }
+
+    /// Whether it comes before the token `t` in the text.
+    pub(crate) fn before(&self, t: &Token) -> bool {
+        (self.line, self.col) < (t.line, t.col)
+    }
 }
 
 /// `tokenSpan(t)`.
@@ -225,6 +268,8 @@ pub(crate) struct Lexer<'a> {
     /// The previous token is the punctuation `@`, after which a number is a
     /// version (`this.prev?.kind === "punct" && this.prev.text === "@"`).
     after_at: bool,
+    /// The comments that start with `///`, in the order of the text.
+    docs: Vec<DocLine>,
 }
 
 impl<'a> Lexer<'a> {
@@ -235,11 +280,13 @@ impl<'a> Lexer<'a> {
             line,
             col,
             after_at: false,
+            docs: Vec::new(),
         }
     }
 
-    /// `tokenize()`: every token, the last one `eof`.
-    pub(crate) fn tokenize(mut self) -> Result<Vec<Token>, Fail> {
+    /// `tokenize()`: every token, the last one `eof`; and, beside them,
+    /// every comment that starts with `///`, in the order of the text.
+    pub(crate) fn tokenize_with_docs(mut self) -> Result<(Vec<Token>, Vec<DocLine>), Fail> {
         let mut out = Vec::new();
         loop {
             let t = self.next_token()?;
@@ -247,9 +294,42 @@ impl<'a> Lexer<'a> {
             let eof = t.kind == TokKind::Eof;
             out.push(t);
             if eof {
-                return Ok(out);
+                return Ok((out, self.docs));
             }
         }
+    }
+
+    /// Whether only blanks stand between the start of the line and the
+    /// lexer's position (or the start of the text, for a lexer that starts
+    /// inside a line).
+    fn at_line_start(&self) -> bool {
+        self.src
+            .get(..self.pos)
+            .unwrap_or_default()
+            .iter()
+            .rev()
+            .take_while(|&&c| c != LF)
+            .all(|&c| matches!(c, SPACE | TAB | CR))
+    }
+
+    /// Keeps the comment from `start` to the lexer's position, which starts
+    /// with `///`, as a doc line that began at `line` and `col`.
+    fn keep_doc(&mut self, start: usize, line: usize, col: usize, own_line: bool) {
+        let units = self.src.get(start..self.pos).unwrap_or_default();
+        let mut text = units.get(3..).unwrap_or_default();
+        if let Some(rest) = text.strip_prefix(&[SPACE]) {
+            text = rest;
+        }
+        if let Some(rest) = text.strip_suffix(&[CR]) {
+            text = rest;
+        }
+        self.docs.push(DocLine {
+            line,
+            col,
+            end_col: self.col,
+            text: units_text(text),
+            own_line,
+        });
     }
 
     fn fail_at(message: String, line: usize, col: usize) -> Fail {
@@ -320,8 +400,14 @@ impl<'a> Lexer<'a> {
                     self.advance();
                 }
                 Some(SLASH) if self.peek_at(1) == Some(SLASH) => {
+                    let doc = self.peek_at(2) == Some(SLASH);
+                    let (start, line, col) = (self.pos, self.line, self.col);
+                    let own_line = doc && self.at_line_start();
                     while !self.at_end() && self.peek() != Some(LF) {
                         self.advance();
+                    }
+                    if doc {
+                        self.keep_doc(start, line, col, own_line);
                     }
                 }
                 _ => return nl,
@@ -729,7 +815,51 @@ mod tests {
 
     fn lex(src: &str) -> Result<Vec<Token>, Fail> {
         let units: Vec<u16> = src.encode_utf16().collect();
-        Lexer::new(&units, 1, 1).tokenize()
+        Lexer::new(&units, 1, 1)
+            .tokenize_with_docs()
+            .map(|(toks, _)| toks)
+    }
+
+    fn docs(src: &str) -> Vec<DocLine> {
+        let units: Vec<u16> = src.encode_utf16().collect();
+        Lexer::new(&units, 1, 1)
+            .tokenize_with_docs()
+            .map(|(_, docs)| docs)
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn a_comment_that_starts_with_three_slashes_is_kept_beside_the_tokens() {
+        let src = "/// one\n  ///two\r\nx /// three\n// four\n////\n///   five \n";
+        let kept = docs(src);
+        let got: Vec<(usize, usize, &str, bool)> = kept
+            .iter()
+            .map(|d| (d.line, d.col, d.text.as_str(), d.own_line))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                (1, 1, "one", true),
+                (2, 3, "two", true),
+                (3, 3, "three", false),
+                (5, 1, "/", true),
+                (6, 1, "  five ", true),
+            ]
+        );
+        // The tokens are those of the text without its comments.
+        let toks = lex(src).unwrap_or_default();
+        let texts: Vec<&str> = toks.iter().map(|t| t.text.as_str()).collect();
+        assert_eq!(texts, vec!["x", ""]);
+        let end = docs("/// a\r\n").first().map(DocLine::span);
+        assert_eq!(
+            end,
+            Some(Span {
+                start_line: 1,
+                start_col: 1,
+                end_line: 1,
+                end_col: 7,
+            })
+        );
     }
 
     #[test]

@@ -1494,6 +1494,12 @@
             "kind": {
               "const": "type"
             },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
+            },
             "generics": {
               "type": "array",
               "items": {
@@ -1525,6 +1531,12 @@
             "kind": {
               "const": "capability"
             },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
+            },
             "value": {
               "$ref": "#/$defs/Expr"
             }
@@ -1540,6 +1552,12 @@
           "properties": {
             "kind": {
               "const": "const"
+            },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
             },
             "type": {
               "$ref": "#/$defs/TypeExpr"
@@ -1562,6 +1580,9 @@
             },
             "pub": {
               "const": true
+            },
+            "doc": {
+              "type": "string"
             },
             "params": {
               "$ref": "#/$defs/Params"
@@ -1592,6 +1613,12 @@
           "properties": {
             "kind": {
               "const": "extern"
+            },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
             },
             "lang": {
               "enum": [
@@ -1635,6 +1662,12 @@
           "properties": {
             "kind": {
               "const": "effect"
+            },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
             },
             "params": {
               "$ref": "#/$defs/Params"
@@ -1682,6 +1715,12 @@
           "properties": {
             "kind": {
               "const": "agent"
+            },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
             },
             "role": {
               "type": "string"
@@ -1776,6 +1815,12 @@
             "kind": {
               "const": "workflow"
             },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
+            },
             "params": {
               "$ref": "#/$defs/Params"
             },
@@ -1836,6 +1881,12 @@
             "kind": {
               "const": "contract"
             },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
+            },
             "params": {
               "$ref": "#/$defs/Params"
             },
@@ -1877,6 +1928,12 @@
           "properties": {
             "kind": {
               "const": "component"
+            },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
             },
             "repo": {
               "type": "string",
@@ -1930,6 +1987,12 @@
             "kind": {
               "const": "interface"
             },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
+            },
             "protocol": {
               "enum": [
                 "openapi",
@@ -1956,6 +2019,12 @@
           "properties": {
             "kind": {
               "const": "environment"
+            },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
             },
             "class": {
               "enum": [
@@ -1995,6 +2064,12 @@
           "properties": {
             "kind": {
               "const": "role"
+            },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
             },
             "description": {
               "type": "string"

@@ -14,9 +14,20 @@
 //! not count, have a count of their own here ([`Parser::enter_postfix`]),
 //! which the TypeScript does not have. The functions on the path of the
 //! recursion keep their frames small (see [`expr`]).
+//!
+//! A program of language 0.6, which only this parser reads, has two things
+//! more (spec/library.md "The 0.6 surface"): `pub` before any kind of
+//! definition (`"pub": true`; `pub fn` is read as in every version), and doc
+//! lines, the `///` comments the lexer keeps beside the tokens, which become
+//! the `doc` of the definition they stand directly before
+//! (`Parser::doc_of_definition`) and are `MDT-E0101` anywhere else. A
+//! program of 0.1 to 0.5 is read as before: the doc lines are not looked at,
+//! and `pub` stands before `fn` alone.
 
 mod decl;
 mod expr;
+
+use decl::Decl;
 
 use mandate_ir::{
     Diagnostic, JsObject, JsValue, Language, Location,
@@ -24,7 +35,7 @@ use mandate_ir::{
     sort_utf16, unique_in_order,
 };
 
-use crate::lexer::{Fail, Lexer, TokKind, Token, token_span};
+use crate::lexer::{DocLine, Fail, Lexer, TokKind, Token, token_span};
 use crate::node::{Node, O, Obj, obj, sort_canon, too_deep};
 
 /// What a parse step gives: a value, or the diagnostic that stops the
@@ -52,8 +63,9 @@ pub(crate) fn parse_program(src: &str) -> Result<(Node, Vec<Diagnostic>), Fail> 
         )));
     }
     let units: Vec<u16> = src.encode_utf16().collect();
-    let toks = Lexer::new(&units, 1, 1).tokenize()?;
+    let (toks, docs) = Lexer::new(&units, 1, 1).tokenize_with_docs()?;
     let mut p = Parser::new(&toks);
+    p.docs = &docs;
     let program = Node::Obj(p.program()?);
     if let Some(deep) = too_deep(&program) {
         return Err(deep);
@@ -232,6 +244,11 @@ pub(crate) struct Parser<'a> {
     /// How many call argument lists and record literals the parser is inside
     /// (Rust only; see [`Parser::enter_postfix`]).
     postfix_depth: usize,
+    /// The comments of the text that start with `///`, in its order; read
+    /// only in a program of language 0.6 (spec/library.md "Doc lines").
+    docs: &'a [DocLine],
+    /// The first of [`Parser::docs`] that no definition has taken yet.
+    doc_next: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -244,7 +261,68 @@ impl<'a> Parser<'a> {
             in_test: false,
             depth: 0,
             postfix_depth: 0,
+            docs: &[],
+            doc_next: 0,
         }
+    }
+
+    /// Whether the program reads doc lines and `pub` on every definition:
+    /// it is of language 0.6 or later.
+    pub(crate) fn reads_0_6(&self) -> bool {
+        self.language.at_least(Language::V0_6)
+    }
+
+    /// `MDT-E0101` at the first doc line before the current token that no
+    /// definition has taken: a `///` line stands only directly before a
+    /// definition (or its `pub`). Nothing in a program that does not read
+    /// doc lines.
+    fn no_doc_before(&self) -> Res<()> {
+        match self.docs.get(self.doc_next) {
+            Some(d) if self.reads_0_6() && d.before(self.t()) => Err(misplaced_doc(d)),
+            _ => Ok(()),
+        }
+    }
+
+    /// The doc of the definition that starts at the current token: the doc
+    /// lines directly before it, each a line of its own, on consecutive
+    /// lines, the last on the line before the token, joined with `\n`; or
+    /// none. A doc line before the current token that is not one of them is
+    /// `MDT-E0101`: inside the body of the definition before, at the end of
+    /// a line, or with a blank line (or a `//` comment) between it and the
+    /// definition.
+    fn doc_of_definition(&mut self) -> Res<Option<String>> {
+        if !self.reads_0_6() {
+            return Ok(None);
+        }
+        let t = self.t();
+        let start = self.doc_next;
+        let end = start.saturating_add(
+            self.docs
+                .get(start..)
+                .unwrap_or_default()
+                .iter()
+                .take_while(|d| d.before(t))
+                .count(),
+        );
+        let before = self.docs.get(start..end).unwrap_or_default();
+        let mut first = before.len();
+        let mut line = t.line.checked_sub(1);
+        while let Some(d) = first.checked_sub(1).and_then(|i| before.get(i)) {
+            if !d.own_line || Some(d.line) != line {
+                break;
+            }
+            first = first.saturating_sub(1);
+            line = d.line.checked_sub(1);
+        }
+        if let Some(d) = before.get(..first).and_then(<[DocLine]>::first) {
+            return Err(misplaced_doc(d));
+        }
+        self.doc_next = end;
+        if before.is_empty() {
+            return Ok(None);
+        }
+        let lines: Vec<&str> = before.iter().map(|d| d.text.as_str()).collect();
+        Ok(Some(lines.join("\n")))
     }
 
     // ── token helpers ──────────────────────────────────────────────────
@@ -482,6 +560,9 @@ impl<'a> Parser<'a> {
                 None => self.diagnostics.push(unsupported_language(&v, lang_tok)),
             }
         }
+        // 0.6: a doc line before the header, `module` or a `use` documents
+        // nothing.
+        self.no_doc_before()?;
         self.expect_w("module")?;
         let module = self.qname()?;
         self.expect_p("@")?;
@@ -492,6 +573,7 @@ impl<'a> Parser<'a> {
 
         let mut uses: Vec<Node> = Vec::new();
         while self.is_w("use") {
+            self.no_doc_before()?;
             uses.push(Node::Obj(self.use_decl()?));
         }
 
@@ -502,10 +584,12 @@ impl<'a> Parser<'a> {
         while !self.at_eof() {
             let t = self.t();
             if self.is_w("on") {
+                self.no_doc_before()?;
                 handlers.push(self.top_level_on()?);
                 continue;
             }
             if self.is_w("test") && self.la(1).kind == TokKind::String {
+                self.no_doc_before()?;
                 self.bump();
                 let name_tok = self.t();
                 let name = self.string("a test name")?;
@@ -517,13 +601,18 @@ impl<'a> Parser<'a> {
                 tests.set(&name, test);
                 continue;
             }
-            let (name, def, name_tok) = self.decl()?;
+            let doc = self.doc_of_definition()?;
+            let (name, def, name_tok) = self.definition()?;
             if defs.has(&name) {
                 self.dup("definition", &name, name_tok);
             }
-            let def = self.at(def, t);
+            let mut def = self.at(def, t);
+            if let Some(doc) = doc {
+                def.set("doc", doc);
+            }
             defs.set(&name, def);
         }
+        self.no_doc_before()?;
 
         for (target, handler, tok) in handlers {
             let workflow = defs
@@ -548,6 +637,24 @@ impl<'a> Parser<'a> {
             program.set("tests", tests);
         }
         Ok(self.at(program, start))
+    }
+
+    /// A definition at the top of a module: `decl()`, and in a program of
+    /// 0.6 a `pub` before any kind (spec/library.md "`pub` and
+    /// visibility"), `"pub": true` on the definition. `pub fn` is read by
+    /// `decl()` as in every version, so its IR is the same; before 0.6 `pub`
+    /// stands before `fn` only (`decl()` refuses it before anything else).
+    fn definition(&mut self) -> Res<Decl<'a>> {
+        if !(self.reads_0_6() && self.is_w("pub") && !is_w(self.la(1), "fn")) {
+            return self.decl();
+        }
+        self.bump();
+        if self.is_w("pub") {
+            return Err(self.expected("a declaration"));
+        }
+        let (name, mut def, name_tok) = self.decl()?;
+        def.set("pub", true);
+        Ok((name, def, name_tok))
     }
 
     fn use_decl(&mut self) -> Res<O> {
@@ -600,6 +707,16 @@ fn unsupported_language(v: &str, lang_tok: &Token) -> Diagnostic {
         Location::span(token_span(lang_tok)),
         Some(facts),
     )
+}
+
+/// `MDT-E0101` for a doc line that documents no definition.
+fn misplaced_doc(d: &DocLine) -> Fail {
+    Box::new(Diagnostic::new(
+        "E0101",
+        "A doc line ('///') stands only on the lines directly before a definition or its 'pub'; write '//' for a comment.".to_owned(),
+        Location::span(d.span()),
+        None,
+    ))
 }
 
 /// `MDT-E0120` for a handler whose target is not a workflow.
