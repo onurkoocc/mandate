@@ -874,6 +874,34 @@ mandate journal export reach1 --out run.json ; mandate journal key --out cp.pub.
 cargo run -p verify-journal -- run.json --key cp.pub.pem
 ```
 
+The workflow `.github/workflows/boundary-live.yml` runs these steps on a
+GitHub runner, with a real model, a real Bubblewrap sandbox and the real
+`api.github.com`. It is started by hand only (`gh workflow run
+boundary-live.yml`, or "Run workflow" on the Actions tab), because it spends
+a few model calls. It reads the repository secret `CLAUDE_API_KEY` (and
+`CLAUDE_WORKSPACE_ID` for a key not scoped to a workspace) in the step that
+runs the runtime, and the job's own `GITHUB_TOKEN`, which can only read the
+repository, in the proxy's step and in the step that checks the run. The
+runtime never has the token. Its task, from
+`runtime/scripts/boundary-live-check.mjs input`, names the calls the model
+is to make. The same script then reads what the tools returned, from the
+audit view, and fails naming each claim the run does not show:
+
+1. the agent's environment holds the placeholder and not the token;
+2. GitHub's answer to the GET shows the request arrived authenticated. It
+   has an `x-ratelimit-limit` above 60, the limit GitHub
+   [documents](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
+   for unauthenticated requests (1,000 for a `GITHUB_TOKEN`);
+3. the request to `example.org` is an `egress_denied` violation in the
+   audit view;
+4. `verify-journal` reports the export `verified`.
+
+The script is given the token only to compare against. It searches every
+file the run left for the token before it prints any of them, and it does
+not print a file that holds it. `boundary-live-check.test.ts` runs the
+script on what a scripted run of the same program leaves, and again with
+the evidence of each claim changed.
+
 `isolation.test.ts` holds a requirement 0.2's `isolation` to the level and
 sharing a host reports: a level above the host's, or no sharing on a host
 that may share, is refused by name and the agent is not started; what the
@@ -906,6 +934,22 @@ envelope whatever the lead writes, and prints what it did:
 
 ```sh
 MANDATE_LIVE=1 MANDATE_ENVELOPE=1 npx vitest run test/demo.test.ts
+```
+
+The Managed Agents trial deploys one agent and runs one delegation on Claude
+Managed Agents (a 2 USD run) when `MANDATE_MA=1` is set as well:
+
+```sh
+MANDATE_LIVE=1 MANDATE_MA=1 npx vitest run test/live-managed-agents.test.ts
+```
+
+The workflow `.github/workflows/live.yml` runs `test/live.test.ts` when it
+is started by hand. Two inputs, both off by default, add the other two
+tests. Each one runs in a step of its own that has only the model's secrets:
+
+```sh
+gh workflow run live.yml                                          # test/live.test.ts
+gh workflow run live.yml -f managed_agents=true -f envelope=true  # and the two others
 ```
 
 Models, efforts, token limits and prices come from the lock file

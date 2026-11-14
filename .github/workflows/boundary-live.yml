@@ -1,0 +1,147 @@
+name: boundary-live
+
+# The acceptance of 0.5, Boundary, on real infrastructure (spec/boundary.md; README, "By hand, with the secret in the
+# proxy's environment"): the agent of fixtures/boundary/reach.mdt, in a real Bubblewrap sandbox, driven by a real
+# model, reaches the real api.github.com through the egress proxy, which alone holds the credential. The steps are the
+# README's, with the fixtures as they are; runtime/scripts/boundary-live-check.mjs reads what they leave and fails
+# naming each of the four claims the run does not show:
+#
+#   1. what the agent saw of its environment holds the placeholder and not the secret;
+#   2. api.github.com's response to the agent's GET shows the request arrived authenticated (x-ratelimit-limit above
+#      the 60 an hour GitHub documents for an unauthenticated request; 1,000 for a GITHUB_TOKEN:
+#      https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api);
+#   3. the request to example.org is an egress_denied violation in the audit view (mandate show --audit);
+#   4. verify-journal reports the run's export verified.
+#
+# Run by hand only: it spends a few model calls. It reads two secrets, each in the one step that needs it: the
+# repository secret CLAUDE_API_KEY (and CLAUDE_WORKSPACE_ID, for a key not scoped to a workspace) in the step that runs
+# the runtime, and this job's own GITHUB_TOKEN, read-only, in the proxy's step and in the step that checks that it is
+# nowhere it should not be. The runtime never has the token, and the agent sees only its placeholder.
+#
+#   gh workflow run boundary-live.yml
+
+on:
+  workflow_dispatch:
+
+# The token the proxy holds is this job's GITHUB_TOKEN, and it can only read the repository.
+permissions:
+  contents: read
+
+jobs:
+  boundary-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+          cache: npm
+      # Everything is built before any step has a secret.
+      - name: Install Bubblewrap and allow unprivileged user namespaces
+        run: |
+          sudo apt-get update -qq
+          # slirp4netns and iptables: Bubblewrap's proxy-only egress mode (MXC checks for them).
+          sudo apt-get install -y -qq bubblewrap slirp4netns iptables iproute2 util-linux
+          # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          bwrap --version
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+      - name: Build verify-journal
+        run: cargo build --locked -p verify-journal
+
+      # The run's directory: its runtime configuration (the README's: the model, the mxc sandbox and the proxy's
+      # admin socket, which fixtures/boundary/reach.egress.json names), its database (PGlite, in the directory, which
+      # every command of the run opens in turn), and the task, which names each call the model is to make.
+      - name: Prepare the run's directory, its runtime configuration and its task
+        run: |
+          w="$RUNNER_TEMP/boundary"
+          mkdir -p "$w"
+          sudo mkdir -p /run/mandate
+          sudo chown "$(id -u):$(id -g)" /run/mandate
+          cat > "$w/mandate.runtime.json" <<'EOF'
+          {
+            "database": "pglite:db",
+            "model": { "provider": "anthropic" },
+            "sandbox": { "host": "mxc" },
+            "egress": { "admin": "/run/mandate/egress.sock" }
+          }
+          EOF
+          node runtime/scripts/boundary-live-check.mjs input > "$w/input.json"
+          cat "$w/mandate.runtime.json" "$w/input.json"
+
+      # The proxy runs in the background for the rest of the job, with the token in its environment and nowhere else.
+      # What it prints is its ready line (the names of the credentials it holds) and, if it fails, why; the check
+      # step prints that log once it has made sure it does not hold the token.
+      - name: Start the egress proxy, which alone holds the job's GITHUB_TOKEN
+        env:
+          MANDATE_EGRESS_GITHUB: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          w="$RUNNER_TEMP/boundary"
+          nohup node compiler/dist/cli.js egress serve --config fixtures/boundary/reach.egress.json > "$w/egress.log" 2>&1 &
+          echo "$!" > "$w/egress.pid"
+          for _ in $(seq 1 60); do
+            if grep -q '^mandate egress: ready, ' "$w/egress.log"; then
+              grep '^mandate egress: ready, ' "$w/egress.log"
+              exit 0
+            fi
+            kill -0 "$(cat "$w/egress.pid")" 2> /dev/null || break
+            sleep 0.5
+          done
+          echo "::error::the egress proxy did not start; its log is printed by the check step"
+          exit 1
+
+      # The runtime has the model's key and not the token. `mandate run` exits 0 whatever state the run ends in; the
+      # checks read how it ended. Its output is printed by the check step, once it is known not to hold the token.
+      - name: Run the agent with a real model, in a real sandbox
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          CLAUDE_WORKSPACE_ID: ${{ secrets.CLAUDE_WORKSPACE_ID }}
+        run: |
+          w="$RUNNER_TEMP/boundary"
+          code=0
+          node compiler/dist/cli.js run fixtures/boundary/reach.mdt --lock fixtures/boundary/reach.lock.json --workflow Reach --input "$w/input.json" --run-id reach1 --config "$w/mandate.runtime.json" > "$w/run.out" 2>&1 || code=$?
+          echo "mandate run: exit $code"
+          if [ "$code" -ne 0 ]; then echo "::error::mandate run exited $code; its output is printed by the check step"; exit 1; fi
+
+      # From here on no step has the model's key, and each step runs even when one before it failed, so that the
+      # check step can say what is missing and print what there is.
+      - name: Read the run as an auditor, and export its journal and its key
+        if: ${{ !cancelled() }}
+        run: |
+          w="$RUNNER_TEMP/boundary"
+          m() { node compiler/dist/cli.js "$@"; }
+          m show reach1 --audit --config "$w/mandate.runtime.json" > "$w/audit.md" 2>> "$w/audit.err" || echo "mandate show --audit: exit $?"
+          m show reach1 --audit --format json --config "$w/mandate.runtime.json" > "$w/audit.json" 2>> "$w/audit.err" || echo "mandate show --audit --format json: exit $?"
+          m journal export reach1 --out "$w/run.json" --config "$w/mandate.runtime.json" >> "$w/export.out" 2>&1 || echo "mandate journal export: exit $?"
+          m journal key --out "$w/cp.pub.pem" --config "$w/mandate.runtime.json" >> "$w/export.out" 2>&1 || echo "mandate journal key: exit $?"
+      - name: verify-journal on the run's export, with the control plane's public key
+        if: ${{ !cancelled() }}
+        run: |
+          w="$RUNNER_TEMP/boundary"
+          code=0
+          cargo run --locked --quiet -p verify-journal -- "$w/run.json" --key "$w/cp.pub.pem" > "$w/verify.json" 2> "$w/verify.err" || code=$?
+          echo "$code" > "$w/verify.exit"
+          echo "verify-journal: exit $code"
+      - name: Stop the egress proxy
+        if: ${{ always() }}
+        run: |
+          w="$RUNNER_TEMP/boundary"
+          if [ -s "$w/egress.pid" ]; then
+            pid="$(cat "$w/egress.pid")"
+            kill "$pid" 2> /dev/null || true
+            for _ in $(seq 1 20); do kill -0 "$pid" 2> /dev/null || break; sleep 0.5; done
+          fi
+
+      # The token is here only to be compared: the script searches every file the run left for it before it prints
+      # any, prints none that holds it, and prints the four verdicts. It never prints the token.
+      - name: The four checks, and the evidence they read
+        if: ${{ !cancelled() }}
+        env:
+          BOUNDARY_LIVE_SECRET: ${{ secrets.GITHUB_TOKEN }}
+        run: node runtime/scripts/boundary-live-check.mjs check "$RUNNER_TEMP/boundary"
