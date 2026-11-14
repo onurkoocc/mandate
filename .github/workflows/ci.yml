@@ -2,9 +2,17 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/boundary-r*"]
   pull_request:
 
+# What runs when. A pull request and a push to main run every job. A push to a
+# claude/boundary-r* branch, the slices of the Rust port, runs only the rust
+# job: a slice is brought to green on its branch before its pull request is
+# opened, and the jobs that are slow and need PostgreSQL or a real sandbox
+# (test, sandbox, sandbox-windows) are left to the pull request.
+# A branch with an open pull request is pushed to twice over, as a push and as
+# a pull request, so its rust job runs twice.
+#
 # Every job reads the repository and nothing else. Actions are pinned to full
 # commit SHAs (the tag is in the comment) so a moved tag cannot change what
 # runs; Renovate keeps the pins current. Installs run no lifecycle scripts:
@@ -14,6 +22,7 @@ permissions:
 
 jobs:
   test:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -53,6 +62,7 @@ jobs:
           node compiler/dist/cli.js test fixtures/fixbug/fixbug.mdt
 
   sandbox:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -109,6 +119,7 @@ jobs:
           grep -A1 '"code": "chain_broken",' "$ACCEPTANCE/rust-tampered.json" | grep -q "\"seq\": $seq\$"
 
   sandbox-windows:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -140,14 +151,22 @@ jobs:
       # --nocapture so that the log shows how many conformance cases the crates ran and skipped.
       - name: Rust tests, against the vectors the TypeScript compiler writes and the conformance cases
         run: cargo test --locked -- --nocapture
-      # The Rust verifier against the TypeScript runtime on a run made now: a
-      # fresh export of a real run (PGlite, in process) must be verified, and
-      # the same export with one event changed must be chain_broken at that
-      # event, each with the report the TypeScript verifier gives, byte for byte.
+      # mandate-ir for WebAssembly: it is kept buildable for wasm32-wasip1 (release
+      # 0.6 may call the Rust compiler that way), and its tests run there under Node's
+      # WASI, the way a developer machine that cannot run a native test runs them
+      # (scripts/wasi-test.mjs says what that cannot run). Node first.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24.22.1
           cache: npm
+      - name: Build mandate-ir for WebAssembly
+        run: cargo build --locked --target wasm32-wasip1 -p mandate-ir
+      - name: mandate-ir tests under Node's WASI
+        run: node scripts/wasi-test.mjs -p mandate-ir -- --nocapture
+      # The Rust verifier against the TypeScript runtime on a run made now: a
+      # fresh export of a real run (PGlite, in process) must be verified, and
+      # the same export with one event changed must be chain_broken at that
+      # event, each with the report the TypeScript verifier gives, byte for byte.
       - run: npm ci --ignore-scripts
       - run: npm run build
       - name: Build verify-journal
