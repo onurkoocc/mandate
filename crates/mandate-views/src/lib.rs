@@ -21,8 +21,28 @@
 
 #![forbid(unsafe_code)]
 
+pub mod architecture;
+pub mod authority;
+pub mod cost;
 pub mod diff;
 pub mod doc;
+pub mod program_doc;
+pub mod shown;
+pub mod system;
 
+pub use architecture::{
+    ArchitectureView, WorkflowArchitecture, architecture, architecture_blocks, mermaid,
+};
+pub use authority::{AuthorityRow, AuthorityView, authority, authority_blocks, late_kinds};
+pub use cost::{
+    BudgetFrom, CostRow, CostView, DelegateBudget, Sum, ViewError, WorkflowCost, cost, cost_blocks,
+    delegate_budget,
+};
 pub use diff::{diff_blocks, diff_doc};
 pub use doc::{Block, Cell, Doc, cell_text, html_escape, md_escape, to_html, to_markdown};
+pub use program_doc::program_doc;
+pub use shown::{list, mermaid_text, show, show_command, type_text};
+pub use system::{
+    SystemAuthorize, SystemComponent, SystemEnvironment, SystemInterface, SystemRead, SystemView,
+    has_system, system, system_blocks,
+};

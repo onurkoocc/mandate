@@ -23,6 +23,7 @@ use mandate_testkit::{
     Golden, GoldenOutput, compare_digest, item_name, read_json, read_text, result_codes, run_gate,
     stored_programs,
 };
+use mandate_views::{architecture, authority, cost, program_doc, to_html, to_markdown};
 
 /// The outputs the Rust crates do not give yet, as `<output> @ <program>`
 /// patterns. Shorten it in the commit that makes an item pass. The checks
@@ -34,9 +35,17 @@ const PENDING: &[&str] = &[
     // R13: the system model, reads.
     "*MDT-E10*",
     "*MDT-E12*",
-    "view --format json @ *",
-    "view --format md @ *",
-    "view --format html @ *",
+];
+
+/// Outputs pending by name, which `check_pending` (that names doors and
+/// families of codes) does not hold to its rule. R11: the cost view of a
+/// workflow with an envelope needs the static cost (`check/cost.ts`), which
+/// `mandate_views::cost` refuses until the static checks are ported. Only
+/// MigrateAll has such a workflow, so only its three views wait.
+const PENDING_ITEMS: &[&str] = &[
+    "view --format json @ fixtures/envelope/migrate-all.mdt",
+    "view --format md @ fixtures/envelope/migrate-all.mdt",
+    "view --format html @ fixtures/envelope/migrate-all.mdt",
 ];
 
 /// What the Rust crates print for one pinned output.
@@ -121,6 +130,38 @@ fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
                 .unwrap_or_default();
             text.push('\n');
             Ok(text)
+        }
+        // `json({ architecture: architecture(p), authority: authority(p), cost:
+        // cost(p, lock) })`, and `toMarkdown` and `toHtml` of `programDoc(p, lock,
+        // mods)`, of the program as `check` gives it with its modules and its lock
+        // (`lockOf`), when it checks.
+        "view --format json" | "view --format md" | "view --format html" => {
+            let files = module_files_of(o.program);
+            let modules = modules_of(&files, &files)?;
+            let lock_path = lock_file_of(o.program);
+            let lock = lock_path.as_deref().map(read_json).transpose()?;
+            let r = checked(o.program, true, lock_path.is_some())?;
+            let program = r
+                .program
+                .filter(|_| r.ok)
+                .ok_or("the program does not check, so it has no views")?;
+            if o.output == "view --format json" {
+                let cost = cost(&program, lock.as_ref()).map_err(|e| e.to_string())?;
+                let views = JsObject::new()
+                    .with("architecture", architecture(&program).to_js())
+                    .with("authority", authority(&program).to_js())
+                    .with("cost", cost.to_js());
+                let mut text = stringify_pretty(&JsValue::Object(views)).unwrap_or_default();
+                text.push('\n');
+                return Ok(text);
+            }
+            let doc =
+                program_doc(&program, lock.as_ref(), Some(&modules)).map_err(|e| e.to_string())?;
+            Ok(if o.output == "view --format md" {
+                to_markdown(&doc)
+            } else {
+                to_html(&doc)
+            })
         }
         _ => Err("no Rust implementation yet".to_owned()),
     }
@@ -208,7 +249,8 @@ fn golden_outputs() {
         }
     }
     let items = golden.outputs().map(|o| (name_of(&o, &codes), o));
-    let gate = run_gate("golden outputs", PENDING, items, |o| {
+    let pending: Vec<&str> = PENDING.iter().chain(PENDING_ITEMS).copied().collect();
+    let gate = run_gate("golden outputs", &pending, items, |o| {
         compare_digest(o.digest, &output(o)?)
     });
     if let Err(report) = gate {

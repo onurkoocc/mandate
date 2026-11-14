@@ -131,7 +131,7 @@ pub use view_shared::{
     ArchEdge, ArchKind, ArchNode, Authority, EffectInfo, Graph, ProgramRef, VIEW_FORMAT,
     authority_of, caps_in, chosen_at_run_time, criteria, defs_of, duration, effect_info, grant_of,
     handed_by, is_system, j, j_or_null, js_text, json_string, kind_text, method_of, micros_text,
-    program_ref, short_caps, supervision, view_children, widest, workflow_effects,
+    program_ref, short_caps, supervision, to_number, view_children, widest, workflow_effects,
 };
 
 pub use caps::{

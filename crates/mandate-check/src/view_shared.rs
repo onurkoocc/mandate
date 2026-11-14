@@ -76,6 +76,14 @@ pub fn json_string(s: &str) -> String {
     out
 }
 
+/// `ToNumber(v)`: what `*`, `/`, `<` and `Math.max` read a value as. It is
+/// the one of [`crate::lock`], which reads the numbers of a lock that was not
+/// validated.
+#[must_use]
+pub fn to_number(v: &JsValue) -> f64 {
+    crate::lock::to_number(v)
+}
+
 /// `isSystem(kind)`: a definition of the system model (a component, an
 /// interface or an environment).
 #[must_use]
