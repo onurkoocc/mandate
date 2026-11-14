@@ -462,7 +462,13 @@ Docker everywhere, and, with `MANDATE_CONTAINER=1` and a Linux Docker
 engine, against a real one (the tools inside the grant, a read-only part of
 it that cannot be written, no network, a hung process killed at its
 timeout). The CI job `sandbox` runs it on the runner's Docker, with the two
-images named by digest in the test.
+images named by digest in the test. Known limit, not fixed: the container's
+process is root with every capability dropped, so on a native Linux engine
+it cannot write a write path that only its owner may write; the test gives
+its scratch write path mode 777 and pins the refusal in a test of its own,
+which is skipped on Docker Desktop and rootless engines. An operator today
+gives the container a workspace its process can write
+([`spec/runtime.md`](spec/runtime.md)).
 
 `artifacts.test.ts` checks the artifact store and the binding of evidence
 to what it checked: a test records the files it ran against, an action

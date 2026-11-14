@@ -12,7 +12,7 @@
 // be reached, and a hung process is killed at its timeout (G05, G07).
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -125,11 +125,42 @@ describe("ContainerHost against a fake Docker", () => {
 const NODE_IMAGE = "node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee";
 const HELPER_IMAGE = "debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc";
 
-describe.runIf(process.env["MANDATE_CONTAINER"] === "1")("ContainerHost on a real Docker engine", () => {
+const LIVE = process.env["MANDATE_CONTAINER"] === "1";
+
+/**
+ * What the engine is, for the one test that depends on it: whether a bind mount keeps the host's ownership. It does on
+ * a native Linux engine run by root, where a container's root without CAP_DAC_OVERRIDE (the host drops all
+ * capabilities) is refused a directory its owner alone may write. It does not through Docker Desktop's file sharing,
+ * nor on a rootless engine, where the container's root is the user that owns the files.
+ */
+function enforcesOwnership(): { yes: boolean; why: string } {
+  if (process.platform !== "linux") return { yes: false, why: `the test runs on ${process.platform}, where the engine's file sharing does not enforce ownership` };
+  try {
+    const info = execFileSync("docker", ["info", "--format", "{{.OperatingSystem}} | {{.SecurityOptions}}"], { encoding: "utf8" }).trim();
+    if (/Docker Desktop/i.test(info)) return { yes: false, why: `the engine is Docker Desktop (${info})` };
+    if (/rootless/i.test(info)) return { yes: false, why: `the engine is rootless (${info})` };
+    return { yes: true, why: info };
+  } catch (e) {
+    return { yes: false, why: `docker info failed: ${(e as Error).message}` };
+  }
+}
+
+/** What a tool printed, for the message of an assertion about it: a failure on a CI runner must say why. */
+const said = (what: string, r: { exitCode: number; stdout: string; stderr: string; timedOut?: boolean }): string => `${what}: exit ${r.exitCode}${r.timedOut ? " (timed out)" : ""}, stdout ${JSON.stringify(r.stdout)}, stderr ${JSON.stringify(r.stderr)}`;
+
+describe.runIf(LIVE)("ContainerHost on a real Docker engine", () => {
   const root = mkdtempSync(join(tmpdir(), "mandate-ctr-live-"));
   const repo = join(root, "repo").replace(/\\/g, "/");
   const src = `${repo}/src`;
+  const owned = `${repo}/owned`;
   mkdirSync(src, { recursive: true });
+  mkdirSync(owned, { recursive: true });
+  // The container's process is root with every capability dropped (ContainerHost starts it with --cap-drop ALL and no
+  // --user), so on a Linux engine, where a bind mount keeps the host's ownership, it can write a directory only if the
+  // mode lets "other" write it: the directory this test grants for writing is made world-writable. (Docker Desktop's
+  // file sharing hides this.) The owner-only directory, `owned`, is the one that shows it, below.
+  chmodSync(src, 0o777);
+  chmodSync(owned, 0o755);
   writeFileSync(join(repo, "README.md"), "kept\n");
   writeFileSync(join(src, "a.ts"), "export const a = 1;\n");
   const host = new ContainerHost({ images: { node: NODE_IMAGE }, helperImage: HELPER_IMAGE });
@@ -152,29 +183,56 @@ describe.runIf(process.env["MANDATE_CONTAINER"] === "1")("ContainerHost on a rea
     expect((await host.probe()).network).toBe("deny_all");
     const h = await host.create(policy({ read: [repo], write: [src], exec: [{ command: "node", argsPrefix: [["-e"]] }], timeoutSeconds: 20 }));
     try {
-      expect((await host.execute(h, { argv: ["cat", "--", `${src}/a.ts`] })).stdout).toContain("export const a");
-      expect((await host.execute(h, { argv: ["grep", "-rnI", "--", "const a", repo] })).stdout).toContain("a.ts:1");
-      expect((await host.execute(h, { argv: ["sh", "-c", WRITE_SCRIPT, "sh", `${src}/deep/b.ts`], stdin: "export const b = 2;\n" })).exitCode).toBe(0);
+      const cat = await host.execute(h, { argv: ["cat", "--", `${src}/a.ts`] });
+      expect(cat.stdout, said("cat of a file in the grant", cat)).toContain("export const a");
+      const grep = await host.execute(h, { argv: ["grep", "-rnI", "--", "const a", repo] });
+      expect(grep.stdout, said("grep in the grant", grep)).toContain("a.ts:1");
+      const write = await host.execute(h, { argv: ["sh", "-c", WRITE_SCRIPT, "sh", `${src}/deep/b.ts`], stdin: "export const b = 2;\n" });
+      expect(write.exitCode, said("a write inside the write grant", write)).toBe(0);
       expect(readFileSync(join(src, "deep", "b.ts"), "utf8")).toBe("export const b = 2;\n");
       // The read-only part of the grant cannot be written from inside, even by an allowed command.
       const ro = await host.execute(h, { argv: ["node", "-e", `require("fs").writeFileSync("${repo}/README.md", "changed")`], cwd: repo });
-      expect(ro.exitCode).not.toBe(0);
+      expect(ro.exitCode, said("a write to the read-only part of the grant", ro)).not.toBe(0);
       expect(readFileSync(join(repo, "README.md"), "utf8")).toBe("kept\n");
       // No network.
       const net = await host.execute(h, { argv: ["node", "-e", "require('dns').lookup('example.com',(e)=>{console.log(e?'NO':'YES')})"], cwd: repo });
-      expect(net.stdout).toContain("NO");
+      expect(net.stdout, said("a DNS lookup", net)).toContain("NO");
       // A grant whose first path is a file still runs tools: the working directory is a directory of the grant.
       const h2 = await host.create(policy({ read: [repo], write: [`${repo}/README.md`] }));
       try {
-        expect((await host.execute(h2, { argv: ["ls", "-1Ap", "--", src] })).exitCode).toBe(0);
+        const ls = await host.execute(h2, { argv: ["ls", "-1Ap", "--", src] });
+        expect(ls.exitCode, said("ls with a file first in the grant", ls)).toBe(0);
       } finally {
         await host.destroy(h2);
       }
       // A hung process is killed at its timeout.
       const hung = await host.execute(h, { argv: ["node", "-e", "setInterval(()=>{},1000)"], cwd: repo, timeoutMs: 3000 });
-      expect(hung.timedOut).toBe(true);
+      expect(hung.timedOut, said("a hung process", hung)).toBe(true);
     } finally {
       await host.destroy(h);
     }
   }, 300_000);
+
+  // A known limit, pinned (spec/runtime.md, the container sandbox host): the container's process is root without
+  // CAP_DAC_OVERRIDE and not the user that owns the workspace, so on a Linux engine it cannot write a write path that
+  // only its owner may write. An operator today gives the container a workspace its user can write (mode 777, or
+  // owned by root). If the host later starts the container as the runtime's own uid and gid, this write succeeds and
+  // the one value to flip is the constant below.
+  const WRITES_OWNER_ONLY_PATH = false;
+  const engine = LIVE ? enforcesOwnership() : { yes: false, why: "MANDATE_CONTAINER is not 1" };
+  if (LIVE && !engine.yes) console.log(`[container] owner-only write test skipped: ${engine.why}`);
+  it.skipIf(!engine.yes)("on a Linux engine a write path only its owner may write cannot be written from the container (known limit)", async () => {
+    const h = await host.create(policy({ read: [repo], write: [owned], timeoutSeconds: 20 }));
+    try {
+      const r = await host.execute(h, { argv: ["sh", "-c", WRITE_SCRIPT, "sh", `${owned}/c.ts`], stdin: "export const c = 3;\n" });
+      console.log(`[container] ${said("a write to a path only its owner may write", r)}; the engine is ${engine.why}`);
+      expect(r.exitCode === 0, said("a write to a path only its owner may write", r)).toBe(WRITES_OWNER_ONLY_PATH);
+      if (!WRITES_OWNER_ONLY_PATH) {
+        expect(r.stderr, said("the refused write", r)).toMatch(/permission denied/i);
+        expect(existsSync(join(owned, "c.ts"))).toBe(false);
+      }
+    } finally {
+      await host.destroy(h);
+    }
+  }, 120_000);
 });
