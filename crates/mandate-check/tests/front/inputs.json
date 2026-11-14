@@ -1,0 +1,125 @@
+{
+  "workflow": {
+    "kind": "workflow",
+    "params": [{ "name": "x", "type": { "ref": "Issue", "args": [{ "ref": "Verified" }] } }],
+    "returns": { "ref": "Bool" },
+    "caps": [{ "op": "var", "name": "M" }],
+    "body": [
+      { "op": "expr", "value": { "op": "delegate", "agent": "A", "skill": "s", "args": [{ "value": { "op": "var", "name": "x" } }] } },
+      { "op": "expr", "value": { "op": "effect", "name": "deploy", "args": [], "compensate": "undo" } },
+      { "op": "expr", "value": { "op": "verify", "value": { "op": "var", "name": "x" }, "contract": "C", "args": [] } }
+    ]
+  },
+  "modules": {
+    "m": {
+      "language": "mandate/0.4",
+      "module": "m",
+      "version": "0.1",
+      "defs": {
+        "toString": { "kind": "role", "description": "r" },
+        "A": { "kind": "interface", "protocol": "openapi", "spec": "a.yaml" },
+        "Z": { "kind": "component", "repo": "o/z", "root": "/z", "lang": "ts", "owner": "toString", "provides": ["A"] },
+        "Q": { "kind": "type", "type": { "ref": "Text" } },
+        "constructor": { "kind": "type", "type": { "ref": "Q" } },
+        "Issue": { "kind": "type", "type": { "record": { "title": { "ref": "Text" } } } }
+      }
+    }
+  },
+  "program": {
+    "language": "mandate/0.4",
+    "module": "p",
+    "version": "0.1",
+    "uses": [
+      { "module": "m", "names": ["toString", "Missing", "A"] },
+      { "module": "m", "names": ["constructor"] },
+      { "module": "other" }
+    ],
+    "defs": {
+      "toString": { "kind": "role", "description": "local" },
+      "Q": { "kind": "type", "type": { "ref": "Int" } }
+    }
+  },
+  "roles": {
+    "language": "mandate/0.4",
+    "module": "r",
+    "version": "0.1",
+    "uses": [{ "module": "m", "names": ["toString", "nope"] }],
+    "defs": {
+      "reviewer": { "kind": "role", "description": "R" },
+      "owner": { "kind": "role", "description": "O" },
+      "b": { "kind": "component", "repo": "o/b", "root": "/b", "lang": "ts", "owner": "reviewr", "provides": [] },
+      "B": { "kind": "component", "repo": "o/b", "root": "/b", "lang": "ts", "owner": "Q2", "provides": [] },
+      "Q2": { "kind": "type", "type": { "ref": "Int" } },
+      "C": {
+        "kind": "contract",
+        "params": [],
+        "accept": {
+          "z": {
+            "description": "z",
+            "by": {
+              "all": [
+                { "call": { "op": "call", "callee": { "op": "field", "of": { "op": "var", "name": "human" }, "name": "approve" }, "args": [{ "name": "role", "value": { "op": "var", "name": "owner" } }, { "name": "distinct_from", "value": { "op": "text", "value": "reviewer" } }] } },
+                { "call": { "op": "call", "callee": { "op": "field", "of": { "op": "var", "name": "human" }, "name": "approve" }, "args": [{ "name": "role", "value": { "op": "text", "value": "reviewer" } }, { "name": "distinct_from", "value": { "op": "var", "name": "owner" } }] } }
+              ]
+            }
+          },
+          "a": {
+            "description": "a",
+            "by": { "call": { "op": "call", "callee": { "op": "field", "of": { "op": "var", "name": "human" }, "name": "approve" }, "args": [{ "name": "role", "value": { "op": "int", "value": 3 } }] } }
+          }
+        }
+      },
+      "F": {
+        "kind": "fn",
+        "params": [],
+        "returns": { "ref": "Text" },
+        "body": [
+          { "op": "expr", "value": { "op": "call", "callee": { "op": "field", "of": { "op": "var", "name": "human" }, "name": "approve" }, "args": [{ "name": "role", "value": { "op": "var", "name": "toString" } }, { "name": "distinct_from", "value": { "op": "var", "name": "nope" } }] } },
+          { "op": "expr", "value": { "op": "call", "callee": { "op": "var", "name": "human" }, "args": [{ "name": "role", "value": { "op": "var", "name": "ownr" } }] } },
+          { "op": "expr", "value": { "op": "delegate", "agent": "X", "skill": "s", "args": [], "supervise": { "name": "escalate", "args": [{ "value": { "op": "var", "name": "human" } }, { "name": "role", "value": { "op": "text", "value": "Q2" } }] } } }
+        ]
+      }
+    }
+  },
+  "names": {
+    "language": "mandate/0.4",
+    "module": "n",
+    "version": "0.1",
+    "uses": [
+      { "module": "std", "names": ["fs"] },
+      { "module": "m", "names": ["Issue", "lower", "Q"] },
+      { "module": "acme.tools" }
+    ],
+    "defs": {
+      "M": { "kind": "capability", "value": { "op": "call", "callee": { "op": "field", "of": { "op": "var", "name": "fs" }, "name": "read" }, "args": [{ "value": { "op": "text", "value": "/" } }] } },
+      "T": { "kind": "type", "generics": ["G"], "type": { "record": { "a": { "ref": "G" }, "b": { "ref": "Isue" }, "c": { "refine": { "ref": "Int" }, "where": { "op": "binary", "bop": ">", "left": { "op": "var", "name": "c" }, "right": { "op": "var", "name": "valu" } } } } } },
+      "U": { "kind": "type", "type": { "union": [{ "tag": "X", "fields": [{ "name": "f", "type": { "ref": "Verified", "args": [{ "ref": "Text" }, { "ref": "Cc" }] } }] }] } },
+      "E": { "kind": "effect", "params": [], "returns": { "ref": "Bool" }, "compensation": "undoo" },
+      "A": { "kind": "agent", "caps": [{ "op": "var", "name": "N" }, { "op": "var", "name": "M" }], "skills": { "s": { "params": [{ "name": "q", "type": { "ref": "Issue" } }], "returns": { "ref": "Text" }, "effects": [] } } },
+      "Env": {
+        "kind": "environment",
+        "class": "internal",
+        "reads": { "r/x": { "from": "Comp", "query": { "logs": { "op": "binary", "bop": "==", "left": { "op": "var", "name": "title" }, "right": { "op": "var", "name": "k" } } }, "params": [{ "name": "k", "type": { "ref": "Text" } }], "returns": { "ref": "Issue" }, "max_rows": 5 } },
+        "authorize": { "git.merge": { "by": "policy" }, "deplo": { "by": "policy" } }
+      },
+      "W": {
+        "kind": "workflow",
+        "params": [{ "name": "i", "type": { "ref": "acme.tools.Thing" } }],
+        "returns": { "ref": "Bool" },
+        "caps": [{ "op": "var", "name": "M" }],
+        "body": [
+          { "op": "let", "name": "y", "value": { "op": "delegate", "agent": "A", "skill": "t", "args": [{ "value": { "op": "var", "name": "i" } }], "caps": [{ "op": "call", "callee": { "op": "field", "of": { "op": "var", "name": "Mm" }, "name": "narrow" }, "args": [] }] } },
+          { "op": "on_error", "pattern": { "p": "tag", "tag": "E", "args": [{ "p": "bind", "name": "err" }] }, "then": { "op": "call", "callee": { "op": "var", "name": "restart" }, "args": [{ "name": "max", "value": { "op": "var", "name": "two" } }] } },
+          { "op": "expr", "value": { "op": "call", "callee": { "op": "field", "of": { "op": "var", "name": "fs" }, "name": "write" }, "args": [{ "value": { "op": "var", "name": "anything" } }] } },
+          { "op": "expr", "value": { "op": "effect", "name": "E", "args": [], "compensate": "W" } },
+          { "op": "expr", "value": { "op": "record", "type": "Isue", "fields": { "z": { "op": "var", "name": "yy" } } } },
+          { "op": "return", "value": { "op": "var", "name": "err" } }
+        ]
+      }
+    },
+    "tests": {
+      "10": { "body": [{ "op": "expr", "value": { "op": "var", "name": "W" } }] },
+      "t x": { "handlers": { "h": { "op": "var", "name": "free" } }, "body": [{ "op": "expr", "value": { "op": "var", "name": "y" } }] }
+    }
+  }
+}

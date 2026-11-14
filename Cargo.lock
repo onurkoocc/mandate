@@ -71,6 +71,7 @@ name = "mandate-check"
 version = "0.1.0"
 dependencies = [
  "mandate-ir",
+ "mandate-syntax",
  "mandate-testkit",
 ]
 
@@ -94,6 +95,7 @@ dependencies = [
 name = "mandate-testkit"
 version = "0.1.0"
 dependencies = [
+ "mandate-check",
  "mandate-ir",
  "mandate-syntax",
  "sha2",

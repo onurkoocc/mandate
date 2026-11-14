@@ -1,0 +1,1145 @@
+{
+  "references": [
+    "Issue",
+    "Verified",
+    "Bool",
+    "M",
+    "A",
+    "x",
+    "deploy",
+    "undo",
+    "C"
+  ],
+  "link": {
+    "defs": [
+      "toString",
+      "Q",
+      "A",
+      "Z",
+      "constructor"
+    ],
+    "origin": [
+      [
+        "A",
+        "m"
+      ],
+      [
+        "Z",
+        "m"
+      ],
+      [
+        "constructor",
+        "m"
+      ]
+    ],
+    "diagnostics": [
+      {
+        "code": "MDT-E0121",
+        "severity": "error",
+        "message": "'toString' from m collides with module function toString() { [native code] }.",
+        "at": {
+          "path": "/uses/0"
+        },
+        "docs": "mandate explain MDT-E0121",
+        "facts": {
+          "name": "toString",
+          "module": "m"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "severity": "error",
+        "message": "Module m has no definition 'Missing'.",
+        "at": {
+          "path": "/uses/0/names"
+        },
+        "docs": "mandate explain MDT-E0120",
+        "facts": {
+          "name": "Missing",
+          "module": "m",
+          "expected": "definition"
+        }
+      },
+      {
+        "code": "MDT-E0121",
+        "severity": "error",
+        "message": "'Q' from m collides with a definition of this module.",
+        "at": {
+          "path": "/uses/1"
+        },
+        "docs": "mandate explain MDT-E0121",
+        "facts": {
+          "name": "Q",
+          "module": "m"
+        }
+      }
+    ]
+  },
+  "role_sites": [
+    {
+      "def": "B",
+      "role": "Q2",
+      "path": "/defs/B/owner",
+      "where": "a component's owner",
+      "distinct": false,
+      "value": "X"
+    },
+    {
+      "def": "C",
+      "path": "/defs/C/accept/a/by/call/args/0/value",
+      "where": "human.approve",
+      "distinct": false,
+      "value": {
+        "op": "var",
+        "name": "X"
+      }
+    },
+    {
+      "def": "C",
+      "role": "owner",
+      "path": "/defs/C/accept/z/by/all/0/call/args/0/value",
+      "where": "human.approve",
+      "distinct": false,
+      "value": {
+        "op": "var",
+        "name": "X"
+      }
+    },
+    {
+      "def": "C",
+      "role": "reviewer",
+      "path": "/defs/C/accept/z/by/all/0/call/args/1/value",
+      "where": "human.approve",
+      "distinct": true,
+      "value": {
+        "op": "text",
+        "value": "X"
+      }
+    },
+    {
+      "def": "C",
+      "role": "reviewer",
+      "path": "/defs/C/accept/z/by/all/1/call/args/0/value",
+      "where": "human.approve",
+      "distinct": false,
+      "value": {
+        "op": "text",
+        "value": "X"
+      }
+    },
+    {
+      "def": "C",
+      "role": "owner",
+      "path": "/defs/C/accept/z/by/all/1/call/args/1/value",
+      "where": "human.approve",
+      "distinct": true,
+      "value": {
+        "op": "var",
+        "name": "X"
+      }
+    },
+    {
+      "def": "F",
+      "role": "toString",
+      "path": "/defs/F/body/0/value/args/0/value",
+      "where": "human.approve",
+      "distinct": false,
+      "value": {
+        "op": "var",
+        "name": "X"
+      }
+    },
+    {
+      "def": "F",
+      "role": "nope",
+      "path": "/defs/F/body/0/value/args/1/value",
+      "where": "human.approve",
+      "distinct": true,
+      "value": {
+        "op": "var",
+        "name": "X"
+      }
+    },
+    {
+      "def": "F",
+      "role": "ownr",
+      "path": "/defs/F/body/1/value/args/0/value",
+      "where": "an escalation",
+      "distinct": false,
+      "value": {
+        "op": "var",
+        "name": "X"
+      }
+    },
+    {
+      "def": "F",
+      "role": "Q2",
+      "path": "/defs/F/body/2/value/supervise/args/1/value",
+      "where": "a supervision's escalation",
+      "distinct": false,
+      "value": {
+        "op": "text",
+        "value": "X"
+      }
+    },
+    {
+      "def": "b",
+      "role": "reviewr",
+      "path": "/defs/b/owner",
+      "where": "a component's owner",
+      "distinct": false,
+      "value": "X"
+    }
+  ],
+  "roles_named": [
+    "Q2",
+    "nope",
+    "owner",
+    "ownr",
+    "reviewer",
+    "reviewr",
+    "toString"
+  ],
+  "role_checks": [
+    {
+      "code": "MDT-E1501",
+      "severity": "error",
+      "message": "A component's owner names the role 'Q2', but 'Q2' is a type, not a role. Define it: role Q2 \"\u2026\" (spec/envelope.md).",
+      "at": {
+        "path": "/defs/B/owner"
+      },
+      "docs": "mandate explain MDT-E1501",
+      "facts": {
+        "role": "Q2",
+        "where": "a component's owner",
+        "roles": [
+          "owner",
+          "reviewer",
+          "toString"
+        ]
+      }
+    },
+    {
+      "code": "MDT-E1501",
+      "severity": "error",
+      "message": "human.approve names a role: write the name of a role definition (spec/envelope.md).",
+      "at": {
+        "path": "/defs/C/accept/a/by/call/args/0/value"
+      },
+      "docs": "mandate explain MDT-E1501",
+      "facts": {
+        "where": "human.approve",
+        "roles": [
+          "owner",
+          "reviewer",
+          "toString"
+        ]
+      }
+    },
+    {
+      "code": "MDT-E1501",
+      "severity": "error",
+      "message": "An escalation names the role 'ownr', but 'ownr' is not a role this module defines or imports. Define it: role ownr \"\u2026\" (spec/envelope.md).",
+      "at": {
+        "path": "/defs/F/body/1/value/args/0/value"
+      },
+      "docs": "mandate explain MDT-E1501",
+      "facts": {
+        "role": "ownr",
+        "where": "an escalation",
+        "roles": [
+          "owner",
+          "reviewer",
+          "toString"
+        ],
+        "did_you_mean": "owner"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'owner'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/F/body/1/value/args/0/value",
+              "value": {
+                "op": "var",
+                "name": "owner"
+              }
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E1501",
+      "severity": "error",
+      "message": "A supervision's escalation names the role 'Q2', but 'Q2' is a type, not a role. Define it: role Q2 \"\u2026\" (spec/envelope.md).",
+      "at": {
+        "path": "/defs/F/body/2/value/supervise/args/1/value"
+      },
+      "docs": "mandate explain MDT-E1501",
+      "facts": {
+        "role": "Q2",
+        "where": "a supervision's escalation",
+        "roles": [
+          "owner",
+          "reviewer",
+          "toString"
+        ]
+      }
+    },
+    {
+      "code": "MDT-E1501",
+      "severity": "error",
+      "message": "A component's owner names the role 'reviewr', but 'reviewr' is not a role this module defines or imports. Define it: role reviewr \"\u2026\" (spec/envelope.md).",
+      "at": {
+        "path": "/defs/b/owner"
+      },
+      "docs": "mandate explain MDT-E1501",
+      "facts": {
+        "role": "reviewr",
+        "where": "a component's owner",
+        "roles": [
+          "owner",
+          "reviewer",
+          "toString"
+        ],
+        "did_you_mean": "reviewer"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'reviewer'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/b/owner",
+              "value": "reviewer"
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E1503",
+      "severity": "error",
+      "message": "distinct_from names 'reviewer', but no approval earlier in criterion C.z asks that role (spec/envelope.md \"distinct_from\").",
+      "at": {
+        "path": "/defs/C/accept/z/by/all/0/call/args/1/value"
+      },
+      "docs": "mandate explain MDT-E1503",
+      "facts": {
+        "distinct_from": "reviewer",
+        "approved_earlier": []
+      }
+    },
+    {
+      "code": "MDT-E1503",
+      "severity": "error",
+      "message": "distinct_from compares two approvals of one contract criterion; this approval is not in one (spec/envelope.md \"distinct_from\").",
+      "at": {
+        "path": "/defs/F/body/0/value/args/1/value"
+      },
+      "docs": "mandate explain MDT-E1503",
+      "facts": {
+        "distinct_from": "nope",
+        "approved_earlier": []
+      }
+    }
+  ],
+  "role_checks_opaque": [
+    {
+      "code": "MDT-E1501",
+      "severity": "error",
+      "message": "A component's owner names the role 'Q2', but 'Q2' is a type, not a role. Define it: role Q2 \"\u2026\" (spec/envelope.md).",
+      "at": {
+        "path": "/defs/B/owner"
+      },
+      "docs": "mandate explain MDT-E1501",
+      "facts": {
+        "role": "Q2",
+        "where": "a component's owner",
+        "roles": [
+          "owner",
+          "reviewer"
+        ]
+      }
+    },
+    {
+      "code": "MDT-E1501",
+      "severity": "error",
+      "message": "human.approve names a role: write the name of a role definition (spec/envelope.md).",
+      "at": {
+        "path": "/defs/C/accept/a/by/call/args/0/value"
+      },
+      "docs": "mandate explain MDT-E1501",
+      "facts": {
+        "where": "human.approve",
+        "roles": [
+          "owner",
+          "reviewer"
+        ]
+      }
+    },
+    {
+      "code": "MDT-E1501",
+      "severity": "error",
+      "message": "An escalation names the role 'ownr', but 'ownr' is not a role this module defines or imports. Define it: role ownr \"\u2026\" (spec/envelope.md).",
+      "at": {
+        "path": "/defs/F/body/1/value/args/0/value"
+      },
+      "docs": "mandate explain MDT-E1501",
+      "facts": {
+        "role": "ownr",
+        "where": "an escalation",
+        "roles": [
+          "owner",
+          "reviewer"
+        ],
+        "did_you_mean": "owner"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'owner'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/F/body/1/value/args/0/value",
+              "value": {
+                "op": "var",
+                "name": "owner"
+              }
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E1501",
+      "severity": "error",
+      "message": "A supervision's escalation names the role 'Q2', but 'Q2' is a type, not a role. Define it: role Q2 \"\u2026\" (spec/envelope.md).",
+      "at": {
+        "path": "/defs/F/body/2/value/supervise/args/1/value"
+      },
+      "docs": "mandate explain MDT-E1501",
+      "facts": {
+        "role": "Q2",
+        "where": "a supervision's escalation",
+        "roles": [
+          "owner",
+          "reviewer"
+        ]
+      }
+    },
+    {
+      "code": "MDT-E1501",
+      "severity": "error",
+      "message": "A component's owner names the role 'reviewr', but 'reviewr' is not a role this module defines or imports. Define it: role reviewr \"\u2026\" (spec/envelope.md).",
+      "at": {
+        "path": "/defs/b/owner"
+      },
+      "docs": "mandate explain MDT-E1501",
+      "facts": {
+        "role": "reviewr",
+        "where": "a component's owner",
+        "roles": [
+          "owner",
+          "reviewer"
+        ],
+        "did_you_mean": "reviewer"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'reviewer'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/b/owner",
+              "value": "reviewer"
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E1503",
+      "severity": "error",
+      "message": "distinct_from names 'reviewer', but no approval earlier in criterion C.z asks that role (spec/envelope.md \"distinct_from\").",
+      "at": {
+        "path": "/defs/C/accept/z/by/all/0/call/args/1/value"
+      },
+      "docs": "mandate explain MDT-E1503",
+      "facts": {
+        "distinct_from": "reviewer",
+        "approved_earlier": []
+      }
+    },
+    {
+      "code": "MDT-E1503",
+      "severity": "error",
+      "message": "distinct_from compares two approvals of one contract criterion; this approval is not in one (spec/envelope.md \"distinct_from\").",
+      "at": {
+        "path": "/defs/F/body/0/value/args/1/value"
+      },
+      "docs": "mandate explain MDT-E1503",
+      "facts": {
+        "distinct_from": "nope",
+        "approved_earlier": []
+      }
+    }
+  ],
+  "resolve": [
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown type 'Isue'.",
+      "at": {
+        "path": "/defs/T/type/record/b/ref"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "Isue",
+        "expected": "type",
+        "did_you_mean": "Issue"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'Issue'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/T/type/record/b/ref",
+              "value": "Issue"
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown name 'valu'.",
+      "at": {
+        "path": "/defs/T/type/record/c/where/right"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "valu",
+        "expected": "value",
+        "did_you_mean": "eval"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'eval'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/T/type/record/c/where/right",
+              "value": {
+                "op": "var",
+                "name": "eval"
+              }
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown contract 'Cc' in Verified<\u2026>.",
+      "at": {
+        "path": "/defs/U/type/union/0/fields/0/type/args/1/ref"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "Cc",
+        "expected": "contract"
+      }
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown effect 'undoo'.",
+      "at": {
+        "path": "/defs/E/compensation"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "undoo",
+        "expected": "effect"
+      }
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown capability 'N'.",
+      "at": {
+        "path": "/defs/A/caps/0"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "N",
+        "expected": "capability",
+        "did_you_mean": "M"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'M'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/A/caps/0",
+              "value": {
+                "op": "var",
+                "name": "M"
+              }
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown component 'Comp'.",
+      "at": {
+        "path": "/defs/Env/reads/r~1x/from"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "Comp",
+        "expected": "component"
+      }
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown name 'title'.",
+      "at": {
+        "path": "/defs/Env/reads/r~1x/query/logs/left"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "title",
+        "expected": "value"
+      }
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown effect 'deplo'.",
+      "at": {
+        "path": "/defs/Env/authorize/deplo"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "deplo",
+        "expected": "effect",
+        "did_you_mean": "deploy"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'deploy'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/Env/authorize/deplo",
+              "value": "deploy"
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Agent 'A' has no skill 't'.",
+      "at": {
+        "path": "/defs/W/body/0/value/skill"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "t",
+        "expected": "skill",
+        "did_you_mean": "s"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 's'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/W/body/0/value/skill",
+              "value": "s"
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown capability 'Mm'.",
+      "at": {
+        "path": "/defs/W/body/0/value/caps/0/callee/of"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "Mm",
+        "expected": "capability",
+        "did_you_mean": "M"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'M'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/W/body/0/value/caps/0/callee/of",
+              "value": {
+                "op": "var",
+                "name": "M"
+              }
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "'W' is not an effect.",
+      "at": {
+        "path": "/defs/W/body/3/value/compensate"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "W",
+        "expected": "effect",
+        "did_you_mean": "E"
+      }
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown type 'Isue'.",
+      "at": {
+        "path": "/defs/W/body/4/value/type"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "Isue",
+        "expected": "type",
+        "did_you_mean": "Issue"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'Issue'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/W/body/4/value/type",
+              "value": "Issue"
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown name 'yy'.",
+      "at": {
+        "path": "/defs/W/body/4/value/fields/z"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "yy",
+        "expected": "value",
+        "did_you_mean": "y"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'y'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/W/body/4/value/fields/z",
+              "value": {
+                "op": "var",
+                "name": "y"
+              }
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown name 'err'.",
+      "at": {
+        "path": "/defs/W/body/5/value"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "err",
+        "expected": "value"
+      }
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown name 'y'.",
+      "at": {
+        "path": "/tests/t x/body/0/value"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "y",
+        "expected": "value"
+      }
+    }
+  ],
+  "resolve_linked": [
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown type 'Isue'.",
+      "at": {
+        "path": "/defs/T/type/record/b/ref"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "Isue",
+        "expected": "type",
+        "did_you_mean": "Issue"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'Issue'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/T/type/record/b/ref",
+              "value": "Issue"
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown name 'valu'.",
+      "at": {
+        "path": "/defs/T/type/record/c/where/right"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "valu",
+        "expected": "value",
+        "did_you_mean": "eval"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'eval'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/T/type/record/c/where/right",
+              "value": {
+                "op": "var",
+                "name": "eval"
+              }
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown contract 'Cc' in Verified<\u2026>.",
+      "at": {
+        "path": "/defs/U/type/union/0/fields/0/type/args/1/ref"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "Cc",
+        "expected": "contract"
+      }
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown effect 'undoo'.",
+      "at": {
+        "path": "/defs/E/compensation"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "undoo",
+        "expected": "effect"
+      }
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown capability 'N'.",
+      "at": {
+        "path": "/defs/A/caps/0"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "N",
+        "expected": "capability",
+        "did_you_mean": "M"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'M'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/A/caps/0",
+              "value": {
+                "op": "var",
+                "name": "M"
+              }
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown component 'Comp'.",
+      "at": {
+        "path": "/defs/Env/reads/r~1x/from"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "Comp",
+        "expected": "component"
+      }
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown effect 'deplo'.",
+      "at": {
+        "path": "/defs/Env/authorize/deplo"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "deplo",
+        "expected": "effect",
+        "did_you_mean": "deploy"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'deploy'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/Env/authorize/deplo",
+              "value": "deploy"
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Agent 'A' has no skill 't'.",
+      "at": {
+        "path": "/defs/W/body/0/value/skill"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "t",
+        "expected": "skill",
+        "did_you_mean": "s"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 's'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/W/body/0/value/skill",
+              "value": "s"
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown capability 'Mm'.",
+      "at": {
+        "path": "/defs/W/body/0/value/caps/0/callee/of"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "Mm",
+        "expected": "capability",
+        "did_you_mean": "M"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'M'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/W/body/0/value/caps/0/callee/of",
+              "value": {
+                "op": "var",
+                "name": "M"
+              }
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "'W' is not an effect.",
+      "at": {
+        "path": "/defs/W/body/3/value/compensate"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "W",
+        "expected": "effect",
+        "did_you_mean": "E"
+      }
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown type 'Isue'.",
+      "at": {
+        "path": "/defs/W/body/4/value/type"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "Isue",
+        "expected": "type",
+        "did_you_mean": "Issue"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'Issue'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/W/body/4/value/type",
+              "value": "Issue"
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown name 'yy'.",
+      "at": {
+        "path": "/defs/W/body/4/value/fields/z"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "yy",
+        "expected": "value",
+        "did_you_mean": "y"
+      },
+      "repair": [
+        {
+          "id": "r1",
+          "summary": "Use 'y'",
+          "patch": [
+            {
+              "op": "replace",
+              "path": "/defs/W/body/4/value/fields/z",
+              "value": {
+                "op": "var",
+                "name": "y"
+              }
+            }
+          ],
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown name 'err'.",
+      "at": {
+        "path": "/defs/W/body/5/value"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "err",
+        "expected": "value"
+      }
+    },
+    {
+      "code": "MDT-E0120",
+      "severity": "error",
+      "message": "Unknown name 'y'.",
+      "at": {
+        "path": "/tests/t x/body/0/value"
+      },
+      "docs": "mandate explain MDT-E0120",
+      "facts": {
+        "name": "y",
+        "expected": "value"
+      }
+    }
+  ]
+}
