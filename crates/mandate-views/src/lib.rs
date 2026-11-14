@@ -12,8 +12,25 @@
 //!   [`diff_blocks`]), `compiler/src/views/views.ts`. The analyses that the
 //!   views show are in `mandate-check` (`mandate_check::view_shared` for what
 //!   every view stands on, `mandate_check::diff` for the comparison of two
-//!   programs); the program views (architecture, authority, cost, system and
-//!   the envelope card) come in a later slice, built on those.
+//!   programs).
+//! - The views of one program, `compiler/src/views/views.ts`, each with the
+//!   `to_js` that builds the object `mandate view --format json` writes and
+//!   the blocks of its part of the document: `architecture` (a graph of each
+//!   workflow, [`mermaid`]), `authority` ([`late_kinds`]), `cost`
+//!   ([`delegate_budget`], [`Sum`]), `system` ([`has_system`]), and
+//!   `program_doc`, which puts them in one document. [`shown`] holds the
+//!   small texts they are written in ([`show`], [`list`], [`mermaid_text`],
+//!   [`type_text`]). The envelope card is not ported: it stays in TypeScript
+//!   for 0.5.
+//!
+//! One part of the cost view waits for the static checks: the delegations a
+//! workflow with an envelope may start are counted by `check/cost.ts`, so
+//! `cost` and `program_doc` refuse such a program with a [`ViewError`]
+//! instead of printing a number that is not the TypeScript's (see
+//! `static_cost_agents` in `cost.rs`).
+//!
+//! Programs are the IR as [`mandate_ir::Value`], as in `mandate-check`; the
+//! views walk them in the order of their members, as JavaScript does.
 //!
 //! Like the other library crates, it reads no file, environment variable or
 //! clock and starts no process, and it builds for `wasm32-wasip1`. The gates
@@ -21,8 +38,28 @@
 
 #![forbid(unsafe_code)]
 
+pub mod architecture;
+pub mod authority;
+pub mod cost;
 pub mod diff;
 pub mod doc;
+pub mod program_doc;
+pub mod shown;
+pub mod system;
 
+pub use architecture::{
+    ArchitectureView, WorkflowArchitecture, architecture, architecture_blocks, mermaid,
+};
+pub use authority::{AuthorityRow, AuthorityView, authority, authority_blocks, late_kinds};
+pub use cost::{
+    BudgetFrom, CostRow, CostView, DelegateBudget, Sum, ViewError, WorkflowCost, cost, cost_blocks,
+    delegate_budget,
+};
 pub use diff::{diff_blocks, diff_doc};
 pub use doc::{Block, Cell, Doc, cell_text, html_escape, md_escape, to_html, to_markdown};
+pub use program_doc::program_doc;
+pub use shown::{list, mermaid_text, show, show_command, type_text};
+pub use system::{
+    SystemAuthorize, SystemComponent, SystemEnvironment, SystemInterface, SystemRead, SystemView,
+    has_system, system, system_blocks,
+};

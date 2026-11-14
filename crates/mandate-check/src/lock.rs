@@ -337,7 +337,7 @@ pub fn packaged_lock(lock: Option<&Value>) -> Map {
 // The numbers of a lock that was not validated
 
 /// `ToNumber(v)`: what `*`, `<` and `Math.max` read a value as.
-fn to_number(v: &JsValue) -> f64 {
+pub(crate) fn to_number(v: &JsValue) -> f64 {
     match v {
         JsValue::Undefined | JsValue::Object(_) => f64::NAN,
         JsValue::Null => 0.0,
