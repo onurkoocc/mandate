@@ -986,7 +986,7 @@ impl<'a> Resolver<'a> {
                 self.sub(e.right(), path, "right", ctx);
             }
             ExprOp::Range => {
-                self.sub(e.from_expr(), path, "from", ctx);
+                self.sub(e.from(), path, "from", ctx);
                 self.sub(e.to(), path, "to", ctx);
             }
             ExprOp::Record => {
@@ -1013,7 +1013,7 @@ impl<'a> Resolver<'a> {
                 if let Some(t) = e.type_expr() {
                     self.type_(t, &format!("{path}/type"), &[], ctx, None);
                 }
-                self.sub(e.from_expr(), path, "from", ctx);
+                self.sub(e.from(), path, "from", ctx);
                 self.sub(e.using(), path, "using", ctx);
             }
             ExprOp::Delegate | ExprOp::Spawn | ExprOp::Plan => {

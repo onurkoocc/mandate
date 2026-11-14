@@ -134,7 +134,7 @@ impl<'a> Expr<'a> {
 
     /// `from`: of a `range`, and what an `infer` reads.
     #[must_use]
-    pub fn from_expr(self) -> Option<Expr<'a>> {
+    pub fn from(self) -> Option<Expr<'a>> {
         self.expr("from")
     }
 
