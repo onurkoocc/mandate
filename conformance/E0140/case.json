@@ -1,0 +1,32 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0140",
+  "kind": "compile",
+  "title": "A lock of format 0.5 that carries libraries is refused: libraries is a field of format 0.6, and the schema of an older lock does not have it.",
+  "spec": [
+    "spec/library.md#lock-06",
+    "spec/lock.md"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/minimal.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0140",
+        "path": "",
+        "facts": {
+          "keyword": "additionalProperties",
+          "params": {
+            "additionalProperty": "libraries"
+          }
+        }
+      }
+    ]
+  }
+}

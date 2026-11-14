@@ -12,7 +12,7 @@ import { check, load, type CheckResult } from "../src/check.js";
 import { CODES } from "../src/codes.js";
 import { isWellFormed, parseStrictJson } from "../src/json/strict-json.js";
 import { kindOf } from "../src/check.js";
-import { caseDirs, compareResult, readCase, runCompileCase, type Case, type Observed } from "./cases-runner.js";
+import { caseDirs, compareResult, readCase, runCompileCase, RUST_ONLY_CASES, rustOnly, rustOnlyCaseDirs, type Case, type Observed } from "./cases-runner.js";
 import { digests, json, lockOf, moduleFilesOf, modulesOf, outputs, PROGRAMS } from "./golden-outputs.js";
 import { lockFileOf, readRepo, repoRoot } from "./helpers.js";
 
@@ -97,12 +97,22 @@ function resultOf(door: Door, r: ReturnType<typeof runCompileCase>): { stored: u
   return { stored: value, observed };
 }
 
-function conformance(): { vectors: ConformanceVector[]; observed: Map<string, { c: Case; observed: Observed }> } {
+/**
+ * The stored results of the compile cases this compiler runs. A case of a language only the Rust compiler reads (0.6)
+ * has none here: its expectation is written by hand, and the Rust writes its vector (vectors/diagnostics-0.6/). Those
+ * are counted in `skipped`.
+ */
+function conformance(): { vectors: ConformanceVector[]; observed: Map<string, { c: Case; observed: Observed }>; skipped: string[] } {
   const vectors: ConformanceVector[] = [];
   const observedBy = new Map<string, { c: Case; observed: Observed }>();
+  const skipped: string[] = [];
   for (const name of caseDirs()) {
     const c = readCase(name);
     if (c.kind !== "compile") continue;
+    if (rustOnly(c)) {
+      skipped.push(name);
+      continue;
+    }
     const door = doorOf(c);
     const { stored, observed } = resultOf(door, runCompileCase(name, c));
     const v: ConformanceVector = {
@@ -119,7 +129,7 @@ function conformance(): { vectors: ConformanceVector[]; observed: Map<string, { 
     vectors.push(v);
     observedBy.set(c.id, { c, observed });
   }
-  return { vectors, observed: observedBy };
+  return { vectors, observed: observedBy, skipped };
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -228,7 +238,7 @@ const committed = (): string[] => (existsSync(repoRoot + DIR) ? readdirSync(repo
 const textOf = (value: unknown): string => json(value);
 
 describe("diagnostic vectors for other implementations", () => {
-  const { vectors: cv, observed } = conformance();
+  const { vectors: cv, observed, skipped } = conformance();
   const gv = golden();
   const now = files(cv, gv);
 
@@ -278,7 +288,7 @@ describe("diagnostic vectors for other implementations", () => {
 
   describe("conformance cases", () => {
     it("holds one vector for every compile case, in the order of the names", () => {
-      const compile = caseDirs().filter((n) => readCase(n).kind === "compile");
+      const compile = caseDirs().filter((n) => readCase(n).kind === "compile" && !rustOnly(readCase(n)));
       expect(cv.length).toBe(125);
       expect(cv.map((v) => v.name)).toEqual(compile);
       expect(new Set(cv.map((v) => v.name)).size).toBe(cv.length);
@@ -294,6 +304,11 @@ describe("diagnostic vectors for other implementations", () => {
         if (k !== "compile") other[k] = (other[k] ?? 0) + 1;
       }
       expect(other).toEqual({ journal: 16 });
+    });
+
+    it("leaves out the cases of a language only the Rust compiler reads, and exactly as many as RUST_ONLY_CASES says", () => {
+      expect(skipped).toEqual(rustOnlyCaseDirs());
+      expect(skipped.length).toBe(RUST_ONLY_CASES);
     });
 
     it("gives, for every case, a result that satisfies the case's own expectation under the rule of conformance/README.md", () => {

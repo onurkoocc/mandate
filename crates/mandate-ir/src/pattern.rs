@@ -1,5 +1,6 @@
-//! The regular expressions of `spec/ir.schema.json` and
-//! `spec/lock.schema.json`, matched by hand.
+//! The regular expressions of `spec/ir.schema.json`, `spec/lock.schema.json`
+//! and the schemas of language 0.6 (`spec/ir-0.6.schema.json`,
+//! `spec/lock-0.6.schema.json`), matched by hand.
 //!
 //! Ajv compiles a `pattern` as `new RegExp(pattern, "u")` and tests it with
 //! `test`, which searches the whole string: a pattern holds only where it is
@@ -41,10 +42,13 @@ pub(crate) enum Pattern {
     Date,
     /// `^sha256:[0-9a-f]{64}$`, a digest.
     Sha256,
+    /// `^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$`, a
+    /// library's version in a 0.6 lock: `MAJOR.MINOR.PATCH`.
+    LibraryVersion,
 }
 
 /// Every pattern with its source text, as the schemas write it.
-const SOURCES: [(Pattern, &str); 12] = [
+const SOURCES: [(Pattern, &str); 13] = [
     (
         Pattern::ProgramVersion,
         r"^[0-9]+(\.[0-9]+)*([-+][0-9A-Za-z.]+)?$",
@@ -66,6 +70,10 @@ const SOURCES: [(Pattern, &str); 12] = [
     (Pattern::Tier, r"^[a-z][a-z0-9_]*$"),
     (Pattern::Date, r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"),
     (Pattern::Sha256, r"^sha256:[0-9a-f]{64}$"),
+    (
+        Pattern::LibraryVersion,
+        r"^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$",
+    ),
 ];
 
 /// `[A-Za-z_]`.
@@ -89,7 +97,8 @@ fn is_digits(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// `^(0|[1-9][0-9]{0,8})$`: one component of a host version.
+/// `^(0|[1-9][0-9]{0,8})$`: one component of a host version or of a
+/// library's version.
 fn is_host_component(s: &str) -> bool {
     s == "0" || (is_digits(s) && !s.starts_with('0') && s.len() <= 9)
 }
@@ -197,6 +206,16 @@ impl Pattern {
             Pattern::Sha256 => s.strip_prefix("sha256:").is_some_and(|hex| {
                 hex.len() == 64 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
             }),
+            // ^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ :
+            // exactly three components; a component cannot hold a dot.
+            Pattern::LibraryVersion => {
+                let mut count: usize = 0;
+                let ok = s.split('.').all(|part| {
+                    count = count.saturating_add(1);
+                    is_host_component(part)
+                });
+                ok && count == 3
+            }
         }
     }
 }
@@ -441,6 +460,33 @@ mod tests {
                 ("20261009", false),
                 ("2026-10-091", false),
                 ("2026-10-0\u{1F600}", false),
+                ("", false),
+            ],
+        );
+    }
+
+    /// No Ajv run holds this one (no TypeScript reads a 0.6 lock): each
+    /// expectation is what `new RegExp(source, "u").test(s)` gives in Node.
+    #[test]
+    fn library_version() {
+        check(
+            Pattern::LibraryVersion,
+            &[
+                ("1.0.0", true),
+                ("0.0.0", true),
+                ("2.3.10", true),
+                ("999999999.0.1", true),
+                ("1.0", false),
+                ("1", false),
+                ("1.0.0.0", false),
+                ("01.0.0", false),
+                ("1.00.0", false),
+                ("1.0.0-rc.1", false),
+                ("1.0.0+build", false),
+                ("1234567890.0.0", false),
+                ("1..0", false),
+                ("1.0.\u{1F600}", false),
+                ("1.0.0\n", false),
                 ("", false),
             ],
         );

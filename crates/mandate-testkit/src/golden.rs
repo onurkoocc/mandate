@@ -43,7 +43,18 @@ impl Golden {
     ///
     /// When it cannot be read or does not have the golden file's shape.
     pub fn load() -> Result<Golden, String> {
-        Golden::from_value(&crate::read_json(GOLDEN)?).map_err(|e| format!("{GOLDEN}: {e}"))
+        Golden::read(GOLDEN)
+    }
+
+    /// Reads a golden file of this shape: the TypeScript's, [`GOLDEN`], or
+    /// the one of the 0.6 programs the Rust writes,
+    /// [`crate::rust_vectors::GOLDEN_0_6`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Golden::load`].
+    pub fn read(rel: &str) -> Result<Golden, String> {
+        Golden::from_value(&crate::read_json(rel)?).map_err(|e| format!("{rel}: {e}"))
     }
 
     /// The golden digests in `value`, the golden file read as JSON.

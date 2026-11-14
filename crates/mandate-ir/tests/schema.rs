@@ -18,7 +18,7 @@ use mandate_ir::{
     Diagnostic, JsValue, Schema, SchemaError, SchemaOptions, Value, ir_schema_errors, load_json,
     lock_schema_errors, parse, stringify_pretty, validate_lock,
 };
-use mandate_testkit::{compare_text, read_json, run_gate};
+use mandate_testkit::{compare_text, read_json, run_gate, rust_only};
 
 /// The cases of a vector file in `vectors/schema/` that may come in parts
 /// (`<stem>-1.json`, `<stem>-2.json`, …).
@@ -117,21 +117,31 @@ fn diagnostics_text(diagnostics: &[Diagnostic]) -> String {
 }
 
 /// `load(input, "json").diagnostics` of every invalid IR, whole: the schema
-/// diagnostics and those of the version gates, in order.
+/// diagnostics and those of the version gates, in order. An E0103 is
+/// compared without the versions only the Rust reads
+/// (`mandate_testkit::rust_only`).
 #[test]
 fn invalid_ir_diagnostics() {
     let items = named("ir", parted_cases("ir-invalid"));
+    let mut changed: usize = 0;
     let gate = run_gate("invalid IR diagnostics", &[], items, |case| {
-        let loaded = load_json(str_of(case, "input"));
+        let mut loaded = load_json(str_of(case, "input"));
         if loaded.program.is_some() {
             return Err("the program was accepted".to_owned());
+        }
+        if rust_only::diagnostics_as_typescript(&mut loaded.diagnostics) {
+            changed += 1;
         }
         compare_text(
             &stored(case, "diagnostics"),
             &diagnostics_text(&loaded.diagnostics),
         )
     });
+    let count = rust_only::check_count("invalid IR diagnostics", changed);
     if let Err(report) = gate {
+        panic!("{report}");
+    }
+    if let Err(report) = count {
         panic!("{report}");
     }
 }

@@ -58,6 +58,19 @@
 //!   is `compiler/src/codes.ts`, held to `vectors/codes.json`; the codes added
 //!   from 0.6 on are in this table alone.
 //!
+//! Language 0.6 (spec/library.md) is read by this compiler alone; the
+//! TypeScript one stays at 0.5. [`Language::V0_6`] is its tag, and a 0.6
+//! document is read by schemas of its own: a program by
+//! `spec/ir-0.6.schema.json` ([`ir_schema_0_6`], [`IR_0_6_SCHEMA_TEXT`]), a
+//! lock of format `mandate/lock/0.6` ([`LOCK_FORMAT_0_6`]) by
+//! `spec/lock-0.6.schema.json` ([`lock_schema_0_6`],
+//! [`LOCK_0_6_SCHEMA_TEXT`]), each chosen by the document's own version
+//! ([`ir_schema_of`], [`lock_schema_of`]). A document of an earlier version
+//! is read by the schema it always had, so nothing it gives changes, except
+//! that the list of versions E0103 names has 0.6 in it. Libraries are hashed
+//! in a domain of their own ([`HashDomain::Library`], under
+//! [`LIBRARY_HASH_VERSION`]).
+//!
 //! And the ECMAScript behaviour the compiler's output depends on, so that no
 //! phase reinvents it: objects that keep their members in ECMAScript order
 //! ([`Map`], [`JsObject`]); the output value [`JsValue`] with `undefined`, and
@@ -131,20 +144,22 @@ pub use diag::{
 };
 pub use expr::{Arg, ChangesetMember, Expr, OnUnmet, SwitchCase};
 pub use hash::{
-    HashDomain, ProgramHashes, RUNTIME_HASH_VERSION, domain_hash, hash_program, package_hash,
+    HashDomain, LIBRARY_HASH_VERSION, ProgramHashes, RUNTIME_HASH_VERSION, domain_hash,
+    hash_program, package_hash,
 };
 pub use jcs::{canonicalize, compare_utf16, write_json_string};
 pub use js_value::{JsObject, JsValue, stringify, stringify_pretty};
 pub use lock::{
-    LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, lock_at_least, lock_schema_diagnostics,
-    validate_lock,
+    LOCK_FIELDS_0_5, LOCK_FIELDS_0_6, LOCK_FORMAT, LOCK_FORMAT_0_6, LOCK_FORMATS, lock_at_least,
+    lock_schema_diagnostics, validate_lock,
 };
 pub use number::{is_integer, is_safe_integer, number_to_string, write_number};
 pub use program::{Definition, Import, Program};
 pub use reader::{Parsed, parse, parse_bytes};
 pub use schema::{
-    IR_SCHEMA_TEXT, LOCK_SCHEMA_TEXT, Schema, SchemaError, SchemaOptions, ir_schema,
-    ir_schema_errors, lock_schema, lock_schema_errors,
+    IR_0_6_SCHEMA_TEXT, IR_SCHEMA_TEXT, LOCK_0_6_SCHEMA_TEXT, LOCK_SCHEMA_TEXT, Schema,
+    SchemaError, SchemaOptions, ir_schema, ir_schema_0_6, ir_schema_errors, ir_schema_of,
+    lock_schema, lock_schema_0_6, lock_schema_errors, lock_schema_of,
 };
 pub use stmt::{CallSpec, Pattern, Stmt};
 pub use tags::{

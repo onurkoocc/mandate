@@ -3,6 +3,12 @@
 //! as Ajv 8.20.0 runs it with `allErrors` (`compiler/src/ir/validate.ts`,
 //! `compiler/src/lock.ts`).
 //!
+//! Language 0.6 has schemas of its own, `spec/ir-0.6.schema.json` and
+//! `spec/lock-0.6.schema.json`, which use the same subset. Each document is
+//! read by the schema of its own version ([`ir_schema_of`],
+//! [`lock_schema_of`]): a program or lock of an earlier version by the
+//! schema it always had, so that nothing it accepts or refuses changes.
+//!
 //! The diagnostics the compiler makes depend on the number, the order and the
 //! text of Ajv's errors, so this follows Ajv's generated code rather than the
 //! specification. What a reader of this file should know about Ajv (see also
@@ -54,15 +60,27 @@ use std::sync::OnceLock;
 use crate::diag::ptr_token;
 use crate::jcs::canonicalize;
 use crate::js_value::{JsObject, JsValue};
+use crate::lock::LOCK_FORMAT_0_6;
 use crate::pattern::Pattern;
 use crate::reader::parse;
+use crate::tags::Language;
 use crate::value::{Int, Map, Value};
 
-/// `spec/ir.schema.json`, as it was when this crate was built.
+/// `spec/ir.schema.json`, as it was when this crate was built: the IR of a
+/// program of 0.1 to 0.5.
 pub const IR_SCHEMA_TEXT: &str = include_str!("../../../spec/ir.schema.json");
 
-/// `spec/lock.schema.json`, as it was when this crate was built.
+/// `spec/lock.schema.json`, as it was when this crate was built: a lock of
+/// format 0.2 to 0.5.
 pub const LOCK_SCHEMA_TEXT: &str = include_str!("../../../spec/lock.schema.json");
+
+/// `spec/ir-0.6.schema.json`, as it was when this crate was built: the IR
+/// of a program of 0.6 (spec/library.md). Only the Rust compiler reads it.
+pub const IR_0_6_SCHEMA_TEXT: &str = include_str!("../../../spec/ir-0.6.schema.json");
+
+/// `spec/lock-0.6.schema.json`, as it was when this crate was built: a lock
+/// of format 0.6. Only the Rust compiler reads it.
+pub const LOCK_0_6_SCHEMA_TEXT: &str = include_str!("../../../spec/lock-0.6.schema.json");
 
 /// The only `$schema` a schema may name.
 const DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
@@ -664,24 +682,97 @@ pub fn lock_schema() -> Result<&'static Schema, &'static str> {
         .map_err(String::as_str)
 }
 
+/// The IR schema of language 0.6, prepared once with the options of
+/// [`ir_schema`].
+///
+/// # Errors
+///
+/// As [`ir_schema`].
+pub fn ir_schema_0_6() -> Result<&'static Schema, &'static str> {
+    static IR: OnceLock<Result<Schema, String>> = OnceLock::new();
+    IR.get_or_init(|| {
+        Schema::from_text(
+            IR_0_6_SCHEMA_TEXT,
+            SchemaOptions {
+                discriminator: true,
+            },
+        )
+    })
+    .as_ref()
+    .map_err(String::as_str)
+}
+
+/// The lock schema of format 0.6, prepared once with the options of
+/// [`lock_schema`].
+///
+/// # Errors
+///
+/// As [`ir_schema`].
+pub fn lock_schema_0_6() -> Result<&'static Schema, &'static str> {
+    static LOCK: OnceLock<Result<Schema, String>> = OnceLock::new();
+    LOCK.get_or_init(|| Schema::from_text(LOCK_0_6_SCHEMA_TEXT, SchemaOptions::default()))
+        .as_ref()
+        .map_err(String::as_str)
+}
+
+/// Whether `value` is read by the schemas of 0.6: a program whose
+/// `language` is `mandate/0.6`, or a lock whose `lock` is
+/// `mandate/lock/0.6`. Anything else, a version no compiler reads
+/// included, is read by the schema of 0.1 to 0.5, as before.
+fn of_0_6(value: &Value, member: &str, tag: &str) -> bool {
+    value.get(member).and_then(Value::as_str) == Some(tag)
+}
+
+/// The IR schema a program is read by, chosen by its own `language`: the
+/// schema of 0.6 ([`ir_schema_0_6`]) for a program of `mandate/0.6`, else
+/// that of 0.1 to 0.5 ([`ir_schema`]).
+///
+/// # Errors
+///
+/// As [`ir_schema`].
+pub fn ir_schema_of(value: &Value) -> Result<&'static Schema, &'static str> {
+    if of_0_6(value, "language", Language::V0_6.as_str()) {
+        ir_schema_0_6()
+    } else {
+        ir_schema()
+    }
+}
+
+/// The lock schema a lock is read by, chosen by its own `lock` format: the
+/// schema of 0.6 ([`lock_schema_0_6`]) for a lock of `mandate/lock/0.6`,
+/// else that of 0.2 to 0.5 ([`lock_schema`]).
+///
+/// # Errors
+///
+/// As [`ir_schema`].
+pub fn lock_schema_of(value: &Value) -> Result<&'static Schema, &'static str> {
+    if of_0_6(value, "lock", LOCK_FORMAT_0_6) {
+        lock_schema_0_6()
+    } else {
+        lock_schema()
+    }
+}
+
 /// The raw errors of the IR schema for `value`, in Ajv's order:
-/// `irSchemaErrors` in `compiler/src/ir/validate.ts`.
+/// `irSchemaErrors` in `compiler/src/ir/validate.ts`, by the schema of the
+/// program's own language ([`ir_schema_of`]).
 ///
 /// # Errors
 ///
 /// As [`ir_schema`].
 pub fn ir_schema_errors(value: &Value) -> Result<Vec<SchemaError>, &'static str> {
-    ir_schema().map(|s| s.errors(value))
+    ir_schema_of(value).map(|s| s.errors(value))
 }
 
 /// The raw errors of the lock schema for `value`, in Ajv's order:
-/// `lockSchemaErrors` in `compiler/src/lock.ts`.
+/// `lockSchemaErrors` in `compiler/src/lock.ts`, by the schema of the
+/// lock's own format ([`lock_schema_of`]).
 ///
 /// # Errors
 ///
 /// As [`ir_schema`].
 pub fn lock_schema_errors(value: &Value) -> Result<Vec<SchemaError>, &'static str> {
-    lock_schema().map(|s| s.errors(value))
+    lock_schema_of(value).map(|s| s.errors(value))
 }
 
 /// Deep equality, an object's member order aside (`fast-deep-equal`).

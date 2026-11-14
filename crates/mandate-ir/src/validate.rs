@@ -4,7 +4,9 @@
 //!
 //! The language version is checked first, so that a program for another
 //! version gets one explicit diagnostic (E0103) instead of a pile of schema
-//! errors; then the closed schema ([`crate::ir_schema`]), whose raw errors
+//! errors; then the closed schema of that version ([`crate::ir_schema_of`]:
+//! `spec/ir.schema.json` for 0.1 to 0.5, `spec/ir-0.6.schema.json` for 0.6),
+//! whose raw errors
 //! become diagnostics as `schemaDiagnostics` makes them; then the version
 //! gates; then the number of definitions (E0105).
 

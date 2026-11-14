@@ -1,0 +1,29 @@
+{
+  "lock": "mandate/lock/0.5",
+  "modules": {},
+  "libraries": {
+    "acme.connectors": {
+      "version": "2.3.0",
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "modules": {
+        "acme.connectors": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    }
+  },
+  "models": {
+    "standard": {
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 12000
+    }
+  },
+  "tariffs": {
+    "claude-opus-5-5": {
+      "currency": "USD",
+      "as_of": "2026-10-09",
+      "micros_per_mtok": { "input": 4000000, "output": 20000000, "cache_read": 200000, "cache_write": 5000000 }
+    }
+  }
+}

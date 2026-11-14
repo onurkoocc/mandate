@@ -1,0 +1,19 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "S02f",
+  "kind": "compile",
+  "title": "A program of language 0.6 is read and checks: with none of what 0.6 adds, it is a 0.5 program under the new header.",
+  "spec": [
+    "spec/library.md#what-06-adds"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/minimal.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

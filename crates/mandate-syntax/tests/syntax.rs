@@ -16,6 +16,9 @@
 //!   schema validation's, and `ok`.
 //! - `syntax vectors: fmt`, every input that reads without an error: the
 //!   text `mandate fmt` prints and whether it reads back.
+//!
+//! An E0103 is compared without the versions only the Rust reads, and the
+//! vectors that needs are counted (`mandate_testkit::rust_only`).
 
 #![allow(
     clippy::panic,
@@ -31,7 +34,7 @@ use mandate_ir::{
     Diagnostic, JsObject, JsValue, Loaded, Value, canonicalize, has_errors, stringify,
 };
 use mandate_syntax::{ParseResult, SourceKind, parse_mdt, print_program};
-use mandate_testkit::{compare_text, read_json, run_gate, sha256};
+use mandate_testkit::{compare_text, read_json, run_gate, rust_only, sha256};
 
 use common::{depth_of, json, rows, same_lines, vector_rows};
 
@@ -292,12 +295,20 @@ fn syntax_vectors() {
         .expect("a list of vectors");
     let mut cases: Vec<(String, Case)> = Vec::new();
     let mut problems: Vec<String> = Vec::new();
+    // The vectors whose E0103 is compared without the versions only the
+    // Rust reads (`mandate_testkit::rust_only`).
+    let mut changed: usize = 0;
     for vector in vectors {
         let name = name_of(vector);
         match input_of(vector) {
             Ok(input) => {
-                let read = parse_mdt(&input);
-                let loaded = mandate_syntax::load(&input, SourceKind::Mdt);
+                let mut read = parse_mdt(&input);
+                let mut loaded = mandate_syntax::load(&input, SourceKind::Mdt);
+                let in_read = rust_only::diagnostics_as_typescript(&mut read.diagnostics);
+                let in_load = rust_only::diagnostics_as_typescript(&mut loaded.diagnostics);
+                if in_read || in_load {
+                    changed += 1;
+                }
                 cases.push((
                     name,
                     Case {
@@ -335,7 +346,7 @@ fn syntax_vectors() {
             .map(|(n, c)| (n.clone(), c)),
         |c| check_fmt(c),
     );
-    for gate in [read, load, fmt] {
+    for gate in [read, load, fmt, rust_only::check_count("syntax", changed)] {
         if let Err(report) = gate {
             problems.push(report);
         }

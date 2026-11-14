@@ -8,7 +8,9 @@
 //! A program and its definitions are hashed under the program's language
 //! version, so two versions never read the same bytes with different meaning.
 //! The runtime's own domains use [`RUNTIME_HASH_VERSION`]. Hashes are
-//! identities, not authentication.
+//! identities, not authentication. The library domain of 0.6
+//! ([`HashDomain::Library`]) is hashed under `0.6`: its prefix is
+//! `mandate/library/0.6\n`, the one spec/library.md gives a library's digest.
 
 use std::fmt::Write as _;
 
@@ -21,6 +23,10 @@ use crate::value::{Map, Value};
 /// The version the runtime's domains are hashed under, and a program's when
 /// it names none: the 0.1 hash profile.
 pub const RUNTIME_HASH_VERSION: &str = "0.1";
+
+/// The version the library domain is hashed under (spec/library.md "The
+/// digest").
+pub const LIBRARY_HASH_VERSION: &str = "0.6";
 
 /// What a hash identifies: `HashDomain` in `hash.ts`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -45,9 +51,29 @@ pub enum HashDomain {
     Decision,
     /// An event of a chained journal (spec/boundary.md).
     Event,
+    /// A library of language 0.6: its digest, over its manifest and the
+    /// program hashes of its modules, under version `0.6`
+    /// (spec/library.md "The digest"). Not a domain of `hash.ts`: only the
+    /// Rust compiler hashes in it. Nothing does yet.
+    Library,
 }
 
 impl HashDomain {
+    /// Every domain: those of `hash.ts`, in its order, then [`Self::Library`].
+    pub const ALL: [HashDomain; 11] = [
+        HashDomain::Program,
+        HashDomain::Def,
+        HashDomain::Package,
+        HashDomain::Run,
+        HashDomain::Action,
+        HashDomain::Operation,
+        HashDomain::Request,
+        HashDomain::Binding,
+        HashDomain::Decision,
+        HashDomain::Event,
+        HashDomain::Library,
+    ];
+
     /// The domain's name in the hash prefix, such as `program`.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -62,26 +88,14 @@ impl HashDomain {
             HashDomain::Binding => "binding",
             HashDomain::Decision => "decision",
             HashDomain::Event => "event",
+            HashDomain::Library => "library",
         }
     }
 
     /// The domain named `name`, such as `program`.
     #[must_use]
     pub fn from_name(name: &str) -> Option<HashDomain> {
-        [
-            HashDomain::Program,
-            HashDomain::Def,
-            HashDomain::Package,
-            HashDomain::Run,
-            HashDomain::Action,
-            HashDomain::Operation,
-            HashDomain::Request,
-            HashDomain::Binding,
-            HashDomain::Decision,
-            HashDomain::Event,
-        ]
-        .into_iter()
-        .find(|d| d.as_str() == name)
+        HashDomain::ALL.into_iter().find(|d| d.as_str() == name)
     }
 }
 

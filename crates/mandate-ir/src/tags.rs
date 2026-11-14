@@ -1,4 +1,6 @@
-//! The closed sets of tags `spec/ir.schema.json` defines, as enums.
+//! The closed sets of tags `spec/ir.schema.json` defines, as enums; the
+//! language versions are those of `spec/ir.schema.json` and then of
+//! `spec/ir-0.6.schema.json`.
 //!
 //! Each enum lists its values in the schema's order, with the tag's text
 //! ([`Language::as_str`]) and the conversion from it ([`Language::from_tag`]);
@@ -54,21 +56,30 @@ macro_rules! tags {
 }
 
 tags! {
-    /// A language version: the root `language` of a program
-    /// (`LANGUAGE_VERSIONS` in `compiler/src/ir/types.ts`). Versions are
+    /// A language version: the root `language` of a program. Versions are
     /// ordered: a later one reads what an earlier one added.
+    ///
+    /// 0.1 to 0.5 are `LANGUAGE_VERSIONS` in `compiler/src/ir/types.ts`, the
+    /// `language` enum of `spec/ir.schema.json`. 0.6 (spec/library.md) is
+    /// read by the Rust compiler alone, under its own schema,
+    /// `spec/ir-0.6.schema.json`; the TypeScript compiler stays at 0.5. Every
+    /// rule of an earlier version holds for 0.6 (`at_least`), and what 0.6
+    /// adds holds for 0.6 alone.
     Language {
         V0_1 = "mandate/0.1",
         V0_2 = "mandate/0.2",
         V0_3 = "mandate/0.3",
         V0_4 = "mandate/0.4",
         V0_5 = "mandate/0.5",
+        V0_6 = "mandate/0.6",
     }
 }
 
 impl Language {
-    /// The newest version this compiler reads.
-    pub const NEWEST: Language = Language::V0_5;
+    /// The newest version this compiler reads: 0.6, where the TypeScript's
+    /// `LANGUAGE_VERSION` is 0.5 (`vectors/README.md`, "The versions only the
+    /// Rust compiler reads").
+    pub const NEWEST: Language = Language::V0_6;
 
     /// Whether this is `since` or a later version: `atLeast(v, since)`.
     #[must_use]
