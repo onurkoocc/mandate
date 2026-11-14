@@ -72,6 +72,19 @@ impl Value {
             _ => None,
         }
     }
+
+    /// `Boolean(v)`: false for `null`, `false`, `0` and `""`; true for every
+    /// other value, an empty array and an empty object included.
+    #[must_use]
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            Value::Null => false,
+            Value::Bool(b) => *b,
+            Value::Number(n) => n.get() != 0,
+            Value::String(s) => !s.is_empty(),
+            Value::Array(_) | Value::Object(_) => true,
+        }
+    }
 }
 
 impl From<bool> for Value {
