@@ -8,11 +8,11 @@
 //! of the codes its expected result holds (`[]` for none). Its pending list
 //! is then a handful of globs by code family, `*MDT-E03*`, each the glob of
 //! a row of [`FAMILIES`] that is not ported yet, and of door globs for a
-//! front door that is not ported (`apply_ops @ *`), and the few items that
-//! still fail although every code they hold is of a ported row, by name or
-//! by a pattern that starts with their door (`check @ conformance/S08a
-//! [MDT-E0213]`), each with the slice and the function that ends it beside
-//! it. [`check_pending`] holds a list to that.
+//! front door that is not ported (`check_subprogram @ *`), and the few
+//! items that still fail although every code they hold is of a ported row,
+//! by name or by a pattern that starts with their door (`check @
+//! conformance/S08a [MDT-E0213]`), each with the slice and the function
+//! that ends it beside it. [`check_pending`] holds a list to that.
 //!
 //! The rows come from `compiler/src/codes.ts` (every code), from where each
 //! code is raised in `compiler/src` (`diag("E…"`), and from the slices of
@@ -20,10 +20,11 @@
 //! `roleChecks` and the front door, R10 the capabilities, R11 the static
 //! core (`check/ty.ts`, `check/cost.ts`, part of `check/static.ts`), R12
 //! the static authority (part of `check/static.ts`, `check/envelope.ts`),
-//! R13 the system model, change sets, sub-programs, amendments and patches
-//! (the rest of `check/static.ts`, `check/subprogram.ts`,
-//! `check/amendment.ts`, `patch/patch.ts`), R14 the lock and the sandbox
-//! (`lock.ts`, `target/managed-agents.ts`, `target/sandbox.ts`), R15 the views.
+//! R13 the system model, change sets, sub-programs and amendments (the rest
+//! of `check/static.ts`, `check/subprogram.ts`, `check/amendment.ts`), R14
+//! the lock and the sandbox (`lock.ts`, `target/managed-agents.ts`,
+//! `target/sandbox.ts`), R15 the views, R16 the comparison of two programs
+//! and patches (`patch/patch.ts`).
 //!
 //! A row is one code or a few that one slice brings, so a family that two
 //! slices share is cut into rows (E02, E04, E05, E07, E17). Some codes are still
@@ -73,8 +74,8 @@ pub const FAMILIES: &[Family] = &[
         glob: "*MDT-E013*",
         codes: "E0130, E0131",
         stage: "applyOps (patch/patch.ts), the apply_ops door",
-        slice: "R13",
-        ported: false,
+        slice: "R16",
+        ported: true,
     },
     Family {
         glob: "*MDT-E014*",
