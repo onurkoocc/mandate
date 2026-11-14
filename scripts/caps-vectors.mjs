@@ -23,7 +23,14 @@
 //                      pathProblem, patternProblem and normalize
 // A source is written in parts, <source>-1.json, <source>-2.json, …, each
 // with the source's `tables` (the definitions a case names by index) and as
-// many cases as keep it under 900 KB (900,000 bytes).
+// many cases as keep it under 900 KB (900,000 bytes); today each fits in one.
+// Every clone carries these files, so the sets are chosen to reach each
+// branch, not to be exhaustive: a case whose function and arguments are
+// already there is written once (programs read with the same definitions
+// share a table), constructors are tried with the argument lists of their
+// scope kind (one of each kind with all of them), and the script fails when
+// the files together pass 2,000,000 bytes (about 1.5 MB today). The set it
+// once wrote was three times larger and gave the same results.
 //
 // Each case is one line, [function, [arguments...], result]. An argument
 // or a result that is undefined is written null (no function here takes or
@@ -73,8 +80,13 @@ const plain = (v) => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
 
 // ---------------------------------------------------------------- cases
 
+/**
+ * The cases of one source. A case whose function and arguments are those of
+ * one already there is not added again (its result is still given back).
+ */
 function collector() {
   const cases = [];
+  const seen = new Set();
   let thrown = 0;
   const add = (fn, args, call) => {
     let result;
@@ -84,7 +96,12 @@ function collector() {
       thrown++;
       return undefined;
     }
-    cases.push([fn, args.map(plain), plain(result)]);
+    const written = args.map(plain);
+    const key = JSON.stringify([fn, written]);
+    if (!seen.has(key)) {
+      seen.add(key);
+      cases.push([fn, written, plain(result)]);
+    }
     return result;
   };
   return { cases, add, thrown: () => thrown };
@@ -262,8 +279,14 @@ function programCases() {
     const linked = link(program, modules);
     const defs = linked.defs;
     const language = program.language;
-    const ti = tables.length;
-    tables.push(table(defs));
+    // Programs read with the same definitions share a table, so that their
+    // cases are found to be the same and written once.
+    const tableText = JSON.stringify(table(defs));
+    let ti = tables.findIndex((x) => JSON.stringify(x) === tableText);
+    if (ti < 0) {
+      ti = tables.length;
+      tables.push(JSON.parse(tableText));
+    }
     sources.push(source);
     const exprs = new Map();
     const callees = new Map();
@@ -299,7 +322,7 @@ function programCases() {
       }
     }
     // The relations between the capabilities a program holds: the first
-    // 20 pairs, so that the file stays small.
+    // 12 pairs, so that the file stays small.
     for (const c of held) {
       rel.add("showCap", [c], () => caps.showCap(c));
       for (const effect of [c.effect]) {
@@ -308,13 +331,14 @@ function programCases() {
       }
     }
     let pairs = 0;
-    for (const a of held) for (const b of held) if (pairs++ < 20) relations(rel.add, a, b);
+    for (const a of held) for (const b of held) if (pairs++ < 12) relations(rel.add, a, b);
     // importedMethods, with what it reads of the linked program.
     const origin = Object.entries(linked.origin);
     const p = { language: program.language, uses: program.uses ?? [] };
     if (program.language === undefined) delete p.language;
     const odefs = Object.fromEntries(origin.filter(([k]) => Object.hasOwn(defs, k)).map(([k]) => [k, defs[k]]));
-    const mods = Object.fromEntries(Object.entries(modules).map(([k, m]) => [k, { language: m.language }]));
+    // Of the modules, it reads the language of those an imported definition comes from.
+    const mods = Object.fromEntries(Object.entries(modules).filter(([k]) => origin.some(([, o]) => o === k)).map(([k, m]) => [k, { language: m.language }]));
     add("importedMethods", [p, odefs, origin, mods], () => caps.importedMethods(program, linked, modules));
   }
   return { cases, rel: rel.cases, tables, sources, thrown: thrown() + rel.thrown() };
@@ -460,18 +484,40 @@ function edgeCases() {
   // Only net.https reads the language (methods, from 0.5): it is read in
   // every language, before and after the gate; the rest without one, or
   // also in 0.5.
-  const caller = (e, ti, ds, langs = [undefined, "mandate/0.5"], of = true) => {
+  const ALL = ["capFromCall", "capsFromCall", "capsOf"];
+  const caller = (e, ti, ds, langs = [undefined, "mandate/0.5"], fns = ALL) => {
     for (const lang of langs) {
-      add("capFromCall", [e, lang], () => caps.capFromCall(e, { language: lang }));
-      add("capsFromCall", [ti, e, lang], () => caps.capsFromCall(e, ds, { language: lang }));
-      if (of) add("capsOf", [ti, e, lang], () => caps.capsOf(ds, e, { language: lang }));
+      if (fns.includes("capFromCall")) add("capFromCall", [e, lang], () => caps.capFromCall(e, { language: lang }));
+      if (fns.includes("capsFromCall")) add("capsFromCall", [ti, e, lang], () => caps.capsFromCall(e, ds, { language: lang }));
+      if (fns.includes("capsOf")) add("capsOf", [ti, e, lang], () => caps.capsOf(ds, e, { language: lang }));
     }
   };
-  // Every constructor (and some that are none) with every argument list.
-  // capsOf of such a call is capsFromCall's capabilities; it is given for
-  // the first argument list only.
+  // The constructors with the argument lists: each constructor with the
+  // lists of its scope kind, and one constructor of each kind (and
+  // model.infer) with every list, for the lists that behave alike on all of
+  // a kind. The others (constructors over components, names that are none)
+  // with the first lists only. capsFromCall reads the definitions only for
+  // the constructors over components, data.read and env.*; for the rest it
+  // is capFromCall's capability, and given for the first three lists only;
+  // capsOf, for the first list only.
+  const GROUP = { positional: [0, 13], hosts: [13, 24], commands: [24, 35], model: [35, 50], env: [50, 52] };
+  const inGroup = (i, g) => i >= GROUP[g][0] && i < GROUP[g][1];
+  const FULL = new Set(["fs.read", "net.https", "exec", "model.infer", "money.spend"]);
+  const SYSTEM = new Set(["component.read", "component.write", "component.exec", "component.repo", "data.read", "env.deploy", "env.migrate"]);
   for (const callee of CALLEES) {
-    ARG_SETS.forEach((args, i) => caller(call(callee, ...args), 0, defs, callee === "net.https" ? LANGS : [undefined], i < 2));
+    const spec = Object.hasOwn(std.CAP_CTORS, callee) ? std.CAP_CTORS[callee] : undefined;
+    ARG_SETS.forEach((args, i) => {
+      const own =
+        spec !== undefined &&
+        ((spec.scope === "positional" && (inGroup(i, "positional") || inGroup(i, "env"))) ||
+          (spec.scope === "hosts" && inGroup(i, "hosts")) ||
+          (spec.scope === "commands" && inGroup(i, "commands")) ||
+          (callee === "model.infer" && inGroup(i, "model")));
+      if (!(FULL.has(callee) || own || i < 2)) return;
+      const methods = JSON.stringify(args).includes('"methods"');
+      const fns = ["capFromCall", ...(SYSTEM.has(callee) || i < 3 || (FULL.has(callee) && own) ? ["capsFromCall"] : []), ...(i < 1 ? ["capsOf"] : [])];
+      caller(call(callee, ...args), 0, defs, callee === "net.https" && methods ? LANGS : [undefined], fns);
+    });
   }
   // Calls whose callee is no path, and what is no call.
   const odd = [
@@ -613,7 +659,7 @@ function edgeCases() {
   ];
   for (const e of named) {
     caller(e, 0, defs);
-    caller(e, 1, {});
+    caller(e, 1, {}, [undefined], ["capsOf"]);
   }
   // calleePath.
   for (const c of [v("fs"), v(""), path("a.b.c.d"), fld(v(""), "x"), fld(call("a"), "b"), t("a"), n(1), call("a"), fld(fld(t("x"), "y"), "z"), L()]) {
@@ -678,12 +724,15 @@ function edgeCases() {
   // The relations on paths.
   const PATHS = ["", "/", ".", "..", "/a", "/a/", "/a/b", "/a/b/", "a//b", "/a/./b", "/a/../b", "/../a", "a/../..", "/a/b/../../..", "...", "/ab", "/a/bc", "a", "a/b", "/work/repo", "/work/repo/src", "/work/repo/src/a", "/work/repository", "C:/work"];
   for (const p of PATHS) add("segments", [p], () => caps.segments(p));
-  for (const a of PATHS) for (const b of PATHS) {
-    add("within", [a, b], () => caps.within(a, b));
-    add("pathsOverlap", [a, b], () => caps.pathsOverlap(a, b));
-  }
+  // pathsOverlap is symmetric: each unordered pair once.
+  PATHS.forEach((a, i) =>
+    PATHS.forEach((b, j) => {
+      add("within", [a, b], () => caps.within(a, b));
+      if (i <= j) add("pathsOverlap", [a, b], () => caps.pathsOverlap(a, b));
+    }),
+  );
   const SCOPES = [undefined, [], ["/a"], ["/a/b"], ["/a", "/b"], ["/a/b", "/c"], ["a.example"], ["a.example", "b.example"], ["/a/"]];
-  for (const ctor of ["fs.read", "fs.write", "fs.", "fs", "git.pr", "net.https", "exec"]) for (const i of SCOPES) for (const o of SCOPES) add("scopeWithin", [ctor, i, o], () => caps.scopeWithin(ctor, i, o));
+  for (const ctor of ["fs.read", "fs.", "fs", "git.pr"]) for (const i of SCOPES) for (const o of SCOPES) add("scopeWithin", [ctor, i, o], () => caps.scopeWithin(ctor, i, o));
   const PREFIXES = [undefined, [], [[]], [["run"]], [["run", "test"]], [["run"], ["ci"]], [["ci"]], [["run", "test", "x"]], [["Run"]]];
   for (const i of PREFIXES) for (const o of PREFIXES) add("prefixesWithin", [i, o], () => caps.prefixesWithin(i, o));
   // The relations on capability values.
@@ -721,29 +770,36 @@ function edgeCases() {
     c("x.y", ".*", true, { via: "" }),
     c("x.z", "*", true, { scope: ['"quoted"', "\u00e9", "a\\b", "\n"] }),
   ];
-  for (const a of CAPS) {
+  // Each pair of the same constructor; of two constructors, each with the
+  // next in the list (they differ at the first comparison).
+  CAPS.forEach((a, i) => {
     add("showCap", [a], () => caps.showCap(a));
-    for (const b of CAPS) relations(add, a, b);
+    CAPS.forEach((b, j) => {
+      if (a.ctor === b.ctor || j === (i + 1) % CAPS.length) relations(add, a, b);
+    });
+    // The scopes only where the effect is authorized: elsewhere the answer
+    // is false whatever the scope.
     for (const effect of ["Fs.Read", "Fs.Write", "git.open_pr", "git.", "git", "gitx.y", "git.*", "Model", "deploy", "Data.Read", ".x", "", "x", "*", "Net"]) {
-      for (const scope of [undefined, [], ["/a/b"], ["acme/api"]]) add("capAuthorizes", [a, effect, scope], () => caps.capAuthorizes(a, effect, scope));
+      const scopes = caps.capAuthorizes(a, effect) ? [undefined, [], ["/a/b"], ["acme/api"]] : [undefined];
+      for (const scope of scopes) add("capAuthorizes", [a, effect, scope], () => caps.capAuthorizes(a, effect, scope));
     }
-  }
-  // node:path's posix: every string of up to six of `a`, `.` and `/`, and some more.
+  });
+  // node:path's posix: every string of up to five of `a`, `.` and `/`, and some more.
   const alphabet = ["a", ".", "/"];
   const strings = [""];
-  for (let len = 1, layer = [""]; len <= 6; len++) {
+  for (let len = 1, layer = [""]; len <= 5; len++) {
     layer = layer.flatMap((s) => alphabet.map((ch) => s + ch));
     strings.push(...layer);
   }
-  strings.push("\u00e9/..", "\u00e9\u00e9/../x", "ab/\u00e9/..", "\u{1F600}/./..", "a/\u{1F600}\u{1F600}/../..", "//a//b//", "./../a", "../../a/b/../c", "/./../", "a/b/c/./../../d/");
+  strings.push("\u00e9/..", "\u00e9\u00e9/../x", "ab/\u00e9/..", "\u{1F600}/./..", "a/\u{1F600}\u{1F600}/../..", "//a//b//", "./../a", "../../a/b/../c", "/./../", "a/b/c/./../../d/", "a/../../..", "../a/../..");
   for (const s of strings) {
     add("posix.normalize", [s], () => posix.normalize(s));
-    add("posix.isAbsolute", [s], () => posix.isAbsolute(s));
+    if (s.length <= 2) add("posix.isAbsolute", [s], () => posix.isAbsolute(s));
   }
-  // Globs.
+  // Globs: the defaults through governanceKind below, and these against
+  // every file name here.
   const GLOBS = [
-    ...Object.values(gov.GOVERNANCE_FILES).flat(),
-    "", "*", "**", "***", "**/", "/**", "a/**", "**/a", "a/**/b", "a/**b", "a**/b", "?", "a?c", "??", ".", "a+b", "a(b)", "[x]", "{a}", "$", "^", "|", "\\", "a.b", "a/b",
+    "","*", "**", "***", "**/", "/**", "a/**", "**/a", "a/**/b", "a/**b", "a**/b", "?", "a?c", "??", ".", "a+b", "a(b)", "[x]", "{a}", "$", "^", "|", "\\", "a.b", "a/b",
     "\u00e9", "\u{1F600}", "?.md", "*.\u{1F600}", "**/x\ny", "a\u2028b", "a\rb", "*/*", "deploy/**", "*.tf", "**/**", "**/*/", "a/*", "*a*a*a*b", "x/**/**/y",
   ];
   const FILES = [
@@ -754,11 +810,13 @@ function edgeCases() {
     "\u00e9", "\u{1F600}", "x.md", "\u{1F600}.md", "a.\u{1F600}", "x\ny", "a/x\ny", "x\ny/x\ny", "a\u2028b", "a\rb", "aab", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "x/y", "x/a/y", "x//y", "a/b/", "/", "//", "a/",
   ];
-  for (const g of GLOBS) add("globRegExp.source", [g], () => gov.globRegExp(g).source);
-  for (const g of GLOBS) for (const f of FILES) add("globRegExp.test", [g, f], () => gov.globRegExp(g).test(f));
+  for (const g of [...Object.values(gov.GOVERNANCE_FILES).flat(), ...GLOBS]) add("globRegExp.source", [g], () => gov.globRegExp(g).source);
+  // The names of governance-class files are read through governanceKind.
+  const NAMES = FILES.filter((f) => !/github|gitlab|Jenkins|lock|CLAUDE|claude|CODEOWNERS|mandate|deploy|\.tf$/.test(f));
+  for (const g of GLOBS) for (const f of NAMES) add("globRegExp.test", [g, f], () => gov.globRegExp(g).test(f));
   const PATTERNS = ["", "a", "a/b", "/a", "a/", "a//b", "./a", "a/.", "a/..", "..", "...", ".a", "a\\b", "a:b", "a\u0000b", "**/x", "\u00e9", "a/./b"];
   for (const g of PATTERNS) add("patternProblem", [g], () => gov.patternProblem(g));
-  const EXTRAS = [[], ["deploy/**"], ["*.tf", "deploy/**"], ["**"], [""], ["CODEOWNERS"]];
+  const EXTRAS = [[], ["*.tf", "deploy/**"], ["**"], [""]];
   for (const f of FILES) for (const extra of EXTRAS) add("governanceKind", [f, extra], () => gov.governanceKind(f, extra));
   const LISTS = [[], ["b", "a"], FILES, [...FILES].reverse(), ["\uFF5E", "\u{1F600}", "\u00e9", "CODEOWNERS", "CODEOWNERS", "z/yarn.lock", "A/yarn.lock"], ["main.tf", "x/main.tf", "deploy/a"]];
   for (const files of LISTS) for (const extra of EXTRAS) add("governanceFiles", [files, extra], () => gov.governanceFiles(files, extra));
@@ -789,42 +847,42 @@ function list(max, f) {
 
 function sweepPaths() {
   const { cases, add, thrown } = collector();
-  for (let i = 0; i < 1500; i++) {
+  for (let i = 0; i < 500; i++) {
     const a = randomPath();
     const b = chance(0.3) ? a + pick(["/x", "/..", "/.", "", "x"]) : randomPath();
     add("within", [a, b], () => caps.within(a, b));
     add("pathsOverlap", [b, a], () => caps.pathsOverlap(b, a));
   }
-  for (let i = 0; i < 800; i++) {
+  for (let i = 0; i < 270; i++) {
     const s = randomPath();
     add("segments", [s], () => caps.segments(s));
   }
-  for (let i = 0; i < 1200; i++) {
+  for (let i = 0; i < 400; i++) {
     const ctor = pick(["fs.read", "fs.write", "git.pr", "exec", "net.https"]);
     const item = () => (ctor.startsWith("fs.") ? randomPath() : pick(["a", "b", "c", "acme/api"]));
     const inner = maybe(0.15, () => list(3, item));
     const outer = maybe(0.15, () => list(3, item));
     add("scopeWithin", [ctor, inner, outer], () => caps.scopeWithin(ctor, inner, outer));
   }
-  for (let i = 0; i < 800; i++) {
+  for (let i = 0; i < 270; i++) {
     const prefix = () => list(3, () => pick(["run", "test", "ci", ""]));
     const inner = maybe(0.15, () => list(3, prefix));
     const outer = maybe(0.15, () => list(3, prefix));
     add("prefixesWithin", [inner, outer], () => caps.prefixesWithin(inner, outer));
   }
-  for (let i = 0; i < 2000; i++) {
+  for (let i = 0; i < 700; i++) {
     const g = randomString(["a", "b", "/", "*", "?", ".", "**/"], 6);
     const f = randomString(["a", "b", "/", ".", "\n"], 7);
     add("globRegExp.test", [g, f], () => gov.globRegExp(g).test(f));
     if (i % 4 === 0) add("globRegExp.source", [g], () => gov.globRegExp(g).source);
   }
-  for (let i = 0; i < 2000; i++) {
+  for (let i = 0; i < 700; i++) {
     const s = randomString(["a", ".", "/", "\\", ":", "\u0000", "\u00e9", "\u{1F600}", "b"], 7);
     add("pathProblem", [s], () => pathTs.pathProblem(s));
     add("isPath", [s], () => pathTs.isPath(s));
     if (i % 2 === 0) add("patternProblem", [s], () => gov.patternProblem(s));
   }
-  for (let i = 0; i < 1500; i++) {
+  for (let i = 0; i < 500; i++) {
     const s = randomString(["a", ".", "/", "..", "\u00e9", "b"], 9);
     add("posix.normalize", [s], () => posix.normalize(s));
   }
@@ -857,13 +915,13 @@ function randomCap() {
 
 function sweepCaps() {
   const { cases, add, thrown } = collector();
-  for (let i = 0; i < 900; i++) {
+  for (let i = 0; i < 300; i++) {
     const a = randomCap();
     const b = chance(0.4) ? { ...a, ...(chance(0.5) ? { scope: a.scope && [...a.scope, ...list(1, randomPath)] } : {}) } : randomCap();
     if (b.scope === undefined) delete b.scope;
     relations(add, a, b);
   }
-  for (let i = 0; i < 900; i++) {
+  for (let i = 0; i < 300; i++) {
     const a = randomCap();
     const effect = pick(["Fs.Read", "Fs.Write", "git.open_pr", "git.merge", "git", "gitx.y", "Exec", "Net", "Model", "deploy"]);
     const scope = maybe(0.3, () => list(2, () => (a.ctor.startsWith("fs.") ? randomPath() : pick(["a", "b", "acme/api"]))));
@@ -931,10 +989,13 @@ function fileText(name, object) {
   return text;
 }
 
+const TOTAL_LIMIT = 2000000;
 const written = [];
+let total = 0;
 function write(name, text) {
   writeFileSync(new URL(name, DATA), text);
   written.push(`${name} ${text.length}`);
+  total += text.length;
 }
 
 /**
@@ -985,6 +1046,12 @@ process.stdout.write(
     `edges: ${e.cases.length} cases: ${count(e.cases)}\n` +
     `sweep: ${sp.cases.length + sc.cases.length} cases: ${count([...sp.cases, ...sc.cases])}\n` +
     `files: ${written.join(", ")}\n` +
-    `calls that threw in TypeScript, left out: ${thrown}\n`,
+    `calls that threw in TypeScript, left out: ${thrown}\n` +
+    `total: ${total} bytes; cases: programs ${p.cases.length + p.rel.length}, edges ${e.cases.length}, sweep ${sp.cases.length + sc.cases.length}\n`,
 );
 if (thrown) process.exitCode = 1;
+// What every clone carries: more is a decision, made here, not an accident.
+if (total > TOTAL_LIMIT) {
+  process.stderr.write(`the test data is ${total} bytes, over ${TOTAL_LIMIT}\n`);
+  process.exitCode = 1;
+}
