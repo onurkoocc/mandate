@@ -50,6 +50,13 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
+      # The compiled corpus (vectors/corpus/) is complete: the suite runs again with every call it makes to a front door
+      # of the compiler recorded, and corpus.test.ts fails if that is not exactly what the corpus holds, so a new test
+      # that calls a door cannot leave the corpus incomplete (vectors/README.md, "corpus/", "How it is made").
+      - name: The compiled corpus holds every call the compiler's tests make to a front door
+        run: npm test -w compiler
+        env:
+          MANDATE_CORPUS: "1"
       - name: Runtime tests on PostgreSQL
         run: npm test -w runtime
         env:
