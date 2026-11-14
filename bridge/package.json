@@ -2,7 +2,7 @@
   "name": "@mandate/bridge",
   "version": "0.1.0",
   "private": true,
-  "description": "The one place the runtime reaches the Mandate compiler: today a re-export of the reference compiler",
+  "description": "The one place the runtime reaches the Mandate compiler (today a re-export of the reference compiler, plus the run-time authority decisions), and the mandate command line and MCP server written over it",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
@@ -13,6 +13,9 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "mandate": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
