@@ -66,7 +66,7 @@ import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type Trusted
 import type { RateLimiter } from "./ratelimit.js";
 import type { Faults } from "./faults.js";
 import { runAgentLoop, type LoopTask } from "./loop.js";
-import { PLAN_TOOLS, planBrief, Planner, Shared, type PlanHost, type ProgramChecker } from "./plan.js";
+import { PLAN_TOOLS, planBrief, Planner, programsInFlight, Shared, type PlanHost, type ProgramChecker } from "./plan.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import type { ActionRow, Admission, CommandRow, Journal, ViolationKind } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
@@ -282,8 +282,10 @@ export class Interpreter {
 
   constructor(private readonly o: InterpOptions) {
     this.defs = o.program.defs;
-    this.shared = o.shared ?? new Shared();
     this.amendable = !!o.plan && Object.keys(leadClasses(o.plan.parent, o.program.defs)).length > 0;
+    // A run whose program plans has sub-programs to keep its maps clear of, those of its sub-programs too (C5).
+    const p = this.amendable ? o.plan : undefined;
+    this.shared = o.shared ?? new Shared(p && (() => programsInFlight({ journal: o.journal, runId: o.runId, artifacts: o.artifacts, scope: this.scope(), parent: p.parent, modules: p.modules })));
   }
 
   /**
@@ -591,7 +593,8 @@ export class Interpreter {
    *
    * Before any item is dispatched: a list longer than the bound is `Rejected(over_limit)` (N08); each item's
    * `with caps` is evaluated, and must lie inside the context; and with `par > 1` no two items may write
-   * overlapping scopes, or the map is `Rejected(overlapping_scopes)` (N03, C5).
+   * overlapping scopes, or the map is `Rejected(overlapping_scopes)` (N03, C5). Nor may an item write where a
+   * sub-program in flight may write (`besidePrograms`).
    *
    * A fault in an item is that item's `Failed` outcome, and the others go on (R12). Under `fail_fast` it stops the
    * items not yet started, those in flight are waited for, and the map fails with it. Anything else that ends an
@@ -643,16 +646,26 @@ export class Interpreter {
         }
       }
     }
-    if (!this.o.replay) await this.o.journal.mapStarted(this.o.runId, this.o.fence, { map: path, items: over.length, par });
+    const holder = (i: number): string => `${path}[${i}]`;
+    const start = async (): Promise<void> => {
+      if (!this.o.replay) await this.o.journal.mapStarted(this.o.runId, this.o.fence, { map: path, items: over.length, par });
+      // What an item may write is held from here until the item has ended, also by an item that has not started
+      // yet: a sub-program admitted meanwhile is kept clear of every place the map still writes (C5 across the run).
+      writes.forEach((held, i) => void (held.length && this.shared.writes.set(holder(i), held)));
+    };
+    // The items are kept clear of the sub-programs in flight, and held, in turn with the admissions of sub-programs:
+    // a sub-program being admitted is either in flight for the map or kept clear of its items, never neither.
+    if (this.shared.programs && writes.some((held) => held.length)) {
+      await this.shared.admitting(async () => {
+        await this.besidePrograms(path, writes);
+        await start();
+      });
+    } else await start();
 
     const failFast = e.supervise?.name === "fail_fast";
     const ends: Array<ItemEnd | undefined> = new Array<ItemEnd | undefined>(over.length).fill(undefined);
     let stopped = false;
     let next = 0;
-    // What an item may write is held from here until the item has ended, also by an item that has not started
-    // yet: a sub-program admitted meanwhile is kept clear of every place the map still writes (C5 across the run).
-    const holder = (i: number): string => `${path}[${i}]`;
-    writes.forEach((held, i) => void (held.length && this.shared.writes.set(holder(i), held)));
     const worker = async (): Promise<void> => {
       // A failed branch of a `par` around the map stops an item at its next command, like any command of that
       // branch, and that stop ends the map here.
@@ -698,6 +711,36 @@ export class Interpreter {
     }
     await ended();
     return out;
+  }
+
+  /**
+   * C5 across the run, for a map: no item may write where a sub-program in flight may write, or the map is
+   * `Rejected(overlapping_scopes)` before any item, as when two of its items overlap. The facts name the sub-program
+   * by its command. A sub-program the map runs inside is the items' own, and is not in their way.
+   *
+   * What is in flight changes as the run goes on. So the refusal is recorded, as the failed command
+   * `<map>/in_flight`, and a resumed run and a replay read it there: a map refused stays refused. And a map the
+   * journal shows started is not refused when the run comes to it again, resumed: its items were let through, and
+   * may have run, before what is in flight now was admitted. A replay checks nothing: it reads the refusal, if any.
+   */
+  private async besidePrograms(path: string, writes: CapVal[][]): Promise<void> {
+    const { journal, runId } = this.o;
+    const at = `${path}/in_flight`;
+    const row = await journal.command(runId, at);
+    if (this.o.replay || row?.state === "failed") return void (row && replayed(row, at));
+    const programs = (await this.shared.programs!()).filter((p) => !path.startsWith(`${p.admission.command}/`));
+    for (const [i, held] of writes.entries()) {
+      for (const a of held) {
+        for (const p of programs) {
+          const b = p.writes.find((c) => writesOverlap(a, c));
+          if (!b) continue;
+          if ((await journal.events(runId)).some((ev) => ev.type === "map_started" && isObj(ev.data) && ev.data["map"] === path)) return;
+          const f = new Fault("Rejected", ["overlapping_scopes", { map: path, items: [i], left: showCap(a), right: showCap(b), program: p.admission.command }]);
+          await this.command(at, "refusal", { refused: f.tag }, undefined, async () => ({ error: { tag: f.tag, args: f.args }, cost: {} }));
+          throw f;
+        }
+      }
+    }
   }
 
   /**

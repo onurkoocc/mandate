@@ -310,7 +310,13 @@ export class Shared {
   readonly writes = new Map<string, CapVal[]>();
   private last: Promise<unknown> = Promise.resolve();
 
-  /** Runs `fn` after every admission asked for before it has been decided. */
+  /**
+   * @param programs Reads the sub-programs in flight (`programsInFlight`), for a map to keep its items clear of
+   *   them. Absent in a run whose program plans nothing, which has none.
+   */
+  constructor(readonly programs?: () => Promise<ProgramInFlight[]>) {}
+
+  /** Runs `fn` after every admission, and every start of a map that writes, asked for before it has been decided. */
   admitting<T>(fn: () => Promise<T>): Promise<T> {
     const mine = this.last.then(fn);
     this.last = mine.catch(() => undefined);
@@ -527,26 +533,8 @@ export class Planner {
   private async room(): Promise<Room> {
     const h = this.h;
     const left = Object.fromEntries(Object.entries(await h.journal.budget(h.runId)).map(([dim, b]) => [dim, b.limit - b.settled - b.reserved]));
-    // A sub-program that was admitted and has not ended holds its writes, whether it runs now or waits, for a
-    // person or for the run to be resumed. The journal says which those are, so no order of events hides one.
-    const programs: CapVal[] = [];
-    for (const a of await h.journal.inFlight(h.runId)) programs.push(...this.writes(await this.load(a), a.workflow));
+    const programs = (await programsInFlight(h)).flatMap((p) => p.writes);
     return { left, ...(h.deadline !== undefined ? { time_left_ms: h.deadline - h.now() } : {}), writes: [...h.shared.writesBeside(h.plan), ...programs] };
-  }
-
-  /** The write capabilities a sub-program's workflow holds while it runs. */
-  private writes(sub: Program, workflow: string): CapVal[] {
-    const defs = subprogramLinked(sub, this.h.parent, this.h.modules).defs;
-    const wf = Object.hasOwn(defs, workflow) ? defs[workflow] : undefined;
-    return wf?.kind === "workflow" ? wf.caps.flatMap((c) => capsOf(defs, c)).filter((c) => c.write) : [];
-  }
-
-  /** An admitted sub-program's IR, from the artifact store, held to the hash it was admitted with (INV-02). */
-  private async load(a: Admission): Promise<Program> {
-    const sub = JSON.parse(await this.h.artifacts.text(this.h.scope, a.artifact)) as Program;
-    const hash = hashProgram(sub as unknown as Json).program;
-    if (hash !== a.hash) throw new Violation("program_hash_mismatch", `Sub-program ${a.number} of ${a.plan} was admitted as ${a.hash}, and what is stored hashes to ${hash}.`);
-    return sub;
   }
 
   /**
@@ -562,7 +550,7 @@ export class Planner {
     const ended = row && (row.state === "succeeded" || row.state === "failed") ? (row.state === "succeeded" ? { ok: row.result } : { error: faultValue(row.error) }) : undefined;
     // A replay runs it against the journal even when the journal says how it ended, and holds the two to each other.
     if (ended && !h.replay) return told(ended);
-    sub ??= await this.load(a);
+    sub ??= await loadProgram(h, a);
     let outcome: { ok: Value } | { error: { tag: string; args: Value[] } };
     try {
       outcome = { ok: await h.run(a, sub) };
@@ -582,6 +570,47 @@ export class Planner {
     await h.journal.closeProgram(h.runId, h.fence, a.command, "ok" in outcome ? outcome : { error: outcome.error });
     return told(now);
   }
+}
+
+// ── the sub-programs in flight ──────────────────────────────────────────
+
+/** What reads a run's sub-programs: its journal and artifact store, and its program as packaged, which they are linked against. */
+export interface ProgramReader {
+  journal: Journal;
+  runId: string;
+  artifacts: ArtifactStore;
+  scope: ArtifactScope;
+  parent: Program;
+  modules: Modules;
+}
+
+/** A sub-program in flight, and the write capabilities its workflow holds while it runs. */
+export interface ProgramInFlight {
+  admission: Admission;
+  writes: CapVal[];
+}
+
+/**
+ * The sub-programs of the run in flight (C5 across the run), in the order they were admitted. A sub-program that was
+ * admitted and has not ended holds its writes, whether it runs now or waits, for a person or for the run to be
+ * resumed. The journal says which those are, so no order of events hides one.
+ */
+export async function programsInFlight(r: ProgramReader): Promise<ProgramInFlight[]> {
+  const out: ProgramInFlight[] = [];
+  for (const a of await r.journal.inFlight(r.runId)) {
+    const defs = subprogramLinked(await loadProgram(r, a), r.parent, r.modules).defs;
+    const wf = Object.hasOwn(defs, a.workflow) ? defs[a.workflow] : undefined;
+    out.push({ admission: a, writes: wf?.kind === "workflow" ? wf.caps.flatMap((c) => capsOf(defs, c)).filter((c) => c.write) : [] });
+  }
+  return out;
+}
+
+/** An admitted sub-program's IR, from the artifact store, held to the hash it was admitted with (INV-02). */
+async function loadProgram(r: Pick<ProgramReader, "artifacts" | "scope">, a: Admission): Promise<Program> {
+  const sub = JSON.parse(await r.artifacts.text(r.scope, a.artifact)) as Program;
+  const hash = hashProgram(sub as unknown as Json).program;
+  if (hash !== a.hash) throw new Violation("program_hash_mismatch", `Sub-program ${a.number} of ${a.plan} was admitted as ${a.hash}, and what is stored hashes to ${hash}.`);
+  return sub;
 }
 
 /** A diagnostic as a lead is shown it: what it is, where, and the facts to act on. */
