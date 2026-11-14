@@ -591,7 +591,6 @@
     },
     {
       "name": "an approval in a block, before an irreversible effect",
-      "held": "R12: E0405 and E0201 of effectCall decide this result, and approved is what decides E0405",
       "mdt": [
         "mandate @ 0.2",
         "module m @ 0.1",
@@ -702,6 +701,540 @@
             "Kind": { "kind": "type", "type": { "enum": ["Bug", "Feature"] } }
           }
         }
+      }
+    },
+    {
+      "name": "authority: every problem of net.https's methods",
+      "mdt": [
+        "mandate @ 0.5",
+        "module m @ 0.1",
+        "use std.{net}",
+        "capability A = net.https(hosts: [\"a.example\"], methods: GET)",
+        "capability B = net.https(hosts: [\"b.example\"], methods: [])",
+        "capability C = net.https(hosts: [\"c.example\"], methods: [GET, \"POST\", FETCH, 1])"
+      ]
+    },
+    {
+      "name": "authority: critical effects outside a workflow, their arity and their approval",
+      "mdt": [
+        "mandate @ 0.4",
+        "module m @ 0.1",
+        "use std.{git, human, model}",
+        "use company.domain.{PullRequestDraft}",
+        "role owner \"Owner\"",
+        "capability PR = git.pr(\"company/backend\")",
+        "capability M = model.infer(tier: standard)",
+        "effect Publish(t: Text) -> Text",
+        "  critical",
+        "  idempotency required",
+        "agent A {",
+        "  caps PR, M",
+        "  budget { steps: 3 }",
+        "  skill s(t: Text) -> Text ! {Model} {",
+        "    effect Publish(t)",
+        "  }",
+        "}",
+        "contract C(d: PullRequestDraft) {",
+        "  require effect Publish(\"y\", \"z\") idempotent_by d.id",
+        "}",
+        "fn f(t: Text) -> Text ! {Publish} { effect Publish() }",
+        "workflow W(d: PullRequestDraft) -> Text",
+        "  caps PR, M",
+        "{",
+        "  effect git.merge(d, d)",
+        "  let a = human.approve(role: owner)",
+        "  effect git.merge(d) idempotent_by d.id",
+        "  delegate A.s(\"t\")",
+        "}"
+      ]
+    },
+    {
+      "name": "authority: par branches over unknown and known scopes, restart_all and a strategy for no par",
+      "mdt": [
+        "mandate @ 0.4",
+        "module m @ 0.1",
+        "use std.{fs, git}",
+        "use company.domain.{PullRequestDraft}",
+        "capability W = fs.write()",
+        "capability V = fs.write(\"/work/a\")",
+        "capability R = fs.read(\"/work\")",
+        "capability PR = git.pr(\"company/backend\")",
+        "agent A {",
+        "  caps W, V, R",
+        "  budget { steps: 3 }",
+        "  skill s(t: Text) -> Text ! {Fs.Write, Fs.Read(\"/elsewhere\")}",
+        "}",
+        "workflow P(t: Text, d: PullRequestDraft) -> Bool",
+        "  caps W, V, R, PR",
+        "{",
+        "  par supervise restart_all {",
+        "    b = delegate A.s(t)",
+        "    a = delegate A.s(t)",
+        "  }",
+        "  par supervise restart_all {",
+        "    c = effect git.comment(d, \"x\") idempotent_by d.id",
+        "  }",
+        "  par supervise restart(max: 2) {",
+        "    e = delegate A.s(t)",
+        "  }",
+        "  true",
+        "}"
+      ]
+    },
+    {
+      "name": "authority: supervision of a delegation, each strategy and each problem of a fallback",
+      "mdt": [
+        "mandate @ 0.4",
+        "module m @ 0.1",
+        "use std.{fs, model}",
+        "role owner \"Owner\"",
+        "capability W = fs.write(\"/work\")",
+        "capability X = fs.write(\"/tmp\")",
+        "capability M = model.infer(tier: standard)",
+        "agent A {",
+        "  caps W",
+        "  budget { steps: 3 }",
+        "  skill s(t: Text) -> Text ! {Fs.Write}",
+        "}",
+        "agent B {",
+        "  caps W, X",
+        "  budget { steps: 3 }",
+        "  skill s(t: Int) -> Text ! {Fs.Write}",
+        "}",
+        "agent C {",
+        "  caps M",
+        "  budget { steps: 3 }",
+        "  skill other(t: Text) -> Text ! {Model}",
+        "}",
+        "workflow D(t: Text) -> Bool",
+        "  caps W, X, M",
+        "{",
+        "  let a = delegate A.s(t) with caps W.narrow(\"/work/a\") supervise degrade(to: B)",
+        "  let b = delegate A.s(t) with caps W.narrow(\"/work/a\") supervise degrade(to: C)",
+        "  let c = delegate A.s(t) supervise degrade(to: t)",
+        "  let d = delegate A.s(t) supervise escalate(human, \"x\")",
+        "  let e = delegate A.s(t) supervise restart(max: 9)",
+        "  let f = delegate A.s(t) supervise retry(max: 1)",
+        "  let g = delegate A.s(t) supervise escalate(human, role: owner)",
+        "  true",
+        "}"
+      ]
+    },
+    {
+      "name": "authority: a claim given to check, with a lead above the model's class",
+      "claim": { "envelope": { "spawn": { "max_class": "internal" } }, "lead": "confidential" },
+      "mdt": [
+        "mandate @ 0.4",
+        "module m @ 0.1",
+        "use std.{model}",
+        "type Doc = { body: Text } classified confidential",
+        "capability M = model.infer(tier: standard)",
+        "capability P = model.infer(tier: standard, max_class: restricted)",
+        "agent A {",
+        "  caps M",
+        "  budget { steps: 3 }",
+        "  skill s(t: Text) -> Inferred<Text> ! {Model}",
+        "}",
+        "agent Wide {",
+        "  caps P",
+        "  budget { steps: 3 }",
+        "  skill s(t: Text) -> Inferred<Text> ! {Model}",
+        "}",
+        "agent Outer {",
+        "  caps P",
+        "  budget { steps: 3 }",
+        "  skill wrap(d: Doc) -> Inferred<Text> ! {Delegate, Model} {",
+        "    let x = infer Text from quote(d.body)",
+        "    delegate Wide.s(d.body)",
+        "  }",
+        "}",
+        "fn via(d: Doc) -> Inferred<Text> { delegate Wide.s(d.body) }",
+        "workflow Fix(d: Doc, t: Text) -> Inferred<Text>",
+        "  caps M, P",
+        "  budget { steps: 20 }",
+        "{",
+        "  let a = delegate A.s(t)",
+        "  let b = via(d)",
+        "  let c = infer Text from quote(d.body)",
+        "  delegate Outer.wrap(d)",
+        "}"
+      ]
+    },
+    {
+      "name": "authority: the same claim with a public lead",
+      "claim": { "envelope": {}, "lead": "public" },
+      "mdt": [
+        "mandate @ 0.4",
+        "module m @ 0.1",
+        "use std.{model}",
+        "type Doc = { body: Text } classified confidential",
+        "capability M = model.infer(tier: standard)",
+        "agent A {",
+        "  caps M",
+        "  budget { steps: 3 }",
+        "  skill s(t: Text) -> Inferred<Text> ! {Model}",
+        "}",
+        "workflow Fix(d: Doc, t: Text) -> Inferred<Text>",
+        "  caps M",
+        "{",
+        "  let a = delegate A.s(t)",
+        "  delegate A.s(d.body)",
+        "}"
+      ]
+    },
+    {
+      "name": "authority: envelopes missing each member, with caps and a budget of their own, and their approvals",
+      "mdt": [
+        "mandate @ 0.4",
+        "module m @ 0.1",
+        "use std.{fs, git, model}",
+        "use company.domain.{PullRequestDraft}",
+        "role owner \"Owner\"",
+        "capability M = model.infer(tier: standard)",
+        "capability R = fs.read(\"/work\")",
+        "capability PR = git.pr(\"company/backend\")",
+        "effect Publish(t: Text) -> Text",
+        "  critical",
+        "  idempotency required",
+        "workflow NoBudget() -> Bool",
+        "  envelope {",
+        "    owner owner",
+        "    caps  M",
+        "  }",
+        "  caps M",
+        "  budget { steps: 3 }",
+        "{",
+        "  true",
+        "}",
+        "workflow NoOwner() -> Bool",
+        "  envelope {",
+        "    caps   M, R",
+        "    budget { steps: 3 }",
+        "    approve git.merge by owner",
+        "    approve fs.write_text by owner",
+        "    approve Publish by owner",
+        "  }",
+        "{",
+        "  true",
+        "}",
+        "workflow OnlyOwner() -> Bool",
+        "  envelope {",
+        "    owner owner",
+        "  }",
+        "{",
+        "  true",
+        "}",
+        "workflow Covered(d: PullRequestDraft) -> Bool",
+        "  envelope {",
+        "    owner  owner",
+        "    caps   PR",
+        "    budget { steps: 3, agents: 1 }",
+        "    approve git.merge by owner",
+        "  }",
+        "{",
+        "  true",
+        "}"
+      ]
+    },
+    {
+      "name": "authority: plans outside an envelope's body, in each kind of place, in the order of their paths",
+      "mdt": [
+        "mandate @ 0.4",
+        "module m @ 0.1",
+        "use std.{model}",
+        "role owner \"Owner\"",
+        "capability M = model.infer(tier: standard)",
+        "agent Lead {",
+        "  caps M",
+        "  budget { steps: 3 }",
+        "  skill s(t: Text) -> Inferred<Text> ! {Model}",
+        "  skill t(t: Text) -> Inferred<Text> ! {Model} {",
+        "    plan Lead.s(t) within envelope",
+        "  }",
+        "}",
+        "fn f(t: Text) -> Bool {",
+        "  let a0 = 0",
+        "  let a1 = 1",
+        "  let a2 = plan Lead.s(t) within envelope",
+        "  let a3 = 3",
+        "  let a4 = 4",
+        "  let a5 = 5",
+        "  let a6 = 6",
+        "  let a7 = 7",
+        "  let a8 = 8",
+        "  let a9 = 9",
+        "  let a10 = plan Lead.s(t) within envelope",
+        "  true",
+        "}",
+        "workflow Bare(t: Text) -> Inferred<Text>",
+        "  caps M",
+        "{",
+        "  plan Lead.s(t) within envelope",
+        "}",
+        "workflow Held(t: Text) -> Inferred<Text>",
+        "  envelope {",
+        "    owner  owner",
+        "    caps   M",
+        "    budget { steps: 30, agents: 3 }",
+        "  }",
+        "  ensures (plan Lead.s(t) within envelope) == result",
+        "{",
+        "  plan Lead.s(t) within envelope",
+        "}"
+      ]
+    },
+    {
+      "name": "authority: the skills a workflow with an envelope reaches, first in first out, each once",
+      "mdt": [
+        "mandate @ 0.4",
+        "module m @ 0.1",
+        "use std.{model}",
+        "role owner \"Owner\"",
+        "type Doc = { body: Text } classified confidential",
+        "type Top = { body: Text } classified restricted",
+        "type Mid = { body: Text } classified internal",
+        "capability M = model.infer(tier: standard, max_class: restricted)",
+        "agent A {",
+        "  caps M",
+        "  budget { steps: 3 }",
+        "  skill s(t: Text) -> Inferred<Text> ! {Model}",
+        "  skill deep(t: Text) -> Inferred<Text> ! {Delegate, Model} {",
+        "    let x = infer Text from quote(Top { body: t }.body)",
+        "    delegate B.again(t)",
+        "  }",
+        "}",
+        "agent B {",
+        "  caps M",
+        "  budget { steps: 3 }",
+        "  skill again(t: Text) -> Inferred<Text> ! {Delegate} {",
+        "    let y = delegate A.s(Doc { body: t })",
+        "    delegate A.deep(t)",
+        "  }",
+        "  skill first(t: Text) -> Inferred<Text> ! {Delegate} {",
+        "    let z = delegate A.s(Mid { body: t })",
+        "    delegate A.s(Doc { body: t })",
+        "  }",
+        "}",
+        "workflow W(t: Text) -> Inferred<Text>",
+        "  envelope {",
+        "    owner  owner",
+        "    caps   M",
+        "    budget { steps: 30, agents: 6 }",
+        "  }",
+        "{",
+        "  let a = delegate B.again(t)",
+        "  let b = delegate B.first(t)",
+        "  delegate A.deep(t)",
+        "}"
+      ]
+    },
+    {
+      "name": "authority: a map's caps, bound, par and supervision",
+      "mdt": [
+        "mandate @ 0.4",
+        "module m @ 0.1",
+        "use std.{fs, git, model}",
+        "role owner \"Owner\"",
+        "type Item = { name: Text, root: Path }",
+        "capability M = model.infer(tier: standard)",
+        "capability W = fs.write(\"/work\")",
+        "capability Zr = fs.read(\"/work\")",
+        "capability PR = git.pr(\"company/backend\")",
+        "capability Other = fs.write(\"/elsewhere\")",
+        "agent A {",
+        "  caps M, W, Zr, PR",
+        "  budget { steps: 3 }",
+        "  skill s(i: Item) -> Inferred<Text> ! {Fs.Write, Fs.Read, Model}",
+        "}",
+        "workflow Run(items: List<Item>, n: Int) -> Bool",
+        "  envelope {",
+        "    owner  owner",
+        "    caps   M, W, Zr, PR",
+        "    budget { steps: 60, agents: 12 }",
+        "    spawn  { max_concurrent: 2 }",
+        "  }",
+        "{",
+        "  let a = map x in items max 3 par 2 with caps W.narrow(x.root), Zr.narrow(x.root) {",
+        "    delegate A.s(x)",
+        "  }",
+        "  let b = map x in items par 3 supervise restart_all {",
+        "    x.name",
+        "  }",
+        "  let c = map x in n max 2 with caps Other {",
+        "    delegate A.s(x)",
+        "  }",
+        "  true",
+        "}",
+        "workflow Plain(items: List<Item>) -> Bool",
+        "  caps M, W",
+        "{",
+        "  let a = map x in items {",
+        "    x.name",
+        "  }",
+        "  true",
+        "}"
+      ]
+    },
+    {
+      "name": "authority: one capability list evaluated again at each delegation, and reports of different functions in one program",
+      "mdt": [
+        "mandate @ 0.4",
+        "module m @ 0.1",
+        "use std.{fs, model}",
+        "capability W = fs.write(\"/work\")",
+        "capability M = model.infer(tier: standard)",
+        "agent A {",
+        "  caps fs.write(\"/work\").narrow(\"/elsewhere\"), M",
+        "  budget { steps: 3 }",
+        "  skill s(t: Text) -> Text ! {Fs.Write}",
+        "}",
+        "agent B {",
+        "  caps W.narrow(\"/work/b\")",
+        "  budget { steps: 3 }",
+        "  skill s(t: Text) -> Text ! {Fs.Write}",
+        "}",
+        "workflow U(t: Untrusted<Text>, g: Inferred<Text>, p: Text) -> Bool",
+        "  caps W, M",
+        "{",
+        "  let a = delegate A.s(p)",
+        "  let b = delegate A.s(p) supervise degrade(to: B)",
+        "  let c = delegate B.s(p) with caps W.narrow(t), W.narrow(g)",
+        "  true",
+        "}"
+      ]
+    },
+    {
+      "name": "authority: names in canonical order, and skills named __proto__ and constructor",
+      "ir": {
+        "language": "mandate/0.4",
+        "module": "m",
+        "version": "0.1",
+        "defs": {
+          "V": {
+            "kind": "capability",
+            "value": {
+              "op": "call",
+              "callee": { "op": "field", "of": { "op": "var", "name": "fs" }, "name": "write" },
+              "args": [{ "value": { "op": "text", "value": "/work/a" } }]
+            }
+          },
+          "A": {
+            "kind": "agent",
+            "caps": [{ "op": "var", "name": "V" }],
+            "skills": {
+              "__proto__": {
+                "params": [{ "name": "t", "type": { "ref": "Text" } }],
+                "returns": { "ref": "Text" },
+                "effects": [{ "effect": "Fs.Write" }]
+              },
+              "constructor": {
+                "params": [{ "name": "t", "type": { "ref": "Text" } }],
+                "returns": { "ref": "Text" },
+                "effects": [{ "effect": "Fs.Write" }]
+              }
+            },
+            "budget": { "steps": 3 }
+          },
+          "L": {
+            "kind": "agent",
+            "caps": [{ "op": "var", "name": "V" }],
+            "skills": {
+              "b2": {
+                "params": [{ "name": "t", "type": { "ref": "Text" } }],
+                "returns": { "ref": "Text" },
+                "effects": [{ "effect": "Fs.Write" }]
+              },
+              "_x": {
+                "params": [{ "name": "t", "type": { "ref": "Text" } }],
+                "returns": { "ref": "Text" },
+                "effects": [{ "effect": "Fs.Write" }]
+              },
+              "Z": {
+                "params": [{ "name": "t", "type": { "ref": "Text" } }],
+                "returns": { "ref": "Text" },
+                "effects": [{ "effect": "Fs.Write" }]
+              },
+              "a": {
+                "params": [{ "name": "t", "type": { "ref": "Text" } }],
+                "returns": { "ref": "Text" },
+                "effects": [{ "effect": "Fs.Write" }]
+              }
+            }
+          },
+          "F": {
+            "kind": "agent",
+            "caps": [{ "op": "var", "name": "V" }],
+            "skills": {
+              "constructor": {
+                "params": [{ "name": "t", "type": { "ref": "Text" } }],
+                "returns": { "ref": "Text" },
+                "effects": [{ "effect": "Fs.Write" }]
+              }
+            },
+            "budget": { "steps": 3 }
+          },
+          "P": {
+            "kind": "workflow",
+            "params": [{ "name": "t", "type": { "ref": "Text" } }],
+            "returns": { "ref": "Bool" },
+            "caps": [{ "op": "var", "name": "V" }],
+            "body": [
+              {
+                "op": "par",
+                "branches": {
+                  "b2": {
+                    "op": "delegate",
+                    "agent": "A",
+                    "skill": "__proto__",
+                    "args": [{ "value": { "op": "var", "name": "t" } }]
+                  },
+                  "_x": {
+                    "op": "delegate",
+                    "agent": "A",
+                    "skill": "__proto__",
+                    "args": [{ "value": { "op": "var", "name": "t" } }]
+                  },
+                  "Z": {
+                    "op": "delegate",
+                    "agent": "A",
+                    "skill": "constructor",
+                    "args": [{ "value": { "op": "var", "name": "t" } }]
+                  },
+                  "a": {
+                    "op": "delegate",
+                    "agent": "A",
+                    "skill": "constructor",
+                    "args": [{ "value": { "op": "var", "name": "t" } }]
+                  }
+                }
+              },
+              {
+                "op": "let",
+                "name": "x",
+                "value": {
+                  "op": "delegate",
+                  "agent": "A",
+                  "skill": "__proto__",
+                  "args": [{ "value": { "op": "var", "name": "t" } }],
+                  "supervise": { "name": "degrade", "args": [{ "name": "to", "value": { "op": "var", "name": "F" } }] }
+                }
+              },
+              {
+                "op": "let",
+                "name": "y",
+                "value": {
+                  "op": "delegate",
+                  "agent": "A",
+                  "skill": "constructor",
+                  "args": [{ "value": { "op": "var", "name": "t" } }],
+                  "supervise": { "name": "degrade", "args": [{ "name": "to", "value": { "op": "var", "name": "F" } }] }
+                }
+              },
+              { "op": "expr", "value": { "op": "bool", "value": true } }
+            ]
+          }
+        },
+        "uses": [{ "module": "std", "names": ["fs"] }]
       }
     }
   ],

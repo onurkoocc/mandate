@@ -34,7 +34,6 @@ use mandate_views::{architecture, authority, cost, program_doc, to_html, to_mark
 /// check is held to failing only by omission against its stored result.
 const PENDING: &[&str] = &[
     // R13: the system model, reads.
-    "*MDT-E10*",
     "*MDT-E12*",
 ];
 

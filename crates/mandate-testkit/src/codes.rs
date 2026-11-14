@@ -27,7 +27,7 @@
 //! and patches (`patch/patch.ts`).
 //!
 //! A row is one code or a few that one slice brings, so a family that two
-//! slices share is cut into rows (E02, E04, E05, E07, E17). Some codes are still
+//! slices share is cut into rows (E02, E04, E05, E07, E10, E17). Some codes are still
 //! raised in stages of different slices: E0105 (the reader and
 //! `validateIr`, R6; the static checks' limit of expanded nodes, R11),
 //! E0201 (the core, R11; `map`, `delegate`, `effectCall`, R12; `changeset`,
@@ -103,7 +103,7 @@ pub const FAMILIES: &[Family] = &[
         codes: "E0220",
         stage: "staticCheck: data classes against a model's capability and an envelope (overEnvelope, overModel, reach in check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E023*",
@@ -124,14 +124,14 @@ pub const FAMILIES: &[Family] = &[
         codes: "E0301-E0320",
         stage: "staticCheck: capabilities and delegation (check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-W0310*",
         codes: "W0310",
         stage: "staticCheck (check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-W0311*",
@@ -152,28 +152,28 @@ pub const FAMILIES: &[Family] = &[
         codes: "E0402",
         stage: "staticCheck: an unknown effect (effectNames in check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E0403*",
         codes: "E0403",
         stage: "staticCheck: idempotency of a critical effect (checkEffectDecl, effectCall in check/static.ts, R12; changeset, R13)",
         slice: "R12, R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E0405*",
         codes: "E0405",
         stage: "staticCheck: an irreversible effect without an approval (effectCall in check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E0408*",
         codes: "E0408",
         stage: "staticCheck: a critical effect outside a workflow (checkAgent, effectCall in check/static.ts, R12; changeset, R13)",
         slice: "R12, R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E0501*",
@@ -194,7 +194,7 @@ pub const FAMILIES: &[Family] = &[
         codes: "E0503",
         stage: "staticCheck: an agent loop without steps (checkAgent in check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E0504*",
@@ -229,14 +229,14 @@ pub const FAMILIES: &[Family] = &[
         codes: "E0701",
         stage: "staticCheck: C2, what a delegation or a map hands over (given, map in check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E0710*",
         codes: "E0710",
         stage: "staticCheck: restart_all over external effects (par in check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E0711*",
@@ -257,21 +257,21 @@ pub const FAMILIES: &[Family] = &[
         codes: "E0713",
         stage: "staticCheck: supervision (supervise in check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E0714*",
         codes: "E0714",
         stage: "staticCheck: supervision (supervise, map in check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E0715*",
         codes: "E0715",
         stage: "staticCheck: supervision (supervise in check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E09*",
@@ -281,9 +281,51 @@ pub const FAMILIES: &[Family] = &[
         ported: true,
     },
     Family {
-        glob: "*MDT-E10*",
-        codes: "E1001-E1007",
-        stage: "staticCheck: the system model (check/static.ts)",
+        glob: "*MDT-E1001*",
+        codes: "E1001",
+        stage: "staticCheck: the system model (checkSystem in check/static.ts)",
+        slice: "R13",
+        ported: false,
+    },
+    Family {
+        glob: "*MDT-E1002*",
+        codes: "E1002",
+        stage: "staticCheck: a capability over a component that cannot be opened or narrowed as one (evalCap in check/static.ts)",
+        slice: "R12",
+        ported: true,
+    },
+    Family {
+        glob: "*MDT-E1003*",
+        codes: "E1003",
+        stage: "staticCheck: the system model (checkSystem in check/static.ts)",
+        slice: "R13",
+        ported: false,
+    },
+    Family {
+        glob: "*MDT-E1004*",
+        codes: "E1004",
+        stage: "staticCheck: declared reads (checkRead in check/static.ts)",
+        slice: "R13",
+        ported: false,
+    },
+    Family {
+        glob: "*MDT-E1005*",
+        codes: "E1005",
+        stage: "staticCheck: declared reads (checkRead in check/static.ts)",
+        slice: "R13",
+        ported: false,
+    },
+    Family {
+        glob: "*MDT-E1006*",
+        codes: "E1006",
+        stage: "staticCheck: the system model (checkSystem in check/static.ts)",
+        slice: "R13",
+        ported: false,
+    },
+    Family {
+        glob: "*MDT-E1007*",
+        codes: "E1007",
+        stage: "staticCheck: the system model (checkSystem in check/static.ts)",
         slice: "R13",
         ported: false,
     },
@@ -327,28 +369,28 @@ pub const FAMILIES: &[Family] = &[
         codes: "E1701",
         stage: "staticCheck: an envelope's own fields (checkEnvelope in check/envelope.ts); also checkAmendment (check.ts, R13)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1702*",
         codes: "E1702",
         stage: "staticCheck: a map's bound (map in check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1703*",
         codes: "E1703",
         stage: "staticCheck: a map's par against the envelope (map in check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1704*",
         codes: "E1704",
         stage: "staticCheck: an envelope's approvals (checkEnvelope in check/envelope.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1705*",
@@ -362,14 +404,14 @@ pub const FAMILIES: &[Family] = &[
         codes: "E1706",
         stage: "checkSubprogram: containment (check/subprogram.ts, R13); staticCheck with a claim: overEnvelope, overModel (check/static.ts, R12)",
         slice: "R12, R13",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1707*",
         codes: "E1707",
         stage: "staticCheck: a plan outside an envelope's body (plansOutside in check/envelope.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1708*",
@@ -390,7 +432,7 @@ pub const FAMILIES: &[Family] = &[
         codes: "E1801",
         stage: "staticCheck: methods of net.https (check/static.ts)",
         slice: "R12",
-        ported: false,
+        ported: true,
     },
     Family {
         glob: "*MDT-E1802*",
@@ -506,7 +548,8 @@ mod tests {
         assert_eq!(family_of("MDT-E0220").map(|f| f.slice), Some("R12"));
         assert_eq!(family_of("MDT-E0213").map(|f| f.slice), Some("R11"));
         assert_eq!(family_of("MDT-E1708").map(|f| f.ported), Some(true));
-        assert_eq!(family_of("MDT-E1706").map(|f| f.ported), Some(false));
+        assert_eq!(family_of("MDT-E1706").map(|f| f.ported), Some(true));
+        assert_eq!(family_of("MDT-E1705").map(|f| f.ported), Some(false));
         assert_eq!(family_of("MDT-E1502").map(|f| f.slice), Some("R14"));
         assert!(family_of("MDT-X0000").is_none());
         // Every code of codes.ts has a row.
@@ -531,7 +574,9 @@ mod tests {
                 .count();
             assert_eq!(claimed, 1, "{}", f.glob);
         }
-        assert!(check_pending(&["*MDT-E022*", "apply_ops @ *"]).is_ok());
+        assert!(check_pending(&["*MDT-E1001*", "apply_ops @ *"]).is_ok());
+        assert!(check_pending(&["*MDT-E022*"]).is_err());
+        assert!(check_pending(&["*MDT-E10*"]).is_err());
         assert!(
             check_pending(&[
                 "check @ conformance/S08a [MDT-E0213]",

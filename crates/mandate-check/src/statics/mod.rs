@@ -135,7 +135,6 @@ pub(crate) enum Where {
 
 impl Where {
     /// Its name, as messages write it.
-    #[expect(dead_code, reason = "R12 writes it in E0408 of effectCall")]
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Where::Workflow => "workflow",
@@ -188,7 +187,6 @@ impl<'a> Bound<'a> {
     }
 
     /// `spawn?.max_concurrent`.
-    #[expect(dead_code, reason = "R12 compares it with a map's par, E1703")]
     pub(crate) fn max_concurrent(self) -> Option<f64> {
         self.spawn
             .and_then(|s| s.get("max_concurrent"))

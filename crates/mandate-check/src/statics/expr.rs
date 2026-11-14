@@ -1313,7 +1313,6 @@ impl<'a> Checker<'a> {
         self.accepts_by_human(contract)
     }
 
-    #[expect(dead_code, reason = "R12 tests it for E0405 of effectCall")]
     /// `approvedByHuman(ty)`: a value verified against a contract that a
     /// person approves.
     pub(crate) fn approved_by_human(&self, ty: &Ty) -> bool {

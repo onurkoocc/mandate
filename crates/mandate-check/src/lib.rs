@@ -6,8 +6,8 @@
 //!
 //! - [`check`](mod@check): [`check()`], [`load_modules`], [`CheckOptions`],
 //!   [`CheckResult`], `compiler/src/check.ts` lines 60–131. Of the static
-//!   checks the authority's diagnostics and the system model's are not
-//!   ported yet, listed in [`UNPORTED`]: until it is empty, an `ok` from
+//!   checks the system model's diagnostics are not ported yet, listed in
+//!   [`UNPORTED`]: until it is empty, an `ok` from
 //!   [`check()`] means no error from what is ported so far.
 //! - [`modules`]: [`link`], [`linked_program`] and [`references`],
 //!   `compiler/src/modules.ts`: the definitions a program sees with its

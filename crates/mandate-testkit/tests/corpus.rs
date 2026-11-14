@@ -58,88 +58,25 @@ use mandate_testkit::{Miss, check_pending, omission, run_held_gate};
 /// does not run yet (`mandate_check::UNPORTED`), by family of codes
 /// (`mandate_testkit::codes::FAMILIES`), with the slice that ports it.
 const PENDING_CHECK: &[&str] = &[
-    // R12: the static authority (capabilities, delegation, effects, envelopes, methods).
-    "*MDT-E022*",
-    "*MDT-E03*",
-    "*MDT-W0310*",
-    "*MDT-E0402*",
-    "*MDT-E0403*",
-    "*MDT-E0405*",
-    "*MDT-E0408*",
-    "*MDT-E0503*",
-    "*MDT-E070*",
-    "*MDT-E0710*",
-    "*MDT-E0713*",
-    "*MDT-E0714*",
-    "*MDT-E0715*",
-    "*MDT-E1701*",
-    "*MDT-E1702*",
-    "*MDT-E1703*",
-    "*MDT-E1704*",
-    "*MDT-E1707*",
-    "*MDT-E1801*",
     // R13: the system model, change sets, reads.
-    "*MDT-E10*",
+    "*MDT-E1001*",
+    "*MDT-E1003*",
+    "*MDT-E1004*",
+    "*MDT-E1005*",
+    "*MDT-E1006*",
+    "*MDT-E1007*",
     "*MDT-E11*",
     "*MDT-E12*",
-    // Entries whose codes are all of ported families, but which the core
-    // does not give, because the TypeScript raises them in a function of a
-    // later slice (`statics/authority.rs` gives none of its own
-    // diagnostics yet). By name, the function beside each group.
-    // R12, `mapBudget`: E0501 of a map's budget (9 entries).
-    "check @ check-07d28a0de8932605 [MDT-E0501]",
-    "check @ check-0a9c49183fe6345e [MDT-E0501]",
-    "check @ check-7888c5b7ee9907d9 [MDT-E0501]",
-    "check @ check-9fd7a1d3a45a9a26 [MDT-E0501]",
-    "check @ check-a742ce1477d871e1 [MDT-E0501]",
-    "check @ check-bfc9c40ac4f4c30d [MDT-E0501]",
-    "check @ check-c8e894c635f38982 [MDT-E0501]",
-    "check @ check-e16be0b293bd4ac1 [MDT-E0501]",
-    "check @ check-f89ea702fb8a9226 [MDT-E0501]",
-    // R12, `checkExtern`: E0213, host code returns a protected type (2).
-    "check @ check-198e176fd808b71e [MDT-E0213]",
-    "check @ check-dd5d5fa56cde84b7 [MDT-E0213]",
-    // R12, `checkAgent`: E0213, a skill returns a protected type (2).
-    "check @ check-9809c18b6a677d8b [MDT-E0213]",
-    "check @ check-b0463193c9f9eee6 [MDT-E0213]",
-    // R12, `checkEffectDecl`: E0210, a critical effect's parameter (1).
-    "check @ check-75140a7267f49728 [MDT-E0210]",
-    // R12, `effectCall`: E0210 of an argument against the effect's
-    // parameter (10).
-    "check @ check-1aa80d89744000ee [MDT-E0210]",
-    "check @ check-3b80f31a36672ab0 [MDT-E0210]",
-    "check @ check-b73506fb86bf8097 [MDT-E0210]",
-    "check @ check-de2acfeab9fe5bd0 [MDT-E0210]",
-    "check @ check-f754e852c3552c86 [MDT-E0210]",
-    "check @ check-3002424d9e15bfe0 [MDT-E0210 MDT-W0601]",
-    "check @ check-5fe4079540fc2694 [MDT-E0210 MDT-W0601]",
-    "check @ check-6671ea454a845dbe [MDT-E0210 MDT-W0601]",
-    "check @ check-8b28bfe2f98581eb [MDT-E0210 MDT-W0601]",
-    "check @ check-90e09f2d441a32d8 [MDT-E0210 MDT-W0601]",
-    // R12, `delegate` and `delegateRest` (a plan is read as a
-    // delegation): E0201 of the arguments' count, of an argument, of the
-    // timeout; E0210 of an argument; E0215 of a capability argument in a
-    // map's `with caps` (5).
-    "check @ check-3247e5d490cdbc49 [MDT-E0201 MDT-W0601]",
-    "check @ check-3b1a9382ae570684 [MDT-E0201 MDT-W0601]",
-    "check @ check-97683268f0a68bfb [MDT-E0201]",
-    "check @ check-d60016559e2ed9b2 [MDT-E0201 MDT-W0601]",
-    "check @ check-f39bcc7a32570b9e [MDT-E0210 MDT-E0215 MDT-W0601]",
-    // R12, `map`: E0201, a map over what is not a list (1).
-    "check @ check-9be2b555f2580b24 [MDT-E0201 MDT-W0601]",
-    // R12, `untrustedInCapArg` from `evalCap`: E0215, untrusted content
-    // picks a capability's scope (1).
-    "check @ check-b99d573d61aabaf5 [MDT-E0215]",
-    // R12, `checkUsagesDeclared` from `fnUsages`: E0401, a function uses
-    // an effect it does not declare (2).
-    "check @ check-3c41d351b0175523 [MDT-E0401]",
-    "check @ check-eb7ee56cd98527f2 [MDT-E0401]",
+    // An entry whose codes are all of ported families, but which the
+    // TypeScript raises in a function of R13: `changeset`, E0403 of a
+    // member without `idempotent_by` (1).
+    "check @ check-9f16a85a913f6058 [MDT-E0403 MDT-W0601]",
 ];
 /// `load_modules`: a module that does not check against the others for a
 /// reason of a later slice, by family of codes.
 const PENDING_LOAD_MODULES: &[&str] = &[
     // R13: the system model.
-    "*MDT-E10*",
+    "*MDT-E1001*",
 ];
 /// `check_patch`: the patch and subprogram checks, R13.
 const PENDING_CHECK_PATCH: &[&str] = &["check_patch @ *"];
@@ -414,7 +351,7 @@ fn print_unported_stages(corpus: &Corpus, title: &str, passed: &[&Entry]) {
         }
     }
     println!(
-        "{title}: of the {} that pass, {statics} have no error, so TypeScript ran its static checks on them (the core, R11, is in Rust; the authority's diagnostics, R12, and the system model's, R13, are not yet), and {claims} have a claim (R12, R13)",
+        "{title}: of the {} that pass, {statics} have no error, so TypeScript ran its static checks on them (the core, R11, and the authority, R12, are in Rust; the system model's diagnostics, R13, are not yet), and {claims} have a claim (R13)",
         passed.len()
     );
 }
