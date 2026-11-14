@@ -88,10 +88,20 @@ export const CONFIG = {
   },
 };
 
-export async function world(o: { allow_private?: boolean; lingerMs?: number; dialTimeoutMs?: number } = {}): Promise<World> {
+/** A credential a test adds to the proxy's own two, with its made-up secret. */
+export interface ExtraCredential {
+  hosts: string[];
+  header: string;
+  template: string;
+  secret: string;
+}
+
+export async function world(o: { allow_private?: boolean; lingerMs?: number; dialTimeoutMs?: number; credentials?: Record<string, ExtraCredential> } = {}): Promise<World> {
   const up = await upstream();
   const where = adminPath();
-  const config = egressConfig({ admin: where.path, ...CONFIG, ...(o.allow_private ? { allow_private: true } : {}) }, "test", tmpdir());
+  const extra = Object.entries(o.credentials ?? {});
+  const credentials = { ...CONFIG.credentials, ...Object.fromEntries(extra.map(([name, c]) => [name, { env: `MANDATE_EGRESS_${name.toUpperCase().replace(/-/g, "_")}`, hosts: c.hosts, header: c.header, template: c.template }])) };
+  const config = egressConfig({ admin: where.path, credentials, ...(o.allow_private ? { allow_private: true } : {}) }, "test", tmpdir());
   const dials: DialRequest[] = [];
   const resolved: string[] = [];
   const dns = new Map<string, string[] | (() => string[])>();
@@ -106,6 +116,7 @@ export async function world(o: { allow_private?: boolean; lingerMs?: number; dia
     secrets: new Map([
       ["github", Buffer.from(SECRET)],
       ["model", Buffer.from(OTHER_SECRET)],
+      ...extra.map(([name, c]) => [name, Buffer.from(c.secret)] as [string, Buffer]),
     ]),
     resolve,
     // Whatever address it is asked for, the fake dialer reaches the in-process upstream, and remembers what it was asked.
