@@ -13,10 +13,11 @@ name: boundary-live
 #   3. the request to example.org is an egress_denied violation in the audit view (mandate show --audit);
 #   4. verify-journal reports the run's export verified.
 #
-# Run by hand only: it spends a few model calls. It reads two secrets, each in the one step that needs it: the
+# Run by hand only: it spends a few model calls. It reads two secrets, each only in the steps that need it: the
 # repository secret CLAUDE_API_KEY (and CLAUDE_WORKSPACE_ID, for a key not scoped to a workspace) in the step that runs
-# the runtime, and this job's own GITHUB_TOKEN, read-only, in the proxy's step and in the step that checks that it is
-# nowhere it should not be. The runtime never has the token, and the agent sees only its placeholder.
+# the runtime and, the key alone, in the first step, which only looks whether it is set; and this job's own
+# GITHUB_TOKEN, read-only, in the proxy's step and in the step that checks that it is nowhere it should not be. The
+# runtime never has the token, and the agent sees only its placeholder.
 #
 #   gh workflow run boundary-live.yml
 
@@ -32,6 +33,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # A secret that is not set reaches a step as an empty text, and the run would then fail after everything is
+      # built, for want of credentials. This step looks at the model's key only to see whether it is set, prints
+      # nothing of it, and runs nothing but this test.
+      - name: The secret the run needs is set
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+        run: |
+          if [ -z "$CLAUDE_API_KEY" ]; then
+            echo "::error::the repository secret CLAUDE_API_KEY is not set, and the runtime calls the model with it. Set it with: gh secret set CLAUDE_API_KEY"
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -39,7 +51,7 @@ jobs:
         with:
           node-version: 24.22.1
           cache: npm
-      # Everything is built before any step has a secret.
+      # Everything is built by steps that have no secret.
       - name: Install Bubblewrap and allow unprivileged user namespaces
         run: |
           sudo apt-get update -qq
