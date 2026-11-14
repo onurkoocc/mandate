@@ -13,6 +13,7 @@
     missing_docs
 )]
 
+use mandate_ir::codes::{self, Reference};
 use mandate_ir::{
     Diagnostic, HashDomain, JsValue, Map, Parsed, Value, canonicalize, domain_hash, hash_program,
     package_hash, parse, parse_bytes, stringify,
@@ -316,4 +317,44 @@ fn programs() {
         }
     }
     failures.finish(files.len(), "program");
+}
+
+#[test]
+fn codes() {
+    let file = read("vectors/codes.json");
+    assert_eq!(str_field(&file, "format"), "mandate/vectors/codes/0.1");
+    let vectors = field(&file, "codes").as_array().unwrap();
+    // The rows the TypeScript compiler is the reference for are exactly the
+    // file: the same codes, in the same order, with the same texts. A row
+    // the Rust compiler is the reference for is not compared, and is not in
+    // the file.
+    let typescript: Vec<&codes::CodeRow> = codes::iter()
+        .filter(|row| row.reference == Reference::TypeScript)
+        .collect();
+    let mut failures = Failures::default();
+    failures.check(
+        "number of codes",
+        &vectors.len().to_string(),
+        &typescript.len().to_string(),
+    );
+    for (i, v) in vectors.iter().enumerate() {
+        let code = str_field(v, "code");
+        let Some(row) = typescript.get(i) else {
+            failures.check(code, "a row in the table", "no row");
+            continue;
+        };
+        failures.check(&format!("code {i}"), code, row.code);
+        failures.check(&format!("{code}: title"), str_field(v, "title"), row.title);
+        failures.check(
+            &format!("{code}: explanation"),
+            str_field(v, "explain"),
+            row.explain,
+        );
+    }
+    for row in codes::iter().filter(|row| row.reference == Reference::Rust) {
+        if vectors.iter().any(|v| str_field(v, "code") == row.code) {
+            failures.check(row.code, "not in vectors/codes.json", "in it");
+        }
+    }
+    failures.finish(vectors.len(), "code");
 }

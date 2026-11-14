@@ -1,0 +1,628 @@
+//! The table of diagnostic codes: each code with its title and its
+//! explanation, which `mandate explain <code>` prints.
+//!
+//! The table is plain constant data. Up to language 0.5 it is the TypeScript
+//! compiler's (`CODES` in `compiler/src/codes.ts`, frozen), row for row, in
+//! its order and with its texts; the test `codes` in `tests/vectors.rs`
+//! holds those rows to `vectors/codes.json`, which
+//! `scripts/codes-vectors.mjs` writes from it. From language 0.6 on, new
+//! codes are added here alone, as rows whose [`Reference`] is
+//! [`Reference::Rust`]; such a row is not in `vectors/codes.json`.
+//!
+//! A code is written with its prefix, as diagnostics carry it (`MDT-E0103`).
+
+/// Which compiler is the reference for a row of the table: the one whose
+/// text the row must equal, and which a test holds it to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reference {
+    /// The TypeScript compiler's `CODES`: the row equals the one in
+    /// `vectors/codes.json`.
+    TypeScript,
+    /// The Rust compiler alone: the code was added in language 0.6 or later
+    /// and the TypeScript compiler does not have it.
+    Rust,
+}
+
+/// One row of the table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CodeRow {
+    /// The code with its prefix, such as `MDT-E0103`.
+    pub code: &'static str,
+    /// The title, one short line.
+    pub title: &'static str,
+    /// The explanation `mandate explain` prints.
+    pub explain: &'static str,
+    /// The compiler that is the reference for this row.
+    pub reference: Reference,
+}
+
+/// The rows, in the order of the TypeScript table, then the codes added in
+/// Rust in the order they were added.
+pub const CODES: &[CodeRow] = &[
+    CodeRow {
+        code: "MDT-E0101",
+        title: "Syntax error",
+        explain: "The .mdt text could not be read: an invalid token, a missing delimiter, or a reserved keyword used as a name.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0102",
+        title: "Duplicate JSON key",
+        explain: "An IR object repeats a key. JSON parsers disagree on which copy wins, so the IR rejects the input before schema validation (S01).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0103",
+        title: "Unsupported language version",
+        explain: "The `language` field is missing or names a version this compiler does not read. Versions are never loaded on a best-effort basis; migrate explicitly (S02, §3.5).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0104",
+        title: "IR schema violation",
+        explain: "The IR does not match the closed schema in spec/ir.schema.json: an unknown field, a missing field, or a value of the wrong shape (S02).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0105",
+        title: "Resource limit exceeded",
+        explain: "The program exceeds a 0.1 reference-profile limit: 1 MiB of source, JSON depth 64, 64 definitions, or 1000 statically expanded nodes per workflow (§3.4).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0106",
+        title: "Number not representable",
+        explain: "IR numbers are integers within ±(2^53−1). Fractions and exponents are rejected rather than rounded; write decimals as strings and money as integer micro-units (S11).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0107",
+        title: "Invalid Unicode",
+        explain: "A string holds a lone UTF-16 surrogate, which has no canonical encoding. Text is never normalized silently (S11).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0108",
+        title: "Malformed JSON",
+        explain: "The input is not well-formed JSON.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0120",
+        title: "Unresolved name",
+        explain: "A reference names no type, capability, agent, skill, contract, effect or variable in scope (S03). When one close match exists, the diagnostic carries a repair patch.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0121",
+        title: "Duplicate name",
+        explain: "Two definitions, parameters, fields, skills, criteria or branches in the same scope share a name.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0130",
+        title: "Stale base",
+        explain: "An IR patch was written against a program hash that is no longer current. Re-read the program and rebase the patch (S12).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0131",
+        title: "Patch cannot be applied",
+        explain: "An IR patch operation is unsupported or its path does not exist in the program.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0140",
+        title: "Malformed lock file",
+        explain: "mandate.lock.json does not match spec/lock.schema.json, or a model it locks has no tariff. A lock is read strictly, like the IR: unknown fields and fractional prices are errors (spec/lock.md).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0141",
+        title: "Model tier not locked",
+        explain: "A capability names a model tier that the lock file does not map to a model, an effort and a tariff. The runtime refuses to load such a package (BACKLOG K10, K11).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0142",
+        title: "Imported module not locked",
+        explain: "A program imports a module that the lock file does not pin, or a loaded module whose program hash differs from the one the lock pins. A run's imported modules, such as its system model, are fixed by hash (S09, INV-02); a changed module is a new lock and a new package.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0201",
+        title: "Type mismatch",
+        explain: "A value's type does not match what the position expects: a wrong argument count, a different nominal type, or a plain T where Verified<T> is required.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0202",
+        title: "Unknown field",
+        explain: "A field access or record literal names a field the type does not have.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0203",
+        title: "Missing field",
+        explain: "A record literal leaves out fields its type requires.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0204",
+        title: "Not a Path",
+        explain: "A text literal stands where a Path is expected but breaks the Path rule (K68): a Path is relative to the working copy's root, its segments are separated by `/`, and it has no empty, `.` or `..` segment, no leading `/`, and no ``, `:` or NUL. A model's answer that breaks the rule is refused by schema validation at run time (G14).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0210",
+        title: "Inferred value where T is expected",
+        explain: "Model output (Inferred<T>) is used where a plain or verified T is required, for example as a critical effect parameter or to steer control flow. Verify it against a contract first, or use a decision policy (R1, R4, D1).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0211",
+        title: "Untrusted value where T is expected",
+        explain: "Content from outside the program (files, network, people, remote agents) is used where a trusted T is required. Untrusted<T> must be verified before use (§5.2).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0212",
+        title: "Verified against a different contract",
+        explain: "A value verified against one contract is used where a value verified against another is required. Verified<T, C> names its contract, and only C satisfies it.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0213",
+        title: "Protected type produced by a program",
+        explain: "Evidence, Authorization, Receipt and Verified are produced only by the runtime. A model, a host function or a record literal cannot create them (§5.2).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0215",
+        title: "Untrusted text in an instruction position",
+        explain: "Untrusted or model-produced text appears in the instruction part of a prompt or picks a capability's scope. Pass it as data with quote(…) (R5, §5.4).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0220",
+        title: "Data class above what the model may receive",
+        explain: "Data of a higher class (§5.5: public < internal < confidential < restricted) is sent to a model capability whose max_class is lower. model.infer allows internal data unless it says otherwise.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0230",
+        title: "Non-exhaustive switch",
+        explain: "A switch leaves out variants of the type it matches. A switch on a decision outcome must handle Uncertain (D2).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0231",
+        title: "Switch on a raw decision",
+        explain: "A switch matches a Decision<T> directly. Apply a decision policy (threshold, top_margin, abstain_if) first, so that \"an option was chosen\" and \"there is enough support to choose\" stay separate (D2).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-W0232",
+        title: "Choice without an out-of-scope option",
+        explain: "A Choice<T> has no option such as Other, Irrelevant or OutOfScope, so the model must force every input into a listed option (D8).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0233",
+        title: "Too many Choice options",
+        explain: "A Choice<T> has more than 255 options.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-W0207",
+        title: "peek on model output",
+        explain: "peek(…) reads an Inferred value as a plain one. Use it only for read-only inspection, never to steer effects (R7).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0301",
+        title: "Capability not in scope",
+        explain: "An effect is used where no capability authorizes it: in a workflow's body, by an agent's skill, or by a delegation whose granted capabilities leave it out (C1).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0305",
+        title: "Capability widened",
+        explain: "narrow(…) asks for a scope that is not inside the capability it narrows. Capabilities can only shrink (C3).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-W0310",
+        title: "Unused capability",
+        explain: "A workflow or agent holds a capability that nothing it runs uses. The generated sandbox policy is the upper bound of real use, so unused authority should be removed.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-W0311",
+        title: "Policy and real use disagree",
+        explain: "In learning mode, an agent's sandbox denied an access its policy does not allow, and recorded it (MXC captureDenials). Either the agent needs it, and its capability must grow (a governance change a person approves), or the agent reached for something it should not. The denial stayed denied; this is feedback, not a grant. `mandate denials <run>` exports a run's report and `mandate check <program> --denials <report>` reports it (§11.3, §12.2).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0320",
+        title: "Overlapping writes in par",
+        explain: "Two branches of a par block can write the same scope. Write capabilities (fs.write, git.*) must be disjoint across branches; read capabilities may be shared (C5).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0401",
+        title: "Undeclared effect",
+        explain: "A function or skill uses an effect it does not declare, or a public function does not declare its effects at all (§6.2).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0402",
+        title: "Unknown effect",
+        explain: "An effect list names an effect that is neither built in, in the standard library, nor declared with `effect`.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0403",
+        title: "Missing idempotency",
+        explain: "A critical effect is declared without `idempotency required`, or called without `idempotent_by <business key>` (§8.4).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0405",
+        title: "Irreversible effect without human approval",
+        explain: "An irreversible effect runs with no earlier human.approve and no argument verified by a contract that requires one (§6.3).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0408",
+        title: "External write outside a workflow",
+        explain: "A critical effect runs inside a function, a skill or a contract. External writes happen only in a workflow, through prepare → authorize → commit (§8.8).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0501",
+        title: "Child budgets exceed the parent",
+        explain: "The budgets a workflow hands to its delegates add up to more than its own. Money and tokens add up across par branches; wall-clock time takes the longest branch; loops multiply by max_iter. The facts carry the breakdown.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0502",
+        title: "Unbounded loop or recursion",
+        explain: "A loop has neither max_iter nor until, or functions and workflows call each other in a cycle. Static node and budget bounds need both to be bounded.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0503",
+        title: "Agent loop without a step limit",
+        explain: "A skill without a body runs as an agent loop, and neither it nor its agent sets `steps` in its budget (§8.2).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0504",
+        title: "Budget currency mismatch",
+        explain: "A child budget is in a different currency from its parent. Currencies are never converted implicitly (§5.3).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-W0504",
+        title: "Budget below the computed upper bound",
+        explain: "An agent loop's declared tokens or spend is less than its steps times the per-call upper bound from the lock file: the locked input and output limits, priced as if nothing hits the cache (§8.6, K12). The skill may run out of budget before it can finish. The facts carry the bound.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-W0601",
+        title: "Static criterion checked at run time",
+        explain: "A `static` acceptance criterion cannot be proved at compile time, so it becomes a run-time check (Appendix B: E0601 falls back to a warning).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0603",
+        title: "Criterion satisfied only by review",
+        explain: "An acceptance criterion is satisfied only by review(…). A second model agreeing is not evidence; pair it with a static check, a test or a human (§10.2).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0701",
+        title: "Delegated authority not a subset",
+        explain: "`with caps` hands over a capability that the calling context or the agent does not hold. Delegation can only narrow authority (C2).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0710",
+        title: "restart_all over external effects",
+        explain: "A par block supervised by restart_all contains branches with external effects. Children must use their own retry classes (§8.7).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0711",
+        title: "Dynamic spawn",
+        explain: "spawn is not available in 0.1. Use delegate, par or a bounded map (§9.1). From 0.4 a lead agent plans work while a run is going with `plan Agent.skill(…) within envelope` (spec/envelope.md \"plan\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0712",
+        title: "UnknownOutcome restarted",
+        explain: "An UnknownOutcome error is handled with a strategy other than reconcile. Restarting could repeat an external effect (§8.7).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0713",
+        title: "Too many restarts",
+        explain: "restart(max: n) asks for more than 5 retries.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0714",
+        title: "Unknown supervision strategy",
+        explain: "A supervise clause names a strategy the runtime does not run, or one that does not fit where it is: a par block takes fail_fast or restart_all; a delegation takes restart(max, backoff), escalate(human) or degrade(to: Agent). An unknown strategy is refused, never ignored (§8.7).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0715",
+        title: "Fallback is not equivalent",
+        explain: "degrade(to: F) must name an agent that does the same job with no more authority: F has the same skill with the same parameter and result types, holds no capability the original agent lacks, and holds what the call hands over with `with caps` (§8.7).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1001",
+        title: "Interface without exactly one provider",
+        explain: "Every interface of a system model is provided by exactly one component (`provides`). The provider answers for changes to it, and its spec file is read at the provider's base commit (design doc 9 §2.1).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1002",
+        title: "Capability over a component or an environment cannot be opened",
+        explain: "component.read, component.write, component.exec and component.repo take components of the system model. component.write takes paths inside the component; component.exec runs only the build or test commands the component declares. A capability that stands for several values (one per command) cannot be narrowed as one. env.deploy and env.migrate take environments of the system model, and data.read an environment and its declared reads (design doc 9 §2.2, §5).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1003",
+        title: "Component working copies overlap",
+        explain: "Two components have the same root, or one root lies inside the other. Each component's working copy is its own, so sandboxes, write scopes and changes are told apart by root (C5 across components).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1004",
+        title: "Read does not match its declaration",
+        explain: "A declared read runs one SELECT statement (or a log filter) whose values come only from its parameters: every `:name` placeholder is a parameter and every parameter is used, and parameters are scalars. Model output can be a parameter value, never query text (design doc 9 §5.1, K43).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1005",
+        title: "Read above its environment's class",
+        explain: "A read returns rows of a higher data class than the environment it belongs to declares. An environment's class is the most sensitive data it holds; a program cannot lower a class (§5.5).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1006",
+        title: "Environment tier does not bind",
+        explain: "An environment sets the least authorization tier for effects in it: `authorize deploy by human(role: \"release_manager\")` (design doc 9 §5.3). The tier is the organization's, not the program's, so it lives in the system model and a change to it is a governance change. It must name a critical effect, since nothing else is ever authorized. At run time the stronger of the tier and the runtime's policy applies; a program cannot lower it.",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1007",
+        title: "Governance pattern not relative",
+        explain: "A component's `governance` pattern must be relative to its repository's root, like the files it matches: no leading `/`, no empty, `.` or `..` segment, no ``, `:` or NUL. Its patterns are added to the language's governance-class files (CI workflows, lockfiles, agent settings, the Mandate lock, CODEOWNERS); an action carrying such a file needs the component owner's approval (K70).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1101",
+        title: "Change set order breaks the interface graph",
+        explain: "A change set declares how interfaces change. For an additive change, the provider lands before every member that consumes the interface, and the provider is a member of the set. When no order can satisfy the graph (a cycle), the change must be split into steps (design doc 9 §3.3).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1102",
+        title: "Change set order does not list its members",
+        explain: "A change set's `order` names every member exactly once; it is the order in which the members are committed (design doc 9 §3.2).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1103",
+        title: "Breaking change in one change set",
+        explain: "An interface that changes in a breaking way cannot change in one step: some consumer would break between two merges. Plan it as expand → migrate → contract: add the new form, move every consumer to it, then remove the old one, each its own change set (design doc 9 §3.3).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1104",
+        title: "Change set member is not a critical effect",
+        explain: "Each member of a change set is the external action that lands one component's change (git.merge, git.open_pr, deploy …), so it is a critical effect, prepared, authorized and committed like one (design doc 9 §3.2).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1105",
+        title: "Change set without a verified plan",
+        explain: "A change set lands a plan that was accepted before any code was written: its plan argument must be Verified against a contract. The set digest covers the plan, so an approval of the set is an approval of this plan's change (design doc 9 §3.4).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1201",
+        title: "Read not as declared",
+        explain: "data.read runs a read an environment declares: data.read(env.read, param: value, …, max_class: c). Every parameter is passed once, by name, and nothing else; values are bound as parameters and never become query text (K43). max_class is a data class; fields above it come back masked, typed Masked (design doc 9 §5.1).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1501",
+        title: "Role not declared",
+        explain: "In a 0.4 module, every place that names a role names a `role` definition of the module or one imported with `use`: human.approve and human.ask, an escalation, a change set's approvers, a component's owner, an environment's authorization, and an envelope's owner and approvals. The text form `role: \"code_owner\"` resolves by the same name. The lock says who holds a role (spec/envelope.md \"Roles\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1502",
+        title: "Role not bound",
+        explain: "A decision in a 0.4 package is signed by a member, so every role the package names is bound to at least one member under `roles` in the lock, which then has format mandate/lock/0.4. Reported when `mandate check` is given the lock; the runtime refuses the package with `unbound_role` (spec/envelope.md \"The lock: members and roles\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1503",
+        title: "`distinct_from` without an earlier approval",
+        explain: "human.approve(role: r, distinct_from: q) asks for an approval by a different person than the one who approved as q. The approvals of one criterion open one after the other, so q is the role of an approval earlier in the same contract criterion (spec/envelope.md \"distinct_from\", H02).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1701",
+        title: "Malformed envelope",
+        explain: "An envelope gives `owner`, `caps`, and a `budget` with `agents`: the role that approves it, the upper bound of authority and the upper bound of what the run may spend and start. A workflow with an envelope writes no `caps` or `budget` of its own; the envelope's take their place (spec/envelope.md \"The envelope\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1702",
+        title: "Unbounded map",
+        explain: "A map says how many elements it accepts at most: `max n`. Inside an envelope `max` may be left out when the body starts a delegation, itself or in a function it calls, since the envelope's `agents` then bounds it. A list longer than the bound is refused before any item runs (spec/envelope.md \"map\", N08).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1703",
+        title: "Map concurrency above the envelope",
+        explain: "`par k` on a map runs at most k items at once. Inside an envelope, k is at most `spawn.max_concurrent`, the most delegations in flight in the whole run (spec/envelope.md \"map\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1704",
+        title: "Envelope approval names a non-critical or uncovered effect",
+        explain: "`approve E by r` in an envelope says that effect E is authorized only by a decision of role r. E is a critical effect, and a capability in the envelope's `caps` covers it; an approval for an effect the run could never perform protects nothing (spec/envelope.md \"What it declares\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1705",
+        title: "Not allowed in a sub-program",
+        explain: "A sub-program a lead submits defines only types, constants, capabilities, functions, local agents and one workflow. It cannot define roles, contracts, effects, externs, a system model, a remote agent or an envelope, and it cannot `plan`. Its workflow takes no parameters, and what the runtime's skeleton says of the module (its name, version, language and its one import) stays (spec/envelope.md \"The sub-program\", N09).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1706",
+        title: "Sub-program does not fit the envelope",
+        explain: "A sub-program is admitted only when it fits what is left of the envelope: its workflow's capabilities lie inside the envelope's and clear of writes in flight, its budget names every dimension the run is limited in and is within the remainder, its time ends before the run's deadline, and what it sends to a model is within `spawn.max_class` and within what that model may receive of the lead's own data class. The fact `dimension` names what does not fit: `capability`, `write_scope`, a ledger dimension such as `tokens` or `spend:USD`, `time` or `data_class`. The diagnostic is returned to the lead; nothing runs (spec/envelope.md \"The sub-program\", N01, N02).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1707",
+        title: "`plan` outside an envelope",
+        explain: "`plan Agent.skill(…) within envelope` lets a lead agent submit sub-programs, so it is allowed only in the body of a workflow that has an envelope, which bounds everything they do (spec/envelope.md \"plan\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1708",
+        title: "Person or critical effect in a map body",
+        explain: "Nothing in a map body waits for a person, and it has no critical effect: each item would wait or be authorized on its own. That covers a human.* step, escalate, pause, `supervise escalate`, a verify against a contract a person approves, a function that holds one of these, a critical effect and a change set. Ask once about the list after the map, or land a batch with a change set after it (spec/envelope.md \"map\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1709",
+        title: "Amendment narrows the envelope",
+        explain: "An amendment of an envelope only widens it. The new envelope holds every capability the old one held; its budget names the same dimensions, each with at least the old amount; `spawn.max_concurrent` and `spawn.max_class` are no lower, and no bound is added where there was none. What ran under the old envelope then still lies inside the new one, and nothing that was allowed before is refused after. The owner and the `approve` rules may change (spec/envelope.md \"Amendments\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1801",
+        title: "Unknown method",
+        explain: "From 0.5, net.https(hosts: […], methods: […]) may allow only some HTTP methods. `methods` is a non-empty list of bare names from GET, HEAD, POST, PUT, PATCH and DELETE; without it the capability allows any method. A capability with methods covers another only when its hosts do and every method of the other is one of its own. Before 0.5 `methods` is read and means nothing, as it always did (spec/boundary.md \"Language 0.5\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1802",
+        title: "Credential bound outside the sandbox",
+        explain: "A lock of format 0.5 binds, under `egress`, a credential name to an agent's requests to a host; the egress proxy puts the credential into those requests, and the sandbox sees only a placeholder. Only an agent that runs in the runtime's sandbox reaches a host through the proxy, so the agent is a local agent of the program that no executor such as Managed Agents runs, and the host is one its own net.https capabilities hold. The fact `reason` says which does not hold: `not_an_agent`, `remote`, `executor` or `host_not_held` (spec/boundary.md \"Lock 0.5\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1803",
+        title: "Lock field does not apply to the program's language",
+        explain: "`isolation` and `egress` in a lock of format 0.5 are read into an agent's sandbox requirement 0.2, which only a program of mandate/0.5 or later has. In a lock packaged with an earlier program they would not apply, and a floor or a credential that silently does not apply misleads whoever reads the lock, so it is refused. Write the program in mandate/0.5, or take the field out. `host` applies to a program of any version (spec/boundary.md \"Lock 0.5\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E1804",
+        title: "Imported method limit read without it",
+        explain: "A program reads every capability in its own language, imported ones included, and before 0.5 `methods` means nothing. So a program of mandate/0.1 to 0.4 that reaches, through an import, a net.https capability written with `methods` in a module of mandate/0.5 or later would allow any method where the module allows only some. It is refused at the import that brings the definition in. Write the program in mandate/0.5 or later. A `methods` the program writes itself, or a module below 0.5 writes, is read as nothing, as it always was (spec/boundary.md \"Language 0.5\").",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0902",
+        title: "Sandbox requirement cannot be enforced",
+        explain: "The sandbox adapter probed the host and it cannot enforce part of an agent's sandbox requirement: a backend, a path, host or command allow-list, a timeout, or a scope that is not statically known. The run refuses to start the agent (unsupported_sandbox_profile) instead of running it with less isolation (INV-11, G05).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0903",
+        title: "Executor binding does not fit",
+        explain: "The lock binds agents to an executor such as Claude Managed Agents, and the binding no longer fits: it names an agent the program does not have as a local agent, a bound agent has no single model tier, the lock now maps the tier to another model or effort than the one deployed, the binding was made under another API beta, or its guarantee profile claims more than the executor gives or leaves a guarantee out. Deploy again (`mandate deploy`); a binding is never adjusted at run time (K45, INV-11).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0904",
+        title: "Executor cannot hold the locked output limit",
+        explain: "Claude Managed Agents cannot cap the output of one model request: the model may write up to its own ceiling. The upper bound of a call (spec/lock.md) and every reservation use the lock's max_output_tokens, so for a tier whose agents run there the lock must state that ceiling (K80).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0906",
+        title: "Agent cannot be written as an ACS policy",
+        explain: "`mandate target acs` writes each local agent's per-call rules as an ACS manifest and Rego bundle. An agent with a capability that has no static scope, or a spend budget in a currency other than USD (the only one ACS hosts count), cannot be written so that every call is checked. It is left out by name rather than with a weaker rule (INV-11; spec/executors.md).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-W0907",
+        title: "Guarantee not carried by the target",
+        explain: "An ACS host checks one call at a time. What one call cannot show is not in the target: the workflow, narrowing at delegation, disjoint writes, the steps budget, progress, the journal, replay, evidence and prepare → authorize → commit. These need the Mandate runtime. The warning lists them, and the target's profile says how each guarantee holds (spec/executors.md).",
+        reference: Reference::TypeScript,
+    },
+    CodeRow {
+        code: "MDT-E0905",
+        title: "Data class too high for the executor",
+        explain: "An agent bound to Claude Managed Agents may send its model data above `internal`. The service keeps session history and is not zero-retention, so such an agent runs on the local runtime instead (K46).",
+        reference: Reference::TypeScript,
+    },
+];
+
+/// The row of `code` (`MDT-E0103`), when the table has one.
+#[must_use]
+pub fn lookup(code: &str) -> Option<&'static CodeRow> {
+    CODES.iter().find(|row| row.code == code)
+}
+
+/// The rows, in the table's order.
+pub fn iter() -> impl Iterator<Item = &'static CodeRow> {
+    CODES.iter()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CODES, Reference, iter, lookup};
+
+    #[test]
+    fn rows_and_lookup() {
+        assert!(!CODES.is_empty());
+        assert_eq!(iter().count(), CODES.len());
+        // A code is `MDT-` and a letter and four digits, once.
+        for row in CODES {
+            let rest = row.code.strip_prefix("MDT-").unwrap_or("");
+            let mut chars = rest.chars();
+            assert!(matches!(chars.next(), Some('E' | 'W')), "{}", row.code);
+            let digits: Vec<char> = chars.collect();
+            assert!(
+                digits.len() == 4 && digits.iter().all(char::is_ascii_digit),
+                "{}",
+                row.code
+            );
+            assert!(
+                !row.title.is_empty() && !row.explain.is_empty(),
+                "{}",
+                row.code
+            );
+            assert_eq!(
+                CODES.iter().filter(|other| other.code == row.code).count(),
+                1,
+                "{} is twice in the table",
+                row.code
+            );
+            assert_eq!(lookup(row.code), Some(row));
+        }
+        assert_eq!(
+            lookup("MDT-E0101").map(|r| (r.title, r.reference)),
+            Some(("Syntax error", Reference::TypeScript))
+        );
+        assert!(lookup("MDT-E9999").is_none());
+        assert!(lookup("E0101").is_none());
+    }
+}

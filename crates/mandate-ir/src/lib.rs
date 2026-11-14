@@ -53,6 +53,11 @@
 //!   [`workflow_bounds`]: the functions of `compiler/src/ir/types.ts` that
 //!   read a budget and a workflow's bounds (its envelope's, when it has one).
 //!
+//! - [`codes`]: the table of diagnostic codes with their titles and
+//!   explanations (`mandate explain`), as constant data. Up to language 0.5 it
+//!   is `compiler/src/codes.ts`, held to `vectors/codes.json`; the codes added
+//!   from 0.6 on are in this table alone.
+//!
 //! And the ECMAScript behaviour the compiler's output depends on, so that no
 //! phase reinvents it: objects that keep their members in ECMAScript order
 //! ([`Map`], [`JsObject`]); the output value [`JsValue`] with `undefined`, and
@@ -93,6 +98,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod codes;
 mod def_parts;
 mod defs;
 mod diag;

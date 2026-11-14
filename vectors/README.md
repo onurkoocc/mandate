@@ -8,7 +8,8 @@ differs from what the compiler gives now, and read by the Rust tests in
 `MANDATE_UPDATE_VECTORS=1 npm test`.
 
 The other directories here (`schema/`, `diagnostics/`, `diff/`, `corpus/`,
-`syntax.json`, `spans/`, `programs/`) and the golden file
+`syntax.json`, `spans/`, `programs/`, and `codes.json`, which
+`scripts/codes-vectors.mjs` writes) and the golden file
 (`compiler/test/golden/outputs.json`) are read in the same way, each by the
 Rust test that its section names. Together they define what "the same
 diagnostics" means for the Rust compiler, and the last section, "Where the
@@ -66,6 +67,25 @@ canonical text.
   names);
 - `package`: `{ name, program_hash, lock, hash }`, `lock` being the lock as a
   package carries it, as text.
+
+## codes.json
+
+`{ "format": "mandate/vectors/codes/0.1", "codes": [ { "code", "title",
+"explain" } ] }`: the table of diagnostic codes of the TypeScript compiler
+(`CODES` in `compiler/src/codes.ts`, what `mandate explain` prints), in the
+table's order, with the code as diagnostics carry it (`MDT-E0103`). It is
+written by `node scripts/codes-vectors.mjs` from the built compiler (CI runs
+every `scripts/*-vectors.mjs` and fails when the tree changes; `vectors.test.ts`
+leaves the file alone), and read by the test `codes` in
+`crates/mandate-ir/tests/vectors.rs`.
+
+The table of the Rust compiler is `crates/mandate-ir/src/codes.rs`, a constant
+with one row for each code and the compiler that is the reference for it. The
+test holds the rows whose reference is the TypeScript to this file: the same
+codes, in the same order, with the same texts. A row whose reference is Rust (a
+code added in language 0.6 or later, which the TypeScript compiler, frozen at
+0.5, does not have) is not compared, and is not in this file; the test fails if
+it is.
 
 ## programs/
 
