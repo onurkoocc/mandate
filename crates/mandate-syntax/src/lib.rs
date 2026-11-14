@@ -82,7 +82,7 @@ mod sourcemap;
 use mandate_ir::{Diagnostic, Value};
 
 pub use load::{SourceKind, kind_of, load};
-pub use parser::RESERVED;
+pub use parser::{INTERFACE_PROTOCOLS, RESERVED};
 pub use printer::print_program;
 pub use sourcemap::SourceMap;
 
