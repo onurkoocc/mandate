@@ -36,6 +36,21 @@ jobs:
   live:
     runs-on: ubuntu-latest
     steps:
+      # A secret that is not set reaches a step as an empty text, and each test then fails for a reason that does not
+      # name the secret. This step looks at the secrets only to see whether they are set, and prints none: without
+      # the model's key it fails before anything is installed; without the GitHub token it says which test is skipped.
+      - name: The secrets the live tests need are set
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          MANDATE_GITHUB_TOKEN: ${{ secrets.MANDATE_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$MANDATE_GITHUB_TOKEN" ]; then
+            echo "::notice::the repository secret MANDATE_GITHUB_TOKEN is not set: the test that opens a pull request on the test repository is skipped"
+          fi
+          if [ -z "$CLAUDE_API_KEY" ]; then
+            echo "::error::the repository secret CLAUDE_API_KEY is not set, and every live test calls the model with it. Set it with: gh secret set CLAUDE_API_KEY"
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

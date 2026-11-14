@@ -926,7 +926,9 @@ a few model calls. It reads the repository secret `CLAUDE_API_KEY` (and
 `CLAUDE_WORKSPACE_ID` for a key not scoped to a workspace) in the step that
 runs the runtime, and the job's own `GITHUB_TOKEN`, which can only read the
 repository, in the proxy's step and in the step that checks the run. The
-runtime never has the token. Its task, from
+runtime never has the token. Its first step fails, before anything is
+built, when `CLAUDE_API_KEY` is not set (`gh secret set CLAUDE_API_KEY`
+sets it). Its task, from
 `runtime/scripts/boundary-live-check.mjs input`, names the calls the model
 is to make. The same script then reads what the tools returned, from the
 audit view, and fails naming each claim the run does not show:
@@ -989,7 +991,10 @@ MANDATE_LIVE=1 MANDATE_MA=1 npx vitest run test/live-managed-agents.test.ts
 
 The workflow `.github/workflows/live.yml` runs `test/live.test.ts` when it
 is started by hand. Two inputs, both off by default, add the other two
-tests. Each one runs in a step of its own that has only the model's secrets:
+tests. Each one runs in a step of its own that has only the model's secrets.
+The workflow needs the repository secret `CLAUDE_API_KEY`, and its first
+step fails when that is not set; without `MANDATE_GITHUB_TOKEN` the test
+that opens a pull request is skipped, and the step says so:
 
 ```sh
 gh workflow run live.yml                                          # test/live.test.ts
