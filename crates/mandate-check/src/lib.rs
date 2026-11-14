@@ -46,6 +46,21 @@
 //! - [`posix`]: the two functions of Node's `node:path` `posix` that
 //!   `caps.ts` uses, `normalize` and `isAbsolute`.
 //!
+//! And what the views of a program and the comparison of two programs are made
+//! of (`compiler/src/views/views.ts`, `compiler/src/patch/patch.ts`):
+//!
+//! - [`view_shared`]: what every view stands on: [`program_ref`], the grant of
+//!   a delegation ([`grant_of`]), the authority of a list of capabilities
+//!   ([`authority_of`]), the graph of a workflow ([`Graph`]) and the small
+//!   texts the views are written in. Public, for the views built on it from
+//!   another crate.
+//! - [`diff`]: the semantic diff of two programs ([`semantic_diff`],
+//!   [`governance_changes`], [`envelope_changes`], [`classify`]), with
+//!   [`lock_diff`] for what two locks bind and ask of a host and a sandbox.
+//! - [`patch`]: structural patches ([`apply_ops`], [`apply_patch`]), which
+//!   report the governance changes they make.
+//! - [`js_number`]: `Number(string)`.
+//!
 //! The JavaScript semantics they depend on are imitated where they occur and
 //! said so there: sorting without a comparator by UTF-16 code units, `Set`
 //! and `Map` in insertion order, the truthiness of an empty string, the
@@ -63,16 +78,21 @@
 
 pub mod caps;
 pub mod check;
+pub mod diff;
 pub mod governance;
 pub mod lock;
 pub mod managed_agents;
+pub mod js_number;
+pub mod lock_diff;
 pub mod modules;
+pub mod patch;
 pub mod path;
 pub mod posix;
 pub mod resolve;
 pub mod roles;
 pub mod sandbox;
 pub mod stdlib;
+pub mod view_shared;
 
 pub use check::{
     CheckOptions, CheckResult, LoadedModules, ModuleProblem, ModuleSource, UNPORTED, check,
@@ -87,7 +107,15 @@ pub use managed_agents::{
     AgentModels, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, MA_MAX_CLASS, ProfileLevel,
     agent_models, binding_checks,
 };
+pub use diff::{
+    BudgetChanges, Change, Classified, DiffView, GovernanceChangeKind, KindedChange, Locks,
+    ScopeDiff, budget_changes, classify, envelope_changes, governance_changes, scope_diff,
+    scope_diffs, semantic_diff, shown_caps, steps, system_changes,
+};
+pub use js_number::js_to_number;
+pub use lock_diff::{LockLimitsDiff, lock_diff, lock_limits_diff};
 pub use modules::{Linked, Modules, link, linked_program, references};
+pub use patch::{GovernanceChange, OpsResult, PatchOp, PatchResult, apply_ops, apply_patch};
 pub use resolve::{
     BUILTIN_FUNCTIONS, BUILTIN_TYPES, BUILTIN_TYPES_0_4, SUPERVISION_STRATEGIES, closest,
     resolve_names,
@@ -98,6 +126,13 @@ pub use sandbox::{
     ModelGrant, Network, RequirementOptions, SANDBOX_DENIALS_FORMAT, SANDBOX_REQUIREMENT_FORMAT,
     SANDBOX_REQUIREMENT_FORMAT_0_2, SandboxRequirement, Subject, co_tenancy_for,
     denial_diagnostics, floor_for, requirement_for, requirements_to_js, sandbox_requirements,
+};
+pub use view_shared::{
+    ArchEdge, ArchKind, ArchNode, Authority, BUDGET_DIMENSIONS, EffectInfo, Graph, ProgramRef,
+    VIEW_FORMAT, WorkflowBounds, authority_of, budget_amount, caps_in, chosen_at_run_time,
+    criteria, defs_of, duration, effect_info, grant_of, handed_by, is_system, j, j_or_null,
+    js_text, json_string, kind_text, method_of, micros_text, program_ref, short_caps, supervision,
+    truthy, view_children, widest, workflow_bounds, workflow_effects,
 };
 
 pub use caps::{
