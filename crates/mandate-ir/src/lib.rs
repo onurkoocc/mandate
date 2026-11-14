@@ -59,7 +59,9 @@ mod js_value;
 pub mod limits;
 mod members;
 mod number;
+mod pattern;
 mod reader;
+mod schema;
 mod text;
 mod value;
 
@@ -74,6 +76,10 @@ pub use jcs::{canonicalize, compare_utf16, write_json_string};
 pub use js_value::{JsObject, JsValue, stringify, stringify_pretty};
 pub use number::{is_integer, is_safe_integer, number_to_string, write_number};
 pub use reader::{Parsed, parse, parse_bytes};
+pub use schema::{
+    IR_SCHEMA_TEXT, LOCK_SCHEMA_TEXT, Schema, SchemaError, SchemaOptions, ir_schema,
+    ir_schema_errors, lock_schema, lock_schema_errors,
+};
 pub use text::{
     is_js_whitespace, sort_utf16, trim, trim_end, trim_start, unique_in_order, utf16_len,
 };
