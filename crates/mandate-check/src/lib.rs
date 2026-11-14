@@ -5,10 +5,10 @@
 //! So far it holds the front door and the stages before the static checks:
 //!
 //! - [`check`](mod@check): [`check()`], [`load_modules`], [`CheckOptions`],
-//!   [`CheckResult`], `compiler/src/check.ts` lines 60–131. The static checks
-//!   are a seam that gives nothing yet, listed in [`UNPORTED`]: until it is
-//!   empty, an `ok` from [`check()`] means no error from the stages ported so
-//!   far.
+//!   [`CheckResult`], `compiler/src/check.ts` lines 60–131. Of the static
+//!   checks the authority's diagnostics and the system model's are not
+//!   ported yet, listed in [`UNPORTED`]: until it is empty, an `ok` from
+//!   [`check()`] means no error from what is ported so far.
 //! - [`modules`]: [`link`], [`linked_program`] and [`references`],
 //!   `compiler/src/modules.ts`: the definitions a program sees with its
 //!   imported modules ([`Linked`], [`Modules`]).
@@ -26,6 +26,17 @@
 //! - [`sandbox`]: sandbox requirements, `compiler/src/target/sandbox.ts`
 //!   ([`sandbox_requirements`], [`requirement_for`], [`floor_for`],
 //!   [`co_tenancy_for`], [`denial_diagnostics`], [`ISOLATION_LEVELS`]).
+//! - [`statics`]: [`static_check`] and [`lead_classes`],
+//!   `compiler/src/check/static.ts`: the core of the static checks (types,
+//!   expressions, constants, functions, contracts, recursion, budgets and
+//!   the node count) with, in `statics/authority.rs` and
+//!   `statics/system.rs`, the entry points of the authority and the system
+//!   model, which walk as the TypeScript does but give no diagnostic of
+//!   their own yet.
+//! - [`ty`]: the checker's types and the epistemic assignability rules,
+//!   `compiler/src/check/ty.ts`; [`cost`]: the static cost model,
+//!   `compiler/src/check/cost.ts` ([`static_cost`], [`micros_text`]); and
+//!   [`walk`]: the tree walkers both share ([`reads_var`]).
 //!
 //! And what every later check stands on:
 //!
@@ -78,6 +89,7 @@
 
 pub mod caps;
 pub mod check;
+pub mod cost;
 pub mod diff;
 pub mod governance;
 pub mod js_number;
@@ -91,8 +103,15 @@ pub mod posix;
 pub mod resolve;
 pub mod roles;
 pub mod sandbox;
+pub mod statics;
 pub mod stdlib;
+pub mod ty;
 pub mod view_shared;
+pub mod walk;
+
+pub use cost::{CostPart, StaticCost, micros_text, static_cost};
+pub use statics::{lead_classes, static_check};
+pub use walk::reads_var;
 
 pub use check::{
     CheckOptions, CheckResult, LoadedModules, ModuleProblem, ModuleSource, UNPORTED, check,
@@ -131,8 +150,7 @@ pub use view_shared::{
     ArchEdge, ArchKind, ArchNode, Authority, EffectInfo, Graph, ProgramRef, VIEW_FORMAT,
     authority_of, caps_in, chosen_at_run_time, criteria, defs_of, duration, effect_info, grant_of,
     handed_by, is_kind, is_system, j, j_or_null, js_text, json_string, kind_text, method_of,
-    micros_text, program_ref, short_caps, supervision, to_number, view_children, widest,
-    workflow_effects,
+    program_ref, short_caps, supervision, to_number, view_children, widest, workflow_effects,
 };
 
 pub use caps::{

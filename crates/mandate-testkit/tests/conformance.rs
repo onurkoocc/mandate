@@ -43,27 +43,51 @@ use common::{
 use mandate_check::CheckResult;
 use mandate_ir::{JsValue, Value, canonicalize, parse, stringify};
 use mandate_syntax::SourceKind;
-use mandate_testkit::{check_pending, item_name, read_json, repo_path, run_gate, subdirectories};
+use mandate_testkit::{
+    Miss, check_pending, item_name, omission, read_json, repo_path, run_held_gate, subdirectories,
+};
 
 /// The items the Rust compiler does not give yet: a glob for each family of
-/// codes whose stage is not ported (the slice that ports it beside it), and
-/// one for each front door that is not.
+/// codes whose stage is not ported (the slice that ports it beside it), one
+/// for each front door that is not, and by name the items that still fail
+/// although every code they hold is of a ported family. Every pending item
+/// is held to failing only by omission (`mandate_testkit::run_held_gate`).
 const PENDING: &[&str] = &[
-    // R11: the static core (types, expressions, budgets, cost).
-    "*MDT-E02*",
-    "*MDT-E0501*",
-    "*MDT-E0502*",
     // R12: the static authority (capabilities, delegation, effects, envelopes, methods).
+    "*MDT-E022*",
     "*MDT-E03*",
     "*MDT-W0310*",
-    "*MDT-E04*",
-    "*MDT-W06*",
-    "*MDT-E07*",
-    "*MDT-E17*",
+    "*MDT-E0408*",
+    "*MDT-E070*",
+    "*MDT-E1701*",
+    "*MDT-E1702*",
+    "*MDT-E1703*",
+    "*MDT-E1704*",
+    "*MDT-E1706*",
+    "*MDT-E1707*",
     "*MDT-E1801*",
+    // R13: sub-programs and amendments.
+    "*MDT-E1705*",
+    "*MDT-E1709*",
     // R13: the doors of sub-programs and amendments.
     "check_subprogram @ *",
     "check_amendment @ *",
+    // Cases whose codes are all of ported families, but which the core does
+    // not give, because the TypeScript raises them in a function of a later
+    // slice (`statics/authority.rs` gives none of its own diagnostics yet).
+    // R12, `checkAgent`: E0213, a skill returns Evidence (1).
+    "check @ conformance/S08a [MDT-E0213]",
+    // R12, `checkExtern`: E0213, host code returns Verified (1).
+    "check @ conformance/S08d [MDT-E0213]",
+    // R12, `effectCall`: E0210 of an argument against a critical effect's
+    // parameter (5).
+    "check_patched @ conformance/V01a [MDT-E0210 MDT-W0601]",
+    "check_patched @ conformance/V01b [MDT-E0210 MDT-W0601]",
+    "check @ conformance/V01c [MDT-E0210]",
+    "check @ conformance/V01d [MDT-E0210]",
+    "check @ conformance/V08a [MDT-E0210]",
+    // R12, `mapBudget`: E0501 of a map's budget (1).
+    "check_patched @ conformance/E0501b [MDT-E0501]",
 ];
 
 /// The front door a compile case goes through, as `doorOf` in
@@ -172,13 +196,67 @@ struct Case {
     value: Value,
 }
 
+/// Whether a diagnostic Rust gives is the expected one `w` as the README
+/// compares them: the same code and path, and `facts` a subset.
+fn same_diagnostic(w: &Value, h: &mandate_ir::Diagnostic) -> bool {
+    let code = w.get("code").and_then(Value::as_str).unwrap_or_default();
+    let path = w.get("path").and_then(Value::as_str).unwrap_or_default();
+    h.code == code
+        && h.at.path.as_deref().unwrap_or("") == path
+        && w.get("facts")
+            .and_then(Value::as_object)
+            .is_none_or(|facts| {
+                facts.iter().all(|(key, value)| {
+                    h.facts
+                        .as_ref()
+                        .and_then(|f| f.get(key))
+                        .is_some_and(|f| deep_equal(f, value))
+                })
+            })
+}
+
+/// A case's result held to the rule of the gate: `Ok` when it meets the
+/// case; else whether Rust's diagnostics are the expected ones with some
+/// left out, in order.
+fn verdict(expect: &Value, result: &CheckResult) -> Result<(), Miss> {
+    let problems = compare_result(expect, result);
+    if problems.is_empty() {
+        return Ok(());
+    }
+    let want = expect
+        .get("diagnostics")
+        .and_then(Value::as_array)
+        .unwrap_or_default();
+    let shown = |h: &mandate_ir::Diagnostic| {
+        format!("{} at {:?}", h.code, h.at.path.as_deref().unwrap_or(""))
+    };
+    match omission(want, &result.diagnostics, same_diagnostic, shown) {
+        Ok(_) => Err(Miss::Omits(problems.join("\n    "))),
+        Err(why) => Err(Miss::Differs(format!(
+            "{why}\n    {}",
+            problems.join("\n    ")
+        ))),
+    }
+}
+
 /// Runs a `check` case as `runCompileCase` does: the modules loaded
 /// together (they must load), the lock read, then `check`; and the case's
 /// `language`, when it gives one, is the one the program declares.
-fn run(c: &Case) -> Result<(), String> {
+fn run(c: &Case) -> Result<(), Miss> {
     if !matches!(c.door, "check" | "check_patched" | "apply_ops") {
-        return Err(format!("the {} door is not ported", c.door));
+        return Err(Miss::Excluded {
+            rule: "its front door (checkSubprogram, checkAmendment) is not ported (R13), so there is no Rust result to hold",
+            why: format!("the {} door is not ported", c.door),
+        });
     }
+    prepare(c)
+        .map_err(Miss::Differs)
+        .and_then(|(expect, result)| verdict(&expect, &result))
+}
+
+/// The case's `expect` and what `check` gives for it, or what keeps the
+/// case from being run.
+fn prepare(c: &Case) -> Result<(Value, CheckResult), String> {
     let dir = format!("conformance/{}", c.id);
     let case = &c.value;
     let input = case.get("input").ok_or("no input")?;
@@ -214,15 +292,7 @@ fn run(c: &Case) -> Result<(), String> {
             match applied_source(&text, kind, base, patch)? {
                 Applied::Source(patched) => (patched, SourceKind::Json),
                 Applied::Refused(refused) => {
-                    let problems = compare_result(case.get("expect").ok_or("no expect")?, &refused);
-                    return if problems.is_empty() {
-                        Ok(())
-                    } else {
-                        Err(problems.join(
-                            "
-    ",
-                        ))
-                    };
+                    return Ok((case.get("expect").ok_or("no expect")?.clone(), refused));
                 }
             }
         }
@@ -265,12 +335,7 @@ fn run(c: &Case) -> Result<(), String> {
             ));
         }
     }
-    let problems = compare_result(case.get("expect").ok_or("no expect")?, &result);
-    if problems.is_empty() {
-        Ok(())
-    } else {
-        Err(problems.join("\n    "))
-    }
+    Ok((case.get("expect").ok_or("no expect")?.clone(), result))
 }
 
 #[test]
@@ -325,7 +390,7 @@ fn conformance_gate() {
             },
         ));
     }
-    let gate = run_gate("conformance cases", PENDING, items, run);
+    let gate = run_held_gate("conformance cases", PENDING, items, run);
     for (reason, n) in &skipped {
         println!("  skipped {n}: {reason}");
     }

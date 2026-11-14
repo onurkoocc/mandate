@@ -7,16 +7,14 @@
 //!      → the lock checks (only with a lock and no error so far) → ok, hashes
 //! ```
 //!
-//! The static checks are not ported yet. They have a seam here, a private
-//! function with the TypeScript's name and signature that gives nothing, and
-//! [`UNPORTED`] lists them. Until that list is empty, an `ok` from [`check`]
-//! means "no error from the stages ported so far": the static checks run only
-//! when nothing before them gave an error, and the lock checks (which are
-//! ported, [`crate::lock`]) run when nothing before them gave one, so a result
-//! with an error from the stages ported is the TypeScript's whole result, and
-//! so is one with no diagnostic at all; a result the TypeScript would give a
-//! diagnostic of the static checks, or in which it stopped at a static error
-//! before the lock checks, is not.
+//! Every stage runs, in this order. Of the static checks
+//! ([`crate::statics`]) the core is ported; the authority's diagnostics
+//! (R12) and the system model's (R13) are not yet, and [`UNPORTED`] lists
+//! them. Until that list is empty, an `ok` from [`check`] means "no error
+//! from what is ported so far": a result the TypeScript would give an
+//! authority or a system-model diagnostic is not its whole result, and where
+//! that diagnostic is an error, the TypeScript stops before the lock checks
+//! while Rust may run them.
 
 use mandate_ir::{
     Diagnostic, JsObject, JsValue, Location, Map, Program, ProgramHashes, Spans, Value, has_errors,
@@ -34,8 +32,9 @@ use crate::roles::role_checks;
 /// each with the slice of the port that brings it. A slice that ports one
 /// takes it off; the port is complete when the list is empty.
 pub const UNPORTED: &[&str] = &[
-    "staticCheck (R11-R13: check/static.ts and the checks it calls)",
-    "opts.claim (R13: the claim of a lead's sub-program, read by staticCheck)",
+    "staticCheck, the authority's diagnostics (R12: capabilities, agents, the authority rules of workflows, par, delegation, map, effects; check/static.ts and check/envelope.ts)",
+    "staticCheck, the system model's diagnostics (R13: checkSystem, checkRead, dataRead, changeset in check/static.ts)",
+    "opts.claim beyond the lead's class (R12: E1706 of overEnvelope and overModel; R13: checkSubprogram, which gives the claim)",
 ];
 
 /// What [`check`] is given besides the text: `CheckOptions`.
@@ -209,12 +208,12 @@ fn with_exact_span(d: Diagnostic, spans: &Spans) -> Diagnostic {
 /// Reads, validates and checks a program, and hashes it when it checks:
 /// `check(text, kind, opts)`.
 ///
-/// Until [`UNPORTED`] is empty, `ok` means no error from the stages ported
-/// so far: `load`, `link`, `resolveNames`, `roleChecks`, `importedMethods` and,
-/// given a lock, the lock checks (`validateLock` and, when it finds nothing,
-/// `lockChecks`, `roleLockChecks` and `moduleLockChecks`). Where the
-/// TypeScript stops at an error of the static checks, Rust does not, so it
-/// also runs the lock checks there.
+/// The stages run as in `check.ts`: `load`, `link`, `resolveNames`,
+/// `roleChecks`, `importedMethods`, then the static checks only if there is
+/// no error so far, then, given a lock and still no error, the lock checks
+/// (`validateLock` and, when it finds nothing, `lockChecks`,
+/// `roleLockChecks` and `moduleLockChecks`). Until [`UNPORTED`] is empty,
+/// `ok` means no error from what is ported so far.
 #[must_use]
 pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResult {
     let loaded = load(text, kind);
@@ -322,15 +321,15 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
 
 /// `staticCheck(program, spans, linked.defs, opts.claim)` (Gate 1): the
 /// static checks of `check/static.ts` and what it calls, with the claim of a
-/// sub-program. Seam: R11 (types, expressions, budgets, cost), R12
-/// (delegation, `map`, effects, envelopes) and R13 (the system model, change
-/// sets, sub-programs) fill it.
+/// sub-program ([`crate::statics`]). The core is ported (R11: types,
+/// expressions, constants, functions, contracts, recursion, budgets, the
+/// node count); the authority's diagnostics (R12) and the system model's
+/// (R13) are not yet, see [`UNPORTED`].
 fn static_check(
     program: Program<'_>,
     spans: &Spans,
     defs: &Map,
     claim: Option<&Value>,
 ) -> Vec<Diagnostic> {
-    let _ = (program, spans, defs, claim);
-    Vec::new()
+    crate::statics::static_check(program, Some(spans), Some(defs), claim)
 }

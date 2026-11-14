@@ -17,8 +17,9 @@
 //! of codes of a stage not ported yet (`mandate_check::UNPORTED`; the
 //! families are `mandate_testkit::codes::FAMILIES`, and
 //! `mandate_testkit::check_pending` holds each list to them), with the slice
-//! named beside each, and four entries by name, with the reason; the other
-//! three have none pending. Every other door is pending as a whole, with the
+//! named beside each, and by name the entries that fail although every code
+//! they hold is of a ported family, with the function of the later slice
+//! that gives it; the other doors of Rust have none pending. Every other door is pending as a whole, with the
 //! slice that will end it named below.
 //! Plugging a door in takes two edits in this file: an arm in [`replay`],
 //! and taking the door's pattern off its pending list (or narrowing it to
@@ -42,13 +43,13 @@ use mandate_check::{
     CheckOptions, ModuleSource, Modules, PatchOp, apply_patch, check, denial_diagnostics,
     load_modules, validate_lock,
 };
-use mandate_ir::{Diagnostic, JsValue, Span, Spans, Value, parse};
+use mandate_ir::{Diagnostic, JsValue, Span, Spans, Value, parse, stringify};
 use mandate_syntax::{SourceKind, load};
 use mandate_testkit::corpus::{
-    Actual, Corpus, Door, Entry, Input, Kind, digest_of, ir_text, render_apply_patch, render_check,
-    render_diagnostics, render_load, render_load_modules, spans_text,
+    Actual, Corpus, Door, Entry, Input, Kind, Outcome, digest_of, ir_text, render_apply_patch,
+    render_check, render_diagnostics, render_load, render_load_modules, spans_text,
 };
-use mandate_testkit::{check_pending, run_gate};
+use mandate_testkit::{Miss, check_pending, omission, run_held_gate};
 
 // ---------------------------------------------------------------------------
 // What is not ported yet, by door, and what is not compared
@@ -57,37 +58,82 @@ use mandate_testkit::{check_pending, run_gate};
 /// does not run yet (`mandate_check::UNPORTED`), by family of codes
 /// (`mandate_testkit::codes::FAMILIES`), with the slice that ports it.
 const PENDING_CHECK: &[&str] = &[
-    // R11: the static core (types, expressions, budgets, cost).
-    "*MDT-E02*",
-    "*MDT-W02*",
-    "*MDT-E0501*",
-    "*MDT-E0502*",
-    "*MDT-E0503*",
     // R12: the static authority (capabilities, delegation, effects, envelopes, methods).
+    "*MDT-E022*",
     "*MDT-E03*",
     "*MDT-W0310*",
-    "*MDT-E04*",
-    "*MDT-E06*",
-    "*MDT-W06*",
-    "*MDT-E07*",
-    "*MDT-E17*",
+    "*MDT-E0402*",
+    "*MDT-E0403*",
+    "*MDT-E0405*",
+    "*MDT-E0408*",
+    "*MDT-E0503*",
+    "*MDT-E070*",
+    "*MDT-E0710*",
+    "*MDT-E0713*",
+    "*MDT-E0714*",
+    "*MDT-E0715*",
+    "*MDT-E1701*",
+    "*MDT-E1702*",
+    "*MDT-E1703*",
+    "*MDT-E1704*",
+    "*MDT-E1707*",
     "*MDT-E1801*",
     // R13: the system model, change sets, reads.
     "*MDT-E10*",
     "*MDT-E11*",
     "*MDT-E12*",
-    // R11: the static checks' limit of 1000 expanded nodes per workflow. Its
-    // code, MDT-E0105, is also the reader's and validateIr's, which are
-    // ported, so no family glob can hold these two without holding entries
-    // that pass; they are listed by name.
-    "check @ check-2842daaeba080270 [MDT-E0105]",
-    "check @ check-b187ac8a2a6ae914 [MDT-E0105]",
-    // R11: the static checks' E0504, a delegation in two currencies. Its code
-    // is also lockChecks's (R14, ported: an agent's budget in another currency
-    // than its tier's price, check-c4ffe3ea342c6686), so the family cannot be
-    // listed, and the two items that hold the static one are named.
-    "check @ check-1faa2e350148856e [MDT-E0504]",
-    "check @ check-b962fd7ab4c2a149 [MDT-E0504]",
+    // Entries whose codes are all of ported families, but which the core
+    // does not give, because the TypeScript raises them in a function of a
+    // later slice (`statics/authority.rs` gives none of its own
+    // diagnostics yet). By name, the function beside each group.
+    // R12, `mapBudget`: E0501 of a map's budget (9 entries).
+    "check @ check-07d28a0de8932605 [MDT-E0501]",
+    "check @ check-0a9c49183fe6345e [MDT-E0501]",
+    "check @ check-7888c5b7ee9907d9 [MDT-E0501]",
+    "check @ check-9fd7a1d3a45a9a26 [MDT-E0501]",
+    "check @ check-a742ce1477d871e1 [MDT-E0501]",
+    "check @ check-bfc9c40ac4f4c30d [MDT-E0501]",
+    "check @ check-c8e894c635f38982 [MDT-E0501]",
+    "check @ check-e16be0b293bd4ac1 [MDT-E0501]",
+    "check @ check-f89ea702fb8a9226 [MDT-E0501]",
+    // R12, `checkExtern`: E0213, host code returns a protected type (2).
+    "check @ check-198e176fd808b71e [MDT-E0213]",
+    "check @ check-dd5d5fa56cde84b7 [MDT-E0213]",
+    // R12, `checkAgent`: E0213, a skill returns a protected type (2).
+    "check @ check-9809c18b6a677d8b [MDT-E0213]",
+    "check @ check-b0463193c9f9eee6 [MDT-E0213]",
+    // R12, `checkEffectDecl`: E0210, a critical effect's parameter (1).
+    "check @ check-75140a7267f49728 [MDT-E0210]",
+    // R12, `effectCall`: E0210 of an argument against the effect's
+    // parameter (10).
+    "check @ check-1aa80d89744000ee [MDT-E0210]",
+    "check @ check-3b80f31a36672ab0 [MDT-E0210]",
+    "check @ check-b73506fb86bf8097 [MDT-E0210]",
+    "check @ check-de2acfeab9fe5bd0 [MDT-E0210]",
+    "check @ check-f754e852c3552c86 [MDT-E0210]",
+    "check @ check-3002424d9e15bfe0 [MDT-E0210 MDT-W0601]",
+    "check @ check-5fe4079540fc2694 [MDT-E0210 MDT-W0601]",
+    "check @ check-6671ea454a845dbe [MDT-E0210 MDT-W0601]",
+    "check @ check-8b28bfe2f98581eb [MDT-E0210 MDT-W0601]",
+    "check @ check-90e09f2d441a32d8 [MDT-E0210 MDT-W0601]",
+    // R12, `delegate` and `delegateRest` (a plan is read as a
+    // delegation): E0201 of the arguments' count, of an argument, of the
+    // timeout; E0210 of an argument; E0215 of a capability argument in a
+    // map's `with caps` (5).
+    "check @ check-3247e5d490cdbc49 [MDT-E0201 MDT-W0601]",
+    "check @ check-3b1a9382ae570684 [MDT-E0201 MDT-W0601]",
+    "check @ check-97683268f0a68bfb [MDT-E0201]",
+    "check @ check-d60016559e2ed9b2 [MDT-E0201 MDT-W0601]",
+    "check @ check-f39bcc7a32570b9e [MDT-E0210 MDT-E0215 MDT-W0601]",
+    // R12, `map`: E0201, a map over what is not a list (1).
+    "check @ check-9be2b555f2580b24 [MDT-E0201 MDT-W0601]",
+    // R12, `untrustedInCapArg` from `evalCap`: E0215, untrusted content
+    // picks a capability's scope (1).
+    "check @ check-b99d573d61aabaf5 [MDT-E0215]",
+    // R12, `checkUsagesDeclared` from `fnUsages`: E0401, a function uses
+    // an effect it does not declare (2).
+    "check @ check-3c41d351b0175523 [MDT-E0401]",
+    "check @ check-eb7ee56cd98527f2 [MDT-E0401]",
 ];
 /// `load_modules`: a module that does not check against the others for a
 /// reason of a later slice, by family of codes.
@@ -250,14 +296,96 @@ fn modules_map(modules: &[(&str, &Value)]) -> Modules {
         .collect()
 }
 
-/// One entry: its input built, the door called, the result compared.
-fn run(corpus: &Corpus, entry: &Entry) -> Result<(), String> {
+/// One entry: its input built, the door called, the result compared; an
+/// entry that differs is held to differing only by omission.
+fn run(corpus: &Corpus, entry: &Entry) -> Result<(), Miss> {
+    let from = || format!("{} (from {})", entry.id, entry.files.join(", "));
     let input = corpus
         .input(entry)
-        .map_err(|e| format!("{} (from {}): {e}", entry.id, entry.files.join(", ")))?;
-    let actual = replay(&input)
-        .map_err(|e| format!("{} (from {}): {e}", entry.id, entry.files.join(", ")))?;
-    mandate_testkit::corpus::compare(entry, &actual)
+        .map_err(|e| Miss::Differs(format!("{}: {e}", from())))?;
+    let actual = replay(&input).map_err(|e| Miss::Excluded {
+        rule: "the door is not ported, so there is no Rust result to hold",
+        why: format!("{}: {e}", from()),
+    })?;
+    mandate_testkit::corpus::compare(entry, &actual).map_err(|why| held(entry, &actual, why))
+}
+
+/// The stored diagnostics `expected` against Rust's `actual`, each whole.
+fn omits(expected: &JsValue, actual: &JsValue) -> Result<(), String> {
+    let texts = |v: &JsValue| -> Vec<String> {
+        v.as_array()
+            .unwrap_or_default()
+            .iter()
+            .map(|d| stringify(d).unwrap_or_default())
+            .collect()
+    };
+    omission(
+        &texts(expected),
+        &texts(actual),
+        |w, g| w == g,
+        Clone::clone,
+    )
+    .map(|_| ())
+}
+
+/// Why an entry whose result is not the stored one fails: by omission when
+/// every member of the result is the stored one but the diagnostics (and
+/// the problems of `load_modules`, each with its diagnostics), which are
+/// the stored ones with some left out, in order; `ok` and `hashes` follow
+/// from the diagnostics and are not held.
+fn held(entry: &Entry, actual: &Actual, why: String) -> Miss {
+    let (stored, rendered) = match (&entry.outcome, actual) {
+        (Outcome::Result(v), Actual::Result(r)) => (JsValue::from(v), &r.value),
+        (Outcome::Throws(_), _) => {
+            return Miss::Excluded {
+                rule: "the TypeScript threw, and a Rust result cannot be held to a throw",
+                why,
+            };
+        }
+        (Outcome::ResultText(_), _) => {
+            return Miss::Excluded {
+                rule: "a stored result held as text, with a number the strict JSON reader does not read",
+                why,
+            };
+        }
+        (Outcome::Result(_), Actual::Throws(_)) => return Miss::Differs(why),
+    };
+    let (Some(e), Some(a)) = (stored.as_object(), rendered.as_object()) else {
+        return Miss::Differs(why);
+    };
+    for (key, want) in e.iter() {
+        let got = a.get(key).cloned().unwrap_or(JsValue::Undefined);
+        let verdict = match key {
+            "ok" | "hashes" => Ok(()),
+            "diagnostics" => omits(want, &got),
+            "problems" => {
+                let file = |p: &JsValue| p.get("file").and_then(JsValue::as_str).map(str::to_owned);
+                let empty = JsValue::Array(Vec::new());
+                let wants = want.as_array().unwrap_or_default();
+                let gots = got.as_array().unwrap_or_default();
+                omission(
+                    wants,
+                    gots,
+                    |w, g| {
+                        file(w) == file(g)
+                            && omits(
+                                w.get("diagnostics").unwrap_or(&empty),
+                                g.get("diagnostics").unwrap_or(&empty),
+                            )
+                            .is_ok()
+                    },
+                    |g| format!("the problem of {:?}", file(g)),
+                )
+                .map(|_| ())
+            }
+            _ if stringify(want) == stringify(&got) => Ok(()),
+            _ => Err(format!("{key} is not the stored one")),
+        };
+        if let Err(differs) = verdict {
+            return Miss::Differs(format!("{key}: {differs}\n{why}"));
+        }
+    }
+    Miss::Omits(why)
 }
 
 /// Says how many of the `check` entries that pass did so although the
@@ -286,7 +414,7 @@ fn print_unported_stages(corpus: &Corpus, title: &str, passed: &[&Entry]) {
         }
     }
     println!(
-        "{title}: of the {} that pass, {statics} have no error, so TypeScript ran its static checks on them (R11-R13, not in Rust yet), and {claims} have a claim (R13)",
+        "{title}: of the {} that pass, {statics} have no error, so TypeScript ran its static checks on them (the core, R11, is in Rust; the authority's diagnostics, R12, and the system model's, R13, are not yet), and {claims} have a claim (R12, R13)",
         passed.len()
     );
 }
@@ -343,7 +471,7 @@ fn gate(corpus: &Corpus, door: Door, totals: &mut Totals) -> Result<(), String> 
     }
 
     let mut passed: Vec<&Entry> = Vec::new();
-    let gate = run_gate(&title, pending(door), items, |entry| {
+    let gate = run_held_gate(&title, pending(door), items, |entry| {
         let r = run(corpus, entry);
         if r.is_ok() {
             passed.push(entry);
@@ -366,15 +494,10 @@ fn gate(corpus: &Corpus, door: Door, totals: &mut Totals) -> Result<(), String> 
 #[test]
 fn corpus_gates() {
     let corpus = Corpus::load().unwrap_or_else(|e| panic!("{e}"));
-    // A pending entry is a family of codes or a door; the few that name one
-    // entry (`<door> @ <door>-<hex> [...]`) say why beside them.
+    // A pending entry is a family of codes, a door, or entries by name, each
+    // with why beside it.
     for door in Door::ALL {
-        let rules: Vec<&str> = pending(door)
-            .iter()
-            .copied()
-            .filter(|p| !p.contains(&format!(" @ {}-", door.name())))
-            .collect();
-        check_pending(&rules)
+        check_pending(pending(door))
             .unwrap_or_else(|e| panic!("the pending list of {}: {e}", door.name()));
     }
     let mut totals = Totals::default();

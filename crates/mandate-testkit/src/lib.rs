@@ -38,7 +38,7 @@ pub use codes::{FAMILIES, Family, check_pending, code_set, family_of, item_name}
 pub use diagnostic_vectors::{
     DIAGNOSTICS, StoredCase, StoredProgram, repo_path, result_codes, stored_cases, stored_programs,
 };
-pub use gate::run_gate;
+pub use gate::{Miss, omission, run_gate, run_held_gate};
 pub use golden::{GOLDEN, Golden, GoldenOutput};
 
 /// The repository root: the environment variable `MANDATE_REPO` when it is
