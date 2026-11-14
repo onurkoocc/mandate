@@ -24,7 +24,9 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use mandate_ir::{CallSpec, DefKind, Definition, Expr, ExprOp, JsObject, Language, Value, ptr};
+use mandate_ir::{
+    CallSpec, DefKind, Definition, Expr, ExprOp, JsObject, Language, Value, ptr, workflow_bounds,
+};
 
 use super::{Bound, Checker, Delegated, Enveloped, Frame, Usage, Val, Where, max_class};
 use crate::caps::{CapVal, cap_covers, caps_from_call, caps_of, scope_within};
@@ -323,12 +325,9 @@ impl<'a> Checker<'a> {
     /// core, then the core's `checkBudget` and node count, which report.
     pub(crate) fn check_workflow(&mut self, name: &str, d: Definition<'a>, base: &str) {
         // With an envelope, its capabilities are the workflow's.
-        let (caps_list, caps_at) = match d.envelope() {
-            None => (d.caps(), "caps"),
-            Some(e) => (e.caps().unwrap_or_default(), "envelope/caps"),
-        };
-        let caps_at = format!("{base}/{caps_at}");
-        let caps = self.cap_list(caps_list, &caps_at);
+        let bounds = workflow_bounds(d.value());
+        let caps_at = format!("{base}/{}", bounds.caps_at);
+        let caps = self.cap_list(bounds.caps, &caps_at);
         let returns = self.ty(d.returns());
         let mut frame = self.body_frame(
             Where::Workflow,

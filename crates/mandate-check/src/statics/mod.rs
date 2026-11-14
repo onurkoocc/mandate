@@ -39,7 +39,7 @@ use std::rc::Rc;
 use mandate_ir::{
     DefKind, Definition, Diagnostic, Envelope, Expr, ExprOp, JsObject, JsValue, Language, Location,
     Map, Param, Pattern, PatternKind, Program, Spans, Stmt, StmtOp, TypeExpr, Value, VerifierForm,
-    compare_utf16, limits, nearest_span, ptr,
+    compare_utf16, limits, nearest_span, ptr, workflow_bounds,
 };
 
 use crate::caps::{CapOptions, CapVal, callee_path};
@@ -1111,18 +1111,6 @@ impl<'a> Checker<'a> {
 
     // ── budgets (§8.6) ──────────────────────────────────────────────────
 
-    /// The budget a workflow is held to and its place:
-    /// `workflowBounds(d).budget` and `budgetAt`.
-    pub(crate) fn workflow_budget(d: Definition<'a>) -> (Option<Budget<'a>>, &'static str) {
-        match d.envelope() {
-            None => (d.value().get("budget").and_then(Budget::of), "budget"),
-            Some(e) => (
-                e.members().get("budget").and_then(Budget::of),
-                "envelope/budget",
-            ),
-        }
-    }
-
     /// The cost of a block, counted as the checker counts it: `blockCost({
     /// def, recursive, envelope, agents? }, stmts, base)`.
     pub(crate) fn cost_of(
@@ -1152,9 +1140,11 @@ impl<'a> Checker<'a> {
         base: &str,
         under: Option<Bound<'a>>,
     ) {
-        let (limit, budget_at) = Self::workflow_budget(d);
-        let Some(limit) = limit else { return };
-        let at = format!("{base}/{budget_at}");
+        let bounds = workflow_bounds(d.value());
+        let Some(limit) = bounds.budget.and_then(Budget::of) else {
+            return;
+        };
+        let at = format!("{base}/{}", bounds.budget_at);
         let agents = under.and_then(Bound::agents);
         let cost = self.cost_of(d.body(), &format!("{base}/body"), under.is_some(), agents);
         // An envelope bounds the whole run, so its static part is held to
