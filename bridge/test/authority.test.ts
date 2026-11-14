@@ -71,7 +71,8 @@ describe.each(cases.map((c) => [`${c.fn}: ${c.name}`, c] as const))("%s", (_, c)
   const fn = FNS[c.fn]!;
 
   it("gives the recorded output", () => {
-    expect(fn(structuredClone(c.input) as never)).toEqual(c.output);
+    // Strictly: a member set to undefined is not the same as one left out.
+    expect(fn(structuredClone(c.input) as never)).toStrictEqual(c.output);
   });
 
   it("leaves its input unchanged, gives the same output twice, and gives plain JSON", () => {

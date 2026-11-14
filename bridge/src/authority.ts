@@ -7,32 +7,61 @@
 // None reads anything but its input, none changes its input, and the same input always gives the same output. The
 // order of an object's members never carries meaning; the order of an array does where the contract says so. A
 // capability value in an input or an output is a `CapVal` written as JSON (below), with an absent member for one
-// the value does not have, never `null`.
+// the value does not have, never `null`. An input with a `null` where the contract says a member is absent or has
+// a type, or with a member of another type than the contract gives, is outside the contract: the TypeScript may
+// throw or answer anything there, and a port is not held to it.
+//
+// A `CapVal` has `ctor` (a string, the constructor, e.g. "fs.write"), `effect` (a string), `write` (a boolean),
+// and, each perhaps absent: `scope` (strings), `maxClass` (a data class name), `tier` (a string), `argsPrefix`
+// (lists of strings), `methods` (strings), `name`, `via`, `root` (strings), `components` (strings). Members not
+// named in a rule below are carried along unread, unknown ones included.
 //
 // This is the reference the Rust port (`mandate-check/src/grant.rs`) is written and tested against. It is the code
 // the interpreter ran in 0.5, moved here unchanged, over the same predicates of the compiler; their Rust
 // counterparts are in `mandate-check/src/caps.rs` (`cap_covers`, `scope_within`, `writes_overlap`, `show_cap`).
+// The recorded cases (bridge/test/authority-cases.json) are this implementation's own outputs. That it decides as
+// the 0.5 interpreter did rests on the code having been moved and not changed, and on the runtime's tests, which
+// pass unchanged over it; the cases hold a port to this implementation, not to the interpreter.
 //
-// The predicates, as these functions use them:
+// The predicates, as these functions use them. "Present" means the member is there, whatever its value: an empty
+// list or string is present. Strings compare by exact UTF-16 code unit, with no case folding or normalization.
 //
-//   covers(a, b)    capCovers: a and b have the same `ctor`; b's `scope` lies within a's (scopeWithin); when both
-//                   have a `maxClass`, b's is no higher than a's (public < internal < confidential < restricted);
-//                   when a has a `tier`, b has the same one (tiers are not ordered, and a capability without one
-//                   allows any); when a has `argsPrefix`, b has some and each of b's extends one of a's; when a has
-//                   `methods`, b has some and each of b's is one of a's.
+//   covers(a, b)    capCovers. It reads `ctor`, `scope`, `maxClass`, `tier`, `argsPrefix` and `methods`, and no
+//                   other member: `write`, `effect`, `name`, `via`, `root`, `components` and any unknown member may
+//                   differ. b is covered when all of these hold:
+//                   - a.ctor equals b.ctor;
+//                   - within(a.ctor, b.scope, a.scope);
+//                   - data class: when both `maxClass` are truthy (an empty string is not), the rank of b's is not
+//                     above the rank of a's, where the rank is the index in [public, internal, confidential,
+//                     restricted] and -1 for any other name: an unknown class ranks below public and equal to every
+//                     other unknown class, so an unknown outer class covers only unknown inner ones, and an unknown
+//                     inner class is covered by every outer one;
+//                   - tier: when a's `tier` is present (even ""), b's is present and equal to it; when a has none,
+//                     b's tier is not read (tiers are not ordered, and a capability without one allows any);
+//                   - argument prefixes: when a's `argsPrefix` is present, b's is present (an empty list is), and
+//                     each of b's prefixes extends one of a's: a's prefix is no longer, and equals b's prefix over
+//                     its length, element by element (equal lists included; an empty prefix of a extends to all);
+//                   - methods: when a's `methods` is present, b's is present (an empty list is), and each of b's is
+//                     one of a's.
 //   within(c, i, o) scopeWithin, for constructor c, inner scope i, outer scope o: true when o is absent (unknown is
-//                   unbounded); false when i is absent and o is not; otherwise every item of i lies inside some
-//                   item of o. For a `ctor` starting with "fs." an item lies inside another by path segment: both are
-//                   split at "/", empty and "." segments are dropped, ".." drops the segment before it (none at the
-//                   root), and the outer's segments are a prefix of the inner's. Any other constructor compares
-//                   items for equality.
-//   overlap(a, b)   writesOverlap: both have `write: true` and the same `ctor`, and either scope is absent, or some
-//                   item of a's scope and some item of b's are equal or, for "fs." constructors, one lies inside the
-//                   other by segment (as above).
-//   show(c)         showCap: `name = ` when c has a `name`, then `via → ` when it has a `via`, then `ctor`, then,
-//                   when it has a `scope` (even an empty one) or `methods`, "(" + each scope item as JSON.stringify
-//                   writes it, then `methods: [M, …]` when it has `methods`, joined by ", " + ")". It shows no
-//                   `tier`, `maxClass` or `argsPrefix`.
+//                   unbounded); otherwise false when i is absent; otherwise every item of i lies inside some item of
+//                   o (so an empty i lies inside anything present, and an empty o holds no item). For a `ctor`
+//                   starting with "fs." an item lies inside another by path segment. Each path is split at "/";
+//                   from left to right, an empty or "." segment is dropped, ".." drops the last segment kept so far
+//                   (nothing when none is kept, so ".." at the root stays at the root), and any other segment is
+//                   kept. A relative path is read as if it began at the root. The inner item lies inside the outer
+//                   one when the outer's kept segments are a prefix of the inner's, segment by segment, by exact
+//                   code units. `\`, `:` and NUL are ordinary characters here. Any other constructor compares items
+//                   for exact equality.
+//   overlap(a, b)   writesOverlap: `write` is read by truthiness, and both must be truthy; a.ctor equals b.ctor;
+//                   then, when either scope is absent, they overlap; otherwise some item of a's scope and some item
+//                   of b's are equal or, for a `ctor` starting with "fs.", one lies inside the other by segment (as
+//                   in within). Two empty scopes do not overlap; an empty scope overlaps an absent one.
+//   show(c)         showCap: `<name> = ` when `name` is truthy (not empty), then `<via> → ` when `via` is truthy,
+//                   then `ctor`, then, when `scope` is present (even empty) or `methods` is present,
+//                   "(" + the scope items, each as JSON.stringify writes it, then `methods: [M, …]` with the methods
+//                   written as they are and joined by ", ", all joined by ", " + ")". It shows no `tier`,
+//                   `maxClass` or `argsPrefix`.
 
 import { capCovers, scopeWithin, showCap, writesOverlap, type CapVal, type Json } from "@mandate/compiler";
 
@@ -83,7 +112,8 @@ export interface GrantInput {
    *
    * - `agent`: the agent's name, named in a refusal.
    * - `held`: what the agent declares it holds (its `caps`), as capability values, in its order.
-   * - `remote`: whether the agent is remote: a remote agent is handed a map's `with caps` whatever it holds.
+   * - `remote`: whether the agent is remote: a remote agent is handed a map's `with caps` whatever it holds (step
+   *   3). Nothing else differs: its `own` and its `held` are held to the context as any agent's are.
    * - `own`: the delegation's own `with caps`, evaluated (a narrowing at run time as `narrow` gave it), in order.
    */
   delegation: { agent: string; held: CapVal[]; remote: boolean; own: CapVal[] } | null;
@@ -106,16 +136,23 @@ export type GrantOutput = { available: CapVal[] } | { granted: CapVal[] } | { re
  *
  * 1. Each member of `own`, in order: the first that is not inside is refused, with
  *    `{ refused: { tag: "PolicyDenied", args: [{ reason: "outside_authority", delegate: agent, capability: show(g) }] } }`.
- * 2. out = the members of `held` that are inside, in their order.
+ * 2. out = the members of `held` that are inside, in their order: inside avail, which inside a map is what the
+ *    item was given, not the workflow's `bounds`.
  * 3. given = `own`, then the members k of `context.handed` (in order) whose `ctor` no member of `own` has and that
  *    the agent holds at least as widely: `remote`, or covers(h, k) for some member h of `held`.
- * 4. When given is not empty: out = the members of out whose `ctor` no member of given has, then given.
- * 5. `{ granted: out }`, sorted by key, where the key of c is the JSON text (as JSON.stringify writes it) of
- *    `{"ctor": c.ctor}`, or `{"ctor": c.ctor, "scope": c.scope}` when c has a scope; keys compare by UTF-16 code
- *    unit. Members with the same key keep their order (the sort is stable). The order carries meaning: the
- *    interpreter derives the delegation's sandbox requirement and its agent loop's tier from it.
+ * 4. When given is not empty: out = the members of out whose `ctor` no member of given has, then given. So a held
+ *    capability of a kind the map hands is replaced by what is handed, even one that is narrower.
+ * 5. `{ granted: out }`, sorted by key, where the key of c is the JSON text (as JSON.stringify writes it, with no
+ *    space and with its escapes) of `{"ctor":c.ctor}`, or of `{"ctor":c.ctor,"scope":c.scope}` when c's scope is
+ *    present, an empty one included (`{"ctor":"fs.write","scope":[]}`). Keys compare as whole strings by UTF-16
+ *    code unit, not item by item, not by UTF-8 byte or code point. Members with the same key keep their order
+ *    among themselves. The TypeScript gets that from the engine: its comparator answers "before" or "after" and
+ *    never "equal", and the engine's sort is stable, so a port must use a stable sort (the cases hold it to this,
+ *    beyond the length at which an engine stops sorting by insertion). The order carries meaning: the interpreter
+ *    derives the delegation's sandbox requirement and its agent loop's tier from it.
  *
- * The capability values in the output are those of the input, unchanged.
+ * Nothing is de-duplicated: a capability held, given or handed twice is granted twice. The capability values in
+ * the output are those of the input, unchanged, every member kept.
  */
 export function grant(input: { context: AuthorityContext; delegation: null }): { available: CapVal[] };
 export function grant(input: { context: AuthorityContext; delegation: GrantDelegation }): { granted: CapVal[] } | { refused: Refusal };
@@ -163,21 +200,25 @@ export type NarrowOutput = { caps: CapVal[] } | { partial: true } | { notText: n
  * a narrowing, or narrows a capability that stands for several, is what the compiler reads it as statically.
  *
  * Each argument i in order, and each item s of it (its members when it is a list, else the argument itself), in
- * order; "files" is whether `base.ctor` starts with "fs.":
+ * order, the first problem met deciding; "files" is whether `base.ctor` starts with "fs." (the dot included):
  *
- * 1. s not a string: `{ notText: i }`. The interpreter raises its `bad_scope` violation for argument i.
- * 2. files, and s holds `\`, `:` or the NUL character: refused, with
+ * 1. s not a string: `{ notText: i }`. The interpreter raises its `bad_scope` violation for argument i. A list is
+ *    opened one level only: a list inside a list is a member that is not a string, and so is null. This is decided
+ *    while `complete` is false too, as soon as the argument is there.
+ * 2. files, and s holds `\`, `:` or the NUL character anywhere, absolute or relative: refused, with
  *    `{ refused: { tag: "PolicyDenied", args: [{ reason: "outside_capability", capability: show(base), requested: [s] }] } }`.
- *    A host may read such a path another way than `within` does.
- * 3. files, s does not start with "/" and `base` has a scope: for each item b of `base.scope` in order, b without
- *    its trailing "/"s, then "/", then s, is added to the scope. Otherwise s is added as it is (a relative s under
- *    a base without a scope stays relative).
+ *    A host may read such a path another way than `within` does. Also decided while `complete` is false.
+ * 3. files, s does not start with "/" and `base.scope` is present (an empty one included): for each item b of
+ *    `base.scope` in order, b without its trailing "/"s, then "/", then s, is added to the scope; under an empty
+ *    base scope nothing is added. Otherwise s is added as it is (a relative s under a base without a scope stays
+ *    relative, and so does any s of a constructor that is not "fs.").
  *
- * Then, with `complete: false`, `{ partial: true }`. With `complete: true`: when the scope is not within(base.ctor,
- * scope, base.scope), refused with
+ * Then, with `complete: false`, `{ partial: true }`: nothing else is decided, `within` included. With `complete:
+ * true`: when the scope is not within(base.ctor, scope, base.scope), refused with
  * `{ refused: { tag: "PolicyDenied", args: [{ reason: "outside_capability", capability: show(base), requested: scope }] } }`;
- * otherwise `{ caps: [n] }`, where n is `base` with `scope` the scope (in the order above) and `name`
- * `<base.name, or base.ctor when it has none>.narrow`.
+ * otherwise `{ caps: [n] }`, where n is `base` with every member kept, `scope` the scope (in the order above) and
+ * `name` `<base.name>.narrow`, or `<base.ctor>.narrow` when `name` is absent (an empty name is kept, giving
+ * ".narrow").
  */
 export function narrow(input: NarrowInput): NarrowOutput {
   const { base } = input;
@@ -235,10 +276,12 @@ export type MapScopesOutput = { items: ItemScopes[]; writes: CapVal[][] } | { pa
  *
  * 1. Each member c of g in order: when no member a of avail covers it (covers(a, c)), refused with
  *    `{ refused: { tag: "PolicyDenied", args: [{ reason: "outside_authority", map, item: i, capability: show(c) }] } }`.
+ *    Every item given is checked, with `complete` false or true, the earlier items again included: the first
+ *    item, in order, with a member outside decides.
  * 2. Its scopes: null when g is empty (the item stands in the map's context). Otherwise `given` is
  *    `context.given` with g appended, and `handed` is the members of `context.handed` whose `ctor` no member of g
  *    has, in order, then g.
- * 3. Its writes: the members of g with `write: true`, in order.
+ * 3. Its writes: the members of g whose `write` is truthy, in order.
  *
  * Then, with `complete: false`, `{ partial: true }`. With `complete: true` and `par > 1`: the first pair, for i
  * ascending, then j > i ascending, then a over item i's writes in order, where some member of item j's writes
@@ -298,9 +341,11 @@ export type InFlightOverlapOutput = { overlap: Refusal | null };
  * through when the run comes to it again.
  *
  * A sub-program whose command c is such that `map` starts with c + "/" is the one the map runs inside, and is left
- * out. Over the others: the first, for item i in order, then a over its writes in order, then each sub-program p
- * in order, where some member of p's writes overlaps a (overlap(a, b), b the first such), gives
- * `{ overlap: { tag: "Rejected", args: ["overlapping_scopes", { map, items: [i], left: show(a), right: show(b), program: p.command }] } }`,
+ * out; one whose command equals `map`, or is a prefix of it without the "/", is not. The members of `writes` and
+ * of a sub-program's writes are compared with overlap, which reads their `write` too: a member whose `write` is
+ * not truthy overlaps nothing. Over the others: the first, for item i in order, then a over its writes in order,
+ * then each sub-program p in order, where some member of p's writes overlaps a (overlap(a, b), b the first such),
+ * gives `{ overlap: { tag: "Rejected", args: ["overlapping_scopes", { map, items: [i], left: show(a), right: show(b), program: p.command }] } }`,
  * the refusal the interpreter raises. None gives `{ overlap: null }`.
  */
 export function inFlightOverlap(input: InFlightOverlapInput): InFlightOverlapOutput {
