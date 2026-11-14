@@ -5,9 +5,27 @@ name: live
 # repository secrets CLAUDE_API_KEY, CLAUDE_WORKSPACE_ID (for a key not scoped
 # to a workspace) and MANDATE_GITHUB_TOKEN (the fine-grained token for
 # onurkoocc/mandate-fixbug-target only, K18).
+#
+# Two more live tests run only when their input is set, each in a step of its
+# own with only the model's secrets: the Managed Agents trial
+# (test/live-managed-agents.test.ts, MANDATE_MA=1; a 2 USD run) and the
+# migration example with a real model as its lead (test/demo.test.ts,
+# MANDATE_ENVELOPE=1; the lead may spend up to 10 USD).
+#
+#   gh workflow run live.yml
+#   gh workflow run live.yml -f managed_agents=true -f envelope=true
 
 on:
   workflow_dispatch:
+    inputs:
+      managed_agents:
+        description: "Also run the Managed Agents trial (test/live-managed-agents.test.ts, MANDATE_MA=1)"
+        type: boolean
+        default: false
+      envelope:
+        description: "Also run the migration example with a real lead (test/demo.test.ts, MANDATE_ENVELOPE=1)"
+        type: boolean
+        default: false
 
 # The live tests reach GitHub with MANDATE_GITHUB_TOKEN, not with this
 # workflow's own token, so that token only needs to read the repository.
@@ -34,3 +52,21 @@ jobs:
           CLAUDE_WORKSPACE_ID: ${{ secrets.CLAUDE_WORKSPACE_ID }}
           MANDATE_GITHUB_TOKEN: ${{ secrets.MANDATE_GITHUB_TOKEN }}
         run: npx vitest run test/live.test.ts
+      - name: The Managed Agents trial (MANDATE_MA=1)
+        if: ${{ !cancelled() && inputs.managed_agents }}
+        working-directory: runtime
+        env:
+          MANDATE_LIVE: "1"
+          MANDATE_MA: "1"
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          CLAUDE_WORKSPACE_ID: ${{ secrets.CLAUDE_WORKSPACE_ID }}
+        run: npx vitest run test/live-managed-agents.test.ts
+      - name: The migration example with a real model as its lead (MANDATE_ENVELOPE=1)
+        if: ${{ !cancelled() && inputs.envelope }}
+        working-directory: runtime
+        env:
+          MANDATE_LIVE: "1"
+          MANDATE_ENVELOPE: "1"
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          CLAUDE_WORKSPACE_ID: ${{ secrets.CLAUDE_WORKSPACE_ID }}
+        run: npx vitest run test/demo.test.ts
