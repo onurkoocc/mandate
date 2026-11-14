@@ -33,7 +33,7 @@ the configuration and the CLI.
 | Views by role and the audit view | PR 9 | implemented (`views-role.test.ts`, `views-default.test.ts`, `classes.test.ts`, `cli-views.test.ts`) |
 | The OpenTelemetry projection | PR 9 | implemented (`otel.test.ts`) |
 | An independent journal verifier, `verify-journal`, in Rust | R3 | implemented (`crates/verify-journal`: every journal case, and a fresh export of a real run on CI) |
-| The Rust compiler: the same hashes and diagnostics on every fixture | K1–K10 | implemented (`crates/`: the golden outputs, the conformance cases and the stored vectors, natively and as WebAssembly on CI; a `parity` job compares both compilers' golden texts) |
+| The Rust compiler: the same hashes and diagnostics on every fixture | R4–R17 | implemented (`crates/`: the golden outputs, the conformance cases and the stored vectors, natively and as WebAssembly on CI; a `parity` job compares both compilers' golden texts) |
 
 A sandbox that needs outbound network runs only on a host that reaches its
 hosts through the egress proxy; every other host refuses it by name, as
@@ -1466,8 +1466,8 @@ The letters P, T and L are kept for later releases.
 - **Parts of the Rust compiler.** It is a library with no command line;
   the runtime and the `mandate` CLI use the TypeScript compiler. The
   envelope card (`mandate view --card`), the ACS/Rego target and the MCP
-  server are not ported. A few written inputs are known to differ; they
-  are listed in `conformance/README.md`. These start the plan for 0.6.
+  server are not ported. These start the plan for 0.6. A few written
+  inputs are known to differ; they are listed in `conformance/README.md`.
 - **New isolation backends.** 0.5 adds the level and the refusal, not a
   host that gives more than `process`.
 - **Sandbox egress on Windows**, TLS interception, and `git`, PostgreSQL
