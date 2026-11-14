@@ -119,7 +119,7 @@ fn nodes(v: &Value, op: &str, path: &str, found: &mut Vec<String>) {
                 found.push(path.to_owned());
             }
             for (k, x) in map.iter() {
-                nodes(x, op, &format!("{path}/{}", ptr_token(&k)), found);
+                nodes(x, op, &format!("{path}/{}", ptr_token(k)), found);
             }
         }
         _ => {}
