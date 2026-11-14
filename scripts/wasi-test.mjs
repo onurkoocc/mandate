@@ -25,9 +25,11 @@
 //
 // The repository root is preopened as `/repo` and the environment variable
 // MANDATE_REPO=/repo is set in the WASI environment; the tests read it (and
-// MANDATE_GOLDEN_OUT, when set on the host, as a path inside the repository). Node
+// MANDATE_GOLDEN_OUT, when set on the host, as a path inside the repository, and
+// MANDATE_UPDATE_0_6, as it is). Node
 // cannot preopen a directory read-only, so "read-only" is a convention of the
-// tests, which only read. Needs: the target (`rust-toolchain.toml` lists it,
+// tests, which only read (but for the files of 0.6, written with
+// MANDATE_UPDATE_0_6=1). Needs: the target (`rust-toolchain.toml` lists it,
 // `rustup toolchain install` installs it), cargo on PATH, and Node 22 or later.
 // Node may print a warning that WASI is experimental; that is not suppressed.
 //
@@ -184,6 +186,10 @@ if (process.env.MANDATE_GOLDEN_OUT) {
   }
   guestEnv.MANDATE_GOLDEN_OUT = '/repo/' + inside.split(sep).join('/');
 }
+// MANDATE_UPDATE_0_6=1 makes the gates of language 0.6 write their files
+// (vectors/golden/0.6.json, vectors/diagnostics-0.6/) instead of comparing
+// them; it is passed on as it is, and only when it is set.
+if (process.env.MANDATE_UPDATE_0_6) guestEnv.MANDATE_UPDATE_0_6 = process.env.MANDATE_UPDATE_0_6;
 
 // 2. Run each one under WASI.
 let exitCode = 0;

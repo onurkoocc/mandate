@@ -1,0 +1,94 @@
+{
+  "format": "mandate/vectors/diagnostics/golden/0.1",
+  "part": 1,
+  "parts": 1,
+  "programs": [
+    {
+      "program": "fixtures/library/fetch.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": "fixtures/library/fetch.lock.json",
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:67c5744d3dd65071987dc61338eb31dd2ee40ac165ddba1c6ea0ba10ea861a5b",
+            "defs": {
+              "GitHubRead": "sha256:91cfd6cbaa912fcbd870e54c34425053bab065875b4a3c86ce41174d23f4ea6f",
+              "ModelStd": "sha256:3d1b9c3435bb5678e33db8e60c2299ed4f109ecb5cc2693d02df6f8d03cc3c3f",
+              "Reader": "sha256:30f2965caa28f60e56c27f6162f14b5cb1b98d2ff404ba4ae5d29626e22ca643",
+              "Summarize": "sha256:551a687fd4e05b167e0c50427f23d973549ea6df32284aeef16474876cd12cb8"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:67c5744d3dd65071987dc61338eb31dd2ee40ac165ddba1c6ea0ba10ea861a5b",
+            "defs": {
+              "GitHubRead": "sha256:91cfd6cbaa912fcbd870e54c34425053bab065875b4a3c86ce41174d23f4ea6f",
+              "ModelStd": "sha256:3d1b9c3435bb5678e33db8e60c2299ed4f109ecb5cc2693d02df6f8d03cc3c3f",
+              "Reader": "sha256:30f2965caa28f60e56c27f6162f14b5cb1b98d2ff404ba4ae5d29626e22ca643",
+              "Summarize": "sha256:551a687fd4e05b167e0c50427f23d973549ea6df32284aeef16474876cd12cb8"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_lock": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:67c5744d3dd65071987dc61338eb31dd2ee40ac165ddba1c6ea0ba10ea861a5b",
+            "defs": {
+              "GitHubRead": "sha256:91cfd6cbaa912fcbd870e54c34425053bab065875b4a3c86ce41174d23f4ea6f",
+              "ModelStd": "sha256:3d1b9c3435bb5678e33db8e60c2299ed4f109ecb5cc2693d02df6f8d03cc3c3f",
+              "Reader": "sha256:30f2965caa28f60e56c27f6162f14b5cb1b98d2ff404ba4ae5d29626e22ca643",
+              "Summarize": "sha256:551a687fd4e05b167e0c50427f23d973549ea6df32284aeef16474876cd12cb8"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/library/minimal.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:52a197b40206d33702e11c07058846a833061e4636e713195e968357dce0be2b",
+            "defs": {
+              "Greet": "sha256:9f0fb23f0a8e295699245f2dbdcdbf5389246880807d77ac7a6093188c354657",
+              "Greeter": "sha256:8d8db58bcc82fb4fb457a5deb888e2038d3d77b2719e4e5c52d0ac4d359a533d",
+              "ModelStd": "sha256:0c86667ebbdcf268d82fcb600cca36fe21ccb44e3b1f660e6f7e80b4e8e27a6e"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:52a197b40206d33702e11c07058846a833061e4636e713195e968357dce0be2b",
+            "defs": {
+              "Greet": "sha256:9f0fb23f0a8e295699245f2dbdcdbf5389246880807d77ac7a6093188c354657",
+              "Greeter": "sha256:8d8db58bcc82fb4fb457a5deb888e2038d3d77b2719e4e5c52d0ac4d359a533d",
+              "ModelStd": "sha256:0c86667ebbdcf268d82fcb600cca36fe21ccb44e3b1f660e6f7e80b4e8e27a6e"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    }
+  ]
+}
