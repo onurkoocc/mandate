@@ -220,3 +220,13 @@ jobs:
           git diff --exit-code -- crates/mandate-check/tests/front
           untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/front)"
           if [ -n "$untracked" ]; then echo "::error::front-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi
+      # scripts/lock-vectors.mjs reads only the committed inputs.json and
+      # writes expected.json beside it: what the TypeScript gives for the lock,
+      # the executor binding checks and the sandbox requirements on inputs that
+      # reach the branches no stored result reaches.
+      - name: The expectations of mandate-check's lock are what the TypeScript compiler gives now
+        run: |
+          node scripts/lock-vectors.mjs
+          git diff --exit-code -- crates/mandate-check/tests/lock
+          untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/lock)"
+          if [ -n "$untracked" ]; then echo "::error::lock-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi

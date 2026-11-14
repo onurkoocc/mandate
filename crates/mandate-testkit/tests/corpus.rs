@@ -9,13 +9,15 @@
 //! `corpus <door>: ran N, passed M, pending K`, over the entries of that
 //! door, named `<door> @ <id> [<codes>]` (the codes are those of the stored
 //! result, sorted, so a pending list can name a family: `*MDT-E03*`).
-//! Three doors exist in Rust: `load` (`mandate_syntax::load`), and `check`
-//! and `load_modules` (`mandate_check`), whose entries are pending only by
-//! the family of codes of a stage not ported yet (`mandate_check::UNPORTED`;
-//! the families are `mandate_testkit::codes::FAMILIES`, and
+//! Five doors exist in Rust: `load` (`mandate_syntax::load`), `check`,
+//! `load_modules`, `validate_lock` and `denial_diagnostics` (`mandate_check`).
+//! The entries of `check` and `load_modules` are pending only by the family
+//! of codes of a stage not ported yet (`mandate_check::UNPORTED`; the
+//! families are `mandate_testkit::codes::FAMILIES`, and
 //! `mandate_testkit::check_pending` holds each list to them), with the slice
-//! named beside each, and two entries by name, with the reason. Every other
-//! door is pending as a whole, with the slice that will end it named below.
+//! named beside each, and four entries by name, with the reason; the other
+//! three have none pending. Every other door is pending as a whole, with the
+//! slice that will end it named below.
 //! Plugging a door in takes two edits in this file: an arm in [`replay`],
 //! and taking the door's pattern off its pending list (or narrowing it to
 //! the entries that still fail).

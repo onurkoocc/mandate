@@ -302,7 +302,10 @@ fn sorted_keys(o: Option<&Value>) -> Vec<String> {
 /// `{ lock: _format, ...pinned } = lock ?? { modules: {} }; return pinned`:
 /// the lock as a package carries it, without its format field: `packagedLock`.
 /// A program with no lock file is packaged with no pins. A value that is not
-/// an object (not a lock) has no members to carry.
+/// an object (not a lock) is spread as JavaScript spreads it: an array by
+/// index, a string by character (by code point here, by UTF-16 code unit in
+/// JavaScript, which differ for a character outside the Basic Multilingual
+/// Plane), any other value as nothing.
 #[must_use]
 pub fn packaged_lock(lock: Option<&Value>) -> Map {
     match lock {
@@ -316,6 +319,17 @@ pub fn packaged_lock(lock: Option<&Value>) -> Map {
             pinned.insert("modules", Map::new());
             pinned
         }
+        // `{ ...["a", "b"] }` is `{ 0: "a", 1: "b" }`, and so is a string's.
+        Some(Value::Array(items)) => items
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (i.to_string(), v.clone()))
+            .collect(),
+        Some(Value::String(s)) => s
+            .chars()
+            .enumerate()
+            .map(|(i, c)| (i.to_string(), Value::String(c.to_string())))
+            .collect(),
         Some(_) => Map::new(),
     }
 }

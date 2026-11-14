@@ -210,8 +210,11 @@ fn with_exact_span(d: Diagnostic, spans: &Spans) -> Diagnostic {
 /// `check(text, kind, opts)`.
 ///
 /// Until [`UNPORTED`] is empty, `ok` means no error from the stages ported
-/// so far: `load`, `link`, `resolveNames`, `roleChecks` and
-/// `importedMethods`.
+/// so far: `load`, `link`, `resolveNames`, `roleChecks`, `importedMethods` and,
+/// given a lock, the lock checks (`validateLock` and, when it finds nothing,
+/// `lockChecks`, `roleLockChecks` and `moduleLockChecks`). Where the
+/// TypeScript stops at an error of the static checks, Rust does not, so it
+/// also runs the lock checks there.
 #[must_use]
 pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResult {
     let loaded = load(text, kind);
