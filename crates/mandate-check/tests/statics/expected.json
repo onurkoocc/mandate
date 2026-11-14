@@ -105,6 +105,74 @@
       "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0230\",\"severity\":\"error\",\"message\":\"Switch does not handle Feature.\",\"at\":{\"path\":\"/defs/kinds/body/0/value\",\"span\":[5,3,7,4]},\"docs\":\"mandate explain MDT-E0230\",\"facts\":{\"missing\":[\"Feature\"]}},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Int but got Text.\",\"at\":{\"path\":\"/defs/title/body/0/value\",\"span\":[3,29,3,36]},\"docs\":\"mandate explain MDT-E0201\"}]}"
     }
   ],
+  "deep": [
+    {
+      "name": "field:64:54",
+      "ok": true,
+      "diagnostics": 0,
+      "digest": "sha256:8ad207a6930c944facdf02cfbf3de8703faf20353bec213d009e0529783a0cb0"
+    },
+    {
+      "name": "not:64:54",
+      "ok": false,
+      "diagnostics": 64,
+      "digest": "sha256:029d6a46031a25f6ef69c01a1c1ce5342d1bef19849f4e568e9101f5f3fbc24a"
+    },
+    {
+      "name": "list:64:27",
+      "ok": false,
+      "diagnostics": 64,
+      "digest": "sha256:da82d5e92a4fb68569ddf36e7540ad9c1adc1a6572b2fc93f4490fd2e8b2d966"
+    },
+    {
+      "name": "paren:64:54",
+      "ok": true,
+      "diagnostics": 0,
+      "digest": "sha256:8ad207a6930c944facdf02cfbf3de8703faf20353bec213d009e0529783a0cb0"
+    },
+    {
+      "name": "const:64:59",
+      "ok": true,
+      "diagnostics": 0,
+      "digest": "sha256:8ad207a6930c944facdf02cfbf3de8703faf20353bec213d009e0529783a0cb0"
+    },
+    {
+      "name": "types:64:28",
+      "ok": false,
+      "diagnostics": 1,
+      "digest": "sha256:f00badfa91a4575180cca110f4731cdf8c6e2ae6e746d63e61786c3e59d310b1"
+    },
+    {
+      "name": "if:61:27",
+      "ok": true,
+      "diagnostics": 0,
+      "digest": "sha256:8ad207a6930c944facdf02cfbf3de8703faf20353bec213d009e0529783a0cb0"
+    },
+    {
+      "name": "record:61:27",
+      "ok": false,
+      "diagnostics": 1647,
+      "digest": "sha256:65b7ba591949e6adb673941080f9e1d47055d41f16bde835fdd295aa8dda9f12"
+    },
+    {
+      "name": "switch:61:18",
+      "ok": true,
+      "diagnostics": 0,
+      "digest": "sha256:8ad207a6930c944facdf02cfbf3de8703faf20353bec213d009e0529783a0cb0"
+    },
+    {
+      "name": "delegate:61:18",
+      "ok": false,
+      "diagnostics": 61,
+      "digest": "sha256:2a9b936452882a3bb371bcdca9c6f3d14d2c802c2e8ba9b11d3d7ba41a3692db"
+    },
+    {
+      "name": "map:61:18",
+      "ok": false,
+      "diagnostics": 61,
+      "digest": "sha256:6ff4a1cf8c4f736e5541e34a5cb00c58ee13161fe55990de19789fbbc8d190e2"
+    }
+  ],
   "costs": [
     {
       "name": "budgets: currencies, sums past 2^53, time and a loop",

@@ -796,6 +796,22 @@
     ["Infinity", "USD"],
     ["NaN", "USD"]
   ],
+  "deep": {
+    "about": "The deepest programs that load, each a chain of functions (constants, types) where each calls the next under depth levels of one form, so that the static checks recurse as deep as a loadable program lets them: at most 64 definitions and an IR at most 64 deep. The program of a shape is written by the same rule in scripts/static-vectors.mjs and tests/statics.rs (deepProgram, deep_program). Node's default stack is too small for the TypeScript to check most of them (it throws RangeError: Maximum call stack size exceeded); the script checks them in a worker thread with a 256 MB stack, and stores each result's digest.",
+    "shapes": [
+      ["field", 64, 54],
+      ["not", 64, 54],
+      ["list", 64, 27],
+      ["paren", 64, 54],
+      ["const", 64, 59],
+      ["types", 64, 28],
+      ["if", 61, 27],
+      ["record", 61, 27],
+      ["switch", 61, 18],
+      ["delegate", 61, 18],
+      ["map", 61, 18]
+    ]
+  },
   "costs": [
     { "file": "fixtures/fixbug/fixbug.mdt", "modules": [] },
     { "file": "fixtures/envelope/migrate-all.mdt", "modules": ["fixtures/envelope/domain.mdt"] },

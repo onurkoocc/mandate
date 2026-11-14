@@ -23,7 +23,9 @@
 // lead is leadClasses(program, linked) of every check that passes. Running it
 // again writes the same bytes.
 
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
+import { Worker } from "node:worker_threads";
 
 const root = new URL("..", import.meta.url);
 const dist = (path) => import(new URL(`compiler/dist/${path}`, root).href);
@@ -79,6 +81,76 @@ for (const f of inputs.costs) {
   leads.push({ name: f.file, ...attempt(() => leadClasses(program, link(program, modules).defs)) });
 }
 
+/**
+ * The program of a deep shape: `fns` functions (constants, types), each
+ * calling the next under `depth` levels of the form `shape`. The same rule
+ * as deep_program in crates/mandate-check/tests/statics.rs.
+ */
+function deepProgram(shape, fns, depth) {
+  const lines = [];
+  const nest = (e, wrap) => {
+    for (let k = 0; k < depth; k++) e = wrap(e);
+    return e;
+  };
+  if (shape === "const") {
+    lines.push("module m @ 0.1");
+    for (let i = 0; i < fns; i++) lines.push(`let c${i} = ${nest(i + 1 < fns ? `c${i + 1}` : "1", (e) => `${e}.a`)}`);
+  } else if (shape === "types") {
+    lines.push("module m @ 0.1");
+    for (let i = 0; i + 1 < fns; i++) lines.push(`type T${i} = { a: ${nest(i + 2 < fns ? `T${i + 1}` : "Int", (t) => `List<${t}>`)} } classified internal`);
+    lines.push("fn f(x: T0) -> Int { x }");
+  } else if (["field", "not", "list", "paren"].includes(shape)) {
+    const wrap = { field: (e) => `${e}.a`, not: (e) => `not ${e}`, list: (e) => `[${e}]`, paren: (e) => `(1 + ${e})` }[shape];
+    lines.push("module m @ 0.1");
+    for (let i = 0; i < fns; i++) lines.push(`fn f${i}(n: Int) -> Int { ${nest(i + 1 < fns ? `f${i + 1}(n)` : "n", wrap)} }`);
+  } else {
+    const wrap = {
+      if: (e) => `if n == 1 {\n${e}\n}`,
+      record: (e) => `R { a: ${e} }`,
+      switch: (e) => `switch n {\n_ => ${e}\n}`,
+      delegate: (e) => `delegate A.s(${e})`,
+      map: (e) => `map x in [n] max 1 {\n${e}\n}`,
+    }[shape];
+    lines.push("mandate @ 0.4", "module m @ 0.1", "use std.{model}", "type R = { a: Int }", "capability M = model.infer(tier: standard)");
+    lines.push("agent A {", "  caps M", "  budget { steps: 3 }", "  skill s(t: Inferred<Int>) -> Int ! {Model}", "}");
+    for (let i = 0; i < fns; i++) lines.push(`fn f${i}(n: Int) -> Int {\n${nest(i + 1 < fns ? `f${i + 1}(n)` : "n", wrap)}\n}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/** `check` of each text in a worker thread with a stack of `mb` megabytes, as `{ result }` or `{ throws }`. */
+async function checkedWithStack(texts, mb) {
+  const worker = new Worker(
+    `const { parentPort, workerData } = require("node:worker_threads");
+(async () => {
+  const { check } = await import(workerData.check);
+  parentPort.postMessage(workerData.texts.map((text) => {
+    try {
+      const r = check(text, "mdt");
+      return { result: JSON.stringify({ ok: r.ok, diagnostics: r.diagnostics }) };
+    } catch (e) {
+      return { throws: e instanceof Error ? e.name + ": " + e.message : String(e) };
+    }
+  }));
+})();`,
+    { eval: true, workerData: { check: new URL("compiler/dist/check.js", root).href, texts }, resourceLimits: { stackSizeMb: mb } },
+  );
+  return new Promise((resolve, reject) => {
+    worker.once("message", resolve);
+    worker.once("error", reject);
+  });
+}
+
+const sha256 = (text) => `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
+const deepShapes = inputs.deep.shapes;
+const deepResults = await checkedWithStack(deepShapes.map(([shape, fns, depth]) => deepProgram(shape, fns, depth)), 256);
+const deep = deepShapes.map(([shape, fns, depth], i) => {
+  const r = deepResults[i];
+  if (r.throws) return { name: `${shape}:${fns}:${depth}`, throws: r.throws };
+  const parsed = JSON.parse(r.result);
+  return { name: `${shape}:${fns}:${depth}`, ok: parsed.ok, diagnostics: parsed.diagnostics.length, digest: sha256(r.result) };
+});
+
 const types = load(`${inputs.types.join("\n")}\n`, "mdt").program.defs;
 const env = {
   typeDef: (n) => (Object.hasOwn(types, n) && types[n].kind === "type" ? types[n] : undefined),
@@ -86,6 +158,7 @@ const env = {
 };
 const out = {
   checks,
+  deep,
   costs,
   leads,
   assignable: inputs.assignable.map(([a, e]) => JSON.stringify(assignable(a, e, env) ?? null)),

@@ -12,7 +12,10 @@
 //!   fixtures listed, and `leadClasses` of every program that checks;
 //! - `assignable` of pairs of types in a type environment, `show`, and
 //!   `microsText` of amounts past 2^53, negative, fractional and not
-//!   finite.
+//!   finite;
+//! - the deepest programs that load, one of each form that nests, checked
+//!   within the stack a test thread has, against the digest of what the
+//!   TypeScript gives them with a stack large enough.
 
 #![allow(
     clippy::unwrap_used,
@@ -117,6 +120,94 @@ fn costs_and_leads(
     (costs, leads)
 }
 
+/// The program of a deep shape: `fns` functions (constants, types), each
+/// calling the next under `depth` levels of the form `shape`. The same rule
+/// as `deepProgram` in `scripts/static-vectors.mjs`.
+fn deep_program(shape: &str, fns: usize, depth: usize) -> String {
+    let nest = |mut e: String, wrap: &dyn Fn(&str) -> String| {
+        for _ in 0..depth {
+            e = wrap(&e);
+        }
+        e
+    };
+    let mut lines: Vec<String> = Vec::new();
+    match shape {
+        "const" => {
+            lines.push("module m @ 0.1".to_owned());
+            for i in 0..fns {
+                let next = if i + 1 < fns {
+                    format!("c{}", i + 1)
+                } else {
+                    "1".to_owned()
+                };
+                lines.push(format!("let c{i} = {}", nest(next, &|e| format!("{e}.a"))));
+            }
+        }
+        "types" => {
+            lines.push("module m @ 0.1".to_owned());
+            for i in 0..fns.saturating_sub(1) {
+                let next = if i + 2 < fns {
+                    format!("T{}", i + 1)
+                } else {
+                    "Int".to_owned()
+                };
+                let t = nest(next, &|t| format!("List<{t}>"));
+                lines.push(format!("type T{i} = {{ a: {t} }} classified internal"));
+            }
+            lines.push("fn f(x: T0) -> Int { x }".to_owned());
+        }
+        "field" | "not" | "list" | "paren" => {
+            lines.push("module m @ 0.1".to_owned());
+            for i in 0..fns {
+                let next = if i + 1 < fns {
+                    format!("f{}(n)", i + 1)
+                } else {
+                    "n".to_owned()
+                };
+                let e = nest(next, &|e| match shape {
+                    "field" => format!("{e}.a"),
+                    "not" => format!("not {e}"),
+                    "list" => format!("[{e}]"),
+                    _ => format!("(1 + {e})"),
+                });
+                lines.push(format!("fn f{i}(n: Int) -> Int {{ {e} }}"));
+            }
+        }
+        _ => {
+            for l in [
+                "mandate @ 0.4",
+                "module m @ 0.1",
+                "use std.{model}",
+                "type R = { a: Int }",
+                "capability M = model.infer(tier: standard)",
+                "agent A {",
+                "  caps M",
+                "  budget { steps: 3 }",
+                "  skill s(t: Inferred<Int>) -> Int ! {Model}",
+                "}",
+            ] {
+                lines.push(l.to_owned());
+            }
+            for i in 0..fns {
+                let next = if i + 1 < fns {
+                    format!("f{}(n)", i + 1)
+                } else {
+                    "n".to_owned()
+                };
+                let e = nest(next, &|e| match shape {
+                    "if" => format!("if n == 1 {{\n{e}\n}}"),
+                    "record" => format!("R {{ a: {e} }}"),
+                    "switch" => format!("switch n {{\n_ => {e}\n}}"),
+                    "delegate" => format!("delegate A.s({e})"),
+                    _ => format!("map x in [n] max 1 {{\n{e}\n}}"),
+                });
+                lines.push(format!("fn f{i}(n: Int) -> Int {{\n{e}\n}}"));
+            }
+        }
+    }
+    format!("{}\n", lines.join("\n"))
+}
+
 /// The type environment of a program's definitions.
 struct Env<'a>(&'a Map);
 
@@ -159,6 +250,51 @@ fn ty_of(v: &Value) -> Ty {
         },
         _ => Ty::Unknown,
     }
+}
+
+/// The deepest programs that load (64 definitions, an IR 64 deep): the
+/// static checks recurse as deep as a program lets them, within the stack a
+/// test thread has (2 MiB natively, 1 MiB under WASM), and give what the
+/// TypeScript gives with a stack large enough (Node's default is not: it
+/// throws on most of these).
+#[test]
+fn the_deepest_programs_that_load_are_checked_as_the_typescript_checks_them() {
+    let inputs = read_json(&format!("{DIR}/inputs.json")).unwrap();
+    let expected = read_json(&format!("{DIR}/expected.json")).unwrap();
+    let shapes = inputs
+        .get("deep")
+        .and_then(|d| d.get("shapes"))
+        .and_then(Value::as_array)
+        .unwrap();
+    let want = expected.get("deep").and_then(Value::as_array).unwrap();
+    assert_eq!(shapes.len(), want.len(), "a result for every shape");
+    let mut failures = Vec::new();
+    for (s, w) in shapes.iter().zip(want) {
+        let s = s.as_array().unwrap();
+        let shape = s[0].as_str().unwrap();
+        let fns = usize::try_from(s[1].as_i64().unwrap()).unwrap();
+        let depth = usize::try_from(s[2].as_i64().unwrap()).unwrap();
+        let name = format!("{shape}:{fns}:{depth}");
+        assert_eq!(w.get("name").and_then(Value::as_str), Some(name.as_str()));
+        let text = deep_program(shape, fns, depth);
+        let r = check(&text, SourceKind::Mdt, &CheckOptions::default());
+        let got = mandate_testkit::sha256(&result_text(r.ok, &r.diagnostics));
+        let digest = w.get("digest").and_then(Value::as_str);
+        if digest != Some(got.as_str()) {
+            failures.push(format!(
+                "{name}: expected ok {:?} with {:?} diagnostics ({digest:?}), got ok {} with {} ({got})",
+                w.get("ok"),
+                w.get("diagnostics").and_then(Value::as_i64),
+                r.ok,
+                r.diagnostics.len()
+            ));
+        }
+    }
+    println!(
+        "deep programs: {} checked as the TypeScript checks them",
+        shapes.len()
+    );
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 #[test]
