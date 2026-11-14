@@ -1,14 +1,12 @@
 # The boundary with the outside world (0.5)
 
-**Status: in progress.** The page specifies release 0.5 so that the
-TypeScript implementation, and later the Rust one, are held to the same
-rules and cases. Everything the release includes is implemented in the
-TypeScript implementation, and the table says where each part is shown;
-what it leaves out by decision is under [Not in 0.5](#not-in-05). The page
-stays in progress because one criterion of the release is not met: the Rust
-compiler does not yet give every fixture the same hashes and diagnostics,
-and that port is planned on its own. The Rust workspace today reads and
-hashes IR and verifies journals; it does not check programs.
+**Status: implemented.** The page specifies release 0.5 so that the
+TypeScript and the Rust implementations are held to the same rules and
+cases. Everything the release includes is implemented in the TypeScript
+implementation, and the table says where each part is shown; what it
+leaves out by decision is under [Not in 0.5](#not-in-05). The Rust compiler
+gives every fixture the same hashes and diagnostics as the TypeScript one;
+it is a library, and the runtime and the CLI use the TypeScript compiler.
 
 **A note on the name.** Release 0.5 is called Boundary. In the code and in
 the earlier specs, "boundary" already means *boundary evidence*: the
@@ -35,7 +33,7 @@ the configuration and the CLI.
 | Views by role and the audit view | PR 9 | implemented (`views-role.test.ts`, `views-default.test.ts`, `classes.test.ts`, `cli-views.test.ts`) |
 | The OpenTelemetry projection | PR 9 | implemented (`otel.test.ts`) |
 | An independent journal verifier, `verify-journal`, in Rust | R3 | implemented (`crates/verify-journal`: every journal case, and a fresh export of a real run on CI) |
-| The Rust compiler: the same hashes and diagnostics on every fixture | — | not implemented; a later plan. Until it is, release 0.5 is not closed |
+| The Rust compiler: the same hashes and diagnostics on every fixture | R4–R17 | implemented (`crates/`: the golden outputs, the conformance cases and the stored vectors, natively and as WebAssembly on CI; a `parity` job compares both compilers' golden texts) |
 
 A sandbox that needs outbound network runs only on a host that reaches its
 hosts through the egress proxy; every other host refuses it by name, as
@@ -1465,10 +1463,12 @@ The letters P, T and L are kept for later releases.
 
 ## Not in 0.5
 
-- **The Rust compiler.** Release 0.5 is not closed until the Rust compiler
-  gives every fixture the same hashes and diagnostics; that port is
-  planned on its own. The Rust workspace has no `.mdt` parser, no schema
-  validation and no checks yet.
+- **Parts of the Rust compiler.** It is a library with no command line;
+  the runtime and the `mandate` CLI use the TypeScript compiler. The
+  envelope card (`mandate view --card`), the ACS/Rego target and the MCP
+  server are not ported. These start the plan for 0.6. A few written
+  inputs are known to differ; they are listed in `vectors/README.md`
+  ("Where the Rust compiler is not held to the TypeScript").
 - **New isolation backends.** 0.5 adds the level and the refusal, not a
   host that gives more than `process`.
 - **Sandbox egress on Windows**, TLS interception, and `git`, PostgreSQL

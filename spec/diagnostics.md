@@ -19,7 +19,7 @@ implementation.
 | MDT-E0105 | Resource limit exceeded | — | assigned; limits from §3.4, including 1000 expanded nodes per workflow |
 | MDT-E0106 | Number not representable | S11 | assigned |
 | MDT-E0107 | Invalid Unicode | S11 | assigned |
-| MDT-E0108 | Malformed JSON | — | assigned |
+| MDT-E0108 | Malformed JSON | E0108 | assigned |
 | MDT-E0120 | Unresolved name | S03 | assigned; carries a repair when one close name exists |
 | MDT-E0121 | Duplicate name | — | assigned |
 | MDT-E0130 | Stale base | S12 | assigned |
@@ -51,7 +51,7 @@ Warnings (`W…`) never make a check fail.
 | MDT-E0230 | Non-exhaustive switch | S05, V07 | Appendix B |
 | MDT-E0231 | Switch on a raw decision | — | assigned |
 | MDT-W0232 | Choice without an out-of-scope option | — | assigned |
-| MDT-E0233 | Too many Choice options | — | assigned |
+| MDT-E0233 | Too many Choice options | E0233 | assigned |
 | MDT-W0207 | peek on model output | — | assigned |
 | MDT-E0301 | Capability not in scope | — | Appendix B |
 | MDT-E0305 | Capability widened | — | Appendix B |

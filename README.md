@@ -4,8 +4,8 @@ Mandate is an agent-native coordination and contract language. Agents write
 and edit programs; people review them through generated views; the compiler
 checks capabilities, effects, budgets, contracts and delegation before
 anything runs. This repository holds the reference implementation of
-versions 0.1 to 0.4, and of 0.5, which is in progress: what it includes is
-implemented, and the Rust compiler it needs to close is not.
+versions 0.1 to 0.5, with a Rust port of the compiler beside the TypeScript
+one (see [Rust](#rust)).
 
 ## Why
 
@@ -166,12 +166,10 @@ pull request was opened, for 0.23 USD.
    outcome, and for every decision its member, its role and whether its
    signature holds. See [`spec/envelope.md`](spec/envelope.md).
 
-12. **0.5, Boundary (in progress):** the runtime's border with the outside
-    world, specified in [`spec/boundary.md`](spec/boundary.md). Everything
-    the release includes is implemented in the TypeScript implementation. It
-    stays in progress because the Rust compiler, whose port is planned on
-    its own, does not yet give every fixture the same hashes and
-    diagnostics; 0.5 is not closed without that.
+12. **0.5, Boundary:** the runtime's border with the outside world,
+    specified in [`spec/boundary.md`](spec/boundary.md). Everything the
+    release includes is implemented in the TypeScript implementation, and
+    the Rust compiler gives every fixture the same hashes and diagnostics.
 
     - **Language and lock.** In language 0.5 `net.https` may allow only some
       methods (`methods: [GET]`, E1801), narrowing holds by them, and a
@@ -212,7 +210,8 @@ pull request was opened, for 0.23 USD.
       events and the chain's status. `mandate otel export` posts a run's
       journal to an OpenTelemetry collector as spans without content.
 
-    Left out by decision: the Rust port of the compiler, new isolation
+    Left out by decision: a command line, the envelope card, the ACS/Rego
+    target and the MCP server in Rust (see [Rust](#rust)), new isolation
     backends, sandbox egress on Windows, TLS interception, `git`, database
     and container-engine traffic through the proxy, and masking by data class
     in views.
@@ -228,7 +227,7 @@ spec/        core spec, IR schema and rules, static checks, diagnostic codes, th
              the envelope (0.4), and the boundary, egress and journal (0.5)
 compiler/    reference compiler (TypeScript)
 runtime/     reference runtime (TypeScript, PostgreSQL or in-process PGlite)
-crates/      the Rust implementation, started: mandate-ir and verify-journal (below)
+crates/      the Rust compiler as a library, and verify-journal (below)
 fixtures/    the tests' programs: fixbug/ is the design document's §20 workflow,
              fixbug-target/ the same workflow bound to a seeded test project,
              system/ a fictional system's model (Acme) and programs over it,
@@ -240,17 +239,54 @@ vectors/     what the TypeScript reader, canonical text and hashes give, for
 
 ## Rust
 
-The repository is also a Cargo workspace (`Cargo.toml`, `crates/`), the
-start of a Rust implementation. It has two crates today.
+The repository is also a Cargo workspace (`Cargo.toml`, `crates/`): a Rust
+port of the compiler, and an independent journal verifier. The compiler is
+a library; it has no command line.
 
-[`crates/mandate-ir`](crates/mandate-ir/README.md) reads IR with the
-strict JSON reader (same limits, diagnostic codes, messages, JSON Pointers
-and UTF-16 columns), writes its canonical text (RFC 8785) and computes the
-program, definition and package hashes, byte for byte as the TypeScript
-compiler does. It is not a compiler: there is no `.mdt` parser, no schema
-validation and no checks in Rust yet. It runs the conformance cases that need
-only the reader and the hashes (`crates/mandate-ir/tests/conformance.rs`) and
-counts the rest as skipped.
+- [`crates/mandate-ir`](crates/mandate-ir/README.md): the IR as a value in
+  JavaScript's member order, the strict JSON reader, canonical JSON (RFC
+  8785) and the program, definition and package hashes, the schema
+  validator for the IR and the lock with the version gates, and the
+  diagnostic type.
+- `crates/mandate-syntax`: the lexer, the parser, the source map and the
+  printer (`fmt`).
+- `crates/mandate-check`: modules and linking, name resolution, roles,
+  capabilities and the standard library's tables, the static checks (types,
+  cost, authority, the system model), the lock checks, the Managed Agents
+  binding checks, the sandbox requirements, structural patches, the
+  semantic diff, and the front doors `check`, `check_patch`,
+  `check_subprogram` and `check_amendment`.
+- `crates/mandate-views`: the document model with Markdown and HTML, the
+  views of a program (architecture, authority, cost, system) and the diff
+  view.
+- `crates/mandate-testkit`: tests only, the gates that hold the crates
+  above to the TypeScript compiler.
+
+The Rust compiler is held to the TypeScript one byte for byte, by tests
+that run in CI natively and as WebAssembly (`wasm32-wasip1`, under Node's
+WASI):
+
+- all 231 pinned outputs of `compiler/test/golden/outputs.json` (21
+  programs, ten to twelve outputs each), by `sha256`;
+- all 125 `compile` cases of `conformance/`;
+- the stored results in [`vectors/`](vectors/README.md): the syntax and
+  span vectors, the schema vectors, 193 diagnostic vectors, 183 diff
+  vectors, and the compiled corpus (1,226 calls the TypeScript tests make
+  to the compiler's front doors; 1,224 are replayed, the 2 of the ACS/Rego
+  target are not);
+- written inputs for branches no stored result reaches, answered by the
+  built TypeScript compiler in CI on every run (`scripts/*-vectors.mjs`).
+
+A diagnostic is the same when its code, severity, message, location,
+`docs`, `facts` and `repair` are the same and it is in the same place in
+the order. A few written inputs are known to differ; the tests list them by
+name, and [`vectors/README.md`](vectors/README.md) lists them too ("Where
+the Rust compiler is not held to the TypeScript").
+
+What stays in TypeScript, and starts the plan for 0.6: the runtime and the
+`mandate` CLI use the TypeScript compiler, and the envelope card
+(`mandate view --card`), the ACS/Rego target and the MCP server are not
+ported.
 
 `crates/verify-journal` verifies an exported run journal from the file and
 public keys alone, written from [`spec/journal.md`](spec/journal.md) rather
@@ -268,19 +304,27 @@ Rust, no dependencies of its own, no build script).
 cargo run -p verify-journal -- run.json --key cp.pub.pem
 ```
 
-The crates and the TypeScript are held together by the files in
-[`vectors/`](vectors/README.md) and the cases in `conformance/`.
-`compiler/test/vectors.test.ts` writes the vectors and fails when the
-committed ones differ; the Rust tests read them and need no Node.
+The stored results in `vectors/` and the cases in `conformance/` hold the
+crates to the TypeScript. `compiler/test/vectors.test.ts` writes the
+vectors and fails when the committed ones differ; the Rust tests read them and need no Node.
 
 ```sh
-cargo test
-MANDATE_UPDATE_VECTORS=1 npm test   # write vectors/ again after a change
+cargo test --locked                       # where native executables may run
+node scripts/wasi-test.mjs -p mandate-check -- --nocapture   # anywhere: as WebAssembly under Node
+MANDATE_UPDATE_VECTORS=1 npm test         # write vectors/ again after a change
 ```
 
-The toolchain is pinned in `rust-toolchain.toml`; CI runs `cargo fmt
---check`, `cargo clippy --all-targets --locked -- -D warnings`, `cargo test
---locked` and the fresh export check (`runtime/scripts/journal-fresh.mjs`).
+The second form needs the `wasm32-wasip1` target of the pinned toolchain
+(`rust-toolchain.toml` lists it); `scripts/wasi-test.mjs` takes any `cargo
+test` arguments before `--` and libtest arguments after it.
+
+CI's `rust` job runs `cargo fmt --check`, `cargo clippy --all-targets
+--locked -- -D warnings`, the native tests, the WebAssembly builds and
+tests, steps that fail when committed expectations are not what the
+TypeScript compiler gives now, and the fresh export check
+(`runtime/scripts/journal-fresh.mjs`). A `parity` job writes both
+compilers' golden output texts into two directories and fails on any
+difference.
 
 ## Using the compiler
 
