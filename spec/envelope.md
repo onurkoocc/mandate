@@ -1,8 +1,8 @@
 # Envelopes and signed decisions (0.4)
 
 **Status: implemented in the TypeScript implementation.** The page
-specifies language version 0.4 so that this implementation and, later, the
-Rust one are held to the same cases.
+specifies language version 0.4 so that the TypeScript and the Rust
+implementations are held to the same cases.
 
 | Part | State |
 |---|---|

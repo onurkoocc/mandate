@@ -17,7 +17,7 @@ rules:
 - [`system.md`](system.md): the system model, change sets, boundary evidence, reads and run modes;
 - [`diagnostics.md`](diagnostics.md): diagnostic codes;
 - [`envelope.md`](envelope.md): 0.4: roles, signed decisions, envelopes, `map` and `plan`;
-- [`boundary.md`](boundary.md): 0.5, in progress: `methods`, egress, isolation, the chained journal.
+- [`boundary.md`](boundary.md): 0.5: `methods`, egress, isolation, the chained journal.
 
 *Must* marks a rule every conforming implementation follows.
 
