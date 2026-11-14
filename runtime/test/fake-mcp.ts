@@ -52,8 +52,10 @@ export interface Received {
  * - `500`: the server answers 500 and does nothing;
  * - `stall`: no answer, until the caller's signal aborts;
  * - `denied`: an answer as the egress proxy's denial (`host_not_allowed`), the server not reached;
- * - each of the rest, an answer the client must refuse: the request is carried out (but for `jsonrpc_error`, an error
- *   answer, which proves nothing was done), then the answer is malformed so.
+ * - `jsonrpc_error`: a JSON-RPC error of code `errorCode`, the request not carried out;
+ * - `jsonrpc_error_after_run`: the request carried out, then a JSON-RPC error of code `errorCode`, as a server that
+ *   failed after its tool ran answers;
+ * - each of the rest, an answer the client must refuse: the request is carried out, then the answer is malformed so.
  */
 export type McpFault =
   | "network"
@@ -74,6 +76,7 @@ export type McpFault =
   | "wrong_id"
   | "string_id"
   | "jsonrpc_error"
+  | "jsonrpc_error_after_run"
   | "two_events"
   | "other_event"
   | "no_events"
@@ -125,6 +128,8 @@ export class FakeMcp {
   prime = false;
   /** How many tools a `tools/list` page holds. */
   pageSize = 100;
+  /** The code of the error the `jsonrpc_error` faults answer with: internal error unless a test chooses another. */
+  errorCode = -32603;
   /** Whether every `tools/list` page names itself as the next one: a cursor that never ends. */
   repeatCursor = false;
 
@@ -198,7 +203,10 @@ export class FakeMcp {
     if (writeFault === 500) return new Response(`{"error":"${INJECTION}"}`, { status: 500, headers: { "content-type": "application/json" } });
 
     const id = isObj(body) ? (body["id"] ?? null) : null;
-    const answer = fault === "jsonrpc_error" ? { jsonrpc: "2.0", id, error: { code: -32603, message: INJECTION } } : this.answer(body, fault);
+    const error = { jsonrpc: "2.0", id, error: { code: this.errorCode, message: INJECTION } };
+    // `jsonrpc_error` answers without running the request; `jsonrpc_error_after_run` runs it, then answers so.
+    const ran = fault === "jsonrpc_error" ? undefined : this.answer(body, fault);
+    const answer = ran === undefined || fault === "jsonrpc_error_after_run" ? error : ran;
     if (fault === "lose_response" || writeFault === "lose_response") throw new TypeError("fetch failed: the connection closed after the request was sent");
     return this.respond(answer, id, fault);
   };

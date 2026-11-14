@@ -187,7 +187,8 @@ const REFUSALS: Array<[McpFault, McpErrorKind, McpRule, boolean]> = [
   ["other_event", "connector_protocol", "events", false],
   ["no_events", "connector_protocol", "events", false],
   ["incomplete", "connector_protocol", "incomplete_result", false],
-  ["jsonrpc_error", "connector_protocol", "jsonrpc_error", true],
+  // The fake's default code is -32603, internal error, which does not prove the method never ran.
+  ["jsonrpc_error", "connector_protocol", "jsonrpc_error", false],
   ["no_structured_content", "tool_result_mismatch", "no_structured_content", false],
   ["is_error", "tool_result_mismatch", "is_error", false],
   ["denied", "egress_denied", "denied", true],
@@ -219,6 +220,43 @@ describe("refusals", () => {
     expect(denied).toBeInstanceOf(McpDenied);
     expect([denied.reason, denied.status]).toEqual(["host_not_allowed", 403]);
     expect(denied.message).toBe("egress_denied: tools/call post_draft_invoice: denied: the egress proxy denied the request; it was not sent upstream (HTTP 403, host_not_allowed)");
+  });
+
+  // A JSON-RPC error is definite only when its code says the request was refused before its method ran.
+  const CODES: Array<[string, number, boolean]> = [
+    ["parse error", -32700, true],
+    ["invalid request", -32600, true],
+    ["method not found", -32601, true],
+    ["invalid params", -32602, true],
+    ["internal error", -32603, false],
+    ["implementation-defined, top of the range", -32000, false],
+    ["implementation-defined, inside the range", -32050, false],
+    ["implementation-defined, bottom of the range", -32099, false],
+    ["outside every range", 1, false],
+    ["reserved but undefined", -32650, false],
+  ];
+  for (const [what, code, definite] of CODES) {
+    it(`a JSON-RPC error ${code} (${what}) is definite ${definite}, for a read and for a write`, async () => {
+      for (const call of [(c: McpClient) => c.callTool("list_open_orders", { vendor_id: "V1" }), (c: McpClient) => c.callTool("post_draft_invoice", { m: MATCH, key: "op-1" })]) {
+        const { fake, client } = erp();
+        fake.errorCode = code;
+        fake.faults.push("jsonrpc_error");
+        const e = await refusal(call(client));
+        expect({ kind: e.kind, rule: e.rule, code: e.code, definite: e.definite }).toEqual({ kind: "connector_protocol", rule: "jsonrpc_error", code, definite });
+        expect(e.message).toBe(`connector_protocol: tools/call ${e.tool}: jsonrpc_error: the server answered with a JSON-RPC error (code ${code})`);
+      }
+    });
+  }
+
+  it("a write the server applied and then answered -32603 is not definite, and the draft was in fact posted", async () => {
+    const { fake, client } = erp();
+    fake.faults.push("jsonrpc_error_after_run");
+    const e = await refusal(client.callTool("post_draft_invoice", { m: MATCH, key: "op-1" }));
+    expect([e.kind, e.rule, e.code, e.definite]).toEqual(["connector_protocol", "jsonrpc_error", -32603, false]);
+    expect(fake.posted).toBe(1);
+    expect(fake.drafts.get("INV-1")).toMatchObject({ draft_id: "D-INV-1", key: "op-1" });
+    // So it is reconciled, not rejected: the reconciling read finds the draft.
+    expect(await client.callTool("find_draft_invoice", { key: "op-1" })).toEqual({ draft_id: "D-INV-1" });
   });
 
   it("a write whose response was lost was applied, and its refusal says the outcome is not definite", async () => {

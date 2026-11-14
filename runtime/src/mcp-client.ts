@@ -17,6 +17,10 @@
 //   broke, a JSON-RPC error's code), never by the server's own text. Tool
 //   descriptions, titles and annotations are dropped here: a listed tool is
 //   its name, its two schemas and their digest.
+// - Each error says whether it is definite: whether the answer proves the
+//   server did not apply the request. That is true for the proxy's denial and
+//   for a JSON-RPC error whose code says the request was refused before its
+//   method ran (`REFUSED_BEFORE_RUN`), and false for everything else.
 //
 // The client gets its `fetch` from outside: in production a connector
 // gateway's, which sends through the egress proxy with a placeholder where
@@ -41,6 +45,14 @@ export const MAX_LIST_PAGES = 32;
 export const MAX_JSON_DEPTH = 128;
 /** The longest tool name taken from `tools/list` (MCP's own bound), of its characters only. */
 export const TOOL_NAME = /^[A-Za-z0-9_.-]{1,128}$/;
+
+/**
+ * The JSON-RPC 2.0 error codes that say a request was refused before its method ran: parse error (-32700), invalid
+ * request (-32600), method not found (-32601) and invalid params (-32602). Only these prove the server did not apply
+ * the request. Every other code (internal error -32603, the implementation-defined -32000 to -32099, any other
+ * integer) can come after a tool has run, or half run, so an error with one of them is not definite.
+ */
+export const REFUSED_BEFORE_RUN: ReadonlySet<number> = new Set([-32700, -32600, -32601, -32602]);
 
 /** What a client refuses: the code of `spec/library.md` "Refusals", or the proxy's denial. */
 export type McpErrorKind = "connector_protocol" | "tool_result_mismatch" | "egress_denied";
@@ -102,8 +114,9 @@ export interface McpErrorFields {
   rule: McpRule;
   /**
    * Whether the answer proves the server did not apply the request: true for the proxy's denial and for a JSON-RPC
-   * error response; false whenever the request may have reached the server and done what it asked (a network
-   * failure after it was sent, an abort, another status, a lost, malformed or mismatched answer). A write whose error
+   * error whose code says the request was refused before its method ran (`REFUSED_BEFORE_RUN`); false whenever the
+   * request may have reached the server and done what it asked (a network failure after it was sent, an abort,
+   * another status, a JSON-RPC error of any other code, a lost, malformed or mismatched answer). A write whose error
    * is not definite is `unknown_outcome`, to be reconciled.
    */
   definite: boolean;
@@ -256,7 +269,7 @@ export class McpClient {
   }
 
   private refuse(where: Where, rule: McpRule, kind: McpErrorKind = "connector_protocol", more: Partial<McpErrorFields> = {}): McpError {
-    return new McpError({ kind, rule, definite: rule === "jsonrpc_error", ...where, ...more });
+    return new McpError({ kind, rule, definite: false, ...where, ...more });
   }
 
   /** One request and its answer's `result`, an object; every other answer is refused. */
@@ -328,7 +341,8 @@ export class McpClient {
       const err = v["error"];
       const code = isObj(err ?? null) ? (err as Record<string, Value>)["code"] : undefined;
       if (typeof code !== "number" || !Number.isSafeInteger(code)) throw this.refuse(where, "not_response");
-      throw this.refuse(where, "jsonrpc_error", "connector_protocol", { code });
+      // Definite only for a code that says the method never ran; any other may follow a tool that ran.
+      throw this.refuse(where, "jsonrpc_error", "connector_protocol", { code, definite: REFUSED_BEFORE_RUN.has(code) });
     }
     const result = v["result"];
     if (!isObj(result ?? null)) throw this.refuse(where, "bad_result");
