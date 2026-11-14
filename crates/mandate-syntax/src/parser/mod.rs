@@ -148,8 +148,7 @@ pub(crate) const DATA_CLASSES: [&str; 4] = ["public", "internal", "confidential"
 
 /// `INTERFACE_PROTOCOLS` in `compiler/src/ir/types.ts`. A copy; a unit test
 /// holds it to the schema's enum of an interface's `protocol`.
-pub(crate) const INTERFACE_PROTOCOLS: [&str; 5] =
-    ["openapi", "mcp_tools", "oauth", "event", "db_schema"];
+pub const INTERFACE_PROTOCOLS: [&str; 5] = ["openapi", "mcp_tools", "oauth", "event", "db_schema"];
 
 fn is_reserved(word: &str) -> bool {
     RESERVED.contains(&word)

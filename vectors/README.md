@@ -8,7 +8,8 @@ differs from what the compiler gives now, and read by the Rust tests in
 `MANDATE_UPDATE_VECTORS=1 npm test`.
 
 The other directories here (`schema/`, `diagnostics/`, `diff/`, `corpus/`,
-`syntax.json`, `spans/`, `programs/`) and the golden file
+`syntax.json`, `spans/`, `programs/`, and `codes.json`, which
+`scripts/codes-vectors.mjs` writes) and the golden file
 (`compiler/test/golden/outputs.json`) are read in the same way, each by the
 Rust test that its section names. Together they define what "the same
 diagnostics" means for the Rust compiler, and the last section, "Where the
@@ -66,6 +67,25 @@ canonical text.
   names);
 - `package`: `{ name, program_hash, lock, hash }`, `lock` being the lock as a
   package carries it, as text.
+
+## codes.json
+
+`{ "format": "mandate/vectors/codes/0.1", "codes": [ { "code", "title",
+"explain" } ] }`: the table of diagnostic codes of the TypeScript compiler
+(`CODES` in `compiler/src/codes.ts`, what `mandate explain` prints), in the
+table's order, with the code as diagnostics carry it (`MDT-E0103`). It is
+written by `node scripts/codes-vectors.mjs` from the built compiler (CI runs
+every `scripts/*-vectors.mjs` and fails when the tree changes; `vectors.test.ts`
+leaves the file alone), and read by the test `codes` in
+`crates/mandate-ir/tests/vectors.rs`.
+
+The table of the Rust compiler is `crates/mandate-ir/src/codes.rs`, a constant
+with one row for each code and the compiler that is the reference for it. The
+test holds the rows whose reference is the TypeScript to this file: the same
+codes, in the same order, with the same texts. A row whose reference is Rust (a
+code added in language 0.6 or later, which the TypeScript compiler, frozen at
+0.5, does not have) is not compared, and is not in this file; the test fails if
+it is.
 
 ## programs/
 
@@ -1119,6 +1139,7 @@ the compiler's order. The gates that do this:
 | conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 125 | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
+| JSON doors | the output text of every call of `crates/*/tests/json_doors/inputs.json`, each through a door of `doors.json` beside it and through the TypeScript function it stands for, serialised by the door contract (`scripts/json-doors-vectors.mjs`, its function `doorJson`); every door has a call | 142 calls, 42 doors | `crates/mandate-check/tests/json_doors.rs` |
 
 Each gate prints `ran N, passed M, pending K`. A pending item is held to failing by
 omission only (the Rust gives the stored diagnostics with some left out, in order, and
@@ -1185,6 +1206,30 @@ fails when an entry of a list passes or names nothing.
   Multilingual Plane) the Rust holds U+FFFD, and no vector has such an input or
   message (`reader.json`, `syntax.json`); `crates/mandate-ir/tests/api.rs` says what the
   Rust gives. The corpus leaves out a call whose input or result holds one (none today).
+- **`KNOWN_DIFFERENCES` in `crates/mandate-check/tests/json_doors.rs`: 2 inputs, held to
+  what the Rust gives.** Neither is an input a valid program or lock can give, and no
+  vector carries them; the test fails when the Rust gives the TypeScript's answer, so
+  that the entry comes off.
+  - `packaged_lock` of a lock that is a string with a character outside the Basic
+    Multilingual Plane (`"a😀"`): the TypeScript spreads `{ ...lock }` by UTF-16 code
+    unit and gives `{"0":"a","1":"\ud83d","2":"\ude00"}`; the Rust spreads by code point
+    and gives `{"0":"a","1":"😀"}`, so the package hash differs too. The halves of a
+    surrogate pair are lone surrogates, which a Rust string cannot hold (see above). A
+    lock is an object (the schema refuses any other value, E0140), and a string of the
+    Basic Multilingual Plane is spread the same in both (a vector of
+    `scripts/lock-vectors.mjs` and a call of the doors hold that).
+  - `sandbox_requirements` of an agent whose `budget.time.ms` is not a number
+    (`"20m"`): `agentTimeout` gives the value as it is, and the requirement's
+    `limits.timeout_ms` is `"20m"` in the TypeScript; the Rust reads `time.ms` as an
+    integer and gives `null` (and where only the skills have a time, the TypeScript's
+    `Math.max` turns their values into numbers, `NaN` written `null`). The schema
+    requires `time.ms` to be an integer (`$defs/Budget`), and the requirements are made
+    of a program that checks. Carrying any JSON value there would change the type of
+    `SandboxRequirement::timeout_ms` and of `requirement_for`'s parameter, and copy
+    `Math.max` over JavaScript's `ToNumber`. The `requirement_for` door takes
+    `timeoutMs` as a number or `null` and answers `bad_input` to a string (the
+    TypeScript puts the string in `limits.timeout_ms`), as the door contract says for a
+    member of the wrong JSON type.
 - **One corpus call: 1 of the 1227 distinct calls.** The `validate_lock` call of
   `compiler/test/lock.test.ts` whose input holds a number that is not an integer, which
   the strict reader refuses (`left_out` in `vectors/corpus/summary.json`). The same
