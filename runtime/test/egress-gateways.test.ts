@@ -508,10 +508,13 @@ describe("replay and the views", () => {
     const started = await mandate({}, "run", join(dir, "ship.mdt"), "--workflow", "Go", "--input", "{}", "--run-id", "c1");
     expect(started.code, started.err).toBe(0);
     expect(started.out).toContain("waiting");
-    const refused = await mandate({ MANDATE_GITHUB_TOKEN: "made-up" }, "status", "c1");
+    // A command that can run an adapter is refused with the secret in the environment; a status holds no adapter, and is not
+    // (test/readonly-commands.test.ts has the rest of the commands).
+    const refused = await mandate({ MANDATE_GITHUB_TOKEN: "made-up" }, "approve", "c1");
     expect(refused.code).toBe(1);
     expect(refused.err).toContain("credential_in_environment");
     expect(refused.err).not.toContain("made-up");
+    expect((await mandate({ MANDATE_GITHUB_TOKEN: "made-up" }, "status", "c1")).code).toBe(0);
     await own.close();
     for (const cmd of ["status", "show", "replay"]) {
       const r = await mandate({}, cmd, "c1");

@@ -55,7 +55,7 @@ import { decisionKeysIn } from "./decisions.js";
 import { childEnv, verifierEnv } from "./env.js";
 import { EvidenceSigner, TrustedKeys } from "./evidence.js";
 import type { BucketConfig } from "./ratelimit.js";
-import type { RuntimeOptions } from "./runtime.js";
+import { refusingAdapters, type RuntimeOptions } from "./runtime.js";
 import { openDb, type Db } from "./db.js";
 import { GitHubPullRequests } from "./github.js";
 import { GitHubMerges } from "./github-merge.js";
@@ -419,6 +419,14 @@ export function operatorAdapters(config: RuntimeConfig, o: { timeoutMs?: number 
   const admin = config.egress?.admin;
   const link = admin ? new EgressLink({ admin, timeoutMs: o.timeoutMs ?? OPERATOR_REVOKE_TIMEOUT_MS }) : undefined;
   return {
+    ...noAdapters(),
+    ...(link ? { revoke: (scope) => link.revoke(scope), egress: { ready: async () => undefined, close: () => link.closeAll() } } : {}),
+  };
+}
+
+/** An adapter set in which nothing can be called: every adapter is a stand-in that stops the run, and there are no tools. */
+function noAdapters(): Adapters {
+  return {
     agents: { run: async () => missing("agent adapter") },
     model: { infer: async () => missing("model"), upperBound: () => missing("model") },
     verifier: { check: async () => missing("verifier") },
@@ -426,8 +434,36 @@ export function operatorAdapters(config: RuntimeConfig, o: { timeoutMs?: number 
     tools: {},
     clock: wallClock,
     random: Math.random,
-    ...(link ? { revoke: (scope) => link.revoke(scope), egress: { ready: async () => undefined, close: () => link.closeAll() } } : {}),
   };
+}
+
+/**
+ * The adapters of `mandate replay`. A replay rebuilds a run from its journal and calls no adapter (INV-09), but it
+ * reads the contract of each tool the run used (`describe`), so it needs the configuration's tool map. This builds that
+ * map and nothing else: no model, no sandbox, no verifier, no executor, no proxy connection; the credential check
+ * (`credential_in_environment`) is not made, and no secret of a gateway that is on is read: the tools of a github
+ * gateway that is on get the stand-in token, and the model's key is not looked at, since no model is built. The set is
+ * then wrapped by `refusingAdapters`, so that every call to a tool, a model, an agent, a read or a verifier fails with
+ * `replay_called_adapter`, and `loop`, `workspace`, `revoke` and `egress` are left out. That wrapping is what makes it
+ * safe to leave the check out: no adapter of this set can run in a process that holds the secret.
+ */
+export function replayAdapters(config: RuntimeConfig, env: NodeJS.ProcessEnv = process.env, scope?: EgressScope): Adapters {
+  const egress = egressFor(config, env, scope, false);
+  return refusingAdapters({ ...noAdapters(), tools: toolsFor(config, env, egress) });
+}
+
+/** The tools the configuration names, with their credentials: a stand-in with a github gateway on, `MANDATE_GITHUB_TOKEN` otherwise. */
+function toolsFor(config: RuntimeConfig, env: NodeJS.ProcessEnv, egress: EgressSetup | undefined): Record<string, ToolAdapter> {
+  const tools: Record<string, ToolAdapter> = {};
+  if (config.github) {
+    const token = egress?.github ? GATEWAY_STAND_IN : env["MANDATE_GITHUB_TOKEN"];
+    if (!token) throw new Violation("no_credentials", "github is configured, but MANDATE_GITHUB_TOKEN is not set.");
+    const base = config.github.base ? { base: config.github.base } : {};
+    const via = egress?.github ? { fetch: egress.github.fetch } : {};
+    if (config.github.repo && config.github.workdir) tools["git.open_pr"] = new GitHubPullRequests({ token, repo: config.github.repo, workdir: config.github.workdir, ...base, ...via });
+    if (config.github.repos?.length) tools["git.merge"] = new GitHubMerges({ token, repos: config.github.repos, ...base, ...via });
+  }
+  return tools;
 }
 
 /** How long `mandate halt` waits for the egress proxy to accept its connection, and again to answer `revoke`. */
@@ -449,10 +485,11 @@ interface EgressSetup {
 
 /**
  * The runtime's link to the egress proxy and its gateways; none without `egress.admin`. A gateway asked for without a
- * proxy is `no_egress_proxy`; a gateway's secret in the runtime's environment is `credential_in_environment`.
+ * proxy is `no_egress_proxy`; a gateway's secret in the runtime's environment is `credential_in_environment`, unless
+ * `credentials` is false, which only `replayAdapters` says (its adapters are refused every call).
  * Nothing here reaches the proxy: a session is opened at a gateway's first request.
  */
-function egressFor(config: RuntimeConfig, env: NodeJS.ProcessEnv, scope: EgressScope | undefined): EgressSetup | undefined {
+function egressFor(config: RuntimeConfig, env: NodeJS.ProcessEnv, scope: EgressScope | undefined, credentials = true): EgressSetup | undefined {
   const eg = config.egress;
   if (!eg) return undefined;
   const gateways = eg.gateways ?? {};
@@ -461,7 +498,7 @@ function egressFor(config: RuntimeConfig, env: NodeJS.ProcessEnv, scope: EgressS
     if (on.length) throw new Violation("no_egress_proxy", `egress.gateways turns on the ${on.join(" and ")} gateway, and egress.admin names no egress proxy.`);
     return undefined;
   }
-  refuseCredentials(gateways, env);
+  if (credentials) refuseCredentials(gateways, env);
   const link = new EgressLink({ admin: eg.admin, ...(scope ? { scope } : {}) });
   return {
     link,
@@ -507,15 +544,7 @@ function verifierEnvFor(config: RuntimeConfig, env: NodeJS.ProcessEnv, egress: E
 export function adaptersFor(config: RuntimeConfig, program: Program, lock: Lock, env: NodeJS.ProcessEnv = process.env, main: string[] = [process.execPath, VERIFIER_MAIN], scope?: EgressScope): Adapters {
   const egress = egressFor(config, env, scope);
   const model = modelFor(config, program, lock, env, egress?.model?.fetch);
-  const tools: Record<string, ToolAdapter> = {};
-  if (config.github) {
-    const token = egress?.github ? GATEWAY_STAND_IN : env["MANDATE_GITHUB_TOKEN"];
-    if (!token) throw new Violation("no_credentials", "github is configured, but MANDATE_GITHUB_TOKEN is not set.");
-    const base = config.github.base ? { base: config.github.base } : {};
-    const via = egress?.github ? { fetch: egress.github.fetch } : {};
-    if (config.github.repo && config.github.workdir) tools["git.open_pr"] = new GitHubPullRequests({ token, repo: config.github.repo, workdir: config.github.workdir, ...base, ...via });
-    if (config.github.repos?.length) tools["git.merge"] = new GitHubMerges({ token, repos: config.github.repos, ...base, ...via });
-  }
+  const tools = toolsFor(config, env, egress);
   const sandbox = sandboxFor(config, egress?.link);
   const executor = executorFor(config, lock, env, egress?.model?.fetch);
   const own = config.verifier?.process

@@ -82,6 +82,17 @@ export function refuseCredentials(gateways: Partial<Record<GatewayName, string>>
   }
 }
 
+/**
+ * What a person can do instead, when the command `credential_in_environment` refused is one with a way round. Only
+ * `cancel` has one: it asks an adapter to stop an action whose outcome is unknown, so it cannot run beside the secret;
+ * `mandate halt` ends the runs of the run's tenant without any adapter and works from this environment (spec/boundary.md
+ * "Where secrets live"). A halt names a tenant, not a run, and says so. Undefined for every other command.
+ */
+export function credentialAdvice(command: string, run: string, tenant: string): string | undefined {
+  if (command !== "cancel") return undefined;
+  return `cancel asks an adapter to stop an action whose outcome is unknown, and no adapter runs in a process that holds the secret. Run mandate cancel ${run} from an environment without the secret. From this environment, mandate halt --tenant ${tenant} stops every open run of the tenant, this one among them, without an adapter.`;
+}
+
 interface Session {
   session: string;
   base_url: string;
