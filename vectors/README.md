@@ -1139,7 +1139,7 @@ the compiler's order. The gates that do this:
 | conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 125 | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
-| JSON doors | the output text of every call of `crates/*/tests/json_doors/inputs.json`, each through a door of `doors.json` beside it and through the TypeScript function it stands for, serialised by the door contract (`scripts/json-doors-vectors.mjs`, its function `doorJson`); every door has a call | 140 calls, 42 doors | `crates/mandate-check/tests/json_doors.rs` |
+| JSON doors | the output text of every call of `crates/*/tests/json_doors/inputs.json`, each through a door of `doors.json` beside it and through the TypeScript function it stands for, serialised by the door contract (`scripts/json-doors-vectors.mjs`, its function `doorJson`); every door has a call | 142 calls, 42 doors | `crates/mandate-check/tests/json_doors.rs` |
 
 Each gate prints `ran N, passed M, pending K`. A pending item is held to failing by
 omission only (the Rust gives the stored diagnostics with some left out, in order, and
@@ -1206,6 +1206,30 @@ fails when an entry of a list passes or names nothing.
   Multilingual Plane) the Rust holds U+FFFD, and no vector has such an input or
   message (`reader.json`, `syntax.json`); `crates/mandate-ir/tests/api.rs` says what the
   Rust gives. The corpus leaves out a call whose input or result holds one (none today).
+- **`KNOWN_DIFFERENCES` in `crates/mandate-check/tests/json_doors.rs`: 2 inputs, held to
+  what the Rust gives.** Neither is an input a valid program or lock can give, and no
+  vector carries them; the test fails when the Rust gives the TypeScript's answer, so
+  that the entry comes off.
+  - `packaged_lock` of a lock that is a string with a character outside the Basic
+    Multilingual Plane (`"a😀"`): the TypeScript spreads `{ ...lock }` by UTF-16 code
+    unit and gives `{"0":"a","1":"\ud83d","2":"\ude00"}`; the Rust spreads by code point
+    and gives `{"0":"a","1":"😀"}`, so the package hash differs too. The halves of a
+    surrogate pair are lone surrogates, which a Rust string cannot hold (see above). A
+    lock is an object (the schema refuses any other value, E0140), and a string of the
+    Basic Multilingual Plane is spread the same in both (a vector of
+    `scripts/lock-vectors.mjs` and a call of the doors hold that).
+  - `sandbox_requirements` of an agent whose `budget.time.ms` is not a number
+    (`"20m"`): `agentTimeout` gives the value as it is, and the requirement's
+    `limits.timeout_ms` is `"20m"` in the TypeScript; the Rust reads `time.ms` as an
+    integer and gives `null` (and where only the skills have a time, the TypeScript's
+    `Math.max` turns their values into numbers, `NaN` written `null`). The schema
+    requires `time.ms` to be an integer (`$defs/Budget`), and the requirements are made
+    of a program that checks. Carrying any JSON value there would change the type of
+    `SandboxRequirement::timeout_ms` and of `requirement_for`'s parameter, and copy
+    `Math.max` over JavaScript's `ToNumber`. The `requirement_for` door takes
+    `timeoutMs` as a number or `null` and answers `bad_input` to a string (the
+    TypeScript puts the string in `limits.timeout_ms`), as the door contract says for a
+    member of the wrong JSON type.
 - **One corpus call: 1 of the 1227 distinct calls.** The `validate_lock` call of
   `compiler/test/lock.test.ts` whose input holds a number that is not an integer, which
   the strict reader refuses (`left_out` in `vectors/corpus/summary.json`). The same

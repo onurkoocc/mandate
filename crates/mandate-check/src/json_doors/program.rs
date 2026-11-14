@@ -3,7 +3,7 @@
 //! `workflow_bounds`, `caps_of`, `show_cap`, `governance_files`,
 //! `glob_match`, `skeleton` and `subprogram_linked`.
 
-use mandate_ir::{Expr, JsObject, JsValue, Program, Value};
+use mandate_ir::{Expr, JsObject, JsValue, Value};
 
 use super::DoorError;
 use super::front::{diagnostics_js, ir};
@@ -14,11 +14,6 @@ use crate::governance::GovernanceFile;
 /// A list of strings as an array.
 pub(super) fn strings_js<S: AsRef<str>>(items: &[S]) -> JsValue {
     JsValue::Array(items.iter().map(|s| JsValue::from(s.as_ref())).collect())
-}
-
-/// The program `v`, an object.
-pub(super) fn program_of(v: &Value) -> Result<Program<'_>, DoorError> {
-    Program::of(v).ok_or_else(|| DoorError::bad_input("the program is not an object"))
 }
 
 /// The parameters of [`link`].
@@ -32,7 +27,7 @@ pub(super) const LINK: &[&str] = &["program", "modules"];
 /// diagnostics }`.
 pub(super) fn link(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, LINK)?;
-    let program = program_of(a.object("program")?)?;
+    let program = a.program_view("program")?;
     let modules = a.opt_modules("modules")?;
     let linked = crate::modules::link(program, modules);
     let origin: JsObject = linked
@@ -57,7 +52,7 @@ pub(super) const LINKED_PROGRAM: &[&str] = &["program", "modules"];
 /// Output: the program, `{ ...program, defs }`.
 pub(super) fn linked_program(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, LINKED_PROGRAM)?;
-    let program = program_of(a.object("program")?)?;
+    let program = a.program_view("program")?;
     let modules = a.opt_modules("modules")?;
     Ok(ir(&crate::modules::linked_program(program, modules)))
 }
@@ -98,7 +93,7 @@ pub(super) const PROGRAM_REF: &[&str] = &["p"];
 /// Output: `{ module, version, language, hash }`.
 pub(super) fn program_ref(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, PROGRAM_REF)?;
-    Ok(crate::view_shared::program_ref(a.object("p")?).to_js())
+    Ok(crate::view_shared::program_ref(a.program("p")?).to_js())
 }
 
 /// The parameters of [`lead_classes`].
@@ -111,7 +106,7 @@ pub(super) const LEAD_CLASSES: &[&str] = &["program", "linked"];
 /// Output: `{ <path of the plan>: <data class> }`, sorted by path.
 pub(super) fn lead_classes(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, LEAD_CLASSES)?;
-    let program = program_of(a.object("program")?)?;
+    let program = a.program_view("program")?;
     let linked = a.opt_map("linked")?;
     let classes = crate::statics::lead_classes(program, linked);
     let out: JsObject = classes
@@ -250,8 +245,8 @@ pub(super) const SUBPROGRAM_LINKED: &[&str] = &["sub", "parent", "modules"];
 /// Output: the program.
 pub(super) fn subprogram_linked(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, SUBPROGRAM_LINKED)?;
-    let sub = a.object("sub")?;
-    let parent = a.object("parent")?;
+    let sub = a.program("sub")?;
+    let parent = a.program("parent")?;
     let modules = a.opt_modules("modules")?;
     Ok(ir(&crate::doors::subprogram_linked(sub, parent, modules)))
 }

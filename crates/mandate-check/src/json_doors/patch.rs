@@ -31,7 +31,7 @@ pub(super) const APPLY_PATCH: &[&str] = &["program", "base", "ops", "modules"];
 /// hash }`, or `{ ok: false, diagnostics, governance: [] }`.
 pub(super) fn apply_patch(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, APPLY_PATCH)?;
-    let program = a.object("program")?;
+    let program = a.program("program")?;
     let base = a.str("base")?;
     let ops = a.ops("ops")?;
     let modules = a.opt_modules("modules")?;
@@ -61,7 +61,7 @@ pub(super) const CHECK_PATCH: &[&str] = &["program", "base", "ops", "modules"];
 /// requires_approval, program? }`.
 pub(super) fn check_patch(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, CHECK_PATCH)?;
-    let program = a.object("program")?;
+    let program = a.program("program")?;
     let base = a.str("base")?;
     let ops = a.ops("ops")?;
     let modules = a.opt_modules("modules")?;
@@ -84,7 +84,7 @@ pub(super) const CHECK_SUBPROGRAM: &[&str] = &["i"];
 pub(super) fn check_subprogram(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, CHECK_SUBPROGRAM)?;
     let i = a.members("i", "i.")?;
-    let parent = i.object("parent")?;
+    let parent = i.program("parent")?;
     let modules = i.opt_modules("modules")?;
     let workflow = i.str("workflow")?;
     // An integer of the IR's domain, within ±(2^53−1): a double holds it.
@@ -123,7 +123,7 @@ pub(super) const CHECK_AMENDMENT: &[&str] = &["i"];
 pub(super) fn check_amendment(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, CHECK_AMENDMENT)?;
     let i = a.members("i", "i.")?;
-    let parent = i.object("parent")?;
+    let parent = i.program("parent")?;
     let modules = i.opt_modules("modules")?;
     let workflow = i.str("workflow")?;
     // `envelope: unknown`: `null` is a value here, which the check reads.
@@ -151,8 +151,8 @@ pub(super) const SEMANTIC_DIFF: &[&str] = &["before", "after", "locks"];
 /// unchanged }`.
 pub(super) fn semantic_diff(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, SEMANTIC_DIFF)?;
-    let before = a.object("before")?;
-    let after = a.object("after")?;
+    let before = a.program("before")?;
+    let after = a.program("after")?;
     let locks = a.opt_members("locks", "locks.")?.map(|l| Locks {
         before: l.opt_value("before"),
         after: l.opt_value("after"),
@@ -170,8 +170,8 @@ pub(super) const GOVERNANCE_CHANGES: &[&str] = &["before", "after", "modules"];
 /// Output: `[{ kind, path, text }]`.
 pub(super) fn governance_changes(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, GOVERNANCE_CHANGES)?;
-    let before = a.object("before")?;
-    let after = a.object("after")?;
+    let before = a.program("before")?;
+    let after = a.program("after")?;
     let modules = a.opt_modules("modules")?;
     let changes = crate::diff::governance_changes(before, after, modules);
     Ok(JsValue::Array(
@@ -190,8 +190,8 @@ pub(super) const ENVELOPE_CHANGES: &[&str] = &["before", "after", "workflow", "m
 /// Output: `[{ path, text }]`.
 pub(super) fn envelope_changes(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, ENVELOPE_CHANGES)?;
-    let before = a.object("before")?;
-    let after = a.object("after")?;
+    let before = a.program("before")?;
+    let after = a.program("after")?;
     let workflow = a.str("workflow")?;
     let modules = a.opt_modules("modules")?;
     let changes = crate::diff::envelope_changes(before, after, workflow, modules);

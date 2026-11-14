@@ -55,14 +55,35 @@
 //! this one: `front` (reading, checking, hashing, printing), `program` (what
 //! a program is made of), `lock` (the lock, the Managed Agents binding, the
 //! sandbox), `patch` (patches, sub-programs, amendments and diffs) and
-//! `tables` (constants and the codes); `input` reads the input by the rules
-//! above. Each door's doc comment names the TypeScript function and file it
-//! stands for, its input members and its output.
+//! `tables` (constants and the codes). [`input`], public, reads the input by
+//! the rules above. Each door's doc comment names the TypeScript function and
+//! file it stands for, its input members and its output.
+//!
+//! # Another table of doors
+//!
+//! A crate whose functions the host calls too (the views, `mandate-views`)
+//! has a table of its own, which a dispatcher (`mandate-doors`) merges with
+//! this one; the names of the two must not meet. It is made the same way:
+//!
+//! - Its doors are [`DoorFn`]s that read their input with [`input`]
+//!   ([`input::args`] and the methods of [`input::Members`]), so that every
+//!   door reads by the same rules and refuses in the same words, and fail
+//!   with [`DoorError`]. Its table is a `static` of [`Door`]s, made with
+//!   [`Door::new`] and [`Door::own`], with a lookup by name like [`door`].
+//! - It keeps three files in `crates/<crate>/tests/json_doors/`: `doors.json`
+//!   (its table as data), `inputs.json` (its calls) and `expected.json`,
+//!   which `scripts/json-doors-vectors.mjs` writes, since it reads every
+//!   such directory (a door with no TypeScript function of its own needs an
+//!   entry in its table `OWN`, and a `Set` or `Map` parameter one in
+//!   `COLLECTIONS`).
+//! - Its test is a copy of `crates/mandate-check/tests/json_doors.rs` with its
+//!   own table, directory and lists of optional and any-value parameters:
+//!   the tests themselves are `mandate_testkit::json_doors`.
 
 use mandate_ir::{JsObject, JsValue, Value};
 
 mod front;
-mod input;
+pub mod input;
 mod lock;
 mod patch;
 mod program;
@@ -143,35 +164,41 @@ pub fn door(name: &str) -> Option<&'static Door> {
     DOORS.iter().find(|d| d.name == name)
 }
 
-/// A door that stands for the TypeScript function `ts`, with no note.
-const fn ts(
-    name: &'static str,
-    ts: &'static str,
-    params: &'static [&'static str],
-    call: DoorFn,
-) -> Door {
-    Door {
-        name,
-        ts: Some(ts),
-        params,
-        note: None,
-        call,
+impl Door {
+    /// A door named `name` that stands for the TypeScript function `ts`,
+    /// whose parameters are `params`, with no note.
+    #[must_use]
+    pub const fn new(
+        name: &'static str,
+        ts: &'static str,
+        params: &'static [&'static str],
+        call: DoorFn,
+    ) -> Door {
+        Door {
+            name,
+            ts: Some(ts),
+            params,
+            note: None,
+            call,
+        }
     }
-}
 
-/// A door that has no TypeScript function of its own, with what it answers.
-const fn own(
-    name: &'static str,
-    params: &'static [&'static str],
-    note: &'static str,
-    call: DoorFn,
-) -> Door {
-    Door {
-        name,
-        ts: None,
-        params,
-        note: Some(note),
-        call,
+    /// A door named `name` that has no TypeScript function of its own, with
+    /// `note` saying what it answers.
+    #[must_use]
+    pub const fn own(
+        name: &'static str,
+        params: &'static [&'static str],
+        note: &'static str,
+        call: DoorFn,
+    ) -> Door {
+        Door {
+            name,
+            ts: None,
+            params,
+            note: Some(note),
+            call,
+        }
     }
 }
 
@@ -179,223 +206,223 @@ const fn own(
 /// of a program, the lock and the sandbox, patches and diffs, then the
 /// constants and the codes.
 pub static DOORS: &[Door] = &[
-    ts("load", "load", front::LOAD, front::load),
-    ts("check", "check", front::CHECK, front::check),
-    ts(
+    Door::new("load", "load", front::LOAD, front::load),
+    Door::new("check", "check", front::CHECK, front::check),
+    Door::new(
         "load_modules",
         "loadModules",
         front::LOAD_MODULES,
         front::load_modules,
     ),
-    ts(
+    Door::new(
         "parse_strict_json",
         "parseStrictJson",
         front::PARSE_STRICT_JSON,
         front::parse_strict_json,
     ),
-    ts(
+    Door::new(
         "canonicalize",
         "canonicalize",
         front::CANONICALIZE,
         front::canonicalize,
     ),
-    ts(
+    Door::new(
         "hash_program",
         "hashProgram",
         front::HASH_PROGRAM,
         front::hash_program,
     ),
-    ts(
+    Door::new(
         "package_hash",
         "packageHash",
         front::PACKAGE_HASH,
         front::package_hash,
     ),
-    ts(
+    Door::new(
         "domain_hash",
         "domainHash",
         front::DOMAIN_HASH,
         front::domain_hash,
     ),
-    ts(
+    Door::new(
         "print_program",
         "printProgram",
         front::PRINT_PROGRAM,
         front::print_program,
     ),
-    ts("link", "link", program::LINK, program::link),
-    ts(
+    Door::new("link", "link", program::LINK, program::link),
+    Door::new(
         "linked_program",
         "linkedProgram",
         program::LINKED_PROGRAM,
         program::linked_program,
     ),
-    ts(
+    Door::new(
         "references",
         "references",
         program::REFERENCES,
         program::references,
     ),
-    ts(
+    Door::new(
         "roles_named",
         "rolesNamed",
         program::ROLES_NAMED,
         program::roles_named,
     ),
-    ts(
+    Door::new(
         "program_ref",
         "programRef",
         program::PROGRAM_REF,
         program::program_ref,
     ),
-    ts(
+    Door::new(
         "lead_classes",
         "leadClasses",
         program::LEAD_CLASSES,
         program::lead_classes,
     ),
-    ts(
+    Door::new(
         "workflow_bounds",
         "workflowBounds",
         program::WORKFLOW_BOUNDS,
         program::workflow_bounds,
     ),
-    ts("caps_of", "capsOf", program::CAPS_OF, program::caps_of),
-    ts("show_cap", "showCap", program::SHOW_CAP, program::show_cap),
-    ts(
+    Door::new("caps_of", "capsOf", program::CAPS_OF, program::caps_of),
+    Door::new("show_cap", "showCap", program::SHOW_CAP, program::show_cap),
+    Door::new(
         "governance_files",
         "governanceFiles",
         program::GOVERNANCE_FILES,
         program::governance_files,
     ),
-    own(
+    Door::own(
         "glob_match",
         program::GLOB_MATCH,
         "globRegExp(glob).test(text): whether the glob matches the whole of the text. globRegExp returns a RegExp, which JSON cannot carry; this is the one question the runtime asks of it.",
         program::glob_match,
     ),
-    ts("skeleton", "skeleton", program::SKELETON, program::skeleton),
-    ts(
+    Door::new("skeleton", "skeleton", program::SKELETON, program::skeleton),
+    Door::new(
         "subprogram_linked",
         "subprogramLinked",
         program::SUBPROGRAM_LINKED,
         program::subprogram_linked,
     ),
-    ts(
+    Door::new(
         "validate_lock",
         "validateLock",
         lock::VALIDATE_LOCK,
         lock::validate_lock,
     ),
-    ts(
+    Door::new(
         "role_lock_checks",
         "roleLockChecks",
         lock::ROLE_LOCK_CHECKS,
         lock::role_lock_checks,
     ),
-    ts(
+    Door::new(
         "sandbox_lock_checks",
         "sandboxLockChecks",
         lock::SANDBOX_LOCK_CHECKS,
         lock::sandbox_lock_checks,
     ),
-    ts(
+    Door::new(
         "binding_checks",
         "bindingChecks",
         lock::BINDING_CHECKS,
         lock::binding_checks,
     ),
-    ts(
+    Door::new(
         "model_tiers",
         "modelTiers",
         lock::MODEL_TIERS,
         lock::model_tiers,
     ),
-    ts(
+    Door::new(
         "packaged_lock",
         "packagedLock",
         lock::PACKAGED_LOCK,
         lock::packaged_lock,
     ),
-    ts(
+    Door::new(
         "agent_models",
         "agentModels",
         lock::AGENT_MODELS,
         lock::agent_models,
     ),
-    ts(
+    Door::new(
         "sandbox_requirements",
         "sandboxRequirements",
         lock::SANDBOX_REQUIREMENTS,
         lock::sandbox_requirements,
     ),
-    ts(
+    Door::new(
         "requirement_for",
         "requirementFor",
         lock::REQUIREMENT_FOR,
         lock::requirement_for,
     ),
-    ts(
+    Door::new(
         "denial_diagnostics",
         "denialDiagnostics",
         lock::DENIAL_DIAGNOSTICS,
         lock::denial_diagnostics,
     ),
-    ts(
+    Door::new(
         "apply_patch",
         "applyPatch",
         patch::APPLY_PATCH,
         patch::apply_patch,
     ),
-    ts(
+    Door::new(
         "check_patch",
         "checkPatch",
         patch::CHECK_PATCH,
         patch::check_patch,
     ),
-    ts(
+    Door::new(
         "check_subprogram",
         "checkSubprogram",
         patch::CHECK_SUBPROGRAM,
         patch::check_subprogram,
     ),
-    ts(
+    Door::new(
         "check_amendment",
         "checkAmendment",
         patch::CHECK_AMENDMENT,
         patch::check_amendment,
     ),
-    ts(
+    Door::new(
         "semantic_diff",
         "semanticDiff",
         patch::SEMANTIC_DIFF,
         patch::semantic_diff,
     ),
-    ts(
+    Door::new(
         "governance_changes",
         "governanceChanges",
         patch::GOVERNANCE_CHANGES,
         patch::governance_changes,
     ),
-    ts(
+    Door::new(
         "envelope_changes",
         "envelopeChanges",
         patch::ENVELOPE_CHANGES,
         patch::envelope_changes,
     ),
-    own(
+    Door::own(
         "explain",
         tables::EXPLAIN,
         "What `mandate explain <code>` and the MCP tool mandate.explain answer: { code, title, explain } for the code, with MDT- put in front when it lacks it, or null when there is no such code. Every row of the Rust table of codes, those added from language 0.6 on included.",
         tables::explain,
     ),
-    own(
+    Door::own(
         "codes",
         tables::CODES,
         "The whole table of diagnostic codes, { \"MDT-E0101\": { title, explain }, ... } in the table's order, as CODES is written: every row of the Rust table, those added from language 0.6 on included (today it has none, and equals CODES).",
         tables::codes,
     ),
-    own(
+    Door::own(
         "tables",
         tables::TABLES,
         "Every constant the TypeScript entry point exports as a value, by its export name, in the order of the names (UTF-16): its JSON.stringify text, a Set as an array and a Map as an object. CODES is the rows of the TypeScript's table (the codes door has every row).",

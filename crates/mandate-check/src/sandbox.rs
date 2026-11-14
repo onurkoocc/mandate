@@ -686,7 +686,9 @@ pub fn requirements_to_js(requirements: &[(String, SandboxRequirement)]) -> JsOb
 }
 
 /// The agent's `time` budget, or the longest of its skills' when every skill
-/// has one: `agentTimeout`.
+/// has one: `agentTimeout`. A `time.ms` that is not an integer, which the
+/// schema refuses, is none here; the TypeScript carries the value itself
+/// into the requirement (`vectors/README.md`, "What they do not reach").
 fn agent_timeout(a: Definition<'_>) -> Option<f64> {
     let ms = |budget: Option<&Value>| -> Option<f64> {
         budget
