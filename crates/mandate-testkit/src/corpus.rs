@@ -532,10 +532,10 @@ impl Corpus {
             let file = read_part(&rel, SHARED_FORMAT, part, shared_parts)?;
             let items = as_object(member(as_object(&file, &rel)?, "items", &rel)?, &rel)?;
             for (key, item) in items.iter() {
-                if let Some(last) = &last_key {
-                    if compare_utf16(last, key) != std::cmp::Ordering::Less {
-                        problems.push(format!("{rel}: the key {key} is not after {last}"));
-                    }
+                if let Some(last) = &last_key
+                    && compare_utf16(last, key) != std::cmp::Ordering::Less
+                {
+                    problems.push(format!("{rel}: the key {key} is not after {last}"));
                 }
                 last_key = Some(key.to_owned());
                 match read_item(key, item) {
@@ -571,13 +571,11 @@ impl Corpus {
                 match read_entry(raw) {
                     Err(e) => problems.push(format!("{rel}: {e}")),
                     Ok(entry) => {
-                        if let Some(last) = &last_id {
-                            if compare_utf16(last, &entry.id) != std::cmp::Ordering::Less {
-                                problems.push(format!(
-                                    "{rel}: the id {} is not after {last}",
-                                    entry.id
-                                ));
-                            }
+                        if let Some(last) = &last_id
+                            && compare_utf16(last, &entry.id) != std::cmp::Ordering::Less
+                        {
+                            problems
+                                .push(format!("{rel}: the id {} is not after {last}", entry.id));
                         }
                         last_id = Some(entry.id.clone());
                         entries.push(entry);
