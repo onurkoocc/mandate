@@ -21,6 +21,7 @@
 //             sort differently by UTF-16 code units and by code points,
 //             index-like names (which JavaScript puts first), the numbers of
 //             budgets, every kind of step of a workflow
+//   graphs    the nodes and the edges of the graph of each workflow (architecture)
 //   fixtures  semanticDiff of each program of the repository against itself
 //             with the bodies of its workflows emptied, and back: the steps
 //             of every workflow the repository has
@@ -45,7 +46,7 @@ const { kindOf, load, loadModules } = await dist("check.js");
 const { hashProgram } = await dist("hash.js");
 const { parseStrictJson } = await dist("json/strict-json.js");
 const { applyOps, applyPatch } = await dist("patch/patch.js");
-const { diffDoc, envelopeChanges, governanceChanges, lockDiff, lockLimitsDiff, semanticDiff } = await dist("views/views.js");
+const { architecture, diffDoc, envelopeChanges, governanceChanges, lockDiff, lockLimitsDiff, semanticDiff } = await dist("views/views.js");
 const { toHtml, toMarkdown } = await dist("views/doc.js");
 
 const dir = new URL("crates/mandate-views/tests/data/", root);
@@ -173,6 +174,17 @@ function diffs() {
   return out;
 }
 
+/** The graph of each workflow (the nodes and the edges architecture() gives): what the steps of a diff are made of. */
+function graphs() {
+  const out = {};
+  for (const g of inputs.graphs) {
+    const workflows = architecture(programOf(g.program)).workflows.map(({ workflow, nodes, edges }) => ({ workflow, nodes, edges }));
+    out[g.name] = { workflows: workflows.length, nodes: workflows.reduce((n, w) => n + w.nodes.length, 0), edges: workflows.reduce((n, w) => n + w.edges.length, 0), sha256: digest(pretty(workflows)) };
+    if (show === g.name) console.log(pretty(workflows));
+  }
+  return out;
+}
+
 /** The program with the body of each of its workflows emptied. */
 function emptied(program) {
   const p = strict(program);
@@ -193,7 +205,7 @@ function fixtures() {
   return out;
 }
 
-const out = { format: "mandate/views-vectors/expected/0.1", numbers: numbers(), docs: docs(), patches: patches(), diffs: diffs(), fixtures: fixtures() };
+const out = { format: "mandate/views-vectors/expected/0.1", numbers: numbers(), docs: docs(), patches: patches(), diffs: diffs(), graphs: graphs(), fixtures: fixtures() };
 if (show === undefined) {
   const ascii = (text) => text.replace(/[^\x00-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
   const line = (x) => ascii(JSON.stringify(x));

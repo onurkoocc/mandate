@@ -667,3 +667,67 @@ fn the_steps_of_every_workflow_are_the_typescripts() {
     }
     report("fixtures", inputs.len(), problems);
 }
+
+// ---- the graph of a workflow -------------------------------------------------------------------------
+
+#[test]
+fn the_graph_of_a_workflow_is_the_typescripts() {
+    let d = data();
+    let inputs = d.inputs.get("graphs").and_then(Value::as_array).unwrap();
+    let expected = d.expected.get("graphs").unwrap();
+    let mut problems = Vec::new();
+    for g in inputs {
+        let name = text(g, "name");
+        let value = program_of(&d.inputs, g.get("program").unwrap());
+        let program = mandate_ir::Program::of(&value).unwrap();
+        // The workflows by name in UTF-16 order, as `architecture` takes them.
+        let mut names = workflows(&value);
+        mandate_ir::sort_utf16(&mut names);
+        let (mut node_count, mut edge_count) = (0_usize, 0_usize);
+        let mut list = Vec::new();
+        for w in &names {
+            let def = program.definition(w).unwrap();
+            let mut graph = mandate_check::Graph::new(program, def.value());
+            graph.block(def.body(), Vec::new());
+            node_count += graph.nodes.len();
+            edge_count += graph.edges.len();
+            list.push(JsValue::from(
+                JsObject::new()
+                    .with("workflow", w.as_str())
+                    .with(
+                        "nodes",
+                        JsValue::Array(
+                            graph
+                                .nodes
+                                .iter()
+                                .map(mandate_check::ArchNode::to_js)
+                                .collect(),
+                        ),
+                    )
+                    .with(
+                        "edges",
+                        JsValue::Array(
+                            graph
+                                .edges
+                                .iter()
+                                .map(mandate_check::ArchEdge::to_js)
+                                .collect(),
+                        ),
+                    ),
+            ));
+        }
+        let got = pretty(&JsValue::Array(list));
+        let want = expected.get(name).unwrap();
+        let counts = [names.len(), node_count, edge_count].map(|n| i64::try_from(n).ok());
+        if [
+            want.get("workflows").and_then(Value::as_i64),
+            want.get("nodes").and_then(Value::as_i64),
+            want.get("edges").and_then(Value::as_i64),
+        ] != counts
+            || want.get("sha256").and_then(Value::as_str) != Some(digest(&got).as_str())
+        {
+            problems.push(format!("{name}: {counts:?} {}", head(&got)));
+        }
+    }
+    report("graphs", inputs.len(), problems);
+}
