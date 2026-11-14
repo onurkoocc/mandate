@@ -372,7 +372,9 @@ binding that no longer fits (E0903), X02 the output ceiling (E0904), and
 X03 the data class (E0905).
 `compiler/test/acs.test.ts` checks the ACS target (X05): one manifest and
 bundle per agent bound to the package hash, W0907 and E0906, and, with
-`MANDATE_OPA`, the generated Rego on a real OPA.
+`MANDATE_OPA`, the generated Rego on a real OPA. The CI job `test` sets it
+to OPA 1.4.2, the static Linux binary of the release, checked against its
+published sha256, and fails the step if any test of the file was skipped.
 `compiler/test/static.test.ts` also checks the §20 FixBug table: 49.28 USD of
 child budgets inside 50 USD, delegated capabilities inside the workflow's,
 disjoint writes for the two parallel agents, step limits, review never
@@ -450,9 +452,17 @@ snapshot. `live.test.ts` makes one real call, and only runs with
 
 `mxc.test.ts` checks the real sandbox host, MXC with Bubblewrap. Against a
 fake SDK it checks what the host asks MXC for and what it refuses. On Linux
-with `MANDATE_MXC=1` (the CI job `sandbox`), it checks the blocking itself:
-writes outside the grant, reads outside it, network, the environment, and
-an agent loop working through the sandbox.
+with `MANDATE_MXC=1` (the CI job `sandbox`, on Ubuntu 22.04 and 24.04), it
+checks the blocking itself: writes outside the grant, reads outside it,
+network, the environment, no service socket of the host, and an agent loop
+working through the sandbox.
+
+`container.test.ts` checks the container sandbox host: against a fake
+Docker everywhere, and, with `MANDATE_CONTAINER=1` and a Linux Docker
+engine, against a real one (the tools inside the grant, a read-only part of
+it that cannot be written, no network, a hung process killed at its
+timeout). The CI job `sandbox` runs it on the runner's Docker, with the two
+images named by digest in the test.
 
 `artifacts.test.ts` checks the artifact store and the binding of evidence
 to what it checked: a test records the files it ran against, an action
@@ -524,7 +534,12 @@ build thresholds, session isolation refused by name, the request MXC gets,
 and learning mode's denials carried from a run to W0311. On Windows with
 `MANDATE_MXC=1` (the CI job `sandbox-windows`) it repeats the Linux
 blocking tests against a real AppContainer, and also checks the clipboard
-and learning mode.
+and learning mode. It also measures from inside the AppContainer that a
+named pipe and a TCP listener on the loopback address (IPv4 and IPv6), both
+served by the test process, cannot be reached, each against the same attempt
+from outside the sandbox, which does reach them. That job also runs
+`paths.test.ts`, `child-env.test.ts` and `egress-cli.test.ts`, whose Windows
+branches run only there.
 
 `mandate egress serve --config mandate.egress.json` runs the reference
 egress proxy of 0.5 ([`spec/egress.md`](spec/egress.md)). The operator
@@ -701,7 +716,7 @@ These cases from §25 are covered:
 | G21 | A tool call refused for its authority is one `violation`, malformed input none; the limit stops a 0.5 run at 3, an earlier one only when configured; a resumed run does not count a violation twice and stops again at its next new one | `violations`, `violation-seam`, `tools` |
 | G22 | A halt ends every open run of its scope in one transaction, in every state; a result in flight is not written; a start or a resume in the scope is refused before a lease; the adapters revoke after; a lift is recorded with who and brings no run back | `halt`, `cli-halt`, `halt-revoke` |
 | G23 | A role's view holds what was asked of that role, how the run ended and its progress, and no other role's decision, no step's request or result and no trace; the audit view shows everything and alone verifies the chain; `mandate show` without options prints what it printed before | `views-role`, `views-default`, `cli-views`, `classes` |
-| G24 | The OpenTelemetry export carries no content: its spans are built from an allow-list of identifiers, types, classes, counts, hashes and times; no span is sent twice, and a failed export leaves the run and its cursor as they were | `otel` |
+| G24 | The OpenTelemetry export carries no content: its spans are built from an allow-list of identifiers, types, classes, counts, hashes and times; no span is sent twice, and a failed export leaves the run and its cursor as they were | `otel`, `otel-collector` (a real collector, CI job `test`) |
 | G25 | Evidence whose required attestation is missing, or was taken out or changed and signed again by the runtime's key, is invalid, whatever its record says; which checks need one is read from the program and the configuration, not from the record | `verifier-process`, `audience` |
 
 The journal is chained ([`spec/journal.md`](spec/journal.md)): each event
@@ -766,6 +781,15 @@ spans; a failure, a redirect or a collector that does not answer leaves the
 cursor and the run as they were; `--follow` picks up new events and stops on
 SIGINT; and `mandate otel export` exits 1 for a failed post and 2 for a usage
 error.
+
+`otel-collector.test.ts` shows the same export against a real OpenTelemetry
+Collector. It runs only when `MANDATE_OTEL_COLLECTOR` names a collector and
+`MANDATE_OTEL_COLLECTOR_OUT` the file its `file` exporter writes. The CI job
+`test` starts the collector's core distribution in a container pinned by
+digest (its configuration is `runtime/test/otel-collector.yaml`), runs the
+export of a finished run to it, and compares what the collector wrote with
+the run's journal: the trace, a span for each event with its hash and time,
+the command spans and the run's span, each once.
 
 `map.test.ts` also runs the map of the migration example
 (`fixtures/envelope/migrate-all.mdt`) over 24 repositories: 24 migrators,
