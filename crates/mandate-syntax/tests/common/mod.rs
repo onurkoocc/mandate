@@ -18,7 +18,9 @@ pub fn row(pointer: &str, span: Span) -> String {
 }
 
 /// The rows of a table, by pointer in UTF-16 code-unit order (`spanRows`).
-pub fn rows<'a>(table: impl Iterator<Item = (&'a str, Span)>) -> Vec<String> {
+pub fn rows<'t>(table: impl Iterator<Item = (&'t str, Span)>) -> Vec<String> {
+    // (The lifetime is named: `impl Iterator<Item = (&str, Span)>` in an
+    // argument is unstable, E0658.)
     let mut entries: Vec<(&str, Span)> = table.collect();
     entries.sort_by(|a, b| compare_utf16(a.0, b.0));
     entries.into_iter().map(|(p, s)| row(p, s)).collect()
@@ -48,10 +50,9 @@ pub fn same_lines(what: &str, expected: &[String], actual: &[String]) -> Result<
         .position(|(e, a)| e != a)
         .unwrap_or(expected.len().min(actual.len()));
     Err(format!(
-        "{what}: {} expected, {} given; first difference at {}:\n    expected: {}\n    actual:   {}",
+        "{what}: {} expected, {} given; first difference at {at}:\n    expected: {}\n    actual:   {}",
         expected.len(),
         actual.len(),
-        at,
         expected.get(at).map_or("(none)", String::as_str),
         actual.get(at).map_or("(none)", String::as_str),
     ))

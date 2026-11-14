@@ -31,6 +31,14 @@
 //!   refused while it is read, before the parser's stack can run out, and an
 //!   IR nested more than 64 deep after it is read.
 //!
+//! One difference from TypeScript, where it cannot be followed: it reads
+//! the arguments of a call and the fields of a record literal without
+//! counting their nesting, until V8's stack runs out (some 3,000 levels).
+//! This crate refuses the 65th level of those, with the `MDT-E0105` the
+//! other nesting gets. TypeScript refuses every such input too, since its IR
+//! is far deeper than 64, but with another diagnostic (the IR's depth, or a
+//! syntax error later in the text) or by throwing `RangeError`.
+//!
 //! The crate reads no file, environment variable or clock: it takes text and
 //! gives values. It builds for `wasm32-wasip1`.
 //!

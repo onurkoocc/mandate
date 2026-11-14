@@ -78,7 +78,8 @@ fn the_most_stack_an_input_takes() {
         heavy().repeat(63),
         call.repeat(64)
     );
-    let text = format!("{H}{before}{}1{}}}\"\n", call, "}".repeat(63));
+    let closing = "}".repeat(63);
+    let text = format!("{H}{before}{call}1{closing}}}\"\n");
     // The column of the 65th call's `(`.
     assert_eq!(refusal(&text), nesting_at(2, before.len() + 2));
 }

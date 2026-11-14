@@ -908,10 +908,10 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        if parts.len() == 1 {
-            if let Some(only) = parts.pop() {
-                return Ok(only);
-            }
+        if parts.len() == 1
+            && let Some(only) = parts.pop()
+        {
+            return Ok(only);
         }
         Ok(Node::Obj(obj().with("all", parts)))
     }

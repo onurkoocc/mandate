@@ -493,10 +493,10 @@ impl<'a> Lexer<'a> {
         ))
     }
 
-    /// `safeInt(lexeme, 1, …)`: `Number(lexeme) * 1`, which must be a safe
-    /// integer.
+    /// `safeInt(lexeme, 1, …)`: `Number(lexeme) * 1` (which is
+    /// `Number(lexeme)`), which must be a safe integer.
     fn safe_int(lexeme: &str, line: usize, col: usize) -> Result<f64, Fail> {
-        let n = number_of_digits(lexeme) * 1.0;
+        let n = number_of_digits(lexeme);
         if !is_safe_integer(n) {
             return Err(Self::fail_at(
                 format!("Integer {lexeme} is outside \u{b1}(2^53\u{2212}1)."),
