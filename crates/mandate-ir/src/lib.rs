@@ -25,6 +25,11 @@
 //!   crate is built, and [`lock_schema_diagnostics`] is the E0140 that
 //!   `validateLock` in `compiler/src/lock.ts` makes of a refused lock. Its
 //!   `pattern`s are matched by hand, with no regular expression engine.
+//! - [`validate_lock`]: `validateLock` whole, the schema and the rules after
+//!   it (the lock format a field needs, a key under two members, a role's
+//!   members, a tier's tariff), with the lock formats ([`LOCK_FORMATS`],
+//!   [`lock_at_least`]). It is here and not in `mandate-check` because it needs
+//!   nothing but the schema and the lock as a [`Value`].
 //! - The closed sets of tags the IR schema defines, as enums ([`Language`],
 //!   [`DefKind`], [`ExprOp`], [`StmtOp`], [`PatternKind`], [`TierBy`],
 //!   [`TypeForm`], [`VerifierForm`], [`ReadSource`], [`TemplatePart`]), each
@@ -118,7 +123,10 @@ pub use hash::{
 };
 pub use jcs::{canonicalize, compare_utf16, write_json_string};
 pub use js_value::{JsObject, JsValue, stringify, stringify_pretty};
-pub use lock::lock_schema_diagnostics;
+pub use lock::{
+    LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, lock_at_least, lock_schema_diagnostics,
+    validate_lock,
+};
 pub use number::{is_integer, is_safe_integer, number_to_string, write_number};
 pub use program::{Definition, Import, Program};
 pub use reader::{Parsed, parse, parse_bytes};

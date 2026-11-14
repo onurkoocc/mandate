@@ -42,7 +42,8 @@ use mandate_testkit::{
 const PENDING: &[&str] = &[
     // R11: the static core (types, expressions, budgets, cost).
     "*MDT-E02*",
-    "*MDT-E05*",
+    "*MDT-E0501*",
+    "*MDT-E0502*",
     // R12: the static authority (capabilities, delegation, effects, envelopes, methods).
     "*MDT-E03*",
     "*MDT-W0310*",
@@ -54,10 +55,6 @@ const PENDING: &[&str] = &[
     // R13: the system model, change sets, reads.
     "*MDT-E10*",
     "*MDT-E12*",
-    // R14: the lock.
-    "*MDT-E1502*",
-    "*MDT-E1802*",
-    "*MDT-E1803*",
     // R13: the doors of patches, sub-programs and amendments.
     "apply_ops @ *",
     "check_subprogram @ *",

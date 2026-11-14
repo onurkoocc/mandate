@@ -55,7 +55,7 @@ impl Linked {
 /// definition named `toString` that collides with a local one is said to
 /// collide with "module function toString() { [native code] }". The port
 /// does not fix that.
-fn object_prototype_text(name: &str) -> Option<String> {
+pub(crate) fn object_prototype_text(name: &str) -> Option<String> {
     const FUNCTIONS: [&str; 10] = [
         "__defineGetter__",
         "__defineSetter__",
