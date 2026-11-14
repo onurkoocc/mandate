@@ -960,9 +960,10 @@ and `containment` (`check_subprogram`), `narrowings` (`check_amendment`). The MC
 server (`McpServer`, `callTool`) is a transport: its tools call `check`, `load`,
 `loadModules` and `checkPatch`, and those calls are recorded as theirs.
 
-The calls of the three test files that write vectors of their own
-(`diagnostic-vectors.test.ts`, `schema-vectors.test.ts`, `vectors.test.ts`) are left
-out: what they call is in those vectors already.
+The calls of the five test files that write vectors of their own
+(`diagnostic-vectors.test.ts`, `diff-vectors.test.ts`, `schema-vectors.test.ts`,
+`syntax-vectors.test.ts`, `vectors.test.ts`) are left out: what they call is in those
+vectors already.
 
 ### entries-N.json
 

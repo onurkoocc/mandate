@@ -141,9 +141,15 @@ export function resultOf(door: Door, r: unknown): unknown {
 
 /**
  * The test files whose calls the corpus leaves out: they write vectors of their own (vectors/README.md, sections
- * reader.json to diagnostics/), and what they call is in those files already.
+ * reader.json to diff/), and what they call is in those files already.
  */
-export const VECTOR_WRITERS = ["compiler/test/diagnostic-vectors.test.ts", "compiler/test/schema-vectors.test.ts", "compiler/test/vectors.test.ts"];
+export const VECTOR_WRITERS = [
+  "compiler/test/diagnostic-vectors.test.ts",
+  "compiler/test/diff-vectors.test.ts",
+  "compiler/test/schema-vectors.test.ts",
+  "compiler/test/syntax-vectors.test.ts",
+  "compiler/test/vectors.test.ts",
+];
 
 /** Whether a string has no lone surrogate. */
 export function wellFormed(s: string): boolean {
