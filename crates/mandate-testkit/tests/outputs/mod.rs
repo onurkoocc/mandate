@@ -15,7 +15,10 @@ use mandate_check::{CheckResult, requirements_to_js, sandbox_requirements, seman
 use mandate_ir::{Diagnostic, JsObject, JsValue, canonicalize, stringify_pretty};
 use mandate_syntax::{kind_of, load};
 use mandate_testkit::read_json;
-use mandate_views::{architecture, authority, cost, program_doc, to_html, to_markdown};
+use mandate_views::{
+    architecture, authority, card, card_doc, cost, envelope_workflows, program_doc, to_html,
+    to_markdown,
+};
 
 use crate::common::{check_text, check_with, modules_of, read_source};
 
@@ -85,7 +88,9 @@ fn pretty(v: &JsValue) -> String {
 /// Every output of `program`, in the order `outputs` writes them: `check`,
 /// `check --module`, `check --lock` (with a lock), `load`, `ir --canonical`
 /// and `fmt` (when it loads), `hash` (when it checks alone), and the views
-/// and `sandbox` (when it checks with its modules and its lock).
+/// and `sandbox` (when it checks with its modules and its lock), then the
+/// card's three (`view --card --format …`) when it has exactly one workflow
+/// with an envelope.
 ///
 /// # Errors
 ///
@@ -157,6 +162,19 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
             .with("program", hashes.program.as_str())
             .with("requirements", requirements_to_js(&requirements));
         out.push(("sandbox".to_owned(), pretty(&JsValue::Object(sandbox))));
+        // `mandate view --card`: of the one workflow with an envelope, when the
+        // program has exactly one, with its modules and its lock.
+        if let [name] = envelope_workflows(p).as_slice() {
+            let missing = || format!("{name} has no card");
+            let view = card(p, name, lock.as_ref(), Some(&modules)).ok_or_else(missing)?;
+            out.push((
+                "view --card --format json".to_owned(),
+                pretty(&view.to_js()),
+            ));
+            let doc = card_doc(p, name, lock.as_ref(), Some(&modules)).ok_or_else(missing)?;
+            out.push(("view --card --format md".to_owned(), to_markdown(&doc)));
+            out.push(("view --card --format html".to_owned(), to_html(&doc)));
+        }
     }
     Ok(out)
 }

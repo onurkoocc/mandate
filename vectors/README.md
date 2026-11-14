@@ -388,7 +388,7 @@ program (`fixtures/fixbug/fixbug.mdt`, a directory for each program), and the
 output file name is the output's name with each space replaced by `_`:
 `check`, `check_--module`, `check_--lock`, `load`, `ir_--canonical`, `fmt`,
 `hash`, `view_--format_json`, `view_--format_md`, `view_--format_html`,
-`view_--against_itself`, `sandbox` (231 files; a program has only the outputs
+`view_--against_itself`, `sandbox`, and `view_--card_--format_json`, `view_--card_--format_md` and `view_--card_--format_html` (234 files; a program has only the outputs
 the golden file pins for it). The bytes are exactly those that are hashed (UTF-8,
 no newline added), and the directory is created. Nothing is written when the
 variable is not set, and nothing of these texts is committed. This is the one
@@ -401,7 +401,7 @@ The `parity` job of `.github/workflows/ci.yml` writes both directories (the
 TypeScript with `npx vitest run test/golden.test.ts` in `compiler`, the Rust
 with `cargo test -p mandate-testkit --test golden`, each with
 `MANDATE_GOLDEN_OUT` set), checks that each holds as many files as the golden
-file pins outputs (231), and runs `diff -ru` on them: any difference fails the
+file pins outputs (234), and runs `diff -ru` on them: any difference fails the
 job and is shown. Under `scripts/wasi-test.mjs` the variable must name a
 directory inside the repository (for example `target/parity/rust`, which git
 ignores), since that is the only directory the WebAssembly test can write to;
@@ -1227,14 +1227,14 @@ the compiler's order. The gates that do this:
 
 | Gate | Against | Items | Test |
 |---|---|---|---|
-| golden outputs | the digest of each output text of every program (`check`, `load`, `ir --canonical`, `fmt`, `hash`, the views, `sandbox`) | 231 | `crates/mandate-testkit/tests/golden.rs` |
+| golden outputs | the digest of each output text of every program (`check`, `load`, `ir --canonical`, `fmt`, `hash`, the views, `sandbox`, the card) | 234 | `crates/mandate-testkit/tests/golden.rs` |
 | diagnostic vectors | the whole result of every compile case of `conformance/` and of the checks of every golden program | 193 | `crates/mandate-testkit/tests/diagnostics.rs` |
 | diff vectors | the results of the comparing functions and the documents of 183 pairs | 183 | `crates/mandate-testkit/tests/diff_vectors.rs` |
-| corpus | every call the TypeScript's own tests make to a front door, input and whole result | 1226 (1224 run) | `crates/mandate-testkit/tests/corpus.rs` |
+| corpus | every call the TypeScript's own tests make to a front door, input and whole result | 1226 | `crates/mandate-testkit/tests/corpus.rs` |
 | conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 131: the TypeScript's 125, and 6 of language 0.6 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
-| JSON doors | the output text of every call of `crates/*/tests/json_doors/inputs.json`, each through a door of `doors.json` beside it and through the TypeScript function it stands for, serialised by the door contract (`scripts/json-doors-vectors.mjs`, its function `doorJson`); every door has a call | 159 calls, 46 doors | `crates/mandate-check/tests/json_doors.rs` |
+| JSON doors | the output text of every call of `crates/*/tests/json_doors/inputs.json`, each through a door of `doors.json` beside it and through the TypeScript function it stands for, serialised by the door contract (`scripts/json-doors-vectors.mjs`, its function `doorJson`); every door has a call | 159 calls over 46 doors (`mandate-check`) and 68 over 13 (`mandate-views`), each also through the dispatcher of `mandate-doors` | `crates/mandate-check/tests/json_doors.rs`, `crates/mandate-views/tests/json_doors.rs`, `crates/mandate-doors/tests/doors.rs` |
 | run-time authority decisions | the output of every recorded case of `bridge/test/authority-cases.json` and every generated case of `authority/cases.json` (see its section), through the JSON door of its function, twice, as a value and as text | 167 and 1227 | `crates/mandate-check/tests/authority.rs` |
 
 Each gate prints `ran N, passed M, pending K`. A pending item is held to failing by
@@ -1272,16 +1272,13 @@ fails when an entry of a list passes or names nothing.
   2; diagnostic vectors 2; conformance cases 2 (S02a and S02b, run by the Rust but
   written for the TypeScript); corpus 5 (the stored results that hold an E0103, which
   the corpus counts when it is read, since its test compares one entry at a time); the
-  JSON doors of `mandate-check` 1 (the `tables` call). No golden output, diff vector or
+  JSON doors of `mandate-check` 1 (the `tables` call; the count is kept by the directory of the calls, `json doors of crates/mandate-check/tests/json_doors`, so the same call set is pinned once whether its own test or the dispatcher of `mandate-doors` runs it). No golden output, diff vector or
   version gate holds an E0103. A case or vector of 0.6 is compared whole, with no rule.
 
-- **The `acs_target` door of the corpus: 2 entries, excluded.** The ACS/Rego target
-  (`compiler/src/target/acs.ts`) is not ported in release 0.5; it stays in TypeScript.
-  `OUT_OF_SCOPE` in `crates/mandate-testkit/tests/corpus.rs`, and the gate prints
-  `corpus acs_target: ran 0, excluded 2`. The corpus total reads `1226 entries, ran
-  1224, excluded 2`. `EXCLUDED` in the same file, for single entries, is empty. The
-  envelope card of the views (in `compiler/src/views/views.ts`) is not in the Rust
-  crates either, for the same reason.
+- **The corpus: nothing excluded.** `OUT_OF_SCOPE` (whole doors) and `EXCLUDED` (single
+  entries) in `crates/mandate-testkit/tests/corpus.rs` are both empty: the ACS/Rego
+  target and the envelope card are ported, and the gate prints `corpus acs_target: ran
+  2, passed 2` and `corpus: 1226 entries, ran 1226, excluded 0`.
 - **`KNOWN_PATCH_DIFFERENCES` in `crates/mandate-views/tests/vectors.rs`: 8 of the 129
   written patch inputs.** Four set `__proto__` as the last token of an `add`
   (`proto-add-defs`, `proto-add-root`, `proto-then-add`, `proto-smuggle-plain`): in
