@@ -194,3 +194,17 @@ jobs:
           seq="$(cat "$fresh/tampered-seq")"
           grep -A1 '"code": "chain_broken",' "$fresh/rust-tampered.json" | grep -q "\"seq\": $seq\$"
           cmp "$fresh/tampered-report.json" "$fresh/rust-tampered.json"
+      # mandate-check (capabilities, the std tables, governance-class files, paths)
+      # for WebAssembly and its tests under Node's WASI, and its test data: what
+      # scripts/caps-vectors.mjs writes from the TypeScript compiler built above
+      # must be what is committed.
+      - name: Build mandate-check for WebAssembly
+        run: cargo build --locked --target wasm32-wasip1 -p mandate-check
+      - name: mandate-check tests under Node's WASI
+        run: node scripts/wasi-test.mjs -p mandate-check -- --nocapture
+      - name: The test data of mandate-check is what the TypeScript compiler gives now
+        run: |
+          node scripts/caps-vectors.mjs
+          git diff --exit-code -- crates/mandate-check/tests/data
+          untracked="$(git ls-files --others --exclude-standard -- crates/mandate-check/tests/data)"
+          if [ -n "$untracked" ]; then echo "::error::caps-vectors.mjs wrote files that are not committed: $untracked"; exit 1; fi

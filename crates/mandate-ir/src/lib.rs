@@ -77,7 +77,9 @@
 
 #![forbid(unsafe_code)]
 
+mod defs;
 mod diag;
+mod expr;
 mod hash;
 mod jcs;
 mod js_value;
@@ -94,10 +96,12 @@ mod text;
 mod validate;
 mod value;
 
+pub use defs::{CapabilityDef, Command, ComponentDef, EnvironmentDef};
 pub use diag::{
     Diagnostic, Location, PtrToken, Repair, RepairOp, RepairOpKind, Risk, Severity, Span,
     format_diagnostic, has_errors, ptr, ptr_token,
 };
+pub use expr::{Arg, Expr};
 pub use hash::{
     HashDomain, ProgramHashes, RUNTIME_HASH_VERSION, domain_hash, hash_program, package_hash,
 };
