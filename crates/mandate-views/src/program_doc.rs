@@ -6,7 +6,7 @@ use mandate_ir::{Program, Value};
 
 use crate::architecture::{architecture, architecture_blocks};
 use crate::authority::{authority, authority_blocks};
-use crate::cost::{ViewError, cost, cost_blocks};
+use crate::cost::{cost, cost_blocks};
 use crate::doc::{Block, Doc};
 use crate::system::{has_system, system, system_blocks};
 use mandate_check::is_kind;
@@ -17,15 +17,8 @@ use mandate_check::is_kind;
 /// imported system model, which is shown too: the views are of the program as
 /// linked with the modules, and the title and the hash are of the program
 /// itself. `programDoc(program, lock, modules)`.
-///
-/// # Errors
-///
-/// The cost of a workflow with an envelope is not ported yet ([`ViewError`]).
-pub fn program_doc(
-    program: &Value,
-    lock: Option<&Value>,
-    modules: Option<&Modules>,
-) -> Result<Doc, ViewError> {
+#[must_use]
+pub fn program_doc(program: &Value, lock: Option<&Value>, modules: Option<&Modules>) -> Doc {
     let r = program_ref(program);
     let given = modules.filter(|m| !m.is_empty());
     let p = Program::of(program);
@@ -43,12 +36,12 @@ pub fn program_doc(
     if runs {
         blocks.extend(architecture_blocks(&architecture(linked)));
         blocks.extend(authority_blocks(&authority(linked)));
-        blocks.extend(cost_blocks(&cost(linked, lock)?));
+        blocks.extend(cost_blocks(&cost(linked, lock)));
     }
     if has_system(program, modules) {
         blocks.extend(system_blocks(&system(program, modules)));
     }
-    Ok(Doc {
+    Doc {
         title: format!("{} {}", r.module, r.version),
         meta: vec![
             ("Program".to_owned(), r.hash.clone()),
@@ -66,5 +59,5 @@ pub fn program_doc(
             ),
         ],
         blocks,
-    })
+    }
 }

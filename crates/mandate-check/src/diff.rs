@@ -25,7 +25,7 @@ use crate::lock_diff::{lock_diff, lock_limits_diff};
 use crate::modules::{Modules, linked_program};
 use crate::view_shared::{
     Graph, ProgramRef, VIEW_FORMAT, caps_in, defs_of, duration, is_system, j, j_or_null, js_text,
-    json_string, kind_text, method_of, micros_text, program_ref, workflow_effects,
+    json_string, kind_text, method_of, micros_as_units, program_ref, workflow_effects,
 };
 
 /// One change: where it is, and what it is.
@@ -337,7 +337,7 @@ const SHOWN_DIMENSIONS: [&str; 5] = ["spend", "tokens", "steps", "time", "agents
 fn amount_text(dim: &str, n: i64, currency: &str) -> String {
     match dim {
         "time" => duration(n),
-        "spend" => format!("{} {currency}", micros_text(n)),
+        "spend" => format!("{} {currency}", micros_as_units(n)),
         _ => n.to_string(),
     }
 }
@@ -402,7 +402,7 @@ fn micros_of(spend: &Value) -> String {
     spend
         .get("micros")
         .and_then(Value::as_i64)
-        .map_or_else(|| "NaN".to_owned(), micros_text)
+        .map_or_else(|| "NaN".to_owned(), micros_as_units)
 }
 
 /// What a workflow does, as the labels of its steps with their grant and

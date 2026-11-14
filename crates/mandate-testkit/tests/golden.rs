@@ -17,35 +17,25 @@ use std::collections::BTreeMap;
 
 use common::{check_text, check_with, modules_of, read_source};
 use mandate_check::{requirements_to_js, sandbox_requirements, semantic_diff};
-use mandate_ir::{Diagnostic, JsObject, JsValue, Loaded, canonicalize, stringify_pretty};
+use mandate_ir::{
+    Diagnostic, JsObject, JsValue, Loaded, Value, canonicalize, stringify, stringify_pretty,
+};
 use mandate_syntax::{kind_of, load};
 use mandate_testkit::{
-    Golden, GoldenOutput, compare_digest, item_name, read_json, read_text, result_codes, run_gate,
-    stored_programs,
+    Golden, GoldenOutput, Miss, compare_digest, item_name, omission, read_json, read_text,
+    result_codes, run_held_gate, stored_programs,
 };
 use mandate_views::{architecture, authority, cost, program_doc, to_html, to_markdown};
 
 /// The outputs the Rust crates do not give yet, as `<output> @ <program>`
 /// patterns. Shorten it in the commit that makes an item pass. The checks
 /// are named by the codes they hold (`check @ <program> [codes]`, see
-/// `mandate_testkit::codes`), and pending by family of codes.
+/// `mandate_testkit::codes`), and pending by family of codes; each pending
+/// check is held to failing only by omission against its stored result.
 const PENDING: &[&str] = &[
-    // R12: the static authority (a criterion checked at run time).
-    "*MDT-W06*",
     // R13: the system model, reads.
     "*MDT-E10*",
     "*MDT-E12*",
-];
-
-/// Outputs pending by name, which `check_pending` (that names doors and
-/// families of codes) does not hold to its rule. R11: the cost view of a
-/// workflow with an envelope needs the static cost (`check/cost.ts`), which
-/// `mandate_views::cost` refuses until the static checks are ported. Only
-/// MigrateAll has such a workflow, so only its three views wait.
-const PENDING_ITEMS: &[&str] = &[
-    "view --format json @ fixtures/envelope/migrate-all.mdt",
-    "view --format md @ fixtures/envelope/migrate-all.mdt",
-    "view --format html @ fixtures/envelope/migrate-all.mdt",
 ];
 
 /// What the Rust crates print for one pinned output.
@@ -146,17 +136,15 @@ fn output(o: &GoldenOutput<'_>) -> Result<String, String> {
                 .filter(|_| r.ok)
                 .ok_or("the program does not check, so it has no views")?;
             if o.output == "view --format json" {
-                let cost = cost(&program, lock.as_ref()).map_err(|e| e.to_string())?;
                 let views = JsObject::new()
                     .with("architecture", architecture(&program).to_js())
                     .with("authority", authority(&program).to_js())
-                    .with("cost", cost.to_js());
+                    .with("cost", cost(&program, lock.as_ref()).to_js());
                 let mut text = stringify_pretty(&JsValue::Object(views)).unwrap_or_default();
                 text.push('\n');
                 return Ok(text);
             }
-            let doc =
-                program_doc(&program, lock.as_ref(), Some(&modules)).map_err(|e| e.to_string())?;
+            let doc = program_doc(&program, lock.as_ref(), Some(&modules));
             Ok(if o.output == "view --format md" {
                 to_markdown(&doc)
             } else {
@@ -238,21 +226,67 @@ fn name_of(o: &GoldenOutput<'_>, codes: &BTreeMap<(String, String), Vec<String>>
     }
 }
 
+/// The diagnostics of a check that does not have its digest, against the
+/// stored result of that check: whether they are the stored ones with some
+/// left out, in order, each compared whole.
+fn held(stored: &Value, actual: &[Diagnostic], difference: String) -> Miss {
+    let want: Vec<String> = stored
+        .get("diagnostics")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .map(|d| stringify(&JsValue::from(d)).unwrap_or_default())
+        .collect();
+    let got: Vec<String> = actual
+        .iter()
+        .map(|d| stringify(&d.to_js()).unwrap_or_default())
+        .collect();
+    match omission(&want, &got, |w, g| w == g, Clone::clone) {
+        Ok(_) => Miss::Omits(difference),
+        Err(why) => Miss::Differs(format!("{why}\n{difference}")),
+    }
+}
+
+/// One pinned output against its digest, held to omission when it is a
+/// check (`stored` are the stored results of the checks).
+fn run(o: &GoldenOutput<'_>, stored: &BTreeMap<(String, String), Value>) -> Result<(), Miss> {
+    let (with_modules, with_lock) = match o.output {
+        "check" => (false, false),
+        "check --module" => (true, false),
+        "check --lock" => (true, true),
+        _ => {
+            return output(o)
+                .and_then(|text| compare_digest(o.digest, &text))
+                .map_err(Miss::Differs);
+        }
+    };
+    let r = checked(o.program, with_modules, with_lock).map_err(Miss::Differs)?;
+    compare_digest(o.digest, &check_text(&r)).map_err(|why| {
+        let slot = o.output.replace(" --", "_");
+        match stored.get(&(o.program.to_owned(), slot)) {
+            Some(v) => held(v, &r.diagnostics, why),
+            None => Miss::Excluded {
+                rule: "a check with no stored result in vectors/diagnostics to hold it to",
+                why,
+            },
+        }
+    })
+}
+
 #[test]
 fn golden_outputs() {
     mandate_testkit::check_pending(PENDING).expect("the pending list");
     let golden = Golden::load().expect("the golden file");
     let mut codes: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+    let mut stored: BTreeMap<(String, String), Value> = BTreeMap::new();
     for p in stored_programs().expect("the golden vectors") {
         for (slot, v) in &p.results {
             codes.insert((p.program.clone(), slot.clone()), result_codes(v));
+            stored.insert((p.program.clone(), slot.clone()), v.clone());
         }
     }
     let items = golden.outputs().map(|o| (name_of(&o, &codes), o));
-    let pending: Vec<&str> = PENDING.iter().chain(PENDING_ITEMS).copied().collect();
-    let gate = run_gate("golden outputs", &pending, items, |o| {
-        compare_digest(o.digest, &output(o)?)
-    });
+    let gate = run_held_gate("golden outputs", PENDING, items, |o| run(o, &stored));
     if let Err(report) = gate {
         panic!("{report}");
     }

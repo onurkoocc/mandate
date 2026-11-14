@@ -23,11 +23,9 @@
 //!   [`type_text`]). The envelope card is not ported: it stays in TypeScript
 //!   for 0.5.
 //!
-//! One part of the cost view waits for the static checks: the delegations a
-//! workflow with an envelope may start are counted by `check/cost.ts`, so
-//! `cost` and `program_doc` refuse such a program with a [`ViewError`]
-//! instead of printing a number that is not the TypeScript's (see
-//! `static_cost_agents` in `cost.rs`).
+//! The cost view counts the delegations a workflow with an envelope may
+//! start as the checker does, with `mandate_check::static_cost`
+//! (`check/cost.ts`).
 //!
 //! Programs are the IR as [`mandate_ir::Value`], as in `mandate-check`; the
 //! views walk them in the order of their members, as JavaScript does.
@@ -52,7 +50,7 @@ pub use architecture::{
 };
 pub use authority::{AuthorityRow, AuthorityView, authority, authority_blocks, late_kinds};
 pub use cost::{
-    BudgetFrom, CostRow, CostView, DelegateBudget, Sum, ViewError, WorkflowCost, cost, cost_blocks,
+    BudgetFrom, CostRow, CostView, DelegateBudget, Sum, WorkflowCost, cost, cost_blocks,
     delegate_budget,
 };
 pub use diff::{diff_blocks, diff_doc};

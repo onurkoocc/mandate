@@ -460,9 +460,12 @@ pub fn duration(ms: i64) -> String {
 }
 
 /// `${micros / 1_000_000}`: a double divided, and written as JavaScript
-/// writes a number.
+/// writes a number. It is not `microsText` of `check/cost.ts`
+/// ([`crate::cost::micros_text`]), which writes the whole units and the
+/// fraction apart and the currency after them, and so differs from this for
+/// an amount below zero (`-1.5` here, `-2.-5 USD` there).
 #[must_use]
-pub fn micros_text(micros: i64) -> String {
+pub fn micros_as_units(micros: i64) -> String {
     number_to_string(micros as f64 / 1_000_000.0)
 }
 

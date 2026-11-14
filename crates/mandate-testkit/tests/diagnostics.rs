@@ -30,36 +30,93 @@ use common::{
     read_source, value_text,
 };
 use mandate_check::Modules;
-use mandate_ir::{Diagnostic, JsValue, Value, stringify_pretty};
+use mandate_ir::{Diagnostic, JsValue, Value, stringify, stringify_pretty};
 use mandate_syntax::{SourceKind, kind_of, load};
 use mandate_testkit::{
-    check_pending, compare_text, item_name, read_json, repo_path, result_codes, run_gate,
-    stored_cases, stored_programs,
+    Miss, check_pending, compare_text, item_name, omission, read_json, repo_path, result_codes,
+    run_held_gate, stored_cases, stored_programs,
 };
 
 /// The items the Rust compiler does not give yet: a glob for each family of
-/// codes whose stage is not ported (the slice that ports it beside it), and
-/// one for each front door that is not.
+/// codes whose stage is not ported (the slice that ports it beside it), one
+/// for each front door that is not, and by name the items that still fail
+/// although every code they hold is of a ported family. Every pending item
+/// is held to failing only by omission (`mandate_testkit::run_held_gate`).
 const PENDING: &[&str] = &[
-    // R11: the static core (types, expressions, budgets, cost).
-    "*MDT-E02*",
-    "*MDT-E0501*",
-    "*MDT-E0502*",
     // R12: the static authority (capabilities, delegation, effects, envelopes, methods).
+    "*MDT-E022*",
     "*MDT-E03*",
     "*MDT-W0310*",
-    "*MDT-E04*",
-    "*MDT-W06*",
-    "*MDT-E07*",
-    "*MDT-E17*",
+    "*MDT-E0408*",
+    "*MDT-E070*",
+    "*MDT-E1701*",
+    "*MDT-E1702*",
+    "*MDT-E1703*",
+    "*MDT-E1704*",
+    "*MDT-E1706*",
+    "*MDT-E1707*",
     "*MDT-E1801*",
-    // R13: the system model, change sets, reads.
+    // R13: the system model, reads, sub-programs, amendments.
     "*MDT-E10*",
     "*MDT-E12*",
+    "*MDT-E1705*",
+    "*MDT-E1709*",
     // R13: the doors of sub-programs and amendments.
     "check_subprogram @ *",
     "check_amendment @ *",
+    // Stored results whose codes are all of ported families, but which the
+    // core does not give, because the TypeScript raises them in a function
+    // of a later slice (`statics/authority.rs` gives none of its own
+    // diagnostics yet).
+    // R12, `checkAgent`: E0213, a skill returns Evidence (1).
+    "check @ conformance/S08a [MDT-E0213]",
+    // R12, `checkExtern`: E0213, host code returns Verified (1).
+    "check @ conformance/S08d [MDT-E0213]",
+    // R12, `effectCall`: E0210 of an argument against a critical effect's
+    // parameter (5).
+    "check_patched @ conformance/V01a [MDT-E0210 MDT-W0601]",
+    "check_patched @ conformance/V01b [MDT-E0210 MDT-W0601]",
+    "check @ conformance/V01c [MDT-E0210]",
+    "check @ conformance/V01d [MDT-E0210]",
+    "check @ conformance/V08a [MDT-E0210]",
+    // R12, `mapBudget`: E0501 of a map's budget (1).
+    "check_patched @ conformance/E0501b [MDT-E0501]",
 ];
+
+/// The stored result `expected` (its text) against the diagnostics Rust
+/// gives, for an item whose text differs (`difference`): whether Rust's are
+/// the stored ones with some left out, in order, each compared whole.
+fn held(expected: &str, actual: &[Diagnostic], difference: String) -> Miss {
+    let Ok(stored) = mandate_testkit::parse_json(expected.as_bytes()) else {
+        return Miss::Excluded {
+            rule: "a stored result held as text, with a number the strict JSON reader does not read",
+            why: difference,
+        };
+    };
+    let want: Vec<String> = match &stored {
+        Value::Array(items) => items.as_slice(),
+        other => other
+            .get("diagnostics")
+            .and_then(Value::as_array)
+            .unwrap_or_default(),
+    }
+    .iter()
+    .map(|d| stringify(&JsValue::from(d)).unwrap_or_default())
+    .collect();
+    let got: Vec<String> = actual
+        .iter()
+        .map(|d| stringify(&d.to_js()).unwrap_or_default())
+        .collect();
+    match omission(&want, &got, |w, g| w == g, Clone::clone) {
+        Ok(_) => Miss::Omits(difference),
+        Err(why) => Miss::Differs(format!("{why}\n{difference}")),
+    }
+}
+
+/// `compare_text(expected, actual)`, held to omission when it differs.
+fn compare_held(expected: &str, actual: &str, diagnostics: &[Diagnostic]) -> Result<(), Miss> {
+    compare_text(expected, actual).map_err(|why| held(expected, diagnostics, why))
+}
 
 /// What an item compares.
 enum Item {
@@ -159,7 +216,7 @@ impl ModuleCache {
     }
 }
 
-fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), String> {
+fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), Miss> {
     match item {
         Item::Case {
             door,
@@ -171,22 +228,25 @@ fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), String> {
             expected,
         } => {
             if !matches!(door.as_str(), "check" | "check_patched" | "apply_ops") {
-                return Err(format!("the {door} door is not ported"));
+                return Err(Miss::Excluded {
+                    rule: "its front door (checkSubprogram, checkAmendment) is not ported (R13), so there is no Rust result to hold",
+                    why: format!("the {door} door is not ported"),
+                });
             }
-            let case = read_json(&format!("{dir}/case.json"))?;
+            let case = read_json(&format!("{dir}/case.json")).map_err(Miss::Differs)?;
             let text = if input.is_empty() {
                 case.get("input")
                     .and_then(|i| i.get("text"))
                     .and_then(Value::as_str)
-                    .ok_or("no input text")?
+                    .ok_or_else(|| Miss::Differs("no input text".to_owned()))?
                     .to_owned()
             } else {
-                read_source(input)?
+                read_source(input).map_err(Miss::Differs)?
             };
             let mods = if modules.is_empty() {
                 None
             } else {
-                Some(cache.get(modules, modules)?)
+                Some(cache.get(modules, modules).map_err(Miss::Differs)?)
             };
             // `check_patched`: the case's patch applied to the loaded IR,
             // and the patched IR checked as `JSON.stringify` text.
@@ -194,22 +254,31 @@ fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), String> {
                 // `apply_ops`: `applyOps(program, base, patch)`; a refused patch (E0130, E0131) is
                 // the result, else the patched IR is checked.
                 Some(patch) if door == "apply_ops" => {
-                    let base = case.get("base").and_then(Value::as_str).ok_or("no base")?;
-                    match applied_source(&text, kind_named(kind), base, patch)? {
+                    let base = case
+                        .get("base")
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| Miss::Differs("no base".to_owned()))?;
+                    match applied_source(&text, kind_named(kind), base, patch)
+                        .map_err(Miss::Differs)?
+                    {
                         Applied::Source(patched) => (patched, SourceKind::Json),
                         Applied::Refused(refused) => {
-                            return compare_text(expected, &check_text(&refused));
+                            return compare_held(
+                                expected,
+                                &check_text(&refused),
+                                &refused.diagnostics,
+                            );
                         }
                     }
                 }
                 Some(patch) if door == "check_patched" => (
-                    patched_source(&text, kind_named(kind), patch)?,
+                    patched_source(&text, kind_named(kind), patch).map_err(Miss::Differs)?,
                     SourceKind::Json,
                 ),
                 _ => (text, kind_named(kind)),
             };
-            let r = check_with(&text, kind, mods, lock.as_deref())?;
-            compare_text(expected, &check_text(&r))
+            let r = check_with(&text, kind, mods, lock.as_deref()).map_err(Miss::Differs)?;
+            compare_held(expected, &check_text(&r), &r.diagnostics)
         }
         Item::Program {
             program,
@@ -218,9 +287,12 @@ fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), String> {
             lock,
             expected,
         } => {
-            let text = read_source(program)?;
+            let text = read_source(program).map_err(Miss::Differs)?;
             let kind = kind_of(program);
-            let actual = match slot.as_str() {
+            let checked = |mods: Option<&Modules>, lock: Option<&str>| {
+                check_with(&text, kind, mods, lock).map_err(Miss::Differs)
+            };
+            let (actual, diagnostics) = match slot.as_str() {
                 "load" => {
                     let diagnostics = load(&text, kind).diagnostics;
                     let mut t = stringify_pretty(&JsValue::Array(
@@ -228,20 +300,25 @@ fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), String> {
                     ))
                     .unwrap_or_default();
                     t.push('\n');
-                    t
+                    (t, diagnostics)
                 }
-                "check" => check_text(&check_with(&text, kind, None, None)?),
+                "check" => {
+                    let r = checked(None, None)?;
+                    (check_text(&r), r.diagnostics)
+                }
                 "check_module" => {
-                    let mods = cache.get(modules, modules)?;
-                    check_text(&check_with(&text, kind, Some(mods), None)?)
+                    let mods = cache.get(modules, modules).map_err(Miss::Differs)?;
+                    let r = checked(Some(mods), None)?;
+                    (check_text(&r), r.diagnostics)
                 }
                 "check_lock" => {
-                    let mods = cache.get(modules, modules)?;
-                    check_text(&check_with(&text, kind, Some(mods), lock.as_deref())?)
+                    let mods = cache.get(modules, modules).map_err(Miss::Differs)?;
+                    let r = checked(Some(mods), lock.as_deref())?;
+                    (check_text(&r), r.diagnostics)
                 }
-                other => return Err(format!("no slot {other}")),
+                other => return Err(Miss::Differs(format!("no slot {other}"))),
             };
-            compare_text(expected, &actual)
+            compare_held(expected, &actual, &diagnostics)
         }
     }
 }
@@ -250,7 +327,7 @@ fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), String> {
 fn diagnostics_gate() {
     check_pending(PENDING).expect("the pending list");
     let mut cache = ModuleCache(BTreeMap::new());
-    let gate = run_gate("diagnostic vectors", PENDING, items(), |item| {
+    let gate = run_held_gate("diagnostic vectors", PENDING, items(), |item| {
         run(item, &mut cache)
     });
     if let Err(report) = gate {

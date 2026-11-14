@@ -1,0 +1,369 @@
+{
+  "checks": [
+    {
+      "name": "fields of a record type and of a record",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"P has no field 'q'.\",\"at\":{\"path\":\"/defs/f/body/0/value\",\"span\":[3,22,3,25]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"type\":\"P\",\"fields\":[\"a\",\"b\",\"c\"]}},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"P has no field 'B'.\",\"at\":{\"path\":\"/defs/x/value/fields/B\",\"span\":[4,30,4,31]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"fields\":[\"a\",\"b\",\"c\"]}},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"P has no field 'z'.\",\"at\":{\"path\":\"/defs/x/value/fields/z\",\"span\":[4,16,4,17]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"fields\":[\"a\",\"b\",\"c\"]}},{\"code\":\"MDT-E0203\",\"severity\":\"error\",\"message\":\"P is missing field(s) b, c.\",\"at\":{\"path\":\"/defs/x/value\",\"span\":[4,9,4,33]},\"docs\":\"mandate explain MDT-E0203\",\"facts\":{\"missing\":[\"b\",\"c\"]}},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Int but got Text.\",\"at\":{\"path\":\"/defs/y/value/fields/b\",\"span\":[5,16,5,21]},\"docs\":\"mandate explain MDT-E0201\"}]}"
+    },
+    {
+      "name": "verified, untrusted and inferred values against what is expected",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Contract A takes 1 argument(s) but got 2.\",\"at\":{\"path\":\"/defs/contracted/body/0/value\",\"span\":[28,11,28,35]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"ship takes 1 argument(s) but got 2.\",\"at\":{\"path\":\"/defs/counted/body/0/value\",\"span\":[26,43,26,53]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Verified<PullRequestDraft, A> but got PullRequestDraft; verify the value against A first.\",\"at\":{\"path\":\"/defs/counted/body/0/value/args/0/value\",\"span\":[26,48,26,49]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0212\",\"severity\":\"error\",\"message\":\"Expected a value verified against A, but this one was verified against an unnamed contract.\",\"at\":{\"path\":\"/defs/go/body/2/value/fields/d\",\"span\":[18,23,18,24]},\"docs\":\"mandate explain MDT-E0212\"},{\"code\":\"MDT-E0212\",\"severity\":\"error\",\"message\":\"Expected a value verified against A, but this one was verified against B.\",\"at\":{\"path\":\"/defs/go/body/3/value/args/0/value\",\"span\":[19,8,19,9]},\"docs\":\"mandate explain MDT-E0212\"},{\"code\":\"MDT-E0210\",\"severity\":\"error\",\"message\":\"Expected Verified<PullRequestDraft, A> but got Inferred<PullRequestDraft>; verify the value against A first.\",\"at\":{\"path\":\"/defs/guessed/body/0/value/args/0/value\",\"span\":[22,47,22,89]},\"docs\":\"mandate explain MDT-E0210\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Int but got Dec.\",\"at\":{\"path\":\"/defs/narrowed/body/0/value\",\"span\":[25,30,25,31]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Verified<PullRequestDraft, A> but got PullRequestDraft; verify the value against A first.\",\"at\":{\"path\":\"/defs/plain/body/0/value/args/0/value\",\"span\":[21,46,21,47]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0211\",\"severity\":\"error\",\"message\":\"Untrusted content of type Untrusted<Text> cannot be used where Text is expected; verify it first.\",\"at\":{\"path\":\"/defs/read/body/0/value\",\"span\":[12,3,12,18]},\"docs\":\"mandate explain MDT-E0211\"},{\"code\":\"MDT-E0211\",\"severity\":\"error\",\"message\":\"Untrusted content of type Untrusted<Text> cannot be used where Inferred<Text> is expected; verify it first.\",\"at\":{\"path\":\"/defs/untrusted/body/0/value\",\"span\":[23,54,23,55]},\"docs\":\"mandate explain MDT-E0211\"}]}"
+    },
+    {
+      "name": "contracts: review alone, static criteria, require and a deadline",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Bool but got Int.\",\"at\":{\"path\":\"/defs/OnlyReview/require/1\",\"span\":[6,11,6,12]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"OnlyReview.both: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/OnlyReview/accept/both/by/all/0/static\",\"span\":[8,47,8,51]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Duration but got Text.\",\"at\":{\"path\":\"/defs/OnlyReview/accept/late/by/call/args/1/value\",\"span\":[10,74,10,84]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0603\",\"severity\":\"error\",\"message\":\"OnlyReview.looked is satisfied only by review(\u2026). A second model agreeing is not evidence; pair it with a static check, a test or a human (\u00a710.2).\",\"at\":{\"path\":\"/defs/OnlyReview/accept/looked/by\",\"span\":[7,37,7,70]},\"docs\":\"mandate explain MDT-E0603\"},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"OnlyReview.zeta: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/OnlyReview/invariant/zeta/by/static\",\"span\":[11,37,11,43]},\"docs\":\"mandate explain MDT-W0601\"}]}"
+    },
+    {
+      "name": "switches on decisions, decision outcomes, model output and enums",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Text but got Int.\",\"at\":{\"path\":\"/defs/area/body/0/value\",\"span\":[51,3,54,4]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-W0232\",\"severity\":\"warning\",\"message\":\"Bare has no out-of-scope option (Other, Irrelevant, OutOfScope); the model will force every input into a listed option (D8).\",\"at\":{\"path\":\"/defs/bare/body/0/value/type\",\"span\":[11,9,11,21]},\"docs\":\"mandate explain MDT-W0232\"},{\"code\":\"MDT-E0210\",\"severity\":\"error\",\"message\":\"Model output of type Inferred<Kind> cannot steer control flow unverified; verify it or use a decision policy (R1, D1).\",\"at\":{\"path\":\"/defs/guessed/body/1/value/on\",\"span\":[34,10,34,11]},\"docs\":\"mandate explain MDT-E0210\"},{\"code\":\"MDT-E0230\",\"severity\":\"error\",\"message\":\"A switch on a decision outcome must handle Uncertain (D2).\",\"at\":{\"path\":\"/defs/partial/body/1/value\",\"span\":[21,3,23,4]},\"docs\":\"mandate explain MDT-E0230\",\"facts\":{\"missing\":[\"Uncertain\"]}},{\"code\":\"MDT-E0230\",\"severity\":\"error\",\"message\":\"Switch does not handle Confident(Refund), Confident(Question), Confident(Other).\",\"at\":{\"path\":\"/defs/partial/body/1/value\",\"span\":[21,3,23,4]},\"docs\":\"mandate explain MDT-E0230\",\"facts\":{\"missing\":[\"Confident(Refund)\",\"Confident(Question)\",\"Confident(Other)\"]}},{\"code\":\"MDT-E0230\",\"severity\":\"error\",\"message\":\"Switch does not handle Complaint, Other.\",\"at\":{\"path\":\"/defs/plain/body/0/value\",\"span\":[39,3,42,4]},\"docs\":\"mandate explain MDT-E0230\",\"facts\":{\"missing\":[\"Complaint\",\"Other\"]}},{\"code\":\"MDT-E0231\",\"severity\":\"error\",\"message\":\"Switch on a Decision only after a decision policy (threshold, top_margin, abstain_if) turns it into Confident(\u2026) | Uncertain (D2).\",\"at\":{\"path\":\"/defs/raw/body/1/value/on\",\"span\":[15,10,15,11]},\"docs\":\"mandate explain MDT-E0231\"}]}"
+    },
+    {
+      "name": "a Choice of 256 options",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0233\",\"severity\":\"error\",\"message\":\"A Choice may have at most 255 options; Many has 256.\",\"at\":{\"path\":\"/defs/pick/body/0/value/type\",\"span\":[7,9,7,21]},\"docs\":\"mandate explain MDT-E0233\"},{\"code\":\"MDT-W0232\",\"severity\":\"warning\",\"message\":\"Many has no out-of-scope option (Other, Irrelevant, OutOfScope); the model will force every input into a listed option (D8).\",\"at\":{\"path\":\"/defs/pick/body/0/value/type\",\"span\":[7,9,7,21]},\"docs\":\"mandate explain MDT-W0232\"}]}"
+    },
+    {
+      "name": "peek, templates, prompts, unary, binary and try",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0215\",\"severity\":\"error\",\"message\":\"Untrusted content cannot appear in the instruction part of a prompt; pass it as data with quote(\u2026) (R5, \u00a75.4).\",\"at\":{\"path\":\"/defs/asked/body/2/value/from/parts/1/expr\",\"span\":[20,16,20,19]},\"docs\":\"mandate explain MDT-E0215\",\"facts\":{\"level\":\"untrusted\"}},{\"code\":\"MDT-E0215\",\"severity\":\"error\",\"message\":\"Model output cannot appear in the instruction part of a prompt; pass it as data with quote(\u2026) (R5, \u00a75.4).\",\"at\":{\"path\":\"/defs/asked/body/2/value/from/parts/3/expr\",\"span\":[20,26,20,27]},\"docs\":\"mandate explain MDT-E0215\",\"facts\":{\"level\":\"inferred\"}},{\"code\":\"MDT-E0210\",\"severity\":\"error\",\"message\":\"Model output of type Inferred<Bool> cannot be used where Bool is expected; verify it first.\",\"at\":{\"path\":\"/defs/compared/body/0/value\",\"span\":[12,43,12,58]},\"docs\":\"mandate explain MDT-E0210\"},{\"code\":\"MDT-W0207\",\"severity\":\"warning\",\"message\":\"peek(\u2026) reads model output as a plain value; use it only for read-only, effect-free inspection (R7).\",\"at\":{\"path\":\"/defs/look/body/0/value\",\"span\":[8,3,8,17]},\"docs\":\"mandate explain MDT-W0207\"},{\"code\":\"MDT-E0210\",\"severity\":\"error\",\"message\":\"Model output of type Inferred<Bool> cannot be used where Bool is expected; verify it first.\",\"at\":{\"path\":\"/defs/negated/body/0/value\",\"span\":[10,42,10,54]},\"docs\":\"mandate explain MDT-E0210\"},{\"code\":\"MDT-E0210\",\"severity\":\"error\",\"message\":\"Model output of type Inferred<Int> cannot be used where Int is expected; verify it first.\",\"at\":{\"path\":\"/defs/summed/body/0/value\",\"span\":[11,40,11,52]},\"docs\":\"mandate explain MDT-E0210\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Int but got Text.\",\"at\":{\"path\":\"/defs/told/body/0/value\",\"span\":[15,38,15,54]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0210\",\"severity\":\"error\",\"message\":\"Model output of type Inferred<Text> cannot be used where Int is expected; verify it first.\",\"at\":{\"path\":\"/defs/unwrapped2/body/0/value\",\"span\":[14,51,14,53]},\"docs\":\"mandate explain MDT-E0210\"}]}"
+    },
+    {
+      "name": "texts where a Path is expected",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0204\",\"severity\":\"error\",\"message\":\"\\\"src/../x\\\" is not a Path: it has a `.` or `..` segment. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.\",\"at\":{\"path\":\"/defs/a/value/args/0/value\",\"span\":[4,14,4,24]},\"docs\":\"mandate explain MDT-E0204\"},{\"code\":\"MDT-E0204\",\"severity\":\"error\",\"message\":\"\\\"/abs\\\" is not a Path: it is absolute. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.\",\"at\":{\"path\":\"/defs/c/value/args/0/value\",\"span\":[6,14,6,20]},\"docs\":\"mandate explain MDT-E0204\"},{\"code\":\"MDT-E0204\",\"severity\":\"error\",\"message\":\"\\\"b/../c\\\" is not a Path: it has a `.` or `..` segment. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.\",\"at\":{\"path\":\"/defs/d/value/args/0/value\",\"span\":[7,14,7,29]},\"docs\":\"mandate explain MDT-E0204\"},{\"code\":\"MDT-E0204\",\"severity\":\"error\",\"message\":\"\\\"b/../c\\\" is not a Path: it has a `.` or `..` segment. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.\",\"at\":{\"path\":\"/defs/e/value/args/0/value\",\"span\":[8,14,8,29]},\"docs\":\"mandate explain MDT-E0204\"},{\"code\":\"MDT-E0204\",\"severity\":\"error\",\"message\":\"\\\"x/./y\\\" is not a Path: it has a `.` or `..` segment. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.\",\"at\":{\"path\":\"/defs/g/value/args/0/value\",\"span\":[11,14,11,15]},\"docs\":\"mandate explain MDT-E0204\"}]}"
+    },
+    {
+      "name": "a protected type built or inferred",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0213\",\"severity\":\"error\",\"message\":\"Authorization cannot be constructed by a program; only the runtime produces it (\u00a75.2, S08).\",\"at\":{\"path\":\"/defs/forge/body/0/value/type\",\"span\":[5,11,5,37]},\"docs\":\"mandate explain MDT-E0213\"},{\"code\":\"MDT-E0213\",\"severity\":\"error\",\"message\":\"A model cannot produce Receipt; infer only yields Inferred values (\u00a75.2, S08).\",\"at\":{\"path\":\"/defs/forge/body/1/value/type\",\"span\":[6,17,6,36]},\"docs\":\"mandate explain MDT-E0213\",\"facts\":{\"type\":\"Receipt\"}}]}"
+    },
+    {
+      "name": "budgets: currencies, sums past 2^53, time and a loop",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0504\",\"severity\":\"error\",\"message\":\"W's budget is in USD but delegates spend EUR; currencies are never converted implicitly (\u00a75.3).\",\"at\":{\"path\":\"/defs/W/budget/spend\",\"span\":[17,3,17,47]},\"docs\":\"mandate explain MDT-E0504\",\"facts\":{\"currencies\":[\"EUR\",\"USD\"]}},{\"code\":\"MDT-E0501\",\"severity\":\"error\",\"message\":\"The budgets W hands out exceed its own budget (spend, tokens, time_ms).\",\"at\":{\"path\":\"/defs/W/budget\",\"span\":[17,3,17,47]},\"docs\":\"mandate explain MDT-E0501\",\"facts\":{\"spend\":{\"limit\":\"5 USD\",\"declared_by_children\":\"7.5 USD\"},\"tokens\":{\"limit\":1,\"declared_by_children\":45035996273714960},\"time_ms\":{\"limit\":60000,\"declared_by_children\":3000000},\"breakdown\":[{\"from\":\"A.s\",\"at\":\"/defs/W/body/0/value\",\"budget\":{\"spend\":\"2 EUR\",\"tokens\":10000}},{\"from\":\"B.s\",\"at\":\"/defs/W/body/1/value\",\"budget\":{\"spend\":\"1.5 USD\",\"tokens\":9007199254740991,\"time_ms\":600000}},{\"from\":\"B.s\",\"at\":\"/defs/W/body/2/value\",\"budget\":{\"spend\":\"1.5 USD\",\"tokens\":9007199254740991,\"time_ms\":600000}},{\"from\":\"B.s \u00d73\",\"at\":\"/defs/W/body/3/body/0/value\",\"budget\":{\"spend\":\"1.5 USD\",\"tokens\":9007199254740991,\"time_ms\":600000}}]}}]}"
+    },
+    {
+      "name": "an envelope's budget with steps and agents",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0501\",\"severity\":\"error\",\"message\":\"The budgets E hands out exceed its own budget (tokens, steps, agents).\",\"at\":{\"path\":\"/defs/E/envelope/budget\",\"span\":[15,5,15,47]},\"docs\":\"mandate explain MDT-E0501\",\"facts\":{\"tokens\":{\"limit\":2000,\"declared_by_children\":7000},\"steps\":{\"limit\":5,\"declared_by_children\":21},\"agents\":{\"limit\":2,\"declared_by_children\":7},\"breakdown\":[{\"from\":\"A.s \u00d73\",\"at\":\"/defs/E/body/0/value\",\"budget\":{\"tokens\":1000,\"steps\":3,\"agents\":1}},{\"from\":\"A.s \u00d74\",\"at\":\"/defs/E/body/1/value/body/0/value\",\"budget\":{\"tokens\":1000,\"steps\":3,\"agents\":1}}]}}]}"
+    },
+    {
+      "name": "a sub-program's own budget under its parent's envelope",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0501\",\"severity\":\"error\",\"message\":\"The budgets S hands out exceed its own budget (steps).\",\"at\":{\"path\":\"/defs/S/budget\",\"span\":[12,3,12,22]},\"docs\":\"mandate explain MDT-E0501\",\"facts\":{\"steps\":{\"limit\":2,\"declared_by_children\":3},\"breakdown\":[{\"from\":\"A.s\",\"at\":\"/defs/S/body/0/value\",\"budget\":{\"steps\":3,\"agents\":1}}]}}]}"
+    },
+    {
+      "name": "the same workflow without a claim",
+      "result": "{\"ok\":true,\"diagnostics\":[]}"
+    },
+    {
+      "name": "expanded nodes: a loop, nested huge loops, calls in a loop and in an if",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0105\",\"severity\":\"error\",\"message\":\"Big expands to 1202 static nodes; the 0.1 limit is 1000.\",\"at\":{\"path\":\"/defs/Big\",\"span\":[15,1,22,2]},\"docs\":\"mandate explain MDT-E0105\",\"facts\":{\"nodes\":1202,\"limit\":1000}},{\"code\":\"MDT-E0105\",\"severity\":\"error\",\"message\":\"Calls expands to 1616 static nodes; the 0.1 limit is 1000.\",\"at\":{\"path\":\"/defs/Calls\",\"span\":[33,1,46,2]},\"docs\":\"mandate explain MDT-E0105\",\"facts\":{\"nodes\":1616,\"limit\":1000}},{\"code\":\"MDT-E0105\",\"severity\":\"error\",\"message\":\"Huge expands to 1.6225927682921335e+32 static nodes; the 0.1 limit is 1000.\",\"at\":{\"path\":\"/defs/Huge\",\"span\":[23,1,32,2]},\"docs\":\"mandate explain MDT-E0105\",\"facts\":{\"nodes\":1.6225927682921335e+32,\"limit\":1000}}]}"
+    },
+    {
+      "name": "recursion and loops without a bound",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0502\",\"severity\":\"error\",\"message\":\"Recursive call cycle a \u2192 b \u2192 a; static node and budget bounds need an acyclic call graph.\",\"at\":{\"path\":\"/defs/a\",\"span\":[9,1,9,29]},\"docs\":\"mandate explain MDT-E0502\",\"facts\":{\"cycle\":[\"a\",\"b\"]}},{\"code\":\"MDT-E0502\",\"severity\":\"error\",\"message\":\"Recursive call cycle c \u2192 c; static node and budget bounds need an acyclic call graph.\",\"at\":{\"path\":\"/defs/c\",\"span\":[11,1,11,29]},\"docs\":\"mandate explain MDT-E0502\",\"facts\":{\"cycle\":[\"c\"]}},{\"code\":\"MDT-E0502\",\"severity\":\"error\",\"message\":\"Recursive call cycle d \u2192 e \u2192 d; static node and budget bounds need an acyclic call graph.\",\"at\":{\"path\":\"/defs/d\",\"span\":[12,1,12,36]},\"docs\":\"mandate explain MDT-E0502\",\"facts\":{\"cycle\":[\"d\",\"e\"]}},{\"code\":\"MDT-E0502\",\"severity\":\"error\",\"message\":\"A loop needs 'max_iter' or 'until' (\u00a78.6).\",\"at\":{\"path\":\"/defs/W/body/1\",\"span\":[18,3,20,4]},\"docs\":\"mandate explain MDT-E0502\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Bool but got Int.\",\"at\":{\"path\":\"/defs/W/body/3/until\",\"span\":[24,14,24,15]},\"docs\":\"mandate explain MDT-E0201\"}]}"
+    },
+    {
+      "name": "a constant's diagnostics where it is first needed",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Int but got Text.\",\"at\":{\"path\":\"/defs/c/value\",\"span\":[4,14,4,17]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Int but got Text.\",\"at\":{\"path\":\"/defs/B/body/0/value\",\"span\":[3,17,3,20]},\"docs\":\"mandate explain MDT-E0201\"}]}"
+    },
+    {
+      "name": "a function's diagnostics where it is first called",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0502\",\"severity\":\"error\",\"message\":\"Recursive call cycle r1 \u2192 r2 \u2192 r1; static node and budget bounds need an acyclic call graph.\",\"at\":{\"path\":\"/defs/r1\",\"span\":[5,1,5,24]},\"docs\":\"mandate explain MDT-E0502\",\"facts\":{\"cycle\":[\"r1\",\"r2\"]}},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Int but got Text.\",\"at\":{\"path\":\"/defs/z/body/0/value\",\"span\":[4,17,4,20]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Int but got Text.\",\"at\":{\"path\":\"/defs/M/body/0/value\",\"span\":[3,17,3,20]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Text but got Int.\",\"at\":{\"path\":\"/defs/r2/body/0/value\",\"span\":[6,19,6,23]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Int but got Text.\",\"at\":{\"path\":\"/defs/r1/body/0/value\",\"span\":[5,18,5,22]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0401\",\"severity\":\"error\",\"message\":\"Public function 'shown' must declare its effects with '! { \u2026 }' (\u00a76.2).\",\"at\":{\"path\":\"/defs/shown\",\"span\":[7,1,7,28]},\"docs\":\"mandate explain MDT-E0401\"}]}"
+    },
+    {
+      "name": "definitions, criteria, fields and branches in canonical order",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"T has no field 'two'.\",\"at\":{\"path\":\"/defs/Alpha/body/0/value\",\"span\":[12,26,12,31]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"type\":\"T\",\"fields\":[\"a\"]}},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"C.Alpha: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/C/accept/Alpha/by/static\",\"span\":[16,30,16,36]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"C._mid: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/C/accept/_mid/by/static\",\"span\":[17,29,17,35]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-W0601\",\"severity\":\"warning\",\"message\":\"C.zeta: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).\",\"at\":{\"path\":\"/defs/C/accept/zeta/by/static\",\"span\":[15,29,15,35]},\"docs\":\"mandate explain MDT-W0601\"},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"T has no field 'five'.\",\"at\":{\"path\":\"/defs/W/body/1/branches/Pp\",\"span\":[26,10,26,16]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"type\":\"T\",\"fields\":[\"a\"]}},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"T has no field 'six'.\",\"at\":{\"path\":\"/defs/W/body/1/branches/_r\",\"span\":[27,10,27,15]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"type\":\"T\",\"fields\":[\"a\"]}},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"T has no field 'four'.\",\"at\":{\"path\":\"/defs/W/body/1/branches/qq\",\"span\":[25,10,25,16]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"type\":\"T\",\"fields\":[\"a\"]}},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"T has no field 'three'.\",\"at\":{\"path\":\"/defs/_mid/body/0/value\",\"span\":[13,25,13,32]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"type\":\"T\",\"fields\":[\"a\"]}},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"T has no field 'Xx'.\",\"at\":{\"path\":\"/defs/rec/body/0/value/fields/Xx\",\"span\":[19,36,19,37]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"fields\":[\"a\"]}},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"T has no field '_q'.\",\"at\":{\"path\":\"/defs/rec/body/0/value/fields/_q\",\"span\":[19,43,19,44]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"fields\":[\"a\"]}},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"T has no field 'yy'.\",\"at\":{\"path\":\"/defs/rec/body/0/value/fields/yy\",\"span\":[19,29,19,30]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"fields\":[\"a\"]}},{\"code\":\"MDT-E0203\",\"severity\":\"error\",\"message\":\"T is missing field(s) a.\",\"at\":{\"path\":\"/defs/rec/body/0/value\",\"span\":[19,21,19,46]},\"docs\":\"mandate explain MDT-E0203\",\"facts\":{\"missing\":[\"a\"]}},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"T has no field 'one'.\",\"at\":{\"path\":\"/defs/zed/body/0/value\",\"span\":[11,24,11,29]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"type\":\"T\",\"fields\":[\"a\"]}}]}"
+    },
+    {
+      "name": "steps that wait for a person inside maps",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E1708\",\"severity\":\"error\",\"message\":\"The critical effect git.comment runs inside a map's body, where each item's would be authorized on its own. Run it after the map, or land a batch with a change set (spec/envelope.md \\\"map\\\").\",\"at\":{\"path\":\"/defs/Note/body/0/value/body/0/value\",\"span\":[47,5,47,55]},\"docs\":\"mandate explain MDT-E1708\",\"facts\":{\"map\":\"/defs/Note/body/0/value\",\"kind\":\"critical_effect\",\"what\":\"git.comment\"}},{\"code\":\"MDT-E1708\",\"severity\":\"error\",\"message\":\"outer holds 'pause', which waits for a person inside a map's body, once for each item. Ask once about the list, after the map (spec/envelope.md \\\"map\\\").\",\"at\":{\"path\":\"/defs/Run/body/1/value/body/2/value\",\"span\":[33,13,33,26]},\"docs\":\"mandate explain MDT-E1708\",\"facts\":{\"map\":\"/defs/Run/body/1/value\",\"kind\":\"person\",\"what\":\"pause\",\"via\":\"outer\"}},{\"code\":\"MDT-E1708\",\"severity\":\"error\",\"message\":\"'verify against Approved' waits for a person inside a map's body, once for each item. Ask once about the list, after the map (spec/envelope.md \\\"map\\\").\",\"at\":{\"path\":\"/defs/Run/body/1/value/body/3/value\",\"span\":[34,13,34,51]},\"docs\":\"mandate explain MDT-E1708\",\"facts\":{\"map\":\"/defs/Run/body/1/value\",\"kind\":\"person\",\"what\":\"verify against Approved\"}},{\"code\":\"MDT-E1708\",\"severity\":\"error\",\"message\":\"'escalate' waits for a person inside a map's body, once for each item. Ask once about the list, after the map (spec/envelope.md \\\"map\\\").\",\"at\":{\"path\":\"/defs/Run/body/1/value/body/4/value\",\"span\":[35,13,35,53]},\"docs\":\"mandate explain MDT-E1708\",\"facts\":{\"map\":\"/defs/Run/body/1/value\",\"kind\":\"person\",\"what\":\"escalate\"}},{\"code\":\"MDT-E1708\",\"severity\":\"error\",\"message\":\"'human step' waits for a person inside a map's body, once for each item. Ask once about the list, after the map (spec/envelope.md \\\"map\\\").\",\"at\":{\"path\":\"/defs/Run/body/1/value/body/5/value/body/0/value\",\"span\":[37,7,37,42]},\"docs\":\"mandate explain MDT-E1708\",\"facts\":{\"map\":\"/defs/Run/body/1/value/body/5/value\",\"kind\":\"person\",\"what\":\"human step\"}},{\"code\":\"MDT-E1708\",\"severity\":\"error\",\"message\":\"'pause' waits for a person inside a map's body, once for each item. Ask once about the list, after the map (spec/envelope.md \\\"map\\\").\",\"at\":{\"path\":\"/defs/Run/body/1/value/body/6/value\",\"span\":[39,5,39,10]},\"docs\":\"mandate explain MDT-E1708\",\"facts\":{\"map\":\"/defs/Run/body/1/value\",\"kind\":\"person\",\"what\":\"pause\"}},{\"code\":\"MDT-E1708\",\"severity\":\"error\",\"message\":\"'human step' waits for a person inside a map's body, once for each item. Ask once about the list, after the map (spec/envelope.md \\\"map\\\").\",\"at\":{\"path\":\"/defs/Run/body/1/value/body/0/value\",\"span\":[31,13,31,44]},\"docs\":\"mandate explain MDT-E1708\",\"facts\":{\"map\":\"/defs/Run/body/1/value\",\"kind\":\"person\",\"what\":\"human step\"}},{\"code\":\"MDT-E1708\",\"severity\":\"error\",\"message\":\"'human step' waits for a person inside a map's body, once for each item. Ask once about the list, after the map (spec/envelope.md \\\"map\\\").\",\"at\":{\"path\":\"/defs/Run/body/1/value/body/1/value\",\"span\":[32,13,32,24]},\"docs\":\"mandate explain MDT-E1708\",\"facts\":{\"map\":\"/defs/Run/body/1/value\",\"kind\":\"person\",\"what\":\"human step\"}}]}"
+    },
+    {
+      "name": "spawn and UnknownOutcome in 0.1",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0711\",\"severity\":\"error\",\"message\":\"Dynamic spawn is not available in 0.1; use delegate, par, or a bounded map (\u00a79.1, V05).\",\"at\":{\"path\":\"/defs/W/body/1/value\",\"span\":[13,11,13,29]},\"docs\":\"mandate explain MDT-E0711\"},{\"code\":\"MDT-E0712\",\"severity\":\"error\",\"message\":\"UnknownOutcome can only be handled with reconcile; restarting could repeat an external effect (\u00a78.7, V06).\",\"at\":{\"path\":\"/defs/W/body/2/then\",\"span\":[14,31,14,38]},\"docs\":\"mandate explain MDT-E0712\"}]}"
+    },
+    {
+      "name": "spawn in 0.4",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0711\",\"severity\":\"error\",\"message\":\"There is no 'spawn'. An agent plans work while a run is going with 'plan Agent.skill(\u2026) within envelope', in a workflow that has an envelope; use delegate, par or a bounded map for work known beforehand (spec/envelope.md \\\"plan\\\", V05).\",\"at\":{\"path\":\"/defs/W/body/1/value\",\"span\":[14,11,14,23]},\"docs\":\"mandate explain MDT-E0711\"}]}"
+    },
+    {
+      "name": "a workflow's ensures, handlers and skill bodies",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"R has no field 'missing'.\",\"at\":{\"path\":\"/defs/Local/skills/twice/body/0/value\",\"span\":[9,5,9,14]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"type\":\"R\",\"fields\":[\"n\"]}},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Text but got Int.\",\"at\":{\"path\":\"/defs/Local/skills/wrong/body/0/value\",\"span\":[12,5,12,8]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"R has no field 'nope'.\",\"at\":{\"path\":\"/defs/W/ensures/right\",\"span\":[17,21,17,27]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"type\":\"R\",\"fields\":[\"n\"]}},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"R has no field 'gone'.\",\"at\":{\"path\":\"/defs/W/body/1/value\",\"span\":[20,3,20,9]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"type\":\"R\",\"fields\":[\"n\"]}},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"R has no field 'away'.\",\"at\":{\"path\":\"/defs/W/on/0/then/then/args/0/value/parts/1/expr\",\"span\":[22,66,22,72]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"type\":\"R\",\"fields\":[\"n\"]}}]}"
+    },
+    {
+      "name": "an approval in a block, before an irreversible effect",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Verified<?> but got PullRequestDraft; verify the value first.\",\"at\":{\"path\":\"/defs/Before/body/1/value/args/0/value\",\"span\":[19,20,19,21]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Verified<?> but got PullRequestDraft; verify the value first.\",\"at\":{\"path\":\"/defs/Blocked/body/1/value/args/0/value\",\"span\":[12,20,12,21]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0405\",\"severity\":\"error\",\"message\":\"Irreversible effect git.merge runs without a prior human.approve or a value verified by a contract that requires one (\u00a76.3).\",\"at\":{\"path\":\"/defs/Blocked/body/1/value\",\"span\":[12,3,12,41]},\"docs\":\"mandate explain MDT-E0405\"}]}"
+    },
+    {
+      "name": "a field named __proto__",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"P has no field '__proto__'.\",\"at\":{\"path\":\"/defs/f/body/0/value\",\"span\":[65,20,72,12]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"type\":\"P\",\"fields\":[\"a\"]}},{\"code\":\"MDT-E0202\",\"severity\":\"error\",\"message\":\"P has no field '__proto__'.\",\"at\":{\"path\":\"/defs/y/value/fields/__proto__\",\"span\":[42,24,45,12]},\"docs\":\"mandate explain MDT-E0202\",\"facts\":{\"fields\":[\"a\"]}}]}"
+    },
+    {
+      "name": "a type named toString where another is expected",
+      "throws": "TypeError: (NUMERIC_WIDENING[ua.name] ?? []).includes is not a function"
+    },
+    {
+      "name": "aliases, generics and refinements",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Int but got Text.\",\"at\":{\"path\":\"/defs/boxed/body/0/value\",\"span\":[8,33,8,36]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Text but got Int.\",\"at\":{\"path\":\"/defs/pair/body/0/value\",\"span\":[9,28,9,33]},\"docs\":\"mandate explain MDT-E0201\"},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Int but got Short.\",\"at\":{\"path\":\"/defs/short/body/0/value\",\"span\":[7,29,7,30]},\"docs\":\"mandate explain MDT-E0201\"}]}"
+    },
+    {
+      "name": "imported module types",
+      "result": "{\"ok\":false,\"diagnostics\":[{\"code\":\"MDT-E0230\",\"severity\":\"error\",\"message\":\"Switch does not handle Feature.\",\"at\":{\"path\":\"/defs/kinds/body/0/value\",\"span\":[5,3,7,4]},\"docs\":\"mandate explain MDT-E0230\",\"facts\":{\"missing\":[\"Feature\"]}},{\"code\":\"MDT-E0201\",\"severity\":\"error\",\"message\":\"Expected Int but got Text.\",\"at\":{\"path\":\"/defs/title/body/0/value\",\"span\":[3,29,3,36]},\"docs\":\"mandate explain MDT-E0201\"}]}"
+    }
+  ],
+  "deep": [
+    {
+      "name": "field:64:54",
+      "ok": true,
+      "diagnostics": 0,
+      "digest": "sha256:8ad207a6930c944facdf02cfbf3de8703faf20353bec213d009e0529783a0cb0"
+    },
+    {
+      "name": "not:64:54",
+      "ok": false,
+      "diagnostics": 64,
+      "digest": "sha256:029d6a46031a25f6ef69c01a1c1ce5342d1bef19849f4e568e9101f5f3fbc24a"
+    },
+    {
+      "name": "list:64:27",
+      "ok": false,
+      "diagnostics": 64,
+      "digest": "sha256:da82d5e92a4fb68569ddf36e7540ad9c1adc1a6572b2fc93f4490fd2e8b2d966"
+    },
+    {
+      "name": "paren:64:54",
+      "ok": true,
+      "diagnostics": 0,
+      "digest": "sha256:8ad207a6930c944facdf02cfbf3de8703faf20353bec213d009e0529783a0cb0"
+    },
+    {
+      "name": "const:64:59",
+      "ok": true,
+      "diagnostics": 0,
+      "digest": "sha256:8ad207a6930c944facdf02cfbf3de8703faf20353bec213d009e0529783a0cb0"
+    },
+    {
+      "name": "types:64:28",
+      "ok": false,
+      "diagnostics": 1,
+      "digest": "sha256:f00badfa91a4575180cca110f4731cdf8c6e2ae6e746d63e61786c3e59d310b1"
+    },
+    {
+      "name": "if:61:27",
+      "ok": true,
+      "diagnostics": 0,
+      "digest": "sha256:8ad207a6930c944facdf02cfbf3de8703faf20353bec213d009e0529783a0cb0"
+    },
+    {
+      "name": "record:61:27",
+      "ok": false,
+      "diagnostics": 1647,
+      "digest": "sha256:65b7ba591949e6adb673941080f9e1d47055d41f16bde835fdd295aa8dda9f12"
+    },
+    {
+      "name": "switch:61:18",
+      "ok": true,
+      "diagnostics": 0,
+      "digest": "sha256:8ad207a6930c944facdf02cfbf3de8703faf20353bec213d009e0529783a0cb0"
+    },
+    {
+      "name": "delegate:61:18",
+      "ok": false,
+      "diagnostics": 61,
+      "digest": "sha256:2a9b936452882a3bb371bcdca9c6f3d14d2c802c2e8ba9b11d3d7ba41a3692db"
+    },
+    {
+      "name": "map:61:18",
+      "ok": false,
+      "diagnostics": 61,
+      "digest": "sha256:6ff4a1cf8c4f736e5541e34a5cb00c58ee13161fe55990de19789fbbc8d190e2"
+    }
+  ],
+  "costs": [
+    {
+      "name": "budgets: currencies, sums past 2^53, time and a loop",
+      "workflow": "W",
+      "result": "{\"spend\":{\"EUR\":2000000,\"USD\":7500000},\"tokens\":45035996273714960,\"time\":3000000,\"steps\":25,\"agents\":6,\"parts\":[{\"from\":\"A.s\",\"at\":\"/defs/W/body/0/value\",\"budget\":{\"spend\":\"2 EUR\",\"tokens\":10000}},{\"from\":\"B.s\",\"at\":\"/defs/W/body/1/value\",\"budget\":{\"spend\":\"1.5 USD\",\"tokens\":9007199254740991,\"time_ms\":600000}},{\"from\":\"B.s\",\"at\":\"/defs/W/body/2/value\",\"budget\":{\"spend\":\"1.5 USD\",\"tokens\":9007199254740991,\"time_ms\":600000}},{\"from\":\"B.s \u00d73\",\"at\":\"/defs/W/body/3/body/0/value\",\"budget\":{\"spend\":\"1.5 USD\",\"tokens\":9007199254740991,\"time_ms\":600000}}]}"
+    },
+    {
+      "name": "budgets: currencies, sums past 2^53, time and a loop",
+      "workflow": "Fits",
+      "result": "{\"spend\":{\"USD\":3000000},\"tokens\":18014398509481982,\"time\":1200000,\"steps\":8,\"agents\":2,\"parts\":[{\"from\":\"B.s\",\"at\":\"/defs/Fits/body/0/value\",\"budget\":{\"spend\":\"1.5 USD\",\"tokens\":9007199254740991,\"time_ms\":600000}},{\"from\":\"B.s\",\"at\":\"/defs/Fits/body/1/then/0/value\",\"budget\":{\"spend\":\"1.5 USD\",\"tokens\":9007199254740991,\"time_ms\":600000}},{\"from\":\"B.s\",\"at\":\"/defs/Fits/body/1/else/0/value\",\"budget\":{\"spend\":\"1.5 USD\",\"tokens\":9007199254740991,\"time_ms\":600000}}]}"
+    },
+    {
+      "name": "an envelope's budget with steps and agents",
+      "workflow": "E",
+      "result": "{\"spend\":{},\"tokens\":7000,\"time\":0,\"steps\":21,\"agents\":7,\"parts\":[{\"from\":\"A.s \u00d73\",\"at\":\"/defs/E/body/0/value\",\"budget\":{\"tokens\":1000,\"steps\":3,\"agents\":1}},{\"from\":\"A.s \u00d74\",\"at\":\"/defs/E/body/1/value/body/0/value\",\"budget\":{\"tokens\":1000,\"steps\":3,\"agents\":1}}]}"
+    },
+    {
+      "name": "a sub-program's own budget under its parent's envelope",
+      "workflow": "S",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":3,\"agents\":1,\"parts\":[{\"from\":\"A.s\",\"at\":\"/defs/S/body/0/value\",\"budget\":{}}]}"
+    },
+    {
+      "name": "the same workflow without a claim",
+      "workflow": "S",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":3,\"agents\":1,\"parts\":[{\"from\":\"A.s\",\"at\":\"/defs/S/body/0/value\",\"budget\":{}}]}"
+    },
+    {
+      "name": "expanded nodes: a loop, nested huge loops, calls in a loop and in an if",
+      "workflow": "Big",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":1800,\"agents\":600,\"parts\":[{\"from\":\"A.s \u00d7600\",\"at\":\"/defs/Big/body/0/body/0/value\",\"budget\":{}}]}"
+    },
+    {
+      "name": "expanded nodes: a loop, nested huge loops, calls in a loop and in an if",
+      "workflow": "Huge",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":2.4338891524381997e+32,\"agents\":8.112963841460666e+31,\"parts\":[{\"from\":\"A.s \u00d79007199254740991 \u00d79007199254740991\",\"at\":\"/defs/Huge/body/0/body/0/body/0/value\",\"budget\":{}}]}"
+    },
+    {
+      "name": "expanded nodes: a loop, nested huge loops, calls in a loop and in an if",
+      "workflow": "Calls",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":1209,\"agents\":403,\"parts\":[{\"from\":\"A.s \u00d7200\",\"at\":\"/defs/Calls/body/0/body/0/value\",\"budget\":{}},{\"from\":\"A.s \u00d7200\",\"at\":\"/defs/Calls/body/0/body/0/value\",\"budget\":{}},{\"from\":\"A.s\",\"at\":\"/defs/Calls/body/1/then/0/value\",\"budget\":{}},{\"from\":\"A.s\",\"at\":\"/defs/Calls/body/1/then/0/value\",\"budget\":{}},{\"from\":\"A.s\",\"at\":\"/defs/Calls/body/1/else/0/value\",\"budget\":{}},{\"from\":\"A.s\",\"at\":\"/defs/Calls/body/2/value\",\"budget\":{}}]}"
+    },
+    {
+      "name": "recursion and loops without a bound",
+      "workflow": "W",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":3,\"agents\":1,\"parts\":[{\"from\":\"A.s\",\"at\":\"/defs/W/body/0/value\",\"budget\":{}}]}"
+    },
+    {
+      "name": "definitions, criteria, fields and branches in canonical order",
+      "workflow": "W",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":3,\"agents\":1,\"parts\":[{\"from\":\"A.s\",\"at\":\"/defs/W/body/0/value\",\"budget\":{}}]}"
+    },
+    {
+      "name": "steps that wait for a person inside maps",
+      "workflow": "Run",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":3,\"agents\":1,\"parts\":[{\"from\":\"A.s\",\"at\":\"/defs/Run/body/0/value\",\"budget\":{}}]}"
+    },
+    {
+      "name": "steps that wait for a person inside maps",
+      "workflow": "Note",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":0,\"agents\":0,\"parts\":[]}"
+    },
+    {
+      "name": "spawn and UnknownOutcome in 0.1",
+      "workflow": "W",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":3,\"agents\":1,\"parts\":[{\"from\":\"A.s\",\"at\":\"/defs/W/body/0/value\",\"budget\":{}}]}"
+    },
+    {
+      "name": "spawn in 0.4",
+      "workflow": "W",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":3,\"agents\":1,\"parts\":[{\"from\":\"A.s\",\"at\":\"/defs/W/body/0/value\",\"budget\":{}}]}"
+    },
+    {
+      "name": "a workflow's ensures, handlers and skill bodies",
+      "workflow": "W",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":3,\"agents\":1,\"parts\":[{\"from\":\"Local.twice\",\"at\":\"/defs/W/body/0/value\",\"budget\":{}}]}"
+    },
+    {
+      "name": "an approval in a block, before an irreversible effect",
+      "workflow": "Blocked",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":0,\"agents\":0,\"parts\":[]}"
+    },
+    {
+      "name": "an approval in a block, before an irreversible effect",
+      "workflow": "Before",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":0,\"agents\":0,\"parts\":[]}"
+    },
+    {
+      "name": "fixtures/fixbug/fixbug.mdt",
+      "workflow": "FixBug",
+      "result": "{\"spend\":{\"USD\":49280000},\"tokens\":7840000,\"time\":3600000,\"steps\":56,\"agents\":5,\"parts\":[{\"from\":\"Explorer.locate\",\"at\":\"/defs/FixBug/body/0/value\",\"budget\":{\"spend\":\"10.56 USD\",\"tokens\":1680000,\"time_ms\":900000}},{\"from\":\"Planner.plan\",\"at\":\"/defs/FixBug/body/1/value\",\"budget\":{\"spend\":\"3.52 USD\",\"tokens\":560000}},{\"from\":\"Implementer.apply\",\"at\":\"/defs/FixBug/body/2/branches/patch\",\"budget\":{\"spend\":\"17.6 USD\",\"tokens\":2800000,\"time_ms\":2700000}},{\"from\":\"TestWriter.regression\",\"at\":\"/defs/FixBug/body/2/branches/tests\",\"budget\":{\"spend\":\"10.56 USD\",\"tokens\":1680000,\"time_ms\":1200000}},{\"from\":\"Reviewer.counterexamples\",\"at\":\"/defs/FixBug/body/3/value\",\"budget\":{\"spend\":\"7.04 USD\",\"tokens\":1120000}}]}"
+    },
+    {
+      "name": "fixtures/envelope/migrate-all.mdt",
+      "workflow": "MigrateAll",
+      "result": "{\"spend\":{\"USD\":85000000},\"tokens\":62000000,\"time\":12000000,\"steps\":1840,\"agents\":151,\"parts\":[{\"from\":\"Migrator.migrate \u00d7150\",\"at\":\"/defs/MigrateAll/body/0/value/body/0/value\",\"budget\":{\"spend\":\"0.5 USD\",\"tokens\":400000,\"time_ms\":1200000,\"steps\":12,\"agents\":1}},{\"from\":\"Lead.finish\",\"at\":\"/defs/MigrateAll/body/1/value\",\"budget\":{\"spend\":\"10 USD\",\"tokens\":2000000,\"steps\":40,\"agents\":1}}]}"
+    },
+    {
+      "name": "fixtures/system/land.mdt",
+      "workflow": "Land",
+      "result": "{\"spend\":{},\"tokens\":0,\"time\":0,\"steps\":0,\"agents\":0,\"parts\":[]}"
+    },
+    {
+      "name": "fixtures/system/incident.mdt",
+      "workflow": "Investigate",
+      "result": "{\"spend\":{\"USD\":2000000},\"tokens\":400000,\"time\":0,\"steps\":6,\"agents\":1,\"parts\":[{\"from\":\"Investigator.analyze\",\"at\":\"/defs/Investigate/body/4/value\",\"budget\":{\"spend\":\"2 USD\",\"tokens\":400000}}]}"
+    }
+  ],
+  "leads": [
+    {
+      "name": "the same workflow without a claim",
+      "result": "{}"
+    },
+    {
+      "name": "fixtures/fixbug/fixbug.mdt",
+      "result": "{}"
+    },
+    {
+      "name": "fixtures/envelope/migrate-all.mdt",
+      "result": "{\"/defs/MigrateAll/body/1/value\":\"public\"}"
+    },
+    {
+      "name": "fixtures/system/land.mdt",
+      "result": "{}"
+    },
+    {
+      "name": "fixtures/system/incident.mdt",
+      "result": "{}"
+    }
+  ],
+  "assignable": [
+    "null",
+    "{\"code\":\"E0201\",\"message\":\"Expected Int but got Dec.\"}",
+    "null",
+    "{\"code\":\"E0201\",\"message\":\"Expected Verified<Text> but got Text; verify the value first.\"}",
+    "{\"code\":\"E0210\",\"message\":\"Expected Verified<Text, C> but got Inferred<Text>; verify the value against C first.\"}",
+    "{\"code\":\"E0211\",\"message\":\"Expected Verified<Text> but got Untrusted<Text>; verify the value first.\"}",
+    "{\"code\":\"E0212\",\"message\":\"Expected a value verified against B, but this one was verified against A.\"}",
+    "{\"code\":\"E0212\",\"message\":\"Expected a value verified against B, but this one was verified against an unnamed contract.\"}",
+    "{\"code\":\"E0212\",\"message\":\"Expected a value verified against B, but this one was verified against an unnamed contract.\"}",
+    "{\"code\":\"E0210\",\"message\":\"Model output of type Inferred<Text> cannot be used where Text is expected; verify it first.\"}",
+    "{\"code\":\"E0211\",\"message\":\"Untrusted content of type Untrusted<Text> cannot be used where Inferred<Text> is expected; verify it first.\"}",
+    "null",
+    "{\"code\":\"E0211\",\"message\":\"Untrusted content of type Inferred<Untrusted<Verified<Text>>> cannot be used where Inferred<Text> is expected; verify it first.\"}",
+    "null",
+    "{\"code\":\"E0201\",\"message\":\"Expected List<Int> but got List<Text>.\"}",
+    "{\"code\":\"E0210\",\"message\":\"Model output of type Inferred<Text> cannot be used where Text is expected; verify it first.\"}",
+    "null",
+    "{\"code\":\"E0204\",\"message\":\"\\\"a/../b\\\" is not a Path: it has a `.` or `..` segment. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.\"}",
+    "null",
+    "{\"code\":\"E0204\",\"message\":\"\\\"a\\\\\\\"b\\\\\\\\c\\\\n\\\\u0001\\\" is not a Path: it contains `\\\\`; use `/`. A Path is relative to the working copy's root, with `/` between segments and no `.` or `..` segment.\"}",
+    "{\"code\":\"E0201\",\"message\":\"Expected Path but got Text.\"}",
+    "null",
+    "{\"code\":\"E0201\",\"message\":\"Expected Text but got D0.\"}",
+    "{\"code\":\"E0201\",\"message\":\"Expected Text but got D1.\"}",
+    "null",
+    "null",
+    "{\"code\":\"E0201\",\"message\":\"Expected { a: Int, b: Text } but got { a: Int }.\"}",
+    "null",
+    "null",
+    "{\"code\":\"E0210\",\"message\":\"Model output of type Inferred<Int> cannot be used where Int is expected; verify it first.\"}",
+    "{\"code\":\"E0201\",\"message\":\"Expected G<Text> but got G<Int>.\"}",
+    "null",
+    "{\"code\":\"E0201\",\"message\":\"Expected {  } but got U.\"}",
+    "null",
+    "{\"code\":\"E0210\",\"message\":\"Model output of type Inferred<?> cannot be used where Text is expected; verify it first.\"}",
+    "{\"code\":\"E0210\",\"message\":\"Model output of type Inferred cannot be used where Text is expected; verify it first.\"}",
+    "null"
+  ],
+  "show": [
+    "?",
+    "Text",
+    "Map<Text, List<?>>",
+    "{  }",
+    "{ b: Int, a: { z: ? } }"
+  ],
+  "micros": [
+    "0 USD",
+    "0.000001 USD",
+    "0.00001 USD",
+    "1.5 USD",
+    "49.28 USD",
+    "-2.-5 USD",
+    "-1.0000-1 EUR",
+    "123.456789 EUR",
+    "9007199254.740992 USD",
+    "9500000000000 USD",
+    "1000000000000000 USD",
+    "1e+21.555072 USD",
+    "0.0000.5 USD",
+    "1.234567.25 USD",
+    "Infinity.000NaN USD",
+    "NaN.000NaN USD"
+  ]
+}

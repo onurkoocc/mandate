@@ -746,18 +746,6 @@ fn the_graph_of_a_workflow_is_the_typescripts() {
 
 // ---- the views of a program ----------------------------------------------------------------------------
 
-/// The inputs on which the Rust views are known to differ from the
-/// TypeScript, with why: the cost of a workflow with an envelope adds the
-/// delegations a run starts (`staticCost` of `check/cost.ts`), which the
-/// static checks are to port (R11). Rust refuses the cost view and the
-/// document of such a program, and gives the rest. An input listed here that
-/// the Rust gives whole fails the test, so the day the cost is ported the list
-/// is emptied.
-const KNOWN_VIEW_DIFFERENCES: &[(&str, &str)] = &[(
-    "views-envelope",
-    "the static cost of a workflow with an envelope (R11)",
-)];
-
 /// The lines of the cost view the expectations hold beside the digests.
 fn cost_calls(v: &mandate_views::CostView) -> Vec<String> {
     v.workflows
@@ -806,7 +794,6 @@ fn the_views_of_a_program_are_the_typescripts() {
     let inputs = d.inputs.get("views").and_then(Value::as_array).unwrap();
     let expected = d.expected.get("views").unwrap();
     let mut problems = Vec::new();
-    let mut known: usize = 0;
     for c in inputs {
         let name = text(c, "name");
         let program = program_of(&d.inputs, c.get("program").unwrap());
@@ -833,41 +820,34 @@ fn the_views_of_a_program_are_the_typescripts() {
         let who: Vec<String> = auth.rows.iter().map(|r| r.who.clone()).collect();
         let want_who = strings(want.get("who"));
 
-        let costed = cost(&program, lock);
+        let view = cost(&program, lock);
         let doc = program_doc(&program, lock, doc_modules);
         let mut rest: Vec<String> = Vec::new();
-        if let Ok(view) = &costed {
-            let (calls, totals) = (cost_calls(view), cost_totals(view));
-            let (want_calls, want_totals) =
-                (strings(want.get("calls")), strings(want.get("totals")));
-            if calls != want_calls {
-                rest.push(format!(
-                    "cost rows: {}",
-                    first_difference(&calls, &want_calls)
-                ));
-            }
-            if totals != want_totals {
-                rest.push(format!(
-                    "cost totals: {}",
-                    first_difference(&totals, &want_totals)
-                ));
-            }
-            check("cost", pretty(&view.to_js()));
-            let views = JsObject::new()
-                .with("architecture", arch.to_js())
-                .with("authority", auth.to_js())
-                .with("cost", view.to_js());
-            check("json", pretty(&JsValue::Object(views)) + "\n");
+        let (calls, totals) = (cost_calls(&view), cost_totals(&view));
+        let (want_calls, want_totals) = (strings(want.get("calls")), strings(want.get("totals")));
+        if calls != want_calls {
+            rest.push(format!(
+                "cost rows: {}",
+                first_difference(&calls, &want_calls)
+            ));
         }
-        if let Ok(doc) = &doc {
-            check("markdown", to_markdown(doc));
-            let html = to_html(doc);
-            check("html", html.clone());
-            if want.get("html_length").and_then(Value::as_i64)
-                != i64::try_from(utf16_len(&html)).ok()
-            {
-                rest.push("html_length".to_owned());
-            }
+        if totals != want_totals {
+            rest.push(format!(
+                "cost totals: {}",
+                first_difference(&totals, &want_totals)
+            ));
+        }
+        check("cost", pretty(&view.to_js()));
+        let views = JsObject::new()
+            .with("architecture", arch.to_js())
+            .with("authority", auth.to_js())
+            .with("cost", view.to_js());
+        check("json", pretty(&JsValue::Object(views)) + "\n");
+        check("markdown", to_markdown(&doc));
+        let html = to_html(&doc);
+        check("html", html.clone());
+        if want.get("html_length").and_then(Value::as_i64) != i64::try_from(utf16_len(&html)).ok() {
+            rest.push("html_length".to_owned());
         }
         if strings(want.get("workflows")) != names {
             rest.push(format!("workflows {names:?}"));
@@ -882,29 +862,9 @@ fn the_views_of_a_program_are_the_typescripts() {
             rest.push("has_system".to_owned());
         }
         wrong.extend(rest);
-
-        let refused = costed.is_err() && doc.is_err();
-        let listed = KNOWN_VIEW_DIFFERENCES.iter().any(|(n, _)| *n == name);
-        match (listed, refused, wrong.is_empty()) {
-            (false, false, true) => {}
-            (true, true, true) => known = known.saturating_add(1),
-            (true, false, _) => problems.push(format!(
-                "{name}: is listed in KNOWN_VIEW_DIFFERENCES, and the Rust gives its cost; take it off the list"
-            )),
-            (_, _, false) => problems.push(format!("{name}: {}", wrong.join("; "))),
-            (false, true, true) => problems.push(format!("{name}: refused: {:?}", costed.err())),
+        if !wrong.is_empty() {
+            problems.push(format!("{name}: {}", wrong.join("; ")));
         }
     }
-    for (name, _) in KNOWN_VIEW_DIFFERENCES {
-        if !inputs.iter().any(|c| text(c, "name") == *name) {
-            problems.push(format!(
-                "{name}: is listed in KNOWN_VIEW_DIFFERENCES and is no input"
-            ));
-        }
-    }
-    println!(
-        "views: {known} of {} known to differ (KNOWN_VIEW_DIFFERENCES)",
-        inputs.len()
-    );
     report("views", inputs.len(), problems);
 }

@@ -9,17 +9,14 @@
 //! them. The currencies of a sum are an object's members, kept in an
 //! object's order ([`JsObject`]).
 //!
-//! One thing is not ported yet: the workflow with an envelope adds the
-//! delegations a run starts (`staticCost(program, name)?.agents`, from
-//! `check/cost.ts`) to its total. Until the static checks are ported, a view
-//! of a program that has such a workflow is refused ([`ViewError`]) and
-//! prints no number.
-
-use std::fmt;
+//! A workflow with an envelope adds to its total the delegations a run
+//! starts, as the checker counts them: `staticCost(program, name)?.agents`
+//! of `check/cost.ts` ([`mandate_check::static_cost`]), so that the view and
+//! E0501 agree.
 
 use mandate_check::{
     CapVal, Lock, ProgramRef, VIEW_FORMAT, defs_of, grant_of, handed_by, is_kind, js_text,
-    per_call_bound, program_ref, to_number, view_children,
+    per_call_bound, program_ref, static_cost, to_number, view_children,
 };
 use mandate_ir::{
     Definition, Expr, ExprOp, JsObject, JsValue, Map, Program, Stmt, StmtOp, Value, compare_utf16,
@@ -28,24 +25,6 @@ use mandate_ir::{
 
 use crate::doc::{Block, Cell};
 use crate::shown::{num, num_or, show, sorted_defs};
-
-/// Why a view cannot be given: a part of the TypeScript it stands on is not
-/// ported yet.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ViewError {
-    /// The workflow whose view cannot be given.
-    pub workflow: String,
-    /// What is missing.
-    pub message: String,
-}
-
-impl fmt::Display for ViewError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "workflow {}: {}", self.workflow, self.message)
-    }
-}
-
-impl std::error::Error for ViewError {}
 
 /// Where a delegation's budget comes from: the `from` of `delegateBudget`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -322,14 +301,8 @@ impl Sum {
 /// How many delegations a run of the workflow starts at most, in the
 /// checker's count: `staticCost(program, name)?.agents ?? 0` of
 /// `check/cost.ts`, which is called without the linked definitions.
-// R11: mandate_check's static_cost replaces this: its body becomes
-// `Ok(static_cost(program, name, None).map_or(0.0, |c| c.agents))`.
-fn static_cost_agents(_program: Program<'_>, workflow: &str) -> Result<f64, ViewError> {
-    Err(ViewError {
-        workflow: workflow.to_owned(),
-        message: "the static cost of a workflow with an envelope (check/cost.ts) is not ported yet"
-            .to_owned(),
-    })
+fn static_cost_agents(program: Program<'_>, workflow: &str) -> f64 {
+    static_cost(program, workflow, None).map_or(0.0, |c| c.agents)
 }
 
 /// The walk of one workflow: what it hands out, and the rows of its
@@ -550,12 +523,8 @@ fn delegate_of_plan(e: Expr<'_>) -> Value {
 /// The cost of a program: `cost(program, lock)`. `lock` is the lock file as
 /// read, when there is one; with it each delegation of a model tier also
 /// shows the per-call bound.
-///
-/// # Errors
-///
-/// A workflow that has an envelope adds the delegations a run starts, which
-/// the static checks count and are not ported yet ([`ViewError`]).
-pub fn cost(program: &Value, lock: Option<&Value>) -> Result<CostView, ViewError> {
+#[must_use]
+pub fn cost(program: &Value, lock: Option<&Value>) -> CostView {
     let mut workflows: Vec<WorkflowCost> = Vec::new();
     if let Some(p) = Program::of(program) {
         for (name, d) in sorted_defs(p) {
@@ -572,7 +541,7 @@ pub fn cost(program: &Value, lock: Option<&Value>) -> Result<CostView, ViewError
             let mut total = walk.block_cost(Definition::of(d).body(), 1.0).show_sum();
             // An envelope bounds the delegations a run starts too: the checker's count, so the view and E0501 agree.
             if d.get("envelope").is_some_and(Value::is_truthy) {
-                let agents = format!("{} agents", number_to_string(static_cost_agents(p, name)?));
+                let agents = format!("{} agents", number_to_string(static_cost_agents(p, name)));
                 total = if total == "—" {
                     agents
                 } else {
@@ -587,10 +556,10 @@ pub fn cost(program: &Value, lock: Option<&Value>) -> Result<CostView, ViewError
             });
         }
     }
-    Ok(CostView {
+    CostView {
         program: program_ref(program),
         workflows,
-    })
+    }
 }
 
 /// The blocks of the cost in a document: `costBlocks(v)`.
