@@ -530,12 +530,19 @@ describe("map and the run", () => {
   it("stops with the items of a failed branch around it", async () => {
     // The other branch of the par fails while the first item is in flight: the second item is not sent.
     const gate = deferred<void>();
+    // The reader fails only once the first item has been sent. The two branches of the par race for which of them
+    // reaches its agent first, and a reader that failed before any item was sent would stop a map that sent none.
+    const sent = deferred<void>();
     const agents = new SimAgents()
       .on("Migrator.migrate", async (req) => {
+        sent.resolve();
         await gate.promise;
         return done(req);
       })
-      .on("Reader.look", noLuck);
+      .on("Reader.look", async () => {
+        await sent.promise;
+        return noLuck();
+      });
     const body = `  par {\n    moved = map repo in repos max 2 ${BY_ROOT} {\n${MIGRATE.replaceAll("\n", "\n  ").replace("    delegate", "      delegate")}\n    seen = delegate Reader.look(repos_first)\n  }\n  moved`;
     const src = program({ body }).replace("workflow W(repos: List<Repo>)", "workflow W(repos: List<Repo>, repos_first: Repo)");
     const w = await approved(src, { agents });
