@@ -396,7 +396,7 @@ fn collisions(site: &Site<'_>, p: PatternDef<'_>, generics: &[&str], out: &mut V
                  seen: &mut Vec<(String, &'static str)>| {
         if let Some((_, other)) = seen
             .iter()
-            .find(|(s, w)| s == n && !(*w == what && what != "run parameter"))
+            .find(|(s, w)| s == n && (*w != what || what == "run parameter"))
         {
             out.push(Problem::new(
                 "E1306",

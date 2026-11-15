@@ -296,9 +296,10 @@ pub fn expand(program: Program<'_>, linked: &Linked, opts: &ExpandOptions<'_>) -
         let Some(p) = a.pattern() else { continue };
         if let Some(module) = imported_from(program, p)
             && let Some(m) = modules.and_then(|ms| ms.get(module)).and_then(Program::of)
-            && !homes.contains_key(module)
         {
-            homes.insert(module.to_owned(), link(m, modules).defs);
+            homes
+                .entry(module.to_owned())
+                .or_insert_with(|| link(m, modules).defs);
         }
     }
     let mut expanded: Vec<(String, Value)> = Vec::new();

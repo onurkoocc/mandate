@@ -110,6 +110,7 @@ pub(crate) struct Place {
 }
 
 /// The walk.
+#[derive(Debug, Default)]
 pub(crate) struct Walk {
     pub(crate) out: Vec<Place>,
 }
