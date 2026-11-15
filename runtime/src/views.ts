@@ -30,7 +30,7 @@
 // that came from a model, a tool or a person's answer is shown as untrusted
 // plain content (G09).
 
-import { architecture, architectureBlocks, authority, authorityBlocks, check, governanceFiles, hashProgram, linkedProgram, printProgram, programRef, rolesNamed, semanticDiff, VIEW_FORMAT, type Block, type Cell, type ComponentDef, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/bridge";
+import { atLeast, LANGUAGE_06, architecture, architectureBlocks, authority, authorityBlocks, check, governanceFiles, hashProgram, linkedProgram, printProgram, programRef, rolesNamed, semanticDiff, VIEW_FORMAT, type Block, type Cell, type ComponentDef, type Doc, type Json, type Modules, type ProgramRef, type Program } from "@mandate/bridge";
 import { eventClass, sectionClass, shows, stepClass, TRACE_KINDS, type Audience, type ViewClass } from "./classes.js";
 import { authorizationId } from "./decisions.js";
 import { costDims, type BudgetReport, type ChangesetRow, type EvidenceRow, type HaltRow } from "./journal.js";
@@ -284,18 +284,18 @@ export interface AuditView extends Omit<RunView, "kind"> {
  * everything, with the chain's status. Only the audit view verifies the chain, as a step of its own: the default view
  * and a role's never read more than the journal's events and rows.
  */
-export async function runView(rt: Runtime, runId: string): Promise<{ view: RunView; program: Program }>;
-export async function runView(rt: Runtime, runId: string, audience: { role: string }): Promise<{ view: RoleView; program: Program }>;
-export async function runView(rt: Runtime, runId: string, audience: { audit: true }): Promise<{ view: AuditView; program: Program }>;
-export async function runView(rt: Runtime, runId: string, audience?: Audience): Promise<{ view: RunView | RoleView | AuditView; program: Program }> {
+export async function runView(rt: Runtime, runId: string): Promise<{ view: RunView; program: Program; modules: Modules }>;
+export async function runView(rt: Runtime, runId: string, audience: { role: string }): Promise<{ view: RoleView; program: Program; modules: Modules }>;
+export async function runView(rt: Runtime, runId: string, audience: { audit: true }): Promise<{ view: AuditView; program: Program; modules: Modules }>;
+export async function runView(rt: Runtime, runId: string, audience?: Audience): Promise<{ view: RunView | RoleView | AuditView; program: Program; modules: Modules }> {
   const { view, program, modules } = await defaultView(rt, runId);
-  if (!audience) return { view, program };
+  if (!audience) return { view, program, modules };
   if ("role" in audience) {
     const named = programRoles(program, modules);
     if (!named.includes(audience.role)) throw new Violation("unknown_role", `Run ${runId}'s program names no role ${audience.role}; it names ${named.length ? named.join(", ") : "none"}.`);
   }
   const events = await storedEvents(rt, runId, view.as_of.event);
-  if ("role" in audience) return { view: roleView(view, audience.role, events), program };
+  if ("role" in audience) return { view: roleView(view, audience.role, events), program, modules };
   const run = await rt.getRun(runId);
   const commands = await commandViews(rt, runId);
   const halts = (await rt.halts()).filter((h) => h.tenant === null || h.tenant === view.run.tenant);
@@ -312,7 +312,7 @@ export async function runView(rt: Runtime, runId: string, audience?: Audience): 
     halts,
     chain,
   };
-  return { view: audit, program };
+  return { view: audit, program, modules };
 }
 
 /** The roles a program names: its role definitions and every place it names one, with the modules it imports (0.4 roles; earlier names). */
@@ -421,9 +421,8 @@ async function defaultView(rt: Runtime, runId: string): Promise<{ view: RunView;
   // The view's position first: everything below is at least this new, and a later decision names this revision.
   const run = await rt.getRun(runId);
   const as_of = { revision: run.revision, event: await lastEvent(rt, runId) };
-  const [row] = await rt.db.query<{ program: Program; modules: Modules | null }>("select program, modules from packages where package_hash = $1", [run.package_hash]);
-  const program = row!.program;
-  const modules = row!.modules ?? {};
+  // The program the run runs: its stored expansion when it applies a pattern (0.6), with the modules it links.
+  const { source, program, modules } = await rt.runProgram(runId);
   const signed = new Map((await rt.verifyEvidence(runId)).map((e) => [e.evidence_id, e.valid]));
   const evidence = (await rt.evidence(runId)).map((e) => {
     const rec = isObj(e.record) ? e.record : {};
@@ -446,7 +445,7 @@ async function defaultView(rt: Runtime, runId: string): Promise<{ view: RunView;
   const view: RunView = {
     format: VIEW_FORMAT,
     kind: "run",
-    program: programRef(program),
+    program: programRef(source),
     package: run.package_hash,
     run: { id: run.run_id, workflow: run.workflow, tenant: run.tenant, state: run.state },
     manifest: {
@@ -1079,17 +1078,22 @@ function actionBlocks(v: RunView): Block[] {
 }
 
 /** A run's views as one document: its status, evidence, cost and actions, and its program's views, under one hash. */
-export function runDoc(v: RunView, program: Program): Doc {
+export function runDoc(v: RunView, program: Program, modules?: Modules): Doc {
   return {
     title: `Run ${v.run.id}: ${v.run.workflow}`,
     meta: metaOf(v, `${VIEW_FORMAT}, generated from the program and the run's journal`),
-    blocks: [...runBlocks(v), ...architectureBlocks(architecture(program)), ...authorityBlocks(authority(program))],
+    blocks: [...runBlocks(v), ...architectureBlocks(architecture(program, viewModules(program, modules))), ...authorityBlocks(authority(program, viewModules(program, modules)))],
   };
 }
 
 /** The sections of a run's view, in the order a person reads them. */
 function runBlocks(v: RunView): Block[] {
   return [...statusBlocks(v), ...envelopeBlocks(v), ...planBlocks(v), ...mapBlocks(v), ...changesetBlocks(v), ...evidenceBlocks(v), ...decisionBlocks(v), ...costBlocks(v), ...actionBlocks(v)];
+}
+
+/** The modules a view of a program is given: those it links, for a program of 0.6 alone (as the bridge's views take them). */
+function viewModules(program: Program, modules: Modules | undefined): Modules | undefined {
+  return atLeast(program.language, LANGUAGE_06) ? modules : undefined;
 }
 
 /** What a run's document shows, under which hashes, as of when. */
@@ -1111,7 +1115,7 @@ function metaOf(v: Pick<RunView, "program" | "package" | "run" | "manifest" | "m
  * A role's view as one document: the run's state, what it waits for when that is asked of the role, how it ended and
  * what stopped it, the decisions asked of the role, the envelope, the maps and the cost, and the program's views.
  */
-export function roleDoc(v: RoleView, program: Program): Doc {
+export function roleDoc(v: RoleView, program: Program, modules?: Modules): Doc {
   const status: Block[] = [{ h: "Status" }, { p: `Run ${v.run.id} of ${v.run.workflow} is ${v.run.state} at revision ${v.as_of.revision} (event ${v.as_of.event}).` }];
   if (v.run.state === "waiting") status.push(...(v.waiting === null ? [{ p: `It waits for nothing asked of ${v.role}.` }] : waitBlocks(v)));
   return {
@@ -1124,14 +1128,14 @@ export function roleDoc(v: RoleView, program: Program): Doc {
       ...mapBlocks(v),
       ...decisionBlocks(v),
       ...costBlocks(v),
-      ...architectureBlocks(architecture(program)),
-      ...authorityBlocks(authority(program)),
+      ...architectureBlocks(architecture(program, viewModules(program, modules))),
+      ...authorityBlocks(authority(program, viewModules(program, modules))),
     ],
   };
 }
 
 /** The audit view as one document: the run's view whole, with its exceptions, halts, steps, trace, events and chain. */
-export function auditDoc(v: AuditView, program: Program): Doc {
+export function auditDoc(v: AuditView, program: Program, modules?: Modules): Doc {
   return {
     title: `Run ${v.run.id}: ${v.run.workflow}, audit`,
     meta: metaOf(v, `${VIEW_FORMAT}, the audit view: everything the run's journal holds, its events, and its chain as verified when the view was made`),
@@ -1145,8 +1149,8 @@ export function auditDoc(v: AuditView, program: Program): Doc {
       ...commandBlocks("Steps", v.steps),
       ...commandBlocks("Trace", v.trace),
       ...eventBlocks(v.events),
-      ...architectureBlocks(architecture(program)),
-      ...authorityBlocks(authority(program)),
+      ...architectureBlocks(architecture(program, viewModules(program, modules))),
+      ...authorityBlocks(authority(program, viewModules(program, modules))),
     ],
   };
 }

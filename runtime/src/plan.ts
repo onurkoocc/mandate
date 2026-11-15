@@ -59,7 +59,6 @@ import {
   type Diagnostic,
   type Envelope,
   type Json,
-  type LanguageVersion,
   type Lock,
   type Modules,
   type Program,
@@ -71,7 +70,7 @@ import { addCounts, CompilerDivergence, CompilerFailure, compilerForWorker, keep
 import type { Outcome, ToolSpec } from "./adapters.js";
 import { refOf, sha256Of, type ArtifactScope, type ArtifactStore } from "./artifacts.js";
 import type { Admission, CommandRow, Journal } from "./journal.js";
-import type { AmendedCheck, AmendedInput } from "./package.js";
+import { subprogramNotRunYet, type AmendedCheck, type AmendedInput } from "./package.js";
 import { Fault, Suspend, Violation } from "./signals.js";
 import { canonical, digest, isObj, type Value } from "./values.js";
 
@@ -121,7 +120,7 @@ export const PLAN_TOOLS: ToolSpec[] = [
 ];
 
 /** The hash of the module the runtime starts for sub-program `n` of a parent in `language`: the `base` of the lead's patch. */
-export function baseOf(parent: string, n: number, language?: LanguageVersion): string {
+export function baseOf(parent: string, n: number, language?: Program["language"]): string {
   return hashProgram(skeleton(parent, n, language) as unknown as Json).program;
 }
 
@@ -315,6 +314,16 @@ function limitDiagnostic(o: OverLimit, sent: "operations" | "envelope" = "operat
   return { code: "check_limit", severity: "error", message: `${what} Nothing was checked or run. Send a smaller ${sent === "operations" ? "sub-program" : "envelope"}.`, facts: { limit: o.limit, max: o.max } };
 }
 
+/** A sub-program that checks and holds what this runtime does not run in a sub-program yet (package.ts), by name. */
+function notRunDiagnostic(names: string[]): Value {
+  return {
+    code: "check_failed",
+    severity: "error",
+    message: `The sub-program uses ${names.join(", ")}, which this runtime does not run in a sub-program yet. Nothing was run. Send another sub-program, without ${names.length === 1 ? "it" : "them"}.`,
+    facts: { reason: "not_run_yet", constructs: names },
+  };
+}
+
 function failedDiagnostic(f: CheckFailed, sent: "operations" | "envelope" = "operations"): Value {
   const it = sent === "operations" ? "sub-program" : "envelope";
   return { code: "check_failed", severity: "error", message: `The checker failed on this ${it} and checked nothing of it. Nothing was ${sent === "operations" ? "run" : "asked"}. Send another ${it}.`, facts: { reason: f.failed.slice(0, 200) } };
@@ -505,8 +514,12 @@ export class Planner {
       const over = overLimit(input["ops"]);
       const checked = over ?? (await h.checker.check({ parent: h.parent, modules: h.modules, workflow: h.workflow, number, base: String(input["base"]), ops: input["ops"] as SubprogramInput["ops"], lead: h.leadClass, room }, h.checkMs));
       // A check that was stopped, or that failed, is no check: it admits nothing, and the lead is told which.
-      const stopped = "limit" in checked ? limitDiagnostic(checked) : "failed" in checked ? failedDiagnostic(checked) : undefined;
-      const r = "limit" in checked || "failed" in checked ? undefined : checked;
+      // So is one of a sub-program that holds what this runtime does not run in a sub-program yet (0.6): it is refused
+      // by name, `check_failed`, and not run.
+      const result = "limit" in checked || "failed" in checked ? undefined : checked;
+      const unrun = result?.ok && result.program ? subprogramNotRunYet(result.program, h.parent, h.modules) : [];
+      const stopped = "limit" in checked ? limitDiagnostic(checked) : "failed" in checked ? failedDiagnostic(checked) : unrun.length ? notRunDiagnostic(unrun) : undefined;
+      const r = stopped ? undefined : result;
       // The errors come first: they are what the lead must act on, and a long list is cut at its end.
       const diagnostics = stopped ? [stopped] : [...r!.diagnostics.filter((d) => d.severity === "error"), ...r!.diagnostics.filter((d) => d.severity !== "error")].map(forLead);
       const ok = !!r?.ok && !!r.program && !!r.hash && !!r.workflow;
