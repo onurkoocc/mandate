@@ -1363,6 +1363,25 @@ fails when an entry of a list passes or names nothing.
   surrogate of the document as U+FFFD (`bridge/src/rust.ts`, `wellFormed`), and the Rust
   writes U+FFFD where the TypeScript writes the surrogate through. The bridge's `both`
   mode compares the two with the TypeScript's lone surrogates as U+FFFD (the rule
-  `rendering-lone-surrogate` of `bridge/src/compare.ts`). Any other input that holds a
-  lone surrogate, a number that is not an integer within ±(2^53−1) or a value JSON cannot
-  carry is never changed to fit: the bridge refuses it (`unrepresentable`).
+  `rendering-lone-surrogate` of `bridge/src/compare.ts`). Every other value a request
+  cannot carry is the next entry's.
+- **A value a request cannot carry, through the bridge in `rust` mode: answered by the
+  TypeScript, refused by the bridge.** The module's strict reader takes integers within
+  ±(2^53−1) only, no −0, no lone UTF-16 surrogate, at most 128 levels of nesting; JSON
+  has no hole in an array and no `undefined` in one, which `JSON.stringify` would write as
+  `null` where the TypeScript reads them otherwise. A value of these (a fraction, −0, a lone
+  surrogate anywhere but a document given to `toMarkdown` or `toHtml`, a hole, an
+  `undefined` item, nesting past 128, or what is not JSON at all) is never changed to fit:
+  the bridge refuses the call (`CompilerFailure`, kind `unrepresentable`, naming where by a
+  JSON Pointer and what kind of value, never a string's text). The TypeScript answers it
+  (an E0106 or E0107 for a program or a lock, a refusal or an answer elsewhere). What each
+  caller then gives: a package loaded with such a program or lock is refused
+  (`load_verification_failed`, where the TypeScript gives the diagnostic and also refuses
+  it); a lead's sub-program or amendment that holds one is `check_failed`, with the pointer,
+  where the TypeScript gives the E0106 or E0107; a run whose narrowing, map or delegation
+  meets one at run time stops for a person (`compiler_failed`), where the TypeScript
+  answers (`notText`, a `bad_scope` violation, for a narrowing whose value is a number); the
+  command line exits 2, where the TypeScript's prints the diagnostic and exits 1; the MCP
+  server answers with an error, where the TypeScript's answers the tool; a journal whose
+  exported package holds one does not hold (`package_mismatch`), as in the TypeScript.
+  `both` compares no such call: the Rust's refusal is thrown as it is.

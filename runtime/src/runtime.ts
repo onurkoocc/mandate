@@ -5,6 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import { atLeast, capsOf, check, domainHash, hashProgram, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters, Cost, EgressNeed, RunComponents, RunMode } from "./adapters.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
@@ -480,9 +481,18 @@ export class Runtime {
     if (!TERMINAL.has(current.state)) await checkFitness((await this.packaged(current.package_hash)).lock, this.hostProbe);
     const { run, fence } = await this.journal.acquire(runId);
     if (TERMINAL.has(run.state)) return run;
-    const loaded = await this.loaded(run.package_hash);
-    await this.write(runId, fence, async (tx) => this.journal.setState(tx, runId, "running"));
-    const interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId), await this.earlier(run));
+    // From here every call of the compiler is the drive's: one that fails (a CompilerFailure) stops the run for a
+    // person, `compiler_failed`, and is not thrown on, so that a scheduler does not drive it again and again.
+    let interp: Interpreter;
+    try {
+      const loaded = await this.loaded(run.package_hash);
+      await this.write(runId, fence, async (tx) => this.journal.setState(tx, runId, "running"));
+      interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId), await this.earlier(run));
+    } catch (e) {
+      if (!(e instanceof CompilerFailure)) throw e;
+      await this.settle(runId, fence, e);
+      return this.journal.run(runId);
+    }
     try {
       const result = await interp.runWorkflow(run.workflow, run.input as Obj);
       await this.finish(runId, fence, { state: "succeeded", result });
@@ -494,7 +504,8 @@ export class Runtime {
     return this.journal.run(runId);
   }
 
-  private async settle(runId: string, fence: number, e: unknown, interp: Interpreter): Promise<void> {
+  private async settle(runId: string, fence: number, thrown: unknown, interp?: Interpreter): Promise<void> {
+    const e = compilerStop(thrown);
     if (e instanceof Suspend) return this.finish(runId, fence, { state: "waiting", waiting: e.waiting });
     if (e instanceof Attention) return this.finish(runId, fence, { state: "attention_required", attention: e.reason });
     if (e instanceof Cancelled) return this.closeCancelled(runId, fence);
@@ -503,7 +514,7 @@ export class Runtime {
       return this.finish(runId, fence, { state: "attention_required", attention: { violation: e.code, message: e.message } });
     }
     if (e instanceof Fault) {
-      if (e.tag === "BudgetExceeded") return this.budgetExceeded(runId, fence, e, interp);
+      if (e.tag === "BudgetExceeded" && interp) return this.budgetExceeded(runId, fence, e, interp);
       return this.fail(runId, fence, e);
     }
     throw e;
@@ -548,7 +559,8 @@ export class Runtime {
         episode++;
         opened = false;
       }
-    } catch (s) {
+    } catch (thrown) {
+      const s = compilerStop(thrown);
       if (s instanceof StaleFence) return;
       if (s instanceof Fault) return this.fail(runId, fence, s);
       if (s instanceof Violation) return this.finish(runId, fence, { state: "attention_required", attention: { violation: s.code, message: s.message } });
@@ -1474,4 +1486,16 @@ export function componentsOf(pkg: Package): WorkspaceComponent[] {
     const c = defs[name] as Extract<(typeof defs)[string], { kind: "component" }>;
     return { name, repo: c.repo, root: c.root };
   });
+}
+
+/**
+ * A failure of the compiler behind the bridge while a run is driven (its module missing or refused, a trap, its
+ * memory ceiling, an input a request cannot carry, an answer that is not one) as what it is for the run: a violation
+ * it stops on for a person (`compiler_failed`), as one at load is (`load_verification_failed`). It names the kind of
+ * failure and the door, in what a model may be shown of it; nothing was granted or done by the call that failed.
+ * Anything else is as it was thrown.
+ */
+function compilerStop(e: unknown): unknown {
+  if (!(e instanceof CompilerFailure)) return e;
+  return new Violation("compiler_failed", `The compiler failed while the run was driven (${e.kind}${e.door ? ` on ${e.door}` : ""}), so the run stops here for a person: ${e.shown}`);
 }

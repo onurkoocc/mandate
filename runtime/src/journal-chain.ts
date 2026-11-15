@@ -15,6 +15,7 @@
 
 import { createPublicKey, verify, type KeyObject } from "node:crypto";
 import { hashProgram, packageHash, type Json } from "@mandate/bridge";
+import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Db, Row, Tx } from "./db.js";
 import { keyIdOf } from "./evidence.js";
 import { Violation } from "./signals.js";
@@ -511,8 +512,11 @@ function packageHolds(p: JournalExport["package"], named: Value | undefined): bo
     const lock = p.lock as Obj;
     const pins = isObj(lock["modules"] ?? null) ? (lock["modules"] as Obj) : {};
     return Object.entries(p.modules as Obj).every(([name, m]) => isObj(m) && m["module"] === name && Object.hasOwn(pins, name) && hashProgram(m as Json).program === pins[name]);
-  } catch {
-    // A program or lock the IR's canonical form cannot hold (a fraction, an unsafe integer) hashes to no package.
+  } catch (e) {
+    // A failure of the compiler is not a finding about the journal: it is thrown on, and the verification says
+    // nothing (`mandate journal verify` exits 2). Only a program or lock the IR's canonical form cannot hold (a
+    // fraction, an unsafe integer) hashes to no package, which the Rust's bridge says as `unrepresentable`.
+    if (e instanceof CompilerFailure && e.kind !== "unrepresentable") throw e;
     return false;
   }
 }

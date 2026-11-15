@@ -11,6 +11,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CompilerFailure, withCompiler } from "@mandate/bridge/mode";
+import { MockActivityEnvironment } from "@temporalio/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { main } from "../src/cli.js";
 import type { SubprogramInput } from "@mandate/bridge";
@@ -22,6 +23,7 @@ import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
 import { closeAll, planChecker, world, type World } from "./helpers.js";
 import { base, check, finish, fixes, ops, planned as plannedWith, program, refusals, run, state, type Turn } from "./planning.js";
 import { FIX, ISSUE } from "./programs.js";
+import { createActivities } from "../src/temporal/activities.js";
 
 const real = existsSync(modulePath());
 const needsModule = real ? describe : describe.skip;
@@ -175,26 +177,68 @@ needsModule("a lead's sub-program and amendment, when their door fails and the R
     expect(r).toMatchObject({ failed: expect.stringMatching(/check_amendment \(trap\)/) });
   });
 
+  /** What a run that stopped for a compiler that failed shows: `compiler_failed`, with the kind and the door. */
+  const stoppedOn = (r: { state: string; attention?: unknown }, door: string): void => {
+    expect(r.state).toBe("attention_required");
+    expect(r.attention).toMatchObject({ violation: "compiler_failed", message: expect.stringContaining(`(trap on ${door})`) });
+  };
+
   it.each([
     ["map_scopes", false],
     ["narrow", false],
     ["grant", true],
-  ])("a map whose %s traps hands its items nothing: no item's delegation is dispatched, and the run goes no further", async (door, started) => {
+  ])("a map whose %s traps hands its items nothing: no item's delegation is dispatched, and the run stops for a person (compiler_failed)", async (door, started) => {
     const w = await mapWorld();
-    const start = withCompiler("rust", () => w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { repos: [{ name: "a", root: "a" }, { name: "b", root: "b" }] }, runId: `map-${door}` }), { doors: { [door]: TRAP } });
-    await expect(start).rejects.toBeInstanceOf(CompilerFailure);
+    const r = await withCompiler("rust", () => w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { repos: [{ name: "a", root: "a" }, { name: "b", root: "b" }] }, runId: `map-${door}` }), { doors: { [door]: TRAP } });
+    stoppedOn(r, door);
     expect(w.agents.calls).toEqual([]);
     // The map's own decisions come before it starts; a delegation's grant, inside an item, after.
     expect((await w.rt.journal.events(`map-${door}`)).some((e) => e.type === "map_started")).toBe(started);
   });
 
-  it("an authority decision that traps grants nothing: the delegation does not start, and the run goes no further", async () => {
+  it("an authority decision that traps grants nothing: the delegation does not start, and the run stops for a person (compiler_failed)", async () => {
     const w = await world(FIX);
-    const start = withCompiler("rust", () => w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: ISSUE, runId: "grant-trapped" }), { doors: { grant: TRAP } });
-    await expect(start).rejects.toBeInstanceOf(CompilerFailure);
+    const r = await withCompiler("rust", () => w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: ISSUE, runId: "grant-trapped" }), { doors: { grant: TRAP } });
+    stoppedOn(r, "grant");
     expect(w.agents.calls).toEqual([]);
-    const [row] = await w.db.query<{ state: string }>("select state from runs where run_id = 'grant-trapped'");
-    expect(row?.state).not.toBe("succeeded");
+  });
+
+  it("a resume of a run its compiler stopped asks once, stops again, and dispatches nothing: it does not loop", async () => {
+    const w = await mapWorld();
+    const id = "narrow-resumed";
+    const input = { repos: [{ name: "a", root: "a" }] };
+    await withCompiler("rust", async () => {
+      stoppedOn(await w.rt.startRun({ pkg: w.pkg, workflow: "W", input, runId: id }), "narrow");
+      for (let i = 0; i < 3; i++) stoppedOn(await w.rt.resume(id), "narrow");
+    }, { doors: { narrow: TRAP } });
+    expect(w.agents.calls).toEqual([]);
+    // With the compiler answering again, the same run goes on from where it stopped.
+    const after = await withCompiler("rust", () => w.rt.resume(id));
+    expect(after.state).toBe("succeeded");
+    expect(w.agents.calls).toHaveLength(1);
+  });
+
+  it("through the Temporal driver's activity, the drive completes with the run stopped, so Temporal does not try it again", async () => {
+    const w = await mapWorld();
+    const id = "narrow-temporal";
+    const activities = createActivities(w.rt);
+    const env = new MockActivityEnvironment();
+    await withCompiler("rust", async () => {
+      stoppedOn(await w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { repos: [{ name: "a", root: "a" }] }, runId: id }), "narrow");
+      // The activity answers (it does not throw, which Temporal would retry without end): the run is parked.
+      expect(await env.run(activities.drive, id)).toMatchObject({ runId: id, state: "attention_required" });
+    }, { doors: { narrow: TRAP } });
+    expect(w.agents.calls).toEqual([]);
+  });
+});
+
+needsModule("a journal's verification, when the compiler fails", () => {
+  it("says nothing of the journal: the failure is thrown, never read as a package that does not hold", async () => {
+    const w = await world(FIX);
+    const r = await w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: ISSUE, runId: "verified" });
+    expect(r.state).toBe("succeeded");
+    expect((await withCompiler("rust", () => w.rt.verifyJournal("verified"))).status).toBe("verified");
+    await expect(withCompiler("rust", () => w.rt.verifyJournal("verified"), { doors: { package_hash: TRAP } })).rejects.toBeInstanceOf(CompilerFailure);
   });
 });
 

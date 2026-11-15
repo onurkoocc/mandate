@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { check, type Modules } from "@mandate/bridge";
-import { build } from "esbuild";
+import { build, type Plugin } from "esbuild";
 import { expect } from "vitest";
 import { ISSUE } from "./programs.js";
 import type { Clock, ModelAdapter } from "../src/adapters.js";
@@ -34,18 +34,23 @@ export async function planChecker(entry = "../src/plan-worker.ts", maxMb?: numbe
     target: "node22",
     alias: { "@mandate/bridge": here("../../bridge/src/index.ts"), "@mandate/bridge/mode": here("../../bridge/src/mode.ts") },
     external: ["ajv", "ajv/*", "ajv-formats"],
-    plugins: [
-      {
-        name: "own-address",
-        setup(b) {
-          b.onLoad({ filter: /[\\/]compiler[\\/]src[\\/].*\.ts$/ }, (a) => ({ contents: readFileSync(a.path, "utf8").replaceAll("import.meta.url", JSON.stringify(pathToFileURL(a.path).href)), loader: "ts" }));
-        },
-      },
-    ],
+    plugins: [OWN_ADDRESS],
     logLevel: "error",
   });
   return new WorkerChecker(outfile, maxMb);
 }
+
+/**
+ * The esbuild plugin by which each file of the compiler and of the bridge keeps its own address in a bundle: the
+ * compiler reads its schemas from beside its files, and the bridge its module from its own wasm/ (never from beside
+ * the bundle).
+ */
+export const OWN_ADDRESS: Plugin = {
+  name: "own-address",
+  setup(b) {
+    b.onLoad({ filter: /[\\/](compiler|bridge)[\\/]src[\\/].*\.ts$/ }, (a) => ({ contents: readFileSync(a.path, "utf8").replaceAll("import.meta.url", JSON.stringify(pathToFileURL(a.path).href)), loader: "ts" }));
+  },
+};
 
 /** Imported domain modules are pinned in every test package (S09). */
 export const LOCK = { modules: { "company.domain": "sha256:0f1e" } };

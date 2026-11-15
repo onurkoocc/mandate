@@ -24,7 +24,7 @@ import { SimTool } from "../src/sim.js";
 import { ProcessVerifier } from "../src/verifier-service.js";
 import { isObj, type Value } from "../src/values.js";
 import { BUG, FIXBUG, fixbugAgents, waitOf } from "./fixbug.js";
-import { closeAll, world, type World, UNSIGNED } from "./helpers.js";
+import { closeAll, OWN_ADDRESS, world, type World, UNSIGNED } from "./helpers.js";
 
 const here = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
 const out = here("./.build");
@@ -42,6 +42,7 @@ async function bundle(entry: string, name: string): Promise<string> {
     target: "node22",
     alias: { "@mandate/bridge": here("../../bridge/src/index.ts"), "@mandate/bridge/mode": here("../../bridge/src/mode.ts") },
     external: ["pg", "@electric-sql/pglite", "@anthropic-ai/sdk", "@temporalio/*", "ajv", "ajv/*", "ajv-formats", "@microsoft/mxc-sdk", "@microsoft/mxc-sdk/*"],
+    plugins: [OWN_ADDRESS],
     logLevel: "error",
   });
   return outfile;
