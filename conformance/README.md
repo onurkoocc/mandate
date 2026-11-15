@@ -373,6 +373,17 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E1708j` | An effect in a map with `par 2` | E1708 |
 | `E1708k` | An effect in a map in the body of another map | E1708 |
 | `E1708l` | A review in a map's body | E1708 |
+| `E0121c` | A type named `Declined` in a program of 0.6, which would type what a review declined (a mutation: the type added) | E0121 |
+| `E0121d` | A use list that brings a type named `Declined` from a module of 0.5 | E0121 |
+| `E0121e` | A connector named `human` with a tool `review`, which would make `human.review(…)` that tool | E0121 |
+| `E0121f` | A use list that brings the name `tool`, the root of a standard module, from another module | E0121 |
+| `E1504b` | A criterion met by a function that calls a function that asks a person, with a waiver | E1504 |
+| `E0213a` | An extern whose result is an alias of `Review` | E0213 |
+| `E0213b` | An extern whose result is a record with a `Review` in a field | E0213 |
+| `E0213c` | A skill whose result is a `Review` | E0213 |
+| `E0213d` | A record literal of an alias of `Review` | E0213 |
+| `E0213e` | An `infer` whose target is an alias of `Review` | E0213 |
+| `E0213f` | A declared effect whose result is a union with a `Declined` in a variant | E0213 |
 
 The import cases share the 0.6 module `E1602/types.mdt` and the program
 `E1602/program.mdt`; the connector cases share `T01/program.mdt`, a program
@@ -380,7 +391,10 @@ with a connector of its own, and `E0301b` is `E0301a/program.mdt` as 0.5. The
 review cases share `H06/program.mdt` (a verifying map, its review and a commit
 map), the cases of what may not reach an irreversible effect `E1505/program.mdt`
 (and `E1505g` and `E1708l` the review program), and those of the batch commit
-step `E1708b/program.mdt`; `E1708i` is a program of its own. What a case cannot say, because its modules must load, is in
+step `E1708b/program.mdt`; `E1708i` is a program of its own. `E0121c` to
+`E0121f` and `E1504b` are mutations of the review program (`E0121d` and
+`E0121f` with a module of their own beside them), and `E0213a` to `E0213f` are
+each the review program with what the case adds, a program of its own. What a case cannot say, because its modules must load, is in
 `crates/mandate-check/tests/language_0_6.rs`: a module of 0.5 among the modules given
 to a check that imports one of 0.6 (E1603), and one of 0.6 that imports a module
 nobody gave (E1604), do not load. What the cases of reviews and waivers cannot
@@ -391,8 +405,8 @@ semantic diff's waivers, a program of 0.5 as before) is in
 spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
 (human steps), L (libraries) and N11 (shapes), and the code numbers of its
 families; the cases above use P01 (which spec/library.md names), the S02 claim,
-E0101, E0104, E0120, E0121, E0140, E0210, E0220, E0301, E0320, E0403, E0408 and
-E1708, which 0.6 extends, T01, T02 and T06 (which spec/library.md names), H06 and
+E0101, E0104, E0120, E0121, E0140, E0210, E0213, E0220, E0301, E0320, E0403, E0408
+and E1708, which 0.6 extends, T01, T02 and T06 (which spec/library.md names), H06 and
 H07 (which it names), the letters of E1708 from b on (E1708b and E1708c, which it
 names, one letter for each further refused condition of the batch commit step, and
 E1708m, the connectors' own), and the code numbers of E14xx, E1504 to E1508 and
@@ -434,13 +448,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 247, passed 247, pending 0
+conformance cases: ran 258, passed 258, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 122 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 133 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(263 cases: 247 `compile`, 122 of them of language 0.6, and 16 `journal`; no case
+(274 cases: 258 `compile`, 133 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the
