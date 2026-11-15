@@ -2,9 +2,9 @@
  * The bridge: the one package that reaches the compiler. The runtime imports the compiler only through here, so
  * the compiler behind these names can change without the runtime changing.
  *
- * Behind each door-backed function (doors.ts) stands the compiler that MANDATE_COMPILER names (mode.ts): the
- * reference compiler of TypeScript (`ts`, the default: these names are then its very functions, ts.ts), the Rust
- * compiler's WebAssembly module (`rust`, rust.ts), or both, compared on every call (`both`, compare.ts). Every
+ * Behind each door-backed function (doors.ts) stands the compiler that MANDATE_COMPILER names (mode.ts): the Rust
+ * compiler's WebAssembly module (`rust`, the default, rust.ts), the reference compiler of TypeScript (`ts`: these
+ * names are then its very functions, ts.ts), or both, compared on every call (`both`, compare.ts). Every
  * other name is the reference compiler's in every mode: its types, its helpers and the functions nothing calls
  * (doors.ts, `KEPT`), and its constants, which are the Rust's too (the `tables` door gives the same values, but
  * for the versions only the Rust reads; test/facade.test.ts holds that) — except CODES, which outside `ts` is the
