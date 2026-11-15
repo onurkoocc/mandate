@@ -1177,6 +1177,100 @@
       }
     },
     {
+      "name": "E1406a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1406",
+            "severity": "error",
+            "message": "Reader would hold ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\"), a write tool. An agent holds only read-only tools; a write tool is called by a workflow's body, as a critical effect (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/body/1/value/caps/0",
+              "span": [1, 2795, 1, 2825]
+            },
+            "docs": "mandate explain MDT-E1406",
+            "facts": {
+              "agent": "Reader",
+              "capability": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+              "through": "map with caps"
+            }
+          },
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "Draft holds ModelAll = model.infer but neither its body nor its delegates use it.",
+            "at": {
+              "path": "/defs/Draft/caps/2",
+              "span": [1, 2438, 1, 2468]
+            },
+            "docs": "mandate explain MDT-W0310"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1406b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0301",
+            "severity": "error",
+            "message": "Reader.orders uses Tool, but this delegation grants no capability for it (Draft lacks it or 'with caps' left it out).",
+            "at": {
+              "path": "/defs/Draft/body/1/value/body/0/value",
+              "span": [1, 2856, 1, 2950]
+            },
+            "docs": "mandate explain MDT-E0301",
+            "facts": {
+              "required": "Tool",
+              "granted": [
+                "ModelAll = model.infer"
+              ]
+            }
+          },
+          {
+            "code": "MDT-E1406",
+            "severity": "error",
+            "message": "Reader would hold ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\"), a write tool. An agent holds only read-only tools; a write tool is called by a workflow's body, as a critical effect (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/body/1/value/caps/0",
+              "span": [1, 2795, 1, 2825]
+            },
+            "docs": "mandate explain MDT-E1406",
+            "facts": {
+              "agent": "Reader",
+              "capability": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+              "through": "map with caps"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1407",
       "kind": "compile",
       "door": "check",

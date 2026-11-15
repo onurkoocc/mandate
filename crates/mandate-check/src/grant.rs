@@ -376,6 +376,12 @@ fn sort_key(c: &CapVal) -> String {
     key
 }
 
+/// Whether `c` is the write part of a `tool.call` (0.6): a connector's
+/// write tools, which no agent is granted.
+fn write_tool(c: &Capability) -> bool {
+    c.cap.ctor() == crate::caps::TOOL_CALL && c.cap.write()
+}
+
 /// What the capabilities in force grant (C2, §9.1; spec/envelope.md
 /// "map"): what is available in a context, or what a delegation is granted
 /// in it. `grant(input)` of `bridge/src/authority.ts`.
@@ -396,6 +402,10 @@ fn sort_key(c: &CapVal) -> String {
 /// 5. out, sorted stably by [`sort_key`], compared by UTF-16 code units,
 ///    is [`GrantOutput::Granted`].
 ///
+/// One rule of 0.6 comes before them: a write part of a `tool.call` is
+/// never granted. In `own` it is refused as step 1 refuses; of `held` and
+/// `handed` it is left out. No capability of 0.1 to 0.5 is one.
+///
 /// Nothing is de-duplicated, and the capabilities are those of the input,
 /// every member kept.
 #[must_use]
@@ -404,15 +414,22 @@ pub fn grant(input: &GrantInput) -> GrantOutput {
     let Some(d) = &input.delegation else {
         return GrantOutput::Available(avail.into_iter().cloned().collect());
     };
-    if let Some(g) = d.own.iter().find(|g| !inside(&avail, g)) {
+    // 0.6: an agent is never granted a write tool of a connector, whatever
+    // `own`, `held`, `handed` and `bounds` say (E1406 holds it statically).
+    if let Some(g) = d.own.iter().find(|g| !inside(&avail, g) || write_tool(g)) {
         return GrantOutput::Refused(Refusal::OutsideAuthority {
             delegate: d.agent.clone(),
             capability: show_cap(&g.cap),
         });
     }
-    let mut out: Vec<&Capability> = d.held.iter().filter(|c| inside(&avail, c)).collect();
+    let mut out: Vec<&Capability> = d
+        .held
+        .iter()
+        .filter(|c| inside(&avail, c) && !write_tool(c))
+        .collect();
     let handed = input.context.handed.iter().filter(|k| {
-        !d.own.iter().any(|g| g.same_kind(k))
+        !write_tool(k)
+            && !d.own.iter().any(|g| g.same_kind(k))
             && (d.remote || d.held.iter().any(|h| cap_covers(&h.cap, &k.cap)))
     });
     let given: Vec<&Capability> = d.own.iter().chain(handed).collect();

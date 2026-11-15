@@ -1598,6 +1598,9 @@ impl<'a> Checker<'a> {
     ) {
         let usages = frame.usages_from(usages_before);
         self.map_bound(e, frame, path, &usages);
+        // 0.6: what a map hands the delegations of its body, through a
+        // function however deep, holds no write tool (E1406).
+        self.map_hands_write_tools(e, path, &usages);
         // A person is asked once about the list, after the map (E1708). A
         // step in a map inside this one was reported there, for that map.
         for u in &usages {
@@ -1879,10 +1882,6 @@ impl<'a> Checker<'a> {
             if !own.contains(k.ctor())
                 && (remote.is_some() || agent_caps.iter().any(|a| cap_covers(a, k)))
             {
-                // 0.6: nor does a map's `with caps` (E1406).
-                if k.ctor() == crate::caps::TOOL_CALL && k.write() {
-                    self.holds_write_tool(agent_name, k, path, "map with caps");
-                }
                 given.push(k.clone());
             }
         }

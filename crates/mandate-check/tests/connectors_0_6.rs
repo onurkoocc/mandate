@@ -346,6 +346,37 @@ fn the_authority_doors_decide_a_tool_call_as_the_checks_do() {
         granted(vec![read.clone()], vec![draft.clone()]),
         GrantOutput::Refused(_)
     ));
+    // No agent is granted a write tool, whatever the context says: not
+    // through its own `with caps`, not held, not handed by a map, remote or
+    // not.
+    let writes = context(vec![draft.clone(), read.clone()]);
+    for (own, held, handed, remote) in [
+        (vec![draft.clone()], vec![draft.clone()], vec![], false),
+        (vec![], vec![draft.clone(), read.clone()], vec![], false),
+        (vec![], vec![read.clone()], vec![draft.clone()], true),
+        (vec![], vec![read.clone()], vec![draft.clone()], false),
+    ] {
+        let out = grant(&GrantInput {
+            context: AuthorityContext {
+                handed,
+                ..writes.clone()
+            },
+            delegation: Some(GrantDelegation {
+                agent: "Partner".to_owned(),
+                held,
+                remote,
+                own,
+            }),
+        });
+        match &out {
+            GrantOutput::Refused(_) => {}
+            GrantOutput::Granted(g) => assert!(
+                g.iter().all(|c| !c.cap().write()),
+                "a write tool granted: {out:?}"
+            ),
+            GrantOutput::Available(_) => panic!("{out:?}"),
+        }
+    }
     // Nor another read-only tool of the same connector.
     let find = one(&acme, "erp", &["find_draft_invoice"]);
     assert!(matches!(

@@ -486,6 +486,32 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// E1406 for a map whose `with caps` hands a write tool and whose body
+    /// delegates, in the body or in a function it calls however deep
+    /// (`usages`, what the body used, a function's delegations included): a
+    /// map hands its `with caps` to each delegation of its body, so the write
+    /// tool would reach an agent. At each such capability of the `with caps`.
+    /// A map whose body delegates nothing may hand a write tool to its body's
+    /// own effects.
+    pub(crate) fn map_hands_write_tools(&mut self, e: Expr<'a>, path: &str, usages: &[Usage]) {
+        let Some(delegation) = usages.iter().find(|u| u.effect == "Delegate") else {
+            return;
+        };
+        let agent = delegation
+            .to
+            .as_deref()
+            .map_or("an agent", |to| to.split('.').next().unwrap_or(to))
+            .to_owned();
+        for (i, c) in e.caps().unwrap_or_default().iter().enumerate() {
+            let Some(c) = Expr::of(c) else { continue };
+            for v in caps_of(self.defs, c, self.cap_opts()) {
+                if v.ctor() == TOOL_CALL && v.write() {
+                    self.holds_write_tool(&agent, &v, &format!("{path}/caps/{i}"), "map with caps");
+                }
+            }
+        }
+    }
+
     /// E1406 for `v`, a write part of a `tool.call` an agent would hold, at
     /// `path`; `through` is how it would reach the agent (`caps`, `with
     /// caps` of the delegation, or a map's `with caps`).

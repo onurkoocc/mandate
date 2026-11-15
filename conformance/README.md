@@ -311,6 +311,8 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E0121` | An effect named `Tool` in a program of 0.6, which would decide what covers every read-only tool (a mutation: the effect added, the workflow without `ErpRead`) | E0121 |
 | `E0121a` | The same effect, with the agent that declares `Tool` holding only its model capability | E0121 |
 | `E0121b` | A program of 0.5 with an effect named `Model` is read as before | — |
+| `E1406a` | A map's `with caps` that hands a write tool, its body delegating through a function | E1406 |
+| `E1406b` | A map's `with caps` that hands a write tool, its body delegating directly | E1406 |
 
 The import cases share the 0.6 module `E1602/types.mdt` and the program
 `E1602/program.mdt`; the connector cases share `T01/program.mdt`, a program
@@ -361,13 +363,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 185, passed 185, pending 0
+conformance cases: ran 187, passed 187, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 60 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 62 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(201 cases: 185 `compile`, 60 of them of language 0.6, and 16 `journal`; no case
+(203 cases: 187 `compile`, 62 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the
