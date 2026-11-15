@@ -653,6 +653,8 @@ impl<'a> Checker<'a> {
         let caps = self.cap_list(d.caps(), &format!("{base}/caps"));
         // 0.6: no agent holds a write tool (E1406).
         self.agent_write_tools(name, d.caps(), base);
+        // 0.6: what its loop reads reaches its model (E0220).
+        self.agent_read_classes(name, d.caps(), base);
         // `used` is a Set of the capabilities by identity: here, by index.
         let mut used = vec![false; caps.len()];
         let skills: Vec<(&'a str, &'a Value)> = d.skills().collect();
@@ -2050,6 +2052,14 @@ impl<'a> Checker<'a> {
         // 0.6: what the agent receives, against the classes of the
         // connectors whose tools it is granted.
         self.grant_classes(g.who, g.effective, g.cls, path);
+        let held: Vec<CapVal> = g
+            .agent
+            .caps()
+            .iter()
+            .filter_map(Expr::of)
+            .flat_map(|c| caps_of(self.defs, c, self.cap_opts()))
+            .collect();
+        self.grant_read_classes(g.who, g.effective, &held, path);
         let effects = g
             .skill
             .get("effects")

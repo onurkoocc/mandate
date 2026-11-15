@@ -486,6 +486,104 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// The connectors whose read-only tools `caps` holds above the class the
+    /// best model capability among them may receive, with the class each
+    /// returns and that bound, by connector (`<module>.<connector>`), each
+    /// once; none when `caps` hold no model capability (no model reads what
+    /// the tools give). A connector whose class is no data class returns the
+    /// most sensitive.
+    fn reads_above_model(caps: &[CapVal]) -> Vec<(String, DataClass, DataClass)> {
+        let Some(best) = caps
+            .iter()
+            .filter(|c| c.ctor() == "model.infer")
+            .map(|c| c.max_class().unwrap_or(DataClass::Internal))
+            .max()
+        else {
+            return Vec::new();
+        };
+        let mut out: Vec<(String, DataClass, DataClass)> = Vec::new();
+        for c in caps.iter().filter(|c| c.ctor() == TOOL_CALL && !c.write()) {
+            let Some(id) = tool_connector(c) else {
+                continue;
+            };
+            let class = c.max_class().unwrap_or(DataClass::Restricted);
+            if class > best && !out.iter().any(|(i, _, _)| i == id) {
+                out.push((id.to_owned(), class, best));
+            }
+        }
+        out
+    }
+
+    /// The message and the facts of E0220 for `who`, whose loop reads tools of
+    /// `id` of class `class` and whose model may receive at most `allowed`.
+    fn read_above_model(
+        who: &str,
+        id: &str,
+        class: DataClass,
+        allowed: DataClass,
+    ) -> (String, JsObject) {
+        (
+            format!(
+                "{who} holds read-only tools of the connector {id}, which return {} data, and its model capability allows at most {}: what the tools return reaches the model (spec/library.md \"Declaration\").",
+                class.as_str(),
+                allowed.as_str()
+            ),
+            JsObject::new()
+                .with("data_class", class.as_str())
+                .with("allowed", allowed.as_str())
+                .with("connector", id),
+        )
+    }
+
+    /// E0220 for an agent whose declared `caps` hold read-only tools of a
+    /// connector above the class its model may receive: what its loop reads
+    /// reaches its model. At the capability that holds them.
+    pub(crate) fn agent_read_classes(&mut self, agent: &str, caps: &'a [Value], base: &str) {
+        let held: Vec<(usize, Vec<CapVal>)> = caps
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| Expr::of(c).map(|e| (i, caps_of(self.defs, e, self.cap_opts()))))
+            .collect();
+        let all: Vec<CapVal> = held.iter().flat_map(|(_, cs)| cs.iter().cloned()).collect();
+        for (id, class, allowed) in Self::reads_above_model(&all) {
+            let at = held
+                .iter()
+                .find(|(_, cs)| {
+                    cs.iter()
+                        .any(|c| tool_connector(c) == Some(id.as_str()) && !c.write())
+                })
+                .map_or(0, |(i, _)| *i);
+            let (message, facts) = Self::read_above_model(agent, &id, class, allowed);
+            self.report("E0220", message, &format!("{base}/caps/{at}"), Some(facts));
+        }
+    }
+
+    /// E0220 for a delegation whose grant (`granted`) holds read-only tools
+    /// of a connector above the class its model may receive, where the
+    /// agent's own `caps` (`held`) do not already (that is reported at the
+    /// agent): its `with caps`, or a map's, narrowed the model. At the
+    /// delegation; in a sub-program, as for a model, E1706 when the lead's
+    /// class is above the bound.
+    pub(crate) fn grant_read_classes(
+        &mut self,
+        who: &str,
+        granted: &[CapVal],
+        held: &[CapVal],
+        path: &str,
+    ) {
+        let already: Vec<String> = Self::reads_above_model(held)
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        for (id, class, allowed) in Self::reads_above_model(granted) {
+            if already.contains(&id) {
+                continue;
+            }
+            let (message, facts) = Self::read_above_model(who, &id, class, allowed);
+            self.over_model(message, path, class_rank(allowed), facts);
+        }
+    }
+
     /// E1406 for a map whose `with caps` hands a write tool and whose body
     /// delegates, in the body or in a function it calls however deep
     /// (`usages`, what the body used, a function's delegations included): a

@@ -620,6 +620,74 @@
       }
     },
     {
+      "name": "E0220c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "Reader holds read-only tools of the connector example.erp.erp, which return confidential data, and its model capability allows at most public: what the tools return reaches the model (spec/library.md \"Declaration\").",
+            "at": {
+              "path": "/defs/Reader/caps/0",
+              "span": [1, 1805, 1, 1834]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "public",
+              "connector": "example.erp.erp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0220d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "Reader.orders holds read-only tools of the connector example.erp.erp, which return confidential data, and its model capability allows at most public: what the tools return reaches the model (spec/library.md \"Declaration\").",
+            "at": {
+              "path": "/defs/Draft/body/1/value",
+              "span": [1, 2693, 1, 2835]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "public",
+              "connector": "example.erp.erp"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0301a",
       "kind": "compile",
       "door": "check",

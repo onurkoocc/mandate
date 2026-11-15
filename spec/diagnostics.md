@@ -207,7 +207,9 @@ does not declare, in a call (`/…/callee/name`) or as an effect's name, a
 connector used as a value, and a tool named without a call. E0220: an
 argument of a tool's call of a class above its connector's `class` (at the
 argument, T06), and a delegation whose agent holds tools of a connector and
-receives data of a class above that connector's (at the delegation, T06a);
+receives data of a class above that connector's (at the delegation, T06a); an agent that holds a connector's read-only tools above the class its
+model capability may receive (at the capability, E0220c), or a delegation whose
+grant does so where the agent's own caps do not (at the delegation, E0220d);
 the facts `data_class`, `allowed` and `connector`; in a sub-program, as for a
 model, E1706 with `dimension: "data_class"` when the class comes from what
 the lead received. E0301: in a program of 0.6 every capability of every

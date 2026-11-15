@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0220c",
+  "kind": "compile",
+  "title": "An agent that holds a connector's read-only tools above the class its model capability may receive is refused at the capability: what its loop reads reaches its model.",
+  "spec": [
+    "spec/library.md#declaration",
+    "spec/library.md#what-reaches-a-model"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/ModelAll/value/args/1/value",
+      "value": {
+        "op": "var",
+        "name": "public"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0220",
+        "path": "/defs/Reader/caps/0",
+        "facts": {
+          "data_class": "confidential",
+          "allowed": "public",
+          "connector": "example.erp.erp"
+        }
+      }
+    ]
+  }
+}
