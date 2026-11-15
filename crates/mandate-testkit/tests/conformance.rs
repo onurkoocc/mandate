@@ -313,7 +313,7 @@ fn prepare(c: &Case) -> Result<(Value, Observed), String> {
                 Applied::Refused(refused) => {
                     return Ok((
                         case.get("expect").ok_or("no expect")?.clone(),
-                        Observed::from(&refused),
+                        Observed::from(&*refused),
                     ));
                 }
             }
