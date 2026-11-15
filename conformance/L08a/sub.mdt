@@ -1,0 +1,11 @@
+mandate @ 0.6
+
+module example.fleet.plan_1 @ 0.1
+
+use example.fleet
+
+workflow Write = MakerChecker<Brief, Draft>(
+    input: Brief { topic: "the release" },
+    make: Writer.draft, check: Reader.review, accepted: Short, owner: editor)
+  caps   Notes, ModelStd
+  budget { tokens: 200k, time: 1h, spend: 5 USD, steps: 100, agents: 10 }

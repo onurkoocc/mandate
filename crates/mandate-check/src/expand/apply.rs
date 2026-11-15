@@ -18,7 +18,7 @@ use super::pattern::{Problem, builtin_type};
 use super::subst::{substitute_type, type_ref};
 use crate::caps::{CapOptions, caps_of, show_cap};
 use crate::stdlib::std_effect;
-use crate::ty::{TypeEnv, assignable, fields_of, from_type_expr, show, ty_of};
+use crate::ty::{Ty, TypeEnv, assignable, fields_of, from_type_expr, show, ty_of};
 
 /// What a slot is given, once its argument is read by the slot's kind.
 #[derive(Clone, Debug, PartialEq)]
@@ -203,6 +203,41 @@ pub(crate) fn constant(e: &Value, names: &Names<'_>, depth: usize) -> Option<(Va
     }
 }
 
+/// The deepest a structured constant is followed: lists in lists, records
+/// in records and constants naming constants, together.
+const STRUCTURED_DEPTH: usize = 64;
+
+/// `Ok` when `assignable` found nothing, else its message.
+fn fits(problem: Option<crate::ty::Problem>) -> Result<(), String> {
+    match problem {
+        Some(p) => Err(p.message),
+        None => Ok(()),
+    }
+}
+
+/// Whether `e` is a structured constant (0.6): a list, a set or a record
+/// literal, or the name of a constant of the program whose value is one.
+/// Whether its parts are constants of the slot's type is
+/// [`Reader::value_fits`]'s.
+pub(crate) fn structured(e: &Value, names: &Names<'_>) -> bool {
+    match e.get("op").and_then(Value::as_str) {
+        Some("list" | "set" | "record") => true,
+        Some("var") => e
+            .get("name")
+            .and_then(Value::as_str)
+            .and_then(|n| names.def(n))
+            .filter(|d| Definition::of(d).kind() == Some(DefKind::Const))
+            .and_then(|d| d.get("value"))
+            .is_some_and(|v| {
+                matches!(
+                    v.get("op").and_then(Value::as_str),
+                    Some("list" | "set" | "record")
+                )
+            }),
+        _ => false,
+    }
+}
+
 /// What reading the arguments of one application gives.
 pub(crate) struct Read {
     /// Each slot that has an argument of its kind, with what it is given.
@@ -230,6 +265,99 @@ pub(crate) struct Reader<'a> {
 }
 
 impl Reader<'_> {
+    /// Whether the constant `e` is a value of `want` (0.6), part by part: a
+    /// list or a set of values of its element type, a record literal of a
+    /// record type with exactly its fields, each of its field's type, a
+    /// literal of a type accepted where `want` is expected (a text literal
+    /// as a `Path` by the rule of paths), or a constant the program defines
+    /// whose declared type is accepted there (or whose value fits, when it
+    /// declares none). Anything else is no constant: a call, a field read,
+    /// a name that is not a constant (an agent, an effect, a tool, a role, a
+    /// capability), so a value slot brings no authority (INV-21). The
+    /// reason, for the message, when it does not fit.
+    pub(crate) fn value_fits(&self, e: &Value, want: &Ty, depth: usize) -> Result<(), String> {
+        if depth > STRUCTURED_DEPTH {
+            return Err(format!("it is nested deeper than {STRUCTURED_DEPTH}"));
+        }
+        let deeper = depth.saturating_add(1);
+        let want = crate::ty::unalias(want, &self.env);
+        match e.get("op").and_then(Value::as_str).unwrap_or_default() {
+            op @ ("list" | "set") => {
+                let collection = if op == "list" { "List" } else { "Set" };
+                if !want.is_named(collection) {
+                    return Err(format!("a {op} is no {}", show(&want)));
+                }
+                let element = want.arg(0);
+                for (i, item) in e
+                    .get("items")
+                    .and_then(Value::as_array)
+                    .unwrap_or_default()
+                    .iter()
+                    .enumerate()
+                {
+                    self.value_fits(item, &element, deeper)
+                        .map_err(|why| format!("item {i}: {why}"))?;
+                }
+                Ok(())
+            }
+            "record" => {
+                let written = e.get("type").and_then(Value::as_str).unwrap_or_default();
+                if let Some(n) = want.name()
+                    && n != written
+                {
+                    return Err(format!("a record {written} is no {}", show(&want)));
+                }
+                let Some(fields) = fields_of(&want, &self.env) else {
+                    return Err(format!("{} has no fields", show(&want)));
+                };
+                let given = e.get("fields").and_then(Value::as_object);
+                let given_names: Vec<&str> = given.map(|g| g.keys().collect()).unwrap_or_default();
+                for (f, _) in &fields {
+                    if !given_names.contains(&f.as_str()) {
+                        return Err(format!("it has no field {f}"));
+                    }
+                }
+                for g in &given_names {
+                    if !fields.iter().any(|(f, _)| f == g) {
+                        return Err(format!("{} has no field {g}", show(&want)));
+                    }
+                }
+                for (f, ty) in &fields {
+                    if let Some(v) = given.and_then(|g| g.get(f)) {
+                        self.value_fits(v, ty, deeper)
+                            .map_err(|why| format!("field {f}: {why}"))?;
+                    }
+                }
+                Ok(())
+            }
+            "var" => {
+                let n = e.get("name").and_then(Value::as_str).unwrap_or_default();
+                let Some(d) = self
+                    .names
+                    .def(n)
+                    .filter(|d| Definition::of(d).kind() == Some(DefKind::Const))
+                else {
+                    return Err(format!("{n} is no constant"));
+                };
+                match d.get("type") {
+                    Some(t) => fits(assignable(&ty_of(TypeExpr::of(t)), &want, &self.env)),
+                    None => self.value_fits(d.get("value").unwrap_or(&Value::Null), &want, deeper),
+                }
+            }
+            "text" => {
+                let lit = e.get("value").and_then(Value::as_str).map(str::to_owned);
+                let ty = Ty::named_lit("Text", Vec::new(), lit);
+                fits(assignable(&ty, &want, &self.env))
+            }
+            _ => match constant(e, &self.names, deeper) {
+                Some((ty, _)) => fits(assignable(&ty_of(TypeExpr::of(&ty)), &want, &self.env)),
+                None => Err(
+                    "it is no constant: a literal, or a constant the program defines".to_owned(),
+                ),
+            },
+        }
+    }
+
     fn problem(&self, code: &'static str, message: String, at: &str, facts: JsObject) -> Problem {
         Problem::new(code, message, at, facts.with("pattern", self.pattern))
     }
@@ -674,6 +802,42 @@ impl Reader<'_> {
                     return Err(other("a constant expression", "a type is none".to_owned()));
                 };
                 let want = slot.get("type").map(|t| substitute_type(t, types));
+                // 0.6: a list, a set or a record of constants, or a constant
+                // that is one, held to the slot's type part by part
+                // (`value_fits`): a value a sub-program's workflow, which
+                // takes no parameters, hands its pattern.
+                if constant(e, &self.names, 0).is_none()
+                    && !self.counted.iter().any(|c| c == name)
+                    && let Some(want) = &want
+                    && structured(e, &self.names)
+                {
+                    let w = ty_of(TypeExpr::of(want));
+                    if let Err(why) = self.value_fits(e, &w, 0) {
+                        return Err(self.problem(
+                            "E1305",
+                            format!(
+                                "The slot {name} of {} takes a constant of type {}, and is given one that is not: {why}",
+                                self.pattern,
+                                show(&w),
+                            ),
+                            &value_at,
+                            JsObject::new()
+                                .with("problem", "type")
+                                .with("slot", name)
+                                .with("expected", show(&w))
+                                .with("why", why.as_str()),
+                        ));
+                    }
+                    let mut names = Vec::new();
+                    value_names(e, &mut names);
+                    return Ok(binding(
+                        Bound::Const {
+                            value: e.clone(),
+                            count: None,
+                        },
+                        names,
+                    ));
+                }
                 let Some((ty, count)) = constant(e, &self.names, 0) else {
                     return Err(self.problem(
                         "E1305",
