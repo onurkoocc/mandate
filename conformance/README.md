@@ -406,6 +406,7 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E0408b` | An effect in a workflow's `ensures` | E0408 |
 | `E0201c` | A record's field declared `Verified` given a value that is not verified | E0201 |
 | `E0201d` | `peek` of a name nothing defines, where a verified value is required | W0207, E0201 |
+| `E0201e` | A `switch` between a list of unverified changes and an empty list, where a list of verified ones is required | E0201 |
 
 The import cases share the 0.6 module `E1602/types.mdt` and the program
 `E1602/program.mdt`; the connector cases share `T01/program.mdt`, a program
@@ -475,13 +476,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 280, passed 280, pending 0
+conformance cases: ran 281, passed 281, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 155 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 156 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(296 cases: 280 `compile`, 155 of them of language 0.6, and 16 `journal`; no case
+(297 cases: 281 `compile`, 156 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

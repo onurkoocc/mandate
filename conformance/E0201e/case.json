@@ -1,0 +1,32 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0201e",
+  "kind": "compile",
+  "title": "A switch between an empty list and a list of unverified changes is a list of unverified changes: the empty list holds nothing, and fits wherever the other goes, so the join is the other.",
+  "spec": [
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0201",
+        "path": "/defs/Land/body/1/value/args/0/value"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Named/accept/named/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Small/accept/small/by/static"
+      }
+    ]
+  }
+}

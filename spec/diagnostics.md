@@ -267,7 +267,9 @@ a map's body (E1708l).
 In a program of 0.6 each form is typed as the runtime evaluates it, and the
 codes of the front end hold what that gives. Where the runtime gives one of
 several values the type is their join (the weaker level, a contract only when
-both name it, the higher class, resting on a waiver when either does): the
+both name it, the higher class, resting on a waiver when either does, and of
+two types one of which holds an unknown the other's, as `[]` joins any list,
+E0201e, or none when that unknown is silent): the
 arms of a `switch` (E1505h, E0210b, E0220f), a statement and the `on error`
 handler after it (E0210c; a supervision strategy there gives no value), a
 `verify` and its `on unmet` handler (E0210d, E0201a), the branches of an `if`

@@ -1238,6 +1238,53 @@
       }
     },
     {
+      "name": "E0201e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0201",
+            "severity": "error",
+            "message": "Expected List<Verified<Change>> but got List<Change>.",
+            "at": {
+              "path": "/defs/Land/body/1/value/args/0/value",
+              "span": [41, 19, 41, 25]
+            },
+            "docs": "mandate explain MDT-E0201"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [18, 15, 18, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [24, 15, 24, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
       "name": "E0210a",
       "kind": "compile",
       "door": "check_patched",

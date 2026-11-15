@@ -14,6 +14,7 @@ use std::collections::HashSet;
 
 use mandate_ir::{DefKind, Expr, ExprOp, Language, TypeExpr, TypeForm, Value};
 
+use super::expr::has_unknown;
 use super::review::REVIEW;
 use super::{Checker, Val};
 use crate::resolve::SUPERVISION_STRATEGIES;
@@ -130,16 +131,31 @@ impl<'a> Checker<'a> {
             .contract
             .as_deref()
             .filter(|c| level == Level::Verified && eb.contract.as_deref() == Some(*c));
+        let (ua, ub) = (has_unknown(&ea.inner), has_unknown(&eb.inner));
         let inner = if ea.inner == eb.inner {
             ea.inner.clone()
         } else if let Some(t) = without_lit(&ea.inner, &eb.inner) {
             t
+        } else if ua != ub {
+            // An unknown in one of the two only (`[]`'s `List<?>`, a
+            // person's `Untrusted<?>`): the other's type, which the unknown
+            // would take in any place; none the checker has when that
+            // unknown is silent, for it may stand for anything.
+            let (silent, typed) = if ua {
+                (a.silent, &eb.inner)
+            } else {
+                (b.silent, &ea.inner)
+            };
+            if silent {
+                return (with_level(UNKNOWN, level, None), true);
+            }
+            typed.clone()
         } else if assignable(&ea.inner, &eb.inner, self).is_none() {
             eb.inner.clone()
         } else if assignable(&eb.inner, &ea.inner, self).is_none() {
             ea.inner.clone()
         } else {
-            return (UNKNOWN, true);
+            return (with_level(UNKNOWN, level, None), true);
         };
         (with_level(inner, level, contract), false)
     }
