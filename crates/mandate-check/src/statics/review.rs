@@ -43,7 +43,7 @@ use mandate_ir::{
 
 use super::{Checker, Frame, LetMap, MapSite, ReviewSource, Usage, Val, Where, callee_is, sub_i};
 use crate::ty::{
-    Level, Ty, UNKNOWN, epistemic, from_type_expr, mentions, named, named0, text_ty, with_level,
+    Level, Ty, UNKNOWN, epistemic, from_type_expr, named, named0, text_ty, unalias, with_level,
 };
 use crate::walk::walk_exprs;
 
@@ -200,13 +200,71 @@ impl<'a> Checker<'a> {
         self.at_least(Language::V0_6) && (name == REVIEW || name == DECLINED)
     }
 
-    /// The built-in `Review` or `Declined` that `ty` mentions, which only the
-    /// runtime makes (E0213): no model, skill or host code produces one.
+    /// The built-in `Review` or `Declined` that `ty` holds, which only the
+    /// runtime makes (E0213): no model, skill or host code produces one. It
+    /// is looked for in `ty`'s arguments, its record's fields, and the type
+    /// definitions it names (an alias, a record's fields, a union's variants,
+    /// a refinement), each once.
     pub(crate) fn review_type_in(&self, ty: &Ty) -> Option<&'static str> {
         if !self.at_least(Language::V0_6) {
             return None;
         }
-        mentions(ty, &[REVIEW, DECLINED]).filter(|n| self.review_type(n))
+        self.review_type_seen(ty, &mut HashSet::new())
+    }
+
+    /// [`Checker::review_type_in`], with the type definitions already read.
+    fn review_type_seen(&self, ty: &Ty, seen: &mut HashSet<String>) -> Option<&'static str> {
+        match ty {
+            Ty::Named(n) => {
+                if self.review_type(&n.name) {
+                    return [REVIEW, DECLINED].into_iter().find(|t| *t == n.name);
+                }
+                if let Some(found) = n.args.iter().find_map(|a| self.review_type_seen(a, seen)) {
+                    return Some(found);
+                }
+                let d = self.def_of(&n.name, DefKind::Type)?;
+                if !seen.insert(n.name.clone()) {
+                    return None;
+                }
+                self.review_type_in_expr(d.type_expr()?, seen)
+            }
+            Ty::Record { fields } => fields
+                .iter()
+                .find_map(|(_, f)| self.review_type_seen(f, seen)),
+            Ty::Unknown => None,
+        }
+    }
+
+    /// [`Checker::review_type_seen`] of a type definition's type.
+    fn review_type_in_expr(
+        &self,
+        t: TypeExpr<'a>,
+        seen: &mut HashSet<String>,
+    ) -> Option<&'static str> {
+        if t.has(TypeForm::Union) {
+            return t.union().iter().find_map(|v| {
+                v.get("fields")
+                    .and_then(Value::as_array)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|f| f.get("type").and_then(TypeExpr::of))
+                    .find_map(|f| self.review_type_in_expr(f, seen))
+            });
+        }
+        if t.has(TypeForm::Refine) {
+            return self.review_type_in_expr(t.refine()?, seen);
+        }
+        self.review_type_seen(&from_type_expr(t, &[]), seen)
+    }
+
+    /// Whether a record literal of the type `name` would make a `Review` or
+    /// a `Declined`: the type is one, or an alias of one.
+    pub(crate) fn makes_a_review(&self, name: &str) -> bool {
+        if !self.at_least(Language::V0_6) {
+            return false;
+        }
+        let ty = unalias(&named0(name), self);
+        ty.name().is_some_and(|n| self.review_type(n))
     }
 
     /// The fields of the built-in `Review<T, C>` or `Declined<T>` (0.6), and

@@ -916,6 +916,303 @@
       }
     },
     {
+      "name": "E0213a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "Host code cannot produce Review; only the runtime does (\u00a712.3).",
+            "at": {
+              "path": "/defs/fake/returns",
+              "span": [63, 44, 63, 45]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Review"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0213b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "Host code cannot produce Review; only the runtime does (\u00a712.3).",
+            "at": {
+              "path": "/defs/fake/returns",
+              "span": [63, 44, 63, 50]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Review"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0213c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "Skill 'Matcher.forge' cannot return Review; a model cannot produce Review (\u00a75.2, S08).",
+            "at": {
+              "path": "/defs/Matcher/skills/forge/returns",
+              "span": [66, 43, 66, 65]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Review"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0213d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "R cannot be constructed by a program; only the runtime produces it (\u00a75.2, S08).",
+            "at": {
+              "path": "/defs/MatchAll/body/2/value/type",
+              "span": [81, 14, 81, 58]
+            },
+            "docs": "mandate explain MDT-E0213"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0213e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "A model cannot produce Review; infer only yields Inferred values (\u00a75.2, S08).",
+            "at": {
+              "path": "/defs/MatchAll/body/2/value/type",
+              "span": [81, 20, 81, 21]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Review"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0213f",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "Effect 'fetch_declined' cannot return Declined; only the runtime produces it (\u00a75.2, S08).",
+            "at": {
+              "path": "/defs/fetch_declined/returns",
+              "span": [63, 35, 63, 41]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Declined"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0220c",
       "kind": "compile",
       "door": "check_patched",

@@ -249,8 +249,10 @@ names a role, and with the lock it is held by a member, E1502.
 `Review<T, C>` and `Declined<T>` are built-in types of a program of 0.6 (in
 an earlier program they name nothing, E0120), whose `C` is a contract as
 `Verified`'s is (E0120 otherwise), and which only the runtime makes: a
-record of either, a model's answer, a skill's or host code's result that
-names one is E0213. No definition of a program, a module or a sub-program
+record literal of either (or of an alias of one), a model's answer, a
+skill's, host code's or a declared effect's result that holds one, in its
+arguments, its fields or the type definitions it names (an alias, a record,
+a union's variants), is E0213 (E0213a to E0213f). No definition of a program, a module or a sub-program
 of 0.6 takes either name, and no `use` list brings one of that name from
 another module: E0121, at the definition or the listed name, with the facts
 `name` and `builtin: "type"` (E0121c, E0121d), so that what types a review

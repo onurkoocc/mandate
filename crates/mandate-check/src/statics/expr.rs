@@ -463,7 +463,7 @@ impl<'a> Checker<'a> {
         // 0.6: the built-in `Review<T, C>` and `Declined<T>` have the fields
         // spec/library.md "human.review" gives them; only `accepted` is
         // what a waiver may rest on.
-        let builtin = self.review_fields(&ep.inner);
+        let builtin = self.review_fields(&unalias(&ep.inner, self));
         let waivable = match &builtin {
             Some(b) => b.review && name == "accepted" && base.waivable,
             None => base.waivable,
@@ -753,7 +753,7 @@ impl<'a> Checker<'a> {
     fn record_fields(&mut self, e: Expr<'a>, path: &str) -> Option<Vec<(String, Ty)>> {
         let type_name = e.record_type().unwrap_or_default();
         // 0.6: so are a review and a declined item, `Review` and `Declined`.
-        if is_protected_type(type_name) || self.review_type(type_name) {
+        if is_protected_type(type_name) || self.makes_a_review(type_name) {
             self.report(
                 "E0213",
                 format!(
