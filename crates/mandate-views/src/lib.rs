@@ -23,6 +23,13 @@
 //!   envelope for the person who approves it ([`card()`], [`card_doc`],
 //!   [`envelope_workflows`], [`CardView`]); it stayed in TypeScript for 0.5
 //!   and is ported in 0.6.
+//! - [`card_library`]: what the card of a program of 0.6 adds
+//!   ([`CardLibrary`]): the pattern a workflow applies and its library, the
+//!   `///` doc lines, the bounds of its maps against its budget, each review
+//!   as one decision of a role, the criteria a person may waive, the connector
+//!   tools by what they are and each batch commit step. In 0.6 a workflow
+//!   without an envelope has a card too, its `caps` and `budget` in the
+//!   envelope's place; the authority view of 0.6 shows the same tools.
 //! - [`acs`]: the ACS target, `compiler/src/target/acs.ts`: each local agent
 //!   written as an Agent Control Specification manifest and a Rego policy
 //!   ([`acs_target`], [`AcsTarget`], [`AcsAgent`]), with the profile of what an
@@ -60,6 +67,7 @@ pub mod acs;
 pub mod architecture;
 pub mod authority;
 pub mod card;
+pub mod card_library;
 pub mod cost;
 pub mod diff;
 pub mod doc;
@@ -83,6 +91,10 @@ pub use card::{
     CardApproval, CardApproves, CardBudgetRow, CardBudgetText, CardHanded, CardMap, CardMember,
     CardPlan, CardPlanNumbers, CardTouches, CardView, CardWait, card, card_blocks, card_doc,
     envelope_workflows,
+};
+pub use card_library::{
+    CardBound, CardCommit, CardContract, CardCriterion, CardLibrary, CardPattern, CardReview,
+    CardRole, CardTool,
 };
 pub use cost::{
     BudgetFrom, CostRow, CostView, DelegateBudget, Sum, WorkflowCost, cost, cost_blocks, cost_with,

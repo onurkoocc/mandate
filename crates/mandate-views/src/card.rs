@@ -25,10 +25,11 @@ use mandate_check::{
     reads_var, role_sites, show_cap, static_cost, steps,
 };
 use mandate_ir::{
-    Definition, Expr, ExprOp, JsObject, JsValue, Map, Program, Value, compare_utf16,
-    number_to_string, package_hash, sort_utf16, unique_in_order, utf16_len,
+    Definition, Expr, ExprOp, JsObject, JsValue, Language, Map, Program, Value, compare_utf16,
+    number_to_string, package_hash, sort_utf16, unique_in_order, utf16_len, workflow_bounds,
 };
 
+use crate::card_library::{CardLibrary, Gather, gather};
 use crate::cost::{BudgetFrom, DelegateBudget, delegate_budget, delegate_of_plan};
 use crate::doc::{Block, Cell, Doc};
 use crate::shown::{js, list, num, show, texts};
@@ -340,11 +341,15 @@ pub struct CardView {
     pub approvals: Vec<CardApproval>,
     /// Who approves it, and who may amend it.
     pub approves: CardApproves,
+    /// 0.6: what a program of 0.6 adds ([`CardLibrary`]); `None` for a
+    /// program of 0.1 to 0.5, whose card is what it was.
+    pub library: Option<CardLibrary>,
 }
 
 impl CardView {
     /// `{ format, kind, program, workflow, package, does: { steps, maps,
-    /// plans }, touches, spends, asks: { waits, approvals }, approves }`.
+    /// plans }, touches, spends, asks: { waits, approvals }, approves }`,
+    /// and in 0.6 a `library` member last.
     #[must_use]
     pub fn to_js(&self) -> JsValue {
         let t = &self.touches;
@@ -380,7 +385,7 @@ impl CardView {
             )
             .with("bound", a.bound)
             .with("text", a.text.as_str());
-        JsObject::new()
+        let card = JsObject::new()
             .with("format", VIEW_FORMAT)
             .with("kind", "card")
             .with("program", self.program.to_js())
@@ -416,23 +421,36 @@ impl CardView {
                         JsValue::Array(self.approvals.iter().map(CardApproval::to_js).collect()),
                     ),
             )
-            .with("approves", approves)
-            .into()
+            .with("approves", approves);
+        match &self.library {
+            Some(library) => card.with("library", library.to_js()).into(),
+            None => card.into(),
+        }
     }
 }
 
 // ── small texts ──────────────────────────────────────────────────────────
 
+/// Whether a program is of 0.6 (or later), whose card is made for a
+/// workflow without an envelope too.
+fn reads_0_6(p: Program<'_>) -> bool {
+    p.language().is_some_and(|l| l.at_least(Language::V0_6))
+}
+
 /// The workflows of a program that have an envelope, sorted: the ones that
-/// have a card: `envelopeWorkflows(program)`.
+/// have a card: `envelopeWorkflows(program)`. In a program of 0.6 every
+/// workflow has a card (spec/library.md "Views"), so every workflow is here,
+/// with an envelope or without.
 #[must_use]
 pub fn envelope_workflows(program: &Value) -> Vec<String> {
     let mut names: Vec<String> = Program::of(program)
         .map(|p| {
+            let all = reads_0_6(p);
             defs_of(p)
                 .iter()
                 .filter(|(_, d)| {
-                    is_kind(d, "workflow") && d.get("envelope").is_some_and(Value::is_truthy)
+                    is_kind(d, "workflow")
+                        && (all || d.get("envelope").is_some_and(Value::is_truthy))
                 })
                 .map(|(n, _)| n.to_owned())
                 .collect()
@@ -445,7 +463,7 @@ pub fn envelope_workflows(program: &Value) -> Vec<String> {
 /// An expression as a person reads it in a card: names, fields, literals and
 /// calls; anything else is `…`: `exprText(e)`. An expression that is not
 /// there is read as `…` too (the TypeScript would throw).
-fn expr_text(e: Option<Expr<'_>>) -> String {
+pub(crate) fn expr_text(e: Option<Expr<'_>>) -> String {
     let Some(e) = e else {
         return "…".to_owned();
     };
@@ -605,7 +623,7 @@ fn reachable(defs: &Map, start: &str) -> Vec<String> {
 /// character, as JavaScript spreads one; a value that is neither an array,
 /// a string nor `null` is not iterable, which the TypeScript throws at: here
 /// it has no members.
-fn members_of(lock: Option<&Value>, role: &str) -> Vec<String> {
+pub(crate) fn members_of(lock: Option<&Value>, role: &str) -> Vec<String> {
     let found = own(lock.and_then(|l| l.get("roles")), role);
     let mut members: Vec<String> = match found {
         Some(Value::Array(items)) => items.iter().map(|x| js_text(Some(x))).collect(),
@@ -637,7 +655,7 @@ fn present(v: Option<&Value>) -> JsValue {
 
 /// `x ?? null` of a number of the IR: `None` for a member that is missing or
 /// `null`, else what `ToNumber` makes of it.
-fn limit_of(v: Option<&Value>) -> Option<f64> {
+pub(crate) fn limit_of(v: Option<&Value>) -> Option<f64> {
     match v {
         None | Some(Value::Null) => None,
         Some(v) => Some(num(Some(v))),
@@ -809,6 +827,24 @@ fn budget_row(
     }
 }
 
+/// The most delegations a workflow without an envelope has in flight at once:
+/// the widest `par` of a map that delegates, else one if it delegates at all.
+fn in_flight(maps: &[CardMap], wf: &Value) -> f64 {
+    let widest = maps
+        .iter()
+        .filter(|m| !m.delegates.is_empty())
+        .map(|m| m.par)
+        .fold(0.0_f64, f64::max);
+    if widest > 0.0 {
+        return widest;
+    }
+    let mut any: Vec<String> = Vec::new();
+    for s in Definition::of(wf).body() {
+        delegates_in(s, &mut any);
+    }
+    if any.is_empty() { 0.0 } else { 1.0 }
+}
+
 // ── the card ─────────────────────────────────────────────────────────────
 
 /// The card of a workflow with an envelope: what a person reads before
@@ -824,17 +860,35 @@ pub fn card(
     lock: Option<&Value>,
     modules: Option<&Modules>,
 ) -> Option<CardView> {
-    let p = Program::of(program)?;
+    let written = Program::of(program)?;
+    let is_0_6 = reads_0_6(written);
+    let orig_wf = defs_of(written)
+        .get(workflow)
+        .filter(|d| is_kind(d, "workflow"))?;
+    // 0.6: a workflow that applies a pattern is read as its expansion (or, if
+    // the pattern's module is not given, the stand-in that says so).
+    let expanded: Option<Value> = if is_0_6 {
+        mandate_check::expand::for_views(program, modules)
+    } else {
+        None
+    };
+    let body_program = expanded.as_ref().unwrap_or(program);
+    let p = Program::of(body_program)?;
     let wf = defs_of(p)
         .get(workflow)
         .filter(|d| is_kind(d, "workflow"))?;
-    let env = wf.get("envelope").filter(|e| e.is_truthy())?;
+    // An envelope, or in 0.6 the workflow's own `caps` and `budget` in its
+    // place.
+    let env = wf.get("envelope").filter(|e| e.is_truthy());
+    if env.is_none() && !is_0_6 {
+        return None;
+    }
     let linked = link(p, modules);
     // `Object.keys(modules).length ? linkedProgram(program, modules) : program`.
     let linked_value: Option<Value> = modules
         .filter(|m| !m.is_empty())
         .map(|_| linked_program(p, modules));
-    let lp = Program::of(linked_value.as_ref().unwrap_or(program))?;
+    let lp = Program::of(linked_value.as_ref().unwrap_or(body_program))?;
     let r = program_ref(program);
     // `!!lock`: a lock that is `null` or another falsy value is no lock.
     let lock_given = lock.is_some_and(Value::is_truthy);
@@ -854,25 +908,46 @@ pub fn card(
     // view opens them.
     let caps = caps_in(
         lp,
-        env.get("caps")
-            .and_then(Value::as_array)
-            .unwrap_or_default(),
+        match env {
+            Some(env) => env
+                .get("caps")
+                .and_then(Value::as_array)
+                .unwrap_or_default(),
+            None => workflow_bounds(wf).caps,
+        },
     );
-    let spawn = env.get("spawn");
+    let spawn = env.and_then(|e| e.get("spawn"));
     let touches = CardTouches {
         authority: authority_of(&caps),
         caps: caps.iter().map(show_cap).collect(),
-        max_class: match spawn.and_then(|s| s.get("max_class")) {
-            None | Some(Value::Null) => "internal".to_owned(),
-            some => js_text(some),
+        max_class: match (env, spawn.and_then(|s| s.get("max_class"))) {
+            // Without an envelope nothing is `spawn`ed; a delegation receives
+            // at most what the model capabilities the workflow holds allow.
+            (None, _) => caps
+                .iter()
+                .filter(|c| c.ctor() == "model.infer")
+                .filter_map(|c| c.max_class())
+                .max()
+                .map_or_else(|| "internal".to_owned(), |c| c.as_str().to_owned()),
+            (Some(_), None | Some(Value::Null)) => "internal".to_owned(),
+            (Some(_), some) => js_text(some),
         },
-        max_concurrent: limit_of(spawn.and_then(|s| s.get("max_concurrent"))),
+        max_concurrent: match env {
+            Some(_) => limit_of(spawn.and_then(|s| s.get("max_concurrent"))),
+            // The stand-in of a pattern that was not expanded does not say
+            // how many run at a time.
+            None => (!wf.get("unexpanded").is_some_and(Value::is_truthy))
+                .then(|| in_flight(&visit.maps, wf)),
+        },
     };
 
     // The most it spends: the envelope's budget beside the checker's static
     // upper bound.
     let sc = static_cost(p, workflow, Some(&linked.defs)).unwrap_or_default();
-    let b = env.get("budget");
+    let b = match env {
+        Some(env) => env.get("budget"),
+        None => wf.get("budget").filter(|b| b.is_truthy()),
+    };
     let mut currencies: Vec<String> = Vec::new();
     let mut named: Vec<String> = sc.spend.iter().map(|(c, _)| c.clone()).collect();
     sort_utf16(&mut named);
@@ -931,6 +1006,17 @@ pub fn card(
     ));
     spends.push(dimension("steps", "steps", "steps", sc.steps, &grouped));
     spends.push(dimension("agents", "agents", "agents", sc.agents, &grouped));
+    // 0.6: a workflow whose pattern the card is not given has no static part
+    // it can bound; it says so, and shows no number that would be less than
+    // the expansion's.
+    if wf.get("unexpanded").is_some_and(Value::is_truthy) {
+        for row in &mut spends {
+            row.r#static = f64::NAN;
+            row.left = None;
+            row.text.r#static = "unknown".to_owned();
+            row.text.left = "unknown".to_owned();
+        }
+    }
 
     // When it asks whom: every place it reaches that waits for a person and
     // names a role, and the envelope's approvals.
@@ -967,7 +1053,7 @@ pub fn card(
         })
         .collect();
     let mut approve: Vec<(&str, &Value)> = env
-        .get("approve")
+        .and_then(|e| e.get("approve"))
         .and_then(Value::as_object)
         .map(|m| m.iter().collect())
         .unwrap_or_default();
@@ -986,7 +1072,7 @@ pub fn card(
 
     // Who approves it, and every amendment: the owner role and the members
     // the lock binds to it.
-    let owner: Option<String> = match env.get("owner") {
+    let owner: Option<String> = match env.and_then(|e| e.get("owner")) {
         None | Some(Value::Null) => None,
         some => Some(js_text(some)),
     };
@@ -1004,6 +1090,7 @@ pub fn card(
             .collect()
     });
     let text = match owner.as_deref() {
+        None if env.is_none() => NO_ENVELOPE.to_owned(),
         None => "Nobody can approve it yet: the envelope names no owner role.".to_owned(),
         Some(o) if !lock_given => {
             format!("Nobody can approve it yet: there is no lock, so no member holds the role {o}.")
@@ -1030,6 +1117,23 @@ pub fn card(
         }
     };
     let package = package_hash(&r.hash, &Value::Object(packaged_lock(lock)));
+    // 0.6: what the card adds. A workflow with an envelope that has nothing
+    // of 0.6 to say has the card it had.
+    let library = is_0_6
+        .then(|| {
+            gather(&Gather {
+                program: written,
+                orig_wf,
+                lp,
+                wf,
+                workflow,
+                envelope: env.is_some(),
+                lock,
+                modules,
+                sc: &sc,
+            })
+        })
+        .filter(|l| !l.envelope || l.has_content());
     Some(CardView {
         program: r,
         workflow: workflow.to_owned(),
@@ -1052,8 +1156,12 @@ pub fn card(
             members,
             text,
         },
+        library,
     })
 }
+
+/// What a card of a workflow without an envelope says of who approves it.
+const NO_ENVELOPE: &str = "No envelope is approved before a run, and nobody may amend it.";
 
 // ── documents ────────────────────────────────────────────────────────────
 
@@ -1111,14 +1219,17 @@ fn heads(xs: &[&str]) -> Vec<String> {
 pub fn card_blocks(v: &CardView) -> Vec<Block> {
     let t = &v.touches;
     let a = &v.approves;
-    let mut out: Vec<Block> = vec![
-        Block::H("What it does".to_owned()),
-        Block::List(if v.steps.is_empty() {
-            vec![Cell::plain("no static steps")]
-        } else {
-            v.steps.iter().map(Cell::plain).collect()
-        }),
-    ];
+    let lib = v.library.as_ref();
+    // Without an envelope, the workflow's own budget stands in its place.
+    let enveloped = lib.is_none_or(|l| l.envelope);
+    let mut out: Vec<Block> = lib.map(CardLibrary::head_blocks).unwrap_or_default();
+    out.push(Block::H("What it does".to_owned()));
+    out.extend(lib.map(CardLibrary::pattern_blocks).unwrap_or_default());
+    out.push(Block::List(if v.steps.is_empty() {
+        vec![Cell::plain("no static steps")]
+    } else {
+        v.steps.iter().map(Cell::plain).collect()
+    }));
     if !v.maps.is_empty() {
         out.push(Block::Table {
             head: heads(&[
@@ -1148,6 +1259,7 @@ pub fn card_blocks(v: &CardView) -> Vec<Block> {
                 .collect(),
         });
     }
+    out.extend(lib.map(CardLibrary::bound_blocks).unwrap_or_default());
     if !v.plans.is_empty() {
         out.push(Block::P("Each plan's lead writes sub-programs while the run goes on; each one is checked against what is left of the envelope when it is submitted.".to_owned()));
         out.push(Block::Table {
@@ -1185,6 +1297,7 @@ pub fn card_blocks(v: &CardView) -> Vec<Block> {
             vec![
                 Cell::plain("Delegations in flight at once"),
                 Cell::plain(match t.max_concurrent {
+                    None if lib.is_some_and(|l| l.unexpanded) => "not known".to_owned(),
                     None => "no limit".to_owned(),
                     Some(n) => number_to_string(n),
                 }),
@@ -1192,14 +1305,24 @@ pub fn card_blocks(v: &CardView) -> Vec<Block> {
         ],
     });
     out.push(Block::List(t.caps.iter().map(Cell::mono).collect()));
+    out.extend(lib.map(CardLibrary::tool_blocks).unwrap_or_default());
     out.push(Block::H("The most it spends".to_owned()));
     out.push(Block::Table {
-        head: heads(&[
-            "Dimension",
-            "Envelope",
-            "Static part (upper bound)",
-            "Left for sub-programs",
-        ]),
+        head: if enveloped {
+            heads(&[
+                "Dimension",
+                "Envelope",
+                "Static part (upper bound)",
+                "Left for sub-programs",
+            ])
+        } else {
+            heads(&[
+                "Dimension",
+                "Budget",
+                "Static part (upper bound)",
+                "Left over",
+            ])
+        },
         rows: v
             .spends
             .iter()
@@ -1216,11 +1339,14 @@ pub fn card_blocks(v: &CardView) -> Vec<Block> {
             })
             .collect(),
     });
+    out.extend(lib.map(CardLibrary::spend_blocks).unwrap_or_default());
     out.push(Block::H("When it asks whom".to_owned()));
     if v.waits.is_empty() {
-        out.push(Block::P(
-            "No step it reaches waits for a person by role.".to_owned(),
-        ));
+        if lib.is_none_or(|l| l.reviews.is_empty()) {
+            out.push(Block::P(
+                "No step it reaches waits for a person by role.".to_owned(),
+            ));
+        }
     } else {
         out.push(Block::Table {
             head: heads(&["Wait", "Role", "In", "Members"]),
@@ -1254,6 +1380,8 @@ pub fn card_blocks(v: &CardView) -> Vec<Block> {
                 .collect(),
         });
     }
+    out.extend(lib.map(CardLibrary::ask_blocks).unwrap_or_default());
+    out.extend(lib.map(CardLibrary::commit_blocks).unwrap_or_default());
     out.push(Block::H("Who approves it, and who may amend it".to_owned()));
     out.push(Block::P(match &a.role {
         None => a.text.clone(),
@@ -1268,10 +1396,11 @@ pub fn card_blocks(v: &CardView) -> Vec<Block> {
             )
         }
     }));
-    if a.members.is_empty() {
-        out.push(Block::Note(a.text.clone()));
-    } else {
-        out.push(Block::Table {
+    match (enveloped, a.members.is_empty()) {
+        // Said once, above.
+        (false, _) => {}
+        (true, true) => out.push(Block::Note(a.text.clone())),
+        (true, false) => out.push(Block::Table {
             head: heads(&["Member", "Keys"]),
             rows: a
                 .members
@@ -1283,12 +1412,19 @@ pub fn card_blocks(v: &CardView) -> Vec<Block> {
                     ]
                 })
                 .collect(),
-        });
+        }),
     }
-    out.push(Block::P(format!(
-        "An approval is signed for package {}: a changed program, lock or imported module is a new package and needs a new approval.",
-        v.package
-    )));
+    out.push(Block::P(if enveloped {
+        format!(
+            "An approval is signed for package {}: a changed program, lock or imported module is a new package and needs a new approval.",
+            v.package
+        )
+    } else {
+        format!(
+            "The package is {}: a changed program, lock or imported module is a new package.",
+            v.package
+        )
+    }));
     out
 }
 

@@ -11,10 +11,14 @@
 
 use mandate_check::{
     Authority, CapVal, Modules, ProgramRef, VIEW_FORMAT, authority_of, caps_in, chosen_at_run_time,
-    defs_of, grant_of, handed_by, is_kind, program_ref, widest, workflow_effects,
+    defs_of, grant_of, handed_by, is_kind, linked_program, program_ref, widest, workflow_effects,
 };
-use mandate_ir::{Definition, Expr, ExprOp, JsObject, JsValue, Program, Value, workflow_bounds};
+use mandate_ir::{
+    Definition, Expr, ExprOp, JsObject, JsValue, Language, Program, Value, sort_utf16,
+    unique_in_order, workflow_bounds,
+};
 
+use crate::card_library::{ToolFact, tool_facts, tool_facts_of};
 use crate::doc::{Block, Cell};
 use crate::shown::{list, sorted_defs, texts};
 
@@ -30,20 +34,64 @@ pub struct AuthorityRow {
     pub effects: Vec<String>,
     /// What the capabilities amount to.
     pub authority: Authority,
+    /// 0.6: the connector tools its `tool.call` capabilities name, each as
+    /// the connector declares it (`erp.list_open_orders (read-only)`,
+    /// `erp.post_draft_invoice (write, critical, retry reconcilable)`); empty
+    /// in a program of 0.1 to 0.5, which has none, and then not written.
+    pub tools: Vec<String>,
 }
 
 impl AuthorityRow {
     /// `{ who, kind, effects, ...authority }`: the effects come before the
-    /// members of the authority.
+    /// members of the authority; in 0.6, `tools` comes last when the row has
+    /// any.
     #[must_use]
     pub fn to_js(&self) -> JsValue {
-        JsObject::new()
+        let row = JsObject::new()
             .with("who", self.who.as_str())
             .with("kind", self.kind)
             .with("effects", texts(&self.effects))
-            .spread(&self.authority.to_js())
-            .into()
+            .spread(&self.authority.to_js());
+        if self.tools.is_empty() {
+            row.into()
+        } else {
+            row.with("tools", texts(&self.tools)).into()
+        }
     }
+}
+
+/// Tools as a row shows them, sorted.
+fn described(facts: Vec<ToolFact>) -> Vec<String> {
+    let mut tools: Vec<String> = facts.iter().map(ToolFact::describe).collect();
+    sort_utf16(&mut tools);
+    unique_in_order(tools)
+}
+
+/// The tools of the capabilities `caps` name, as a row shows them, sorted.
+fn tools_of(program: Program<'_>, caps: &[CapVal]) -> Vec<String> {
+    described(tool_facts(program, caps))
+}
+
+/// 0.6: an effect `c.t` whose connector is no definition the view sees (its
+/// module is not given) is not "not critical": its class is not known.
+fn unknown_connectors(program: Program<'_>, effects: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = effects
+        .into_iter()
+        .map(|e| {
+            let unknown = e
+                .strip_suffix(" (not critical)")
+                .filter(|name| {
+                    name.split_once('.').is_some_and(|(c, _)| {
+                        defs_of(program).get(c).is_none()
+                            && mandate_check::stdlib::std_effect(name).is_none()
+                    })
+                })
+                .map(|name| format!("{name} (class not known: its connector is not given)"));
+            unknown.unwrap_or(e)
+        })
+        .collect();
+    sort_utf16(&mut out);
+    out
 }
 
 /// The authority of a program: `AuthorityView`.
@@ -147,6 +195,7 @@ impl Walk<'_> {
                             kind: "delegation",
                             effects: Vec::new(),
                             authority: authority_of(&grant),
+                            tools: tools_of(self.program, &grant),
                         });
                     }
                 }
@@ -192,6 +241,7 @@ impl Walk<'_> {
             kind: "delegation",
             effects: Vec::new(),
             authority: authority_of(&grant),
+            tools: tools_of(self.program, &grant),
         });
     }
 }
@@ -221,9 +271,18 @@ pub fn authority_with(program: &Value, modules: Option<&Modules>) -> AuthorityVi
     let expanded = mandate_check::expand::for_views(program, modules);
     if let Some(p) = Program::of(expanded.as_ref().unwrap_or(program)) {
         let defs = sorted_defs(p);
+        // 0.6: the connectors the program imports are read, so that a
+        // `tool.call` is the tools it names, and a write tool is the critical
+        // effect it declares. A program of 0.1 to 0.5 is read as it was.
+        let is_0_6 = p.language().is_some_and(|l| l.at_least(Language::V0_6));
+        let linked_value: Option<Value> = modules
+            .filter(|m| is_0_6 && !m.is_empty())
+            .map(|_| linked_program(p, modules));
+        let lp = linked_value.as_ref().and_then(Program::of).unwrap_or(p);
         for (name, d) in &defs {
             if is_kind(d, "agent") {
                 let remote = d.get("remote").is_some_and(Value::is_truthy);
+                let caps = caps_in(lp, Definition::of(d).caps());
                 rows.push(AuthorityRow {
                     who: if remote {
                         format!("{name} (remote)")
@@ -232,7 +291,8 @@ pub fn authority_with(program: &Value, modules: Option<&Modules>) -> AuthorityVi
                     },
                     kind: "agent",
                     effects: Vec::new(),
-                    authority: authority_of(&caps_in(p, Definition::of(d).caps())),
+                    authority: authority_of(&caps),
+                    tools: described(tool_facts_of(lp, Definition::of(d).caps())),
                 });
             }
         }
@@ -241,14 +301,20 @@ pub fn authority_with(program: &Value, modules: Option<&Modules>) -> AuthorityVi
                 continue;
             }
             let body = Definition::of(d).body();
+            let caps = caps_in(lp, workflow_bounds(d).caps);
+            let mut effects = workflow_effects(lp, body);
+            if is_0_6 {
+                effects = unknown_connectors(lp, effects);
+            }
             rows.push(AuthorityRow {
                 who: (*name).to_owned(),
                 kind: "workflow",
-                effects: workflow_effects(p, body),
-                authority: authority_of(&caps_in(p, workflow_bounds(d).caps)),
+                effects,
+                authority: authority_of(&caps),
+                tools: described(tool_facts_of(lp, workflow_bounds(d).caps)),
             });
             let mut walk = Walk {
-                program: p,
+                program: lp,
                 name,
                 wf: d,
                 rows: Vec::new(),
@@ -268,6 +334,8 @@ pub fn authority_with(program: &Value, modules: Option<&Modules>) -> AuthorityVi
 /// The blocks of the authority in a document: `authorityBlocks(v)`.
 #[must_use]
 pub fn authority_blocks(v: &AuthorityView) -> Vec<Block> {
+    // 0.6: a column for the connector tools, only when a row has any.
+    let with_tools = v.rows.iter().any(|r| !r.tools.is_empty());
     let rows = v
         .rows
         .iter()
@@ -287,28 +355,32 @@ pub fn authority_blocks(v: &AuthorityView) -> Vec<Block> {
             ] {
                 cells.push(Cell::plain(list(xs)));
             }
+            if with_tools {
+                cells.push(Cell::plain(list(&r.tools)));
+            }
             cells
         })
         .collect();
+    let mut head: Vec<String> = [
+        "Who",
+        "Kind",
+        "Read",
+        "Write",
+        "Network",
+        "Model",
+        "Run",
+        "Pull requests",
+        "Money",
+        "External effects",
+        "Unbounded",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    if with_tools {
+        head.push("Connector tools".to_owned());
+    }
     vec![
         Block::H("Authority".to_owned()),
-        Block::Table {
-            head: [
-                "Who",
-                "Kind",
-                "Read",
-                "Write",
-                "Network",
-                "Model",
-                "Run",
-                "Pull requests",
-                "Money",
-                "External effects",
-                "Unbounded",
-            ]
-            .map(str::to_owned)
-            .to_vec(),
-            rows,
-        },
+        Block::Table { head, rows },
     ]
 }
