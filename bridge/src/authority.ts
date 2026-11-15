@@ -5,16 +5,19 @@
 //
 // Each function takes one plain JSON value and gives one back: objects, arrays, strings, numbers, booleans and null.
 // None reads anything but its input, none changes its input, and the same input always gives the same output. The
-// order of an object's members never carries meaning; the order of an array does where the contract says so. A
+// order of an object's members carries no meaning to a decision; the order of an array does where the contract
+// says so, and the order of the members of a capability in an output is the one this file gives (`narrow`). A
 // capability value in an input or an output is a `CapVal` written as JSON (below), with an absent member for one
 // the value does not have, never `null`. An input with a `null` where the contract says a member is absent or has
 // a type, or with a member of another type than the contract gives, is outside the contract: the TypeScript may
 // throw or answer anything there, and a port is not held to it.
 //
-// A `CapVal` has `ctor` (a string, the constructor, e.g. "fs.write"), `effect` (a string), `write` (a boolean),
-// and, each perhaps absent: `scope` (strings), `maxClass` (a data class name), `tier` (a string), `argsPrefix`
-// (lists of strings), `methods` (strings), `name`, `via`, `root` (strings), `components` (strings). Members not
-// named in a rule below are carried along unread, unknown ones included.
+// A `CapVal` has `ctor` (a string, the constructor, e.g. "fs.write"), `effect` (a string), `write` (any JSON value,
+// read by its truthiness: `true` and `false` are what the interpreter gives), and, each perhaps absent: `scope`
+// (strings), `maxClass` (a string: a data class name, or any other, which ranks below every one; see covers),
+// `tier` (a string), `argsPrefix` (lists of strings), `methods` (strings), `name`, `via`, `root` (strings),
+// `components` (strings). Members not named in a rule below are carried along unread, unknown ones included,
+// whatever their value (`null` too).
 //
 // This is the reference the Rust port (`mandate-check/src/grant.rs`) is written and tested against. It is the code
 // the interpreter ran in 0.5, moved here unchanged, over the same predicates of the compiler; their Rust
@@ -108,7 +111,8 @@ function available(ctx: AuthorityContext): CapVal[] {
 export interface GrantInput {
   context: AuthorityContext;
   /**
-   * The delegation to decide, or null to ask only what is available in the context.
+   * The delegation to decide, or null to ask only what is available in the context. A `delegation` that is absent
+   * is read as null.
    *
    * - `agent`: the agent's name, named in a refusal.
    * - `held`: what the agent declares it holds (its `caps`), as capability values, in its order.
@@ -146,10 +150,10 @@ export type GrantOutput = { available: CapVal[] } | { granted: CapVal[] } | { re
  *    space and with its escapes) of `{"ctor":c.ctor}`, or of `{"ctor":c.ctor,"scope":c.scope}` when c's scope is
  *    present, an empty one included (`{"ctor":"fs.write","scope":[]}`). Keys compare as whole strings by UTF-16
  *    code unit, not item by item, not by UTF-8 byte or code point. Members with the same key keep their order
- *    among themselves. The TypeScript gets that from the engine: its comparator answers "before" or "after" and
- *    never "equal", and the engine's sort is stable, so a port must use a stable sort (the cases hold it to this,
- *    beyond the length at which an engine stops sorting by insertion). The order carries meaning: the interpreter
- *    derives the delegation's sandbox requirement and its agent loop's tier from it.
+ *    among themselves: the comparator answers "equal" for them, and Array.prototype.sort is stable (ECMAScript
+ *    2019), so a port must use a stable sort (the cases hold it to this, beyond the length at which an engine stops
+ *    sorting by insertion). The order carries meaning: the interpreter derives the delegation's sandbox requirement
+ *    and its agent loop's tier from it.
  *
  * Nothing is de-duplicated: a capability held, given or handed twice is granted twice. The capability values in
  * the output are those of the input, unchanged, every member kept.
@@ -173,7 +177,12 @@ export function grant(input: GrantInput): GrantOutput {
     out = [...out.filter((c) => !kinds.has(c.ctor)), ...given];
   }
   const key = (c: CapVal): string => JSON.stringify(c.scope ? { ctor: c.ctor, scope: c.scope } : { ctor: c.ctor });
-  return { granted: out.sort((a, b) => (key(a) < key(b) ? -1 : 1)) };
+  return {
+    granted: out.sort((a, b) => {
+      const [x, y] = [key(a), key(b)];
+      return x < y ? -1 : x > y ? 1 : 0;
+    }),
+  };
 }
 
 export interface NarrowInput {
@@ -218,7 +227,8 @@ export type NarrowOutput = { caps: CapVal[] } | { partial: true } | { notText: n
  * `{ refused: { tag: "PolicyDenied", args: [{ reason: "outside_capability", capability: show(base), requested: scope }] } }`;
  * otherwise `{ caps: [n] }`, where n is `base` with every member kept, `scope` the scope (in the order above) and
  * `name` `<base.name>.narrow`, or `<base.ctor>.narrow` when `name` is absent (an empty name is kept, giving
- * ".narrow").
+ * ".narrow"). Its members are in the order of `{ ...base, scope, name }`: base's, in their order, `scope` and
+ * `name` where base has them, and after them, in that order, those base does not have.
  */
 export function narrow(input: NarrowInput): NarrowOutput {
   const { base } = input;
@@ -244,7 +254,7 @@ export function narrow(input: NarrowInput): NarrowOutput {
 export interface MapScopesInput {
   /** The map's path, named in a refusal. */
   map: string;
-  /** How many items run side by side, at least 1. */
+  /** How many items run side by side: compared `> 1`, so that 1, 0 and any negative number mean "not side by side". */
   par: number;
   /** The context the map stands in. */
   context: AuthorityContext;
