@@ -2080,7 +2080,84 @@
             "kind",
             "description"
           ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "connector"
+            },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
+            },
+            "mcp": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "class": {
+              "type": "string"
+            },
+            "tools": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Tool"
+              },
+              "propertyNames": {
+                "$ref": "#/$defs/Name"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "mcp",
+            "tools"
+          ]
         }
+      ]
+    },
+    "Tool": {
+      "type": "object",
+      "properties": {
+        "params": {
+          "$ref": "#/$defs/Params"
+        },
+        "returns": {
+          "$ref": "#/$defs/TypeExpr"
+        },
+        "read_only": {
+          "const": true
+        },
+        "critical": {
+          "const": true
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/Name"
+        },
+        "retry_class": {
+          "enum": [
+            "read_only",
+            "idempotent",
+            "reconcilable",
+            "non_retryable"
+          ]
+        },
+        "reconcile_by": {
+          "$ref": "#/$defs/Name"
+        },
+        "compensation": {
+          "$ref": "#/$defs/Name"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "params",
+        "returns"
       ]
     },
     "Test": {

@@ -1,0 +1,56 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1405a",
+  "kind": "compile",
+  "title": "A write tool called as an expression is refused: it runs only as a critical effect.",
+  "spec": [
+    "spec/library.md#toolcall"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Draft/body/2/value",
+      "value": {
+        "op": "call",
+        "callee": {
+          "op": "field",
+          "of": {
+            "op": "var",
+            "name": "erp"
+          },
+          "name": "post_draft"
+        },
+        "args": [
+          {
+            "value": {
+              "op": "var",
+              "name": "order_no"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1405",
+        "path": "/defs/Draft/body/2/value",
+        "facts": {
+          "problem": "write_as_expression"
+        }
+      },
+      {
+        "code": "MDT-W0310",
+        "path": "/defs/Draft/caps/0"
+      }
+    ]
+  }
+}

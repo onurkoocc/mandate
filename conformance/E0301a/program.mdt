@@ -1,0 +1,27 @@
+// An effect with two requirements, a directory and a repository. The
+// workflow holds the directory and not the repository: before 0.6 the
+// checker compares only the constructor of the first `requires caps` (in the
+// canonical order, the directory's), so the program of 0.5 (E0301b) checks; a
+// program of 0.6 compares every capability of every `requires caps` by
+// coverage, scope included (B12, spec/library.md "requires caps (B12)").
+
+mandate @ 0.6
+
+module example.publish @ 0.1
+
+use std.{fs, git}
+
+capability Notes = fs.write("/srv/notes")
+
+effect publish(note: Text) -> Text
+  requires caps fs.write("/srv/notes")
+  requires caps git.pr("acme/app")
+  critical
+  idempotency required
+
+workflow Publish(note: Text) -> Text
+  caps   Notes
+  budget { time: 1m }
+{
+  effect publish(note) idempotent_by note
+}

@@ -76,6 +76,15 @@ impl<'a> Parser<'a> {
             let def = obj().with("kind", "role").with("description", description);
             return Ok((name, def, name_tok));
         }
+        // `connector name = mcp("…") …` (0.6): contextual, read only in a
+        // program of 0.6, so that an earlier one reads as it always did.
+        if text == "connector"
+            && self.reads_0_6()
+            && self.la(1).kind == TokKind::Ident
+            && is_p(self.la(2), "=")
+        {
+            return self.connector_decl();
+        }
         match text {
             "type" => self.type_decl(),
             "capability" => self.capability_decl(),
@@ -98,6 +107,138 @@ impl<'a> Parser<'a> {
         let value = self.expr(false)?;
         let def = obj().with("kind", "capability").with("value", value);
         Ok((name, def, name_tok))
+    }
+
+    /// `connector name = mcp("url") version "…" class c { tool … }` (0.6,
+    /// spec/library.md "Declaration"). `version` and `class` come in either
+    /// order, each at most once; whether they are there, and whether the URL
+    /// and the class are what a connector takes, the checks hold (E1402).
+    /// A tool declared twice stops the reading here, E1402 at its second
+    /// name (the program is refused as one that does not read); a `///`
+    /// line inside the body documents nothing (E0101).
+    fn connector_decl(&mut self) -> Res<Decl<'a>> {
+        self.bump();
+        let name_tok = self.t();
+        let name = self.ident("a connector name")?;
+        self.expect_p("=")?;
+        self.expect_w("mcp")?;
+        self.expect_p("(")?;
+        let url = self.string("the URL of an MCP server")?;
+        self.expect_p(")")?;
+        let mut def = obj().with("kind", "connector").with("mcp", url);
+        loop {
+            let t = self.t();
+            if self.is_w("version") || self.is_w("class") {
+                let field = t.text.clone();
+                if def.has(&field) {
+                    return Err(fail_at(format!("'{field}' is given twice."), t));
+                }
+                self.bump();
+                let value = if field == "version" {
+                    self.string("a version")?
+                } else {
+                    self.ident("a data class")?
+                };
+                def.set(&field, value);
+            } else {
+                break;
+            }
+        }
+        self.expect_p("{")?;
+        let mut tools = obj();
+        loop {
+            self.no_doc_before()?;
+            if self.is_p("}") {
+                break;
+            }
+            if !self.is_w("tool") {
+                return Err(self.fail(format!(
+                    "Expected tool or '}}' in connector body but found {}.",
+                    describe(self.t())
+                )));
+            }
+            let start = self.bump();
+            let tool_tok = self.t();
+            let tool_name = self.ident("a tool name")?;
+            let tool = self.tool(&tool_name)?;
+            if tools.has(&tool_name) {
+                let facts = mandate_ir::JsObject::new()
+                    .with("connector", name.as_str())
+                    .with("tool", tool_name.as_str())
+                    .with("problem", "duplicate_tool");
+                return Err(Box::new(mandate_ir::Diagnostic::new(
+                    "E1402",
+                    format!("Connector {name} declares the tool {tool_name} twice."),
+                    mandate_ir::Location::span(crate::lexer::token_span(tool_tok)),
+                    Some(facts),
+                )));
+            }
+            let tool = self.at(tool, start);
+            tools.set(&tool_name, tool);
+        }
+        self.expect_p("}")?;
+        def.set("tools", tools);
+        Ok((name, def, name_tok))
+    }
+
+    /// One tool of a connector, after its name: `(params) -> T` and its
+    /// class, each part at most once.
+    fn tool(&mut self, tool_name: &str) -> Res<O> {
+        let params = self.params()?;
+        self.expect_p("->")?;
+        let returns = self.type_expr(false)?;
+        let mut tool = obj().with("params", params).with("returns", returns);
+        loop {
+            let t = self.t();
+            if t.kind != TokKind::Ident {
+                break;
+            }
+            let member = match t.text.as_str() {
+                "read_only" => "read_only",
+                "critical" => "critical",
+                "idempotency" => "idempotency_key",
+                "retry_class" => "retry_class",
+                "reconcile" => "reconcile_by",
+                "compensation" => "compensation",
+                _ => break,
+            };
+            if tool.has(member) {
+                return Err(fail_at(
+                    format!("'{}' is given twice for the tool {tool_name}.", t.text),
+                    t,
+                ));
+            }
+            self.bump();
+            match member {
+                "read_only" | "critical" => tool.set(member, true),
+                "idempotency_key" => {
+                    self.expect_w("key")?;
+                    let key = self.ident("a parameter name")?;
+                    tool.set(member, key);
+                }
+                "retry_class" => {
+                    let rt = self.t();
+                    let rc = self.ident("a retry class")?;
+                    if !matches!(
+                        rc.as_str(),
+                        "read_only" | "idempotent" | "reconcilable" | "non_retryable"
+                    ) {
+                        return Err(fail_at(format!("Unknown retry class '{rc}'."), rt));
+                    }
+                    tool.set(member, rc);
+                }
+                "reconcile_by" => {
+                    self.expect_w("by")?;
+                    let by = self.ident("a tool name")?;
+                    tool.set(member, by);
+                }
+                _ => {
+                    let c = self.ident("a tool name")?;
+                    tool.set(member, c);
+                }
+            }
+        }
+        Ok(tool)
     }
 
     fn const_decl(&mut self) -> Res<Decl<'a>> {

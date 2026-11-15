@@ -1,0 +1,48 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1406",
+  "kind": "compile",
+  "title": "A delegation's with caps that hands an agent a write tool is refused, as an agent's caps holding one is.",
+  "spec": [
+    "spec/library.md#toolcall"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Draft/body/1/value/caps",
+      "value": [
+        {
+          "op": "var",
+          "name": "ErpDraft"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0701",
+        "path": "/defs/Draft/body/1/value/caps/0"
+      },
+      {
+        "code": "MDT-E1406",
+        "path": "/defs/Draft/body/1/value/caps/0",
+        "facts": {
+          "agent": "Reader",
+          "through": "with caps"
+        }
+      },
+      {
+        "code": "MDT-E0301",
+        "path": "/defs/Draft/body/1/value"
+      }
+    ]
+  }
+}

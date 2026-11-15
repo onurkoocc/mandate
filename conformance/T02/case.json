@@ -1,0 +1,43 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "T02",
+  "kind": "compile",
+  "title": "An agent that holds a write tool is refused at its caps.",
+  "spec": [
+    "spec/library.md#toolcall",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Reader/caps/-",
+      "value": {
+        "op": "var",
+        "name": "ErpDraft"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1406",
+        "path": "/defs/Reader/caps/2",
+        "facts": {
+          "agent": "Reader",
+          "through": "caps"
+        }
+      },
+      {
+        "code": "MDT-W0310",
+        "path": "/defs/Reader/caps/2"
+      }
+    ]
+  }
+}

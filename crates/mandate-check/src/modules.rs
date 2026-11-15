@@ -15,8 +15,8 @@
 //! sets the object's prototype and adds no member.
 
 use mandate_ir::{
-    DefKind, Definition, Diagnostic, Import, JsObject, Location, Map, Program, Value, ptr,
-    sort_utf16,
+    ConnectorDef, DefKind, Definition, Diagnostic, Import, JsObject, Location, Map, Program, Value,
+    ptr, sort_utf16,
 };
 
 /// Loaded modules by name: `Modules`, `Record<string, Program>`. Each value
@@ -148,16 +148,57 @@ pub fn link(program: Program<'_>, modules: Option<&Modules>) -> Linked {
                     continue;
                 }
                 if let Some(d) = m_defs.get(&dep) {
-                    defs.insert(dep.clone(), d.clone());
+                    defs.insert(dep.clone(), with_module(d.clone(), module));
                 }
                 origin.push((dep, module.to_owned()));
             }
         }
     }
+    // 0.6: a connector is named by its module and its name, so each one in
+    // the table says its module, the program's own ones too.
+    if let Some(own) = program.module() {
+        mark_connectors(&mut defs, own);
+    }
     Linked {
         defs,
         origin,
         diagnostics,
+    }
+}
+
+/// `d` with `module` set to `module` when it is a connector (0.6), which is
+/// named by its module and its name (spec/library.md "tool.call"); any
+/// other definition as it is. Only a table of linked definitions holds a
+/// connector so: its IR has no `module` (the schema refuses one), so a
+/// program cannot write it.
+#[must_use]
+pub fn with_module(d: Value, module: &str) -> Value {
+    match d {
+        Value::Object(mut m)
+            if m.get("kind").and_then(DefKind::from_value) == Some(DefKind::Connector) =>
+        {
+            m.insert("module", module);
+            Value::Object(m)
+        }
+        other => other,
+    }
+}
+
+/// Every connector of `defs` that says no module, marked as one of
+/// `module` ([`with_module`]): the program's own, in a table of linked
+/// definitions.
+pub fn mark_connectors(defs: &mut Map, module: &str) {
+    let unmarked: Vec<String> = defs
+        .iter()
+        .filter(|(_, d)| ConnectorDef::of(d).is_some_and(|c| c.module().is_none()))
+        .map(|(n, _)| n.to_owned())
+        .collect();
+    for name in unmarked {
+        if let Some(d) = defs.get_mut(&name)
+            && let Value::Object(m) = d
+        {
+            m.insert("module", module);
+        }
     }
 }
 

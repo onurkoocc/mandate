@@ -1,0 +1,52 @@
+// conformance/T01/program.mdt with the tool find_draft declared twice (E1402).
+
+mandate @ 0.6
+
+module example.erp @ 0.1
+
+use std.{model, tool}
+
+type Order   = { order_no: Text, vendor_id: Text, total_cents: Int }
+type DraftId = { draft_id: Text }
+type Note    = Text classified restricted
+
+/// The ERP: reads open orders, and posts draft invoices.
+connector erp = mcp("https://erp.example.com/mcp")
+  version "1.0"
+  class   confidential
+{
+  tool list_orders(vendor_id: Text) -> Untrusted<List<Order>>
+    read_only
+
+  tool find_draft(key: Text) -> Untrusted<Option<DraftId>>
+    read_only
+
+  tool find_draft(key: Text) -> Untrusted<Option<DraftId>>
+    read_only
+
+  tool post_draft(order_no: Text, key: Text) -> Receipt<DraftId>
+    critical
+    idempotency key key
+    retry_class reconcilable
+    reconcile by find_draft
+}
+
+capability ErpRead  = tool.call(erp, list_orders)
+capability ErpDraft = tool.call(erp, post_draft)
+capability ModelAll = model.infer(tier: standard, max_class: restricted)
+
+agent Reader {
+  role   "Reads the open orders of a vendor and says what they are."
+  caps   ErpRead, ModelAll
+  budget { tokens: 10k, steps: 2 }
+  skill orders(vendor_id: Text) -> Inferred<Text> ! {Tool, Model}
+}
+
+workflow Draft(vendor_id: Text, order_no: Text, note: Note) -> Receipt<DraftId>
+  caps   ErpRead, ErpDraft, ModelAll
+  budget { time: 10m }
+{
+  let orders = erp.list_orders(vendor_id)
+  let summary = delegate Reader.orders(vendor_id)
+  effect erp.post_draft(order_no) idempotent_by order_no
+}

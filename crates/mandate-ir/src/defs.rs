@@ -8,6 +8,7 @@
 
 use crate::expr::Expr;
 use crate::tags::DefKind;
+use crate::type_expr::TypeExpr;
 use crate::value::{Map, Value};
 
 /// The object `v`, when it is one whose `kind` is `kind`.
@@ -198,5 +199,167 @@ impl<'a> EnvironmentDef<'a> {
             .and_then(Value::as_object)
             .into_iter()
             .flat_map(Map::iter)
+    }
+}
+
+/// A `connector` definition (spec/library.md "Connectors", language 0.6):
+/// `{ kind, mcp, version?, class?, tools }`. In a table of linked
+/// definitions it also has `module`, the module that defines it, which
+/// linking writes: a connector is named by its module and its name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConnectorDef<'a> {
+    map: &'a Map,
+}
+
+impl<'a> ConnectorDef<'a> {
+    /// The view of `v`, when it is a `connector` definition.
+    #[must_use]
+    pub fn of(v: &'a Value) -> Option<ConnectorDef<'a>> {
+        of_kind(v, DefKind::Connector).map(|map| ConnectorDef { map })
+    }
+
+    /// The members, as read.
+    #[must_use]
+    pub fn members(self) -> &'a Map {
+        self.map
+    }
+
+    /// `mcp`: the server's URL.
+    #[must_use]
+    pub fn mcp(self) -> Option<&'a str> {
+        self.map.get("mcp").and_then(Value::as_str)
+    }
+
+    /// `version`: the text the program records.
+    #[must_use]
+    pub fn version(self) -> Option<&'a str> {
+        self.map.get("version").and_then(Value::as_str)
+    }
+
+    /// `class`: the data class of what its tools return, as written.
+    #[must_use]
+    pub fn class(self) -> Option<&'a str> {
+        self.map.get("class").and_then(Value::as_str)
+    }
+
+    /// `module`: in a table of linked definitions, the module that defines
+    /// it.
+    #[must_use]
+    pub fn module(self) -> Option<&'a str> {
+        self.map.get("module").and_then(Value::as_str)
+    }
+
+    /// `tools`: its tools by name, in the order of the object; the ones
+    /// that are not objects are left out.
+    pub fn tools(self) -> impl Iterator<Item = (&'a str, Tool<'a>)> {
+        self.map
+            .get("tools")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flat_map(Map::iter)
+            .filter_map(|(n, t)| t.as_object().map(|map| (n, Tool { map })))
+    }
+
+    /// The tool `name`, when it declares one.
+    #[must_use]
+    pub fn tool(self, name: &str) -> Option<Tool<'a>> {
+        self.map
+            .get("tools")
+            .and_then(|t| t.get(name))
+            .and_then(Value::as_object)
+            .map(|map| Tool { map })
+    }
+}
+
+/// One tool of a connector: `{ params, returns, read_only?, critical?,
+/// idempotency_key?, retry_class?, reconcile_by?, compensation? }`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Tool<'a> {
+    map: &'a Map,
+}
+
+impl<'a> Tool<'a> {
+    /// The members, as read.
+    #[must_use]
+    pub fn members(self) -> &'a Map {
+        self.map
+    }
+
+    /// `params`, every element included.
+    #[must_use]
+    pub fn params(self) -> &'a [Value] {
+        self.map
+            .get("params")
+            .and_then(Value::as_array)
+            .unwrap_or_default()
+    }
+
+    /// `returns`.
+    #[must_use]
+    pub fn returns(self) -> Option<TypeExpr<'a>> {
+        self.map.get("returns").and_then(TypeExpr::of)
+    }
+
+    /// `read_only`: it changes nothing.
+    #[must_use]
+    pub fn read_only(self) -> bool {
+        self.map.get("read_only") == Some(&Value::Bool(true))
+    }
+
+    /// `critical`.
+    #[must_use]
+    pub fn critical(self) -> bool {
+        self.map.get("critical") == Some(&Value::Bool(true))
+    }
+
+    /// `idempotency_key`: the parameter the runtime sends the operation key
+    /// in.
+    #[must_use]
+    pub fn idempotency_key(self) -> Option<&'a str> {
+        self.map.get("idempotency_key").and_then(Value::as_str)
+    }
+
+    /// `retry_class`.
+    #[must_use]
+    pub fn retry_class(self) -> Option<&'a str> {
+        self.map.get("retry_class").and_then(Value::as_str)
+    }
+
+    /// `reconcile_by`: the read-only tool asked about a write's outcome.
+    #[must_use]
+    pub fn reconcile_by(self) -> Option<&'a str> {
+        self.map.get("reconcile_by").and_then(Value::as_str)
+    }
+
+    /// `compensation`: the write tool offered to a person after a partial
+    /// failure.
+    #[must_use]
+    pub fn compensation(self) -> Option<&'a str> {
+        self.map.get("compensation").and_then(Value::as_str)
+    }
+
+    /// Whether it declares anything of a write class: `critical`,
+    /// `idempotency_key`, `retry_class`, `reconcile_by` or `compensation`.
+    #[must_use]
+    pub fn declares_write(self) -> bool {
+        [
+            "critical",
+            "idempotency_key",
+            "retry_class",
+            "reconcile_by",
+            "compensation",
+        ]
+        .iter()
+        .any(|k| self.map.get(k).is_some())
+    }
+
+    /// Whether it is read as a write tool: anything but a tool that is
+    /// `read_only` and declares nothing of a write class. A tool of no
+    /// closed class, neither or both (E1401), is read as a write, the
+    /// stricter: no agent may hold it, and it is called only as a critical
+    /// effect.
+    #[must_use]
+    pub fn is_write(self) -> bool {
+        !self.read_only() || self.declares_write()
     }
 }

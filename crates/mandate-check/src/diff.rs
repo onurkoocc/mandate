@@ -137,6 +137,7 @@ pub fn scope_diff(before: Option<&CapVal>, after: Option<&CapVal>) -> ScopeDiff 
         "net.https" => "network host",
         "exec" => "command",
         "git.pr" => "repository",
+        "tool.call" => "tool",
         _ => "scope",
     };
     let Some(after) = after else {
@@ -291,6 +292,10 @@ pub fn scope_diffs(before: &[CapVal], after: &[CapVal]) -> ScopeDiff {
     let key = |c: &CapVal| {
         if c.ctor() == "exec" {
             format!("exec:{}", c.scope().unwrap_or_default().join(","))
+        } else if c.ctor() == "tool.call" {
+            // 0.6: a `tool.call` stands for its read-only tools and its write
+            // tools, two capabilities, each compared with its own kind.
+            format!("tool.call:{}", if c.write() { "write" } else { "read" })
         } else {
             c.ctor().to_owned()
         }
@@ -760,6 +765,15 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                     path,
                     format!("+ {a_kind} {name} (system model)"),
                 );
+            } else if a_kind == "connector" {
+                // 0.6: a connector a program did not have widens its
+                // authority signature (spec/library.md "The authority
+                // signature").
+                out.gov(
+                    GovernanceChangeKind::CapabilityAdded,
+                    path,
+                    format!("+ connector {name}"),
+                );
             } else if a_kind == "agent" && a.get("remote").is_some_and(Value::is_truthy) {
                 out.gov(
                     GovernanceChangeKind::RemoteAgentAdded,
@@ -901,6 +915,7 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                     out.beh(path, format!("~ effect {name} changed"));
                 }
             }
+            "connector" => connector_changes(&mut out, name, &path, b, a),
             "component" | "interface" | "environment" => {
                 // The system model is the institution's, not the program's: every change to it is a governance change (doc 9 §1, §5.3).
                 for t in system_changes(name, b, a) {
@@ -915,6 +930,147 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
         }
     }
     out
+}
+
+/// What changed in a connector (0.6), as its authority signature reads it
+/// (spec/library.md "The authority signature"): another server, a higher
+/// class, a tool it did not have, a read-only tool that writes, and a write
+/// tool's class, retry class, `reconcile by` or `compensation` changed, and
+/// any tool's parameters or result, are governance changes (authority
+/// widened); a lower class, a tool taken away, a write tool that became
+/// read-only and another `version` are behavior changes.
+fn connector_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a: &Value) {
+    let gov = |out: &mut Classified, at: String, text: String| {
+        out.gov(GovernanceChangeKind::CapabilityAdded, at, text);
+    };
+    if j_or_null(b.get("mcp")) != j_or_null(a.get("mcp")) {
+        gov(
+            out,
+            format!("{path}/mcp"),
+            format!(
+                "~ connector {name}: server {} → {}",
+                j_or_null(b.get("mcp")),
+                j_or_null(a.get("mcp"))
+            ),
+        );
+    }
+    let rank = |v: Option<&Value>| {
+        v.and_then(Value::as_str)
+            .and_then(crate::stdlib::DataClass::from_name)
+            .map(crate::stdlib::class_rank)
+    };
+    let (bc, ac) = (b.get("class"), a.get("class"));
+    if j_or_null(bc) != j_or_null(ac) {
+        let text = format!(
+            "~ connector {name}.class: {} → {}",
+            js_text(bc),
+            js_text(ac)
+        );
+        // A class that is no data class, or none, is read as the highest.
+        let higher = match (rank(bc), rank(ac)) {
+            (Some(x), Some(y)) => y > x,
+            (_, None) => true,
+            (None, Some(_)) => false,
+        };
+        if higher {
+            gov(out, format!("{path}/class"), text);
+        } else {
+            out.beh(format!("{path}/class"), text);
+        }
+    }
+    if j_or_null(b.get("version")) != j_or_null(a.get("version")) {
+        out.beh(
+            format!("{path}/version"),
+            format!(
+                "~ connector {name}.version: {} → {}",
+                js_text(b.get("version")),
+                js_text(a.get("version"))
+            ),
+        );
+    }
+    let (bt, at) = (object_member(b, "tools"), object_member(a, "tools"));
+    let mut tools = unique_in_order(
+        bt.into_iter()
+            .chain(at)
+            .flat_map(Map::keys)
+            .map(str::to_owned),
+    );
+    sort_utf16(&mut tools);
+    let class_of = |t: &Value| {
+        if t.get("read_only") == Some(&Value::Bool(true))
+            && [
+                "critical",
+                "idempotency_key",
+                "retry_class",
+                "reconcile_by",
+                "compensation",
+            ]
+            .iter()
+            .all(|k| t.get(k).is_none())
+        {
+            "read_only"
+        } else {
+            "write"
+        }
+    };
+    for t in tools {
+        let tp = format!("{path}/tools/{t}");
+        let (before, after) = (bt.and_then(|m| m.get(&t)), at.and_then(|m| m.get(&t)));
+        let (before, after) = match (before, after) {
+            (None, Some(x)) => {
+                gov(
+                    out,
+                    tp,
+                    format!("+ connector {name}: tool {t} ({})", class_of(x)),
+                );
+                continue;
+            }
+            (Some(_), None) => {
+                out.beh(tp, format!("- connector {name}: tool {t} removed"));
+                continue;
+            }
+            (Some(x), Some(y)) => (x, y),
+            (None, None) => continue,
+        };
+        let (cb, ca) = (class_of(before), class_of(after));
+        if cb != ca {
+            let text = format!("~ connector {name}.{t}: {cb} → {ca}");
+            if ca == "write" {
+                gov(out, tp.clone(), text);
+            } else {
+                out.beh(tp.clone(), text);
+            }
+        } else if ca == "write" {
+            for k in [
+                "critical",
+                "idempotency_key",
+                "retry_class",
+                "reconcile_by",
+                "compensation",
+            ] {
+                if j_or_null(before.get(k)) != j_or_null(after.get(k)) {
+                    gov(
+                        out,
+                        format!("{tp}/{k}"),
+                        format!(
+                            "~ connector {name}.{t}: {k} {} → {}",
+                            js_text(before.get(k)),
+                            js_text(after.get(k))
+                        ),
+                    );
+                }
+            }
+        }
+        for k in ["params", "returns"] {
+            if j_or_null(before.get(k)) != j_or_null(after.get(k)) {
+                gov(
+                    out,
+                    format!("{tp}/{k}"),
+                    format!("~ connector {name}.{t}: {k} changed"),
+                );
+            }
+        }
+    }
 }
 
 /// A definition without its `doc` (language 0.6).

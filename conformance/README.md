@@ -282,9 +282,34 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E0120` | A listed constant used as a type: a listed name is the definition it names, held to its kind as the program's own (a mutation) | E0120 |
 | `E0120a` | A lower-case listed name of a module that is not the standard library's used as a module path, `most.Anything` (a mutation) | E0120 |
 | `E0120b` | A listed type named as the contract of `Verified` (a mutation) | E0120 |
+| `T01a` | A program with a connector of its own checks, its lock binding the connector: a read in a workflow, read-only tools in an agent, a write as a critical effect | — |
+| `T01` | `tool.call(erp, list_orders)` does not cover the write `post_draft` (B12; a mutation: the workflow's caps) | E0301 |
+| `T02` | An agent that holds a write tool (a mutation: one capability added to its caps) | E1406, W0310 |
+| `T06` | A tool's argument of a class above its connector's (a mutation: the argument) | E0220 |
+| `T06a` | An agent that holds a tool and receives data of a class above its connector's (a mutation: the argument of the delegation) | E0220 |
+| `E1401` | A write tool without `critical` | E1401 |
+| `E1401a` | A `reconcile by` tool that does not answer about the write: not one `Text` parameter and `Untrusted<Option<T>>` | E1401 |
+| `E1401b` | A tool that is `read_only` and of a write class | E1401 |
+| `E1402` | A server URL with a port | E1402 |
+| `E1402a` | A class that is not a data class | E1402 |
+| `E1402b` | A tool declared twice, in the text | E1402 |
+| `E1403` | A read-only tool that returns what is not `Untrusted<T>` | E1403 |
+| `E1404` | A `tool.call` of a tool the connector does not declare (a mutation: a capability added) | E1404 |
+| `E1405` | A read-only tool called through `effect` | E1405 |
+| `E1405a` | A write tool called as an expression | E1405, W0310 |
+| `E1405b` | A tool called in a function | E1405 |
+| `E1406` | A delegation's `with caps` that hands an agent a write tool | E0701, E1406, E0301 |
+| `E1407` | A connector the package can call, and a lock with no entry for it | E1407 |
+| `E1407a` | A lock entry without the digest of one of the connector's tools | E1407 |
+| `E1408` | A lock entry of a connector no module of the package defines | E1408 |
+| `E1408a` | A lock entry with the digest of a tool the connector does not declare | E1408 |
+| `E0140c` | A connector's `template` in the lock with `{secret}` twice | E0140 |
+| `E0301a` | An effect with two `requires caps`, the second covered by no capability of the workflow (B12) | E0301, W0310 |
+| `E0301b` | The program of `E0301a` as 0.5: only the first `requires caps` is compared, as before | — |
 
 The import cases share the 0.6 module `E1602/types.mdt` and the program
-`E1602/program.mdt`. What a case cannot say, because its modules must load, is in
+`E1602/program.mdt`; the connector cases share `T01/program.mdt`, a program
+with a connector of its own, and `E0301b` is `E0301a/program.mdt` as 0.5. What a case cannot say, because its modules must load, is in
 `crates/mandate-check/tests/language_0_6.rs`: a module of 0.5 among the modules given
 to a check that imports one of 0.6 (E1603), and one of 0.6 that imports a module
 nobody gave (E1604), do not load.
@@ -292,7 +317,8 @@ nobody gave (E1604), do not load.
 spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
 (human steps), L (libraries) and N11 (shapes), and the code numbers of its
 families; the cases above use P01 (which spec/library.md names), the S02 claim,
-E0101, E0104, E0120 and E0140, which 0.6 extends, and the code numbers of E16xx.
+E0101, E0104, E0120, E0140 and E0301, which 0.6 extends, T01, T02 and T06
+(which spec/library.md names), and the code numbers of E14xx and E16xx.
 
 ## What the Rust crates run
 
@@ -330,13 +356,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 156, passed 156, pending 0
+conformance cases: ran 180, passed 180, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 31 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 55 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(172 cases: 156 `compile`, 31 of them of language 0.6, and 16 `journal`; no case
+(196 cases: 180 `compile`, 55 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

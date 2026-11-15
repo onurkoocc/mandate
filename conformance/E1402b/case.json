@@ -1,0 +1,29 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1402b",
+  "kind": "compile",
+  "title": "A connector that declares a tool twice is refused where it is read.",
+  "spec": [
+    "spec/library.md#declaration"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1402",
+        "path": "",
+        "facts": {
+          "connector": "erp",
+          "tool": "find_draft",
+          "problem": "duplicate_tool"
+        }
+      }
+    ]
+  }
+}

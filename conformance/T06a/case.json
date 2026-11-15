@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "T06a",
+  "kind": "compile",
+  "title": "What an agent receives is held to the class of every connector whose tools its grant holds: above it, the delegation is refused.",
+  "spec": [
+    "spec/library.md#what-is-sent-to-a-connector",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Draft/body/1/value/args/0/value",
+      "value": {
+        "op": "var",
+        "name": "note"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0220",
+        "path": "/defs/Draft/body/1/value",
+        "facts": {
+          "data_class": "restricted",
+          "allowed": "confidential",
+          "connector": "example.erp.erp"
+        }
+      }
+    ]
+  }
+}

@@ -22,8 +22,9 @@ use mandate_ir::{
 
 use super::{Bound, Checker, Delegated, Enveloped, Frame, Usage, Val, Where, max_class};
 use crate::caps::{
-    CapVal, HTTP_METHODS, MethodProblemKind, callee_path, cap_authorizes, cap_covers,
-    caps_from_call, caps_of, read_methods, reads_methods, scope_within, show_cap, writes_overlap,
+    CapVal, HTTP_METHODS, MethodProblemKind, TOOL_CALL, callee_path, cap_authorizes, cap_covers,
+    caps_from_call, caps_of, read_methods, reads_methods, reads_tool_call, scope_within, show_cap,
+    writes_overlap,
 };
 use crate::cost::Budget;
 use crate::stdlib::{
@@ -221,6 +222,12 @@ impl<'a> Checker<'a> {
                 }
             }
             let r = caps_from_call(e, self.defs, self.cap_opts());
+            // 0.6: a `tool.call` is held to its own rules (E1404).
+            if reads_tool_call(self.program.language())
+                && e.callee().and_then(callee_path).as_deref() == Some(TOOL_CALL)
+            {
+                return self.tool_call_cap(e, r, path);
+            }
             if let Some(problem) = r.as_ref().and_then(|r| r.problem.as_deref()) {
                 self.report(
                     "E1002",
@@ -268,6 +275,17 @@ impl<'a> Checker<'a> {
         let Some(base) = bases.into_iter().next() else {
             return Vec::new();
         };
+        // 0.6: a `tool.call` has no `.narrow(…)` (E1404): narrowed, it
+        // stands for nothing.
+        if base.ctor() == TOOL_CALL {
+            self.report(
+                "E1404",
+                "A tool.call has no .narrow(…): write a narrower one with fewer tools (spec/library.md \"tool.call\").",
+                path,
+                Some(JsObject::new().with("problem", "a tool.call has no .narrow(…)")),
+            );
+            return Vec::new();
+        }
         let mut scope: Vec<String> = Vec::new();
         let mut known = true;
         for (i, a) in e.arg_values().iter().enumerate() {
@@ -518,6 +536,9 @@ impl<'a> Checker<'a> {
     /// that authorize a usage. A usage with a scope needs a capability
     /// whose scope covers it.
     fn caps_for(&self, effect: &str, scope: Option<&[String]>, caps: &[CapVal]) -> Vec<usize> {
+        if let Some(reqs) = self.requirements(effect) {
+            return Self::covering(&reqs, scope, caps);
+        }
         let need = self.required_cap(effect).filter(|n| !n.is_empty());
         caps.iter()
             .enumerate()
@@ -528,6 +549,29 @@ impl<'a> Checker<'a> {
                 }
                 None => cap_authorizes(c, effect, scope),
             })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// B12 (0.6), and a write tool's effect: the indices of the
+    /// capabilities among `caps` that cover a requirement of `reqs`, each by
+    /// coverage, scope included ([`cap_covers`]; and within `scope`, when the
+    /// use has one), when every capability of every requirement is covered
+    /// by one of them; none otherwise, and none when a requirement stands
+    /// for nothing.
+    fn covering(reqs: &[Vec<CapVal>], scope: Option<&[String]>, caps: &[CapVal]) -> Vec<usize> {
+        let fits = |c: &CapVal, need: &CapVal| {
+            cap_covers(c, need) && (scope.is_none() || scope_within(c.ctor(), scope, c.scope()))
+        };
+        let covered = reqs.iter().all(|line| {
+            !line.is_empty() && line.iter().all(|need| caps.iter().any(|c| fits(c, need)))
+        });
+        if !covered {
+            return Vec::new();
+        }
+        caps.iter()
+            .enumerate()
+            .filter(|(_, c)| reqs.iter().flatten().any(|need| fits(c, need)))
             .map(|(i, _)| i)
             .collect()
     }
@@ -545,8 +589,11 @@ impl<'a> Checker<'a> {
     /// that do.
     fn authorizing(&self, x: &Value, caps: &[CapVal]) -> Vec<usize> {
         let effect = x.get("effect").and_then(Value::as_str).unwrap_or_default();
-        let need = self.required_cap(effect).filter(|n| !n.is_empty());
         let scope = Self::effect_scope(x);
+        if let Some(reqs) = self.requirements(effect) {
+            return Self::covering(&reqs, scope.as_deref(), caps);
+        }
+        let need = self.required_cap(effect).filter(|n| !n.is_empty());
         caps.iter()
             .enumerate()
             .filter(|(_, c)| match &need {
@@ -598,6 +645,8 @@ impl<'a> Checker<'a> {
     /// (E0213, E0402, E0408, E0301, E0503, E0401, W0310).
     pub(crate) fn check_agent(&mut self, name: &str, d: Definition<'a>, base: &str) {
         let caps = self.cap_list(d.caps(), &format!("{base}/caps"));
+        // 0.6: no agent holds a write tool (E1406).
+        self.agent_write_tools(name, d.caps(), base);
         // `used` is a Set of the capabilities by identity: here, by index.
         let mut used = vec![false; caps.len()];
         let skills: Vec<(&'a str, &'a Value)> = d.skills().collect();
@@ -990,7 +1039,7 @@ impl<'a> Checker<'a> {
     /// capability allows, `best` the rank of the class it allows. In a
     /// sub-program, a model that may not receive even what the lead
     /// received is containment (E1706); else E0220.
-    fn over_model(&mut self, message: String, path: &str, best: usize, facts: JsObject) {
+    pub(crate) fn over_model(&mut self, message: String, path: &str, best: usize, facts: JsObject) {
         if self.claim.is_some() && class_rank(self.floor) > best {
             let lead = self.floor.as_str();
             let facts = JsObject::new()
@@ -1809,6 +1858,10 @@ impl<'a> Checker<'a> {
                         agent_name,
                         &agent_caps,
                     );
+                    // 0.6: a delegation hands no write tool (E1406).
+                    if v.ctor() == crate::caps::TOOL_CALL && v.write() {
+                        self.holds_write_tool(agent_name, &v, &cp, "with caps");
+                    }
                     given.push(v);
                 }
             }
@@ -1820,6 +1873,10 @@ impl<'a> Checker<'a> {
             if !own.contains(k.ctor())
                 && (remote.is_some() || agent_caps.iter().any(|a| cap_covers(a, k)))
             {
+                // 0.6: nor does a map's `with caps` (E1406).
+                if k.ctor() == crate::caps::TOOL_CALL && k.write() {
+                    self.holds_write_tool(agent_name, k, path, "map with caps");
+                }
                 given.push(k.clone());
             }
         }
@@ -1985,6 +2042,9 @@ impl<'a> Checker<'a> {
     /// C1 at the delegation site (E0301), the model's class (§5.5) and the
     /// envelope's (E0220, E1706) of what the delegation hands over.
     fn delegate_grant(&mut self, frame: &Frame<'a>, path: &str, g: &Grant<'_, 'a>) {
+        // 0.6: what the agent receives, against the classes of the
+        // connectors whose tools it is granted.
+        self.grant_classes(g.who, g.effective, g.cls, path);
         let effects = g
             .skill
             .get("effects")
@@ -2076,6 +2136,10 @@ impl<'a> Checker<'a> {
         path: &str,
         args: &[Val],
     ) -> Val {
+        // 0.6: `effect c.t(…)`, a tool of a connector.
+        if let Some(v) = self.tool_effect(e, frame, path, args) {
+            return v;
+        }
         let cls = max_class(args.iter().map(|a| a.cls));
         let name = e.name().unwrap_or_default();
         let decl = self.def_of(name, DefKind::Effect);

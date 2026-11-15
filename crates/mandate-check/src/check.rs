@@ -21,7 +21,9 @@ use mandate_syntax::{SourceKind, load};
 
 use crate::caps::imported_methods;
 use crate::imports::{import_checks, parent_of_subprogram};
-use crate::lock::{Lock, lock_checks, module_lock_checks, role_lock_checks, validate_lock};
+use crate::lock::{
+    Lock, connector_lock_checks, lock_checks, module_lock_checks, role_lock_checks, validate_lock,
+};
 use crate::modules::{Modules, link};
 use crate::resolve::resolve_names;
 use crate::roles::role_checks;
@@ -301,6 +303,8 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
                 Some(&loaded.spans),
             ));
             diagnostics.extend(module_lock_checks(program, view, opts.modules));
+            // 0.6: the connectors the package can call, bound (E1407, E1408).
+            diagnostics.extend(connector_lock_checks(program, &linked, view, opts.modules));
         } else {
             diagnostics.extend(lock_diags);
         }

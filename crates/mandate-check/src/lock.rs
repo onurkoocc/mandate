@@ -939,6 +939,181 @@ pub fn module_lock_checks(
     out
 }
 
+/// The connectors a package of 0.6 can call: those a `tool.call`
+/// capability of its workflows (their own `caps` or their envelope's) and
+/// of its agents names, as `<module>.<connector>` with the connector's name
+/// in `defs`, each once, in the order found. `defs` are the program's
+/// linked definitions, in which every connector says its module
+/// ([`crate::link`]).
+#[must_use]
+pub fn callable_connectors(program: Program<'_>, defs: &Map) -> Vec<(String, String)> {
+    let opts = CapOptions {
+        language: program.language(),
+    };
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (_, d) in program.definitions() {
+        let held: &[Value] = match d.kind() {
+            Some(DefKind::Agent) => d.caps(),
+            Some(DefKind::Workflow) => mandate_ir::workflow_bounds(d.value()).caps,
+            _ => continue,
+        };
+        for c in held.iter().filter_map(Expr::of) {
+            for v in caps_of(defs, c, opts) {
+                let Some(id) = crate::caps::tool_connector(&v) else {
+                    continue;
+                };
+                let name = id.rsplit_once('.').map_or(id, |(_, n)| n);
+                if !out.iter().any(|(i, _)| i == id) {
+                    out.push((id.to_owned(), name.to_owned()));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Whether `template` holds `{secret}` exactly once: where the egress proxy
+/// puts the secret (spec/lock.md "Libraries and connectors (0.6)",
+/// spec/egress.md).
+fn one_secret(template: &str) -> bool {
+    template.matches("{secret}").count() == 1
+}
+
+/// The lock's binding of a package's connectors (0.6, spec/library.md "The
+/// lock binding and schema digests"), for a program of 0.6, paths into the
+/// lock:
+///
+/// - E1407: a connector the package can call ([`callable_connectors`]) has
+///   no entry in `connectors`, or its entry has no digest for one of the
+///   tools it declares;
+/// - E1408: an entry names a connector that no module of the package
+///   defines (the program's module, or a module of `modules`), or a tool
+///   that connector does not declare;
+/// - E0140: an entry's `template` that does not hold `{secret}` exactly
+///   once, as the lock's other malformed members are.
+#[must_use]
+pub fn connector_lock_checks(
+    program: Program<'_>,
+    linked: &Linked,
+    lock: Lock<'_>,
+    modules: Option<&Modules>,
+) -> Vec<Diagnostic> {
+    if !program
+        .language()
+        .is_some_and(|l| l.at_least(mandate_ir::Language::V0_6))
+    {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let entries = lock.member("connectors");
+    for (id, name) in callable_connectors(program, &linked.defs) {
+        let Some(entry) = own(entries, &id) else {
+            out.push(Diagnostic::new(
+                "E1407",
+                format!(
+                    "The package can call the connector {id}, and the lock does not bind it: add connectors.{id}, with its credential and the digest of each of its tools (mandate connector pin)."
+                ),
+                Location::path("/connectors"),
+                Some(
+                    JsObject::new()
+                        .with("connector", id.as_str())
+                        .with("problem", "no_entry"),
+                ),
+            ));
+            continue;
+        };
+        let Some(c) = linked
+            .defs
+            .get(&name)
+            .and_then(mandate_ir::ConnectorDef::of)
+        else {
+            continue;
+        };
+        let tools = entry.get("tools");
+        for (tool, _) in c.tools() {
+            if own(tools, tool).is_none() {
+                out.push(Diagnostic::new(
+                    "E1407",
+                    format!(
+                        "The lock binds the connector {id} with no digest of the schema of its tool {tool}."
+                    ),
+                    Location::path(ptr(&[&"connectors", &id, &"tools"])),
+                    Some(
+                        JsObject::new()
+                            .with("connector", id.as_str())
+                            .with("tool", tool)
+                            .with("problem", "no_digest"),
+                    ),
+                ));
+            }
+        }
+    }
+    let own_module = program.module().unwrap_or_default();
+    for id in js_keys(entries) {
+        let entry = own(entries, &id);
+        if let Some(t) = entry
+            .and_then(|e| e.get("template"))
+            .and_then(Value::as_str)
+            && !one_secret(t)
+        {
+            out.push(Diagnostic::new(
+                "E0140",
+                format!(
+                    "The template of connectors.{id} holds {{secret}} {} times; it holds it exactly once, where the egress proxy puts the secret.",
+                    t.matches("{secret}").count()
+                ),
+                Location::path(ptr(&[&"connectors", &id, &"template"])),
+                Some(JsObject::new().with("connector", id.as_str())),
+            ));
+        }
+        let (module, name) = id.rsplit_once('.').unwrap_or(("", id.as_str()));
+        let defs = if module == own_module {
+            program.defs()
+        } else {
+            modules
+                .and_then(|ms| ms.get(module))
+                .and_then(|m| m.get("defs"))
+                .and_then(Value::as_object)
+        };
+        let Some(c) = defs
+            .and_then(|d| d.get(name))
+            .and_then(mandate_ir::ConnectorDef::of)
+        else {
+            out.push(Diagnostic::new(
+                "E1408",
+                format!(
+                    "The lock binds connectors.{id}, and no module of the package defines a connector {name} in {module}."
+                ),
+                Location::path(ptr(&[&"connectors", &id])),
+                Some(
+                    JsObject::new()
+                        .with("connector", id.as_str())
+                        .with("problem", "no_connector"),
+                ),
+            ));
+            continue;
+        };
+        for tool in js_keys(entry.and_then(|e| e.get("tools"))) {
+            if c.tool(&tool).is_none() {
+                out.push(Diagnostic::new(
+                    "E1408",
+                    format!(
+                        "The lock has a digest of the tool {tool} of connectors.{id}, which declares no such tool."
+                    ),
+                    Location::path(ptr(&[&"connectors", &id, &"tools", &tool])),
+                    Some(
+                        JsObject::new()
+                            .with("connector", id.as_str())
+                            .with("tool", tool.as_str())
+                            .with("problem", "no_tool"),
+                    ),
+                ));
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,

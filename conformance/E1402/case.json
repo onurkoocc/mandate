@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1402",
+  "kind": "compile",
+  "title": "A connector's server with a port is not one absolute https URL as a connector takes it.",
+  "spec": [
+    "spec/library.md#declaration",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/erp/mcp",
+      "value": "https://erp.example.com:8443/mcp"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1402",
+        "path": "/defs/erp/mcp",
+        "facts": {
+          "connector": "erp",
+          "problem": "url"
+        }
+      }
+    ]
+  }
+}

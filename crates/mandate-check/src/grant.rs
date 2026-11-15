@@ -504,6 +504,11 @@ pub fn narrow(input: &NarrowInput) -> NarrowOutput {
             requested,
         })
     };
+    // 0.6: a `tool.call` has no `.narrow(…)` (E1404), so the static checks
+    // let none through; this door refuses one too, before reading a value.
+    if base.cap.ctor() == crate::caps::TOOL_CALL {
+        return refused(Vec::new());
+    }
     let mut scope: Vec<String> = Vec::new();
     for (i, arg) in input.args.iter().enumerate() {
         let named: &[Value] = match arg {

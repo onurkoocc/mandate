@@ -1,0 +1,35 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1402a",
+  "kind": "compile",
+  "title": "A connector's class that is not a data class is refused.",
+  "spec": [
+    "spec/library.md#declaration"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/erp/class",
+      "value": "secret"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1402",
+        "path": "/defs/erp/class",
+        "facts": {
+          "connector": "erp",
+          "problem": "class"
+        }
+      }
+    ]
+  }
+}

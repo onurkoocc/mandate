@@ -93,6 +93,7 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
         differences_of(IR_SCHEMA_TEXT, IR_0_6_SCHEMA_TEXT),
         [
             "/$defs/Def/oneOf",
+            "/$defs/Tool",
             "/$id",
             "/description",
             "/properties/language/enum",
@@ -101,7 +102,9 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
     );
     // The definitions, branch by branch: the earlier branch with `pub`
     // (`true` alone) and `doc` (a string) among its properties, and nothing
-    // else changed; a `fn` had `pub` already.
+    // else changed; a `fn` had `pub` already. After them, the kinds 0.6
+    // adds: `connector` (spec/library.md "Connectors"), with a tool of
+    // `$defs/Tool` by name.
     let branches = |text: &str| {
         json(text)
             .get("$defs")
@@ -112,8 +115,15 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
             .to_vec()
     };
     let (old, new) = (branches(IR_SCHEMA_TEXT), branches(IR_0_6_SCHEMA_TEXT));
-    assert_eq!(old.len(), new.len());
-    assert_eq!(new.len(), 13, "the kinds of 0.6 so far");
+    assert_eq!(old.len(), 13);
+    assert_eq!(new.len(), 14, "the kinds of 0.6 so far");
+    let added: Vec<String> = new
+        .iter()
+        .skip(old.len())
+        .filter_map(|n| n.get("properties")?.get("kind")?.get("const")?.as_str())
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(added, ["connector"]);
     for (o, n) in old.iter().zip(new.iter()) {
         let kind = n
             .get("properties")

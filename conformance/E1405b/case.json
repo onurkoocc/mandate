@@ -1,0 +1,81 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1405b",
+  "kind": "compile",
+  "title": "A tool called in a function is refused: a tool is called in a workflow's body.",
+  "spec": [
+    "spec/library.md#toolcall"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/orders_of",
+      "value": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "v",
+            "type": {
+              "ref": "Text"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Untrusted",
+          "args": [
+            {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Order"
+                }
+              ]
+            }
+          ]
+        },
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "erp"
+                },
+                "name": "list_orders"
+              },
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "v"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1405",
+        "path": "/defs/orders_of/body/0/value",
+        "facts": {
+          "problem": "fn"
+        }
+      }
+    ]
+  }
+}

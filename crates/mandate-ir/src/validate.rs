@@ -168,7 +168,10 @@ impl Gates<'_> {
         let lang = self.language;
         for (name, def) in program.definitions() {
             let mut path = format!("/defs/{}", ptr_token(name));
-            let kind = def.kind();
+            // A kind of 0.6 is no kind the TypeScript's `SINCE.kinds` has:
+            // in an earlier program its schema refuses it, and the gate adds
+            // nothing, as there.
+            let kind = def.kind().filter(|k| k.since() < Language::V0_6);
             if let Some(kind) = kind
                 && !lang.at_least(kind.since())
             {

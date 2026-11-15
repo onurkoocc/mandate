@@ -1,0 +1,59 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1404",
+  "kind": "compile",
+  "title": "A tool.call that names a tool its connector does not declare is refused.",
+  "spec": [
+    "spec/library.md#toolcall",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/ErpDelete",
+      "value": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "tool"
+            },
+            "name": "call"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "erp"
+              }
+            },
+            {
+              "value": {
+                "op": "var",
+                "name": "delete_draft"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1404",
+        "path": "/defs/ErpDelete/value"
+      }
+    ]
+  }
+}

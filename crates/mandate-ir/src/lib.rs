@@ -137,7 +137,7 @@ mod value;
 mod view;
 
 pub use def_parts::{Criterion, Envelope, OnHandler, Read, Remote, Skill, TestDef, Tier, Verifier};
-pub use defs::{CapabilityDef, Command, ComponentDef, EnvironmentDef};
+pub use defs::{CapabilityDef, Command, ComponentDef, ConnectorDef, EnvironmentDef, Tool};
 pub use diag::{
     Diagnostic, Location, PtrToken, Repair, RepairOp, RepairOpKind, Risk, Severity, Span,
     format_diagnostic, has_errors, ptr, ptr_token,

@@ -591,6 +591,54 @@ pub const CODES: &[CodeRow] = &[
         explain: "Every `use` of a program or module of language 0.6 names `std` itself, `std.decision`, the built-in `std.patterns`, a module the check was given (`--module`, the modules of a call or of a package) or a module of a library the lock pins. A `use` of any module but the standard library's also lists the names it brings (`use acme.types.{Order}`): a program of 0.6 names a definition of another module through that list alone, never by its module's path. Before 0.6 an import of a module that is not loaded, and a name written with its module's path, are taken on trust, their types unknown; 0.6 refuses both. Give the module and list the names, or remove the `use`. Reported at the `use` (spec/library.md).",
         reference: Reference::Rust,
     },
+    CodeRow {
+        code: "MDT-E1401",
+        title: "Tool without a closed class",
+        explain: "Every tool of a connector is either `read_only` or of a write class, never both and never neither. A write tool declares `critical`, `idempotency key p` (a `Text` parameter, in which the runtime sends the operation key; the program does not pass it) and a `retry_class` (`idempotent`, `reconcilable` or `non_retryable`); with `reconcilable`, and only then, `reconcile by r`, a read-only tool of the same connector that takes one `Text` parameter and returns `Untrusted<Option<T>>` where the write returns `Receipt<T>`; and optionally `compensation c`, another write tool of the same connector. The facts name the connector, the tool and the problem (spec/library.md \"Tool classes\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1402",
+        title: "Malformed connector",
+        explain: "A connector is `mcp(\"https://…\")` with one absolute https URL, with no user, password, port, query or fragment, a `version`, a `class` that is a data class (public, internal, confidential or restricted), and at least one tool, each declared once. The facts name the connector and the problem (`url`, `version`, `class`, `no_tool` or `duplicate_tool`) (spec/library.md \"Declaration\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1403",
+        title: "Tool result of the wrong kind",
+        explain: "A `read_only` tool returns `Untrusted<T>`: what it gives is outside content. A write tool returns `Receipt<T>`. Declare the result as the tool's class has it (spec/library.md \"Tool classes\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1404",
+        title: "Malformed tool.call",
+        explain: "`tool.call(c, t…)` names a connector first, one the program defines or lists in a `use`, then at least one tool that connector declares, each by its bare name; a name written twice counts once. Anything else, an argument with a name included, is refused. A `tool.call` has no `.narrow(…)`: write a narrower one with fewer tools (spec/library.md \"tool.call\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1405",
+        title: "Tool called where it cannot be",
+        explain: "A read-only tool is called as an expression in a workflow's body (`let orders = erp.list_open_orders(v)`), or by an agent's loop through a capability its delegation grants; a write tool only as `effect c.t(…) idempotent_by k` in a workflow's body, a critical effect, through prepare, authorize and commit. A read-only tool through `effect`, a write tool as an expression, and any tool in a `fn`, a contract, a skill's body, a constant or a handler are refused (spec/library.md \"tool.call\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1406",
+        title: "Agent holds a write tool",
+        explain: "An agent never holds a write tool of a connector: a `tool.call` that names a tool that is not read-only, in an agent's `caps` or in what a delegation's or a map's `with caps` hands an agent, is refused. A write tool is called by a workflow's body alone, as a critical effect (spec/library.md \"tool.call\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1407",
+        title: "Connector not bound in the lock",
+        explain: "Every connector a package of 0.6 can call, every connector a `tool.call` capability of its workflows and agents names, is bound in the lock under `connectors.<module>.<connector>`, with a credential and the digest of the schema of every tool it declares. This one has no entry, or its entry has no digest for one of its tools. `mandate connector pin` writes the digests (spec/library.md \"The lock binding and schema digests\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1408",
+        title: "Lock binds no connector of the package",
+        explain: "An entry of the lock's `connectors` names a connector that no module of the package defines (the program's own module or a module the check is given), or a tool that the connector does not declare. Remove the entry, or the tool's digest (spec/library.md \"The lock binding and schema digests\").",
+        reference: Reference::Rust,
+    },
 ];
 
 /// The row of `code` (`MDT-E0103`), when the table has one.

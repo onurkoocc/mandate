@@ -1,0 +1,52 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1405",
+  "kind": "compile",
+  "title": "A read-only tool called through effect is refused: effect runs a write tool.",
+  "spec": [
+    "spec/library.md#toolcall",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Draft/body/0/value",
+      "value": {
+        "op": "effect",
+        "name": "erp.list_orders",
+        "args": [
+          {
+            "value": {
+              "op": "var",
+              "name": "vendor_id"
+            }
+          }
+        ],
+        "idempotent_by": {
+          "op": "var",
+          "name": "vendor_id"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1405",
+        "path": "/defs/Draft/body/0/value",
+        "facts": {
+          "connector": "erp",
+          "tool": "list_orders",
+          "problem": "read_through_effect"
+        }
+      }
+    ]
+  }
+}

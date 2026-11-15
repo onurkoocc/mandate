@@ -1,0 +1,21 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "T01a",
+  "kind": "compile",
+  "title": "A program with a connector of its own checks, its lock binding the connector: a read in a workflow, read-only tools in an agent, a write as a critical effect.",
+  "spec": [
+    "spec/library.md#three-uses",
+    "spec/library.md#the-lock-binding-and-schema-digests"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

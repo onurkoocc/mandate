@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1401",
+  "kind": "compile",
+  "title": "A write tool that does not declare critical has no closed class.",
+  "spec": [
+    "spec/library.md#tool-classes",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/erp/tools/post_draft/critical"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1401",
+        "path": "/defs/erp/tools/post_draft",
+        "facts": {
+          "connector": "erp",
+          "tool": "post_draft",
+          "problem": "missing"
+        }
+      }
+    ]
+  }
+}
