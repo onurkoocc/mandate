@@ -647,7 +647,7 @@ impl<'a> Checker<'a> {
                 }
                 for (i, t) in params.iter().enumerate() {
                     if let Some(a) = typed.get(i) {
-                        self.expect(&a.ty, t, &format!("{mp}/args/{i}/value"));
+                        self.expect_val(a, t, &format!("{mp}/args/{i}/value"));
                     }
                 }
             }

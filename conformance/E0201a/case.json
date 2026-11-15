@@ -1,0 +1,32 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0201a",
+  "kind": "compile",
+  "title": "A verify whose on unmet handler gives another value is that value or the verified one: it goes where only a verified value goes no more (the program of H08 with another handler).",
+  "spec": [
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0201",
+        "path": "/defs/Land/body/2/value/args/0/value"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Named/accept/named/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Small/accept/small/by/static"
+      }
+    ]
+  }
+}

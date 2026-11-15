@@ -836,10 +836,14 @@ impl<'a> Checker<'a> {
         if let Some(ensures) = d.ensures() {
             let at = format!("{base}/ensures");
             let mut vars = HashMap::new();
-            vars.insert(
-                "result".to_owned(),
-                Val::public(frame.returns.clone().unwrap_or(UNKNOWN)),
-            );
+            // 0.6: the result of a workflow that declares none is of
+            // nothing the checker knows.
+            let result = match frame.returns.clone() {
+                Some(t) => Val::public(t),
+                None if self.at_least(Language::V0_6) => self.opaque(UNKNOWN),
+                None => Val::public(UNKNOWN),
+            };
+            vars.insert("result".to_owned(), result);
             let mut inner = Self::child(&frame, vars);
             inner.beside_body = true;
             let v = self.expr(ensures, &mut inner, &at);
@@ -1463,6 +1467,7 @@ impl<'a> Checker<'a> {
             ty: named("List", vec![named("Outcome", vec![body.ty])]),
             cls: over.cls.max(body.cls),
             waivable: over.waivable || body.waivable,
+            silent: over.silent || body.silent,
         }
     }
 
@@ -1982,7 +1987,7 @@ impl<'a> Checker<'a> {
         for (i, param) in params.iter().enumerate() {
             if let Some(a) = args.get(i) {
                 let t = self.param_type(param);
-                self.expect(&a.ty, &t, &format!("{path}/args/{i}/value"));
+                self.expect_val(a, &t, &format!("{path}/args/{i}/value"));
             }
         }
     }
@@ -2256,6 +2261,20 @@ impl<'a> Checker<'a> {
             (None, Some(s)) => super::expr::std_ty(&s.returns),
             (None, None) => UNKNOWN,
         };
+        // 0.6: what a standard effect gives back whose type the table does
+        // not say (git.open_pr's, a Receipt<?>) is an adapter's answer the
+        // checker knows nothing of. An effect that names nothing is the
+        // name resolution's E0120.
+        if self.at_least(Language::V0_6)
+            && decl.is_none()
+            && std.is_some()
+            && super::expr::has_unknown(&ret)
+        {
+            return Val {
+                ty: ret,
+                ..self.opaque(UNKNOWN)
+            };
+        }
         Val::new(ret, cls)
     }
 
@@ -2289,7 +2308,7 @@ impl<'a> Checker<'a> {
         }
         for (i, t) in params.iter().enumerate() {
             if let Some(a) = args.get(i) {
-                self.expect(&a.ty, t, &format!("{path}/args/{i}/value"));
+                self.expect_val(a, t, &format!("{path}/args/{i}/value"));
             }
         }
     }

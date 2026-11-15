@@ -384,6 +384,25 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E0213d` | A record literal of an alias of `Review` | E0213 |
 | `E0213e` | An `infer` whose target is an alias of `Review` | E0213 |
 | `E0213f` | A declared effect whose result is a union with a `Declined` in a variant | E0213 |
+| `E1505h` | A value a waiver may rest on, given by a later arm of a `switch`, as an argument of `git.merge` | E1505 |
+| `E1505i` | The same through `pause and x` | E1505 |
+| `E1505j` | The same through a block that ends with a `let` | E1505 |
+| `E1505k` | The same through a block that ends with an `if` | E1505 |
+| `E1505l` | The same through a block that ends with a `loop` | E1505 |
+| `E0210b` | A declined item, given by a later arm of a `switch`, posted by a batch commit step | E0210 |
+| `E0210c` | A declined item that an `on error` handler gives in place of a failed `verify`, posted | E0210 |
+| `E0210d` | A declined item that an `on unmet` handler gives, posted | E0210 |
+| `E0210e` | A declined item that an `if`'s `else` gives, posted | E0210 |
+| `E0220f` | Restricted data given by a later arm of a `switch`, sent to a model that may receive internal data | E0220 |
+| `E0120e` | A call of `human.ask` after a variable of the body took the name `human` | E0120 |
+| `E0120f` | A call of a member of a value, `x.m()` | E0120 |
+| `E0120g` | A call of a workflow | E0120 |
+| `E0711` | An `await` in a program of 0.6 | E0711 |
+| `E0212` | `x?` of a value that is not a `Result`, which keeps its contract, where another contract is required | E0212 |
+| `E0201b` | A function whose body ends with an `if` whose `else` gives less than its declared type | E0201 |
+| `H08` | A `verify` whose `on unmet` handler is an escalation, and one whose handler is a pause, each keeping the verified value's type: the one exception to the joins | — |
+| `E0201a` | The program of `H08`, the first handler giving another value: the `verify` is that value or the verified one | E0201 |
+| `E1506i` | A review of a map's name after an `on error` handler that gives a value of its own | E1506 |
 
 The import cases share the 0.6 module `E1602/types.mdt` and the program
 `E1602/program.mdt`; the connector cases share `T01/program.mdt`, a program
@@ -394,7 +413,12 @@ map), the cases of what may not reach an irreversible effect `E1505/program.mdt`
 step `E1708b/program.mdt`; `E1708i` is a program of its own. `E0121c` to
 `E0121f` and `E1504b` are mutations of the review program (`E0121d` and
 `E0121f` with a module of their own beside them), and `E0213a` to `E0213f` are
-each the review program with what the case adds, a program of its own. What a case cannot say, because its modules must load, is in
+each the review program with what the case adds, a program of its own. The
+cases of the typing of 0.6 (each form typed as the runtime evaluates it) are
+programs of their own too: `E1505h` to `E1505l` the release program of
+`E1505` with what the case adds, `E0210b` to `E0210e` and `E1506i` the review
+program, `E0220f` a program of classes, and the others a small program that
+opens or lands a change. What a case cannot say, because its modules must load, is in
 `crates/mandate-check/tests/language_0_6.rs`: a module of 0.5 among the modules given
 to a check that imports one of 0.6 (E1603), and one of 0.6 that imports a module
 nobody gave (E1604), do not load. What the cases of reviews and waivers cannot
@@ -405,8 +429,8 @@ semantic diff's waivers, a program of 0.5 as before) is in
 spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
 (human steps), L (libraries) and N11 (shapes), and the code numbers of its
 families; the cases above use P01 (which spec/library.md names), the S02 claim,
-E0101, E0104, E0120, E0121, E0140, E0210, E0213, E0220, E0301, E0320, E0403, E0408
-and E1708, which 0.6 extends, T01, T02 and T06 (which spec/library.md names), H06 and
+E0101, E0104, E0120, E0121, E0140, E0201, E0210, E0212, E0213, E0220, E0301, E0320,
+E0403, E0408, E0711 and E1708, which 0.6 extends, T01, T02 and T06 (which spec/library.md names), H06 and
 H07 (which it names), the letters of E1708 from b on (E1708b and E1708c, which it
 names, one letter for each further refused condition of the batch commit step, and
 E1708m, the connectors' own), and the code numbers of E14xx, E1504 to E1508 and
@@ -448,13 +472,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 258, passed 258, pending 0
+conformance cases: ran 277, passed 277, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 133 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 152 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(274 cases: 258 `compile`, 133 of them of language 0.6, and 16 `journal`; no case
+(293 cases: 277 `compile`, 152 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

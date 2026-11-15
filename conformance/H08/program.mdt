@@ -1,0 +1,39 @@
+// A change opened twice, once it names its branch and once it is small, each
+// verify handing what is unmet to a person: an escalation, a pause. The one
+// exception to the joins of 0.6; E0201a is the same with another handler.
+
+mandate @ 0.6
+
+module example.small @ 0.1
+
+use std.{git, human}
+
+type Change = { branch: Text, risk: Int }
+
+capability PR = git.pr("example/app")
+
+/// A change names the branch it merges.
+contract Named(c: Change) {
+  accept named "The change names its branch"
+    by static len(c.branch) >= 1
+}
+
+/// A change is small.
+contract Small(c: Change) {
+  accept small "The change is small"
+    by static c.risk < 3
+}
+
+/// Opens or lands a change.
+workflow Land(change: Change) -> Bool
+  caps   PR
+  budget { time: 1h }
+{
+  let named = verify change against Named(change)
+    on unmet(c) => escalate human("Open criteria: {c}")
+  let small = verify change against Small(change)
+    on unmet(c) => pause
+  effect git.open_pr(named) idempotent_by change.branch
+  effect git.open_pr(small) idempotent_by change.branch
+  true
+}

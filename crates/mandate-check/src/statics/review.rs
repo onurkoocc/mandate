@@ -623,8 +623,12 @@ impl<'a> Checker<'a> {
         Self::use_effect(frame, Usage::new("Human", path));
         let source = self.review_source(e, frame, path);
         let roles = self.review_arguments(e, frame, path);
+        // A review refused (E1506) is that diagnostic's.
         let Some(src) = source else {
-            return Val::like(UNKNOWN, of);
+            return Val {
+                silent: false,
+                ..Val::like(UNKNOWN, of)
+            };
         };
         self.review_roles(&src, &roles, path);
         let item = if src.untrusted {
@@ -636,6 +640,7 @@ impl<'a> Checker<'a> {
             ty: named(REVIEW, vec![item, named0(&src.contract)]),
             cls: of.cls,
             waivable: self.waivable_contract(&src.contract),
+            silent: of.silent,
         }
     }
 
@@ -702,6 +707,12 @@ impl<'a> Checker<'a> {
             Some(LetMap::Returns) => (
                 "returns",
                 format!("'{name}' is bound to a map whose body holds a return."),
+            ),
+            Some(LetMap::OnError) => (
+                "on_error",
+                format!(
+                    "'{name}' is bound to a map that an on error handler after it replaces with a value of its own when the map fails."
+                ),
             ),
         };
         self.not_a_source(&at, problem, Some(name), &why);

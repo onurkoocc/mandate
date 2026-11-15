@@ -1,0 +1,58 @@
+// The release program of E1505, the change it merges the value of a block
+// that ends with a let (spec/library.md "waive by").
+
+mandate @ 0.6
+
+module example.release @ 0.1
+
+use std.{git, human}
+
+role owner    "Owner"
+role reviewer "Reviewer"
+
+type Change = { branch: Text, risk: Int }
+type Mode   = Strict | Loose
+
+capability PR = git.pr("example/app")
+
+/// A change is small, or its owner waives that.
+contract Small(c: Change) {
+  accept small "The change is small"
+    by static c.risk < 3
+    waive by owner
+}
+
+/// A change names the branch it merges.
+contract Named(c: Change) {
+  accept named "The change names its branch"
+    by static len(c.branch) >= 1
+}
+
+/// The change, as it was given.
+fn same(c: Verified<Change>) -> Verified<Change> ! {} {
+  c
+}
+
+effect tag_release(name: Text) -> Receipt<Text>
+  requires caps git.pr("example/app")
+  critical
+  irreversible
+  idempotency required
+
+/// Merges a change and tags its release, once a reviewer approved.
+workflow Ship(change: Change, mode: Mode) -> Bool
+  caps   PR
+  budget { time: 1h }
+{
+  let small = verify change against Small(change)
+  let named = verify change against Named(change)
+  let approved = human.approve(role: reviewer)
+  let pick = switch mode {
+    _ => {
+      let held = small
+    }
+  }
+  effect git.merge(same(pick)) idempotent_by change.branch
+  effect tag_release(change.branch) idempotent_by change.branch
+  true
+}

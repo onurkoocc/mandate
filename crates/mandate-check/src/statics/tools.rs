@@ -570,7 +570,7 @@ impl<'a> Checker<'a> {
         for (i, p) in params.iter().enumerate() {
             if let Some(a) = args.get(i) {
                 let t = self.param_type(p);
-                self.expect(&a.ty, &t, &sub_i(path, "args", i, "/value"));
+                self.expect_val(a, &t, &sub_i(path, "args", i, "/value"));
             }
         }
         let allowed = r.class().unwrap_or(DataClass::Public);

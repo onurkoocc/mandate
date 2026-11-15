@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1505k",
+  "kind": "compile",
+  "title": "A value a waiver may rest on reaches no irreversible effect through a block that ends with an if, whose value is either branch's.",
+  "spec": [
+    "spec/library.md#waive-by",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Named/accept/named/by/static"
+      },
+      {
+        "code": "MDT-E1505",
+        "path": "/defs/Ship/body/4/value/args/0/value",
+        "facts": {
+          "effect": "git.merge"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Small/accept/small/by/static"
+      }
+    ]
+  }
+}

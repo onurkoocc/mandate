@@ -1,0 +1,33 @@
+// A summary of a note or of a record of restricted data, as a switch picks
+// it, by a model that may receive internal data at most (spec/checks.md "Data
+// classes").
+
+mandate @ 0.6
+
+module example.classes @ 0.1
+
+use std.{model}
+
+type Record = { name: Text } classified restricted
+type Note   = { name: Text }
+type Mode   = Plain | Secret
+
+capability M = model.infer(tier: standard)
+
+agent Summarizer {
+  role   "Summarizes a text."
+  caps   M
+  budget { steps: 5 }
+  skill summarize(t: Text) -> Inferred<Text> ! {Model}
+}
+
+/// Summarizes a note, or a record's name.
+workflow Summarize(r: Record, n: Note, mode: Mode) -> Inferred<Text>
+  caps M
+{
+  let text = switch mode {
+    Plain  => n.name
+    Secret => r.name
+  }
+  delegate Summarizer.summarize(text)
+}

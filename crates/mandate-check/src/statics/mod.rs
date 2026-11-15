@@ -37,6 +37,7 @@ mod expr;
 mod review;
 mod system;
 mod tools;
+mod typing;
 
 pub use system::lead_classes;
 
@@ -54,7 +55,8 @@ use crate::caps::{CapOptions, CapVal, callee_path};
 use crate::cost::{Budget, CostEnv, StaticCost, block_cost, micros_text};
 use crate::stdlib::DataClass;
 use crate::ty::{
-    Level, Problem, Ty, TypeEnv, UNKNOWN, assignable, bool_ty, from_type_expr, peeled_type, ty_of,
+    Level, Problem, Ty, TypeEnv, UNKNOWN, assignable, bool_ty, from_type_expr, named, peeled_type,
+    ty_of,
 };
 use crate::walk::{walk_exprs, walk_stmt_exprs};
 
@@ -76,6 +78,16 @@ pub(crate) struct Val {
     /// receipt, and the result of a `verify` against a contract without a
     /// waiver. Always `false` before 0.6, where no contract has a waiver.
     pub(crate) waivable: bool,
+    /// 0.6 (Rust only): the unknowns in its type (`?`) are silent: the value
+    /// comes from a form the checker cannot type and did not refuse, so no
+    /// diagnostic stands for what it is. Such a value is never accepted
+    /// where a verified one is required (E0201, [`Checker::expect_val`]).
+    /// It flows as `waivable` does, from what a value is made of to the
+    /// value. An unknown that is not silent is one a diagnostic already
+    /// stands for (a refused call, a field a type does not have), or a
+    /// statement that yields no value (a `return`): one mistake is one
+    /// diagnostic. Always `false` before 0.6.
+    pub(crate) silent: bool,
 }
 
 impl Val {
@@ -90,6 +102,7 @@ impl Val {
             ty,
             cls,
             waivable: false,
+            silent: false,
         }
     }
 
@@ -100,10 +113,12 @@ impl Val {
             ty,
             cls: from.cls,
             waivable: from.waivable,
+            silent: from.silent,
         }
     }
 
-    /// `{ ty: UNKNOWN, cls: PUBLIC }`.
+    /// `{ ty: UNKNOWN, cls: PUBLIC }`: before 0.6 any value the checker does
+    /// not type; in 0.6 one a diagnostic stands for, or no value at all.
     pub(crate) fn unknown() -> Val {
         Val::public(UNKNOWN)
     }
@@ -113,6 +128,11 @@ impl Val {
 /// on, as its class is their highest.
 pub(crate) fn any_waivable<'v>(vals: impl IntoIterator<Item = &'v Val>) -> bool {
     vals.into_iter().any(|v| v.waivable)
+}
+
+/// Whether any of `vals` has a silent unknown in it ([`Val::silent`]).
+pub(crate) fn any_silent<'v>(vals: impl IntoIterator<Item = &'v Val>) -> bool {
+    vals.into_iter().any(|v| v.silent)
 }
 
 /// 0.6: what a map whose body ends with `verify x against C(…)` lets a
@@ -140,6 +160,9 @@ pub(crate) enum LetMap {
     OnUnmet,
     /// A map whose body holds a `return`, which ends an item otherwise.
     Returns,
+    /// A map the `let` binds, after which an `on error` handler gives a
+    /// value of its own when the map fails: the name may be either.
+    OnError,
     /// A map whose body ends with `verify x against C(…)`.
     Verifying(ReviewSource),
 }
@@ -726,10 +749,10 @@ impl<'a> Checker<'a> {
 
     /// The value of a constant, typed on first request: `constVal(name)`.
     /// While it is typed it reads as unknown, so a constant on a cycle is
-    /// typed once.
+    /// typed once (in 0.6 as what the checker knows nothing of).
     pub(crate) fn const_val(&mut self, name: &str) -> Val {
         match self.const_vals.get(name) {
-            Some(Memo::Pending) => return Val::unknown(),
+            Some(Memo::Pending) => return self.opaque(UNKNOWN),
             Some(Memo::Done(v)) => return v.clone(),
             None => {}
         }
@@ -750,7 +773,7 @@ impl<'a> Checker<'a> {
         match d.and_then(Definition::type_expr) {
             Some(t) => {
                 let t = self.ty(Some(t));
-                self.expect(&v.ty, &t, at);
+                self.expect_val(&v, &t, at);
                 Val::like(t, &v)
             }
             None => v,
@@ -1075,6 +1098,9 @@ impl<'a> Checker<'a> {
         base: &str,
         result: bool,
     ) -> Val {
+        if self.at_least(Language::V0_6) {
+            return self.typed_body(stmts, outer, base, result);
+        }
         // Boxed: a block nested in a block nests this frame, and a `Frame` is
         // large.
         let mut frame = Self::child_box(outer, HashMap::new());
@@ -1094,57 +1120,166 @@ impl<'a> Checker<'a> {
         last
     }
 
-    /// The tail of a definition's body against its declared return type.
+    /// [`Checker::body`] in 0.6: a block has the value of its last statement
+    /// as the runtime gives it, an `on error` after a statement joining its
+    /// handler's value into that statement's (and into the name a `let`
+    /// binds). A function of its own, so that the frame of a block of 0.1 to
+    /// 0.5 stays what it was.
+    #[inline(never)]
+    fn typed_body(
+        &mut self,
+        stmts: &'a [Value],
+        outer: &Frame<'a>,
+        base: &str,
+        result: bool,
+    ) -> Val {
+        let mut frame = Self::child_box(outer, HashMap::new());
+        let mut last = Val::unknown();
+        let mut bound: Option<&'a str> = None;
+        for (i, s) in stmts.iter().enumerate() {
+            let path = sub_n(base, i);
+            let s = Stmt::of(s);
+            if let Some(s) = s.filter(|s| s.op() == Some(StmtOp::OnError)) {
+                self.after_error(s, &mut frame, &path, &mut last, bound);
+                continue;
+            }
+            last = Val::unknown();
+            bound = None;
+            if let Some(s) = s {
+                if let Some(v) = self.stmt(s, &mut frame, &path) {
+                    last = v;
+                }
+                if s.op() == Some(StmtOp::Let) {
+                    bound = s.name();
+                }
+            }
+        }
+        if result {
+            self.body_result(stmts, outer, base, &last);
+        }
+        last
+    }
+
+    /// 0.6: an `on error` after a statement of a block: its handler typed,
+    /// and its value, unless it is a strategy, joined into `last` and into
+    /// the name the statement binds when it is a `let` (`bound`). Apart from
+    /// [`Checker::body`], so that a block's frame stays as small as before.
+    #[inline(never)]
+    fn after_error(
+        &mut self,
+        s: Stmt<'a>,
+        frame: &mut Frame<'a>,
+        path: &str,
+        last: &mut Val,
+        bound: Option<&str>,
+    ) {
+        if let Some(h) = self.on_error_stmt(s, frame, path) {
+            *last = self.join(last, &h);
+            if let Some(name) = bound {
+                self.rebind_after_error(name, &h, frame);
+            }
+        }
+    }
+
+    /// 0.6: the name a `let` bound, bound again after an `on error` whose
+    /// handler gives `h`: the name is the statement's value or `h`. It is no
+    /// longer a map's outcomes for a review (E1506, `on_error`).
+    fn rebind_after_error(&self, name: &str, h: &Val, frame: &mut Frame<'a>) {
+        let Some(was) = Self::lookup(name, &frame.scope) else {
+            return;
+        };
+        let let_map = Self::binding(name, &frame.scope)
+            .and_then(|s| s.let_map.as_ref())
+            .map(|m| match m {
+                LetMap::NotMap => LetMap::NotMap,
+                _ => LetMap::OnError,
+            });
+        let mut vars = HashMap::new();
+        vars.insert(name.to_owned(), self.join(&was, h));
+        *frame = Self::child_of(frame, vars, let_map);
+    }
+
+    /// The tail of a definition's body against its declared return type: an
+    /// expression's value, and in 0.6 the value of a `let`, an `if` or a
+    /// `loop` that ends it as well (an `on error` after the last statement
+    /// joins its handler's value into it).
     fn body_result(&mut self, stmts: &[Value], outer: &Frame<'a>, base: &str, last: &Val) {
-        if let Some(tail) = stmts.last().and_then(Stmt::of)
-            && tail.op() == Some(StmtOp::Expr)
-            && let Some(returns) = &outer.returns
-        {
-            let at = sub_n(base, stmts.len().saturating_sub(1));
-            self.expect(&last.ty, returns, &sub(&at, "value"));
+        let Some(returns) = outer.returns.clone() else {
+            return;
+        };
+        let typed = self.at_least(Language::V0_6);
+        let tail = stmts
+            .iter()
+            .enumerate()
+            .rev()
+            .filter_map(|(i, s)| Some((i, Stmt::of(s)?)))
+            .find(|(_, s)| !typed || s.op() != Some(StmtOp::OnError));
+        let last_index = stmts.len().checked_sub(1);
+        let Some((i, tail)) = tail.filter(|(i, _)| typed || Some(*i) == last_index) else {
+            return;
+        };
+        let at = sub_n(base, i);
+        match tail.op() {
+            Some(StmtOp::Expr) => self.expect_val(last, &returns, &sub(&at, "value")),
+            Some(StmtOp::Let) if typed => self.expect_val(last, &returns, &sub(&at, "value")),
+            Some(StmtOp::If | StmtOp::Loop) if typed => self.expect_val(last, &returns, &at),
+            _ => {}
         }
     }
 
     /// One statement of a block in `frame`, which a `let` or a `par`
-    /// replaces with its child; the value of an `expr` statement.
+    /// replaces with its child; the value of an `expr` statement, and in 0.6
+    /// the value the runtime gives for a `let`, an `if`, a `loop` and a
+    /// `par` too.
     fn stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) -> Option<Val> {
         match s.op() {
             Some(StmtOp::Let) => self.let_stmt(s, frame, path),
             Some(StmtOp::Par) => self.par_stmt(s, frame, path),
             Some(StmtOp::If) => self.if_stmt(s, frame, path),
             Some(StmtOp::Loop) => self.loop_stmt(s, frame, path),
-            Some(StmtOp::Return) => self.return_stmt(s, frame, path),
-            Some(StmtOp::OnError) => self.on_error_stmt(s, frame, path),
+            Some(StmtOp::Return) => {
+                self.return_stmt(s, frame, path);
+                None
+            }
+            Some(StmtOp::OnError) => {
+                self.on_error_stmt(s, frame, path);
+                None
+            }
             Some(StmtOp::Run) => {
                 self.operand(s.target(), frame, path, "target");
+                None
             }
-            Some(StmtOp::Expr) => return Some(self.operand(s.value(), frame, path, "value")),
-            None => {}
+            Some(StmtOp::Expr) => Some(self.operand(s.value(), frame, path, "value")),
+            None => None,
         }
-        None
     }
 
-    /// `par`: its branches' values bound in a child of the frame.
-    fn par_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+    /// `par`: its branches' values bound in a child of the frame; in 0.6
+    /// the `null` the runtime gives for it.
+    fn par_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) -> Option<Val> {
         let vars = self.par(s, frame, path);
         *frame = Self::child(frame, vars);
+        self.at_least(Language::V0_6).then(|| self.null_val())
     }
 
     /// `let`: the value, against the declared type if any, bound in a child
-    /// of the frame.
-    fn let_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+    /// of the frame; in 0.6 the value as bound.
+    fn let_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) -> Option<Val> {
         let at = sub(path, "value");
         let v = self.expr_or_unknown(s.value(), frame, &at);
         // 0.6: what the name is bound to, as a review's source reads it.
-        let let_map = if self.at_least(Language::V0_6) {
+        let typed = self.at_least(Language::V0_6);
+        let let_map = if typed {
             s.value().map(|e| self.let_map(e, &at))
         } else {
             None
         };
         let bound = self.declared(s, v, &at);
+        let out = typed.then(|| bound.clone());
         let mut vars = HashMap::new();
         vars.insert(s.name().unwrap_or_default().to_owned(), bound);
         *frame = Self::child_of(frame, vars, let_map);
+        out
     }
 
     /// A `let`'s value as bound: of its declared type, when it has one, and
@@ -1153,22 +1288,28 @@ impl<'a> Checker<'a> {
         match s.type_expr() {
             Some(t) => {
                 let t = self.ty(Some(t));
-                self.expect(&v.ty, &t, at);
+                self.expect_val(&v, &t, at);
                 Val::like(t, &v)
             }
             None => v,
         }
     }
 
-    /// `if`: the condition a Bool, both blocks typed.
-    fn if_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+    /// `if`: the condition a Bool, both blocks typed; in 0.6 the value is
+    /// one of theirs, or `null` without `else`.
+    fn if_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) -> Option<Val> {
         self.condition(s.cond(), frame, path, "cond");
         let at = sub(path, "then");
-        self.body(s.then_block(), frame, &at, false);
-        if let Some(e) = s.else_block() {
+        let then = self.body(s.then_block(), frame, &at, false);
+        let other = s.else_block().map(|e| {
             let at = sub(path, "else");
-            self.body(e, frame, &at, false);
+            self.body(e, frame, &at, false)
+        });
+        if !self.at_least(Language::V0_6) {
+            return None;
         }
+        let other = other.unwrap_or_else(|| self.null_val());
+        Some(self.join(&then, &other))
     }
 
     /// A condition typed and held to `Bool`.
@@ -1178,8 +1319,9 @@ impl<'a> Checker<'a> {
         self.expect_bool(&v, &at);
     }
 
-    /// `loop`: bounded (E0502), `until` a Bool, the body typed.
-    fn loop_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+    /// `loop`: bounded (E0502), `until` a Bool, the body typed; in 0.6 the
+    /// value is the body's, the last time it runs.
+    fn loop_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) -> Option<Val> {
         let m = s.members();
         if !m.contains_key("max_iter") && !m.contains_key("until") {
             self.report(
@@ -1193,7 +1335,8 @@ impl<'a> Checker<'a> {
             self.condition(Some(u), frame, path, "until");
         }
         let at = sub(path, "body");
-        self.body(s.body(), frame, &at, false);
+        let v = self.body(s.body(), frame, &at, false);
+        self.at_least(Language::V0_6).then_some(v)
     }
 
     /// `return`: the value against the enclosing body's return type.
@@ -1201,22 +1344,27 @@ impl<'a> Checker<'a> {
         let at = sub(path, "value");
         let v = self.expr_or_unknown(s.value(), frame, &at);
         if let (Some(returns), Some(_)) = (frame.returns.clone(), s.value()) {
-            self.expect(&v.ty, &returns, &at);
+            self.expect_val(&v, &returns, &at);
         }
     }
 
     /// `on error(pattern) => then`: an UnknownOutcome only reconciled
-    /// (E0712), `then` typed with the pattern's names bound to unknown.
-    fn on_error_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
+    /// (E0712), `then` typed with the pattern's names bound to what a
+    /// fault carries (in 0.6 `Untrusted`, and of nothing the checker knows,
+    /// [`Checker::opaque`]; before, unknown). The handler's value, which
+    /// replaces the failed statement's, unless it is a supervision strategy.
+    fn on_error_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) -> Option<Val> {
         let then = s.then_expr();
         let pattern = s.pattern();
         self.unknown_outcome(pattern, then, path);
         let mut names = Vec::new();
         pattern_vars(pattern, &mut names);
-        let binds: HashMap<String, Val> = names.into_iter().map(|n| (n, Val::unknown())).collect();
+        let payload = self.opaque(named("Untrusted", vec![UNKNOWN]));
+        let binds: HashMap<String, Val> = names.into_iter().map(|n| (n, payload.clone())).collect();
         let mut inner = Self::child_box(frame, binds);
         let at = sub(path, "then");
-        self.expr_or_unknown(then, &mut inner, &at);
+        let h = self.expr_or_unknown(then, &mut inner, &at);
+        (!typing::is_strategy(then)).then_some(h)
     }
 
     /// E0712: `on error(UnknownOutcome)` handled by anything but reconcile.
