@@ -346,3 +346,52 @@ impl WaitDays {
         published.unix_seconds().saturating_add(wait)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{civil_from_days, days_from_civil, is_leap, month_days};
+
+    #[test]
+    fn leap_years_are_the_gregorian_ones() {
+        for (year, leap) in [
+            (1970, false),
+            (1972, true),
+            (1900, false),
+            (2000, true),
+            (2024, true),
+            (2026, false),
+            (2100, false),
+            (2400, true),
+            (9996, true),
+            (9999, false),
+        ] {
+            assert_eq!(is_leap(year), leap, "{year}");
+        }
+        assert_eq!(month_days(2024, 2), 29);
+        assert_eq!(month_days(2026, 2), 28);
+        assert_eq!(month_days(2026, 4), 30);
+        assert_eq!(month_days(2026, 12), 31);
+    }
+
+    #[test]
+    fn the_two_conversions_are_inverses() {
+        // 1970-01-01 is day 0 and 9999-12-31 is day 2 932 896.
+        assert_eq!(days_from_civil(1970, 1, 1), Some(0));
+        assert_eq!(civil_from_days(0), Some((1970, 1, 1)));
+        assert_eq!(days_from_civil(9999, 12, 31), Some(2_932_896));
+        assert_eq!(civil_from_days(2_932_896), Some((9999, 12, 31)));
+        assert_eq!(civil_from_days(2_932_897), Some((10_000, 1, 1)));
+        assert_eq!(days_from_civil(2024, 3, 1), Some(19_783));
+        assert_eq!(civil_from_days(19_782), Some((2024, 2, 29)));
+        for day in (0..=2_932_896_u64).step_by(7) {
+            let back = civil_from_days(day).and_then(|(y, m, d)| days_from_civil(y, m, d));
+            assert_eq!(back, Some(day));
+        }
+    }
+
+    #[test]
+    fn dates_before_the_epoch_are_not_converted() {
+        assert_eq!(days_from_civil(1969, 12, 31), None);
+        assert_eq!(days_from_civil(0, 1, 1), None);
+    }
+}

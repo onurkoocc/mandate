@@ -139,8 +139,8 @@ impl Version {
     ///
     /// The [`VersionFault`] that says why `text` is not one.
     pub fn parse(text: &str) -> Result<Version, VersionFault> {
-        let parts = <[u32; 3]>::try_from(components(text, 3, 3)?)
-            .map_err(|_| VersionFault::Components)?;
+        let parts =
+            <[u32; 3]>::try_from(components(text, 3, 3)?).map_err(|_| VersionFault::Components)?;
         let [major, minor, patch] = parts;
         Ok(Version {
             major,
@@ -301,5 +301,36 @@ impl fmt::Display for Range {
             Form::Caret { written: 2 } => write!(f, "^{}.{}", self.from.major, self.from.minor),
             Form::Caret { .. } => write!(f, "^{}", self.from),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{VERSION_COMPONENT_MAX, VersionFault, component, components};
+
+    #[test]
+    fn a_component_is_digits_without_a_leading_zero_within_the_bound() {
+        assert_eq!(component("0"), Ok(0));
+        assert_eq!(component("7"), Ok(7));
+        assert_eq!(component("999999999"), Ok(VERSION_COMPONENT_MAX));
+        assert_eq!(component("1000000000"), Err(VersionFault::TooLarge));
+        assert_eq!(component("00"), Err(VersionFault::LeadingZero));
+        assert_eq!(component("007"), Err(VersionFault::LeadingZero));
+        assert_eq!(component(""), Err(VersionFault::EmptyComponent));
+        assert_eq!(component("+1"), Err(VersionFault::NotDecimal));
+        assert_eq!(component("1_000"), Err(VersionFault::NotDecimal));
+        // Past ten digits nothing is parsed.
+        assert_eq!(component(&"9".repeat(500)), Err(VersionFault::TooLarge));
+    }
+
+    #[test]
+    fn the_number_of_components_is_held_to_the_form() {
+        assert_eq!(components("1.2.3", 3, 3), Ok(vec![1, 2, 3]));
+        assert_eq!(components("1", 1, 3), Ok(vec![1]));
+        assert_eq!(components("1.2", 3, 3), Err(VersionFault::Components));
+        assert_eq!(components("1.2.3.4", 1, 3), Err(VersionFault::Components));
+        assert_eq!(components("", 1, 3), Err(VersionFault::Empty));
+        // How many is checked before what each is.
+        assert_eq!(components("x.y", 3, 3), Err(VersionFault::Components));
     }
 }

@@ -32,10 +32,17 @@ fn versions_accepted_are_read_and_written_back_exactly() {
         ("1.2.3", (1, 2, 3)),
         ("10.20.30", (10, 20, 30)),
         ("0.10.0", (0, 10, 0)),
-        ("999999999.999999999.999999999", (999_999_999, 999_999_999, 999_999_999)),
+        (
+            "999999999.999999999.999999999",
+            (999_999_999, 999_999_999, 999_999_999),
+        ),
     ] {
         let version = Version::parse(text).unwrap();
-        t.eq(text, (version.major(), version.minor(), version.patch()), parts);
+        t.eq(
+            text,
+            (version.major(), version.minor(), version.patch()),
+            parts,
+        );
         t.eq(text, version.to_string(), text.to_owned());
     }
     t.finish();
@@ -86,7 +93,11 @@ fn versions_refused_say_why() {
         ("0.0.1000000000", TooLarge),
         ("0.0.99999999999999999999999999", TooLarge),
     ] {
-        t.eq(&format!("{text:?}"), Version::parse(text).err(), Some(fault));
+        t.eq(
+            &format!("{text:?}"),
+            Version::parse(text).err(),
+            Some(fault),
+        );
     }
     t.finish();
 }
@@ -117,7 +128,11 @@ fn versions_compare_by_number_not_by_text() {
         t.ok(&format!("{low} < {high}"), v(low) < v(high));
         t.ok(&format!("{high} > {low}"), v(high) > v(low));
     }
-    t.eq("equal", v("1.2.3").cmp(&v("1.2.3")), std::cmp::Ordering::Equal);
+    t.eq(
+        "equal",
+        v("1.2.3").cmp(&v("1.2.3")),
+        std::cmp::Ordering::Equal,
+    );
     t.finish();
 }
 
@@ -125,10 +140,25 @@ fn versions_compare_by_number_not_by_text() {
 fn ranges_accepted_are_written_back_as_written() {
     let mut t = Table::new();
     for text in [
-        "^0", "^1", "^12", "^0.0", "^1.0", "^0.3", "^1.2.3", "^0.0.3", "^0.0.0", "1.2.3", "0.0.0",
-        "^999999999", "^999999999.999999999.999999999",
+        "^0",
+        "^1",
+        "^12",
+        "^0.0",
+        "^1.0",
+        "^0.3",
+        "^1.2.3",
+        "^0.0.3",
+        "^0.0.0",
+        "1.2.3",
+        "0.0.0",
+        "^999999999",
+        "^999999999.999999999.999999999",
     ] {
-        t.eq(text, Range::parse(text).unwrap().to_string(), text.to_owned());
+        t.eq(
+            text,
+            Range::parse(text).unwrap().to_string(),
+            text.to_owned(),
+        );
     }
     // A caret range and the version it names are two ranges.
     t.ok("^1.2.3 is not 1.2.3", r("^1.2.3") != r("1.2.3"));
@@ -258,12 +288,21 @@ fn what_the_specification_says_a_caret_holds() {
         ),
         (
             "1.2.3",
-            &[("1.2.2", false), ("1.2.3", true), ("1.2.4", false), ("1.3.3", false)],
+            &[
+                ("1.2.2", false),
+                ("1.2.3", true),
+                ("1.2.4", false),
+                ("1.3.3", false),
+            ],
         ),
     ];
     for (range, versions) in cases {
         for (version, holds) in versions {
-            t.eq(&format!("{range} holds {version}"), r(range).holds(&v(version)), *holds);
+            t.eq(
+                &format!("{range} holds {version}"),
+                r(range).holds(&v(version)),
+                *holds,
+            );
         }
     }
     t.finish();
@@ -297,12 +336,21 @@ fn what_a_range_of_zeros_holds_is_decided_here() {
         ),
         (
             "^0.0.0",
-            &[("0.0.0", true), ("0.0.1", false), ("0.1.0", false), ("1.0.0", false)],
+            &[
+                ("0.0.0", true),
+                ("0.0.1", false),
+                ("0.1.0", false),
+                ("1.0.0", false),
+            ],
         ),
     ];
     for (range, versions) in cases {
         for (version, holds) in versions {
-            t.eq(&format!("{range} holds {version}"), r(range).holds(&v(version)), *holds);
+            t.eq(
+                &format!("{range} holds {version}"),
+                r(range).holds(&v(version)),
+                *holds,
+            );
         }
     }
     t.finish();
@@ -361,9 +409,8 @@ fn sweep(values: &[u64]) -> usize {
                             for &z in values {
                                 let version = [x, y, z];
                                 let want = lo <= version && version < hi;
-                                let got = range.holds(
-                                    &Version::new(x as u32, y as u32, z as u32).unwrap(),
-                                );
+                                let got = range
+                                    .holds(&Version::new(x as u32, y as u32, z as u32).unwrap());
                                 t.eq(&format!("{text} holds {x}.{y}.{z}"), got, want);
                             }
                         }
@@ -396,15 +443,42 @@ fn the_upper_bound_is_right_at_the_top_of_the_number_space() {
     let top = format!("{max}.{max}.{max}");
     let mut t = Table::new();
     // `^MAX` has no next major inside the bound, and holds everything of MAX.
-    t.ok("^MAX holds MAX.MAX.MAX", r(&format!("^{max}")).holds(&v(&top)));
-    t.ok("^MAX holds MAX.0.0", r(&format!("^{max}")).holds(&v(&format!("{max}.0.0"))));
-    t.ok("^MAX does not hold MAX-1.MAX.MAX", !r(&format!("^{max}")).holds(&v(&format!("{}.{max}.{max}", max - 1))));
-    t.ok("^0.MAX holds 0.MAX.MAX", r(&format!("^0.{max}")).holds(&v(&format!("0.{max}.{max}"))));
-    t.ok("^0.MAX does not hold 0.MAX-1.MAX", !r(&format!("^0.{max}")).holds(&v(&format!("0.{}.{max}", max - 1))));
-    t.ok("^0.0.MAX holds 0.0.MAX", r(&format!("^0.0.{max}")).holds(&v(&format!("0.0.{max}"))));
-    t.ok("^0.0.MAX does not hold 0.0.MAX-1", !r(&format!("^0.0.{max}")).holds(&v(&format!("0.0.{}", max - 1))));
-    t.ok("^MAX.MAX.MAX holds itself", r(&format!("^{top}")).holds(&v(&top)));
+    t.ok(
+        "^MAX holds MAX.MAX.MAX",
+        r(&format!("^{max}")).holds(&v(&top)),
+    );
+    t.ok(
+        "^MAX holds MAX.0.0",
+        r(&format!("^{max}")).holds(&v(&format!("{max}.0.0"))),
+    );
+    t.ok(
+        "^MAX does not hold MAX-1.MAX.MAX",
+        !r(&format!("^{max}")).holds(&v(&format!("{}.{max}.{max}", max - 1))),
+    );
+    t.ok(
+        "^0.MAX holds 0.MAX.MAX",
+        r(&format!("^0.{max}")).holds(&v(&format!("0.{max}.{max}"))),
+    );
+    t.ok(
+        "^0.MAX does not hold 0.MAX-1.MAX",
+        !r(&format!("^0.{max}")).holds(&v(&format!("0.{}.{max}", max - 1))),
+    );
+    t.ok(
+        "^0.0.MAX holds 0.0.MAX",
+        r(&format!("^0.0.{max}")).holds(&v(&format!("0.0.{max}"))),
+    );
+    t.ok(
+        "^0.0.MAX does not hold 0.0.MAX-1",
+        !r(&format!("^0.0.{max}")).holds(&v(&format!("0.0.{}", max - 1))),
+    );
+    t.ok(
+        "^MAX.MAX.MAX holds itself",
+        r(&format!("^{top}")).holds(&v(&top)),
+    );
     t.ok("exact MAX holds itself", r(&top).holds(&v(&top)));
-    t.ok("^1.0 does not hold MAX.0.0", !r("^1.0").holds(&v(&format!("{max}.0.0"))));
+    t.ok(
+        "^1.0 does not hold MAX.0.0",
+        !r("^1.0").holds(&v(&format!("{max}.0.0"))),
+    );
     t.finish();
 }

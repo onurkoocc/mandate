@@ -322,3 +322,65 @@ pub(crate) fn object_member<'a>(
 pub(crate) fn strings_js<'a>(items: impl IntoIterator<Item = &'a str>) -> JsValue {
     JsValue::Array(items.into_iter().map(JsValue::from).collect())
 }
+
+#[cfg(test)]
+mod tests {
+    use mandate_ir::Value;
+
+    use super::{JsonFault, ShapeProblem, json_type, read_json, read_json_bytes};
+
+    fn fault(text: &str) -> Option<JsonFault> {
+        match read_json(text) {
+            Err(ShapeProblem::InvalidJson { fault, .. }) => Some(fault),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn what_the_strict_reader_refuses_is_named() {
+        assert_eq!(fault("{"), Some(JsonFault::Syntax));
+        assert_eq!(fault(""), Some(JsonFault::Syntax));
+        assert_eq!(fault("{} x"), Some(JsonFault::Syntax));
+        assert_eq!(fault(r#"{"a":1,"a":2}"#), Some(JsonFault::DuplicateKey));
+        assert_eq!(
+            fault(r#"{"a":{"b":1,"b":1}}"#),
+            Some(JsonFault::DuplicateKey)
+        );
+        assert_eq!(fault("1.5"), Some(JsonFault::NotInteger));
+        assert_eq!(fault("1E2"), Some(JsonFault::NotInteger));
+        assert_eq!(fault("-0"), Some(JsonFault::NegativeZero));
+        assert_eq!(fault("9007199254740992"), Some(JsonFault::OutOfRange));
+        assert_eq!(fault(r#""\ud800""#), Some(JsonFault::LoneSurrogate));
+        assert_eq!(fault(&"[".repeat(65)), Some(JsonFault::TooDeep));
+        assert_eq!(
+            fault(&format!("\"{}\"", "a".repeat(1_048_576))),
+            Some(JsonFault::TooLarge)
+        );
+        // 64 levels is the most.
+        assert_eq!(
+            fault(&format!("{}{}", "[".repeat(64), "]".repeat(64))),
+            None
+        );
+        assert!(read_json("9007199254740991").is_ok());
+    }
+
+    #[test]
+    fn a_byte_order_mark_and_bad_utf8_are_named() {
+        assert_eq!(read_json("\u{feff}{}"), Err(ShapeProblem::ByteOrderMark));
+        assert_eq!(
+            read_json_bytes(b"\xef\xbb\xbf{}"),
+            Err(ShapeProblem::ByteOrderMark)
+        );
+        assert_eq!(read_json_bytes(b"{\xff}"), Err(ShapeProblem::NotUtf8));
+        assert_eq!(read_json_bytes(b"{}").map(|v| json_type(&v)), Ok("object"));
+    }
+
+    #[test]
+    fn json_types_are_named_as_javascript_names_them() {
+        assert_eq!(json_type(&Value::Null), "null");
+        assert_eq!(json_type(&Value::Bool(true)), "boolean");
+        assert_eq!(json_type(&Value::from("x")), "string");
+        assert_eq!(json_type(&Value::Array(Vec::new())), "array");
+        assert_eq!(json_type(&Value::Object(mandate_ir::Map::new())), "object");
+    }
+}
