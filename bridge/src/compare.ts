@@ -18,6 +18,7 @@
 // after) or covers (on the inputs of its shape, the outcomes are not compared). Each counts the calls it excused,
 // and `exemptionCounts()` gives the counts; no other difference is excused.
 
+import { writeSync } from "node:fs";
 import { DOOR_BACKED, type DoorBacked } from "./doors.js";
 import { difference } from "./same.js";
 import { toWellFormed } from "./text.js";
@@ -50,7 +51,25 @@ export function takeDivergences(): CompilerDivergence[] {
 
 /** Keeps a divergence another thread found (a worker's check, mode.ts). */
 export function keepDivergence(d: CompilerDivergence): void {
+  keep(d);
+}
+
+let watching = false;
+
+/**
+ * Keeps a divergence, and makes sure a process that ends with one still kept says so: a child process (the bundled
+ * command line, a verifier) whose code caught it ends with exit status 70 and the divergences on its standard error,
+ * so the test that started it sees it fail. A test file's own divergences are taken by its setup after each test.
+ */
+function keep(d: CompilerDivergence): void {
   divergences.push(d);
+  if (watching) return;
+  watching = true;
+  process.on("exit", (code) => {
+    if (!divergences.length) return;
+    writeSync(2, `mandate bridge: ${divergences.length} call(s) the TypeScript and the Rust compilers answered differently, which nothing took:\n${divergences.map((x) => x.message).join("\n")}\n`);
+    if (code === 0) process.exitCode = 70;
+  });
 }
 
 // ── the input of language 0.6 ───────────────────────────────────────────
@@ -159,18 +178,22 @@ export const LANGUAGE_06: Record<DoorBacked, (a: unknown[]) => boolean> = {
 
 // ── the named exemptions ────────────────────────────────────────────────
 
+/** Asks the TypeScript again on other arguments: what a rule that names how the Rust reads an input compares with. */
+export type Again = (args: unknown[]) => Outcome;
+
 /**
  * A known difference: the functions it covers, the entry of vectors/README.md it stands on, and either `normalize`
- * (the one change it makes to one side's value before the two are compared, and whether that changed anything) or
- * `covers` (whether it covers a call of that shape, which is then not compared).
+ * (the one change the entry names, made to one side's value before the two are compared, and whether it changed
+ * anything) or `covers` (whether the call has the shape the entry names, on both sides, so that it is not compared).
+ * Each excuses its entry and nothing beside it: an input that also differs otherwise still diverges.
  */
 export interface Exemption {
   name: string;
   /** The entry of vectors/README.md ("Where the Rust compiler is not held to the TypeScript") it stands on. */
   readme: string;
   functions: readonly DoorBacked[];
-  normalize?: (ts: unknown, rust: unknown) => { ts: unknown; rust: unknown; changed: boolean };
-  covers?: (fn: DoorBacked, args: unknown[], ts: Outcome, rust: Outcome) => boolean;
+  normalize?: (ts: unknown, rust: unknown, args: unknown[], fn: DoorBacked) => { ts: unknown; rust: unknown; changed: boolean };
+  covers?: (fn: DoorBacked, args: unknown[], ts: Outcome, rust: Outcome, again?: Again) => boolean;
 }
 
 /** The functions whose result holds diagnostics, wherever: what a rule about a diagnostic applies to. */
@@ -180,42 +203,31 @@ const PATCHING: readonly DoorBacked[] = ["applyPatch", "checkPatch", "checkSubpr
 /** The functions that check a program (and so can meet a type named like a member of Object.prototype). */
 const CHECKING: readonly DoorBacked[] = ["check", "applyPatch", "checkPatch", "checkSubprogram", "checkAmendment", "loadModules"];
 
-/** A copy of `v` with `f` applied to every string in it (member names included), and whether that changed one. */
-function mapStrings(v: unknown, f: (s: string) => string): { value: unknown; changed: boolean } {
-  let changed = false;
-  const walk = (x: unknown): unknown => {
-    if (typeof x === "string") {
-      const y = f(x);
-      if (y !== x) changed = true;
-      return y;
-    }
-    if (Array.isArray(x)) return x.map(walk);
-    if (x instanceof Map) return new Map([...x].map(([k, y]) => [typeof k === "string" ? walk(k) : k, walk(y)]));
-    if (x instanceof Set) return new Set([...x].map(walk));
-    if (obj(x)) return Object.fromEntries(Object.keys(x).map((k) => [walk(k) as string, walk(x[k])]));
-    return x;
-  };
-  const value = walk(v);
-  return { value, changed };
-}
-
-/** The Rust's E0103 without the versions only it reads (crates/mandate-testkit/src/rust_only.rs, the same rule). */
-function e0103AsTypescript(v: unknown): { value: unknown; changed: boolean } {
+/** A copy of `v` with `f` applied to every diagnostic in it (an object with a string `code` and `message`), and whether that changed one. */
+function mapDiagnostics(v: unknown, f: (d: Record<string, unknown>) => Record<string, unknown>): { value: unknown; changed: boolean } {
   let changed = false;
   const walk = (x: unknown): unknown => {
     if (Array.isArray(x)) return x.map(walk);
     if (x instanceof Map) return new Map([...x].map(([k, y]) => [k, walk(y)]));
     if (!obj(x)) return x;
-    if (x["code"] === "MDT-E0103") {
-      const out = { ...x };
-      if (typeof out["message"] === "string") out["message"] = out["message"].replaceAll(` or "${V06}"`, "").replaceAll(` or '${V06}'`, "");
-      if (obj(out["facts"]) && Array.isArray(out["facts"]["expected"])) out["facts"] = { ...out["facts"], expected: out["facts"]["expected"].filter((e) => e !== V06) };
-      if (difference(out, x)) changed = true;
-      return out;
+    if (typeof x["code"] === "string" && typeof x["message"] === "string") {
+      const y = f(x);
+      if (difference(y, x)) changed = true;
+      return y;
     }
     return Object.fromEntries(Object.keys(x).map((k) => [k, walk(x[k])]));
   };
   return { value: walk(v), changed };
+}
+
+/** The Rust's E0103 without the versions only it reads (crates/mandate-testkit/src/rust_only.rs, the same rule). */
+function e0103AsTypescript(v: unknown): { value: unknown; changed: boolean } {
+  return mapDiagnostics(v, (d) => {
+    if (d["code"] !== "MDT-E0103") return d;
+    const out: Record<string, unknown> = { ...d, message: (d["message"] as string).replaceAll(` or "${V06}"`, "").replaceAll(` or '${V06}'`, "") };
+    if (obj(out["facts"]) && Array.isArray(out["facts"]["expected"])) out["facts"] = { ...out["facts"], expected: out["facts"]["expected"].filter((e) => e !== V06) };
+    return out;
+  });
 }
 
 /** Whether `v` holds a value of `f`, anywhere within a few levels. */
@@ -227,15 +239,64 @@ function holds(v: unknown, f: (x: unknown) => boolean, depth = 0): boolean {
   return false;
 }
 
-/** The operations of a call of a patching function. */
+/** Whether a result holds a diagnostic of `code`. */
+const holdsCode = (v: unknown, code: string): boolean => holds(v, (x) => obj(x) && x["code"] === code);
+
+/** The operations of a call of a patching function, and the arguments with other operations in their place. */
 function opsOf(fn: DoorBacked, args: unknown[]): unknown[] {
   const ops = fn === "checkSubprogram" ? (obj(args[0]) ? args[0]["ops"] : undefined) : args[2];
   return Array.isArray(ops) ? ops : [];
+}
+function withOps(fn: DoorBacked, args: unknown[], ops: unknown[]): unknown[] {
+  if (fn === "checkSubprogram") return [{ ...(args[0] as Record<string, unknown>), ops }, ...args.slice(1)];
+  return [args[0], args[1], ops, ...args.slice(3)];
+}
+
+/** The deepest nesting of brackets in a text, or of arrays and objects in a value, in `args`. */
+function nesting(v: unknown, textOnly = false): number {
+  let most = 0;
+  const stack: Array<[unknown, number]> = [[v, 0]];
+  while (stack.length) {
+    const [x, d] = stack.pop()!;
+    if (typeof x === "string") {
+      let depth = 0;
+      for (const c of x) {
+        if (c === "(" || c === "[" || c === "{") most = Math.max(most, ++depth);
+        else if (c === ")" || c === "]" || c === "}") depth = Math.max(0, depth - 1);
+      }
+    } else if (Array.isArray(x)) {
+      if (!textOnly) most = Math.max(most, d);
+      if (d < 4096) for (const y of x) stack.push([y, d + 1]);
+    } else if (obj(x)) {
+      if (!textOnly) most = Math.max(most, d);
+      if (d < 4096) for (const y of Object.values(x)) stack.push([y, d + 1]);
+    }
+  }
+  return most;
+}
+
+/** Whether `args` name a type `name`: in a text's `type name`, a JSON text's or an IR's definitions, or a patch's add of one. */
+function namesType(args: unknown[], name: string): boolean {
+  const defines = (p: unknown): boolean => obj(p) && obj(p["defs"]) && obj(p["defs"][name]) && p["defs"][name]["kind"] === "type";
+  return holds(args, (x) => {
+    if (typeof x === "string") {
+      if (new RegExp(`\\btype\\s+${name}\\b`).test(x)) return true;
+      if (!x.trimStart().startsWith("{")) return false;
+      try {
+        return defines(JSON.parse(x));
+      } catch {
+        return false;
+      }
+    }
+    return defines(x) || (obj(x) && x["op"] === "add" && x["path"] === `/defs/${name}` && obj(x["value"]) && x["value"]["kind"] === "type");
+  });
 }
 
 const threw = (o: Outcome): o is { threw: unknown } => "threw" in o;
 const astral = /[\u{10000}-\u{10FFFF}]/u;
 const PROTOTYPE_NAMES = Object.getOwnPropertyNames(Object.prototype);
+/** What the Rust says of a patch operation whose path is not a string (crates/mandate-views/tests/vectors.rs). */
+const NOT_A_POINTER = "path must be a JSON Pointer starting with '/'";
 
 export const EXEMPTIONS: readonly Exemption[] = [
   {
@@ -249,45 +310,75 @@ export const EXEMPTIONS: readonly Exemption[] = [
   },
   {
     name: "lone-surrogate-in-a-message",
-    readme: "A lone UTF-16 surrogate: where the TypeScript's message quotes half of a surrogate pair, the Rust holds U+FFFD",
+    readme: "A lone UTF-16 surrogate: where the TypeScript's message quotes half of a surrogate pair, the Rust holds U+FFFD. Only a diagnostic's message is read so.",
     functions: DIAGNOSING,
     normalize: (ts, rust) => {
-      const t = mapStrings(ts, toWellFormed);
+      const t = mapDiagnostics(ts, (d) => ({ ...d, message: toWellFormed(d["message"] as string) }));
       return { ts: t.value, rust, changed: t.changed };
     },
   },
   {
     name: "rendering-lone-surrogate",
-    readme: "A lone UTF-16 surrogate in a document: toMarkdown and toHtml are given it as U+FFFD by the bridge, which a request cannot carry otherwise; the TypeScript writes it through",
+    readme: "A lone UTF-16 surrogate in a document: toMarkdown and toHtml are given it as U+FFFD by the bridge, which a request cannot carry otherwise; the TypeScript writes it through. Only for a document that holds one.",
     functions: ["toMarkdown", "toHtml"],
-    normalize: (ts, rust) => {
-      const t = mapStrings(ts, toWellFormed);
-      return { ts: t.value, rust, changed: t.changed };
+    normalize: (ts, rust, args) => {
+      if (typeof ts !== "string" || !holds(args, (x) => typeof x === "string" && toWellFormed(x) !== x)) return { ts, rust, changed: false };
+      const t = toWellFormed(ts);
+      return { ts: t, rust, changed: t !== ts };
     },
   },
   {
     name: "patch-proto-token",
-    readme: "KNOWN_PATCH_DIFFERENCES: an add whose path ends in __proto__, which in JavaScript sets the prototype of a plain object and in Rust adds no member",
+    readme: "KNOWN_PATCH_DIFFERENCES: an add whose path ends in __proto__, which in JavaScript sets the prototype of a plain object and in Rust adds no member, so that the Rust gives what the TypeScript gives for the patch without those adds",
     functions: PATCHING,
-    covers: (fn, args) => opsOf(fn, args).some((op) => obj(op) && op["op"] === "add" && typeof op["path"] === "string" && op["path"].split("/").pop() === "__proto__"),
+    covers: (fn, args, _ts, rust, again) => {
+      const ops = opsOf(fn, args);
+      const proto = (op: unknown): boolean => obj(op) && op["op"] === "add" && typeof op["path"] === "string" && op["path"].split("/").pop() === "__proto__";
+      if (!again || !ops.some(proto)) return false;
+      return !disagreement(again(withOps(fn, args, ops.filter((op) => !proto(op)))), rust);
+    },
   },
   {
     name: "patch-path-not-text",
-    readme: "KNOWN_PATCH_DIFFERENCES: an operation whose path or op is not a string: the TypeScript throws a TypeError and puts the value itself in at.path, the Rust reads it as text",
+    readme: "KNOWN_PATCH_DIFFERENCES: an operation whose path is not a string: the TypeScript throws a TypeError, whose message its E0131 holds, and puts the value itself in at.path; the Rust's E0131 says the path is not a JSON Pointer and holds the value as a template's text",
     functions: PATCHING,
-    covers: (fn, args) => opsOf(fn, args).some((op) => obj(op) && (typeof op["path"] !== "string" || typeof op["op"] !== "string")),
+    normalize: (ts, rust, args, fn) => {
+      const ops = opsOf(fn, args);
+      const t = mapDiagnostics(ts, (d) => {
+        const i = obj(d["facts"]) ? d["facts"]["index"] : undefined;
+        const op = typeof i === "number" ? ops[i] : undefined;
+        if (d["code"] !== "MDT-E0131" || !obj(op) || typeof op["path"] === "string") return d;
+        const message = d["message"] as string;
+        const cut = message.indexOf(" failed: ");
+        return { ...d, message: `${cut < 0 ? message : message.slice(0, cut)} failed: ${NOT_A_POINTER}`, at: { path: `${op["path"] as string}` } };
+      });
+      return { ts: t.value, rust, changed: t.changed };
+    },
   },
   {
     name: "type-named-like-a-prototype-member",
-    readme: "THROWS_IN_TYPESCRIPT: a type named like a member of Object.prototype (toString), on which the TypeScript throws a TypeError and the Rust gives the E0201",
+    readme: "THROWS_IN_TYPESCRIPT: a type named like a member of Object.prototype (toString) where another is expected: the TypeScript throws a TypeError, and the Rust gives the E0201 that names it, and no other error",
     functions: CHECKING,
-    covers: (_fn, args, ts, rust) => threw(ts) && ts.threw instanceof TypeError && !threw(rust) && holds(args, (x) => typeof x === "string" && PROTOTYPE_NAMES.some((n) => new RegExp(`\\b${n}\\b`).test(x))),
+    covers: (_fn, args, ts, rust) => {
+      if (!threw(ts) || !(ts.threw instanceof TypeError) || threw(rust)) return false;
+      const ds = obj(rust.value) && Array.isArray(rust.value["diagnostics"]) ? (rust.value["diagnostics"] as unknown[]) : [];
+      const errors = ds.filter((d) => obj(d) && d["severity"] === "error") as Array<Record<string, unknown>>;
+      if (!errors.length || errors.some((d) => d["code"] !== "MDT-E0201")) return false;
+      return errors.some((d) => {
+        const named = [...String(d["message"]).matchAll(/\b(?:got|Expected) (\w+)/g)].map((m) => m[1]!).filter((n) => PROTOTYPE_NAMES.includes(n));
+        return named.some((n) => namesType(args, n));
+      });
+    },
   },
   {
     name: "deepest-programs",
-    readme: "The deepest programs: Node's default stack is too small for the TypeScript to check them (it throws RangeError); the Rust checks them",
+    readme: "The deepest programs: a program as deep as one that loads can be (an IR some 64 deep), or a text whose calls and records nest far past 64, on which Node's default stack is too small for the TypeScript (it throws RangeError); the Rust checks the first and gives E0105 for the second",
     functions: Object.keys(DOOR_BACKED) as DoorBacked[],
-    covers: (_fn, _args, ts, rust) => threw(ts) && ts.threw instanceof RangeError && /call stack/i.test(ts.threw.message) && !threw(rust),
+    covers: (_fn, args, ts, rust) => {
+      if (!threw(ts) || !(ts.threw instanceof RangeError) || !/call stack/i.test(ts.threw.message) || threw(rust)) return false;
+      if (nesting(args) < 60) return false;
+      return nesting(args, true) <= 64 || holdsCode(rust.value, "MDT-E0105");
+    },
   },
   {
     name: "packaged-lock-astral-string",
@@ -357,9 +448,10 @@ function disagreement(ts: Outcome, rust: Outcome): string | undefined {
 
 /**
  * Compares the two outcomes of a call of `fn` with `args`: returns when they agree or a rule excuses them, and
- * throws (and keeps) a CompilerDivergence when not.
+ * throws (and keeps) a CompilerDivergence when not. `again` asks the TypeScript on other arguments, for the rule
+ * that compares the Rust with what the TypeScript gives for the input as the Rust reads it.
  */
-export function compareOutcomes(fn: DoorBacked | "CODES", args: unknown[], ts: Outcome, rust: Outcome): void {
+export function compareOutcomes(fn: DoorBacked | "CODES", args: unknown[], ts: Outcome, rust: Outcome, again?: Again): void {
   counts["compared"]!++;
   let a = ts;
   let b = rust;
@@ -367,7 +459,7 @@ export function compareOutcomes(fn: DoorBacked | "CODES", args: unknown[], ts: O
   if (!first) return;
   const rules = fn === "CODES" ? [] : EXEMPTIONS.filter((e) => e.functions.includes(fn));
   for (const rule of rules) {
-    if (rule.covers?.(fn as DoorBacked, args, ts, rust)) {
+    if (rule.covers?.(fn as DoorBacked, args, ts, rust, again)) {
       counts[rule.name]!++;
       return;
     }
@@ -377,7 +469,7 @@ export function compareOutcomes(fn: DoorBacked | "CODES", args: unknown[], ts: O
   const used: string[] = [];
   for (const rule of rules) {
     if (!rule.normalize || threw(a) || threw(b)) continue;
-    const n = rule.normalize(a.value, b.value);
+    const n = rule.normalize(a.value, b.value, args, fn as DoorBacked);
     if (n.changed) {
       used.push(rule.name);
       a = { value: n.ts };
@@ -390,7 +482,7 @@ export function compareOutcomes(fn: DoorBacked | "CODES", args: unknown[], ts: O
   }
   first = disagreement(a, b) ?? first;
   const d = new CompilerDivergence(fn, first, shown(ts), shown(rust));
-  divergences.push(d);
+  keep(d);
   throw d;
 }
 

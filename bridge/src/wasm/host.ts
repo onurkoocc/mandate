@@ -6,9 +6,9 @@
 // with buffers in memory:
 //
 //   fd_read            on descriptor 0, the request; on any other, EBADF
-//   fd_write           on 1, the answer, at most 64 MiB (more stops the call); on 2, what the module says when it
-//                      fails, of which the first 64 KiB are kept to classify the failure and never shown; on any
-//                      other, EBADF
+//   fd_write           on 1, the answer, at most 64 MiB, in one buffer that grows to that and no further (more stops
+//                      the call); on 2, what the module says when it fails, of which the first 64 KiB are kept to
+//                      classify the failure and never shown; on any other, EBADF
 //   random_get         random bytes (node:crypto), for each call afresh: its one caller is the seed of Rust's
 //                      HashMap (SipHash), and part of what the module hashes is a model's writing (a sub-program,
 //                      its patch, its scopes), so a seed anyone could know would let such input be made to fall in
@@ -19,10 +19,19 @@
 //   clock_time_get     ENOSYS ("not supported"), and counted: nothing in the module should ask the time
 //   proc_exit          ends the call with its status
 //
+// A read or a write names at most MAX_IOVECS buffers (Rust's std names one or two), each inside the module's memory;
+// anything else stops the call (`host_error`). Every pointer the module gives is read as the unsigned number it is
+// and checked against the memory before it is used.
+//
+// A module is taken only after its bytes were read (`validateBytes`): its imports are exactly the seven above, all
+// functions; it has exactly one memory, its own, of 32 bits, not shared, declared with a maximum of at most 4096
+// pages (256 MiB); it has no start function, so instantiating it runs nothing. Its exports are then checked on the
+// compiled module (`memory` and `_start`). A module the host has not read the bytes of is refused, but one handed
+// over by the thread that read them (mode.ts, `adoptCompiler`).
+//
 // Every call runs in a fresh instance of the compiled module, which is cached; nothing of an instance is kept after
-// its call (V8 refuses a new memory once some sixteen thousand are alive). The module's memory is at most 4096 pages
-// (256 MiB) and its stack 4 MiB, both fixed when it was linked (the root's `build:wasm`); the host refuses, when it
-// takes a module, one whose memory may grow further.
+// its call (V8 refuses a new memory once some sixteen thousand are alive). The stack of 4 MiB is fixed when the
+// module is linked (the root's `build:wasm`).
 //
 // What can go wrong is a `CompilerFailure` of a kind of its own (errors.ts); a door's refusal of its input is a
 // `DoorRefusal`, which the facade turns into what the TypeScript function throws.
@@ -44,17 +53,22 @@ export const MAX_ANSWER_BYTES = 64 * 1024 * 1024;
 export const MAX_STDERR_BYTES = 64 * 1024;
 /** The deepest a request may be nested (crates/mandate-doors, `MAX_REQUEST_DEPTH`): the request object is level 1. */
 export const MAX_REQUEST_DEPTH = 128;
+/** The most buffers one fd_read or fd_write may name. */
+export const MAX_IOVECS = 16;
 
 const ESUCCESS = 0;
 const EBADF = 8;
 const ENOSYS = 52;
-const PAGE = 65536;
 
-/** How a call ended inside the module: an exit of its own, or one of the host's two stops. */
+/** How a call ended inside the module: an exit of its own, or one of the host's stops. */
 class Exit {
   constructor(readonly status: number) {}
 }
 class AnswerTooLarge {}
+/** The module asked the host for what it does not do: too many buffers, or memory that is not its own. */
+class HostRefusal {
+  constructor(readonly reason: string) {}
+}
 
 export interface HostOptions {
   /**
@@ -83,39 +97,115 @@ export interface Run {
   memoryBytes: number;
 }
 
+// ── the module's bytes ──────────────────────────────────────────────────
+
+const refused = (why: string): CompilerFailure => new CompilerFailure("module_refused", undefined, why);
+const invalid = (why: string): CompilerFailure => new CompilerFailure("module_invalid", undefined, why);
+
 /**
- * Takes a compiled module, after checking that it is one the host can run: its imports are exactly the seven above,
- * it exports a memory and `_start`, and its memory cannot grow past MAX_MEMORY_PAGES. Throws `module_refused`, naming
- * what is wrong.
+ * Reads a module's binary (https://webassembly.github.io/spec/core/binary/) and refuses, by name, one the host does
+ * not run: an import that is not one of the seven functions, a memory that is imported, shared, of 64 bits, without a
+ * maximum or with one past MAX_MEMORY_PAGES, other than exactly one memory, or a start function. Reads the section
+ * headers and the import, memory and start sections, and nothing else.
+ */
+export function validateBytes(bytes: Uint8Array): void {
+  let at = 0;
+  const end = (): boolean => at >= bytes.length;
+  const byte = (): number => {
+    if (at >= bytes.length) throw invalid("the module's binary ends in the middle of a section");
+    return bytes[at++]!;
+  };
+  const leb = (): number => {
+    let n = 0;
+    for (let shift = 0; ; shift += 7) {
+      if (shift > 63) throw invalid("the module's binary has a number longer than its format allows");
+      const b = byte();
+      n += (b & 0x7f) * 2 ** shift;
+      if (!(b & 0x80)) return n;
+    }
+  };
+  const skip = (n: number): void => {
+    if (n > bytes.length - at) throw invalid("the module's binary ends in the middle of a section");
+    at += n;
+  };
+  const name = (): string => {
+    const n = leb();
+    const from = at;
+    skip(n);
+    return Buffer.from(bytes.subarray(from, at)).toString("utf8");
+  };
+  /** A memory's limits: its flags, and its maximum when it has one. */
+  const limits = (): { flags: number; max?: number } => {
+    const flags = leb();
+    leb();
+    return flags & 1 ? { flags, max: leb() } : { flags };
+  };
+  if (bytes.length < 8 || bytes[0] !== 0x00 || bytes[1] !== 0x61 || bytes[2] !== 0x73 || bytes[3] !== 0x6d) throw invalid("the file is not a WebAssembly binary");
+  if (bytes[4] !== 0x01 || bytes[5] !== 0x00 || bytes[6] !== 0x00 || bytes[7] !== 0x00) throw invalid("the module is of a version of the binary format the host does not read");
+  at = 8;
+  const memories: Array<{ flags: number; max?: number }> = [];
+  const allowed = new Set<string>(WASI_IMPORTS);
+  while (!end()) {
+    const id = byte();
+    const size = leb();
+    const start = at;
+    skip(size);
+    const inner = at;
+    at = start;
+    if (id === 2) {
+      for (let n = leb(); n > 0; n--) {
+        const module = name();
+        const field = name();
+        const kind = byte();
+        if (kind !== 0x00) throw refused(`the module imports ${module}.${field} as a ${["function", "table", "memory", "global", "tag"][kind] ?? `thing of kind ${kind}`}: the host serves functions only`);
+        if (module !== WASI_MODULE || !allowed.has(field)) throw refused(`the module imports ${module}.${field}, which the host does not serve; it serves ${WASI_IMPORTS.map((f) => `${WASI_MODULE}.${f}`).join(", ")}`);
+        leb();
+      }
+    } else if (id === 5) {
+      for (let n = leb(); n > 0; n--) memories.push(limits());
+    } else if (id === 8) {
+      throw refused("the module has a start function, which instantiating it would run");
+    }
+    at = inner;
+  }
+  if (memories.length !== 1) throw refused(memories.length ? `the module has ${memories.length} memories; the host runs a module of one` : "the module has no memory of its own");
+  const m = memories[0]!;
+  if (m.flags & 2) throw refused("the module's memory is shared");
+  if (m.flags & 4) throw refused("the module's memory is of 64 bits");
+  if (m.flags & ~7) throw refused(`the module's memory has limits of a form the host does not read (${m.flags})`);
+  if (m.max === undefined) throw refused(`the module's memory has no maximum; build it with \`npm run build:wasm\`, which sets one of ${MAX_MEMORY_PAGES} pages (256 MiB)`);
+  if (m.max > MAX_MEMORY_PAGES) throw refused(`the module's memory may grow to ${m.max} pages, past the ${MAX_MEMORY_PAGES} pages (256 MiB) the host runs a module with`);
+}
+
+/**
+ * Checks a compiled module's imports and exports: the imports exactly the seven above, each once, and the exports
+ * a memory and `_start`. Throws `module_refused`, naming what is wrong.
  */
 export function validateModule(module: WebAssembly.Module): void {
   const imports = WebAssembly.Module.imports(module);
   const allowed = new Set<string>(WASI_IMPORTS);
   const extra = imports.filter((i) => i.module !== WASI_MODULE || i.kind !== "function" || !allowed.has(i.name)).map((i) => `${i.module}.${i.name} (${i.kind})`);
-  if (extra.length) throw new CompilerFailure("module_refused", undefined, `the module imports ${extra.join(", ")}, which the host does not serve; it serves ${WASI_IMPORTS.map((n) => `${WASI_MODULE}.${n}`).join(", ")}`);
+  if (extra.length) throw refused(`the module imports ${extra.join(", ")}, which the host does not serve; it serves ${WASI_IMPORTS.map((n) => `${WASI_MODULE}.${n}`).join(", ")}`);
   const names = imports.map((i) => i.name);
   const twice = names.filter((n, i) => names.indexOf(n) !== i);
-  if (twice.length) throw new CompilerFailure("module_refused", undefined, `the module imports ${[...new Set(twice)].join(", ")} more than once`);
+  if (twice.length) throw refused(`the module imports ${[...new Set(twice)].join(", ")} more than once`);
   const missing = WASI_IMPORTS.filter((n) => !names.includes(n));
-  if (missing.length) throw new CompilerFailure("module_refused", undefined, `the module does not import ${missing.map((n) => `${WASI_MODULE}.${n}`).join(", ")}: it is not the module the host was written for`);
+  if (missing.length) throw refused(`the module does not import ${missing.map((n) => `${WASI_MODULE}.${n}`).join(", ")}: it is not the module the host was written for`);
   const exports = WebAssembly.Module.exports(module);
   for (const [name, kind] of Object.entries(NEEDED_EXPORTS)) {
-    if (!exports.some((e) => e.name === name && e.kind === kind)) throw new CompilerFailure("module_refused", undefined, `the module does not export a ${kind} named ${name}`);
+    if (!exports.some((e) => e.name === name && e.kind === kind)) throw refused(`the module does not export a ${kind} named ${name}`);
   }
-  // The ceiling of the memory, read from an instance that runs nothing: a memory may not grow one page past it.
-  const probe = new WebAssembly.Instance(module, { [WASI_MODULE]: Object.fromEntries(WASI_IMPORTS.map((n) => [n, () => ENOSYS])) });
-  const memory = probe.exports["memory"] as WebAssembly.Memory;
-  const pages = memory.buffer.byteLength / PAGE;
-  if (pages > MAX_MEMORY_PAGES) throw new CompilerFailure("module_refused", undefined, `the module's memory starts at ${pages} pages, past the ceiling of ${MAX_MEMORY_PAGES}`);
-  let grew = false;
-  try {
-    memory.grow(MAX_MEMORY_PAGES + 1 - pages);
-    grew = true;
-  } catch (e) {
-    if (!(e instanceof RangeError)) throw e;
-  }
-  if (grew) throw new CompilerFailure("module_refused", undefined, `the module's memory can grow past ${MAX_MEMORY_PAGES} pages (256 MiB); build it with \`npm run build:wasm\`, which sets that ceiling`);
 }
+
+/** The modules whose bytes were read and found to be ones the host runs (module.ts), or handed over by a thread that did. */
+const checked = new WeakSet<WebAssembly.Module>();
+
+/** Marks a compiled module as one whose bytes were checked (`validateBytes`) and whose imports and exports were. */
+export function markChecked(module: WebAssembly.Module): void {
+  checked.add(module);
+}
+
+// ── the host ────────────────────────────────────────────────────────────
 
 /**
  * The module, run once per call. `call(door, input)` writes the request, runs a fresh instance, reads the answer
@@ -130,6 +220,7 @@ export class WasmHost {
     readonly module: WebAssembly.Module,
     options: HostOptions = {},
   ) {
+    if (!checked.has(module)) throw refused("the host was given a module whose bytes it has not read; compile it with compileModuleBytes");
     validateModule(module);
     this.random = options.random ?? randomBytes;
   }
@@ -142,18 +233,40 @@ export class WasmHost {
 
   /** One run of a fresh instance over `request`, as it ended. */
   run(request: Uint8Array): Run {
-    const stdout: Uint8Array[] = [];
+    // The answer, in one buffer that grows by doubling up to the cap; what standard error says, in one of 64 KiB.
+    let stdout = new Uint8Array(64 * 1024);
     let stdoutBytes = 0;
-    const stderr: Uint8Array[] = [];
+    const stderr = new Uint8Array(MAX_STDERR_BYTES);
     let stderrBytes = 0;
     let read = 0;
     let memory: WebAssembly.Memory | undefined;
     const count = (name: string): void => void (this.imported[name] = (this.imported[name] ?? 0) + 1);
-    const view = (): DataView => new DataView(memory!.buffer);
-    const bytes = (at: number, length: number): Uint8Array => new Uint8Array(memory!.buffer, at, length);
-    const iovecs = (at: number, n: number): Array<[number, number]> => {
-      const v = view();
-      return Array.from({ length: n }, (_, i): [number, number] => [v.getUint32(at + i * 8, true), v.getUint32(at + i * 8 + 4, true)]);
+    // An i32 the module passes arrives as a signed number: a pointer or a length is read as the unsigned one it is.
+    const unsigned = (x: number): number => (x < 0 ? x >>> 0 : x);
+    /** `length` bytes of the module's memory at `at`; refused when not all of them are inside it. */
+    const bytes = (at: number, length: number): Uint8Array => {
+      const buffer = memory!.buffer;
+      const from = unsigned(at);
+      const n = unsigned(length);
+      if (from > buffer.byteLength || n > buffer.byteLength - from) throw new HostRefusal("the module named memory past the end of its own");
+      return new Uint8Array(buffer, from, n);
+    };
+    const put32 = (at: number, v: number): void => {
+      const b = bytes(at, 4);
+      new DataView(b.buffer, b.byteOffset, 4).setUint32(0, v, true);
+    };
+    /** Each buffer an fd_read or fd_write names, in order, the empty ones left out; at most MAX_IOVECS of them. */
+    const eachIovec = (iovs: number, n: number, f: (at: number, length: number) => boolean | void): void => {
+      const count = unsigned(n);
+      if (count > MAX_IOVECS) throw new HostRefusal(`the module named ${count} buffers in one call; the host takes at most ${MAX_IOVECS}`);
+      for (let i = 0; i < count; i++) {
+        const entry = bytes(unsigned(iovs) + i * 8, 8);
+        const v = new DataView(entry.buffer, entry.byteOffset, 8);
+        const at = v.getUint32(0, true);
+        const length = v.getUint32(4, true);
+        if (length === 0) continue;
+        if (f(at, length) === false) return;
+      }
     };
     const wasi: Record<(typeof WASI_IMPORTS)[number], (...a: number[]) => number> = {
       random_get: (at, length) => {
@@ -163,8 +276,8 @@ export class WasmHost {
       },
       environ_sizes_get: (countAt, sizeAt) => {
         count("environ_sizes_get");
-        view().setUint32(countAt!, 0, true);
-        view().setUint32(sizeAt!, 0, true);
+        put32(countAt!, 0);
+        put32(sizeAt!, 0);
         return ESUCCESS;
       },
       environ_get: () => {
@@ -179,33 +292,39 @@ export class WasmHost {
         count("fd_read");
         if (fd !== 0) return EBADF;
         let total = 0;
-        for (const [at, length] of iovecs(iovs!, n!)) {
+        eachIovec(iovs!, n!, (at, length) => {
           const take = Math.min(length, request.length - read);
           if (take > 0) bytes(at, take).set(request.subarray(read, read + take));
           read += take;
           total += take;
-          if (take < length) break;
-        }
-        view().setUint32(readAt!, total, true);
+          return take === length;
+        });
+        put32(readAt!, total);
         return ESUCCESS;
       },
       fd_write: (fd, iovs, n, writtenAt) => {
         count("fd_write");
         if (fd !== 1 && fd !== 2) return EBADF;
         let total = 0;
-        for (const [at, length] of iovecs(iovs!, n!)) {
+        eachIovec(iovs!, n!, (at, length) => {
+          const chunk = bytes(at, length);
           if (fd === 1) {
+            if (length > MAX_ANSWER_BYTES - stdoutBytes) throw new AnswerTooLarge();
+            if (stdoutBytes + length > stdout.length) {
+              const grown = new Uint8Array(Math.min(MAX_ANSWER_BYTES, Math.max(stdoutBytes + length, stdout.length * 2)));
+              grown.set(stdout.subarray(0, stdoutBytes));
+              stdout = grown;
+            }
+            stdout.set(chunk, stdoutBytes);
             stdoutBytes += length;
-            if (stdoutBytes > MAX_ANSWER_BYTES) throw new AnswerTooLarge();
-            stdout.push(bytes(at, length).slice());
           } else {
-            const keep = Math.max(0, Math.min(length, MAX_STDERR_BYTES - stderrBytes));
-            if (keep) stderr.push(bytes(at, keep).slice());
+            const keep = Math.min(length, MAX_STDERR_BYTES - Math.min(stderrBytes, MAX_STDERR_BYTES));
+            if (keep > 0) stderr.set(chunk.subarray(0, keep), stderrBytes);
             stderrBytes += length;
           }
           total += length;
-        }
-        view().setUint32(writtenAt!, total, true);
+        });
+        put32(writtenAt!, total);
         return ESUCCESS;
       },
       proc_exit: (status) => {
@@ -224,8 +343,8 @@ export class WasmHost {
       else stopped = e;
     }
     return {
-      stdout: Buffer.concat(stdout),
-      stderr: Buffer.concat(stderr),
+      stdout: stdout.slice(0, stdoutBytes),
+      stderr: stderr.slice(0, Math.min(stderrBytes, MAX_STDERR_BYTES)),
       stderrBytes,
       ...(status !== undefined ? { status } : {}),
       ...(stopped !== undefined ? { stopped } : {}),
@@ -234,55 +353,100 @@ export class WasmHost {
   }
 }
 
-/** The text of the request `{ door, input }`, or `unrepresentable` when the input holds what the module cannot read. */
+// ── the request ─────────────────────────────────────────────────────────
+
+/**
+ * The text of the request `{ door, input }`, written in the same walk that checks the input, so that each value is
+ * read once (a getter that answered otherwise the second time could not make the two compilers see two inputs).
+ * `unrepresentable` when the input holds what the module's strict reader refuses or JSON cannot carry.
+ */
 export function requestText(door: string, input: unknown): string {
-  const problem = unrepresentable(input);
-  if (problem) throw new CompilerFailure("unrepresentable", door, problem);
-  return JSON.stringify({ door, input });
+  const written = writeRequest(input);
+  if (typeof written !== "string") throw new CompilerFailure("unrepresentable", door, written.problem);
+  return `{"door":${JSON.stringify(door)},"input":${written}}`;
+}
+
+/** What in `value` a request cannot carry, with where it is, or undefined when there is nothing. */
+export function unrepresentable(value: unknown): string | undefined {
+  const w = writeRequest(value);
+  return typeof w === "string" ? undefined : w.problem;
 }
 
 /**
- * What in `value` the module's strict reader refuses or JSON cannot carry, with where it is (a JSON Pointer into the
- * input), or undefined when there is nothing. Walked without recursion. It names the kind of value, never a string's
- * text: what a program or a model wrote stays out of the message.
+ * The JSON text of `value` as a request's input carries it, as JSON.stringify writes it (a member that is undefined
+ * left out, as the door contract's absent member), or what in it a request cannot carry: a number that is not an
+ * integer within ±(2^53−1), or -0; a string or a member name with a lone surrogate; a hole or undefined in an array
+ * (JSON.stringify would write null, which the TypeScript does not see); a value that is not JSON (a function, a
+ * symbol, a bigint, an object that is not a plain one); nesting past MAX_REQUEST_DEPTH; a value that holds itself.
+ * The problem says where, as a JSON Pointer into the input (whose tokens are the input's member names), and the kind
+ * of the value; it never quotes a string the input holds.
  */
-export function unrepresentable(value: unknown): string | undefined {
-  // Each entry: the value, its pointer, its depth (the request is 1 and its input 2), and its holders, for a cycle.
-  const stack: Array<{ v: unknown; at: string; depth: number; holders: unknown[] }> = [{ v: value, at: "", depth: 2, holders: [] }];
+function writeRequest(value: unknown): string | { problem: string } {
+  const out: string[] = [];
+  const holders = new Set<object>();
   const where = (at: string): string => (at === "" ? "the input" : `the input at ${at}`);
   const token = (k: string): string => k.replaceAll("~", "~0").replaceAll("/", "~1");
-  while (stack.length) {
-    const { v, at, depth, holders } = stack.pop()!;
-    if (v === null || typeof v === "boolean") continue;
-    if (typeof v === "string") {
-      if (!isWellFormed(v)) return `${where(at)} is a string with a lone surrogate, which the request reader refuses`;
-      continue;
+  /** Writes `v` at `at`, `depth` levels down (the request is 1 and its input 2); a problem stops the walk. */
+  const write = (v: unknown, at: string, depth: number): string | undefined => {
+    if (v === null) return void out.push("null");
+    switch (typeof v) {
+      case "boolean":
+        return void out.push(v ? "true" : "false");
+      case "string":
+        if (!isWellFormed(v)) return `${where(at)} is a string with a lone surrogate, which the request reader refuses`;
+        return void out.push(JSON.stringify(v));
+      case "number":
+        if (!Number.isSafeInteger(v) || Object.is(v, -0)) return `${where(at)} is the number ${Object.is(v, -0) ? "-0" : String(v)}, and a request holds integers within ±(2^53−1) only`;
+        return void out.push(String(v));
+      case "object":
+        break;
+      default:
+        return `${where(at)} is a ${typeof v}, which JSON cannot carry`;
     }
-    if (typeof v === "number") {
-      if (!Number.isSafeInteger(v) || Object.is(v, -0)) return `${where(at)} is the number ${Object.is(v, -0) ? "-0" : String(v)}, and a request holds integers within ±(2^53−1) only`;
-      continue;
-    }
-    if (typeof v !== "object") return `${where(at)} is a ${typeof v}, which JSON cannot carry`;
     if (depth > MAX_REQUEST_DEPTH) return `${where(at)} is nested deeper than the ${MAX_REQUEST_DEPTH} levels a request may have`;
-    if (holders.includes(v)) return `${where(at)} holds itself`;
-    const inner = [...holders, v];
-    if (Array.isArray(v)) {
-      for (let i = v.length - 1; i >= 0; i--) stack.push({ v: v[i] === undefined ? null : v[i], at: `${at}/${i}`, depth: depth + 1, holders: inner });
-      continue;
+    const o = v as object;
+    if (holders.has(o)) return `${where(at)} holds itself`;
+    holders.add(o);
+    try {
+      if (Array.isArray(o)) {
+        out.push("[");
+        for (let i = 0; i < o.length; i++) {
+          if (i) out.push(",");
+          if (!(i in o)) return `${where(at)} has a hole at ${i}, which the TypeScript and JSON read otherwise`;
+          const x: unknown = o[i];
+          if (x === undefined) return `${where(`${at}/${i}`)} is undefined, which JSON would write as null and the TypeScript does not read so`;
+          const p = write(x, `${at}/${i}`, depth + 1);
+          if (p) return p;
+        }
+        out.push("]");
+        return undefined;
+      }
+      const proto = Object.getPrototypeOf(o);
+      if (proto !== Object.prototype && proto !== null) return `${where(at)} is a ${(o as { constructor?: { name?: string } }).constructor?.name ?? "object"}, not a plain object`;
+      out.push("{");
+      let first = true;
+      for (const k of Object.keys(o)) {
+        if (!isWellFormed(k)) return `${where(at)} has a member name with a lone surrogate`;
+        // Each member is read once: its value is what is checked and what is written.
+        const x: unknown = (o as Record<string, unknown>)[k];
+        if (x === undefined) continue;
+        if (!first) out.push(",");
+        first = false;
+        out.push(JSON.stringify(k), ":");
+        const p = write(x, `${at}/${token(k)}`, depth + 1);
+        if (p) return p;
+      }
+      out.push("}");
+      return undefined;
+    } finally {
+      holders.delete(o);
     }
-    const proto = Object.getPrototypeOf(v);
-    if (proto !== Object.prototype && proto !== null) return `${where(at)} is a ${(v as { constructor?: { name?: string } }).constructor?.name ?? "object"}, not a plain object`;
-    const keys = Object.keys(v);
-    for (let i = keys.length - 1; i >= 0; i--) {
-      const k = keys[i]!;
-      if (!isWellFormed(k)) return `${where(at)} has a member name with a lone surrogate`;
-      const x = (v as Record<string, unknown>)[k];
-      // A member that is undefined is left out, as JSON.stringify leaves it out (the door contract's absent member).
-      if (x !== undefined) stack.push({ v: x, at: `${at}/${token(k)}`, depth: depth + 1, holders: inner });
-    }
-  }
-  return undefined;
+  };
+  const problem = write(value, "", 2);
+  return problem ? { problem } : out.join("");
 }
+
+// ── the answer ──────────────────────────────────────────────────────────
 
 /** What a run of `door` gave: its output, or the failure, classified. */
 export function answerOf(door: string, run: Run): unknown {
@@ -315,6 +479,7 @@ export function answerOf(door: string, run: Run): unknown {
 function stoppedFailure(door: string, run: Run): CompilerFailure {
   const e = run.stopped;
   if (e instanceof AnswerTooLarge) return new CompilerFailure("output_too_large", door, `the answer passed ${MAX_ANSWER_BYTES} bytes and the call was stopped`);
+  if (e instanceof HostRefusal) return new CompilerFailure("host_error", door, `the host stopped the call: ${e.reason}`);
   const said = Buffer.from(run.stderr).toString("utf8");
   if (e instanceof WebAssembly.RuntimeError) {
     // Rust's handler of a failed allocation says so on standard error before it traps; a panic says "panicked at".

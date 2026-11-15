@@ -2,30 +2,37 @@
 // in vitest's own process, with its teardown) and `compilerSetup` (in each test file's worker). The runtime's
 // vitest configuration uses them too (runtime/test/global-setup.ts, runtime/test/setup.ts).
 //
-// - In `rust` and `both` mode (MANDATE_COMPILER) the run needs the Rust compiler's module: when there is none, the
-//   run stops before any test, saying where it looked and how to build one. Its absolute path is put in MANDATE_WASM,
-//   so that a test's child process, which may run from a copy of the sources elsewhere, finds the same module. In
-//   `ts` mode, the default, nothing is looked for: a run needs neither the module nor any dist/.
+// - In `rust` and `both` mode (MANDATE_COMPILER) the run needs the Rust compiler's module, in the bridge's own place
+//   with its digest (`npm run build:wasm`), or where MANDATE_WASM names it: when it is not there or is refused, the
+//   run stops before any test, saying why and how to build one. Nothing is put in the environment: a child process a
+//   test starts finds the module where the bridge it runs finds it (test/tree.ts copies it into a tree it builds, and
+//   the runtime's bundles keep the bridge's own address). In `ts` mode, the default, nothing is looked for: a run
+//   needs neither the module nor any dist/.
 // - A CompilerDivergence (compare.ts) fails the test that made it, also when the code under test caught it: each
-//   test's are taken after it, and any is an error.
+//   test's are taken after it, and those a file's own last hooks made after its last test, after the file.
 // - Each worker's counts of `both` (how many calls each named exemption excused, how many of language 0.6 skipped
 //   the TypeScript, how many were compared), and what a test notes for the run's end (`note`, the timing gate's
 //   numbers), are printed when the run ends.
 
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { exemptionCounts, PROCESS_MODE, takeDivergences } from "../src/mode.js";
-import { BUILD_HINT, modulePath } from "../src/wasm/module.js";
+import { BUILD_HINT, compileModuleAt, modulePlace } from "../src/wasm/module.js";
 
 const KEY = "mandateReport";
 
 /** vitest's globalSetup: checks for the module the mode needs, and opens the directory the workers report to. */
 export function compilerGlobalSetup(project: { provide(key: string, value: unknown): void }): () => void {
-  const path = modulePath();
+  let path = "(none)";
   if (PROCESS_MODE !== "ts") {
-    if (!existsSync(path)) throw new Error(`MANDATE_COMPILER=${PROCESS_MODE} needs the Rust compiler's WebAssembly module, and there is none at ${path}: ${BUILD_HINT}.`);
-    process.env["MANDATE_WASM"] = path;
+    try {
+      const place = modulePlace();
+      path = place.path;
+      compileModuleAt(place);
+    } catch (e) {
+      throw new Error(`MANDATE_COMPILER=${PROCESS_MODE} needs the Rust compiler's WebAssembly module, and has none it takes: ${e instanceof Error ? e.message : String(e)}. ${BUILD_HINT}.`);
+    }
   }
   const dir = mkdtempSync(join(tmpdir(), "mandate-report-"));
   project.provide(KEY, dir);
@@ -63,9 +70,13 @@ export function compilerSetup(hooks: { afterEach(f: () => void): void; afterAll(
   hooks.afterAll(() => {
     const dir = hooks.inject(KEY);
     const counts = Object.fromEntries(Object.entries(exemptionCounts()).filter(([, n]) => n > 0));
-    if (typeof dir !== "string" || !Object.keys(counts).length) return;
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, `${process.pid}-${Math.random().toString(36).slice(2)}.counts.json`), JSON.stringify(counts));
+    if (typeof dir === "string" && Object.keys(counts).length) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, `${process.pid}-${Math.random().toString(36).slice(2)}.counts.json`), JSON.stringify(counts));
+    }
+    // What the file's own afterAll hooks (which run before this one, registered first) found after its last test.
+    const left = takeDivergences();
+    if (left.length) throw new Error(`${left.length} call(s) the two compilers answered differently after the file's last test:\n${left.map((d) => d.message).join("\n")}`);
   });
 }
 

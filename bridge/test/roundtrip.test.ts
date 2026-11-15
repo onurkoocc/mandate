@@ -37,9 +37,9 @@ const wrong: string[] = [];
  * `label`. Gives the Rust's value.
  */
 function both(label: string, fn: DoorBacked, args: unknown[]): unknown {
-  const run = (f: Fn): Outcome => {
+  const run = (f: Fn, a: unknown[] = args): Outcome => {
     try {
-      return { value: f(...structuredClone(args)) };
+      return { value: f(...structuredClone(a)) };
     } catch (e) {
       return { threw: e };
     }
@@ -55,7 +55,7 @@ function both(label: string, fn: DoorBacked, args: unknown[]): unknown {
   }
   const a = run(T[fn]!);
   try {
-    compareOutcomes(fn, args, a, b);
+    compareOutcomes(fn, args, a, b, (other) => run(T[fn]!, other));
   } catch (e) {
     if (!(e instanceof CompilerDivergence)) throw e;
     wrong.push(`${label}: ${fn}: ${e.where}`);

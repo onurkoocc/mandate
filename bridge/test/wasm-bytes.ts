@@ -83,6 +83,10 @@ export interface ModuleSpec {
   extraImports?: string[];
   /** Imports left out of the seven. */
   without?: string[];
+  /** The memories, as their limits' flags (1: a maximum; 2: shared; 4: 64 bits), first pages and most; one of `pages` and `maxPages` unless given. */
+  memories?: Array<{ flags: number; min: number; max?: number }>;
+  /** A start section, naming `_start`. */
+  start?: boolean;
 }
 
 /** The bytes of a module. */
@@ -102,13 +106,15 @@ export function wasmModule(s: ModuleSpec): Uint8Array {
   const functions = section(3, vec([[4]]));
   const max = s.maxPages === undefined ? 4096 : s.maxPages;
   const pages = s.pages ?? 1;
-  const memory = section(5, vec([max === null ? [0x00, ...uleb(pages)] : [0x01, ...uleb(pages), ...uleb(max)]]));
+  const memories = s.memories ?? [max === null ? { flags: 0, min: pages } : { flags: 1, min: pages, max }];
+  const memory = section(5, vec(memories.map((m) => [...uleb(m.flags), ...uleb(m.min), ...(m.flags & 1 ? uleb(m.max ?? m.min) : [])])));
   const exports = section(7, vec([[...name("memory"), 0x02, 0], [...name("_start"), 0x00, ...uleb(start)]]));
+  const startSection = s.start ? section(8, uleb(start)) : [];
   const locals = s.locals ? vec([[...uleb(s.locals), I32]]) : vec([]);
   const body = [...locals, ...s.body, ...op.end];
   const code = section(10, vec([[...uleb(body.length), ...body]]));
   const data = s.data?.length ? section(11, vec(s.data.map(([at, bytes]) => [0x00, ...op.i32(at), ...op.end, ...uleb(bytes.length), ...bytes]))) : [];
-  return new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, ...types, ...importSection, ...functions, ...memory, ...exports, ...code, ...data]);
+  return new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, ...types, ...importSection, ...functions, ...memory, ...exports, ...startSection, ...code, ...data]);
 }
 
 /** Little-endian u32s. */
@@ -159,6 +165,21 @@ export const MODULES = {
   answering: (text: string): Uint8Array => writing([[1, text]]),
   /** Answers and also writes to standard error. */
   answeringAndSaying: (text: string): Uint8Array => writing([[1, text], [2, "a note"]]),
+  /** Names 17 buffers in one fd_write. */
+  manyBuffers: (): Uint8Array =>
+    wasmModule({ data: [[16, u32s(...Array.from({ length: 17 }, () => [1024, 1]).flat())]], body: [...op.i32(1), ...op.i32(16), ...op.i32(17), ...op.i32(8), ...op.call(FN.fd_write), ...op.drop] }),
+  /** Names a buffer past the end of its memory in an fd_write. */
+  bufferPastMemory: (): Uint8Array => wasmModule({ data: [[16, u32s(0xfffffff0, 64)]], body: op.write(1, 16, 8) }),
+  /** Asks random_get to fill memory past its end. */
+  randomPastMemory: (): Uint8Array => wasmModule({ body: [...op.i32(0x7ffffff0), ...op.i32(64), ...op.call(FN.random_get), ...op.drop] }),
+  /** Has two memories. */
+  twoMemories: (): Uint8Array => wasmModule({ body: op.unreachable, memories: [{ flags: 1, min: 1, max: 16 }, { flags: 1, min: 1, max: 16 }] }),
+  /** Has a shared memory. */
+  sharedMemory: (): Uint8Array => wasmModule({ body: op.unreachable, memories: [{ flags: 3, min: 1, max: 16 }] }),
+  /** Has a memory of 64 bits. */
+  memory64: (): Uint8Array => wasmModule({ body: op.unreachable, memories: [{ flags: 5, min: 1, max: 16 }] }),
+  /** Has a start function (its `_start`, which traps). */
+  startFunction: (): Uint8Array => wasmModule({ body: op.unreachable, start: true }),
   /** Has an eighth import. */
   extraImport: (): Uint8Array => wasmModule({ body: op.unreachable, extraImports: ["fd_close"] }),
   /** Has a memory with no ceiling. */

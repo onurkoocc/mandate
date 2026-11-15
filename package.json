@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces",
-    "build:wasm": "cargo rustc --locked -p mandate-wasm --release --target wasm32-wasip1 --bin mandate-wasm -- -C link-arg=--max-memory=268435456 -C link-arg=-zstack-size=4194304 -C link-arg=--stack-first",
+    "build:wasm": "node scripts/build-wasm.mjs",
     "test": "npm test --workspaces",
     "typecheck": "npm run typecheck --workspaces"
   },

@@ -5,7 +5,8 @@
 //
 // This is also the bridge's second entry point, `@mandate/bridge/mode`, for what is not a compiler's: the mode and a
 // way for a test to run a block under another (or under another module), the hand-over of the compiled module to a
-// worker thread, the errors a caller tells apart (CompilerFailure, CompilerDivergence), and the counts of `both`.
+// worker thread, which compiler answers (`compilerIdentity`, for a run to record), the errors a caller tells apart
+// (CompilerFailure, CompilerDivergence), and the counts of `both`.
 
 import { CODES as TS_CODES } from "@mandate/compiler";
 import { compareOutcomes, countLanguage06, keepDivergence, CompilerDivergence, LANGUAGE_06, type Outcome } from "./compare.js";
@@ -14,7 +15,10 @@ import * as rust from "./rust.js";
 import * as ts from "./ts.js";
 import { currentModule, place, placed, rustCall } from "./wasm/call.js";
 import { CompilerFailure } from "./wasm/errors.js";
-import { compileModuleBytes } from "./wasm/module.js";
+import { markChecked } from "./wasm/host.js";
+import { compileModuleBytes, moduleIdentity, recordIdentity, type ModuleIdentity } from "./wasm/module.js";
+
+export type { ModuleIdentity } from "./wasm/module.js";
 
 export { addCounts, CompilerDivergence, exemptionCounts, EXEMPTIONS, keepDivergence, takeCounts, takeDivergences } from "./compare.js";
 export { CompilerFailure, FAILURE_KINDS, type FailureKind } from "./wasm/errors.js";
@@ -92,10 +96,18 @@ export function withCompiler<T>(m: CompilerMode, fn: () => T, o: CompilerBlock =
 
 // ── a worker thread ─────────────────────────────────────────────────────
 
-/** What a thread hands a worker it starts, through `workerData`, so that the worker answers as it does. */
+/**
+ * What a thread hands a worker it starts, through `workerData`, so that the worker answers as it does: the mode, the
+ * module (and any placed on doors of their own), and which module it is.
+ *
+ * What a worker finds in `both` (a divergence, the counts) reaches the thread that started it only with the
+ * worker's answer (runtime/src/plan-worker.ts). A worker stopped at its time limit, or ended by its memory limit,
+ * sends no answer, so what it found in that check is lost: `both` does not see into a check that did not end.
+ */
 export interface WorkerCompiler {
   mode: CompilerMode;
   module?: WebAssembly.Module;
+  identity?: ModuleIdentity;
   doors?: Record<string, WebAssembly.Module>;
 }
 
@@ -107,14 +119,35 @@ export interface WorkerCompiler {
 export function compilerForWorker(): WorkerCompiler {
   if (mode === "ts") return { mode };
   const { doors } = placed();
-  return { mode, module: currentModule(), ...(doors ? { doors } : {}) };
+  const module = currentModule();
+  const identity = moduleIdentity(module);
+  return { mode, module, ...(identity ? { identity } : {}), ...(doors ? { doors } : {}) };
 }
 
-/** In a worker: answers as the thread that started it said (`compilerForWorker`), when it said anything. */
+/**
+ * In a worker: answers as the thread that started it said (`compilerForWorker`), when it said anything. The modules
+ * it was handed are taken as checked: the thread that handed them read their bytes (wasm/module.ts).
+ */
 export function adoptCompiler(c: WorkerCompiler | undefined): void {
   if (!c || !(MODES as readonly string[]).includes(c.mode)) return;
-  if (c.module) place({ module: c.module, ...(c.doors ? { doors: c.doors } : {}) });
+  if (c.module) {
+    markChecked(c.module);
+    if (c.identity) recordIdentity(c.module, c.identity);
+    for (const m of Object.values(c.doors ?? {})) markChecked(m);
+    place({ module: c.module, ...(c.doors ? { doors: c.doors } : {}) });
+  }
   setMode(c.mode);
+}
+
+/**
+ * Which compiler answers now: the mode, and outside `ts` the module, by the SHA-256 and the length of its bytes and
+ * where it came from (the bridge's own place, MANDATE_WASM, or bytes a test gave), for a run to record. Throws the
+ * CompilerFailure of a module that is missing or refused.
+ */
+export function compilerIdentity(): { mode: CompilerMode; module?: ModuleIdentity } {
+  if (mode === "ts") return { mode };
+  const identity = moduleIdentity(currentModule());
+  return { mode, ...(identity ? { module: identity } : {}) };
 }
 
 // ── the functions of the facade in `rust` and `both` ────────────────────
@@ -140,13 +173,15 @@ function dispatcher(name: DoorBacked): Fn {
       if (e instanceof CompilerFailure || e instanceof CompilerDivergence) throw e;
       theirs = { threw: e };
     }
-    let ours: Outcome;
-    try {
-      ours = { value: t(...args) };
-    } catch (e) {
-      ours = { threw: e };
-    }
-    compareOutcomes(name, args, ours, theirs);
+    const asked = (a: unknown[]): Outcome => {
+      try {
+        return { value: t(...a) };
+      } catch (e) {
+        return { threw: e };
+      }
+    };
+    // A rule may ask the TypeScript again, on the input as the README entry it stands on says the Rust reads it.
+    compareOutcomes(name, args, asked(args), theirs, asked);
     if ("threw" in theirs) throw theirs.threw;
     return theirs.value;
   };

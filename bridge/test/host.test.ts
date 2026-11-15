@@ -8,6 +8,8 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EXEMPTIONS } from "../src/compare.js";
 import { answerOf, MAX_ANSWER_BYTES, requestText, unrepresentable, WasmHost, WASI_IMPORTS } from "../src/wasm/host.js";
@@ -159,7 +161,7 @@ needs("the module", () => {
         if (c.expected.output !== undefined ? out !== c.expected.output : sha(out) !== c.expected.sha256) {
           // The one rule of the Rust's own (vectors/README.md, "The versions only the Rust compiler reads").
           const parsed = JSON.parse(out) as unknown;
-          const n = tables.normalize!(undefined, c.door === "tables" ? tablesAsTypescript(parsed) : parsed);
+          const n = tables.normalize!(undefined, c.door === "tables" ? tablesAsTypescript(parsed) : parsed, [], "check");
           out = JSON.stringify(n.rust);
           if (c.expected.output !== undefined ? out !== c.expected.output : sha(out) !== c.expected.sha256) wrong.push(`${c.name}: ${outputText(runs[0]!).slice(0, 300)}`);
           else changedByRule++;
@@ -284,45 +286,86 @@ needs("the module", () => {
         [new Set([1]), "a Set, not a plain object"],
         [() => 1, "a function"],
         [10n, "a bigint"],
+        [undefined, "is undefined, which JSON would write as null"],
       ] as Array<[unknown, string]>) {
         const f = failureOf(() => new WasmHost(module).call("canonicalize", { value: { a: [v] } }));
         expect(f.kind).toBe("unrepresentable");
         expect(f.message).toContain(why);
         expect(f.message).toContain("/value/a/0");
       }
+      // A hole in an array: the TypeScript and JSON.stringify read it otherwise (`[1,,2]`, `[1,null,2]`).
+      // eslint-disable-next-line no-sparse-arrays
+      expect(failureOf(() => new WasmHost(module).call("canonicalize", { value: [1, , 2] })).message).toContain("has a hole at 1");
       const cycle: Record<string, unknown> = {};
       cycle["self"] = cycle;
       expect(unrepresentable(cycle)).toContain("holds itself");
       let deep: unknown = 1;
       for (let i = 0; i < 200; i++) deep = [deep];
       expect(unrepresentable(deep)).toContain("deeper than the 128 levels");
-      // The message names the kind of value, never a string's text.
+      // The message names the kind of value and where it is, never a string's text.
       expect(failureOf(() => new WasmHost(module).call("canonicalize", { value: "secret words \ud800" })).message).not.toContain("secret words");
-    });
-
-    it("a missing module, which says how to build one", () => {
-      const f = failureOf(() => compileModuleFile(`${path}.not-there`));
-      expect(f.kind).toBe("module_missing");
-      expect(f.message).toContain("npm run build:wasm");
-      // What a model may be shown of it does not say where the module is on this machine.
-      expect(f.shown).toBe("the Rust compiler failed (module_missing)");
       expect(failureOf(() => new WasmHost(module).call("canonicalize", { value: 0.5 })).shown).toContain("the number 0.5");
     });
 
-    it("a file that is not a module", () => {
-      expect(failureOf(() => compileModuleBytes(new Uint8Array([0, 1, 2, 3]))).kind).toBe("module_invalid");
+    it("an input is read once: what the request says of a member is what the member gave the one time it was read", () => {
+      let reads = 0;
+      const value = {
+        get a(): number {
+          reads++;
+          return reads;
+        },
+      };
+      expect(new WasmHost(module).call("canonicalize", { value })).toBe('{"a":1}');
+      expect(reads).toBe(1);
+      expect(requestText("canonicalize", { value: { b: [true, null, "x"], c: undefined, a: -3 } })).toBe(JSON.stringify({ door: "canonicalize", input: { value: { b: [true, null, "x"], a: -3 } } }));
     });
+  });
+});
 
-    it("a module with an eighth import, refused by its name", () => {
-      const f = failureOf(() => compileModuleBytes(MODULES.extraImport()));
-      expect(f.kind).toBe("module_refused");
-      expect(f.message).toContain("wasi_snapshot_preview1.fd_close");
-    });
+describe("modules the host refuses, by name, from their bytes", () => {
+  it("a missing module, which says how to build one, and shows a model nothing of where", () => {
+    const f = failureOf(() => compileModuleFile(join(tmpdir(), "mandate-no-such-module.wasm")));
+    expect(f.kind).toBe("module_missing");
+    expect(f.message).toContain("npm run build:wasm");
+    expect(f.shown).toBe("the Rust compiler failed (module_missing)");
+  });
 
-    it("a module whose memory has no ceiling, or a higher one", () => {
-      expect(failureOf(() => compileModuleBytes(MODULES.noCeiling())).kind).toBe("module_refused");
-      expect(failureOf(() => compileModuleBytes(MODULES.highCeiling())).message).toContain("4096 pages");
-    });
+  it("a file that is not a module", () => {
+    expect(failureOf(() => compileModuleBytes(new Uint8Array([0, 1, 2, 3]))).kind).toBe("module_invalid");
+  });
+
+  it.each([
+    ["an eighth import", MODULES.extraImport, "imports wasi_snapshot_preview1.fd_close, which the host does not serve"],
+    ["a memory without a maximum", MODULES.noCeiling, "has no maximum"],
+    ["a maximum of 4097 pages", MODULES.highCeiling, "may grow to 4097 pages, past the 4096 pages"],
+    ["a second memory", MODULES.twoMemories, "has 2 memories"],
+    ["a shared memory", MODULES.sharedMemory, "memory is shared"],
+    ["a memory of 64 bits", MODULES.memory64, "memory is of 64 bits"],
+    ["a start function", MODULES.startFunction, "has a start function"],
+  ])("%s", (_what, make, why) => {
+    const f = failureOf(() => compileModuleBytes(make()));
+    expect(f.kind).toBe("module_refused");
+    expect(f.message).toContain(why);
+  });
+
+  it("a module the host has not read the bytes of", () => {
+    const unread = new WebAssembly.Module(MODULES.trap() as Uint8Array<ArrayBuffer>);
+    expect(failureOf(() => new WasmHost(unread)).message).toContain("whose bytes it has not read");
+  });
+
+  it("and, of a module it took, a call that names more buffers than it takes, or memory past the module's own", () => {
+    for (const make of [MODULES.manyBuffers, MODULES.bufferPastMemory, MODULES.randomPastMemory]) {
+      const f = failureOf(() => new WasmHost(compileModuleBytes(make())).call("check", {}));
+      expect(f.kind).toBe("host_error");
+    }
+    expect(failureOf(() => new WasmHost(compileModuleBytes(MODULES.manyBuffers())).call("check", {})).message).toContain("17 buffers in one call; the host takes at most 16");
+    expect(failureOf(() => new WasmHost(compileModuleBytes(MODULES.bufferPastMemory())).call("check", {})).message).toContain("past the end of its own");
+  });
+
+  it("an answer that grows past 64 MiB is stopped, and the host holds no more than that", () => {
+    const run = new WasmHost(compileModuleBytes(MODULES.flood())).run(new Uint8Array());
+    expect(run.stopped).toBeDefined();
+    expect(run.stdout.length).toBeLessThanOrEqual(MAX_ANSWER_BYTES);
   });
 });
 

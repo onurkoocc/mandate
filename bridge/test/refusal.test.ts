@@ -2,7 +2,7 @@
 // and the MCP server answers with an error, not with a result. Each with a module that traps (wasm-bytes.ts) and,
 // for the command line, with no module at all.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -70,6 +70,34 @@ describe("the command line, when the compiler fails", () => {
     const r = await run(["check", FIXBUG], { MANDATE_COMPILER: "", MANDATE_WASM: TRAP });
     expect(r.code).toBe(0);
     expect(r.out).toMatch(/^ok sha256:/);
+  }, 30_000);
+});
+
+describe("a child process whose code catches a divergence of `both`", () => {
+  it("still fails, with exit status 70 and the divergence on its standard error", () => {
+    const wrong = join(work, "wrong-program-ref.wasm");
+    writeFileSync(wrong, MODULES.answering('{"ok":true,"output":{"module":"x","version":"0.1.0","hash":"sha256:wrong"}}'));
+    const script = join(tree.dir, "swallow.mjs");
+    writeFileSync(
+      script,
+      `import { readFileSync } from "node:fs";
+import { check } from "./compiler/src/index.js";
+import { programRef } from "./bridge/src/index.js";
+import { withCompiler } from "./bridge/src/mode.js";
+const p = check(readFileSync(process.argv[2], "utf8"), "mdt").program;
+try {
+  withCompiler("both", () => programRef(p), { doors: { program_ref: readFileSync(process.argv[3]) } });
+} catch {
+  // A caller that swallows it.
+}
+process.stdout.write("swallowed\\n");
+`,
+    );
+    const r = spawnSync(process.execPath, [script, FIXBUG, wrong], { encoding: "utf8", env: { ...process.env, MANDATE_COMPILER: "" } });
+    expect(r.stdout).toBe("swallowed\n");
+    expect(r.status).toBe(70);
+    expect(r.stderr).toContain("answered differently, which nothing took");
+    expect(r.stderr).toContain("sha256:wrong");
   }, 30_000);
 });
 
