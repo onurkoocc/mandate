@@ -203,6 +203,68 @@ fn the_acceptance_program_checks_with_its_library_and_its_lock() {
     assert!(r.expanded.is_some());
     let plain = with_libraries(&text, &libs, None);
     assert!(plain.ok, "{:#?}", shown(&plain));
+    // Every diagnostic it has is a warning.
+    assert!(r.diagnostics.iter().all(|d| d.code.starts_with("MDT-W")));
+}
+
+/// The pins against what is handed in: std.patterns imported and not
+/// pinned, a pinned library not handed in, a library handed in and not
+/// pinned (E1605 each), and a library that is not given at all (E1604).
+#[test]
+fn what_the_lock_pins_is_what_the_check_is_handed() {
+    let text = read_text(INVOICES).unwrap();
+    let lock = read_json("fixtures/library/invoices.lock.json").unwrap();
+    let without = |name: &str| {
+        let mut l = lock.clone();
+        if let Value::Object(m) = &mut l
+            && let Some(Value::Object(libs)) = m.get_mut("libraries")
+        {
+            libs.remove(name);
+        }
+        l
+    };
+    let found = |r: &CheckResult| -> Vec<String> {
+        r.diagnostics
+            .iter()
+            .filter(|d| d.severity == mandate_ir::Severity::Error)
+            .map(|d| {
+                let problem = d
+                    .facts
+                    .as_ref()
+                    .and_then(|f| f.get("problem"))
+                    .and_then(mandate_ir::JsValue::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
+                format!(
+                    "{} {} {problem}",
+                    d.code,
+                    d.at.path.as_deref().unwrap_or("")
+                )
+            })
+            .collect()
+    };
+    let libs = [library(ACME)];
+    let std_unpinned = with_libraries(&text, &libs, Some(&without("std.patterns")));
+    assert_eq!(
+        found(&std_unpinned),
+        ["MDT-E1605 /libraries/std.patterns not_pinned"]
+    );
+    let acme_unpinned = with_libraries(&text, &libs, Some(&without("acme.connectors")));
+    assert_eq!(
+        found(&acme_unpinned),
+        ["MDT-E1605 /libraries/acme.connectors not_pinned"]
+    );
+    let not_handed = with_libraries(&text, &[], Some(&lock));
+    let f = found(&not_handed);
+    assert_eq!(
+        f.first().map(String::as_str),
+        Some("MDT-E1605 /libraries/acme.connectors not_found"),
+        "{f:#?}"
+    );
+    assert!(
+        f.iter().skip(1).all(|d| d.starts_with("MDT-E1604")),
+        "{f:#?}"
+    );
 }
 
 const OPS: &str = "fixtures/library/upgrade/acme.ops";
