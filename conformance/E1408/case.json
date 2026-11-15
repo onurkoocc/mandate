@@ -1,0 +1,30 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1408",
+  "kind": "compile",
+  "title": "A lock entry that names a connector no module of the package defines is refused.",
+  "spec": [
+    "spec/library.md#the-lock-binding-and-schema-digests",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1408",
+        "path": "/connectors/example.erp.crm",
+        "facts": {
+          "connector": "example.erp.crm",
+          "problem": "no_connector"
+        }
+      }
+    ]
+  }
+}

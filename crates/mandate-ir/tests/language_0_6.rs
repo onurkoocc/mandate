@@ -93,6 +93,7 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
         differences_of(IR_SCHEMA_TEXT, IR_0_6_SCHEMA_TEXT),
         [
             "/$defs/Def/oneOf",
+            "/$defs/Tool",
             "/$id",
             "/description",
             "/properties/language/enum",
@@ -101,7 +102,9 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
     );
     // The definitions, branch by branch: the earlier branch with `pub`
     // (`true` alone) and `doc` (a string) among its properties, and nothing
-    // else changed; a `fn` had `pub` already.
+    // else changed; a `fn` had `pub` already. After them, the kinds 0.6
+    // adds: `connector` (spec/library.md "Connectors"), with a tool of
+    // `$defs/Tool` by name.
     let branches = |text: &str| {
         json(text)
             .get("$defs")
@@ -112,8 +115,15 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
             .to_vec()
     };
     let (old, new) = (branches(IR_SCHEMA_TEXT), branches(IR_0_6_SCHEMA_TEXT));
-    assert_eq!(old.len(), new.len());
-    assert_eq!(new.len(), 13, "the kinds of 0.6 so far");
+    assert_eq!(old.len(), 13);
+    assert_eq!(new.len(), 14, "the kinds of 0.6 so far");
+    let added: Vec<String> = new
+        .iter()
+        .skip(old.len())
+        .filter_map(|n| n.get("properties")?.get("kind")?.get("const")?.as_str())
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(added, ["connector"]);
     for (o, n) in old.iter().zip(new.iter()) {
         let kind = n
             .get("properties")
@@ -254,7 +264,7 @@ fn a_0_6_lock_has_every_field_of_0_5_and_libraries_and_connectors() {
         r#","libraries":{{"acme.connectors":{{"version":"2.3.0","digest":"{one}","modules":{{"acme.connectors":"{two}","acme.connectors.types":"{three}"}}}}}}"#
     );
     let connectors = format!(
-        r#","connectors":{{"acme.connectors.erp":{{"credential":"acme_erp","tools":{{"list_open_orders":"{one}"}}}},"acme.connectors.mailbox":{{"credential":"acme_mail","header":"x-api-key","template":"{{secret}}","tools":{{"list_invoices":"{two}"}}}}}}"#
+        r#","connectors":{{"acme.connectors.erp":{{"credential":"acme_erp","url":"https://erp.acme.example/mcp","tools":{{"list_open_orders":"{one}"}}}},"acme.connectors.mailbox":{{"credential":"acme_mail","url":"https://mail.acme.example/mcp","header":"x-api-key","template":"{{secret}}","tools":{{"list_invoices":"{two}"}}}}}}"#
     );
     let full = lock_06(&format!(
         r#"{libraries}{connectors},"host":{{"node":"22"}},"egress":{{"Reader":{{"api.github.com":"github"}}}},"members":{{"ana":{{"keys":["{one}"]}}}},"roles":{{"lead":["ana"]}}"#
@@ -302,20 +312,26 @@ fn the_two_fields_of_0_6_are_held_to_their_shape() {
         )),
         ["MDT-E0140 at /libraries", "MDT-E0140 at /libraries"]
     );
-    // A connector: a credential's name (never a secret), the tools' schema
-    // digests; header and template optional.
+    // A connector: a credential's name (never a secret), the URL the
+    // credential goes to, the tools' schema digests; header and template
+    // optional.
     assert_eq!(
         shape(&format!(
-            r#","connectors":{{"a.erp":{{"credential":"not a name","tools":{{"t":"{one}"}}}}}}"#
+            r#","connectors":{{"a.erp":{{"credential":"not a name","url":"https://erp.example/mcp","tools":{{"t":"{one}"}}}}}}"#
         )),
         ["MDT-E0140 at /connectors/a.erp/credential"]
     );
     assert_eq!(
         shape(r#","connectors":{"a.erp":{"credential":"erp"}}"#),
-        ["MDT-E0140 at /connectors/a.erp"]
+        [
+            "MDT-E0140 at /connectors/a.erp",
+            "MDT-E0140 at /connectors/a.erp"
+        ]
     );
     assert_eq!(
-        shape(r#","connectors":{"a.erp":{"credential":"erp","tools":{"t":"x"},"header":""}}"#),
+        shape(
+            r#","connectors":{"a.erp":{"credential":"erp","url":"https://erp.example/mcp","tools":{"t":"x"},"header":""}}"#
+        ),
         [
             "MDT-E0140 at /connectors/a.erp/header",
             "MDT-E0140 at /connectors/a.erp/tools/t"

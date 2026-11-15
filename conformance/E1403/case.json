@@ -1,0 +1,44 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1403",
+  "kind": "compile",
+  "title": "A read-only tool returns Untrusted<T>: outside content.",
+  "spec": [
+    "spec/library.md#tool-classes",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/erp/tools/list_orders/returns",
+      "value": {
+        "ref": "List",
+        "args": [
+          {
+            "ref": "Order"
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1403",
+        "path": "/defs/erp/tools/list_orders/returns",
+        "facts": {
+          "connector": "erp",
+          "tool": "list_orders",
+          "expected": "Untrusted<T>"
+        }
+      }
+    ]
+  }
+}

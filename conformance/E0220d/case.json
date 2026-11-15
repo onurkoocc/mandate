@@ -1,0 +1,76 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0220d",
+  "kind": "compile",
+  "title": "A delegation whose with caps narrows the agent's model below the class of the connector whose tools it is granted is refused at the delegation.",
+  "spec": [
+    "spec/library.md#declaration",
+    "spec/library.md#what-reaches-a-model"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/ModelPub",
+      "value": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "model"
+            },
+            "name": "infer"
+          },
+          "args": [
+            {
+              "name": "tier",
+              "value": {
+                "op": "var",
+                "name": "standard"
+              }
+            },
+            {
+              "name": "max_class",
+              "value": {
+                "op": "var",
+                "name": "public"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/Draft/body/1/value/caps",
+      "value": [
+        {
+          "op": "var",
+          "name": "ModelPub"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0220",
+        "path": "/defs/Draft/body/1/value",
+        "facts": {
+          "data_class": "confidential",
+          "allowed": "public",
+          "connector": "example.erp.erp"
+        }
+      }
+    ]
+  }
+}

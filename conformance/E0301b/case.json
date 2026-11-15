@@ -1,0 +1,19 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0301b",
+  "kind": "compile",
+  "title": "A program of 0.5 is checked as before: only the constructor of the first requires caps of an effect is compared, so the program of E0301a checks as 0.5.",
+  "spec": [
+    "spec/library.md#requires-caps-b12"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

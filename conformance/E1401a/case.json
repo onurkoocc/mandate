@@ -1,0 +1,34 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1401a",
+  "kind": "compile",
+  "title": "A reconcilable write tool's reconcile by names a read-only tool that does not answer about it: one Text parameter and Untrusted<Option<T>> for its Receipt<T>.",
+  "spec": [
+    "spec/library.md#tool-classes"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/erp/tools/post_draft/reconcile_by",
+      "value": "list_orders"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1401",
+        "path": "/defs/erp/tools/post_draft/reconcile_by",
+        "facts": {
+          "problem": "reconcile_by"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1406b",
+  "kind": "compile",
+  "title": "A map whose with caps hands a write tool and whose body delegates is refused, whether or not the agent holds the tool.",
+  "spec": [
+    "spec/library.md#toolcall"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Draft/body/1/value",
+      "value": {
+        "op": "map",
+        "bind": "x",
+        "over": {
+          "op": "list",
+          "items": [
+            {
+              "op": "var",
+              "name": "vendor_id"
+            }
+          ]
+        },
+        "max": 3,
+        "caps": [
+          {
+            "op": "var",
+            "name": "ErpDraft"
+          }
+        ],
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "delegate",
+              "agent": "Reader",
+              "skill": "orders",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "x"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0301",
+        "path": "/defs/Draft/body/1/value/body/0/value",
+        "facts": {
+          "required": "Tool"
+        }
+      },
+      {
+        "code": "MDT-E1406",
+        "path": "/defs/Draft/body/1/value/caps/0",
+        "facts": {
+          "agent": "Reader",
+          "through": "map with caps"
+        }
+      }
+    ]
+  }
+}

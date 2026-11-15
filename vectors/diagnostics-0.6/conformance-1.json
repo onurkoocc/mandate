@@ -374,6 +374,213 @@
       }
     },
     {
+      "name": "E0120c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/library/acme.connectors/types.mdt",
+        "../../fixtures/library/acme.connectors/connectors.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "The tool erp.list_open_orders takes or gives the type Order, which is acme.connectors.types.Order; this program has no such definition: list it in a use, use acme.connectors.types.{Order}.",
+            "at": {
+              "path": "/defs/ErpRead/value",
+              "span": [12, 22, 12, 54]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Order",
+              "expected": "type",
+              "module": "acme.connectors.types",
+              "tool": "erp.list_open_orders"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "The tool erp.list_open_orders takes or gives the type Order, which is acme.connectors.types.Order; this program has no such definition: list it in a use, use acme.connectors.types.{Order}.",
+            "at": {
+              "path": "/defs/Orders/body/0/value",
+              "span": [18, 16, 18, 47]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Order",
+              "expected": "type",
+              "module": "acme.connectors.types",
+              "tool": "erp.list_open_orders"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0120d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/library/drafts.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/library/acme.connectors/types.mdt",
+        "../../fixtures/library/acme.connectors/connectors.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "The tool erp.post_draft_invoice takes or gives the type Match, which is acme.connectors.types.Match; this program has no such definition: list it in a use, use acme.connectors.types.{Match}.",
+            "at": {
+              "path": "/defs/ErpDraft/value",
+              "span": [1, 557, 1, 736]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Match",
+              "expected": "type",
+              "module": "acme.connectors.types",
+              "tool": "erp.post_draft_invoice"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "The tool erp.post_draft_invoice takes or gives the type Match, which is acme.connectors.types.Match; this program has no such definition: list it in a use, use acme.connectors.types.{Match}.",
+            "at": {
+              "path": "/defs/DraftOne/body/4/value",
+              "span": [1, 2845, 1, 3023]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Match",
+              "expected": "type",
+              "module": "acme.connectors.types",
+              "tool": "erp.post_draft_invoice"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/same_invoice/by/static",
+              "span": [1, 1196, 1, 1367]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'Tool' is the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Tool",
+              "span": [1, 2967, 1, 3223]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "Tool",
+              "builtin": "effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'Tool' is the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Tool",
+              "span": [1, 2967, 1, 3223]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "Tool",
+              "builtin": "effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:0ae7e2272019778ea6ffafddfa8981cd9915eab330614e555709e8492c233e28",
+          "defs": {
+            "A": "sha256:b2559f575ab6a9385bc394be613afa1ee4a4000ac09a48b8ae1b3a2abfea178d",
+            "Files": "sha256:93b442ac03a41997be11f1d9a7735faca48e71e7dcb5b7e4ea66ef75fd85ce7e",
+            "Model": "sha256:bc0e394e7c9dcd9be8894182009c5283edf7b8c15ef0a114093dd68658eae3b5",
+            "W": "sha256:1fbcf648c06183395dbd353e105c57a1be9985e95483474a9ffbd6c6d82d6e90"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
       "name": "E0140",
       "kind": "compile",
       "door": "check",
@@ -484,6 +691,21 @@
           {
             "code": "MDT-E0140",
             "severity": "error",
+            "message": "The lock file does not match spec/lock-0.6.schema.json: /connectors/acme.connectors.erp must have required property 'url'",
+            "at": {
+              "path": "/connectors/acme.connectors.erp"
+            },
+            "docs": "mandate explain MDT-E0140",
+            "facts": {
+              "keyword": "required",
+              "params": {
+                "missingProperty": "url"
+              }
+            }
+          },
+          {
+            "code": "MDT-E0140",
+            "severity": "error",
             "message": "The lock file does not match spec/lock-0.6.schema.json: /connectors/acme.connectors.erp/credential must match pattern \"^[A-Za-z][A-Za-z0-9_-]{0,63}$\"",
             "at": {
               "path": "/connectors/acme.connectors.erp/credential"
@@ -494,6 +716,1248 @@
               "params": {
                 "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
               }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0140c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0140",
+            "severity": "error",
+            "message": "The template of connectors.example.erp.erp holds {secret} 2 times; it holds it exactly once, where the egress proxy puts the secret.",
+            "at": {
+              "path": "/connectors/example.erp.erp/template"
+            },
+            "docs": "mandate explain MDT-E0140",
+            "facts": {
+              "connector": "example.erp.erp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0210a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Write tool 'erp.post_draft' cannot take Untrusted<Text>; critical parameters take only T or Verified<T> (R4).",
+            "at": {
+              "path": "/defs/erp/tools/post_draft/params/0/type",
+              "span": [1, 826, 1, 869]
+            },
+            "docs": "mandate explain MDT-E0210"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0220c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "Reader holds read-only tools of the connector example.erp.erp, which return confidential data, and its model capability allows at most public: what the tools return reaches the model (spec/library.md \"Declaration\").",
+            "at": {
+              "path": "/defs/Reader/caps/0",
+              "span": [1, 1805, 1, 1834]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "public",
+              "connector": "example.erp.erp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0220d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "Reader.orders holds read-only tools of the connector example.erp.erp, which return confidential data, and its model capability allows at most public: what the tools return reaches the model (spec/library.md \"Declaration\").",
+            "at": {
+              "path": "/defs/Draft/body/1/value",
+              "span": [1, 2693, 1, 2835]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "public",
+              "connector": "example.erp.erp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0220e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "The tool erp.list_orders takes or gives restricted data, and its connector's class is confidential (spec/library.md \"Declaration\").",
+            "at": {
+              "path": "/defs/erp/tools/list_orders",
+              "span": [1, 482, 1, 633]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "restricted",
+              "allowed": "confidential",
+              "connector": "erp",
+              "tool": "list_orders"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0301a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0301",
+            "severity": "error",
+            "message": "Publish uses publish, but no capability in its caps authorizes it.",
+            "at": {
+              "path": "/defs/Publish/body/0/value",
+              "span": [26, 3, 26, 42]
+            },
+            "docs": "mandate explain MDT-E0301",
+            "facts": {
+              "required": "publish",
+              "available": [
+                "Notes = fs.write(\"/srv/notes\")"
+              ]
+            }
+          },
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "Publish holds Notes = fs.write(\"/srv/notes\") but neither its body nor its delegates use it.",
+            "at": {
+              "path": "/defs/Publish/caps/0",
+              "span": [23, 10, 23, 15]
+            },
+            "docs": "mandate explain MDT-W0310"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0301b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:fb5744cba210434e2957da7af57adc7c715d448ee0e5104a4a8a800b90f82b2e",
+          "defs": {
+            "Notes": "sha256:bb34b1e524245a4fe7b60395d570172cc18ad611b174d869ca2673356b7ecb2e",
+            "Publish": "sha256:64fe3e4bfac55e6f11ba8174e347547d7a8db0f27ce9301bf3d2a4f3ac8cabb7",
+            "publish": "sha256:3def465e89ea46f28a49829aeaf49a48d577f19a1c962b9306de4b52298206fd"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "E0301c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0301",
+            "severity": "error",
+            "message": "Publish uses publish, but no capability in its caps authorizes it.",
+            "at": {
+              "path": "/defs/Publish/body/0/value",
+              "span": [22, 3, 22, 42]
+            },
+            "docs": "mandate explain MDT-E0301",
+            "facts": {
+              "required": "publish",
+              "available": [
+                "Notes = fs.write(\"/srv/notes\")"
+              ]
+            }
+          },
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "Publish holds Notes = fs.write(\"/srv/notes\") but neither its body nor its delegates use it.",
+            "at": {
+              "path": "/defs/Publish/caps/0",
+              "span": [19, 10, 19, 15]
+            },
+            "docs": "mandate explain MDT-W0310"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0320b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0320",
+            "severity": "error",
+            "message": "par branches 'a' and 'b' can both write example.erp.erp.post_draft; write scopes in a par block must be disjoint (C5).",
+            "at": {
+              "path": "/defs/Draft/body/2/branches/b",
+              "span": [1, 2966, 1, 3104]
+            },
+            "docs": "mandate explain MDT-E0320",
+            "facts": {
+              "branches": [
+                "a",
+                "b"
+              ],
+              "left": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+              "right": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0403a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0403",
+            "severity": "error",
+            "message": "Critical effect erp.post_draft needs 'idempotent_by' at the call site (\u00a78.4).",
+            "at": {
+              "path": "/defs/Draft/body/2/value",
+              "span": [1, 2818, 1, 2907]
+            },
+            "docs": "mandate explain MDT-E0403",
+            "facts": {
+              "repair_hint": "add `idempotent_by <business key>`"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0408a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0408",
+            "severity": "error",
+            "message": "Skill 'Reader.orders' declares the critical effect 'erp.post_draft'. External writes happen only in a workflow's commit step, never inside a delegated task.",
+            "at": {
+              "path": "/defs/Reader/skills/orders/effects/2",
+              "span": [1, 2046, 1, 2073]
+            },
+            "docs": "mandate explain MDT-E0408"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1401",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1401",
+            "severity": "error",
+            "message": "Write tool erp.post_draft does not declare critical; a write tool is critical, with an idempotency key and a retry class (spec/library.md \"Tool classes\").",
+            "at": {
+              "path": "/defs/erp/tools/post_draft",
+              "span": [1, 789, 1, 1016]
+            },
+            "docs": "mandate explain MDT-E1401",
+            "facts": {
+              "connector": "erp",
+              "tool": "post_draft",
+              "problem": "missing"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1401a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1401",
+            "severity": "error",
+            "message": "erp.list_orders cannot reconcile erp.post_draft: it is a read-only tool of erp that takes one Text parameter, the key, and returns Untrusted<Option<T>> where the write returns Receipt<T>.",
+            "at": {
+              "path": "/defs/erp/tools/post_draft/reconcile_by",
+              "span": [1, 1019, 1, 1032]
+            },
+            "docs": "mandate explain MDT-E1401",
+            "facts": {
+              "connector": "erp",
+              "tool": "post_draft",
+              "problem": "reconcile_by"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1401b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1401",
+            "severity": "error",
+            "message": "Tool erp.post_draft is read_only and of a write class; a tool is read_only, or critical with an idempotency key and a retry class (spec/library.md \"Tool classes\").",
+            "at": {
+              "path": "/defs/erp/tools/post_draft",
+              "span": [1, 789, 1, 1049]
+            },
+            "docs": "mandate explain MDT-E1401",
+            "facts": {
+              "connector": "erp",
+              "tool": "post_draft",
+              "problem": "both"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1402",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1402",
+            "severity": "error",
+            "message": "The server of connector erp is one absolute https URL, with no user, password, port, query or fragment, and it names a port (spec/library.md \"Declaration\").",
+            "at": {
+              "path": "/defs/erp/mcp",
+              "span": [1, 369, 1, 403]
+            },
+            "docs": "mandate explain MDT-E1402",
+            "facts": {
+              "connector": "erp",
+              "problem": "url",
+              "reason": "it names a port"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1402a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1402",
+            "severity": "error",
+            "message": "The class of connector erp, 'secret', is not a data class: public, internal, confidential or restricted.",
+            "at": {
+              "path": "/defs/erp/class",
+              "span": [1, 423, 1, 431]
+            },
+            "docs": "mandate explain MDT-E1402",
+            "facts": {
+              "connector": "erp",
+              "problem": "class",
+              "expected": [
+                "public",
+                "internal",
+                "confidential",
+                "restricted"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1402b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1402",
+            "severity": "error",
+            "message": "Connector erp declares the tool find_draft twice.",
+            "at": {
+              "span": [24, 8, 24, 18]
+            },
+            "docs": "mandate explain MDT-E1402",
+            "facts": {
+              "connector": "erp",
+              "tool": "find_draft",
+              "problem": "duplicate_tool"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1403",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1403",
+            "severity": "error",
+            "message": "Tool erp.list_orders returns List<Order>; a read-only tool returns Untrusted<T> (spec/library.md \"Tool classes\").",
+            "at": {
+              "path": "/defs/erp/tools/list_orders/returns",
+              "span": [1, 526, 1, 565]
+            },
+            "docs": "mandate explain MDT-E1403",
+            "facts": {
+              "connector": "erp",
+              "tool": "list_orders",
+              "expected": "Untrusted<T>",
+              "found": "List<Order>"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1404",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1404",
+            "severity": "error",
+            "message": "erp declares no tool 'delete_draft' (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/ErpDelete/value",
+              "span": [1, 3031, 1, 3204]
+            },
+            "docs": "mandate explain MDT-E1404",
+            "facts": {
+              "problem": "erp declares no tool 'delete_draft'"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1404a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "caps.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1404",
+            "severity": "error",
+            "message": "'erp' is a connector that the program neither defines nor lists in a use (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Mine/value",
+              "span": [11, 19, 11, 46]
+            },
+            "docs": "mandate explain MDT-E1404",
+            "facts": {
+              "problem": "'erp' is a connector that the program neither defines nor lists in a use"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1405",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1405",
+            "severity": "error",
+            "message": "erp.list_orders is a read-only tool: call it as an expression, 'let x = erp.list_orders(\u2026)'; 'effect' runs a write tool (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/body/0/value",
+              "span": [1, 2514, 1, 2653]
+            },
+            "docs": "mandate explain MDT-E1405",
+            "facts": {
+              "connector": "erp",
+              "tool": "list_orders",
+              "problem": "read_through_effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1405a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1405",
+            "severity": "error",
+            "message": "erp.post_draft is a write tool: it runs only as 'effect erp.post_draft(\u2026) idempotent_by k' in a workflow's body, a critical effect, through prepare \u2192 authorize \u2192 commit (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/body/2/value",
+              "span": [1, 2818, 1, 2956]
+            },
+            "docs": "mandate explain MDT-E1405",
+            "facts": {
+              "connector": "erp",
+              "tool": "post_draft",
+              "problem": "write_as_expression"
+            }
+          },
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "Draft holds ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\") but neither its body nor its delegates use it.",
+            "at": {
+              "path": "/defs/Draft/caps/0",
+              "span": [1, 2377, 1, 2407]
+            },
+            "docs": "mandate explain MDT-W0310"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1405b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1405",
+            "severity": "error",
+            "message": "The tool erp.list_orders is called in a fn. A connector's tools are called only in a workflow's body: a read-only one as an expression, a write one as a critical effect (an agent's loop calls the read-only tools its delegation grants) (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/orders_of/body/0/value",
+              "span": [1, 3169, 1, 3301]
+            },
+            "docs": "mandate explain MDT-E1405",
+            "facts": {
+              "connector": "erp",
+              "tool": "list_orders",
+              "problem": "fn"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1405c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1405",
+            "severity": "error",
+            "message": "The tool erp.list_orders is called in a contract. A connector's tools are called only in a workflow's body: a read-only one as an expression, a write one as a critical effect (an agent's loop calls the read-only tools its delegation grants) (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/HasOrders/accept/some/by/static/left/args/0/value",
+              "span": [54, 19, 54, 37]
+            },
+            "docs": "mandate explain MDT-E1405",
+            "facts": {
+              "connector": "erp",
+              "tool": "list_orders",
+              "problem": "contract"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "HasOrders.some: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/HasOrders/accept/some/by/static",
+              "span": [54, 15, 54, 43]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1405d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1405",
+            "severity": "error",
+            "message": "The tool erp.post_draft is called in a handler. A connector's tools are called only in a workflow's body: a read-only one as an expression, a write one as a critical effect (an agent's loop calls the read-only tools its delegation grants) (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/on/0/then",
+              "span": [51, 32, 51, 76]
+            },
+            "docs": "mandate explain MDT-E1405",
+            "facts": {
+              "connector": "erp",
+              "tool": "post_draft",
+              "problem": "handler"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1405e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1405",
+            "severity": "error",
+            "message": "The tool erp.list_orders is called in a workflow's ensures. A connector's tools are called only in a workflow's body: a read-only one as an expression, a write one as a critical effect (an agent's loop calls the read-only tools its delegation grants) (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/ensures/left/args/0/value",
+              "span": [1, 3097, 1, 3237]
+            },
+            "docs": "mandate explain MDT-E1405",
+            "facts": {
+              "connector": "erp",
+              "tool": "list_orders",
+              "problem": "ensures"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1406",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0701",
+            "severity": "error",
+            "message": "Reader does not hold ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\"); 'with caps' can only narrow what the agent already holds (C2).",
+            "at": {
+              "path": "/defs/Draft/body/1/value/caps/0",
+              "span": [1, 2803, 1, 2833]
+            },
+            "docs": "mandate explain MDT-E0701",
+            "facts": {
+              "capability": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+              "agent": [
+                "ErpRead = tool.call(erp, list_orders) \u2192 tool.call(\"example.erp.erp.list_orders\")",
+                "ModelAll = model.infer"
+              ]
+            }
+          },
+          {
+            "code": "MDT-E1406",
+            "severity": "error",
+            "message": "Reader would hold ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\"), a write tool. An agent holds only read-only tools; a write tool is called by a workflow's body, as a critical effect (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/body/1/value/caps/0",
+              "span": [1, 2803, 1, 2833]
+            },
+            "docs": "mandate explain MDT-E1406",
+            "facts": {
+              "agent": "Reader",
+              "capability": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+              "through": "with caps"
+            }
+          },
+          {
+            "code": "MDT-E0301",
+            "severity": "error",
+            "message": "Reader.orders uses Tool, but this delegation grants no capability for it (Draft lacks it or 'with caps' left it out).",
+            "at": {
+              "path": "/defs/Draft/body/1/value",
+              "span": [1, 2693, 1, 2835]
+            },
+            "docs": "mandate explain MDT-E0301",
+            "facts": {
+              "required": "Tool",
+              "granted": [
+                "ModelAll = model.infer",
+                "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1406a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1406",
+            "severity": "error",
+            "message": "Reader would hold ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\"), a write tool. An agent holds only read-only tools; a write tool is called by a workflow's body, as a critical effect (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/body/1/value/caps/0",
+              "span": [1, 2795, 1, 2825]
+            },
+            "docs": "mandate explain MDT-E1406",
+            "facts": {
+              "agent": "Reader",
+              "capability": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+              "through": "map with caps"
+            }
+          },
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "Draft holds ModelAll = model.infer but neither its body nor its delegates use it.",
+            "at": {
+              "path": "/defs/Draft/caps/2",
+              "span": [1, 2438, 1, 2468]
+            },
+            "docs": "mandate explain MDT-W0310"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1406b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0301",
+            "severity": "error",
+            "message": "Reader.orders uses Tool, but this delegation grants no capability for it (Draft lacks it or 'with caps' left it out).",
+            "at": {
+              "path": "/defs/Draft/body/1/value/body/0/value",
+              "span": [1, 2856, 1, 2950]
+            },
+            "docs": "mandate explain MDT-E0301",
+            "facts": {
+              "required": "Tool",
+              "granted": [
+                "ModelAll = model.infer"
+              ]
+            }
+          },
+          {
+            "code": "MDT-E1406",
+            "severity": "error",
+            "message": "Reader would hold ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\"), a write tool. An agent holds only read-only tools; a write tool is called by a workflow's body, as a critical effect (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/body/1/value/caps/0",
+              "span": [1, 2795, 1, 2825]
+            },
+            "docs": "mandate explain MDT-E1406",
+            "facts": {
+              "agent": "Reader",
+              "capability": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+              "through": "map with caps"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1407",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1407",
+            "severity": "error",
+            "message": "The package can call the connector example.erp.erp, and the lock does not bind it: add connectors.example.erp.erp, with its credential and the digest of each of its tools (mandate connector pin).",
+            "at": {
+              "path": "/connectors"
+            },
+            "docs": "mandate explain MDT-E1407",
+            "facts": {
+              "connector": "example.erp.erp",
+              "problem": "no_entry"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1407a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1407",
+            "severity": "error",
+            "message": "The lock binds the connector example.erp.erp with no digest of the schema of its tool find_draft.",
+            "at": {
+              "path": "/connectors/example.erp.erp/tools"
+            },
+            "docs": "mandate explain MDT-E1407",
+            "facts": {
+              "connector": "example.erp.erp",
+              "tool": "find_draft",
+              "problem": "no_digest"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1407b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1407",
+            "severity": "error",
+            "message": "The lock binds the connector example.erp.erp at https://erp.example.org/mcp, and it declares https://erp.example.com/mcp: the credential goes to the URL the lock names.",
+            "at": {
+              "path": "/connectors/example.erp.erp/url"
+            },
+            "docs": "mandate explain MDT-E1407",
+            "facts": {
+              "connector": "example.erp.erp",
+              "problem": "url",
+              "url": "https://erp.example.org/mcp",
+              "declared": "https://erp.example.com/mcp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1408",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1408",
+            "severity": "error",
+            "message": "The lock binds connectors.example.erp.crm, and no module of the package defines a connector crm in example.erp.",
+            "at": {
+              "path": "/connectors/example.erp.crm"
+            },
+            "docs": "mandate explain MDT-E1408",
+            "facts": {
+              "connector": "example.erp.crm",
+              "problem": "no_connector"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1408a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1408",
+            "severity": "error",
+            "message": "The lock has a digest of the tool delete_draft of connectors.example.erp.erp, which declares no such tool.",
+            "at": {
+              "path": "/connectors/example.erp.erp/tools/delete_draft"
+            },
+            "docs": "mandate explain MDT-E1408",
+            "facts": {
+              "connector": "example.erp.erp",
+              "tool": "delete_draft",
+              "problem": "no_tool"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1408b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "crm.mdt"
+      ],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1408",
+            "severity": "error",
+            "message": "The lock binds connectors.example.crm.crm, and no module of the package defines a connector crm in example.crm.",
+            "at": {
+              "path": "/connectors/example.crm.crm"
+            },
+            "docs": "mandate explain MDT-E1408",
+            "facts": {
+              "connector": "example.crm.crm",
+              "problem": "no_connector"
             }
           }
         ]
@@ -859,6 +2323,40 @@
       }
     },
     {
+      "name": "E1708m",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1708",
+            "severity": "error",
+            "message": "The critical effect erp.post_draft runs inside a map's body, where each item's would be authorized on its own. Run it after the map, or land a batch with a change set (spec/envelope.md \"map\").",
+            "at": {
+              "path": "/defs/Draft/body/2/value/body/0/value",
+              "span": [1, 2955, 1, 3084]
+            },
+            "docs": "mandate explain MDT-E1708",
+            "facts": {
+              "map": "/defs/Draft/body/2/value",
+              "kind": "critical_effect",
+              "what": "erp.post_draft"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "P01",
       "kind": "compile",
       "door": "check",
@@ -1056,6 +2554,221 @@
                 "mandate/0.6"
               ],
               "found": "mandate/0.7"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "T01",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0301",
+            "severity": "error",
+            "message": "Draft uses erp.post_draft, but no capability in its caps authorizes it.",
+            "at": {
+              "path": "/defs/Draft/body/2/value",
+              "span": [1, 2787, 1, 2923]
+            },
+            "docs": "mandate explain MDT-E0301",
+            "facts": {
+              "required": "erp.post_draft",
+              "available": [
+                "ErpRead = tool.call(erp, list_orders) \u2192 tool.call(\"example.erp.erp.list_orders\")",
+                "ModelAll = model.infer"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "T01a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:242e7d9e203c3f5413f6bbeb6606cb930c7f95d3e0e5edb1a5019a9016ce91c1",
+          "defs": {
+            "Draft": "sha256:746a0ffc1d84e9d485e6e0af02dd3828e0bdf31593653c8d443cadbca753e2b3",
+            "DraftId": "sha256:3cba72eaf0c89ce28f4c08dcc96b48cb6be7994e0d02a1552bfc54c993920601",
+            "ErpDraft": "sha256:3c26a287543607f75127d1226b52168865168a8bb76ccf9dab74a38be2684ad9",
+            "ErpRead": "sha256:ab8bcd21322a0bc3e1721a1578b26108f67a0d7d2eadffd1a47d2db6c3084165",
+            "ModelAll": "sha256:bc1df3f57f05d623dcf93db238038798d8175d5249e5391125e7b10e68a29d5b",
+            "Note": "sha256:33e5e80f06599a5004aa0849611b1c93836196c4b4473e838c7fa67582d07cd3",
+            "Order": "sha256:810e0d9655f01acd3d3e7a3a69167004fb18f892637c3fb8a6533d5d7c1d6815",
+            "Reader": "sha256:597705b86af05dc7b0b689d83dbdcee1c6dd29ffbf1e9c47afa46ede5bb6a8d7",
+            "erp": "sha256:625fddb9ddd8ecd02813cd6b7d4055f5ce8479d5e2cbc2340f81d6bbfbdaa4da"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "T01b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0301",
+            "severity": "error",
+            "message": "Draft uses Tool(example.erp.erp.find_draft), but no capability in its caps authorizes it.",
+            "at": {
+              "path": "/defs/Draft/body/0/value",
+              "span": [1, 2514, 1, 2652]
+            },
+            "docs": "mandate explain MDT-E0301",
+            "facts": {
+              "required": "Tool",
+              "available": [
+                "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+                "ErpRead = tool.call(erp, list_orders) \u2192 tool.call(\"example.erp.erp.list_orders\")",
+                "ModelAll = model.infer"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "T02",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1406",
+            "severity": "error",
+            "message": "Reader would hold ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\"), a write tool. An agent holds only read-only tools; a write tool is called by a workflow's body, as a critical effect (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Reader/caps/2",
+              "span": [1, 1870, 1, 1900]
+            },
+            "docs": "mandate explain MDT-E1406",
+            "facts": {
+              "agent": "Reader",
+              "capability": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+              "through": "caps"
+            }
+          },
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "Reader holds ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\") but no skill uses it.",
+            "at": {
+              "path": "/defs/Reader/caps/2",
+              "span": [1, 1870, 1, 1900]
+            },
+            "docs": "mandate explain MDT-W0310"
+          }
+        ]
+      }
+    },
+    {
+      "name": "T06",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "restricted data is sent to the connector erp, whose class allows at most confidential (spec/library.md \"What is sent to a connector\").",
+            "at": {
+              "path": "/defs/Draft/body/0/value/args/0/value",
+              "span": [1, 2620, 1, 2646]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "restricted",
+              "allowed": "confidential",
+              "connector": "example.erp.erp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "T06a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "Reader.orders receives restricted data, and holds tools of the connector example.erp.erp, whose class allows at most confidential (spec/library.md \"What is sent to a connector\").",
+            "at": {
+              "path": "/defs/Draft/body/1/value",
+              "span": [1, 2693, 1, 2790]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "restricted",
+              "allowed": "confidential",
+              "connector": "example.erp.erp"
             }
           }
         ]

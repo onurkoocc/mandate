@@ -251,3 +251,46 @@ fn strings_sort_by_utf16_code_units_and_sets_keep_insertion_order() {
     }
     finish(&wrong, vectors.len(), "sort");
 }
+
+/// A value written once (`JsValue::Json`) is written as the value itself,
+/// on its own and inside an array and an object, by both writers, wherever
+/// the reader takes its text back; `undefined` stays itself. It stands for
+/// what its text reads as (`NaN` is written `null`, and is `null` then), so
+/// `String` of it is `String` of the value read back.
+#[test]
+fn a_value_written_once_is_written_as_the_value() {
+    let vectors = data("stringify");
+    let mut wrong = Vec::new();
+    for v in &vectors {
+        let value = tagged(&v.as_array().unwrap()[0]);
+        let once = JsValue::written(&value);
+        if value.is_undefined() {
+            if !once.is_undefined() {
+                wrong.push(format!("{value:?}: written as {once:?}"));
+            }
+            continue;
+        }
+        let read_back = parse(&stringify(&value).unwrap())
+            .ok()
+            .map(|p| JsValue::from(&p.value));
+        let pair = |x: &JsValue| {
+            JsValue::Array(vec![x.clone(), JsObject::new().with("k", x.clone()).into()])
+        };
+        let both = [(value.clone(), once.clone()), (pair(&value), pair(&once))];
+        for (i, (a, b)) in both.iter().enumerate() {
+            let compact = (stringify(a), stringify(b));
+            if compact.0 != compact.1 {
+                wrong.push(format!("{a:?}: compact {compact:?}"));
+            }
+            if let Some(r) = &read_back {
+                let as_read = if i == 0 { r.clone() } else { pair(r) };
+                let pretty = (stringify_pretty(a), stringify_pretty(b));
+                let text = (as_read.to_js_string(), b.to_js_string());
+                if pretty.0 != pretty.1 || text.0 != text.1 {
+                    wrong.push(format!("{a:?}: pretty {pretty:?}, String {text:?}"));
+                }
+            }
+        }
+    }
+    finish(&wrong, vectors.len(), "values written once");
+}

@@ -179,3 +179,52 @@ library's is the definition it names: used as what its kind is not (a
 constant as a type, a type as the contract of `Verified`, a lower-case name
 as a module path), it is the E0120 the program's own definition gets there
 (cases E0120, E0120a, E0120b).
+
+## Connectors (0.6)
+
+Specified in [`library.md`](library.md#connectors). E14xx is assigned there.
+As E16xx, these codes are the Rust compiler's alone, in its table of codes,
+each with hand-written conformance cases of `mandate/0.6`. E1401 to E1406 are
+reported by `mandate check`; E1407 and E1408 by `mandate check` with the lock.
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E1401 | Tool without a closed class | E1401, E1401a, E1401b | 0.6 only; a tool that is neither `read_only` nor of a write class, or both; a write tool without `critical`, `idempotency key` or `retry_class`, or with `retry_class read_only`; a key that names no `Text` parameter; `reconcile by` missing with `reconcilable`, given with another class, or naming no read-only tool of the connector with one `Text` parameter that returns `Untrusted<Option<T>>` for the write's `Receipt<T>`; a `compensation` that names no other write tool of the connector. Path `/defs/<connector>/tools/<tool>` or its member. Facts: `connector`, `tool`, `problem` (`neither`, `both`, `missing`, `idempotency_key`, `retry_class`, `reconcile_by_missing`, `reconcile_by_not_reconcilable`, `reconcile_by`, `compensation`) |
+| MDT-E1402 | Malformed connector | E1402, E1402a, E1402b | 0.6 only; the server (`/defs/<c>/mcp`) is not one absolute `https://` URL of printable ASCII with a host name (spec/egress.md "Host names") and no user, password, port, query or fragment; no `version`; no `class`, or one that is not a data class (`/defs/<c>/class`); no tool (`/defs/<c>/tools`); a tool declared twice, refused by the parser at the second name, as a text that does not read. Facts: `connector`, `problem` (`url` with `reason`, `version`, `class`, `no_tool`, `duplicate_tool` with `tool`) |
+| MDT-E1403 | Tool result of the wrong kind | E1403 | 0.6 only; a `read_only` tool that does not return `Untrusted<T>`, a write tool that does not return `Receipt<T>`; path `/defs/<c>/tools/<t>/returns`. Facts: `connector`, `tool`, `expected`, `found` |
+| MDT-E1404 | Malformed `tool.call` | E1404 | 0.6 only; reported where the capability expression is evaluated: a first argument that is no connector the program defines or lists in a `use`, a tool the connector does not declare, an argument that is not a bare name or that has a name, no tool, or `.narrow(…)` of a `tool.call`. Such a `tool.call` stands for no capability. Facts: `problem` |
+| MDT-E1405 | Tool called where it cannot be | E1405, E1405a, E1405b, E1405c, E1405d, E1405e | 0.6 only; a read-only tool through `effect`, a write tool as an expression, any tool in a `fn`, a contract, a skill's body, a constant, a handler or a workflow's `ensures` (the places typed in a workflow's frame without being its body are its `ensures` and its handlers); at the call. Facts: `connector`, `tool`, `problem` (`read_through_effect`, `write_as_expression`, or the kind of body: `fn`, `contract`, `skill`, `const`, `handler`, `ensures`) |
+| MDT-E1406 | Agent holds a write tool | T02, E1406, E1406a, E1406b | 0.6 only; a `tool.call` that names a write tool in an agent's `caps` (at the capability), in a delegation's `with caps` (at it), or in a map's `with caps` when the map's body delegates, directly or through a function however deep (at the map's capability); the run-time `grant` door grants no write part of a `tool.call` either. Facts: `agent`, `capability`, `through` (`caps`, `with caps`, `map with caps`) |
+| MDT-E1407 | Connector not bound in the lock | E1407, E1407a, E1407b | 0.6 only; needs the lock; a connector a `tool.call` capability of the program's workflows (their caps or their envelope's) or agents names has no `connectors.<module>.<connector>` entry (path `/connectors`), or its entry has no digest for one of the tools it declares (path `/connectors/<id>/tools`), or its `url`, where the credential goes, is not the URL the connector declares (path `/connectors/<id>/url`; `url` is required in the entry by `spec/lock-0.6.schema.json`, E0140 when missing). Facts: `connector`, `problem` (`no_entry`, `no_digest` with `tool`, `url` with `url` and `declared`). The path is into the lock |
+| MDT-E1408 | Lock binds no connector of the package | E1408, E1408a, E1408b | 0.6 only; needs the lock; an entry names a connector that neither the program's module nor a module the program imports defines (path `/connectors/<id>`; a module the check is given that the program does not import is not of the package, E1408b), or a tool the connector does not declare (`/connectors/<id>/tools/<tool>`). Facts: `connector`, `problem` (`no_connector`, `no_tool` with `tool`). The path is into the lock |
+
+Language 0.6 extends these codes for connectors. E0121: a definition named like a
+built-in effect (`Tool`, `Model`, `Fs.Read` …, and `Tool.Write`), which would
+decide what covers that effect (E0121, E0121a; E0121b: a program of 0.5 is read
+as before); in 0.6 a `Tool` or `Tool.Write` use is covered by a `tool.call` part
+alone. E0120: a tool a connector
+does not declare, in a call (`/…/callee/name`) or as an effect's name, a
+connector used as a value, and a tool named without a call; and a type name of a
+tool's signature that the program does not have as the definition the
+connector's module means by it (not imported, or a definition of the program's
+own of that name), at each use: a call, a write's effect, a `tool.call`, an
+agent's capability that holds the tool (E0120c, E0120d). Facts: `name`,
+`expected: "type"`, `module`, `tool`. E0220: a tool
+whose parameter or result types are classed above its connector's `class`, at
+the tool in the module that declares it (E0220e), and at each use of an imported
+one, since a module given to `check` is not checked with the program; an
+argument of a tool's call of a class above its connector's `class` (at the
+argument, T06), and a delegation whose agent holds tools of a connector and
+receives data of a class above that connector's (at the delegation, T06a); an agent that holds a connector's read-only tools above the class its
+model capability may receive (at the capability, E0220c), or a delegation whose
+grant does so where the agent's own caps do not (at the delegation, E0220d);
+the facts `data_class`, `allowed` and `connector`; in a sub-program, as for a
+model, E1706 with `dimension: "data_class"` when the class comes from what
+the lead received. E0301: in a program of 0.6 every capability of every
+`requires caps` of an effect is compared by coverage, scope included (B12,
+E0301a; E0301b holds a program of 0.5 to the first constructor alone), and a
+write tool's effect, and a read-only tool's call, are covered only by a
+`tool.call` that names that tool of that connector (T01, T01b). E0320: a
+`tool.call` that lists a write tool is a write capability, so two branches of
+a `par` that call one write tool overlap (E0320b). E0140: a connector's `template` in a lock of 0.6 that
+does not hold `{secret}` exactly once (E0140c).

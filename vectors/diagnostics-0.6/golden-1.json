@@ -4,6 +4,76 @@
   "parts": 1,
   "programs": [
     {
+      "program": "fixtures/library/drafts.mdt",
+      "modules": [
+        "fixtures/library/acme.connectors/types.mdt",
+        "fixtures/library/acme.connectors/connectors.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": false,
+          "diagnostics": [
+            {
+              "code": "MDT-E1604",
+              "severity": "error",
+              "message": "Module acme.connectors is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
+              "at": {
+                "path": "/uses/0",
+                "span": [14, 1, 14, 35]
+              },
+              "docs": "mandate explain MDT-E1604",
+              "facts": {
+                "module": "acme.connectors"
+              }
+            },
+            {
+              "code": "MDT-E1604",
+              "severity": "error",
+              "message": "Module acme.connectors.types is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
+              "at": {
+                "path": "/uses/1",
+                "span": [15, 1, 15, 59]
+              },
+              "docs": "mandate explain MDT-E1604",
+              "facts": {
+                "module": "acme.connectors.types"
+              }
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:6a12b35ba05184a56055ea95c2386ed5eeb1acac52a669c789da31cd49b0d781",
+            "defs": {
+              "DraftOne": "sha256:c1e97dbd6d430d5a8a39400195b6561491036df4da61952a5eb032d591b2f8f6",
+              "ErpDraft": "sha256:91f4779de7c6cd75cafd362ea2a38edc91030ae222e19de9d7a34ba8c8235d84",
+              "ErpRead": "sha256:ea23f2faae2ed8a24ad065393490218cec83654e7a8109ba2b733902b32fcc06",
+              "Inbox": "sha256:6ac1491e2d922fa7ff8b3365859fc654a4947a71ed71721ac1aaa9cd2e9776aa",
+              "Matched": "sha256:85f156b0532760f910894aa97bd075ab07e31ea9f7ae017cbc3fce45ca492cd6",
+              "Matcher": "sha256:f6533579488273206115ad039adf88f9ca28038ce2adc5250b0324ac16c7fe21",
+              "ModelStd": "sha256:3d1b9c3435bb5678e33db8e60c2299ed4f109ecb5cc2693d02df6f8d03cc3c3f"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/same_invoice/by/static",
+                "span": [25, 15, 25, 45]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
       "program": "fixtures/library/fetch.mdt",
       "modules": [
         "fixtures/system/acme.system.mdt",

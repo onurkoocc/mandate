@@ -1,0 +1,45 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "T01",
+  "kind": "compile",
+  "title": "tool.call(erp, list_orders) does not cover the write post_draft: every requirement of an effect is compared by coverage (B12).",
+  "spec": [
+    "spec/library.md#requires-caps-b12",
+    "spec/library.md#toolcall",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Draft/caps",
+      "value": [
+        {
+          "op": "var",
+          "name": "ErpRead"
+        },
+        {
+          "op": "var",
+          "name": "ModelAll"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0301",
+        "path": "/defs/Draft/body/2/value",
+        "facts": {
+          "required": "erp.post_draft"
+        }
+      }
+    ]
+  }
+}

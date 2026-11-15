@@ -1,0 +1,18 @@
+// A module of 0.6 with a connector and a capability over it, which the
+// program of E1404a lists; the connector itself it does not list.
+
+mandate @ 0.6
+
+module example.caps @ 0.1
+
+use std.{tool}
+
+pub connector erp = mcp("https://erp.example.com/mcp")
+  version "1.0"
+  class   internal
+{
+  tool list_orders(vendor_id: Text) -> Untrusted<Text>
+    read_only
+}
+
+pub capability ErpRead = tool.call(erp, list_orders)

@@ -300,7 +300,19 @@ fn the_codes_of_0_6_are_explained_and_come_last_in_the_table() {
         .collect();
     assert_eq!(
         rust.iter().map(|r| r.code).collect::<Vec<_>>(),
-        vec!["MDT-E1602", "MDT-E1603", "MDT-E1604"]
+        vec![
+            "MDT-E1602",
+            "MDT-E1603",
+            "MDT-E1604",
+            "MDT-E1401",
+            "MDT-E1402",
+            "MDT-E1403",
+            "MDT-E1404",
+            "MDT-E1405",
+            "MDT-E1406",
+            "MDT-E1407",
+            "MDT-E1408"
+        ]
     );
     for row in &rust {
         let bare = row.code.strip_prefix("MDT-").unwrap();
@@ -318,7 +330,7 @@ fn the_codes_of_0_6_are_explained_and_come_last_in_the_table() {
     assert_eq!(keys, all, "every row, in the table's order");
     assert_eq!(
         &keys[keys.len().saturating_sub(rust.len())..],
-        ["MDT-E1602", "MDT-E1603", "MDT-E1604"]
+        rust.iter().map(|r| r.code).collect::<Vec<_>>().as_slice()
     );
 }
 

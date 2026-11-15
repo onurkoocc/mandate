@@ -1,0 +1,28 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1404a",
+  "kind": "compile",
+  "title": "A tool.call of a connector the program reaches through an imported capability, and neither defines nor lists, is refused.",
+  "spec": [
+    "spec/library.md#toolcall",
+    "spec/library.md#closed-imports"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "caps.mdt"
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1404",
+        "path": "/defs/Mine/value"
+      }
+    ]
+  }
+}

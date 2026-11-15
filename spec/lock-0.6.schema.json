@@ -78,9 +78,10 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["credential", "tools"],
+        "required": ["credential", "tools", "url"],
         "properties": {
           "credential": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$" },
+          "url": { "type": "string", "minLength": 1 },
           "header": { "type": "string", "minLength": 1 },
           "template": { "type": "string", "minLength": 1 },
           "tools": {

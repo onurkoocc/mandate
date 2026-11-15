@@ -24,10 +24,12 @@
 //! `check/static.ts`: it is named [`view_children`] so that the two cannot
 //! be confused or shared.
 
+use std::borrow::Cow;
+
 use mandate_ir::{
-    Definition, Expr, ExprOp, JsObject, JsValue, Map, Program, Stmt, StmtOp, Value, canonicalize,
-    compare_utf16, hash_program, number_to_string, sort_utf16, unique_in_order, workflow_bounds,
-    write_json_string,
+    ConnectorDef, Definition, Expr, ExprOp, JsObject, JsValue, Map, Program, Stmt, StmtOp, Value,
+    canonicalize, compare_utf16, hash_program, number_to_string, sort_utf16, unique_in_order,
+    workflow_bounds, write_json_string,
 };
 
 use crate::caps::{CapOptions, CapVal, callee_path, cap_covers, caps_of, show_cap};
@@ -152,10 +154,32 @@ pub fn caps_in(program: Program<'_>, list: &[Value]) -> Vec<CapVal> {
     let opts = CapOptions {
         language: program.language(),
     };
+    let defs = cap_defs_of(program);
     list.iter()
         .filter_map(Expr::of)
-        .flat_map(|e| caps_of(defs_of(program), e, opts))
+        .flat_map(|e| caps_of(defs.as_ref(), e, opts))
         .collect()
+}
+
+/// The definitions a capability of `program` is read against: its own, with
+/// each of its connectors (0.6) marked as of its module when it is not
+/// marked yet (`crate::modules::mark_connectors`), as linking marks them,
+/// so that a view of a program that was not linked reads a `tool.call` as
+/// its check does. Without such a connector, the definitions themselves.
+#[must_use]
+pub fn cap_defs_of(program: Program<'_>) -> Cow<'_, Map> {
+    let defs = defs_of(program);
+    let unmarked = defs
+        .iter()
+        .any(|(_, d)| ConnectorDef::of(d).is_some_and(|c| c.module().is_none()));
+    match program.module().filter(|_| unmarked) {
+        Some(module) => {
+            let mut marked = defs.clone();
+            crate::modules::mark_connectors(&mut marked, module);
+            Cow::Owned(marked)
+        }
+        None => Cow::Borrowed(defs),
+    }
 }
 
 /// `c.narrow(v)` whose scope is a value of the run: where it lies is known
@@ -178,6 +202,7 @@ pub fn widest(program: Program<'_>, list: &[Value]) -> Vec<CapVal> {
     let opts = CapOptions {
         language: program.language(),
     };
+    let defs = cap_defs_of(program);
     list.iter()
         .filter_map(Expr::of)
         .flat_map(|e| {
@@ -186,7 +211,7 @@ pub fn widest(program: Program<'_>, list: &[Value]) -> Vec<CapVal> {
             } else {
                 e
             };
-            caps_of(defs_of(program), target, opts)
+            caps_of(defs.as_ref(), target, opts)
         })
         .collect()
 }

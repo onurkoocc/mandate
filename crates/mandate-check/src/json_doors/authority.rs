@@ -102,14 +102,14 @@ pub(super) const MAP_SCOPES: &[&str] = INPUT;
 /// true }` or `{ refused }`.
 pub(super) fn map_scopes(input: &Value) -> Result<JsValue, DoorError> {
     let i = the_input(input)?;
-    let out = crate::grant::map_scopes(&MapScopesInput {
+    let input = MapScopesInput {
         map: i.str("map")?.to_owned(),
         par: i.int("par")?,
         context: context(i)?,
         items: i.authority_cap_lists("items")?,
         complete: i.bool("complete")?,
-    });
-    Ok(out.to_js().into())
+    };
+    Ok(crate::grant::map_scopes(&input).to_js().into())
 }
 
 /// The parameters of [`in_flight_overlap`].

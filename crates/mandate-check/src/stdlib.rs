@@ -188,6 +188,17 @@ pub const CAP_CTORS: [(&str, CapCtor); 10] = [
     ("env.migrate", ctor("migrate", true, ScopeKind::Positional)),
 ];
 
+/// The capability constructors language 0.6 adds (spec/library.md), which
+/// only a program of 0.6 reads: `tool.call(c, t…)`, a connector's tools.
+/// [`CAP_CTORS`] stays the TypeScript's table, which the vectors hold, and
+/// [`cap_ctor`] finds only its constructors, so that a `tool.call` in a
+/// program of 0.1 to 0.5 stands for nothing, as it always did. A
+/// `tool.call` stands for up to two capabilities, its read-only tools
+/// (effect `Tool`) and its write tools (`write`), as
+/// [`crate::caps::tool_call_caps`] makes them.
+pub const CAP_CTORS_0_6: [(&str, CapCtor); 1] =
+    [("tool.call", ctor("Tool", false, ScopeKind::None))];
+
 /// `CAP_CTORS[name]`.
 #[must_use]
 pub fn cap_ctor(name: &str) -> Option<&'static CapCtor> {

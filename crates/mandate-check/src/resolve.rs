@@ -36,14 +36,15 @@
 use std::rc::Rc;
 
 use mandate_ir::{
-    Arg, CallSpec, Criterion, DefKind, Definition, Diagnostic, Expr, ExprOp, Import, JsObject,
-    JsValue, Language, Location, Map, OnHandler, Param, Pattern, PatternKind, Program, Read,
-    Repair, RepairOp, RepairOpKind, Risk, Skill, Spans, Stmt, StmtOp, TemplatePart, TestDef,
+    Arg, CallSpec, ConnectorDef, Criterion, DefKind, Definition, Diagnostic, Expr, ExprOp, Import,
+    JsObject, JsValue, Language, Location, Map, OnHandler, Param, Pattern, PatternKind, Program,
+    Read, Repair, RepairOp, RepairOpKind, Risk, Skill, Spans, Stmt, StmtOp, TemplatePart, TestDef,
     TypeExpr, TypeForm, Value, Variant, Verifier, VerifierForm, nearest_span, ptr, ptr_token,
 };
 
+use crate::caps::TOOL_WRITE_EFFECT;
 use crate::imports::KnownModules;
-use crate::stdlib::{STD_EFFECTS, std_effect};
+use crate::stdlib::{STD_EFFECTS, is_builtin_effect, std_effect};
 
 /// The built-in types, in order: `BUILTIN_TYPES`.
 pub const BUILTIN_TYPES: [&str; 36] = [
@@ -167,6 +168,7 @@ pub fn resolve_names(
             insert(&mut r.imported_modules, last);
         }
     }
+    r.builtin_effect_names();
     r.run();
     r.out
 }
@@ -280,6 +282,37 @@ fn kind_of(d: &Value) -> Option<DefKind> {
 }
 
 impl<'a> Resolver<'a> {
+    /// 0.6: no definition of a program takes the name of a built-in effect
+    /// (`Tool`, `Model`, `Fs.Read` …, and `Tool.Write`, the effect of a
+    /// `tool.call`'s write tools): a definition so named would decide what
+    /// covers that effect. E0121, the collision of a name with one the
+    /// language has, at the definition. Before 0.6 such a name is read as it
+    /// always was.
+    fn builtin_effect_names(&mut self) {
+        if !self
+            .program
+            .language()
+            .is_some_and(|l| l.at_least(Language::V0_6))
+        {
+            return;
+        }
+        for name in self.defs.keys() {
+            if !is_builtin_effect(name) && name != TOOL_WRITE_EFFECT {
+                continue;
+            }
+            let path = ptr(&[&"defs", &name]);
+            let span = nearest_span(self.spans, &path);
+            self.out.push(Diagnostic::new(
+                "E0121",
+                format!(
+                    "'{name}' is the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\")."
+                ),
+                Location::path_span(&path, span),
+                Some(JsObject::new().with("name", name).with("builtin", "effect")),
+            ));
+        }
+    }
+
     fn run(&mut self) {
         for (name, def) in self.defs.iter() {
             self.def(def, &ptr(&[&"defs", &name]));
@@ -497,6 +530,19 @@ impl<'a> Resolver<'a> {
                 }
             }
             Some(DefKind::Interface | DefKind::Role) | None => {}
+            // 0.6: a tool's parameters and result, in the program's names.
+            Some(DefKind::Connector) => {
+                let tools = value.get("tools").and_then(Value::as_object);
+                for (tn, t) in tools.into_iter().flat_map(Map::iter) {
+                    let tb = format!("{base}/tools/{tn}");
+                    let params = t
+                        .get("params")
+                        .and_then(Value::as_array)
+                        .unwrap_or_default();
+                    self.with_params(params, &format!("{tb}/params"), &top);
+                    self.returns(t.get("returns").and_then(TypeExpr::of), &tb, &top);
+                }
+            }
             Some(DefKind::Environment) => {
                 for (rn, r) in d.reads() {
                     let Some(r) = Read::of(r) else { continue };
@@ -533,6 +579,10 @@ impl<'a> Resolver<'a> {
                 }
                 for (effect, _) in d.authorize() {
                     let path = format!("{base}/authorize/{}", ptr_token(effect));
+                    // 0.6: a connector's write tool is an effect.
+                    if self.connector_effect(effect, &path) {
+                        continue;
+                    }
                     if std_effect(effect).is_none()
                         && self.def_kind(effect) != Some(DefKind::Effect)
                     {
@@ -928,7 +978,73 @@ impl<'a> Resolver<'a> {
         false
     }
 
+    /// 0.6: the connector `name` is, when it names one (the program's own or
+    /// one a `use` lists) and no variable of `scope` shadows it.
+    fn connector(&self, name: &str, scope: Option<&Rc<Scope>>) -> Option<ConnectorDef<'a>> {
+        let mut s = scope;
+        while let Some(at) = s {
+            if at.names.iter().any(|n| n == name) {
+                return None;
+            }
+            s = at.parent.as_ref();
+        }
+        self.def_(name).and_then(ConnectorDef::of)
+    }
+
+    /// 0.6: `c.t`, the member `t` of the connector `c`: the connector and
+    /// its name, and the tool's name. A connector's tool is a member of the
+    /// connector's definition, never a module's path.
+    fn connector_member(
+        &self,
+        e: Expr<'a>,
+        scope: Option<&Rc<Scope>>,
+    ) -> Option<(&'a str, ConnectorDef<'a>, &'a str)> {
+        if !e.is(ExprOp::Field) {
+            return None;
+        }
+        let of = e.operand().filter(|o| o.is(ExprOp::Var))?;
+        let name = of.name()?;
+        let c = self.connector(name, scope)?;
+        Some((name, c, e.name().unwrap_or_default()))
+    }
+
+    /// 0.6: E0120 for a tool the connector does not declare, at `path`.
+    fn no_tool(&mut self, connector: &str, c: ConnectorDef<'a>, tool: &str, path: &str) {
+        let candidates: Vec<&str> = c.tools().map(|(n, _)| n).collect();
+        self.report(
+            path,
+            format!("Connector '{connector}' has no tool '{tool}'."),
+            tool,
+            "tool",
+            candidates,
+            Some(Replace::Name),
+        );
+    }
+
+    /// 0.6: `c.t` as the name of an effect, a write tool of a connector:
+    /// whether `name` is one, reported when the connector declares no such
+    /// tool.
+    fn connector_effect(&mut self, name: &str, path: &str) -> bool {
+        let Some((c, tool)) = name.split_once('.') else {
+            return false;
+        };
+        if tool.contains('.') {
+            return false;
+        }
+        let Some(def) = self.connector(c, None) else {
+            return false;
+        };
+        if def.tool(tool).is_none() {
+            self.no_tool(c, def, tool, path);
+        }
+        true
+    }
+
     fn effect_name(&mut self, name: &str, path: &str) {
+        // 0.6: a connector's tool, before any other reading of the name.
+        if self.connector_effect(name, path) {
+            return;
+        }
         if let Some(d) = self.defs.get(name) {
             if kind_of(d) != Some(DefKind::Effect) {
                 let candidates = self.defs_of_kind(DefKind::Effect);
@@ -1000,6 +1116,20 @@ impl<'a> Resolver<'a> {
             }
             ExprOp::Var => {
                 let name = e.name().unwrap_or_default();
+                // 0.6: a connector is no value; its tools are called.
+                if !ctx.symbolic && self.connector(name, Some(&ctx.scope)).is_some() {
+                    self.report(
+                        path,
+                        format!(
+                            "'{name}' is a connector, not a value; call one of its tools, {name}.tool(…), or name it in tool.call({name}, …)."
+                        ),
+                        name,
+                        "value",
+                        Vec::new(),
+                        None,
+                    );
+                    return;
+                }
                 if !self.lookup(name, &ctx.scope) && !ctx.symbolic {
                     let candidates = self.visible(&ctx.scope);
                     self.report(
@@ -1012,8 +1142,42 @@ impl<'a> Resolver<'a> {
                     );
                 }
             }
+            ExprOp::Field if !ctx.symbolic => {
+                // 0.6: a member of a connector is one of its tools, which is
+                // called, never read as a value.
+                if let Some((c, def, tool)) = self.connector_member(e, Some(&ctx.scope)) {
+                    if def.tool(tool).is_none() {
+                        self.no_tool(c, def, tool, path);
+                    } else {
+                        self.report(
+                            path,
+                            format!(
+                                "The tool {c}.{tool} is called with its arguments, {c}.{tool}(…); it is not a value."
+                            ),
+                            tool,
+                            "value",
+                            Vec::new(),
+                            None,
+                        );
+                    }
+                    return;
+                }
+                self.sub(e.operand(), path, "of", ctx);
+            }
             ExprOp::Field | ExprOp::Unary | ExprOp::Try | ExprOp::Await => {
                 self.sub(e.operand(), path, "of", ctx);
+            }
+            ExprOp::Call
+                if let Some((c, def, tool)) = e
+                    .callee()
+                    .and_then(|k| self.connector_member(k, Some(&ctx.scope))) =>
+            {
+                // 0.6: a call of a connector's tool: the tool is declared, and
+                // its arguments are values of the program, never symbols.
+                if def.tool(tool).is_none() {
+                    self.no_tool(c, def, tool, &format!("{path}/callee/name"));
+                }
+                self.args(e.arg_values(), &format!("{path}/args"), ctx);
             }
             ExprOp::Call => {
                 let callee = e.callee();

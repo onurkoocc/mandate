@@ -22,8 +22,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use mandate_ir::{
-    Arg, ComponentDef, Diagnostic, EnvironmentDef, Expr, ExprOp, JsObject, JsValue, Language,
-    Location, Map, Program, Value, compare_utf16, ptr, sort_utf16, unique_in_order,
+    Arg, ComponentDef, ConnectorDef, Diagnostic, EnvironmentDef, Expr, ExprOp, JsObject, JsValue,
+    Language, Location, Map, Program, Value, compare_utf16, ptr, sort_utf16, unique_in_order,
     write_json_string,
 };
 
@@ -797,6 +797,7 @@ pub fn caps_from_call(e: Expr<'_>, defs: &impl Table, opts: CapOptions) -> Optio
         Some(c) if COMPONENT_CTORS.contains(&c) => return Some(component_caps(c, &args, defs)),
         Some("data.read") => return Some(read_caps(&args, defs)),
         Some(c @ ("env.deploy" | "env.migrate")) => return Some(env_caps(c, &args, defs)),
+        Some(TOOL_CALL) if reads_tool_call(opts.language) => return Some(tool_caps(&args, defs)),
         _ => {}
     }
     cap_from_call(e, opts).map(|c| CapResult::of(vec![c]))
@@ -1053,6 +1054,139 @@ fn read_caps(args: &[Arg<'_>], defs: &impl Table) -> CapResult {
     CapResult::of(vec![cap])
 }
 
+/// `tool.call`, the capability constructor of a connector's tools (0.6,
+/// spec/library.md "tool.call").
+pub const TOOL_CALL: &str = "tool.call";
+
+/// The effect the read part of a `tool.call` authorizes: `Tool`, the
+/// built-in effect of a tool an agent's loop or a workflow's body calls.
+pub const TOOL_READ_EFFECT: &str = "Tool";
+
+/// The effect the write part of a `tool.call` stands for: no effect a
+/// skill or a body declares (a write tool is its own critical effect,
+/// `<connector>.<tool>`, covered by its requirement), so that it never
+/// authorizes `Tool`.
+pub const TOOL_WRITE_EFFECT: &str = "Tool.Write";
+
+/// Whether a capability read in `language` reads `tool.call`: from 0.6.
+/// Before, `tool.call(…)` is no constructor, and stands for nothing, as it
+/// always did.
+#[must_use]
+pub fn reads_tool_call(language: Option<Language>) -> bool {
+    language.is_some_and(|l| l.at_least(Language::V0_6))
+}
+
+/// The scope item of tool `tool` of the connector `connector` of module
+/// `module`: `<module>.<connector>.<tool>`. A connector and a tool are
+/// names without a dot, so the item names one tool of one definition of
+/// one module, and two items are the same exactly when the tool, the
+/// connector and its module are.
+#[must_use]
+pub fn tool_item(module: &str, connector: &str, tool: &str) -> String {
+    format!("{module}.{connector}.{tool}")
+}
+
+/// `tool.call(c, t…)` (0.6): the connector `c`, a connector definition of
+/// `defs` that says its module (as linking marks every connector,
+/// `crate::modules::link`), then at least one tool it declares, each a bare
+/// name; a name written twice counts once. It stands for up to two
+/// capabilities, both of constructor `tool.call` and with the connector's
+/// class as `maxClass`: the read-only tools it names (`write` false, effect
+/// [`TOOL_READ_EFFECT`]), then the write tools (`write` true, effect
+/// [`TOOL_WRITE_EFFECT`]), each scoped by [`tool_item`] of its tools,
+/// sorted. So a capability covers the use of a tool exactly when it names
+/// the same tool of the same connector of the same module ([`cap_covers`],
+/// [`scope_within`]), and two holders of one write tool overlap
+/// ([`writes_overlap`]). Anything else is a problem (E1404) and stands for
+/// nothing.
+fn tool_caps(args: &[Arg<'_>], defs: &impl Table) -> CapResult {
+    if args.iter().any(|a| a.name().is_some()) {
+        return CapResult::fail(
+            "tool.call takes a connector and its tools by name, without argument names".to_owned(),
+        );
+    }
+    let Some(name) = args.first().and_then(var_name).filter(|n| !n.is_empty()) else {
+        return CapResult::fail(
+            "tool.call takes a connector first; the first argument is not a connector's name"
+                .to_owned(),
+        );
+    };
+    let mut tools: Vec<&str> = Vec::new();
+    for a in args.iter().skip(1) {
+        let Some(t) = var_name(a).filter(|t| !t.is_empty()) else {
+            return CapResult::fail(format!(
+                "tool.call names tools of {name} by name; an argument is not a tool's name"
+            ));
+        };
+        tools.push(t);
+    }
+    tool_call_caps(defs, name, &tools)
+}
+
+/// What `tool.call(connector, tools…)` stands for, as [`tool_caps`] reads
+/// it, given the connector's name in `defs` and the tools' names: the one
+/// function every reading of a `tool.call` goes through, the requirement of
+/// a write tool's effect included.
+#[must_use]
+pub fn tool_call_caps(defs: &impl Table, name: &str, tools: &[&str]) -> CapResult {
+    let Some(c) = defs.entry(name).and_then(ConnectorDef::of) else {
+        return CapResult::fail(format!(
+            "tool.call takes a connector first; '{name}' is not one"
+        ));
+    };
+    let Some(module) = c.module().filter(|m| !m.is_empty()) else {
+        return CapResult::fail(format!("the module of connector '{name}' is not known"));
+    };
+    let mut reads: Vec<String> = Vec::new();
+    let mut writes: Vec<String> = Vec::new();
+    for t in tools {
+        let Some(tool) = c.tool(t) else {
+            return CapResult::fail(format!("{name} declares no tool '{t}'"));
+        };
+        let into = if tool.is_write() {
+            &mut writes
+        } else {
+            &mut reads
+        };
+        if !into.iter().any(|x| x == t) {
+            into.push((*t).to_owned());
+        }
+    }
+    if reads.is_empty() && writes.is_empty() {
+        return CapResult::fail(format!("tool.call names at least one tool of {name}"));
+    }
+    let class = c.class().and_then(DataClass::from_name);
+    let mut caps = Vec::new();
+    for (mut names, write, effect) in [
+        (reads, false, TOOL_READ_EFFECT),
+        (writes, true, TOOL_WRITE_EFFECT),
+    ] {
+        if names.is_empty() {
+            continue;
+        }
+        sort_utf16(&mut names);
+        let mut cap = CapVal::new(TOOL_CALL, effect, write);
+        cap.set_scope(Some(
+            names.iter().map(|t| tool_item(module, name, t)).collect(),
+        ));
+        cap.set_max_class(class);
+        cap.set_via(Some(format!("{TOOL_CALL}({name}, {})", names.join(", "))));
+        caps.push(cap);
+    }
+    CapResult::of(caps)
+}
+
+/// The connector of a `tool.call` capability, `<module>.<connector>`, as
+/// its first scope item names it; `None` for any other capability.
+#[must_use]
+pub fn tool_connector(c: &CapVal) -> Option<&str> {
+    if c.ctor() != TOOL_CALL {
+        return None;
+    }
+    let item = c.scope()?.first()?;
+    item.rsplit_once('.').map(|(connector, _)| connector)
+}
+
 /// The capabilities an expression stands for: a named capability, a
 /// constructor (including `component.*`), or `c.narrow(…)`. A narrowing
 /// whose scope is not literal leaves the scope unknown, never the base's
@@ -1100,10 +1234,13 @@ pub fn caps_of_within(
         && callee.is(ExprOp::Field)
         && callee.name() == Some("narrow")
     {
-        let bases = callee
+        let mut bases = callee
             .operand()
             .map(|of| caps_of_within(defs, of, opts, within))
             .unwrap_or_default();
+        // 0.6: a `tool.call` has no `.narrow(…)` (E1404): narrowed, it
+        // stands for nothing.
+        bases.retain(|b| b.ctor() != TOOL_CALL);
         let args: Vec<Arg<'_>> = e.args().collect();
         let scope: Vec<String> = args
             .iter()
@@ -1209,6 +1346,15 @@ pub fn cap_covers(cap: &CapVal, need: &CapVal) -> bool {
     if cap.ctor != need.ctor {
         return false;
     }
+    // 0.6: a part of a `tool.call` covers only a need of its own kind, read
+    // or write, and one without a scope stands for nothing, as cap or as
+    // need; every other constructor's `write` is its constructor's, so this
+    // asks nothing of them.
+    if cap.ctor == TOOL_CALL
+        && (need.write != cap.write || cap.scope.is_none() || need.scope.is_none())
+    {
+        return false;
+    }
     if !scope_within(&cap.ctor, need.scope(), cap.scope()) {
         return false;
     }
@@ -1244,6 +1390,10 @@ pub fn cap_covers(cap: &CapVal, need: &CapVal) -> bool {
 /// `git.*` authorizes every effect that starts with `git.`.
 #[must_use]
 pub fn cap_authorizes(cap: &CapVal, effect: &str, scope: Option<&[String]>) -> bool {
+    // 0.6: a `tool.call` part without a scope authorizes nothing.
+    if cap.ctor == TOOL_CALL && cap.scope.is_none() {
+        return false;
+    }
     if let Some(namespace) = cap
         .effect
         .strip_suffix('*')

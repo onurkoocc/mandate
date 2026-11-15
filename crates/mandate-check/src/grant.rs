@@ -49,7 +49,10 @@
 //! gives it; the one sort, of what [`grant`] grants, is stable, by the
 //! UTF-16 code units of the JSON text of each capability's kind and scope.
 
+use std::collections::HashMap;
 use std::iter;
+use std::marker::PhantomData;
+use std::ptr;
 use std::slice;
 
 use mandate_ir::{JsObject, JsValue, Value, compare_utf16, write_json_string};
@@ -373,6 +376,12 @@ fn sort_key(c: &CapVal) -> String {
     key
 }
 
+/// Whether `c` is the write part of a `tool.call` (0.6): a connector's
+/// write tools, which no agent is granted.
+fn write_tool(c: &Capability) -> bool {
+    c.cap.ctor() == crate::caps::TOOL_CALL && c.cap.write()
+}
+
 /// What the capabilities in force grant (C2, §9.1; spec/envelope.md
 /// "map"): what is available in a context, or what a delegation is granted
 /// in it. `grant(input)` of `bridge/src/authority.ts`.
@@ -393,6 +402,10 @@ fn sort_key(c: &CapVal) -> String {
 /// 5. out, sorted stably by [`sort_key`], compared by UTF-16 code units,
 ///    is [`GrantOutput::Granted`].
 ///
+/// One rule of 0.6 comes before them: a write part of a `tool.call` is
+/// never granted. In `own` it is refused as step 1 refuses; of `held` and
+/// `handed` it is left out. No capability of 0.1 to 0.5 is one.
+///
 /// Nothing is de-duplicated, and the capabilities are those of the input,
 /// every member kept.
 #[must_use]
@@ -401,15 +414,22 @@ pub fn grant(input: &GrantInput) -> GrantOutput {
     let Some(d) = &input.delegation else {
         return GrantOutput::Available(avail.into_iter().cloned().collect());
     };
-    if let Some(g) = d.own.iter().find(|g| !inside(&avail, g)) {
+    // 0.6: an agent is never granted a write tool of a connector, whatever
+    // `own`, `held`, `handed` and `bounds` say (E1406 holds it statically).
+    if let Some(g) = d.own.iter().find(|g| !inside(&avail, g) || write_tool(g)) {
         return GrantOutput::Refused(Refusal::OutsideAuthority {
             delegate: d.agent.clone(),
             capability: show_cap(&g.cap),
         });
     }
-    let mut out: Vec<&Capability> = d.held.iter().filter(|c| inside(&avail, c)).collect();
+    let mut out: Vec<&Capability> = d
+        .held
+        .iter()
+        .filter(|c| inside(&avail, c) && !write_tool(c))
+        .collect();
     let handed = input.context.handed.iter().filter(|k| {
-        !d.own.iter().any(|g| g.same_kind(k))
+        !write_tool(k)
+            && !d.own.iter().any(|g| g.same_kind(k))
             && (d.remote || d.held.iter().any(|h| cap_covers(&h.cap, &k.cap)))
     });
     let given: Vec<&Capability> = d.own.iter().chain(handed).collect();
@@ -501,6 +521,11 @@ pub fn narrow(input: &NarrowInput) -> NarrowOutput {
             requested,
         })
     };
+    // 0.6: a `tool.call` has no `.narrow(…)` (E1404), so the static checks
+    // let none through; this door refuses one too, before reading a value.
+    if base.cap.ctor() == crate::caps::TOOL_CALL {
+        return refused(Vec::new());
+    }
     let mut scope: Vec<String> = Vec::new();
     for (i, arg) in input.args.iter().enumerate() {
         let named: &[Value] = match arg {
@@ -561,41 +586,107 @@ pub struct MapScopesInput {
 }
 
 /// What one item of a map stands in, when it is not the map's own context:
-/// its context's `given` and `handed`. `ItemScopes`.
+/// its context's `given` and `handed`, with its own `with caps`.
+/// `ItemScopes`.
+///
+/// It borrows what [`map_scopes`] was given and copies none of it: the
+/// context's lists are those of the input, and of its `handed` it keeps
+/// only the places of the members it hands on.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ItemScopes {
-    /// The context's `given`, then the item's `with caps`.
-    pub given: Vec<Vec<Capability>>,
-    /// The context's `handed` of a kind the item's `with caps` does not
-    /// name, then the item's `with caps`.
-    pub handed: Vec<Capability>,
+pub struct ItemScopes<'a> {
+    /// The context the map stands in.
+    context: &'a AuthorityContext,
+    /// The item's `with caps`, not empty.
+    with: &'a [Capability],
+    /// The places, in the context's `handed`, of its members of a kind the
+    /// item's `with caps` does not name, in order.
+    kept: Vec<usize>,
 }
 
-impl ItemScopes {
+impl<'a> ItemScopes<'a> {
+    /// The context's `given`, then the item's `with caps`.
+    pub fn given(&self) -> impl Iterator<Item = &'a [Capability]> + use<'a> {
+        self.context
+            .given
+            .iter()
+            .map(Vec::as_slice)
+            .chain(iter::once(self.with))
+    }
+
+    /// The context's `handed` of a kind the item's `with caps` does not
+    /// name, then the item's `with caps`.
+    pub fn handed(&self) -> impl Iterator<Item = &'a Capability> + '_ {
+        let handed = &self.context.handed;
+        self.kept
+            .iter()
+            .filter_map(move |&k| handed.get(k))
+            .chain(self.with)
+    }
+
     /// `{ given, handed }`.
     #[must_use]
     pub fn to_js(&self) -> JsObject {
+        self.to_js_in(&mut Written::default())
+    }
+
+    /// `{ given, handed }`, each capability and list given by its text in
+    /// `written`.
+    fn to_js_in(&self, written: &mut Written<'a>) -> JsObject {
+        let given: Vec<JsValue> = self.given().map(|l| written.list(l)).collect();
+        let handed: Vec<JsValue> = self.handed().map(|c| written.cap(c)).collect();
         JsObject::new()
-            .with(
-                "given",
-                JsValue::Array(self.given.iter().map(Vec::as_slice).map(caps_js).collect()),
-            )
-            .with("handed", caps_js(&self.handed))
+            .with("given", JsValue::Array(given))
+            .with("handed", JsValue::Array(handed))
     }
 }
 
-/// What [`map_scopes`] gives: `MapScopesOutput`.
+/// The capabilities of an output, and its lists of them, each written once
+/// ([`JsValue::written`]) and then given by that text wherever the output
+/// repeats it, found by its place in the input. What is written is what
+/// [`Capability::to_js`] and [`caps_js`] give, so the output's text is
+/// theirs; only its size is not multiplied by how often a list repeats.
+#[derive(Default)]
+struct Written<'a> {
+    caps: HashMap<*const Capability, JsValue>,
+    lists: HashMap<*const [Capability], JsValue>,
+    /// Ties the places to the input they are of.
+    of: PhantomData<&'a Capability>,
+}
+
+impl<'a> Written<'a> {
+    /// The text of `c`.
+    fn cap(&mut self, c: &'a Capability) -> JsValue {
+        self.caps
+            .entry(ptr::from_ref(c))
+            .or_insert_with(|| JsValue::written(&JsValue::Object(c.to_js())))
+            .clone()
+    }
+
+    /// The text of the list `l`.
+    fn list(&mut self, l: &'a [Capability]) -> JsValue {
+        if let Some(known) = self.lists.get(&ptr::from_ref(l)) {
+            return known.clone();
+        }
+        let items: Vec<JsValue> = l.iter().map(|c| self.cap(c)).collect();
+        let text = JsValue::written(&JsValue::Array(items));
+        self.lists.insert(ptr::from_ref(l), text.clone());
+        text
+    }
+}
+
+/// What [`map_scopes`] gives: `MapScopesOutput`. It borrows the
+/// capabilities of the input.
 #[derive(Clone, Debug, PartialEq)]
-pub enum MapScopesOutput {
+pub enum MapScopesOutput<'a> {
     /// `{ items, writes }`: each item's scopes (`None`, `null`, for an item
     /// that stands in the map's context) and writes, in the order of the
     /// map's list.
     Scopes {
         /// Each item's scopes.
-        items: Vec<Option<ItemScopes>>,
+        items: Vec<Option<ItemScopes<'a>>>,
         /// Each item's writes: the members of its `with caps` whose `write`
         /// is truthy, in order.
-        writes: Vec<Vec<Capability>>,
+        writes: Vec<Vec<&'a Capability>>,
     },
     /// `{ partial: true }`: nothing refused so far, with items still to
     /// come.
@@ -604,25 +695,31 @@ pub enum MapScopesOutput {
     Refused(Refusal),
 }
 
-impl MapScopesOutput {
-    /// The TypeScript's result object.
+impl MapScopesOutput<'_> {
+    /// The TypeScript's result object. Each capability, and each list of
+    /// the context's `given`, is written once and repeated as that text
+    /// ([`JsValue::Json`]), so that the output holds the context's lists once
+    /// however many items repeat them; its JSON text is the same.
     #[must_use]
     pub fn to_js(&self) -> JsObject {
         match self {
-            MapScopesOutput::Scopes { items, writes } => JsObject::new()
-                .with(
-                    "items",
-                    JsValue::Array(
-                        items
-                            .iter()
-                            .map(|s| s.as_ref().map_or(JsValue::Null, |s| s.to_js().into()))
-                            .collect(),
-                    ),
-                )
-                .with(
-                    "writes",
-                    JsValue::Array(writes.iter().map(Vec::as_slice).map(caps_js).collect()),
-                ),
+            MapScopesOutput::Scopes { items, writes } => {
+                let mut written = Written::default();
+                let items: Vec<JsValue> = items
+                    .iter()
+                    .map(|s| {
+                        s.as_ref()
+                            .map_or(JsValue::Null, |s| s.to_js_in(&mut written).into())
+                    })
+                    .collect();
+                let writes: Vec<JsValue> = writes
+                    .iter()
+                    .map(|w| JsValue::Array(w.iter().map(|c| written.cap(c)).collect()))
+                    .collect();
+                JsObject::new()
+                    .with("items", JsValue::Array(items))
+                    .with("writes", JsValue::Array(writes))
+            }
             MapScopesOutput::Partial => JsObject::new().with("partial", true),
             MapScopesOutput::Refused(r) => JsObject::new().with("refused", r.to_js()),
         }
@@ -651,12 +748,16 @@ impl MapScopesOutput {
 /// b of item j overlaps a ([`writes_overlap`], b the first such), is
 /// refused ([`Refusal::OverlappingItems`]). Otherwise
 /// [`MapScopesOutput::Scopes`].
+///
+/// The output borrows the input's capabilities ([`ItemScopes`]): no item
+/// copies the context's lists, which the TypeScript shares among its items
+/// too.
 #[must_use]
-pub fn map_scopes(input: &MapScopesInput) -> MapScopesOutput {
+pub fn map_scopes(input: &MapScopesInput) -> MapScopesOutput<'_> {
     let context = &input.context;
     let outer = available(context);
-    let mut items: Vec<Option<ItemScopes>> = Vec::new();
-    let mut writes: Vec<Vec<&Capability>> = Vec::new();
+    let mut items: Vec<Option<ItemScopes<'_>>> = Vec::with_capacity(input.items.len());
+    let mut writes: Vec<Vec<&Capability>> = Vec::with_capacity(input.items.len());
     for (i, given) in input.items.iter().enumerate() {
         if let Some(g) = given.iter().find(|g| !inside(&outer, g)) {
             return MapScopesOutput::Refused(Refusal::ItemOutsideAuthority {
@@ -667,18 +768,14 @@ pub fn map_scopes(input: &MapScopesInput) -> MapScopesOutput {
         }
         items.push((!given.is_empty()).then(|| {
             ItemScopes {
-                given: context
-                    .given
-                    .iter()
-                    .chain(iter::once(given))
-                    .cloned()
-                    .collect(),
-                handed: context
+                context,
+                with: given,
+                kept: context
                     .handed
                     .iter()
-                    .filter(|c| !given.iter().any(|g| g.same_kind(c)))
-                    .chain(given)
-                    .cloned()
+                    .enumerate()
+                    .filter(|(_, c)| !given.iter().any(|g| g.same_kind(c)))
+                    .map(|(k, _)| k)
                     .collect(),
             }
         }));
@@ -703,13 +800,7 @@ pub fn map_scopes(input: &MapScopesInput) -> MapScopesOutput {
             }
         }
     }
-    MapScopesOutput::Scopes {
-        items,
-        writes: writes
-            .into_iter()
-            .map(|w| w.into_iter().cloned().collect())
-            .collect(),
-    }
+    MapScopesOutput::Scopes { items, writes }
 }
 
 /// A sub-program in flight, as [`in_flight_overlap`] compares it.

@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0220e",
+  "kind": "compile",
+  "title": "A tool whose result type is classed above its connector's class is refused in the module that declares it.",
+  "spec": [
+    "spec/library.md#declaration"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Order/class",
+      "value": "restricted"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0220",
+        "path": "/defs/erp/tools/list_orders",
+        "facts": {
+          "data_class": "restricted",
+          "allowed": "confidential",
+          "connector": "erp",
+          "tool": "list_orders"
+        }
+      }
+    ]
+  }
+}

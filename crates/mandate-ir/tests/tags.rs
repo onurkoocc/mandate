@@ -118,7 +118,12 @@ fn every_closed_set_of_the_schema_is_an_enum_with_the_same_values() {
         (
             "/$defs/Def",
             tag_values(&schema, "/$defs/Def", "kind"),
-            texts(DefKind::ALL, DefKind::as_str),
+            // The kinds of 0.1 to 0.5; the 0.6 schema's are checked below.
+            DefKind::ALL
+                .iter()
+                .filter(|k| k.since() < Language::V0_6)
+                .map(|k| k.as_str().to_owned())
+                .collect(),
         ),
         (
             "/$defs/Expr",
@@ -164,6 +169,12 @@ fn every_closed_set_of_the_schema_is_an_enum_with_the_same_values() {
     for (pointer, in_schema, in_enum) in &sets {
         assert_eq!(in_enum, in_schema, "the enum of {pointer} and the schema");
     }
+    // Every kind, those of 0.6 included, is a kind of the 0.6 schema.
+    assert_eq!(
+        texts(DefKind::ALL, DefKind::as_str),
+        tag_values(&schema_0_6, "/$defs/Def", "kind"),
+        "the kinds of the 0.6 schema"
+    );
     // A closed set the schema adds has no enum yet.
     let mut found = Vec::new();
     one_of_pointers(&schema, "", &mut found);

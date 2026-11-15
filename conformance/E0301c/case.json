@@ -1,0 +1,31 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0301c",
+  "kind": "compile",
+  "title": "A requires caps that stands for no capability is covered by none: the effect is refused in a program of 0.6 (B12).",
+  "spec": [
+    "spec/library.md#requires-caps-b12"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0301",
+        "path": "/defs/Publish/body/0/value",
+        "facts": {
+          "required": "publish"
+        }
+      },
+      {
+        "code": "MDT-W0310",
+        "path": "/defs/Publish/caps/0"
+      }
+    ]
+  }
+}

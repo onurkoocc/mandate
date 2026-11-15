@@ -1,0 +1,73 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1405e",
+  "kind": "compile",
+  "title": "A tool called in a workflow's ensures is refused: a tool is called in a workflow's body.",
+  "spec": [
+    "spec/library.md#toolcall"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Draft/ensures",
+      "value": {
+        "op": "binary",
+        "bop": ">=",
+        "left": {
+          "op": "call",
+          "callee": {
+            "op": "var",
+            "name": "len"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "erp"
+                  },
+                  "name": "list_orders"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "var",
+                      "name": "vendor_id"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "right": {
+          "op": "int",
+          "value": 0
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1405",
+        "path": "/defs/Draft/ensures/left/args/0/value",
+        "facts": {
+          "connector": "erp",
+          "tool": "list_orders",
+          "problem": "ensures"
+        }
+      }
+    ]
+  }
+}

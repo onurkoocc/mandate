@@ -1,0 +1,11 @@
+// A program that lists ErpRead from example.caps and writes a tool.call of
+// its connector, which it does not list (E1404).
+
+mandate @ 0.6
+
+module example.reach @ 0.1
+
+use std.{tool}
+use example.caps.{ErpRead}
+
+capability Mine = tool.call(erp, list_orders)

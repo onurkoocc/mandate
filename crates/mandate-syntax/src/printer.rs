@@ -48,11 +48,13 @@ type Printed = Result<String, String>;
 static NULL: Value = Value::Null;
 
 /// Definitions are printed by kind in this order, by name inside each kind.
-const KIND_ORDER: [DefKind; 13] = [
+/// A connector (0.6) comes before the capabilities, which name it.
+const KIND_ORDER: [DefKind; 14] = [
     DefKind::Role,
     DefKind::Interface,
     DefKind::Component,
     DefKind::Environment,
+    DefKind::Connector,
     DefKind::Capability,
     DefKind::Type,
     DefKind::Const,
@@ -376,7 +378,52 @@ fn print_def(name: &str, d: &Value) -> Printed {
         ]
         .join("\n")),
         DefKind::Environment => print_environment(name, d),
+        DefKind::Connector => print_connector(name, d),
     }
+}
+
+/// A connector (0.6, spec/library.md "Declaration"), which the TypeScript
+/// does not have: its server, `version` and `class` when given, then each
+/// tool with its class, a blank line between two tools.
+fn print_connector(name: &str, d: &Value) -> Printed {
+    let mut lines = vec![format!(
+        "connector {name} = mcp({})",
+        quoted(member(d, "mcp"))?
+    )];
+    if d.get("version").is_some() {
+        lines.push(format!("  version {}", quoted(member(d, "version"))?));
+    }
+    if d.get("class").is_some() {
+        lines.push(format!("  class   {}", show(d, "class")));
+    }
+    lines.push("{".to_owned());
+    for (i, (tn, t)) in entries(d, "tools").enumerate() {
+        if i > 0 {
+            lines.push(String::new());
+        }
+        lines.push(format!(
+            "  tool {tn}({}) -> {}",
+            params(items(t, "params"))?,
+            type_(member(t, "returns"))?
+        ));
+        for flag in ["read_only", "critical"] {
+            if truthy(member(t, flag)) {
+                lines.push(format!("    {flag}"));
+            }
+        }
+        for (key, words) in [
+            ("idempotency_key", "idempotency key"),
+            ("retry_class", "retry_class"),
+            ("reconcile_by", "reconcile by"),
+            ("compensation", "compensation"),
+        ] {
+            if t.get(key).is_some() {
+                lines.push(format!("    {words} {}", show(t, key)));
+            }
+        }
+    }
+    lines.push("}".to_owned());
+    Ok(lines.join("\n"))
 }
 
 /// `case "effect"` of `printDef`.

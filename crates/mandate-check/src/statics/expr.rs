@@ -547,6 +547,10 @@ impl<'a> Checker<'a> {
 
     /// The call `e`, its arguments typed (`args`).
     fn call_with(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str, args: Vec<Val>) -> Val {
+        // 0.6: `c.t(…)`, a tool of a connector, a member of its definition.
+        if let Some(v) = self.tool_call(e, frame, path, &args) {
+            return v;
+        }
         let p = e.callee().and_then(callee_path);
         let cls = max_class(args.iter().map(|a| a.cls));
         let local = p

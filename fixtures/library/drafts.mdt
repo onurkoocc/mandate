@@ -1,0 +1,45 @@
+// A program of language 0.6 that uses the connectors of the acme.connectors
+// fixture (acme.connectors/), which its checks are given, in each of the
+// three ways spec/library.md "Three uses" names: a read in a workflow's body
+// (the mailbox's invoices, the vendor's open orders), read-only tools in an
+// agent's loop (the matcher holds ErpRead), and a write as a critical effect
+// (the draft invoice). It is the compile-time side only: the runtime does
+// not run a program of 0.6 yet. Only the Rust compiler reads it.
+
+mandate @ 0.6
+
+module acme.finance.drafts @ 0.1
+
+use std.{model, tool}
+use acme.connectors.{erp, mailbox}
+use acme.connectors.types.{Invoice, Order, Match, DraftId}
+
+capability Inbox    = tool.call(mailbox, list_invoices)
+capability ErpRead  = tool.call(erp, list_open_orders)
+capability ErpDraft = tool.call(erp, post_draft_invoice)
+capability ModelStd = model.infer(tier: standard, max_class: confidential)
+
+/// A match is for the invoice it matches.
+contract Matched(inv: Invoice, m: Match) {
+  accept same_invoice "The match is for this invoice"
+    by static m.invoice_no == inv.invoice_no
+}
+
+agent Matcher {
+  role   "Matches one invoice to an open order of its vendor. Writes nothing."
+  caps   ErpRead, ModelStd
+  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }
+  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}
+}
+
+/// Matches one invoice and posts the match to the ERP as a draft.
+workflow DraftOne(inv: Invoice) -> Receipt<DraftId>
+  caps   Inbox, ErpRead, ErpDraft, ModelStd
+  budget { spend: 1 USD, time: 10m }
+{
+  let waiting = mailbox.list_invoices()
+  let orders = erp.list_open_orders(inv.vendor_id)
+  let m = delegate Matcher.match(inv)
+  let checked = verify m against Matched(inv, m)
+  effect erp.post_draft_invoice(checked) idempotent_by inv.invoice_no
+}

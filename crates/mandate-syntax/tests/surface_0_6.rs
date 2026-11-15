@@ -251,3 +251,81 @@ fn before_0_6_a_doc_line_is_a_comment() {
         .collect();
     assert_eq!(canonicalize(&p), canonicalize(&read(&stripped)));
 }
+
+/// A connector of 0.6 (spec/library.md "Declaration"), as the fixture of the
+/// acme.connectors library declares two.
+fn connectors_text() -> String {
+    mandate_testkit::read_text("fixtures/library/acme.connectors/connectors.mdt").unwrap()
+}
+
+#[test]
+fn a_connector_reads_to_its_ir_and_prints_back() {
+    let p = read(&connectors_text());
+    let erp = def(&p, "erp");
+    assert_eq!(
+        canonicalize(
+            erp.get("tools")
+                .and_then(|t| t.get("post_draft_invoice"))
+                .unwrap()
+        ),
+        r#"{"compensation":"delete_draft_invoice","critical":true,"idempotency_key":"key","params":[{"name":"m","type":{"args":[{"ref":"Match"}],"ref":"Verified"}},{"name":"key","type":{"ref":"Text"}}],"reconcile_by":"find_draft_invoice","retry_class":"reconcilable","returns":{"args":[{"ref":"DraftId"}],"ref":"Receipt"}}"#
+    );
+    for (member, value) in [
+        ("kind", "connector"),
+        ("mcp", "https://erp.acme.example/mcp"),
+        ("version", "2.3"),
+        ("class", "confidential"),
+    ] {
+        assert_eq!(
+            erp.get(member).and_then(Value::as_str),
+            Some(value),
+            "{member}"
+        );
+    }
+    assert_eq!(erp.get("pub"), Some(&Value::Bool(true)));
+    assert!(erp.get("doc").is_some());
+    let printed = print_program(&p).unwrap();
+    assert_eq!(canonicalize(&read(&printed)), canonicalize(&p), "{printed}");
+    assert_eq!(print_program(&read(&printed)).unwrap(), printed);
+}
+
+#[test]
+fn a_connectors_parts_are_held_to_its_grammar() {
+    let text = connectors_text();
+    // A doc line documents a definition, not a tool.
+    let doc_on_tool = text.replacen(
+        "  tool list_invoices()",
+        "  /// The invoices.\n  tool list_invoices()",
+        1,
+    );
+    assert_eq!(refused(&doc_on_tool).0, "MDT-E0101");
+    // A tool's class is given once, and its retry class is one there is.
+    let twice = text.replacen("    read_only\n", "    read_only\n    read_only\n", 1);
+    assert_eq!(refused(&twice).0, "MDT-E0101");
+    let unknown = text.replacen("retry_class idempotent", "retry_class sometimes", 1);
+    assert_eq!(refused(&unknown).0, "MDT-E0101");
+    // A tool declared twice is E1402, where it is read.
+    let dup = text.replacen(
+        "  tool list_invoices() -> Untrusted<List<Invoice>>\n    read_only\n",
+        "  tool list_invoices() -> Untrusted<List<Invoice>>\n    read_only\n  tool list_invoices() -> Untrusted<List<Invoice>>\n    read_only\n",
+        1,
+    );
+    let loaded = load(&dup, SourceKind::Mdt);
+    let codes: Vec<&str> = loaded.diagnostics.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(codes, ["MDT-E1402"]);
+}
+
+/// The words of a connector are contextual: a program of 0.5 reads
+/// `connector` as it always did (no declaration), and every word a connector
+/// takes is still a name.
+#[test]
+fn before_0_6_a_connector_is_no_declaration() {
+    let old = connectors_text()
+        .replace("mandate @ 0.6", "mandate @ 0.5")
+        .replace("pub connector", "connector");
+    let (code, message, _) = refused(&old);
+    assert_eq!(code, "MDT-E0101");
+    assert_eq!(message, "Expected a declaration but found 'connector'.");
+    let names = "mandate @ 0.6\n\nmodule m @ 0.1\n\ntype T = { connector: Text, tool: Text, read_only: Bool, critical: Bool, idempotency: Text, key: Text, retry_class: Text, reconcile: Text, by: Text, compensation: Text, mcp: Text, version: Text, class: Text }\n";
+    read(names);
+}

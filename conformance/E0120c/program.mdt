@@ -1,0 +1,20 @@
+// A program that lists the ERP and none of its types: list_open_orders
+// gives Untrusted<List<Order>>, and this program has no Order, so its uses
+// of the tool are refused (E0120).
+
+mandate @ 0.6
+
+module example.reader @ 0.1
+
+use std.{tool}
+use acme.connectors.{erp}
+
+capability ErpRead = tool.call(erp, list_open_orders)
+
+workflow Orders(vendor_id: Text) -> Text
+  caps   ErpRead
+  budget { time: 1m }
+{
+  let orders = erp.list_open_orders(vendor_id)
+  vendor_id
+}

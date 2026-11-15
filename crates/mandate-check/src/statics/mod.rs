@@ -29,6 +29,7 @@
 mod authority;
 mod expr;
 mod system;
+mod tools;
 
 pub use system::lead_classes;
 
@@ -234,6 +235,9 @@ pub(crate) struct Frame<'a> {
     pub(crate) envelope: Option<Bound<'a>>,
     /// `inMap`: inside a map's body, the map's path.
     pub(crate) in_map: Option<String>,
+    /// 0.6 (Rust only): typed in a workflow's frame without being its body:
+    /// its `ensures`, where no connector's tool is called (E1405).
+    pub(crate) beside_body: bool,
 }
 
 impl<'a> Frame<'a> {
@@ -252,6 +256,7 @@ impl<'a> Frame<'a> {
             max_class: None,
             envelope: None,
             in_map: None,
+            beside_body: false,
         }
     }
 
@@ -422,7 +427,7 @@ pub(crate) fn canonical_parts(program: Program<'_>, linked: Option<&Map>) -> (Va
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
-    let defs = match linked {
+    let mut defs = match linked {
         Some(linked) => {
             let mut merged = linked.clone();
             for (k, v) in own.iter() {
@@ -435,6 +440,15 @@ pub(crate) fn canonical_parts(program: Program<'_>, linked: Option<&Map>) -> (Va
         }
         None => own,
     };
+    // 0.6: the program's own connectors are of its module (an imported one
+    // says its module already, `crate::modules::link`).
+    if let Some(module) = program.module() {
+        let own: Vec<&str> = program
+            .defs()
+            .map(|d| d.keys().collect())
+            .unwrap_or_default();
+        crate::modules::mark_own_connectors(&mut defs, &own, module);
+    }
     (canonical_program, defs)
 }
 
@@ -590,6 +604,7 @@ impl<'a> Checker<'a> {
                 Some(DefKind::Agent) => self.check_agent(name, d, &base),
                 Some(DefKind::Workflow) => self.check_workflow(name, d, &base),
                 Some(DefKind::Contract) => self.check_contract(name, d, &base),
+                Some(DefKind::Connector) => self.check_connector(name, d, &base),
                 _ => {}
             }
         }
@@ -641,6 +656,10 @@ impl<'a> Checker<'a> {
 
     /// `isCriticalEffect(name)`.
     pub(crate) fn is_critical_effect(&self, name: &str) -> bool {
+        // 0.6: a connector's write tool is a critical effect, `c.t`.
+        if let Some(r) = self.connector_tool(name) {
+            return r.tool.is_write();
+        }
         match self.def(name) {
             Some(d) if d.kind() == Some(DefKind::Effect) => {
                 truthy(d.value().get("critical")) || truthy(d.value().get("irreversible"))

@@ -1,0 +1,32 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1408b",
+  "kind": "compile",
+  "title": "A lock entry of a connector of a module the program does not import is refused, though the check is given that module: the package is the program and what it imports.",
+  "spec": [
+    "spec/library.md#the-lock-binding-and-schema-digests"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "crm.mdt"
+  ],
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1408",
+        "path": "/connectors/example.crm.crm",
+        "facts": {
+          "connector": "example.crm.crm",
+          "problem": "no_connector"
+        }
+      }
+    ]
+  }
+}

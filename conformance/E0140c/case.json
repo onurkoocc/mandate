@@ -1,0 +1,29 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0140c",
+  "kind": "compile",
+  "title": "A connector's template in a lock of 0.6 holds {secret} exactly once.",
+  "spec": [
+    "spec/lock.md#libraries-and-connectors-06",
+    "spec/library.md#lock-06"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0140",
+        "path": "/connectors/example.erp.erp/template",
+        "facts": {
+          "connector": "example.erp.erp"
+        }
+      }
+    ]
+  }
+}
