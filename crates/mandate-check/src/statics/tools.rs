@@ -396,14 +396,18 @@ impl<'a> Checker<'a> {
 
     /// Where a tool is called, when that is not a workflow's body.
     fn outside_workflow(&mut self, r: &ToolRef<'a>, frame: &Frame<'a>, path: &str) -> bool {
-        if frame.where_ == Where::Workflow {
+        if frame.where_ == Where::Workflow && !frame.beside_body {
             return false;
         }
-        let where_ = frame.where_.as_str();
+        let (problem, where_) = if frame.beside_body {
+            ("ensures", "workflow's ensures")
+        } else {
+            (frame.where_.as_str(), frame.where_.as_str())
+        };
         self.misplaced(
             r,
             path,
-            where_,
+            problem,
             format!(
                 "The tool {} is called in a {where_}. A connector's tools are called only in a workflow's body: a read-only one as an expression, a write one as a critical effect (an agent's loop calls the read-only tools its delegation grants) (spec/library.md \"tool.call\").",
                 r.shown()

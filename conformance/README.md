@@ -319,6 +319,7 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E0120c` | A program that calls a tool whose types it does not import: the type names of the signature are not the connector module's definitions in it | E0120 |
 | `E0120d` | A program whose own `Match` stands where the tool means the types module's `Match` | E0120 |
 | `E1408b` | A lock entry of a connector of a module the program does not import, though the check is given it | E1408 |
+| `E1405e` | A tool called in a workflow's `ensures` | E1405 |
 
 The import cases share the 0.6 module `E1602/types.mdt` and the program
 `E1602/program.mdt`; the connector cases share `T01/program.mdt`, a program
@@ -369,13 +370,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 193, passed 193, pending 0
+conformance cases: ran 194, passed 194, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 68 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 69 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(209 cases: 193 `compile`, 68 of them of language 0.6, and 16 `journal`; no case
+(210 cases: 194 `compile`, 69 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

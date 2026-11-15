@@ -235,6 +235,9 @@ pub(crate) struct Frame<'a> {
     pub(crate) envelope: Option<Bound<'a>>,
     /// `inMap`: inside a map's body, the map's path.
     pub(crate) in_map: Option<String>,
+    /// 0.6 (Rust only): typed in a workflow's frame without being its body:
+    /// its `ensures`, where no connector's tool is called (E1405).
+    pub(crate) beside_body: bool,
 }
 
 impl<'a> Frame<'a> {
@@ -253,6 +256,7 @@ impl<'a> Frame<'a> {
             max_class: None,
             envelope: None,
             in_map: None,
+            beside_body: false,
         }
     }
 

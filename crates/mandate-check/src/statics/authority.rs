@@ -825,6 +825,7 @@ impl<'a> Checker<'a> {
                 Val::public(frame.returns.clone().unwrap_or(UNKNOWN)),
             );
             let mut inner = Self::child(&frame, vars);
+            inner.beside_body = true;
             let v = self.expr(ensures, &mut inner, &at);
             self.expect_bool(&v, &at);
         }
