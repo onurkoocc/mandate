@@ -816,7 +816,14 @@ impl<'a> Checker<'a> {
                     None,
                 );
                 let ty = args.first().map_or(UNKNOWN, |a| a.ty.clone());
-                return Val::like(epistemic(&ty).inner, of);
+                let inner = epistemic(&ty).inner;
+                // 0.6: peek of what the checker cannot tell (a name that
+                // names nothing, which no one reports in a call's arguments,
+                // among them) is of a type it cannot tell either.
+                if self.at_least(Language::V0_6) && matches!(inner, Ty::Unknown) {
+                    return self.untyped(inner, of);
+                }
+                return Val::like(inner, of);
             }
             _ => {}
         }
@@ -830,10 +837,7 @@ impl<'a> Checker<'a> {
             }
             // 0.6: what a policy decides of anything but a decision is of a
             // type the checker cannot tell.
-            if self.at_least(Language::V0_6) && !matches!(ep.inner, Ty::Unknown) {
-                return self.untyped(named("DecisionOutcome", vec![UNKNOWN]), of);
-            }
-            return Val::like(named("DecisionOutcome", vec![UNKNOWN]), of);
+            return self.untyped(named("DecisionOutcome", vec![UNKNOWN]), of);
         }
         let callee = e.callee();
         let module_root = |c: &Checker<'a>| callee.is_some_and(|x| c.is_module_root(x, frame));
@@ -1019,7 +1023,16 @@ impl<'a> Checker<'a> {
                 }
                 Some(ft) => {
                     let ft = ft.clone();
-                    let actual = with_level(ep.inner, epistemic(&ft).level, None);
+                    let field_level = epistemic(&ft).level;
+                    // 0.6: a field declared Verified holds the value it is
+                    // given, as the runtime's record does: only a verified
+                    // one, else the record would make it one when read.
+                    let actual = if field_level == Level::Verified && self.at_least(Language::V0_6)
+                    {
+                        v.ty.clone()
+                    } else {
+                        with_level(ep.inner, field_level, None)
+                    };
                     let p = assignable(&actual, &ft, self);
                     if p.is_some() {
                         self.problem(p, at);

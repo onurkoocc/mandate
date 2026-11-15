@@ -1134,6 +1134,110 @@
       }
     },
     {
+      "name": "E0201c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0201",
+            "severity": "error",
+            "message": "Expected Verified<Change> but got Change; verify the value first.",
+            "at": {
+              "path": "/defs/Land/body/1/value/fields/m",
+              "span": [35, 26, 35, 32]
+            },
+            "docs": "mandate explain MDT-E0201"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [20, 15, 20, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [26, 15, 26, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0201d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0207",
+            "severity": "warning",
+            "message": "peek(\u2026) reads model output as a plain value; use it only for read-only, effect-free inspection (R7).",
+            "at": {
+              "path": "/defs/Land/body/1/value/args/0/value",
+              "span": [34, 20, 34, 33]
+            },
+            "docs": "mandate explain MDT-W0207"
+          },
+          {
+            "code": "MDT-E0201",
+            "severity": "error",
+            "message": "Expected Verified<?> but got ?, a value of a form whose type the checker cannot tell, so it cannot tell that the value is verified. A value goes where a verified one is required only when it is known to be one: verify it first.",
+            "at": {
+              "path": "/defs/Land/body/1/value/args/0/value",
+              "span": [34, 20, 34, 33]
+            },
+            "docs": "mandate explain MDT-E0201"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [19, 15, 19, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [25, 15, 25, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
       "name": "E0210a",
       "kind": "compile",
       "door": "check_patched",

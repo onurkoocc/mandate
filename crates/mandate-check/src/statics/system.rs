@@ -807,7 +807,12 @@ impl<'a> Checker<'a> {
                 Some(JsObject::new().with("cycle", strings_js(&cycle))),
             );
         }
-        Val::new(named("Receipt", vec![Ty::Unknown]), plan.cls)
+        // 0.6: the runtime's receipt of the landing, of a type the checker
+        // does not tell.
+        Val {
+            silent: self.at_least(Language::V0_6),
+            ..Val::new(named("Receipt", vec![Ty::Unknown]), plan.cls)
+        }
     }
 }
 

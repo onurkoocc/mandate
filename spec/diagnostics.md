@@ -292,6 +292,9 @@ the run is done and does nothing, is E0408 at the effect, with the facts
 `effect` and `place: "ensures"` (E0408b; a tool there is E1405). A value of a form the checker still cannot type, of which no
 diagnostic already stands for the unknown (a field of a type it sees no
 fields of, a range, the result of a standard effect the table does not
-type, a constant on a cycle, a name the runtime gives as itself), is never
-accepted where a verified value is required: E0201, at that place. A program
+type, a constant on a cycle, a name the runtime gives as itself, what
+`peek` gives of such a value, E0201d), is never accepted where a verified
+value is required: E0201, at that place. A record's field declared
+`Verified` takes only a verified value, as the record holds what it is
+given: E0201 (or E0210, E0211, E0212) at the field (E0201c). A program
 of 0.1 to 0.5 is typed as before.
