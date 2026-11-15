@@ -274,7 +274,7 @@ fn at_path(problem: Problem, base: &str, spans: Option<&Spans>) -> Diagnostic {
         problem.code,
         problem.message,
         Location::path_span(path, span),
-        Some(problem.facts),
+        Some(*problem.facts),
     )
 }
 
@@ -604,7 +604,7 @@ fn application<'a>(
     // module that was not checked carries nothing in unseen.
     if let Some(m) = module {
         for problem in check_pattern(&site) {
-            let mut facts = problem.facts;
+            let mut facts = *problem.facts;
             facts.insert("module", m);
             facts.insert("pattern_path", format!("{pattern_base}{}", problem.at));
             push(
@@ -684,7 +684,7 @@ fn application<'a>(
             problem.code,
             problem.message,
             problem.at,
-            problem.facts,
+            *problem.facts,
         );
     }
     if has_errors(&diags) {
@@ -870,7 +870,7 @@ fn application<'a>(
             problem.code,
             problem.message,
             problem.at,
-            problem.facts,
+            *problem.facts,
         );
     }
     if has_errors(&diags) {
