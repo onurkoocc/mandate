@@ -466,9 +466,7 @@ pub(crate) struct Checker<'a> {
 
 impl TypeEnv for Checker<'_> {
     fn type_def(&self, name: &str) -> Option<&Value> {
-        self.def(name)
-            .filter(|d| d.kind() == Some(DefKind::Type))
-            .map(Definition::value)
+        self.def_of(name, DefKind::Type).map(Definition::value)
     }
 
     fn is_contract(&self, name: &str) -> bool {
@@ -611,8 +609,15 @@ impl<'a> Checker<'a> {
         self.defs.get(name).map(Definition::of)
     }
 
-    /// The definition `name` when it is of kind `kind`.
+    /// The definition `name` when it is of kind `kind`. In a program of 0.6
+    /// a type named `Review` or `Declined` is the built-in one, never a
+    /// definition (E0121 refuses one, and one a module the program does not
+    /// list might still be linked), so that a review is typed as the language
+    /// types it.
     pub(crate) fn def_of(&self, name: &str, kind: DefKind) -> Option<Definition<'a>> {
+        if kind == DefKind::Type && self.review_type(name) {
+            return None;
+        }
         self.def(name).filter(|d| d.kind() == Some(kind))
     }
 

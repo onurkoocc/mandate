@@ -236,6 +236,34 @@ fn a_declined_item_of_untrusted_content_stays_untrusted() {
     assert_eq!(checked(&typed), Vec::<String>::new());
 }
 
+/// No module of 0.6 defines a type `Review` or `Declined` either: it does not
+/// load (E0121), as no program does (cases E0121c, E0121d). A module of 0.5
+/// may, as before, and a program of 0.6 that does not list it reads the
+/// built-in one.
+#[test]
+fn no_module_of_0_6_names_a_type_review_or_declined() {
+    let decl = |language: &str| {
+        format!(
+            "mandate @ {language}\n\nmodule example.decl @ 0.1\n\ntype Declined = {{ index: Int }}\n"
+        )
+    };
+    for (language, codes) in [("0.6", vec!["MDT-E0121"]), ("0.5", vec![])] {
+        let text = decl(language);
+        let sources = [ModuleSource {
+            text: &text,
+            kind: SourceKind::Mdt,
+            file: "decl.mdt",
+        }];
+        let r = load_modules(&sources);
+        let got: Vec<String> = r
+            .problems
+            .iter()
+            .flat_map(|p| p.diagnostics.iter().map(|d| d.code.clone()))
+            .collect();
+        assert_eq!(got, codes, "{language}");
+    }
+}
+
 /// `Review` and `Declined` are built-in types of a program of 0.6, which only
 /// the runtime makes; `Review`'s second argument is a contract. In an
 /// earlier program they name nothing.

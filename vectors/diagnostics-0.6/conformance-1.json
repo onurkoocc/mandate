@@ -581,6 +581,74 @@
       }
     },
     {
+      "name": "E0121c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../H06/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'Declined' is a built-in type of 0.6, what a review gives; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a review's accepted and declined items are typed as the language types them (spec/library.md \"human.review\").",
+            "at": {
+              "path": "/defs/Declined",
+              "span": [1, 7017, 1, 7237]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "Declined",
+              "builtin": "type"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../H06/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "decl.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'Declined' is a built-in type of 0.6, what a review gives; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a review's accepted and declined items are typed as the language types them (spec/library.md \"human.review\").",
+            "at": {
+              "path": "/uses/1/names/0",
+              "span": [1, 7099, 1, 7109]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "Declined",
+              "builtin": "type"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0140",
       "kind": "compile",
       "door": "check",

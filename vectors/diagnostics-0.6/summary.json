@@ -1,18 +1,18 @@
 {
   "format": "mandate/vectors/diagnostics/summary/0.1",
-  "conformance_cases": 122,
+  "conformance_cases": 124,
   "conformance_by_door": {
     "check": 40,
-    "check_patched": 82
+    "check_patched": 84
   },
   "golden_results": 19,
-  "diagnostics": 221,
+  "diagnostics": 223,
   "by_code": {
     "MDT-E0101": 7,
     "MDT-E0103": 1,
     "MDT-E0104": 4,
     "MDT-E0120": 12,
-    "MDT-E0121": 2,
+    "MDT-E0121": 4,
     "MDT-E0140": 7,
     "MDT-E0210": 1,
     "MDT-E0220": 5,

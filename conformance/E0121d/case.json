@@ -1,0 +1,44 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0121d",
+  "kind": "compile",
+  "title": "Nor does a use list bring one of that name from another module, here a module of 0.5 whose own type Declined it is (a mutation: one use added).",
+  "spec": [
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "decl.mdt"
+  ],
+  "patch": [
+    {
+      "op": "add",
+      "path": "/uses/-",
+      "value": {
+        "module": "example.decl",
+        "names": [
+          "Declined"
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0121",
+        "path": "/uses/1/names/0",
+        "facts": {
+          "name": "Declined",
+          "builtin": "type"
+        }
+      }
+    ]
+  }
+}

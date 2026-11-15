@@ -193,12 +193,11 @@ fn role_text(v: &Value) -> String {
 impl<'a> Checker<'a> {
     // ── the built-in types ──────────────────────────────────────────────
 
-    /// Whether `name` is the built-in `Review` or `Declined` of this program:
-    /// one of 0.6 that defines no type of that name itself.
+    /// Whether `name` is the built-in `Review` or `Declined` of this program,
+    /// one of 0.6. No definition takes either name there (E0121), and the
+    /// checker never reads one that would ([`Checker::def_of`]).
     pub(crate) fn review_type(&self, name: &str) -> bool {
-        self.at_least(Language::V0_6)
-            && (name == REVIEW || name == DECLINED)
-            && self.def_of(name, DefKind::Type).is_none()
+        self.at_least(Language::V0_6) && (name == REVIEW || name == DECLINED)
     }
 
     /// The built-in `Review` or `Declined` that `ty` mentions, which only the

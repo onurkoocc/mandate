@@ -250,5 +250,9 @@ names a role, and with the lock it is held by a member, E1502.
 an earlier program they name nothing, E0120), whose `C` is a contract as
 `Verified`'s is (E0120 otherwise), and which only the runtime makes: a
 record of either, a model's answer, a skill's or host code's result that
-names one is E0213. A `human.review` is a `human.*` step, so E1708 in a
-map's body (E1708l).
+names one is E0213. No definition of a program, a module or a sub-program
+of 0.6 takes either name, and no `use` list brings one of that name from
+another module: E0121, at the definition or the listed name, with the facts
+`name` and `builtin: "type"` (E0121c, E0121d), so that what types a review
+is the language's alone. A `human.review` is a `human.*` step, so E1708 in
+a map's body (E1708l).

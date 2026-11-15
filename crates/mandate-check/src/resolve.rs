@@ -297,8 +297,12 @@ impl<'a> Resolver<'a> {
     /// 0.6: no definition of a program takes the name of a built-in effect
     /// (`Tool`, `Model`, `Fs.Read` …, and `Tool.Write`, the effect of a
     /// `tool.call`'s write tools): a definition so named would decide what
-    /// covers that effect. E0121, the collision of a name with one the
-    /// language has, at the definition. Before 0.6 such a name is read as it
+    /// covers that effect. Nor of a built-in type of 0.6, `Review` or
+    /// `Declined`, whose fields say what a review accepted and what it
+    /// declined: neither a definition nor a name a `use` lists from another
+    /// module, so that what types a review is the language's alone. E0121,
+    /// the collision of a name with one the language has, at the definition
+    /// or at the name in the list. Before 0.6 such a name is read as it
     /// always was.
     fn builtin_effect_names(&mut self) {
         if !self
@@ -309,20 +313,47 @@ impl<'a> Resolver<'a> {
             return;
         }
         for name in self.defs.keys() {
-            if !is_builtin_effect(name) && name != TOOL_WRITE_EFFECT {
+            let builtin = if is_builtin_effect(name) || name == TOOL_WRITE_EFFECT {
+                "effect"
+            } else if BUILTIN_TYPES_0_6.contains(&name) {
+                "type"
+            } else {
+                continue;
+            };
+            let path = ptr(&[&"defs", &name]);
+            self.language_name(&path, name, builtin);
+        }
+        let program = self.program;
+        for (i, u) in program.use_values().iter().enumerate() {
+            let Some(u) = Import::of(u) else { continue };
+            if u.module().is_none_or(KnownModules::is_builtin) {
                 continue;
             }
-            let path = ptr(&[&"defs", &name]);
-            let span = nearest_span(self.spans, &path);
-            self.out.push(Diagnostic::new(
-                "E0121",
-                format!(
-                    "'{name}' is the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\")."
-                ),
-                Location::path_span(&path, span),
-                Some(JsObject::new().with("name", name).with("builtin", "effect")),
-            ));
+            for (j, n) in u.names_given().unwrap_or_default().iter().enumerate() {
+                let Some(name) = n.as_str() else { continue };
+                if BUILTIN_TYPES_0_6.contains(&name) {
+                    let path = format!("/uses/{i}/names/{j}");
+                    self.language_name(&path, name, "type");
+                }
+            }
         }
+    }
+
+    /// E0121 at `path` for `name`, a name the language has as a `builtin`
+    /// (`effect`, `type`).
+    fn language_name(&mut self, path: &str, name: &str, builtin: &str) {
+        let span = nearest_span(self.spans, path);
+        let why = if builtin == "type" {
+            "a built-in type of 0.6, what a review gives; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a review's accepted and declined items are typed as the language types them (spec/library.md \"human.review\")"
+        } else {
+            "the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\")"
+        };
+        self.out.push(Diagnostic::new(
+            "E0121",
+            format!("'{name}' is {why}."),
+            Location::path_span(path, span),
+            Some(JsObject::new().with("name", name).with("builtin", builtin)),
+        ));
     }
 
     fn run(&mut self) {
@@ -742,9 +773,7 @@ impl<'a> Resolver<'a> {
                 // list is truthy.
                 let bare = a.has(TypeForm::Ref) && a.args().is_none();
                 // 0.6: so does the C of the built-in Review<T, C>.
-                let review = r == "Review"
-                    && self.builtin_types.contains(&"Review")
-                    && self.def_kind(r) != Some(DefKind::Type);
+                let review = r == "Review" && self.builtin_types.contains(&"Review");
                 if (r == "Verified" || review) && i == 1 && bare {
                     let ar = a.ref_name().unwrap_or_default();
                     if self.def_kind(ar) != Some(DefKind::Contract) && !self.imported.contains(&ar)
