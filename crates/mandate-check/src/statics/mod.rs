@@ -439,7 +439,11 @@ pub(crate) fn canonical_parts(program: Program<'_>, linked: Option<&Map>) -> (Va
     // 0.6: the program's own connectors are of its module (an imported one
     // says its module already, `crate::modules::link`).
     if let Some(module) = program.module() {
-        crate::modules::mark_connectors(&mut defs, module);
+        let own: Vec<&str> = program
+            .defs()
+            .map(|d| d.keys().collect())
+            .unwrap_or_default();
+        crate::modules::mark_own_connectors(&mut defs, &own, module);
     }
     (canonical_program, defs)
 }
