@@ -25,6 +25,7 @@
   "connectors": {
     "example.erp.erp": {
       "credential": "acme_erp",
+      "url": "https://erp.example.com/mcp",
       "tools": {
         "list_orders": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
         "find_draft": "sha256:2222222222222222222222222222222222222222222222222222222222222222",

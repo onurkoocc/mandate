@@ -318,7 +318,83 @@ pub fn lock_limits_diff(before: Option<&Value>, after: Option<&Value>) -> LockLi
             }
         }
     }
+    connector_changes(&mut out, before, after);
     out
+}
+
+/// 0.6: what changed in the lock's `connectors`, the credential each
+/// connector's requests carry and where it goes (spec/library.md "Lock 0.6"):
+/// an entry added, and its `credential`, `url`, `header` or `template`
+/// changed, and a tool's schema digest added or changed, are governance
+/// changes; an entry or a digest taken away is a behavior change. A lock
+/// older than 0.6 has no `connectors`, so nothing here applies to it.
+fn connector_changes(out: &mut LockLimitsDiff, before: Option<&Value>, after: Option<&Value>) {
+    let bc = object(before, "connectors");
+    let ac = object(after, "connectors");
+    for id in names(bc, ac) {
+        let b = bc.and_then(|c| c.get(&id)).and_then(Value::as_object);
+        let a = ac.and_then(|c| c.get(&id)).and_then(Value::as_object);
+        let path = format!("/connectors/{}", ptr_token(&id));
+        let (b, a) = match (b, a) {
+            (None, Some(a)) => {
+                out.governance.push(Change::new(
+                    path,
+                    format!(
+                        "+ connector {id}: credential {} to {}",
+                        js_text(a.get("credential")),
+                        js_text(a.get("url"))
+                    ),
+                ));
+                continue;
+            }
+            (Some(_), None) => {
+                out.behavior.push(Change::new(
+                    path,
+                    format!("- connector {id} no longer bound"),
+                ));
+                continue;
+            }
+            (Some(b), Some(a)) => (b, a),
+            (None, None) => continue,
+        };
+        for field in ["credential", "url", "header", "template"] {
+            let (was, now) = (b.get(field), a.get(field));
+            if !same(was, now) {
+                out.governance.push(Change::new(
+                    format!("{path}/{field}"),
+                    format!(
+                        "~ connector {id}.{field}: {} → {}",
+                        js_text(was),
+                        js_text(now)
+                    ),
+                ));
+            }
+        }
+        let (bt, at) = (
+            b.get("tools").and_then(Value::as_object),
+            a.get("tools").and_then(Value::as_object),
+        );
+        for tool in names(bt, at) {
+            let (was, now) = (bt.and_then(|t| t.get(&tool)), at.and_then(|t| t.get(&tool)));
+            if same(was, now) {
+                continue;
+            }
+            let at_tool = format!("{path}/tools/{}", ptr_token(&tool));
+            let change = Change::new(
+                at_tool,
+                format!(
+                    "~ connector {id}.{tool}: schema {} → {}",
+                    js_text(was),
+                    js_text(now)
+                ),
+            );
+            if now.is_some() {
+                out.governance.push(change);
+            } else {
+                out.behavior.push(change);
+            }
+        }
+    }
 }
 
 /// `was === now` for two members that may be missing: equal when both are

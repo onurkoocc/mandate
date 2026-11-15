@@ -749,3 +749,95 @@ fn a_programs_own_connector_is_of_its_module_whatever_it_says() {
         Some(&["example.evil.erp.post_draft_invoice".to_owned()][..])
     );
 }
+
+/// N4: what a lock binds a connector to, its credential and where it goes,
+/// is a governance change when it is added or changed; taken away, a
+/// behavior change.
+#[test]
+fn a_connectors_binding_in_the_lock_is_governance() {
+    let lock = |entry: &str| {
+        mandate_ir::parse(&format!(
+            r#"{{"lock":"mandate/lock/0.6","modules":{{}},"connectors":{{{entry}}}}}"#
+        ))
+        .unwrap()
+        .value
+    };
+    let digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+    let other = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+    let entry = |credential: &str, url: &str, d: &str| {
+        format!(
+            r#""example.erp.erp":{{"credential":"{credential}","url":"{url}","tools":{{"list_orders":"{d}"}}}}"#
+        )
+    };
+    let base = lock(&entry("acme_erp", "https://erp.example.com/mcp", digest));
+    let gov = |after: &Value| -> (Vec<String>, Vec<String>) {
+        let d = mandate_check::lock_limits_diff(Some(&base), Some(after));
+        (
+            d.governance.iter().map(|c| c.path.clone()).collect(),
+            d.behavior.iter().map(|c| c.path.clone()).collect(),
+        )
+    };
+    let none: Vec<String> = Vec::new();
+    let added = mandate_check::lock_limits_diff(Some(&lock("")), Some(&base));
+    assert_eq!(
+        added
+            .governance
+            .iter()
+            .map(|c| c.path.as_str())
+            .collect::<Vec<_>>(),
+        ["/connectors/example.erp.erp"]
+    );
+    assert_eq!(
+        gov(&lock(&entry(
+            "acme_other",
+            "https://erp.example.com/mcp",
+            digest
+        ))),
+        (
+            vec!["/connectors/example.erp.erp/credential".to_owned()],
+            none.clone()
+        )
+    );
+    assert_eq!(
+        gov(&lock(&entry(
+            "acme_erp",
+            "https://erp.example.org/mcp",
+            digest
+        ))),
+        (
+            vec!["/connectors/example.erp.erp/url".to_owned()],
+            none.clone()
+        )
+    );
+    assert_eq!(
+        gov(&lock(&entry(
+            "acme_erp",
+            "https://erp.example.com/mcp",
+            other
+        ))),
+        (
+            vec!["/connectors/example.erp.erp/tools/list_orders".to_owned()],
+            none.clone()
+        )
+    );
+    let with_template = lock(
+        &entry("acme_erp", "https://erp.example.com/mcp", digest).replace(
+            r#""tools""#,
+            r#""header":"x-api-key","template":"{secret}","tools""#,
+        ),
+    );
+    assert_eq!(
+        gov(&with_template),
+        (
+            vec![
+                "/connectors/example.erp.erp/header".to_owned(),
+                "/connectors/example.erp.erp/template".to_owned()
+            ],
+            none.clone()
+        )
+    );
+    assert_eq!(
+        gov(&lock("")),
+        (none, vec!["/connectors/example.erp.erp".to_owned()])
+    );
+}

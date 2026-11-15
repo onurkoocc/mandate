@@ -1029,6 +1029,27 @@ pub fn connector_lock_checks(
         else {
             continue;
         };
+        // The credential goes to the URL the lock names, which is the one
+        // the connector declares.
+        let bound = entry.get("url").and_then(Value::as_str);
+        if bound != c.mcp() {
+            out.push(Diagnostic::new(
+                "E1407",
+                format!(
+                    "The lock binds the connector {id} at {}, and it declares {}: the credential goes to the URL the lock names.",
+                    bound.unwrap_or("no URL"),
+                    c.mcp().unwrap_or("no URL")
+                ),
+                Location::path(ptr(&[&"connectors", &id, &"url"])),
+                Some(
+                    JsObject::new()
+                        .with("connector", id.as_str())
+                        .with("problem", "url")
+                        .with("url", bound)
+                        .with("declared", c.mcp()),
+                ),
+            ));
+        }
         let tools = entry.get("tools");
         for (tool, _) in c.tools() {
             if own(tools, tool).is_none() {

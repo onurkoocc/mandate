@@ -691,6 +691,21 @@
           {
             "code": "MDT-E0140",
             "severity": "error",
+            "message": "The lock file does not match spec/lock-0.6.schema.json: /connectors/acme.connectors.erp must have required property 'url'",
+            "at": {
+              "path": "/connectors/acme.connectors.erp"
+            },
+            "docs": "mandate explain MDT-E0140",
+            "facts": {
+              "keyword": "required",
+              "params": {
+                "missingProperty": "url"
+              }
+            }
+          },
+          {
+            "code": "MDT-E0140",
+            "severity": "error",
             "message": "The lock file does not match spec/lock-0.6.schema.json: /connectors/acme.connectors.erp/credential must match pattern \"^[A-Za-z][A-Za-z0-9_-]{0,63}$\"",
             "at": {
               "path": "/connectors/acme.connectors.erp/credential"
@@ -1579,6 +1594,38 @@
               "connector": "example.erp.erp",
               "tool": "find_draft",
               "problem": "no_digest"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1407b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1407",
+            "severity": "error",
+            "message": "The lock binds the connector example.erp.erp at https://erp.example.org/mcp, and it declares https://erp.example.com/mcp: the credential goes to the URL the lock names.",
+            "at": {
+              "path": "/connectors/example.erp.erp/url"
+            },
+            "docs": "mandate explain MDT-E1407",
+            "facts": {
+              "connector": "example.erp.erp",
+              "problem": "url",
+              "url": "https://erp.example.org/mcp",
+              "declared": "https://erp.example.com/mcp"
             }
           }
         ]
