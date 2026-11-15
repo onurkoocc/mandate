@@ -11,6 +11,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { CODES as TS_CODES } from "../../compiler/src/index.js";
 import { EXEMPTIONS } from "../src/compare.js";
 import { answerOf, MAX_ANSWER_BYTES, requestText, unrepresentable, WasmHost, WASI_IMPORTS } from "../src/wasm/host.js";
 import { CompilerFailure, DoorRefusal } from "../src/wasm/errors.js";
@@ -159,17 +160,18 @@ needs("the module", () => {
         }
         let out = outputText(runs[0]!);
         if (c.expected.output !== undefined ? out !== c.expected.output : sha(out) !== c.expected.sha256) {
-          // The one rule of the Rust's own (vectors/README.md, "The versions only the Rust compiler reads").
+          // The rules of the Rust's own (vectors/README.md, "The versions only the Rust compiler reads" and "The
+          // codes only the Rust compiler has"; crates/mandate-testkit/src/rust_only.rs).
           const parsed = JSON.parse(out) as unknown;
-          const n = tables.normalize!(undefined, c.door === "tables" ? tablesAsTypescript(parsed) : parsed, [], "check");
-          out = JSON.stringify(n.rust);
+          const as = c.door === "tables" ? tablesAsTypescript(parsed) : c.door === "codes" ? codesAsTypescript(parsed) : parsed;
+          out = JSON.stringify(tables.normalize!(undefined, as, [], "check").rust);
           if (c.expected.output !== undefined ? out !== c.expected.output : sha(out) !== c.expected.sha256) wrong.push(`${c.name}: ${outputText(runs[0]!).slice(0, 300)}`);
           else changedByRule++;
         }
       }
       expect(wrong).toEqual([]);
-      // The tables call alone: as rust_only::PINNED pins it for these calls.
-      expect(changedByRule).toBe(1);
+      // The tables call and the codes call: as rust_only::PINNED pins them for these calls.
+      expect(changedByRule).toBe(2);
       for (const h of Object.values(hosts!)) {
         expect(h.imported["clock_time_get"]).toBe(0);
         expect(h.imported["random_get"]).toBeGreaterThan(0);
@@ -375,6 +377,14 @@ function tablesAsTypescript(v: unknown): unknown {
   if (Array.isArray(o["LANGUAGE_VERSIONS"])) o["LANGUAGE_VERSIONS"] = (o["LANGUAGE_VERSIONS"] as string[]).filter((x) => x !== "mandate/0.6");
   if (o["LANGUAGE_VERSION"] === "mandate/0.6") o["LANGUAGE_VERSION"] = "mandate/0.5";
   return o;
+}
+
+/**
+ * The `codes` output without the rows only the Rust compiler has (rust_only.rs, RUST_CODES: the codes of 0.6, whose
+ * reference is the Rust), read here as the rows the TypeScript's table lacks.
+ */
+function codesAsTypescript(v: unknown): unknown {
+  return Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([k]) => Object.hasOwn(TS_CODES, k)));
 }
 
 function sha(text: string): string {
