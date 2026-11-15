@@ -474,3 +474,19 @@ fn a_card_with_an_envelope_is_the_card_it_was() {
     let after: Vec<Block> = without_bound.into_iter().filter(|b| !signed(b)).collect();
     assert_eq!(before, after);
 }
+
+/// Before 0.6 `tool.call` stands for nothing: a program that says 0.5 and
+/// uses it has no connector tools in its authority view, as the TypeScript
+/// shows it.
+#[test]
+fn a_program_of_0_5_has_no_connector_tools() {
+    let mut members = program("fixtures/library/review.mdt")
+        .as_object()
+        .unwrap()
+        .clone();
+    members.insert("language", "mandate/0.5");
+    let p = Value::Object(members);
+    let view = mandate_views::authority_with(&p, Some(&library_modules()));
+    assert!(view.rows.iter().all(|r| r.tools.is_empty()), "{view:?}");
+    assert!(!text_of(&view.to_js()).contains("tools"));
+}

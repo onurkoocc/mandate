@@ -67,6 +67,17 @@ fn described(facts: Vec<ToolFact>) -> Vec<String> {
     unique_in_order(tools)
 }
 
+/// The tools a list of capabilities names, as a row shows them: only in a
+/// program of 0.6, where `tool.call` is a capability; before it, it stands
+/// for nothing and a row has no tools.
+fn tools_when(is_0_6: bool, program: Program<'_>, list: &[Value]) -> Vec<String> {
+    if is_0_6 {
+        described(tool_facts_of(program, list))
+    } else {
+        Vec::new()
+    }
+}
+
 /// The tools of the capabilities `caps` name, as a row shows them, sorted.
 fn tools_of(program: Program<'_>, caps: &[CapVal]) -> Vec<String> {
     described(tool_facts(program, caps))
@@ -292,7 +303,7 @@ pub fn authority_with(program: &Value, modules: Option<&Modules>) -> AuthorityVi
                     kind: "agent",
                     effects: Vec::new(),
                     authority: authority_of(&caps),
-                    tools: described(tool_facts_of(lp, Definition::of(d).caps())),
+                    tools: tools_when(is_0_6, lp, Definition::of(d).caps()),
                 });
             }
         }
@@ -311,7 +322,7 @@ pub fn authority_with(program: &Value, modules: Option<&Modules>) -> AuthorityVi
                 kind: "workflow",
                 effects,
                 authority: authority_of(&caps),
-                tools: described(tool_facts_of(lp, workflow_bounds(d).caps)),
+                tools: tools_when(is_0_6, lp, workflow_bounds(d).caps),
             });
             let mut walk = Walk {
                 program: lp,
