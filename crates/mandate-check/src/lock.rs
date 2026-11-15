@@ -52,7 +52,7 @@ pub use mandate_ir::{
 use crate::caps::{CapOptions, cap_from_call, caps_of};
 use crate::managed_agents::{agent_models, binding_checks};
 use crate::modules::{Linked, Modules};
-use crate::roles::role_sites;
+use crate::roles::role_sites_of;
 
 // ---------------------------------------------------------------------------
 // The lock as a view
@@ -818,7 +818,7 @@ pub fn role_lock_checks(
         return Vec::new();
     }
     let mut out: Vec<Diagnostic> = Vec::new();
-    let sites: Vec<_> = role_sites(&linked.defs)
+    let sites: Vec<_> = role_sites_of(&linked.defs, program.language())
         .into_iter()
         .filter(|s| s.role.is_some())
         .collect();

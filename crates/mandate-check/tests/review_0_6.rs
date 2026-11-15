@@ -17,9 +17,9 @@
 
 use mandate_check::{
     CheckOptions, ModuleSource, Modules, check, governance_changes, load_modules, role_sites,
-    semantic_diff,
+    role_sites_of, roles_named, semantic_diff,
 };
-use mandate_ir::{JsValue, Value};
+use mandate_ir::{JsValue, Language, Value};
 use mandate_syntax::{SourceKind, load};
 use mandate_testkit::read_text;
 
@@ -364,8 +364,9 @@ fn a_review_of_a_map_that_returns_is_refused() {
     assert_eq!(fact(&d[0], "problem").as_deref(), Some("returns"));
 }
 
-/// The roles a waiver names are role definitions (E1501), listed among the
-/// places a program names a role, which the lock's E1502 reads.
+/// The roles a waiver names are role definitions (E1501), places a program of
+/// 0.6 names a role, which the lock's E1502 reads too; `role_sites` and
+/// `roles_named`, the TypeScript's doors, do not list them.
 #[test]
 fn a_waivers_roles_are_roles() {
     let text = read_text(REVIEW).unwrap();
@@ -387,12 +388,18 @@ fn a_waivers_roles_are_roles() {
         Some("a criterion's waiver")
     );
     let program = load(&text, SourceKind::Mdt).program.unwrap();
-    let sites: Vec<(String, String)> =
-        role_sites(program.get("defs").unwrap().as_object().unwrap())
-            .into_iter()
-            .filter(|s| s.r#where == "a criterion's waiver")
-            .map(|s| (s.role.unwrap_or_default(), s.path))
-            .collect();
+    let defs = program.get("defs").unwrap().as_object().unwrap();
+    assert!(
+        role_sites(defs)
+            .iter()
+            .all(|s| s.r#where != "a criterion's waiver")
+    );
+    assert!(roles_named(defs).is_empty());
+    let sites: Vec<(String, String)> = role_sites_of(defs, Some(Language::V0_6))
+        .into_iter()
+        .filter(|s| s.r#where == "a criterion's waiver")
+        .map(|s| (s.role.unwrap_or_default(), s.path))
+        .collect();
     assert_eq!(
         sites,
         [
