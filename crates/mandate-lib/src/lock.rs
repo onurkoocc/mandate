@@ -39,6 +39,17 @@ pub struct LockLibrary {
 }
 
 impl LockLibrary {
+    /// The pin of what was found: its version, its digest and its modules,
+    /// as `mandate add` and `upgrade` write it into the lock.
+    #[must_use]
+    pub fn of_found(found: &FoundLibrary) -> LockLibrary {
+        LockLibrary {
+            version: found.version,
+            digest: found.digest.clone(),
+            modules: found.modules.clone(),
+        }
+    }
+
     /// The version the lock resolved.
     #[must_use]
     pub const fn version(&self) -> &Version {

@@ -24,7 +24,8 @@
 //!   member ([`read_libraries_config`]).
 //! - **Resolution** ([`resolve`]): the highest version within the range,
 //!   whose waiting period is over and which is not revoked.
-//! - **Publish's version rule** ([`plan_publish`], [`Above::judge`]: E1607's
+//! - **Publish's version rule** ([`plan_publish`], [`Above::judge`], and
+//!   [`lowest_above`] with [`judge_next`] for the version above: E1607's
 //!   facts).
 //!
 //! # What it is held to
@@ -87,7 +88,9 @@ pub use name::{
     check_module_path, check_name, is_device_name, is_name, is_reserved_name, module_belongs_to,
 };
 pub use problem::{JsonFault, ShapeProblem, json_type};
-pub use publish::{Above, BaseComparison, PublishPlan, PublishProblem, plan_publish};
+pub use publish::{
+    Above, BaseComparison, PublishPlan, PublishProblem, judge_next, lowest_above, plan_publish,
+};
 pub use resolve::{Candidate, PassedOver, Resolution, Resolve, ResolveProblem, Skipped, resolve};
 pub use time::{Day, MAX_UNIX_SECONDS, TimeFault, Timestamp, WAIT_DAYS_MAX, WaitDays};
 pub use version::{Range, VERSION_COMPONENT_MAX, Version, VersionFault};
