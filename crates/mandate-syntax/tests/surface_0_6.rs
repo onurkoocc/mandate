@@ -573,7 +573,9 @@ fn an_envelopes_shapes_read_to_a_sorted_set_and_print_back() {
         ),
         SourceKind::Mdt,
     );
-    let found: Vec<(String, String, Option<(usize, usize)>)> = twice
+    /// A diagnostic's code, its message and where it starts.
+    type Found = (String, String, Option<(usize, usize)>);
+    let found: Vec<Found> = twice
         .diagnostics
         .iter()
         .map(|d| {
