@@ -307,8 +307,14 @@ pub fn role_sites_of(defs: &Map, language: Option<Language>) -> Vec<RoleSite> {
 }
 
 /// The roles the definitions name, each once, sorted: `rolesNamed(defs)`.
+/// 0.6: a workflow that applies a pattern the definitions hold is read as its
+/// expansion, so that it names the roles its body asks, as the same workflow
+/// written out does (`crate::expand::expanded_program`); one whose pattern
+/// the definitions do not hold names none until it is expanded.
 #[must_use]
 pub fn roles_named(defs: &Map) -> Vec<String> {
+    let expanded = expanded_defs(defs);
+    let defs = expanded.as_ref().unwrap_or(defs);
     let mut out: Vec<String> = Vec::new();
     for s in role_sites(defs) {
         if let Some(r) = s.role
@@ -319,6 +325,24 @@ pub fn roles_named(defs: &Map) -> Vec<String> {
     }
     sort_utf16(&mut out);
     out
+}
+
+/// The definitions with each workflow that applies a pattern they hold
+/// replaced by its expansion, when one does and every application expands.
+fn expanded_defs(defs: &Map) -> Option<Map> {
+    if !defs
+        .iter()
+        .any(|(_, d)| mandate_ir::Application::of_workflow(d).is_some())
+    {
+        return None;
+    }
+    let mut program = Map::new();
+    program.insert("language", Language::V0_6.as_str());
+    program.insert("defs", Value::Object(defs.clone()));
+    crate::expand::expanded_program(&Value::Object(program), None)?
+        .get("defs")?
+        .as_object()
+        .cloned()
 }
 
 /// `where` at the start of a sentence: "A component's owner", but

@@ -222,6 +222,26 @@ describe("the mandate command line equals the compiler's own", () => {
     );
   });
 
+  // Language 0.6, which the compiler's own command line does not read: `mandate view` gives the views the modules it
+  // has, so that a workflow that applies a pattern of one of them is shown as its expansion (its commit, its review,
+  // and its cost, 60 delegations of the map's bound at 0.30 USD).
+  it.skipIf(process.env["MANDATE_COMPILER"] === "ts")("gives the views of a program of 0.6 its modules", async () => {
+    const modules = ["fixtures/library/acme.connectors/types.mdt", "fixtures/library/acme.connectors/connectors.mdt", "fixtures/library/batch.patterns.mdt"].flatMap((m) => ["--module", R(m)]);
+    const dir = join(work, "view-0.6");
+    mkdirSync(dir, { recursive: true });
+    const r = await run(tree.bridgeCli, ["view", R("fixtures/library/batch.mdt"), ...modules, "--format", "json"], dir);
+    expect(r.code, r.err).toBe(0);
+    const v = JSON.parse(r.out) as {
+      authority: { rows: Array<{ who: string; effects: string[] }> };
+      architecture: { workflows: Array<{ nodes: Array<{ label: string }> }> };
+      cost: { workflows: Array<{ rows: Array<{ times: number }>; total: string }> };
+    };
+    expect(v.authority.rows.find((x) => x.who === "MatchInvoices")?.effects.map((e) => e.split(" (")[0])).toEqual(["erp.post_draft_invoice"]);
+    expect(v.architecture.workflows[0]!.nodes.map((n) => n.label)).toContain("person: review");
+    expect(v.cost.workflows[0]!.rows[0]!.times).toBe(60);
+    expect(v.cost.workflows[0]!.total).toBe("18 USD · 3600000 tokens · 240 steps");
+  }, 60_000);
+
   it("hands the control commands over by the same dynamic import of the runtime's command line, which the bridge does not depend on", () => {
     const text = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
     expect(text).toContain('const specifier: string = "@mandate/runtime/cli";');

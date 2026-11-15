@@ -80,6 +80,7 @@ import {
   type PatchOp,
 } from "./index.js";
 import { serveStdio } from "./mcp.js";
+import { viewModules } from "./util.js";
 import { CompilerFailure } from "./wasm/errors.js";
 
 function usage(): never {
@@ -336,10 +337,14 @@ function main(argv: string[]): void {
         // The old version's lock, for who could decide before; none next to the old file is no lock, not an error.
         const beforeLock = readLock(against, againstLock, false);
         const locks = { ...(beforeLock ? { before: beforeLock } : {}), ...(lock ? { after: lock } : {}) };
-        const v = semanticDiff(before, program, locks);
-        process.stdout.write(format === "json" ? JSON.stringify(v, null, 2) + "\n" : format === "html" ? toHtml(diffDoc(before, program, locks)) : toMarkdown(diffDoc(before, program, locks)));
+        // 0.6: what a workflow that applies a pattern of a module commits, read from its expansion.
+        const m = viewModules(modules, before, program);
+        const v = semanticDiff(before, program, locks, m);
+        process.stdout.write(format === "json" ? JSON.stringify(v, null, 2) + "\n" : format === "html" ? toHtml(diffDoc(before, program, locks, m)) : toMarkdown(diffDoc(before, program, locks, m)));
       } else if (format === "json") {
-        const views = { architecture: architecture(program), authority: authority(program), cost: cost(program, lock) };
+        // 0.6: a workflow that applies a pattern of a module is shown as its expansion.
+        const m = viewModules(modules, program);
+        const views = { architecture: architecture(program, m), authority: authority(program, m), cost: cost(program, lock, m) };
         process.stdout.write(JSON.stringify(views, null, 2) + "\n");
       } else {
         process.stdout.write(format === "html" ? toHtml(programDoc(program, lock)) : toMarkdown(programDoc(program, lock)));

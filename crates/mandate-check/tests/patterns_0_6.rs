@@ -447,6 +447,34 @@ fn a_slot_argument_nests_no_deeper_than_the_reader_allows() {
     );
 }
 
+/// `roles_named` (the bridge's `rolesNamed`, which the runtime's test lock
+/// binds a member to each of) reads a workflow that applies a pattern the
+/// definitions hold as its expansion: it names the roles the expansion asks,
+/// as it names those the same workflow written out asks.
+#[test]
+fn the_roles_an_expansion_asks_are_roles_the_program_names() {
+    let defs = |text: &str| {
+        let p = mandate_syntax::load(text, SourceKind::Mdt).program.unwrap();
+        p.get("defs").and_then(Value::as_object).unwrap().clone()
+    };
+    let head = "mandate @ 0.6\n\nmodule m @ 0.1\n\nuse std.{human, fs}\n\nrole owner \"Owner\"\nrole admin \"Admin\"\n\ncapability R = fs.read(\"/w\")\n\n";
+    let applied = format!(
+        "{head}/// Asks.\npattern Ask(r: role) -> Bool {{\n  human.approve(\"go?\", role: r)\n}}\n\n/// Asks the admin.\nworkflow W = Ask(r: admin)\n  caps R\n"
+    );
+    let written = format!(
+        "{head}/// Asks the admin.\nworkflow W() -> Bool\n  caps R\n  budget {{ time: 1m }}\n{{\n  human.approve(\"go?\", role: admin)\n}}\n"
+    );
+    assert_eq!(mandate_check::roles_named(&defs(&written)), ["admin"]);
+    assert_eq!(mandate_check::roles_named(&defs(&applied)), ["admin"]);
+    // The acceptance program and its flow written out name the same: a review
+    // is no role site (its role is held by E1507), so neither names one.
+    let file = |f: &str| defs(&read_text(f).unwrap());
+    assert_eq!(
+        mandate_check::roles_named(&file("conformance/P02/program.mdt")),
+        mandate_check::roles_named(&file(REVIEW))
+    );
+}
+
 /// `static_cost` is the checker's count of a workflow written out; an
 /// application has none until it is expanded, and the count of its
 /// expansion is that of the workflow it becomes.
