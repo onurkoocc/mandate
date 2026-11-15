@@ -6669,7 +6669,7 @@
             "message": "par 6 runs more items at once than the envelope lets delegations be in flight (spawn.max_concurrent: 4) (spec/envelope.md \"map\").",
             "at": {
               "path": "/defs/Look/apply/args/1/value",
-              "span": [1, 395, 1, 417]
+              "span": [1, 402, 1, 424]
             },
             "docs": "mandate explain MDT-E1703",
             "facts": {
@@ -6677,6 +6677,39 @@
               "max_concurrent": 4,
               "slot": "width",
               "expanded_path": "/defs/Look/body/1/value/par"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "P06b",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../P06/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1705",
+            "severity": "error",
+            "message": "A sub-program's workflow takes no parameters ('Look' takes 1): nothing calls it with arguments. Write the values it works on into the sub-program.",
+            "at": {
+              "path": "/defs/Look/apply"
+            },
+            "docs": "mandate explain MDT-E1705",
+            "facts": {
+              "def": "Look",
+              "kind": "parameters",
+              "params": 1
             }
           }
         ]

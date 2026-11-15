@@ -196,7 +196,7 @@ pub(crate) fn kind_in(slots: &[(&str, &str)], n: &str) -> Option<&'static str> {
 }
 
 /// The names of the slots of `p`, with their kinds.
-pub(crate) fn slots_of<'a>(p: PatternDef<'a>) -> Vec<(&'a str, &'a str)> {
+pub(crate) fn slots_of(p: PatternDef<'_>) -> Vec<(&str, &str)> {
     p.slots()
         .map(|s| (s.name().unwrap_or_default(), s.kind().unwrap_or_default()))
         .collect()

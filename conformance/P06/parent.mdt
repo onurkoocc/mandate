@@ -38,6 +38,14 @@ pattern Each(work: skill(Item) -> Inferred<Text>, width: const Int) -> List<Outc
   }
 }
 
+/// The items it is run with, each looked at by `work`: a pattern with a run
+/// parameter, which a sub-program's workflow cannot take (P06b).
+pattern Over(work: skill(Item) -> Inferred<Text>) (items: List<Item>) -> List<Outcome<Inferred<Text>>> {
+  map i in items max 2 {
+    delegate work(i)
+  }
+}
+
 workflow Run(items: List<Item>) -> Inferred<Text>
   envelope {
     owner   owner_role

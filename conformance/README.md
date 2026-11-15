@@ -358,7 +358,7 @@ The cases of patterns (spec/library.md "Patterns") are mutations of
 it, but for those with a program of their own (`P02b`, `P04`, `E1304k`,
 `E1304l`), those of an imported pattern (`P05`, `E1306d`, `E1602d`, `E1602e`,
 on `fixtures/library/batch.mdt` and its modules) and those of a sub-program
-(`P06`, `P06a`, on `P06/parent.mdt`):
+(`P06` to `P06b`, on `P06/parent.mdt`):
 
 | Case | Mutation | Expected |
 |---|---|---|
@@ -371,6 +371,7 @@ on `fixtures/library/batch.mdt` and its modules) and those of a sub-program
 | `P05` | An imported pattern applied: the program hash covers the application | — |
 | `P06` | A sub-program that applies its parent's pattern, admitted | — |
 | `P06a` | The same with a width above the envelope's `max_concurrent`, at the argument | E1703 |
+| `P06b` | A sub-program that applies a pattern with a run parameter: its workflow takes one | E1705 |
 | `E1301` to `E1301f` | A slot of no kind, two slots of one name, a type parameter twice, a signature its kind does not take, no body, a tool slot delegated to, a map counted by a role slot | E1301 |
 | `E1302` to `E1302f` | An effect run with `effect`, an agent, a connector's tool, a capability constructor in `with caps`, a role, a contract a person approves through a type, an agent through a function: each other than through a slot | E1302 |
 | `E1303`, `E1303a` | An agent applied; a name nothing defines | E1303 |
@@ -450,13 +451,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 294, passed 294, pending 0
+conformance cases: ran 295, passed 295, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 169 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 170 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(310 cases: 294 `compile`, 169 of them of language 0.6, and 16 `journal`; no case
+(311 cases: 295 `compile`, 170 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the
