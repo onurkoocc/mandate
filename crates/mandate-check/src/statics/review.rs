@@ -289,14 +289,17 @@ impl<'a> Checker<'a> {
         for (group, criteria) in [("accept", accept), ("invariant", invariant)] {
             for (cn, c) in criteria {
                 let Some(cr) = Criterion::of(c) else { continue };
-                if cr.waive().is_empty() || !c.get("by").is_some_and(asks_approval) {
+                let asks = c
+                    .get("by")
+                    .is_some_and(|by| asks_approval(by) || self.calls_an_approval(by));
+                if cr.waive().is_empty() || !asks {
                     continue;
                 }
                 let roles: Vec<JsValue> = cr.waive().iter().map(JsValue::from).collect();
                 self.report(
                     "E1504",
                     format!(
-                        "{name}.{cn} is met by human.approve, so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\")."
+                        "{name}.{cn} asks a person (human.approve, in its method or in a function it calls), so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\")."
                     ),
                     &format!("{base}/{group}/{cn}/waive"),
                     Some(
@@ -308,6 +311,65 @@ impl<'a> Checker<'a> {
                 );
             }
         }
+    }
+
+    /// Whether the verifier `v` calls a function of the program whose body,
+    /// or a function it calls, through any number of calls (each once),
+    /// holds `human.approve`: a criterion so met asks a person as one that
+    /// calls `human.approve` itself does (E1504).
+    fn calls_an_approval(&self, v: &Value) -> bool {
+        let mut seen = HashSet::new();
+        let mut found = false;
+        self.fn_callees(v, &mut |name| {
+            found = found || self.fn_asks_approval(name, &mut seen);
+        });
+        found
+    }
+
+    /// Each function of the program that `v` calls by name, anywhere in it.
+    fn fn_callees(&self, v: &Value, each: &mut dyn FnMut(&str)) {
+        match v {
+            Value::Array(items) => {
+                for x in items {
+                    self.fn_callees(x, each);
+                }
+            }
+            Value::Object(o) => {
+                if let Some(e) = Expr::of(v).filter(|e| e.is(ExprOp::Call))
+                    && let Some(name) = e
+                        .callee()
+                        .filter(|c| c.is(ExprOp::Var))
+                        .and_then(Expr::name)
+                    && self.def_of(name, DefKind::Fn).is_some()
+                {
+                    each(name);
+                }
+                for (_, x) in o.iter() {
+                    self.fn_callees(x, each);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Whether the function `name`'s body, or a function it calls, holds a
+    /// call of `human.approve` (each function once).
+    fn fn_asks_approval(&self, name: &str, seen: &mut HashSet<String>) -> bool {
+        let Some(f) = self.def_of(name, DefKind::Fn) else {
+            return false;
+        };
+        if !seen.insert(name.to_owned()) {
+            return false;
+        }
+        let body = Value::Array(f.body().to_vec());
+        if asks_approval(&body) {
+            return true;
+        }
+        let mut found = false;
+        self.fn_callees(&body, &mut |callee| {
+            found = found || self.fn_asks_approval(callee, seen);
+        });
+        found
     }
 
     /// The first contract with a waiver that `ty` mentions as what a value

@@ -2138,7 +2138,7 @@
           {
             "code": "MDT-E1504",
             "severity": "error",
-            "message": "Signed.signed is met by human.approve, so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\").",
+            "message": "Signed.signed asks a person (human.approve, in its method or in a function it calls), so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\").",
             "at": {
               "path": "/defs/Signed/accept/signed/waive",
               "span": [1, 7318, 1, 7332]
@@ -2194,7 +2194,7 @@
           {
             "code": "MDT-E1504",
             "severity": "error",
-            "message": "Signed.signed is met by human.approve, so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\").",
+            "message": "Signed.signed asks a person (human.approve, in its method or in a function it calls), so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\").",
             "at": {
               "path": "/defs/Signed/accept/signed/waive",
               "span": [1, 7366, 1, 7380]
@@ -2207,6 +2207,72 @@
                 "accountant"
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1504b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../H06/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4141, 1, 4419]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 3855, 1, 4059]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E1504",
+            "severity": "error",
+            "message": "Signed.signed asks a person (human.approve, in its method or in a function it calls), so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\").",
+            "at": {
+              "path": "/defs/Signed/accept/signed/waive",
+              "span": [1, 7879, 1, 7893]
+            },
+            "docs": "mandate explain MDT-E1504",
+            "facts": {
+              "contract": "Signed",
+              "criterion": "signed",
+              "waive": [
+                "accountant"
+              ]
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Signed.signed: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Signed/accept/signed/by/static",
+              "span": [1, 7775, 1, 7869]
+            },
+            "docs": "mandate explain MDT-W0601"
           }
         ]
       }
