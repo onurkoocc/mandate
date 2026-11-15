@@ -1250,7 +1250,7 @@ the compiler's order. The gates that do this:
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
 | JSON doors | the output text of every call of `crates/*/tests/json_doors/inputs.json`, each through a door of `doors.json` beside it and through the TypeScript function it stands for, serialised by the door contract (`scripts/json-doors-vectors.mjs`, its function `doorJson`); every door has a call | 159 calls over 46 doors (`mandate-check`) and 68 over 13 (`mandate-views`), each also through the dispatcher of `mandate-doors` | `crates/mandate-check/tests/json_doors.rs`, `crates/mandate-views/tests/json_doors.rs`, `crates/mandate-doors/tests/doors.rs` |
-| run-time authority decisions | the output of every recorded case of `bridge/test/authority-cases.json` and every generated case of `authority/cases.json` (see its section), through the JSON door of its function, twice, as a value and as text | 167 and 1227 | `crates/mandate-check/tests/authority.rs` |
+| run-time authority decisions | the output of every recorded case of `bridge/test/authority-cases.json` and every generated case of `authority/cases.json` (see its section), through the JSON door of its function, twice, as a value and as text | 169 and 1227 | `crates/mandate-check/tests/authority.rs` |
 
 Each gate prints `ran N, passed M, pending K`. A pending item is held to failing by
 omission only (the Rust gives the stored diagnostics with some left out, in order, and
@@ -1375,3 +1375,40 @@ fails when an entry of a list passes or names nothing.
   the strict reader refuses (`left_out` in `vectors/corpus/summary.json`). The same
   `summary.json` says that a call is also left out when it gave two results or holds a
   credential-shaped string; none does.
+- **`LAXER` in `crates/mandate-views/tests/json_doors.rs`: 12 documents and views the
+  views' doors refuse where the TypeScript answers.** Each is outside the TypeScript's
+  types (a string where an array is, which the TypeScript iterates as its characters; a
+  mark or a language that is not of its type, read by its truthiness or written as text;
+  a member of a view that is not of its type, written as it is), and the typed reader of
+  the Rust's doors answers `bad_input` (`to_markdown`, `to_html`, `architecture_blocks`,
+  `authority_blocks`). The test holds each to that refusal and names what the TypeScript
+  gives. No document or view the compiler makes has such a member, and the bridge's
+  `both` mode excuses none: a call with one is a divergence.
+- **A lone UTF-16 surrogate in a document given to `toMarkdown` or `toHtml`, through
+  the bridge.** A request to the module cannot carry one (its reader refuses it, as the
+  IR's does), and a document can hold text a model wrote. So the bridge sends each lone
+  surrogate of the document as U+FFFD (`bridge/src/rust.ts`, `wellFormed`), and the Rust
+  writes U+FFFD where the TypeScript writes the surrogate through. The bridge's `both`
+  mode compares the two with the TypeScript's lone surrogates as U+FFFD (the rule
+  `rendering-lone-surrogate` of `bridge/src/compare.ts`). Every other value a request
+  cannot carry is the next entry's.
+- **A value a request cannot carry, through the bridge in `rust` mode: answered by the
+  TypeScript, refused by the bridge.** The module's strict reader takes integers within
+  ±(2^53−1) only, no −0, no lone UTF-16 surrogate, at most 128 levels of nesting; JSON
+  has no hole in an array and no `undefined` in one, which `JSON.stringify` would write as
+  `null` where the TypeScript reads them otherwise. A value of these (a fraction, −0, a lone
+  surrogate anywhere but a document given to `toMarkdown` or `toHtml`, a hole, an
+  `undefined` item, nesting past 128, or what is not JSON at all) is never changed to fit:
+  the bridge refuses the call (`CompilerFailure`, kind `unrepresentable`, naming where by a
+  JSON Pointer and what kind of value, never a string's text). The TypeScript answers it
+  (an E0106 or E0107 for a program or a lock, a refusal or an answer elsewhere). What each
+  caller then gives: a package loaded with such a program or lock is refused
+  (`load_verification_failed`, where the TypeScript gives the diagnostic and also refuses
+  it); a lead's sub-program or amendment that holds one is `check_failed`, with the pointer,
+  where the TypeScript gives the E0106 or E0107; a run whose narrowing, map or delegation
+  meets one at run time stops for a person (`compiler_failed`), where the TypeScript
+  answers (`notText`, a `bad_scope` violation, for a narrowing whose value is a number); the
+  command line exits 2, where the TypeScript's prints the diagnostic and exits 1; the MCP
+  server answers with an error, where the TypeScript's answers the tool; a journal whose
+  exported package holds one does not hold (`package_mismatch`), as in the TypeScript.
+  `both` compares no such call: the Rust's refusal is thrown as it is.

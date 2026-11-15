@@ -1,0 +1,2 @@
+# The Rust compiler's module and its digest, which `npm run build:wasm` builds and puts here; never committed.
+/wasm/
