@@ -207,6 +207,14 @@ pub(crate) fn constant(e: &Value, names: &Names<'_>, depth: usize) -> Option<(Va
 /// in records and constants naming constants, together.
 const STRUCTURED_DEPTH: usize = 64;
 
+/// `Ok` when `assignable` found nothing, else its message.
+fn fits(problem: Option<crate::ty::Problem>) -> Result<(), String> {
+    match problem {
+        Some(p) => Err(p.message),
+        None => Ok(()),
+    }
+}
+
 /// Whether `e` is a structured constant (0.6): a list, a set or a record
 /// literal, or the name of a constant of the program whose value is one.
 /// Whether its parts are constants of the slot's type is
@@ -332,21 +340,17 @@ impl Reader<'_> {
                     return Err(format!("{n} is no constant"));
                 };
                 match d.get("type") {
-                    Some(t) => match assignable(&ty_of(TypeExpr::of(t)), &want, &self.env) {
-                        Some(p) => Err(p.message),
-                        None => Ok(()),
-                    },
+                    Some(t) => fits(assignable(&ty_of(TypeExpr::of(t)), &want, &self.env)),
                     None => self.value_fits(d.get("value").unwrap_or(&Value::Null), &want, deeper),
                 }
             }
             "text" => {
                 let lit = e.get("value").and_then(Value::as_str).map(str::to_owned);
                 let ty = Ty::named_lit("Text", Vec::new(), lit);
-                assignable(&ty, &want, &self.env).map_or(Ok(()), |p| Err(p.message))
+                fits(assignable(&ty, &want, &self.env))
             }
             _ => match constant(e, &self.names, deeper) {
-                Some((ty, _)) => assignable(&ty_of(TypeExpr::of(&ty)), &want, &self.env)
-                    .map_or(Ok(()), |p| Err(p.message)),
+                Some((ty, _)) => fits(assignable(&ty_of(TypeExpr::of(&ty)), &want, &self.env)),
                 None => Err(
                     "it is no constant: a literal, or a constant the program defines".to_owned(),
                 ),
