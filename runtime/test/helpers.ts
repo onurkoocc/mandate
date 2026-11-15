@@ -32,7 +32,7 @@ export async function planChecker(entry = "../src/plan-worker.ts", maxMb?: numbe
     platform: "node",
     format: "esm",
     target: "node22",
-    alias: { "@mandate/bridge": here("../../bridge/src/index.ts") },
+    alias: { "@mandate/bridge": here("../../bridge/src/index.ts"), "@mandate/bridge/mode": here("../../bridge/src/mode.ts") },
     external: ["ajv", "ajv/*", "ajv-formats"],
     plugins: [
       {

@@ -32,7 +32,7 @@ beforeAll(async () => {
     platform: "node",
     format: "esm",
     target: "node22",
-    alias: { "@mandate/bridge": here("../../bridge/src/index.ts") },
+    alias: { "@mandate/bridge": here("../../bridge/src/index.ts"), "@mandate/bridge/mode": here("../../bridge/src/mode.ts") },
     external: ["pg", "@electric-sql/pglite", "@anthropic-ai/sdk", "@temporalio/*", "ajv", "ajv/*", "ajv-formats", "@microsoft/mxc-sdk", "@microsoft/mxc-sdk/*"],
     plugins: [
       {
