@@ -339,6 +339,102 @@ fn the_deepest_programs_that_load_are_checked_as_the_typescript_checks_them() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/// The program of a deep shape as a program of 0.6: the same definitions
+/// under the header `mandate @ 0.6` (which a 0.6 check types by its own
+/// rules: `typed_body`, closed imports).
+fn deep_program_0_6(shape: &str, fns: usize, depth: usize) -> String {
+    let text = deep_program(shape, fns, depth);
+    match text.strip_prefix("mandate @ 0.4\n") {
+        Some(rest) => format!("mandate @ 0.6\n{rest}"),
+        None => format!("mandate @ 0.6\n\n{text}"),
+    }
+}
+
+/// The deepest program of 0.6 that applies a pattern and imports a library:
+/// a chain of 59 functions, each calling the next under `depth` levels of
+/// `(1 + …)`, the built-in std.patterns imported, and a workflow that
+/// applies a pattern of its own whose body is as deep, its expansion
+/// checked as a workflow's body is.
+fn deep_pattern_program(depth: usize) -> String {
+    let nest = |inner: &str| {
+        let mut e = inner.to_owned();
+        for _ in 0..depth {
+            e = format!("(1 + {e})");
+        }
+        e
+    };
+    let mut lines: Vec<String> = vec![
+        "mandate @ 0.6".to_owned(),
+        "module m @ 0.1".to_owned(),
+        "use std.{fs}".to_owned(),
+        "use std.patterns.{FanOutMerge}".to_owned(),
+        "capability R = fs.read(\"/w\")".to_owned(),
+    ];
+    for i in 0..59 {
+        let next = if i + 1 < 59 {
+            format!("f{}(n)", i + 1)
+        } else {
+            "n".to_owned()
+        };
+        lines.push(format!("fn f{i}(n: Int) -> Int {{ {} }}", nest(&next)));
+    }
+    lines.push(format!(
+        "pattern Deep(n: const Int) -> Int {{\n  {}\n}}",
+        nest("f0(n)")
+    ));
+    lines.push("workflow W = Deep(n: 1)\n  caps   R\n  budget { time: 1m }".to_owned());
+    format!("{}\n", lines.join("\n"))
+}
+
+/// The deepest programs of 0.6 that load check within the same stack as
+/// those of 0.1 to 0.5: every shape under the 0.6 header, and a program
+/// that imports the built-in library and applies a pattern whose
+/// expansion is as deep. No TypeScript reads 0.6, so what is held is that
+/// each is checked (it loads, the checks run to their end, twice alike),
+/// and that the one that applies a pattern checks clean.
+#[test]
+fn the_deepest_programs_of_0_6_that_load_are_checked_within_the_stack() {
+    let inputs = read_json(&format!("{DIR}/inputs.json")).unwrap();
+    let shapes = inputs
+        .get("deep")
+        .and_then(|d| d.get("shapes"))
+        .and_then(Value::as_array)
+        .unwrap();
+    let mut texts: Vec<(String, String)> = Vec::new();
+    for s in shapes {
+        let s = s.as_array().unwrap();
+        let shape = s[0].as_str().unwrap();
+        let fns = usize::try_from(s[1].as_i64().unwrap()).unwrap();
+        let depth = usize::try_from(s[2].as_i64().unwrap()).unwrap();
+        texts.push((
+            format!("{shape}:{fns}:{depth}"),
+            deep_program_0_6(shape, fns, depth),
+        ));
+    }
+    texts.push(("pattern:59:54".to_owned(), deep_pattern_program(54)));
+    for (name, text) in &texts {
+        let (loaded, first, second, ok) = within_the_stack(|| {
+            let r = check(text, SourceKind::Mdt, &CheckOptions::default());
+            let again = check(text, SourceKind::Mdt, &CheckOptions::default());
+            (
+                r.program.is_some(),
+                result_text(r.ok, &r.diagnostics),
+                result_text(again.ok, &again.diagnostics),
+                r.ok,
+            )
+        });
+        assert!(loaded, "{name}: does not load: {first}");
+        assert_eq!(first, second, "{name}");
+        if name.starts_with("pattern") {
+            assert!(ok, "{name}: {first}");
+        }
+    }
+    println!(
+        "deep programs of 0.6: {} checked within the stack",
+        texts.len()
+    );
+}
+
 #[test]
 fn the_static_checks_types_and_costs_are_the_typescript_ones() {
     let inputs = read_json(&format!("{DIR}/inputs.json")).unwrap();
@@ -365,6 +461,7 @@ fn the_static_checks_types_and_costs_are_the_typescript_ones() {
                 lock: None,
                 modules,
                 claim: c.get("claim"),
+                ..CheckOptions::default()
             },
         );
         let got = result_text(r.ok, &r.diagnostics);

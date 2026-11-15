@@ -14,7 +14,9 @@
 mod common;
 
 use common::{Table, json};
-use mandate_lib::{BaseComparison, PublishPlan, PublishProblem, Version, plan_publish};
+use mandate_lib::{
+    BaseComparison, PublishPlan, PublishProblem, Version, judge_next, lowest_above, plan_publish,
+};
 
 fn v(text: &str) -> Version {
     Version::parse(text).unwrap()
@@ -307,4 +309,57 @@ fn problems_have_identifiers() {
         .id(),
         "needs_major"
     );
+}
+
+/// The version above a new one: the lowest published version of its
+/// `MAJOR` above it, never one of another `MAJOR` and never one below.
+#[test]
+fn the_lowest_version_above_within_the_major() {
+    let above =
+        |list: &[&str], new: &str| lowest_above(&published(list), &v(new)).map(|x| x.to_string());
+    assert_eq!(
+        above(&["1.0.0", "1.2.0", "1.3.0"], "1.1.0").as_deref(),
+        Some("1.2.0")
+    );
+    assert_eq!(
+        above(&["1.3.0", "1.2.0", "1.0.0"], "1.1.0").as_deref(),
+        Some("1.2.0")
+    );
+    assert_eq!(above(&["1.0.0", "2.0.0"], "1.1.0"), None, "another MAJOR");
+    assert_eq!(above(&["1.0.0"], "1.1.0"), None, "only below");
+    assert_eq!(above(&[], "1.1.0"), None);
+    assert_eq!(
+        above(&["0.3.1", "0.4.0"], "0.3.0").as_deref(),
+        Some("0.3.1")
+    );
+}
+
+/// A version above that widens against the new one, and is not a major one
+/// above it, refuses the publication; a version above with a greater
+/// `MAJOR`, or one that finds nothing, does not.
+#[test]
+fn the_version_above_must_not_widen_against_the_new_one() {
+    assert_eq!(
+        judge_next(&v("1.1.0"), &v("1.2.0"), BaseComparison::default()),
+        Ok(())
+    );
+    let refused = judge_next(&v("1.1.0"), &v("1.2.0"), WIDENS).unwrap_err();
+    assert_eq!(refused.id(), "next_needs_major");
+    assert_eq!(
+        json(refused.to_js()),
+        r#"{"problem":"next_needs_major","version":"1.1.0","next":"1.2.0","widens_authority":true,"removes_criterion":false,"adds_waiver":false}"#
+    );
+    for one in [
+        BaseComparison {
+            removes_criterion: true,
+            ..BaseComparison::default()
+        },
+        BaseComparison {
+            adds_waiver: true,
+            ..BaseComparison::default()
+        },
+    ] {
+        assert!(judge_next(&v("1.1.0"), &v("1.2.0"), one).is_err());
+    }
+    assert_eq!(judge_next(&v("1.1.0"), &v("2.0.0"), WIDENS), Ok(()));
 }

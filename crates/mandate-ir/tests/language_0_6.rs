@@ -263,6 +263,7 @@ fn the_0_6_lock_schema_differs_from_the_earlier_one_only_where_listed() {
         differences_of(LOCK_SCHEMA_TEXT, LOCK_0_6_SCHEMA_TEXT),
         [
             "/$defs/Digest",
+            "/$defs/LibraryName",
             "/$defs/LibraryVersion",
             "/$defs/QName",
             "/$id",

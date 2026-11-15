@@ -1,0 +1,27 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "L05",
+  "kind": "compile",
+  "title": "mandate upgrade of acme.ops from 1.0.0 to 1.0.1, which changes one doc line, holds no governance change: it gives back the lock with the new pin.",
+  "spec": [
+    "spec/library.md#mandate-add-upgrade-and-publish",
+    "spec/library.md#the-authority-signature",
+    "spec/library.md#doc-lines"
+  ],
+  "language": "mandate/0.6",
+  "lock": "mandate.lock.json",
+  "library": {
+    "op": "upgrade",
+    "name": "acme.ops",
+    "range": "1.0.1",
+    "versions": "../../fixtures/library/upgrade/acme.ops",
+    "pinned": "../../fixtures/library/upgrade/acme.ops/1.0.0",
+    "now": "2026-11-15T09:00:00Z"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "written": true
+  }
+}

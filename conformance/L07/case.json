@@ -1,0 +1,21 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "L07",
+  "kind": "compile",
+  "title": "A lead's sub-program that calls a read tool of a connector its parent imports with the tool's types, the connector's modules given, is admitted.",
+  "spec": ["spec/library.md#the-lock-binding-and-schema-digests", "spec/envelope.md#the-sub-program", "spec/library.md#closed-imports"],
+  "language": "mandate/0.6",
+  "input": { "file": "parent.mdt", "kind": "mdt" },
+  "modules": ["../../fixtures/library/acme.connectors/types.mdt", "../../fixtures/library/acme.connectors/connectors.mdt"],
+  "subprogram": {
+    "workflow": "Run",
+    "defs": { "file": "sub.mdt", "kind": "mdt" },
+    "lead": "confidential",
+    "room": { "left": { "tokens": 50000, "steps": 100, "agents": 10, "spend:USD": 10000000 }, "time_left_ms": 1800000 }
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

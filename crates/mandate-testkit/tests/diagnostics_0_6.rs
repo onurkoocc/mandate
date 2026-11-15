@@ -26,8 +26,9 @@ mod outputs;
 use std::collections::BTreeMap;
 
 use common::{
-    Applied, applied_source, check_with, kind_named, modules_of, patched_source, read_source,
-    run_amendment, run_subprogram, subprogram_case,
+    Applied, applied_source, case_config, case_libraries, check_with_libraries, kind_named,
+    modules_of, patched_source, read_source, run_amendment, run_library_case, run_subprogram,
+    subprogram_case, with_library_modules,
 };
 use mandate_ir::{Diagnostic, JsObject, JsValue, Value};
 use mandate_syntax::{SourceKind, kind_of, load};
@@ -37,7 +38,9 @@ use mandate_testkit::{parse_json, read_json, repo_path, subdirectories};
 
 /// The front door of a case, as `doorOf` names it.
 fn door_of(case: &Value) -> &'static str {
-    if case.get("amendment").is_some() {
+    if case.get("library").is_some() {
+        "library"
+    } else if case.get("amendment").is_some() {
         "check_amendment"
     } else if case.get("subprogram").is_some() {
         "check_subprogram"
@@ -68,6 +71,10 @@ fn js_strings(xs: &[String]) -> JsValue {
 /// What the case's door returns, as the vectors store it.
 fn result_of(id: &str, case: &Value, door: &str) -> Result<JsValue, String> {
     let dir = format!("conformance/{id}");
+    if door == "library" {
+        let r = run_library_case(&dir, case)?;
+        return parse_json(r.text.as_bytes()).map(|v| JsValue::from(&v));
+    }
     let input = case.get("input").ok_or("no input")?;
     let kind = kind_named(input.get("kind").and_then(Value::as_str).unwrap_or("mdt"));
     let text = match input.get("text").and_then(Value::as_str) {
@@ -87,7 +94,11 @@ fn result_of(id: &str, case: &Value, door: &str) -> Result<JsValue, String> {
     let door_value = |text: &str| parse_json(text.as_bytes()).map(|v| JsValue::from(&v));
     match door {
         "check_subprogram" | "check_amendment" => {
-            let parent = check_with(&text, kind, Some(&modules), None)?;
+            // 0.6: a parent whose lock pins libraries is checked with them, and
+            // the door is handed their modules as the package carries them.
+            let libraries = case_libraries(&dir, case);
+            let parent = check_with_libraries(&text, kind, Some(&modules), None, &libraries, None)?;
+            let modules = with_library_modules(&modules, &libraries)?;
             let (Some(program), true) = (parent.program.as_ref(), parent.ok) else {
                 return Err("the parent must check without errors".to_owned());
             };
@@ -113,7 +124,16 @@ fn result_of(id: &str, case: &Value, door: &str) -> Result<JsValue, String> {
                 Some(patch) => (patched_source(&text, kind, patch)?, SourceKind::Json),
                 None => (text, kind),
             };
-            Ok(check_with(&text, kind, Some(&modules), lock.as_deref())?.to_js())
+            let revoked = case_config(&dir, case)?.map(|c| c.revoked().clone());
+            Ok(check_with_libraries(
+                &text,
+                kind,
+                Some(&modules),
+                lock.as_deref(),
+                &case_libraries(&dir, case),
+                revoked.as_ref(),
+            )?
+            .to_js())
         }
     }
 }
@@ -165,17 +185,30 @@ fn the_diagnostic_vectors_of_0_6_are_what_the_rust_gives() {
             }
         };
         count(&result);
-        let input = case.get("input").expect("an input");
-        let kind = input.get("kind").and_then(Value::as_str).unwrap_or("mdt");
-        let input = match input.get("file").and_then(Value::as_str) {
-            Some(file) => JsObject::new().with("file", file).with("kind", kind),
-            None => JsObject::new().with("inline", true).with("kind", kind),
+        // A library case (0.6) has no program of its own.
+        let input = match case.get("input") {
+            None => JsObject::new().with("library", true),
+            Some(input) => {
+                let kind = input.get("kind").and_then(Value::as_str).unwrap_or("mdt");
+                match input.get("file").and_then(Value::as_str) {
+                    Some(file) => JsObject::new().with("file", file).with("kind", kind),
+                    None => JsObject::new().with("inline", true).with("kind", kind),
+                }
+            }
         };
-        let uses: Vec<String> = ["patch", "base", "subprogram", "amendment"]
-            .iter()
-            .filter(|k| case.get(k).is_some())
-            .map(|k| (*k).to_owned())
-            .collect();
+        let uses: Vec<String> = [
+            "patch",
+            "base",
+            "subprogram",
+            "amendment",
+            "libraries",
+            "config",
+            "library",
+        ]
+        .iter()
+        .filter(|k| case.get(k).is_some())
+        .map(|k| (*k).to_owned())
+        .collect();
         cases.push(
             JsObject::new()
                 .with("name", id.as_str())

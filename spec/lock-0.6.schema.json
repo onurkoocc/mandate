@@ -12,6 +12,7 @@
     "DataClass": { "enum": ["public", "internal", "confidential", "restricted"] },
     "Digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "QName": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$" },
+    "LibraryName": { "type": "string", "maxLength": 128, "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$", "description": "A library's name and the name of each of its modules: dot-separated lower-case names (spec/library.md \"The manifest\"), as crates/mandate-lib reads them." },
     "LibraryVersion": { "type": "string", "pattern": "^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$" }
   },
   "properties": {
@@ -55,7 +56,7 @@
     },
     "libraries": {
       "type": "object",
-      "propertyNames": { "$ref": "#/$defs/QName" },
+      "propertyNames": { "$ref": "#/$defs/LibraryName" },
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
@@ -66,7 +67,7 @@
           "modules": {
             "type": "object",
             "minProperties": 1,
-            "propertyNames": { "$ref": "#/$defs/QName" },
+            "propertyNames": { "$ref": "#/$defs/LibraryName" },
             "additionalProperties": { "$ref": "#/$defs/Digest" }
           }
         }

@@ -137,6 +137,18 @@ pub enum PublishProblem {
         /// What was found.
         comparison: BaseComparison,
     },
+    /// The lowest version published above it within its `MAJOR` widens the
+    /// authority signature, removes a criterion or adds a waiver against it:
+    /// publishing it would make that version a widening that is not a major
+    /// one.
+    NextNeedsMajor {
+        /// The version to publish.
+        version: Version,
+        /// The lowest published version above it with its `MAJOR`.
+        next: Version,
+        /// What was found of `next` against `version`.
+        comparison: BaseComparison,
+    },
 }
 
 impl PublishProblem {
@@ -146,6 +158,7 @@ impl PublishProblem {
         match self {
             PublishProblem::AlreadyPublished { .. } => "already_published",
             PublishProblem::NeedsMajor { .. } => "needs_major",
+            PublishProblem::NextNeedsMajor { .. } => "next_needs_major",
         }
     }
 
@@ -167,8 +180,56 @@ impl PublishProblem {
                 .with("widens_authority", comparison.widens_authority)
                 .with("removes_criterion", comparison.removes_criterion)
                 .with("adds_waiver", comparison.adds_waiver),
+            PublishProblem::NextNeedsMajor {
+                version,
+                next,
+                comparison,
+            } => base
+                .with("version", version.to_string())
+                .with("next", next.to_string())
+                .with("widens_authority", comparison.widens_authority)
+                .with("removes_criterion", comparison.removes_criterion)
+                .with("adds_waiver", comparison.adds_waiver),
         }
     }
+}
+
+/// The lowest published version above `version` with its `MAJOR`: the one a
+/// version published below it must not make a widening of. When `1.0.0` and
+/// `1.2.0` are published and `1.1.0` is published in between, `1.2.0` is
+/// still not a major version above its new base `1.1.0`, so it must not
+/// widen against it either; [`judge_next`] holds that. `None` when no
+/// published version of that `MAJOR` is above it.
+#[must_use]
+pub fn lowest_above(published: &[Version], version: &Version) -> Option<Version> {
+    published
+        .iter()
+        .filter(|other| *other > version && other.major() == version.major())
+        .min()
+        .copied()
+}
+
+/// The verdict on the version published above `version` within its `MAJOR`
+/// ([`lowest_above`]), given what the caller found of `next` against
+/// `version`: since `next` is not a major version above `version`, it may
+/// not widen against it, remove a criterion of it or add a waiver to it.
+///
+/// # Errors
+///
+/// [`PublishProblem::NextNeedsMajor`] when the comparison finds one.
+pub fn judge_next(
+    version: &Version,
+    next: &Version,
+    comparison: BaseComparison,
+) -> Result<(), PublishProblem> {
+    if comparison.requires_major() && next.major() <= version.major() {
+        return Err(PublishProblem::NextNeedsMajor {
+            version: *version,
+            next: *next,
+            comparison,
+        });
+    }
+    Ok(())
 }
 
 /// Plans the publication of `version` among the versions `published`, in any

@@ -129,6 +129,7 @@ fn replay(input: &Input<'_>) -> Result<Actual, String> {
                     lock: *lock,
                     modules: modules.as_ref(),
                     claim: *claim,
+                    ..CheckOptions::default()
                 },
             );
             Ok(Actual::Result(render_check(

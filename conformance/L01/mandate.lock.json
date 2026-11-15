@@ -1,0 +1,83 @@
+{
+  "lock": "mandate/lock/0.6",
+  "modules": {},
+  "libraries": {
+    "acme.connectors": {
+      "version": "2.3.0",
+      "digest": "sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3221",
+      "modules": {
+        "acme.connectors": "sha256:0ebc48ef3fee44be30fd6511e0e62e941f175b8a05a91a4ad1b6506b0e6d5a5f",
+        "acme.connectors.types": "sha256:ae4709a4aca21a6df2829b3c3b8e4a8aaf511c94bad8ff334d10c579dc7d747e"
+      }
+    },
+    "std.patterns": {
+      "version": "1.0.0",
+      "digest": "sha256:cea6319dba99a4e2790b07038eba90a87a4cb9b036f3c7d87e4b26d68fbacd26",
+      "modules": {
+        "std.patterns": "sha256:092932757be73f0b172d1638d5ab62cdf400cc5273682714633c95dc3864c941"
+      }
+    }
+  },
+  "connectors": {
+    "acme.connectors.erp": {
+      "credential": "acme_erp",
+      "url": "https://erp.acme.example/mcp",
+      "tools": {
+        "list_open_orders": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "find_draft_invoice": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "post_draft_invoice": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delete_draft_invoice": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    },
+    "acme.connectors.mailbox": {
+      "credential": "acme_mail",
+      "url": "https://mail.acme.example/mcp",
+      "header": "x-api-key",
+      "template": "{secret}",
+      "tools": {
+        "list_invoices": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+      }
+    }
+  },
+  "models": {
+    "standard": {
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "max_input_tokens": 8000,
+      "max_output_tokens": 1500
+    }
+  },
+  "members": {
+    "ana": {
+      "keys": [
+        "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+      ]
+    },
+    "ben": {
+      "keys": [
+        "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+      ]
+    }
+  },
+  "roles": {
+    "accountant": [
+      "ana"
+    ],
+    "finance_lead": [
+      "ben"
+    ]
+  },
+  "tariffs": {
+    "claude-opus-5-5": {
+      "currency": "USD",
+      "as_of": "2026-10-09",
+      "micros_per_mtok": {
+        "input": 4000000,
+        "output": 20000000,
+        "cache_read": 200000,
+        "cache_write": 5000000
+      }
+    }
+  }
+}

@@ -29,7 +29,11 @@
   "else": {
     "type": "object",
     "properties": { "input": true, "expect": true, "journal": true },
-    "required": ["input", "expect"],
+    "required": ["expect"],
+    "anyOf": [
+      { "type": "object", "properties": { "input": true }, "required": ["input"] },
+      { "type": "object", "properties": { "library": true }, "required": ["library"] }
+    ],
     "not": { "type": "object", "properties": { "journal": true }, "required": ["journal"] }
   },
   "dependentRequired": {
@@ -85,6 +89,32 @@
     },
     "lock": {
       "oneOf": [{ "$ref": "#/$defs/relativePath" }, { "type": "null" }]
+    },
+    "libraries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relativePath" },
+      "description": "Language 0.6: library directories (a mandate.library.json and the module files it lists), handed to the check as a package carries them, or to a library case as the libraries the lock pins."
+    },
+    "config": {
+      "$ref": "#/$defs/relativePath",
+      "description": "Language 0.6: a JSON file, the libraries member of the runtime's configuration ({ dir, wait_days?, revoked? })."
+    },
+    "library": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "now"],
+      "description": "Language 0.6: a library case. Instead of a check, mandate add, upgrade or publish as the compiler's pure functions give them; expect is compared with what they give.",
+      "properties": {
+        "op": { "enum": ["add", "upgrade", "publish"] },
+        "name": { "type": "string", "minLength": 1, "description": "add and upgrade: the library." },
+        "range": { "type": "string", "minLength": 1, "description": "add and upgrade: the range; any version when absent." },
+        "versions": { "$ref": "#/$defs/relativePath", "description": "A directory of the library's version directories, <version>/ each with its manifest, modules and index.json: the candidates of add and upgrade, the versions publish finds published." },
+        "only": { "type": "array", "items": { "type": "string" }, "description": "The version directories of versions to read; all when absent." },
+        "pinned": { "$ref": "#/$defs/relativePath", "description": "upgrade: the directory of the version the lock pins." },
+        "source": { "$ref": "#/$defs/relativePath", "description": "publish: the library to publish." },
+        "now": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", "description": "The time a waiting period is compared with, and publish writes." },
+        "accept_governance": { "type": "boolean", "description": "upgrade: write the lock although the comparison holds a governance change." }
+      }
     },
     "patch": {
       "type": "array",
@@ -189,6 +219,7 @@
             }
           }
         },
+        "written": { "type": "boolean", "description": "A library case of add or upgrade (0.6): whether it gives back the lock with the new pin." },
         "hashes": {
           "type": "object",
           "additionalProperties": false,

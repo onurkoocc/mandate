@@ -1,10 +1,10 @@
 // The pattern of the acceptance program, BatchWithExceptions, and its Batch
-// type, as spec/library.md "std.patterns" gives them, in a module of its own
-// (a later slice builds std.patterns into the compiler from the same text).
-// A program applies it (batch.mdt beside it), and every check runs on the
-// expansion. On its own a pattern is checked for what it may not do
-// (E1301, E1302, E1306): it brings no authority, and its slots are what its
-// applications fill in. Only the Rust compiler reads it.
+// type, in a module of its own: the same text as the built-in std.patterns
+// (lib/std.patterns/patterns.mdt), from which invoices.mdt imports it. This
+// copy stays for the tests and the cases that need a pattern module they can
+// change (batch.mdt beside it applies it). On its own a pattern is checked
+// for what it may not do (E1301, E1302, E1306): it brings no authority, and
+// its slots are what its applications fill in. Only the Rust compiler reads it.
 
 mandate @ 0.6
 

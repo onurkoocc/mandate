@@ -82,16 +82,24 @@ pub(crate) fn object_prototype_text(name: &str) -> Option<String> {
 /// `names`, adds nothing.
 #[must_use]
 pub fn link(program: Program<'_>, modules: Option<&Modules>) -> Linked {
+    link_reaching(program, modules, None)
+}
+
+/// [`link`], and, 0.6, what a module of `reach` (a module of a library)
+/// names from a module it reaches is linked too, with that module as its
+/// origin, as if the program had listed it: a connector's types from the
+/// types module of its library, a pattern's names from the library it
+/// requires. Linking through any other module is as [`link`] links.
+#[must_use]
+pub fn link_reaching(
+    program: Program<'_>,
+    modules: Option<&Modules>,
+    reach: Option<&Reach>,
+) -> Linked {
     // `{ ...program.defs }`.
     let mut defs = program.defs().cloned().unwrap_or_default();
     let mut origin: Vec<(String, String)> = Vec::new();
     let mut diagnostics = Vec::new();
-    let origin_of = |origin: &[(String, String)], name: &str| -> Option<String> {
-        origin
-            .iter()
-            .find(|(n, _)| n == name)
-            .map(|(_, m)| m.clone())
-    };
     for (i, u) in program.use_values().iter().enumerate() {
         let Some(u) = Import::of(u) else { continue };
         let Some(module) = u.module() else { continue };
@@ -117,40 +125,39 @@ pub fn link(program: Program<'_>, modules: Option<&Modules>) -> Linked {
                 continue;
             }
             let Some(m_defs) = m_defs else { continue };
-            for dep in closure(m_defs, name) {
-                let from = origin_of(&origin, &dep);
-                if from.as_deref() == Some(module) {
+            // What to link: this name of this module, and, 0.6, what a module
+            // of a library refers to in a module its library reaches.
+            let mut todo: Vec<(String, String)> = vec![(module.to_owned(), name.to_owned())];
+            let mut seen: Vec<(String, String)> = Vec::new();
+            while let Some((from_module, from_name)) = todo.pop() {
+                if seen.contains(&(from_module.clone(), from_name.clone())) {
                     continue;
                 }
-                if defs.contains_key(&dep) {
-                    // `origin[dep] ? `module ${origin[dep]}` : "a definition of this module"`,
-                    // where `origin[dep]` also finds what `Object.prototype` has.
-                    let where_ = match from.or_else(|| object_prototype_text(&dep)) {
-                        Some(o) => format!("module {o}"),
-                        None => "a definition of this module".to_owned(),
-                    };
-                    diagnostics.push(Diagnostic::new(
-                        "E0121",
-                        format!("'{dep}' from {module} collides with {where_}."),
-                        Location::path(ptr(&[&"uses", &i])),
-                        Some(
-                            JsObject::new()
-                                .with("name", dep.as_str())
-                                .with("module", module),
-                        ),
-                    ));
-                    continue;
+                seen.push((from_module.clone(), from_name.clone()));
+                let here = if from_module == module {
+                    Some(m_defs)
+                } else {
+                    modules
+                        .and_then(|ms| ms.get(&from_module))
+                        .and_then(|x| x.get("defs"))
+                        .and_then(Value::as_object)
+                };
+                let Some(here) = here else { continue };
+                let deps = closure(here, &from_name);
+                if let Some(reach) = reach {
+                    todo.extend(reached(reach, modules, &from_module, here, &deps));
                 }
-                // `defs[dep] = …` and `origin[dep] = …` on plain objects: for
-                // `__proto__` the first sets the prototype and the second does
-                // nothing, so neither table gains a member.
-                if dep == "__proto__" {
-                    continue;
-                }
-                if let Some(d) = m_defs.get(&dep) {
-                    defs.insert(dep.clone(), with_module(d.clone(), module));
-                }
-                origin.push((dep, module.to_owned()));
+                link_closure(
+                    &mut LinkInto {
+                        defs: &mut defs,
+                        origin: &mut origin,
+                        diagnostics: &mut diagnostics,
+                    },
+                    here,
+                    &from_module,
+                    deps,
+                    i,
+                );
             }
         }
     }
@@ -170,6 +177,141 @@ pub fn link(program: Program<'_>, modules: Option<&Modules>) -> Linked {
         defs,
         origin,
         diagnostics,
+    }
+}
+
+/// 0.6: the modules whose `use` lists linking follows, each with the modules
+/// it may follow them into: a module of a library reaches the modules of its
+/// own library and of the libraries its manifest `requires`
+/// (spec/library.md "Closed imports"). A module that is not a key (one the
+/// check was given with `--module`) is linked as before: what it imports
+/// from a third module is not linked through it.
+pub type Reach = std::collections::BTreeMap<String, Vec<String>>;
+
+/// 0.6: what each module of 0.6 among `modules` reaches when a check is
+/// handed modules rather than libraries for a program that sees all its
+/// parent sees (a lead's sub-program, an amended envelope's program): the
+/// modules it imports by a `use` list that are among `modules`. A package's
+/// libraries come to those checks as modules, and their modules import only
+/// what their library reaches (E1601 otherwise), so this is the reach their
+/// libraries give them. A module of 0.1 to 0.5 reaches nothing.
+#[must_use]
+pub fn reach_of_modules(modules: &Modules) -> Reach {
+    let mut out = Reach::new();
+    for (name, m) in modules.iter() {
+        let Some(p) = Program::of(m) else { continue };
+        if !p
+            .language()
+            .is_some_and(|l| l.at_least(mandate_ir::Language::V0_6))
+        {
+            continue;
+        }
+        let mut reached: Vec<String> = vec![name.to_owned()];
+        for u in p.imports() {
+            if let Some(module) = u.module()
+                && modules.contains_key(module)
+                && !reached.iter().any(|r| r == module)
+            {
+                reached.push(module.to_owned());
+            }
+        }
+        out.insert(name.to_owned(), reached);
+    }
+    out
+}
+
+/// The tables [`link_closure`] writes into.
+struct LinkInto<'a> {
+    defs: &'a mut Map,
+    origin: &'a mut Vec<(String, String)>,
+    diagnostics: &'a mut Vec<Diagnostic>,
+}
+
+/// What the definitions `deps` of `module` (whose definitions are `here`)
+/// name that `module` imports by a `use` list from a module `reach` lets it
+/// follow into, and that module defines: each as `(module, name)`.
+fn reached(
+    reach: &Reach,
+    modules: Option<&Modules>,
+    module: &str,
+    here: &Map,
+    deps: &[String],
+) -> Vec<(String, String)> {
+    let Some(allowed) = reach.get(module) else {
+        return Vec::new();
+    };
+    let Some(m) = modules.and_then(|ms| ms.get(module)).and_then(Program::of) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for dep in deps {
+        let Some(d) = here.get(dep) else { continue };
+        for r in references(d) {
+            if here.contains_key(&r) {
+                continue;
+            }
+            let Some(from) = m
+                .imports()
+                .find(|u| u.names().any(|n| n == r))
+                .and_then(Import::module)
+            else {
+                continue;
+            };
+            let defined = modules
+                .and_then(|ms| ms.get(from))
+                .and_then(|x| x.get("defs"))
+                .and_then(Value::as_object)
+                .is_some_and(|defs| defs.contains_key(&r));
+            if allowed.iter().any(|a| a == from) && defined {
+                out.push((from.to_owned(), r));
+            }
+        }
+    }
+    out
+}
+
+/// Links `deps`, definitions of `module` (whose definitions are `here`), as
+/// the program's `use` at index `i` brings them.
+fn link_closure(into: &mut LinkInto<'_>, here: &Map, module: &str, deps: Vec<String>, i: usize) {
+    for dep in deps {
+        let from = into
+            .origin
+            .iter()
+            .find(|(n, _)| *n == dep)
+            .map(|(_, m)| m.clone());
+        if from.as_deref() == Some(module) {
+            continue;
+        }
+        if into.defs.contains_key(&dep) {
+            // `origin[dep] ? `module ${origin[dep]}` : "a definition of this module"`,
+            // where `origin[dep]` also finds what `Object.prototype` has.
+            let where_ = match from.or_else(|| object_prototype_text(&dep)) {
+                Some(o) => format!("module {o}"),
+                None => "a definition of this module".to_owned(),
+            };
+            into.diagnostics.push(Diagnostic::new(
+                "E0121",
+                format!("'{dep}' from {module} collides with {where_}."),
+                Location::path(ptr(&[&"uses", &i])),
+                Some(
+                    JsObject::new()
+                        .with("name", dep.as_str())
+                        .with("module", module),
+                ),
+            ));
+            continue;
+        }
+        // `defs[dep] = …` and `origin[dep] = …` on plain objects: for
+        // `__proto__` the first sets the prototype and the second does
+        // nothing, so neither table gains a member.
+        if dep == "__proto__" {
+            continue;
+        }
+        if let Some(d) = here.get(&dep) {
+            into.defs
+                .insert(dep.clone(), with_module(d.clone(), module));
+        }
+        into.origin.push((dep, module.to_owned()));
     }
 }
 

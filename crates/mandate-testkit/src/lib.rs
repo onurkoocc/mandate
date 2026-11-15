@@ -92,6 +92,36 @@ pub fn read_text(rel: &str) -> Result<String, String> {
     String::from_utf8(read_bytes(rel)?).map_err(|e| format!("{rel}: not UTF-8: {e}"))
 }
 
+/// A library's directory `dir` as a caller hands it to the compiler: the
+/// text of its `mandate.library.json`, and each file its `modules` lists
+/// (read as JSON loosely, only to find the list: the compiler reads the
+/// manifest itself), by that path, with its text. A listed file that is not
+/// there is left out, so that the compiler says so.
+///
+/// # Errors
+///
+/// When the manifest cannot be read.
+pub fn library_files(dir: &str) -> Result<(String, Vec<(String, String)>), String> {
+    let manifest = read_text(&format!("{dir}/mandate.library.json"))?;
+    let listed: Vec<String> = parse_json(manifest.as_bytes())
+        .ok()
+        .and_then(|v| {
+            v.get("modules").and_then(Value::as_array).map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+        })
+        .unwrap_or_default();
+    let files = listed
+        .into_iter()
+        .filter_map(|f| read_text(&format!("{dir}/{f}")).ok().map(|t| (f, t)))
+        .collect();
+    Ok((manifest, files))
+}
+
 /// The repository file `rel` read with `mandate-ir`'s strict reader, as the
 /// vectors and cases are.
 ///

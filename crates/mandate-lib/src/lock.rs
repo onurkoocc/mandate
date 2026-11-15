@@ -13,11 +13,12 @@
 //! A pin is *read* as the lock schema says (`spec/lock-0.6.schema.json`):
 //! exactly the members `version`, `digest` and `modules`, a version of three
 //! components, digests of the one shape, at least one module, and the names
-//! of the libraries and their modules. It is a little stricter than the
-//! schema, as the specification is: a name is lower-case (the schema's
-//! `QName` also allows upper-case), and each module of a library is named
-//! with the library's name ([`module_belongs_to`]). A lock this reader
-//! refuses and the schema allows pins nothing a manifest could have.
+//! of the libraries and their modules, lower-case (the schema's
+//! `LibraryName`). It is a little stricter than the schema, as the
+//! specification is: each module of a library is named with the library's
+//! name ([`module_belongs_to`]), which no pattern says. A lock this reader
+//! refuses and the schema allows pins nothing a manifest could have, and
+//! the checker reports it (E0140 at `/libraries`).
 
 use std::collections::BTreeMap;
 
@@ -39,6 +40,17 @@ pub struct LockLibrary {
 }
 
 impl LockLibrary {
+    /// The pin of what was found: its version, its digest and its modules,
+    /// as `mandate add` and `upgrade` write it into the lock.
+    #[must_use]
+    pub fn of_found(found: &FoundLibrary) -> LockLibrary {
+        LockLibrary {
+            version: found.version,
+            digest: found.digest.clone(),
+            modules: found.modules.clone(),
+        }
+    }
+
     /// The version the lock resolved.
     #[must_use]
     pub const fn version(&self) -> &Version {

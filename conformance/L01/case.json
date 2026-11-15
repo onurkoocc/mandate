@@ -1,0 +1,34 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "L01",
+  "kind": "compile",
+  "title": "The acceptance program with a lock whose digest of acme.connectors differs, in one digit, from what the library hashes to is refused with the lock.",
+  "spec": [
+    "spec/library.md#lock-06",
+    "spec/library.md#the-digest",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/invoices.mdt",
+    "kind": "mdt"
+  },
+  "libraries": ["../../fixtures/library/acme.connectors"],
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1605",
+        "path": "/libraries/acme.connectors",
+        "facts": {
+          "problem": "digest_differs",
+          "library": "acme.connectors",
+          "locked": "sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3221",
+          "found": "sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220"
+        }
+      }
+    ]
+  }
+}

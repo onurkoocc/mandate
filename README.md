@@ -255,14 +255,17 @@ a library; it has no command line.
   cost, authority, the system model), the lock checks, the Managed Agents
   binding checks, the sandbox requirements, structural patches, the
   semantic diff, and the front doors `check`, `check_patch`,
-  `check_subprogram` and `check_amendment`.
+  `check_subprogram` and `check_amendment`; from 0.6, the libraries a lock
+  pins and the built-in `std.patterns` (`lib/std.patterns/`), the authority
+  signature, and `add`, `upgrade` and `publish` as pure functions with
+  their doors.
 - `crates/mandate-views`: the document model with Markdown and HTML, the
   views of a program (architecture, authority, cost, system) and the diff
   view.
 - `crates/mandate-lib`: the model of a library, with no file read and no
   program checked: versions and ranges, the manifest, the digest, the lock's
   pins, publication time and the waiting period, resolution, and publish's
-  version rule.
+  version rule (against the version below and the one above).
 - `crates/mandate-doors`, `crates/mandate-wasm` and `crates/mandate-cli`:
   empty for now, the places release 0.6 fills: the JSON doors (one
   dispatcher over the compiler's functions), the compiler as a

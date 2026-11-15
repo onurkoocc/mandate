@@ -27,15 +27,18 @@
 //!
 //! **What a check knows.** [`KnownModules`] is the one answer to "is this
 //! module known to this check". It knows `std` itself and `std.decision`
-//! (the standard library the compiler describes) and the modules the check
+//! (the standard library the compiler describes), the modules the check
 //! was given (`CheckOptions::modules`: `--module`, the modules of an MCP
-//! call or of a package). spec/library.md also lets a program of 0.6 import
-//! the compiler's built-in `std.patterns` and the modules of a library the
-//! lock pins under `libraries`; neither exists in the compiler yet, so a
-//! `use std.patterns…` that no given module satisfies is E1604 today. The
-//! step that adds libraries adds both in [`KnownModules::knows`], the one
-//! place that decides; [`KnownModules::is_builtin`] is the one answer to "is
-//! this module the standard library's", whose path and members stay names.
+//! call or of a package), and the modules of the libraries the check reads
+//! (`crate::library`): the compiler's built-in `std.patterns`, and each
+//! library handed to it, which the lock pins when the check has one (a
+//! library that does not match its pin is E1605, not unknown). Inside a
+//! library a module is checked with the modules of its own library and of
+//! the libraries its manifest requires as its given modules, and nothing
+//! else, so it imports no others (E1604). [`KnownModules::is_builtin`] is
+//! the one answer to "is this module the standard library's", whose path
+//! and members stay names: `std.patterns` is not, it is linked as a given
+//! module is, by the names its `use` lists.
 
 use mandate_ir::{
     Diagnostic, JsObject, Language, Location, Program, Spans, Value, nearest_span, ptr,
@@ -53,28 +56,38 @@ pub const STD_MODULES: [&str; 2] = ["std", "std.decision"];
 pub struct KnownModules<'a> {
     /// The modules the check was given, by name.
     pub given: Option<&'a Modules>,
+    /// 0.6: the modules of the libraries the check reads, by name: the
+    /// built-in `std.patterns` when the program imports it, and the modules
+    /// of each library handed to the check (`crate::library`).
+    pub libraries: Option<&'a Modules>,
 }
 
 impl KnownModules<'_> {
-    /// Whether `module` is known to this check: `std`, `std.decision`, or a
-    /// module the check was given.
-    ///
-    /// The step of 0.6 that reads libraries (RL8) adds here, and nowhere
-    /// else, the two other kinds spec/library.md allows: the compiler's
-    /// built-in `std.patterns`, and the modules of each library the lock
-    /// pins (`libraries.<name>.modules`, with a module of a library that
-    /// imports the modules of its own library and of the libraries its
-    /// manifest `requires`).
+    /// Whether `module` is known to this check: `std`, `std.decision`, a
+    /// module the check was given, or a module of a library it reads (the
+    /// built-in `std.patterns` among them). This is the one place that
+    /// decides.
     #[must_use]
     pub fn knows(&self, module: &str) -> bool {
-        Self::is_builtin(module) || self.given.is_some_and(|m| m.contains_key(module))
+        Self::is_builtin(module)
+            || self.given.is_some_and(|m| m.contains_key(module))
+            || self.libraries.is_some_and(|m| m.contains_key(module))
+    }
+
+    /// The module's IR, as the check was given it or as a library holds it.
+    #[must_use]
+    pub fn module(&self, module: &str) -> Option<&Value> {
+        self.libraries
+            .and_then(|m| m.get(module))
+            .or_else(|| self.given.and_then(|m| m.get(module)))
     }
 
     /// Whether `module` is built into the compiler, the standard library:
     /// `std` and `std.decision`, whose members a program names through the
     /// module (`fs.read`, `decision.threshold`) and which a `use` may import
     /// without a list. A program of 0.6 imports every other module through
-    /// the list of its `use`. RL8 adds the built-in `std.patterns` here.
+    /// the list of its `use`, `std.patterns` included: it is a library,
+    /// whose names are the definitions its `use` lists.
     #[must_use]
     pub fn is_builtin(module: &str) -> bool {
         STD_MODULES.contains(&module)
@@ -82,7 +95,7 @@ impl KnownModules<'_> {
 
     /// What the check knows, as a message says it.
     fn described(&self) -> &'static str {
-        "std, std.decision and the modules the check was given"
+        "std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins"
     }
 }
 
@@ -150,14 +163,33 @@ pub fn import_checks(
     spans: Option<&Spans>,
     own: Option<&str>,
 ) -> Vec<Diagnostic> {
+    import_checks_known(
+        program,
+        KnownModules {
+            given: modules,
+            libraries: None,
+        },
+        spans,
+        own,
+    )
+}
+
+/// [`import_checks`] with what the check knows besides the modules it was
+/// given: the modules of the libraries it reads (0.6).
+#[must_use]
+pub fn import_checks_known(
+    program: Program<'_>,
+    known: KnownModules<'_>,
+    spans: Option<&Spans>,
+    own: Option<&str>,
+) -> Vec<Diagnostic> {
     let language = program.language();
-    let known = KnownModules { given: modules };
     let mut out = Vec::new();
     for (i, u) in program.use_values().iter().enumerate() {
         let Some(module) = u.get("module").and_then(Value::as_str) else {
             continue;
         };
-        let given = modules.and_then(|ms| ms.get(module));
+        let given = known.module(module);
         let path = ptr(&[&"uses", &i]);
         if !reads_0_6(language) {
             if let Some(m) = given

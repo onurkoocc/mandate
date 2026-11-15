@@ -36,6 +36,12 @@
 //!   named through a `use` list alone: its path is no name.
 //! - [`imports`]: what a `use` may name from 0.6 on ([`import_checks`],
 //!   [`KnownModules`]): E1602, E1603 and E1604. Rust only.
+//! - [`library`]: libraries from 0.6 on: a library read and checked
+//!   ([`library::load_library`], E1601), the built-in `std.patterns`
+//!   ([`library::STD_PATTERNS`]), the libraries a lock pins resolved for
+//!   [`check()`] (E1605, E1606, E1608), the authority signature
+//!   ([`library::signature`]) and `add`, `upgrade` and `publish` as pure
+//!   functions ([`library::ops`], E1607). Rust only.
 //! - [`expand`]: patterns and their expansion from 0.6 on
 //!   ([`expand::expand`], [`expand::Expansion`], [`expand::for_views`]):
 //!   E1301 to E1307. Rust only.
@@ -152,6 +158,7 @@ pub mod grant;
 pub mod imports;
 pub mod js_number;
 pub mod json_doors;
+pub mod library;
 pub mod lock;
 pub mod lock_diff;
 pub mod managed_agents;
@@ -191,7 +198,7 @@ pub use grant::{
     InFlightOverlapOutput, InFlightProgram, ItemScopes, MapScopesInput, MapScopesOutput,
     NarrowInput, NarrowOutput, Refusal, grant, in_flight_overlap, map_scopes, narrow,
 };
-pub use imports::{KnownModules, STD_MODULES, import_checks};
+pub use imports::{KnownModules, STD_MODULES, import_checks, import_checks_known};
 pub use js_number::js_to_number;
 pub use lock::{
     LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, Lock, ModelLock, PerCallBound, Tariff,
@@ -203,7 +210,9 @@ pub use managed_agents::{
     AgentModels, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, MA_MAX_CLASS, ProfileLevel,
     agent_models, binding_checks,
 };
-pub use modules::{Linked, Modules, link, linked_program, references};
+pub use modules::{
+    Linked, Modules, Reach, link, link_reaching, linked_program, reach_of_modules, references,
+};
 pub use patch::{GovernanceChange, OpsResult, PatchOp, PatchResult, apply_ops, apply_patch};
 pub use resolve::{
     BUILTIN_FUNCTIONS, BUILTIN_TYPES, BUILTIN_TYPES_0_4, SUPERVISION_STRATEGIES, closest,

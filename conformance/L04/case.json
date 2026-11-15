@@ -1,0 +1,38 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "L04",
+  "kind": "compile",
+  "title": "mandate add of exactly acme.ops 1.2.0, published a day and a half before with a waiting period of two days, resolves nothing and names the day it may.",
+  "spec": [
+    "spec/library.md#waiting-period-and-revocation",
+    "spec/library.md#mandate-add-upgrade-and-publish",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "lock": "mandate.lock.json",
+  "config": "libraries.json",
+  "library": {
+    "op": "add",
+    "name": "acme.ops",
+    "range": "1.2.0",
+    "versions": "../../fixtures/library/upgrade/acme.ops",
+    "now": "2026-11-13T21:00:00Z"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1608",
+        "path": "/libraries/acme.ops",
+        "facts": {
+          "library": "acme.ops",
+          "version": "1.2.0",
+          "reason": "waiting",
+          "available_from": "2026-11-14"
+        }
+      }
+    ],
+    "written": false
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "L03",
+  "kind": "compile",
+  "title": "mandate publish of acme.ops 1.1.0, which raises the budget of a pub workflow of 1.0.0 and is a minor version, is refused.",
+  "spec": [
+    "spec/library.md#mandate-add-upgrade-and-publish",
+    "spec/library.md#the-authority-signature",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "library": {
+    "op": "publish",
+    "source": "../../fixtures/library/upgrade/acme.ops/1.1.0",
+    "versions": "../../fixtures/library/upgrade/acme.ops",
+    "only": ["1.0.0"],
+    "now": "2026-11-15T09:00:00Z"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1607",
+        "path": "",
+        "facts": {
+          "library": "acme.ops",
+          "problem": "needs_major",
+          "version": "1.1.0",
+          "base": "1.0.0",
+          "widens_authority": true,
+          "removes_criterion": false,
+          "adds_waiver": false
+        }
+      }
+    ]
+  }
+}

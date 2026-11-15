@@ -1,0 +1,14 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "L09",
+  "kind": "compile",
+  "title": "An application of FanOutMerge whose const List<Item> slot is given a list of record literals of the item type checks: a constant value of a list or record type fits its slot part by part.",
+  "spec": ["spec/library.md#fanoutmerge", "spec/library.md#slots", "spec/library.md#application"],
+  "language": "mandate/0.6",
+  "input": { "file": "program.mdt", "kind": "mdt" },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

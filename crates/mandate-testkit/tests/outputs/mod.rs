@@ -20,7 +20,7 @@ use mandate_views::{
     to_html, to_markdown,
 };
 
-use crate::common::{check_text, check_with, modules_of, read_source};
+use crate::common::{check_text, check_with_libraries, modules_of, read_source};
 
 /// `MODULE_FILES` in `compiler/test/golden-outputs.ts`, and `MODULE_FILES_OF`
 /// where it names others: the module files a program is given. A program of
@@ -36,6 +36,9 @@ pub fn module_files_of(program: &str) -> Vec<String> {
             "fixtures/library/acme.connectors/types.mdt",
             "fixtures/library/acme.connectors/connectors.mdt",
         ]
+    } else if program == "fixtures/library/invoices.mdt" {
+        // The acceptance program: its modules come from its libraries.
+        &[]
     } else if program == "fixtures/library/batch.mdt" {
         // The acceptance program's flow, its pattern in a module of its own.
         &[
@@ -50,6 +53,31 @@ pub fn module_files_of(program: &str) -> Vec<String> {
         ]
     };
     files.iter().map(|f| (*f).to_owned()).collect()
+}
+
+/// The library directories a program of 0.6 is given (`check --module`
+/// and `--lock`, and its views): those its lock pins, besides the built-in
+/// `std.patterns`.
+pub fn library_dirs_of(program: &str) -> Vec<String> {
+    if program == "fixtures/library/invoices.mdt" {
+        vec!["fixtures/library/acme.connectors".to_owned()]
+    } else {
+        Vec::new()
+    }
+}
+
+/// The modules of the libraries of `program`: what its views are given
+/// besides its modules (the views add the built-in `std.patterns`).
+pub fn library_modules_of(program: &str) -> Result<mandate_check::Modules, String> {
+    let mut out = mandate_check::Modules::new();
+    for source in crate::common::libraries_of(&library_dirs_of(program))? {
+        let l = mandate_check::library::load_library(&source, false, program)
+            .map_err(|d| format!("{program}: a library does not load: {d:?}"))?;
+        for (m, ir) in l.modules.iter() {
+            out.insert(m, ir.clone());
+        }
+    }
+    Ok(out)
 }
 
 /// `lockFileOf` in `compiler/test/helpers.ts`: `<name>.lock.json` beside the
@@ -92,7 +120,19 @@ pub fn checked_text(
     } else {
         None
     };
-    check_with(text, kind_of(program), modules.as_ref(), lock.as_deref())
+    let libraries = if with_modules {
+        library_dirs_of(program)
+    } else {
+        Vec::new()
+    };
+    check_with_libraries(
+        text,
+        kind_of(program),
+        modules.as_ref(),
+        lock.as_deref(),
+        &libraries,
+        None,
+    )
 }
 
 fn pretty(v: &JsValue) -> String {
@@ -152,7 +192,10 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
     let checked = with_lock.as_ref().unwrap_or(&linked);
     if let (true, Some(p)) = (checked.ok, &checked.program) {
         let files = module_files_of(program);
-        let modules = modules_of(&files, &files)?;
+        let mut modules = modules_of(&files, &files)?;
+        for (m, ir) in library_modules_of(program)?.iter() {
+            modules.insert(m, ir.clone());
+        }
         let lock = lock_path.as_deref().map(read_json).transpose()?;
         // The views as `mandate view --module …` gives them: with the
         // modules, so that a workflow that applies a pattern of one of them

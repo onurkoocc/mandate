@@ -4101,6 +4101,78 @@
       }
     },
     {
+      "name": "E1305i",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../L09/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1305",
+            "severity": "error",
+            "message": "The slot items of FanOutMerge takes a constant of type List<Repo>, and is given one that is not: item 0: it has no field root",
+            "at": {
+              "path": "/defs/MigrateAll/apply/args/0/value",
+              "span": [1, 1795, 1, 1894]
+            },
+            "docs": "mandate explain MDT-E1305",
+            "facts": {
+              "problem": "type",
+              "slot": "items",
+              "expected": "List<Repo>",
+              "why": "item 0: it has no field root",
+              "pattern": "FanOutMerge"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1305j",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../L09/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1305",
+            "severity": "error",
+            "message": "The slot items of FanOutMerge takes a constant of type List<Repo>, and is given one that is not: item 0: SrcWrite is no constant",
+            "at": {
+              "path": "/defs/MigrateAll/apply/args/0/value",
+              "span": [1, 1795, 1, 1849]
+            },
+            "docs": "mandate explain MDT-E1305",
+            "facts": {
+              "problem": "type",
+              "slot": "items",
+              "expected": "List<Repo>",
+              "why": "item 0: SrcWrite is no constant",
+              "pattern": "FanOutMerge"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1306",
       "kind": "compile",
       "door": "check_patched",
@@ -7626,6 +7698,72 @@
       }
     },
     {
+      "name": "E1601",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "libraries"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1601",
+            "severity": "error",
+            "message": "Library acme.connectors is malformed: its module acme.connectors.types defines the extern near_py: a library is data, and runs no code.",
+            "at": {
+              "path": "/libraries/acme.connectors"
+            },
+            "docs": "mandate explain MDT-E1601",
+            "facts": {
+              "library": "acme.connectors",
+              "problem": "extern",
+              "module": "acme.connectors.types",
+              "name": "near_py"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1601a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "libraries"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1601",
+            "severity": "error",
+            "message": "Library std.extras is malformed: std and the names under it are the compiler's own; a library handed to it may not have one.",
+            "at": {
+              "path": "/libraries/std.extras"
+            },
+            "docs": "mandate explain MDT-E1601",
+            "facts": {
+              "library": "std.extras",
+              "problem": "reserved_name"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1602",
       "kind": "compile",
       "door": "check_patched",
@@ -7948,7 +8086,7 @@
           {
             "code": "MDT-E1604",
             "severity": "error",
-            "message": "Module example.library.missing is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
+            "message": "Module example.library.missing is not known to this check: a program of mandate/0.6 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.",
             "at": {
               "path": "/uses/2",
               "span": [1, 1059, 1, 1113]
@@ -7980,16 +8118,18 @@
         "ok": false,
         "diagnostics": [
           {
-            "code": "MDT-E1604",
+            "code": "MDT-E0120",
             "severity": "error",
-            "message": "Module std.patterns is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
+            "message": "Module std.patterns has no definition 'Nothing'.",
             "at": {
-              "path": "/uses/2",
-              "span": [1, 1059, 1, 1116]
+              "path": "/uses/2/names",
+              "span": [1, 1092, 1, 1103]
             },
-            "docs": "mandate explain MDT-E1604",
+            "docs": "mandate explain MDT-E0120",
             "facts": {
-              "module": "std.patterns"
+              "name": "Nothing",
+              "module": "std.patterns",
+              "expected": "definition"
             }
           }
         ]
@@ -8051,6 +8191,75 @@
             "docs": "mandate explain MDT-E1604",
             "facts": {
               "module": "example.library.types"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1604d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1604",
+            "severity": "error",
+            "message": "The use of std.patterns lists no names: in a program of mandate/0.6 an import of a module that is not the standard library's brings only the names it lists. List them, as in use std.patterns.{\u2026}.",
+            "at": {
+              "path": "/uses/2",
+              "span": [1, 1059, 1, 1084]
+            },
+            "docs": "mandate explain MDT-E1604",
+            "facts": {
+              "module": "std.patterns"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1606",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "libraries"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1606",
+            "severity": "error",
+            "message": "Library acme.connectors's requirement is not met: requirement out of range.",
+            "at": {
+              "path": "/libraries/acme.connectors"
+            },
+            "docs": "mandate explain MDT-E1606",
+            "facts": {
+              "problem": "requirement_out_of_range",
+              "library": "acme.connectors",
+              "requirement": "std.patterns",
+              "range": "^2.0",
+              "pinned": "1.0.0"
             }
           }
         ]
@@ -8868,6 +9077,1032 @@
             "docs": "mandate explain MDT-W0601"
           }
         ]
+      }
+    },
+    {
+      "name": "L01",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/invoices.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "libraries"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1605",
+            "severity": "error",
+            "message": "Library acme.connectors does not match the lock: digest differs.",
+            "at": {
+              "path": "/libraries/acme.connectors"
+            },
+            "docs": "mandate explain MDT-E1605",
+            "facts": {
+              "problem": "digest_differs",
+              "library": "acme.connectors",
+              "locked": "sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3221",
+              "found": "sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "L02",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "resolution": {
+          "chosen": {
+            "version": "1.1.0",
+            "digest": "sha256:2dab5a1c65cc9cd4151fb6b0d01b8a0a512e4c2793675f36141ca264f01fd0d9",
+            "published_at": "2026-11-10T09:00:00Z"
+          },
+          "passed_over": [
+            {
+              "version": "2.0.0",
+              "digest": "sha256:ae9085eaacdc140172d00d234ec6172301098c102624f94ada765c11239e26e8",
+              "published_at": "2026-11-14T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.2.0",
+              "digest": "sha256:73256b6c238d508bc4bf6891a3bfbc7b51d579e949373b7e7840e12a9c61cad4",
+              "published_at": "2026-11-12T09:00:00Z",
+              "reason": "outside_range"
+            }
+          ],
+          "unpublished": []
+        },
+        "version": "1.1.0",
+        "digest": "sha256:2dab5a1c65cc9cd4151fb6b0d01b8a0a512e4c2793675f36141ca264f01fd0d9",
+        "signature": {
+          "acme.ops.Inventory": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.ops.store.list_items\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 3600000
+              }
+            },
+            "max_class": null
+          },
+          "acme.ops.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "find_item": "read_only",
+              "list_items": "read_only",
+              "put_item": "write reconcilable"
+            }
+          }
+        },
+        "governance": [
+          {
+            "kind": "widened",
+            "at": "acme.ops.Inventory",
+            "text": "~ acme.ops.Inventory.budget.time: 10m \u2192 1h"
+          },
+          {
+            "kind": "budget_increased",
+            "at": "acme.ops/defs/Inventory/budget",
+            "text": "~ Inventory.budget.time: 10m \u2192 1h"
+          }
+        ],
+        "behavior": [],
+        "widenings": [
+          {
+            "name": "acme.ops.Inventory",
+            "what": "budget",
+            "text": "~ acme.ops.Inventory.budget.time: 10m \u2192 1h"
+          }
+        ],
+        "before": {
+          "acme.ops.Inventory": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.ops.store.list_items\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 600000
+              }
+            },
+            "max_class": null
+          },
+          "acme.ops.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "find_item": "read_only",
+              "list_items": "read_only",
+              "put_item": "write reconcilable"
+            }
+          }
+        },
+        "lock": null
+      }
+    },
+    {
+      "name": "L03",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1607",
+            "severity": "error",
+            "message": "Version 1.1.0 of library acme.ops widens the authority signature of 1.0.0, removes one of its criteria or adds a waiver, and is not a major version above it.",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E1607",
+            "facts": {
+              "library": "acme.ops",
+              "problem": "needs_major",
+              "version": "1.1.0",
+              "base": "1.0.0",
+              "widens_authority": true,
+              "removes_criterion": false,
+              "adds_waiver": false
+            }
+          }
+        ],
+        "name": "acme.ops",
+        "version": "1.1.0",
+        "digest": "sha256:2dab5a1c65cc9cd4151fb6b0d01b8a0a512e4c2793675f36141ca264f01fd0d9",
+        "against": [
+          {
+            "version": "1.0.0",
+            "requires_major": true,
+            "widenings": [
+              {
+                "name": "acme.ops.Inventory",
+                "what": "budget",
+                "text": "~ acme.ops.Inventory.budget.time: 10m \u2192 1h"
+              }
+            ],
+            "governance": [
+              {
+                "kind": "widened",
+                "at": "acme.ops.Inventory",
+                "text": "~ acme.ops.Inventory.budget.time: 10m \u2192 1h"
+              },
+              {
+                "kind": "budget_increased",
+                "at": "acme.ops/defs/Inventory/budget",
+                "text": "~ Inventory.budget.time: 10m \u2192 1h"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "L04",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "config",
+        "library"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1608",
+            "severity": "error",
+            "message": "Version 1.2.0 of library acme.ops is within its waiting period: it may be resolved from 2026-11-14.",
+            "at": {
+              "path": "/libraries/acme.ops"
+            },
+            "docs": "mandate explain MDT-E1608",
+            "facts": {
+              "library": "acme.ops",
+              "version": "1.2.0",
+              "digest": "sha256:73256b6c238d508bc4bf6891a3bfbc7b51d579e949373b7e7840e12a9c61cad4",
+              "published_at": "2026-11-12T09:00:00Z",
+              "reason": "waiting",
+              "available_from": "2026-11-14"
+            }
+          }
+        ],
+        "resolution": {
+          "chosen": null,
+          "passed_over": [
+            {
+              "version": "2.0.0",
+              "digest": "sha256:ae9085eaacdc140172d00d234ec6172301098c102624f94ada765c11239e26e8",
+              "published_at": "2026-11-14T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.2.0",
+              "digest": "sha256:73256b6c238d508bc4bf6891a3bfbc7b51d579e949373b7e7840e12a9c61cad4",
+              "published_at": "2026-11-12T09:00:00Z",
+              "reason": "waiting",
+              "available_from": "2026-11-14"
+            },
+            {
+              "version": "1.1.0",
+              "digest": "sha256:2dab5a1c65cc9cd4151fb6b0d01b8a0a512e4c2793675f36141ca264f01fd0d9",
+              "published_at": "2026-11-10T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.0.1",
+              "digest": "sha256:27afae0bcd88639aa729c4f70115831d14346dc4cc059ffea5ca21e68dc34873",
+              "published_at": "2026-11-05T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.0.0",
+              "digest": "sha256:bf9409dd82a0a437858e87b39ef88f41f89fccfda58e32a54f57514121637cc1",
+              "published_at": "2026-11-01T09:00:00Z",
+              "reason": "outside_range"
+            }
+          ],
+          "unpublished": []
+        },
+        "lock": null
+      }
+    },
+    {
+      "name": "L04a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/invoices.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "../../fixtures/library/invoices.lock.json",
+      "uses": [
+        "libraries",
+        "config"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1608",
+            "severity": "error",
+            "message": "The digest sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220 of library acme.connectors is revoked by the runtime's configuration: it is never resolved or loaded.",
+            "at": {
+              "path": "/libraries/acme.connectors"
+            },
+            "docs": "mandate explain MDT-E1608",
+            "facts": {
+              "problem": "revoked",
+              "library": "acme.connectors",
+              "digest": "sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "L05",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "resolution": {
+          "chosen": {
+            "version": "1.0.1",
+            "digest": "sha256:27afae0bcd88639aa729c4f70115831d14346dc4cc059ffea5ca21e68dc34873",
+            "published_at": "2026-11-05T09:00:00Z"
+          },
+          "passed_over": [
+            {
+              "version": "2.0.0",
+              "digest": "sha256:ae9085eaacdc140172d00d234ec6172301098c102624f94ada765c11239e26e8",
+              "published_at": "2026-11-14T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.2.0",
+              "digest": "sha256:73256b6c238d508bc4bf6891a3bfbc7b51d579e949373b7e7840e12a9c61cad4",
+              "published_at": "2026-11-12T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.1.0",
+              "digest": "sha256:2dab5a1c65cc9cd4151fb6b0d01b8a0a512e4c2793675f36141ca264f01fd0d9",
+              "published_at": "2026-11-10T09:00:00Z",
+              "reason": "outside_range"
+            }
+          ],
+          "unpublished": []
+        },
+        "version": "1.0.1",
+        "digest": "sha256:27afae0bcd88639aa729c4f70115831d14346dc4cc059ffea5ca21e68dc34873",
+        "signature": {
+          "acme.ops.Inventory": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.ops.store.list_items\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 600000
+              }
+            },
+            "max_class": null
+          },
+          "acme.ops.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "find_item": "read_only",
+              "list_items": "read_only",
+              "put_item": "write reconcilable"
+            }
+          }
+        },
+        "governance": [],
+        "behavior": [
+          {
+            "kind": "behavior",
+            "at": "acme.ops/defs/Inventory/doc",
+            "text": "~ workflow Inventory: doc changed"
+          }
+        ],
+        "widenings": [],
+        "before": {
+          "acme.ops.Inventory": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.ops.store.list_items\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 600000
+              }
+            },
+            "max_class": null
+          },
+          "acme.ops.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "find_item": "read_only",
+              "list_items": "read_only",
+              "put_item": "write reconcilable"
+            }
+          }
+        },
+        "lock": {
+          "lock": "mandate/lock/0.6",
+          "modules": {},
+          "libraries": {
+            "acme.ops": {
+              "version": "1.0.1",
+              "digest": "sha256:27afae0bcd88639aa729c4f70115831d14346dc4cc059ffea5ca21e68dc34873",
+              "modules": {
+                "acme.ops": "sha256:d908297048d349863e39f1f8f18ff77625e00107d9cba3f4fb06f3924ad96011"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "L06",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1607",
+            "severity": "error",
+            "message": "Version 1.1.0 of library acme.ops, published above 1.0.5 with its MAJOR, would widen the authority signature of 1.0.5, remove one of its criteria or add a waiver: 1.0.5 cannot be published below it.",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E1607",
+            "facts": {
+              "library": "acme.ops",
+              "problem": "next_needs_major",
+              "version": "1.0.5",
+              "next": "1.1.0",
+              "widens_authority": true,
+              "removes_criterion": false,
+              "adds_waiver": false
+            }
+          }
+        ],
+        "name": "acme.ops",
+        "version": "1.0.5",
+        "digest": "sha256:9bec08a0d724a5a3d2a98fa5cb2045c4dfe7e487a3f04e67efb3156eddda5bf0",
+        "against": [
+          {
+            "version": "1.0.0",
+            "requires_major": false,
+            "widenings": [],
+            "governance": []
+          },
+          {
+            "version": "1.1.0",
+            "requires_major": true,
+            "widenings": [
+              {
+                "name": "acme.ops.Inventory",
+                "what": "budget",
+                "text": "~ acme.ops.Inventory.budget.time: 10m \u2192 1h"
+              }
+            ],
+            "governance": [
+              {
+                "kind": "widened",
+                "at": "acme.ops.Inventory",
+                "text": "~ acme.ops.Inventory.budget.time: 10m \u2192 1h"
+              },
+              {
+                "kind": "budget_increased",
+                "at": "acme.ops/defs/Inventory/budget",
+                "text": "~ Inventory.budget.time: 10m \u2192 1h"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "L07",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/library/acme.connectors/types.mdt",
+        "../../fixtures/library/acme.connectors/connectors.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.6",
+          "module": "example.orders.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.orders"
+            }
+          ],
+          "defs": {
+            "Read": {
+              "kind": "workflow",
+              "params": [],
+              "returns": {
+                "ref": "Int"
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ErpRead"
+                }
+              ],
+              "body": [
+                {
+                  "op": "let",
+                  "name": "orders",
+                  "value": {
+                    "op": "call",
+                    "callee": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "erp"
+                      },
+                      "name": "list_open_orders"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "text",
+                          "value": "v1"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "call",
+                    "callee": {
+                      "op": "var",
+                      "name": "len"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "orders"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "budget": {
+                "tokens": 2000,
+                "time": {
+                  "ms": 600000
+                },
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 10,
+                "agents": 2
+              }
+            }
+          }
+        },
+        "hash": "sha256:1e722ae9fca8d2fe45942bba07be0c0a2321d3d4cbebc39c8b6d4939804fbd1c",
+        "workflow": "Read"
+      }
+    },
+    {
+      "name": "L07a",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram",
+        "libraries"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.6",
+          "module": "example.orders.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.orders"
+            }
+          ],
+          "defs": {
+            "Read": {
+              "kind": "workflow",
+              "params": [],
+              "returns": {
+                "ref": "Int"
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ErpRead"
+                }
+              ],
+              "body": [
+                {
+                  "op": "let",
+                  "name": "orders",
+                  "value": {
+                    "op": "call",
+                    "callee": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "erp"
+                      },
+                      "name": "list_open_orders"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "text",
+                          "value": "v1"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "call",
+                    "callee": {
+                      "op": "var",
+                      "name": "len"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "orders"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "budget": {
+                "tokens": 2000,
+                "time": {
+                  "ms": 600000
+                },
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 10,
+                "agents": 2
+              }
+            }
+          }
+        },
+        "hash": "sha256:1e722ae9fca8d2fe45942bba07be0c0a2321d3d4cbebc39c8b6d4939804fbd1c",
+        "workflow": "Read"
+      }
+    },
+    {
+      "name": "L08",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.6",
+          "module": "example.fleet.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.fleet"
+            }
+          ],
+          "defs": {
+            "Move": {
+              "kind": "workflow",
+              "apply": {
+                "pattern": "FanOutMerge",
+                "types": [
+                  {
+                    "ref": "Repo"
+                  },
+                  {
+                    "ref": "Summary"
+                  },
+                  {
+                    "ref": "Summary"
+                  }
+                ],
+                "args": [
+                  {
+                    "name": "items",
+                    "value": {
+                      "op": "list",
+                      "items": [
+                        {
+                          "op": "record",
+                          "type": "Repo",
+                          "fields": {
+                            "name": {
+                              "op": "text",
+                              "value": "api"
+                            },
+                            "root": {
+                              "op": "text",
+                              "value": "api"
+                            }
+                          }
+                        },
+                        {
+                          "op": "record",
+                          "type": "Repo",
+                          "fields": {
+                            "name": {
+                              "op": "text",
+                              "value": "web"
+                            },
+                            "root": {
+                              "op": "text",
+                              "value": "web"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "work",
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "Migrator"
+                      },
+                      "name": "migrate"
+                    }
+                  },
+                  {
+                    "name": "scope",
+                    "value": {
+                      "op": "var",
+                      "name": "SrcWrite"
+                    }
+                  },
+                  {
+                    "name": "part",
+                    "value": {
+                      "op": "var",
+                      "name": "root"
+                    }
+                  },
+                  {
+                    "name": "merge",
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "Reporter"
+                      },
+                      "name": "sum"
+                    }
+                  },
+                  {
+                    "name": "max_items",
+                    "value": {
+                      "op": "int",
+                      "value": 2
+                    }
+                  },
+                  {
+                    "name": "concurrency",
+                    "value": {
+                      "op": "int",
+                      "value": 2
+                    }
+                  }
+                ]
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                },
+                {
+                  "op": "var",
+                  "name": "RepoRead"
+                },
+                {
+                  "op": "var",
+                  "name": "SrcWrite"
+                }
+              ],
+              "budget": {
+                "tokens": 200000,
+                "time": {
+                  "ms": 3600000
+                },
+                "spend": {
+                  "micros": 5000000,
+                  "currency": "USD"
+                },
+                "steps": 100,
+                "agents": 10
+              }
+            }
+          }
+        },
+        "hash": "sha256:5a63648485b7e1562fae41e4594f5902c33b268b92b33f39becec801cda9011c",
+        "workflow": "Move"
+      }
+    },
+    {
+      "name": "L08a",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../L08/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.6",
+          "module": "example.fleet.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.fleet"
+            }
+          ],
+          "defs": {
+            "Write": {
+              "kind": "workflow",
+              "apply": {
+                "pattern": "MakerChecker",
+                "types": [
+                  {
+                    "ref": "Brief"
+                  },
+                  {
+                    "ref": "Draft"
+                  }
+                ],
+                "args": [
+                  {
+                    "name": "input",
+                    "value": {
+                      "op": "record",
+                      "type": "Brief",
+                      "fields": {
+                        "topic": {
+                          "op": "text",
+                          "value": "the release"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "make",
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "Writer"
+                      },
+                      "name": "draft"
+                    }
+                  },
+                  {
+                    "name": "check",
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "Reader"
+                      },
+                      "name": "review"
+                    }
+                  },
+                  {
+                    "name": "accepted",
+                    "value": {
+                      "op": "var",
+                      "name": "Short"
+                    }
+                  },
+                  {
+                    "name": "owner",
+                    "value": {
+                      "op": "var",
+                      "name": "editor"
+                    }
+                  }
+                ]
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                },
+                {
+                  "op": "var",
+                  "name": "Notes"
+                }
+              ],
+              "budget": {
+                "tokens": 200000,
+                "time": {
+                  "ms": 3600000
+                },
+                "spend": {
+                  "micros": 5000000,
+                  "currency": "USD"
+                },
+                "steps": 100,
+                "agents": 10
+              }
+            }
+          }
+        },
+        "hash": "sha256:35e98e81cb5b2a5e54a2b7cbe595bf1a0f5b3711b75fe705db89ea7fcf01d787",
+        "workflow": "Write"
+      }
+    },
+    {
+      "name": "L09",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:d92f557aab86bddca2ed53325aab0af839919228c622ffbb6f885b2b5cbff1de",
+          "defs": {
+            "MigrateAll": "sha256:05fb934145a7c12ab34f0c224c36555f8a71d4f2c9396ed82ceb11c096ca341d",
+            "Migrator": "sha256:7c63380f5e622ae48b722d16654ab6057bb12363ceb1cb35da6535e5dd06100b",
+            "ModelStd": "sha256:b70f22435c1e9ee9c17c9f654331b55d0a375c93637c25ef00f5b06414cf24c5",
+            "Repo": "sha256:21fe3c8a0a95d7ff86b5df5991b4eb2f268c0ac5e21034d0bcfcf1600844e29f",
+            "RepoRead": "sha256:5fa5d8559f4c6c02344894b6dc100af21e3b5c1d2bfc7d12618984779efa3f08",
+            "Reporter": "sha256:3e7f9d5005fed8579f6d43954a9b669572bb018fdfa3b78e8897b422b4d0fb66",
+            "SrcWrite": "sha256:0073ab4ff134a9439e32bcef2d055e49ac42a0d04e6d8bec04cc45ecd81bb487",
+            "Summary": "sha256:ce0a463607b9de767831e5ab815800f2675168303a874cc4c4497d2d79b32791"
+          }
+        },
+        "diagnostics": []
       }
     },
     {

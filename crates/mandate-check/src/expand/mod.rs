@@ -97,16 +97,32 @@ pub fn applies_pattern(program: &Value) -> bool {
 /// a program that does not check should not be shown.
 #[must_use]
 pub fn expanded_program(program: &Value, modules: Option<&Modules>) -> Option<Value> {
+    expanded_program_reaching(program, modules, None)
+}
+
+/// [`expanded_program`], the modules linked through `reach` (0.6: the
+/// modules of libraries, [`crate::Reach`]).
+#[must_use]
+pub fn expanded_program_reaching(
+    program: &Value,
+    modules: Option<&Modules>,
+    reach: Option<&crate::modules::Reach>,
+) -> Option<Value> {
     let view = Program::of(program)?;
     if !applies_pattern(program) {
         return None;
     }
-    let linked = link(view, modules);
+    // 0.6: the built-in `std.patterns`, when the program imports it and the
+    // modules do not hold it.
+    let with_builtin = crate::library::with_builtin(view, modules);
+    let modules = with_builtin.as_ref().or(modules);
+    let linked = crate::modules::link_reaching(view, modules, reach);
     let e = expand(
         view,
         &linked,
         &ExpandOptions {
             modules,
+            reach,
             applications: true,
             ..ExpandOptions::default()
         },
@@ -142,6 +158,8 @@ pub fn for_views(program: &Value, modules: Option<&Modules>) -> Option<Value> {
         return Some(e);
     }
     let view = Program::of(program)?;
+    let with_builtin = crate::library::with_builtin(view, modules);
+    let modules = with_builtin.as_ref().or(modules);
     let linked = link(view, modules).defs;
     let mut members = view.members().clone();
     let mut defs = Map::new();
@@ -297,6 +315,10 @@ const APPLICATION_MEMBERS: [&str; 6] = ["kind", "apply", "caps", "budget", "pub"
 pub struct ExpandOptions<'a> {
     /// The modules the check was given.
     pub modules: Option<&'a Modules>,
+    /// 0.6: what each module of a library reaches ([`crate::Reach`]): a
+    /// pattern of one may name what its module imports from a module it
+    /// reaches, which the expansion names through that module's `use`.
+    pub reach: Option<&'a crate::modules::Reach>,
     /// The program's spans.
     pub spans: Option<&'a Spans>,
     /// The module whose definitions the program names as its own, `pub`
@@ -356,7 +378,7 @@ pub fn expand(program: Program<'_>, linked: &Linked, opts: &ExpandOptions<'_>) -
             && let Some(m) = modules.and_then(|ms| ms.get(module)).and_then(Program::of)
         {
             homes.entry(module.to_owned()).or_insert_with(|| {
-                let linked = link(m, modules).defs;
+                let linked = crate::modules::link_reaching(m, modules, opts.reach).defs;
                 let unresolved = crate::resolve::resolve_names(m, None, Some(&linked))
                     .into_iter()
                     .filter(|d| d.severity == mandate_ir::Severity::Error)
@@ -744,6 +766,47 @@ fn application<'a>(
                             facts().with("problem", "taken"),
                         ),
                         None => adds.push((m.to_owned(), n.clone())),
+                    }
+                }
+                // 0.6: a name the pattern's module, a module of a library,
+                // imports from a module its library reaches (its own, or of
+                // a library it requires): the expansion names it through
+                // that module, as the program would.
+                Meaning::Imported(_, from)
+                    if opts
+                        .reach
+                        .and_then(|r| r.get(m))
+                        .is_some_and(|allowed| allowed.iter().any(|a| a == from)) =>
+                {
+                    let def = modules
+                        .and_then(|ms| ms.get(from))
+                        .and_then(|x| x.get("defs"))
+                        .and_then(|d| d.get(n));
+                    if !def.is_some_and(|d| d.get("pub") == Some(&Value::Bool(true))) {
+                        push(
+                            &mut diags,
+                            spans,
+                            "E1602",
+                            format!(
+                                "{p} names {n}, which {m} imports from {from}, where it is not a pub definition: its expansion names {n} in this program, which may name only what {from} makes pub."
+                            ),
+                            apply_at.clone(),
+                            facts().with("from", from),
+                        );
+                        continue;
+                    }
+                    match taken(program, n, Some(from)) {
+                        Some(how) => push(
+                            &mut diags,
+                            spans,
+                            "E1306",
+                            format!(
+                                "{p}'s expansion names {n} of {from}, and this program {how} {n} already."
+                            ),
+                            apply_at.clone(),
+                            facts().with("problem", "taken").with("from", from),
+                        ),
+                        None => adds.push((from.to_owned(), n.clone())),
                     }
                 }
                 Meaning::Imported(_, from) => push(

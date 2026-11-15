@@ -301,9 +301,15 @@ fn the_codes_of_0_6_are_explained_and_come_last_in_the_table() {
     assert_eq!(
         rust.iter().map(|r| r.code).collect::<Vec<_>>(),
         vec![
+            // The libraries (RL8) beside the 0.6 surface's codes, by number.
+            "MDT-E1601",
             "MDT-E1602",
             "MDT-E1603",
             "MDT-E1604",
+            "MDT-E1605",
+            "MDT-E1606",
+            "MDT-E1607",
+            "MDT-E1608",
             "MDT-E1401",
             "MDT-E1402",
             "MDT-E1403",

@@ -8,7 +8,8 @@
 //!   the test kit's `check_calls`; every door of each table has a call.
 //! - Each answer, given the same request text twice, is the same text, and is
 //!   written as `JSON.stringify` writes it.
-//! - The door `doors` gives the two committed `doors.json` files, one after
+//! - The door `doors` gives the three committed `doors.json` files (the
+//!   checker's, the views', the library doors of 0.6), one after
 //!   the other, and its own row; no name is in two tables.
 //! - Requests that are not requests: every sort of malformed text, value and
 //!   member, each answered with its kind; an unknown door; a request at the
@@ -34,6 +35,7 @@ use mandate_testkit::read_json;
 
 const CHECK_DIR: &str = "crates/mandate-check/tests/json_doors";
 const VIEWS_DIR: &str = "crates/mandate-views/tests/json_doors";
+const LIBRARY_DIR: &str = "crates/mandate-check/tests/library_doors";
 
 /// The directories of the two tables, with each table.
 fn tables_and_dirs() -> [(&'static str, &'static [mandate_doors::Door]); 2] {
@@ -90,7 +92,9 @@ fn the_same_request_gives_the_same_answer_text() {
 #[test]
 fn the_door_doors_is_both_doors_json_and_its_own_row() {
     let mut rows: Vec<JsValue> = Vec::new();
-    for (dir, table) in tables_and_dirs() {
+    // The two tables held to the TypeScript, then the library doors of 0.6.
+    let library = (LIBRARY_DIR, mandate_check::json_doors::LIBRARY_DOORS);
+    for (dir, table) in tables_and_dirs().into_iter().chain([library]) {
         let file = read_json(&format!("{dir}/doors.json")).expect("doors.json");
         let listed = file.get("doors").and_then(Value::as_array).expect("doors");
         assert_eq!(listed.len(), table.len(), "{dir}");
@@ -122,7 +126,7 @@ fn the_door_doors_is_both_doors_json_and_its_own_row() {
     assert_eq!(
         all,
         tables().iter().map(|t| t.len()).sum::<usize>(),
-        "doors() is the three tables"
+        "doors() is the four tables"
     );
     names.sort_unstable();
     names.dedup();
@@ -135,9 +139,10 @@ fn the_door_doors_is_both_doors_json_and_its_own_row() {
         assert_eq!(kind(&a), "bad_input", "doors with {input}");
     }
     println!(
-        "doors: {all} doors ({} of the checker, {} of the views, 1 its own), each once",
+        "doors: {all} doors ({} of the checker, {} of the views, {} of libraries, 1 its own), each once",
         tables()[0].len(),
-        tables()[1].len()
+        tables()[1].len(),
+        tables()[2].len()
     );
 }
 

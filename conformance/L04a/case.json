@@ -1,0 +1,34 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "L04a",
+  "kind": "compile",
+  "title": "The acceptance program with its lock, checked with a configuration that revokes the digest of acme.connectors, is refused at the pin.",
+  "spec": [
+    "spec/library.md#waiting-period-and-revocation",
+    "spec/library.md#lock-06",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/invoices.mdt",
+    "kind": "mdt"
+  },
+  "libraries": ["../../fixtures/library/acme.connectors"],
+  "lock": "../../fixtures/library/invoices.lock.json",
+  "config": "libraries.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1608",
+        "path": "/libraries/acme.connectors",
+        "facts": {
+          "problem": "revoked",
+          "library": "acme.connectors",
+          "digest": "sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220"
+        }
+      }
+    ]
+  }
+}
