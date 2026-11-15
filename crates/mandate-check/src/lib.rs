@@ -27,8 +27,8 @@
 //!   imported modules ([`Linked`], [`Modules`]).
 //! - [`resolve`]: [`resolve_names`] and [`closest`] (the "did you mean" of
 //!   every diagnostic that has one), `compiler/src/resolve/resolve.ts`;
-//!   [`resolve_names_with`] holds a program of 0.6 to the visibility of the
-//!   modules it is given where it writes a name with its module.
+//!   in a program of 0.6 a module that is not the standard library's is
+//!   named through a `use` list alone: its path is no name.
 //! - [`imports`]: what a `use` may name from 0.6 on ([`import_checks`],
 //!   [`KnownModules`]): E1602, E1603 and E1604. Rust only.
 //! - [`roles`]: [`role_checks`], [`role_sites`] and [`roles_named`],
@@ -196,7 +196,7 @@ pub use modules::{Linked, Modules, link, linked_program, references};
 pub use patch::{GovernanceChange, OpsResult, PatchOp, PatchResult, apply_ops, apply_patch};
 pub use resolve::{
     BUILTIN_FUNCTIONS, BUILTIN_TYPES, BUILTIN_TYPES_0_4, SUPERVISION_STRATEGIES, closest,
-    resolve_names, resolve_names_with,
+    resolve_names,
 };
 pub use roles::{RoleSite, RoleValue, role_checks, role_sites, roles_named};
 pub use sandbox::{

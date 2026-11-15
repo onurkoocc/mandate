@@ -5,7 +5,7 @@
 
 mandate @ 0.6
 
-module example.library.invoices @ 1.0
+module example.library.shared @ 1.0
 
 use std.{model}
 

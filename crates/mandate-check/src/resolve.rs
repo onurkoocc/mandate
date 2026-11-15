@@ -10,6 +10,13 @@
 //! identifier passed as an argument to such a call (`tier: standard`,
 //! `methods: [GET, POST]`) is read as a symbol rather than a variable.
 //!
+//! In a program of 0.6 (Rust only) a module that is not the standard
+//! library's is named through the list of a `use` alone: the last segment
+//! of such a module is no name, and neither is a name written with its path
+//! (`types.Order`, `acme.types.Order`), which is reported as the unknown
+//! name of its place (`Resolver::names_listed_only`). A program of 0.1 to
+//! 0.5 resolves as the TypeScript does.
+//!
 //! The TypeScript walks the IR with a class; here a `Resolver` does, one
 //! method for each of its methods. Scopes are a chain (`{ names, parent }`),
 //! shared with `Rc` where the TypeScript shares the object. The candidate
@@ -32,8 +39,7 @@ use mandate_ir::{
     TypeExpr, TypeForm, Value, Variant, Verifier, VerifierForm, nearest_span, ptr, ptr_token,
 };
 
-use crate::imports::Visibility;
-use crate::modules::Modules;
+use crate::imports::KnownModules;
 use crate::stdlib::{STD_EFFECTS, std_effect};
 
 /// The built-in types, in order: `BUILTIN_TYPES`.
@@ -111,23 +117,6 @@ pub fn resolve_names(
     spans: Option<&Spans>,
     linked: Option<&Map>,
 ) -> Vec<Diagnostic> {
-    resolve_names_with(program, spans, linked, None, None)
-}
-
-/// [`resolve_names`] with the modules the check was given, which a program
-/// of language 0.6 is held to where it writes a name with its module
-/// (`types.Order`): such a name of a module of 0.6 must be `pub` (E1602,
-/// [`crate::imports`]), but in `own`, the module whose definitions the
-/// program names as its own (the parent of a sub-program). For a program of
-/// 0.1 to 0.5 the modules change nothing: it is [`resolve_names`].
-#[must_use]
-pub fn resolve_names_with(
-    program: Program<'_>,
-    spans: Option<&Spans>,
-    linked: Option<&Map>,
-    modules: Option<&Modules>,
-    own: Option<&str>,
-) -> Vec<Diagnostic> {
     let empty = Map::new();
     let defs = program.defs().unwrap_or(&empty);
     let mut r = Resolver {
@@ -138,7 +127,6 @@ pub fn resolve_names_with(
         imported: Vec::new(),
         imported_modules: Vec::new(),
         builtin_types: BUILTIN_TYPES.to_vec(),
-        visibility: Visibility::of(program, modules, own),
         out: Vec::new(),
     };
     if program
@@ -157,7 +145,9 @@ pub fn resolve_names_with(
                     insert(&mut r.imported_modules, n);
                 }
             }
-        } else if let Some(module) = u.module() {
+        } else if let Some(module) = u.module()
+            && !r.names_listed_only(module)
+        {
             // `u.module.split(".").pop()!`.
             let last = module.rsplit('.').next().unwrap_or(module);
             insert(&mut r.imported, last);
@@ -265,9 +255,6 @@ struct Resolver<'a> {
     imported_modules: Vec<&'a str>,
     /// The built-in type names of the program's language version.
     builtin_types: Vec<&'static str>,
-    /// What a program of 0.6 may name of a module it was given; `None`
-    /// before 0.6.
-    visibility: Option<Visibility<'a>>,
     out: Vec<Diagnostic>,
 }
 
@@ -347,40 +334,6 @@ impl<'a> Resolver<'a> {
 
     fn def_kind(&self, name: &str) -> Option<DefKind> {
         self.def_(name).and_then(kind_of)
-    }
-
-    /// 0.6: the E1602 of a name written with its module (`types.Order`) at
-    /// `path`, when it names a definition of a module of 0.6 that is not
-    /// `pub`.
-    fn qualified_visible(&mut self, qualified: &str, path: &str) {
-        if let Some(v) = &self.visibility
-            && let Some(d) = v.qualified(qualified, path, self.spans)
-        {
-            self.out.push(d);
-        }
-    }
-
-    /// 0.6: the E1602 of `prefix.name` as a value at `path`, where
-    /// `prefix` is a name no scope binds (`types.helper`).
-    fn member_visible(&mut self, prefix: &str, name: &str, path: &str) {
-        if let Some(v) = &self.visibility
-            && let Some(d) = v.member(prefix, name, path, self.spans)
-        {
-            self.out.push(d);
-        }
-    }
-
-    /// Whether `name` is bound in `scope` itself (a parameter, a `let`,
-    /// a binder), not as a definition.
-    fn bound(name: &str, scope: &Rc<Scope>) -> bool {
-        let mut s = Some(scope);
-        while let Some(at) = s {
-            if at.names.iter().any(|n| n == name) {
-                return true;
-            }
-            s = at.parent.as_ref();
-        }
-        false
     }
 
     /// The names of the definitions of `kind` the program sees:
@@ -688,9 +641,6 @@ impl<'a> Resolver<'a> {
     ) {
         if t.has(TypeForm::Ref) {
             let r = t.ref_name().unwrap_or_default();
-            if r.contains('.') {
-                self.qualified_visible(r, &format!("{path}/ref"));
-            }
             if !self.is_type(r, generics) {
                 let mut candidates: Vec<&str> = self.builtin_types.to_vec();
                 candidates.extend(self.defs_of_kind(DefKind::Type));
@@ -792,7 +742,22 @@ impl<'a> Resolver<'a> {
                 .use_values()
                 .iter()
                 .filter_map(Import::of)
-                .any(|u| u.module() == Some(qname))
+                .any(|u| u.module() == Some(qname) && !self.names_listed_only(qname))
+    }
+
+    /// 0.6: whether a program names what `module` defines only through the
+    /// list of a `use` (spec/library.md "Closed imports", as the Rust
+    /// compiler reads it): `module` is not the standard library's, and the
+    /// program is of 0.6. Its last segment (`types` of `acme.types`) is then
+    /// no name, and a name written with its path (`types.Order`,
+    /// `acme.types.Order`) is none either: each is reported as the unknown
+    /// name of its place. Before 0.6 a module path is a name, and what it
+    /// names is taken on trust.
+    fn names_listed_only(&self, module: &str) -> bool {
+        self.program
+            .language()
+            .is_some_and(|l| l.at_least(Language::V0_6))
+            && !KnownModules::is_builtin(module)
     }
 
     // ── statements and expressions ─────────────────────────────────────────
@@ -964,7 +929,6 @@ impl<'a> Resolver<'a> {
             && dot > 0
             && self.is_module_path(name.get(..dot).unwrap_or_default())
         {
-            self.qualified_visible(name, path);
             return;
         }
         // A std effect without a module (deploy, migrate) is a name of the
@@ -1029,17 +993,7 @@ impl<'a> Resolver<'a> {
                     );
                 }
             }
-            ExprOp::Field => {
-                if let Some(of) = e.operand().filter(|o| o.is(ExprOp::Var))
-                    && let (Some(prefix), Some(name)) = (of.name(), e.name())
-                    && !Self::bound(prefix, &ctx.scope)
-                    && !self.defs.contains_key(prefix)
-                {
-                    self.member_visible(prefix, name, path);
-                }
-                self.sub(e.operand(), path, "of", ctx);
-            }
-            ExprOp::Unary | ExprOp::Try | ExprOp::Await => {
+            ExprOp::Field | ExprOp::Unary | ExprOp::Try | ExprOp::Await => {
                 self.sub(e.operand(), path, "of", ctx);
             }
             ExprOp::Call => {
@@ -1062,9 +1016,6 @@ impl<'a> Resolver<'a> {
             }
             ExprOp::Record => {
                 let t = e.record_type().unwrap_or_default();
-                if t.contains('.') {
-                    self.qualified_visible(t, &format!("{path}/type"));
-                }
                 if !self.is_type(t, &[]) {
                     let mut candidates = self.defs_of_kind(DefKind::Type);
                     candidates.extend(self.imported.iter().copied());

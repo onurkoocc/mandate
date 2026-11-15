@@ -270,14 +270,15 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E0101f` | `///` lines everywhere in a program of 0.5 are comments: it checks with the hashes of its text without them | — |
 | `E0101g` | A `///` comment at the end of a line of code, on the line before a definition | E0101 |
 | `E1602` | A name of a 0.6 module that is not `pub`, in a `use` list (a mutation of a program that checks) | E1602 |
-| `E1602a` | The same written with its module as a type, `types.Note` | E1602 |
-| `E1602c` | The same written with its module as a value, `types.SECRET` | E1602 |
-| `E1602b` | A 0.6 program names definitions of a 0.5 module, in a `use` list and with its module | — |
+| `E1602a` | A type written with the path of a module that is not the standard library's (`example.library.types.Invoice`, after a `use` that lists `Invoice`) is no name in 0.6: an unknown type (a mutation) | E0120 |
+| `E1602c` | A program of 0.5 that imports a module without a list and names its constant and type with the module's path, declared 0.6 (a mutation): the `use` is not closed, and neither `domain` nor `domain.Ticket` is a name | E1604, E0120 |
+| `E1602b` | A 0.6 program names definitions of a 0.5 module, none of them `pub`, through its `use` list | — |
 | `E1603` | A program of 0.5 that imports a module of 0.6 (a mutation: the program's `language`) | E1603 |
 | `E1603a` | A module of 0.5, definitions only, that imports a module of 0.6 | E1603 |
 | `E1604` | A `use` of a module the check is not given (a mutation: one `use` added) | E1604 |
 | `E1604a` | A `use` of `std.patterns`, which this compiler does not build in yet | E1604 |
 | `E1604b` | Imports of `std`, `std.decision` and a module the check is given | — |
+| `E1604c` | A `use` of a module the check is given, without a list of names (a mutation: one `use` added) | E1604 |
 
 The import cases share the 0.6 module `E1602/types.mdt` and the program
 `E1602/program.mdt`. What a case cannot say, because its modules must load, is in

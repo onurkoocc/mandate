@@ -31,6 +31,7 @@ mod outputs;
 use std::collections::BTreeSet;
 
 use common::{check_text, check_with, kind_named, modules_of, patched_source, read_source};
+use mandate_check::KnownModules;
 use mandate_ir::codes::{self, Reference};
 use mandate_ir::{Value, canonicalize, parse};
 use mandate_syntax::SourceKind;
@@ -39,11 +40,14 @@ use mandate_testkit::{
     compare_text, files, read_json, repo_path, run_gate, sha256, subdirectories,
 };
 
-/// A program of 0.5 that imports a module its check is not given: as 0.5 the
-/// import is taken on trust; as 0.6 it is E1604 (closed imports). A fixture
-/// is checked once with no module at all (`check`), so any import of a
-/// module but `std` and `std.decision` puts it here.
-const CLOSED_IMPORTS: &str = "an import of a module the check is not given (E1604 in 0.6)";
+/// A program of 0.5 that imports a module its check is not given, or a
+/// module but the standard library's without a list of names: as 0.5 the
+/// import is taken on trust; as 0.6 it is E1604 (closed imports), and the
+/// module's path is no name. A fixture is checked once with no module at all
+/// (`check`), so any import of a module but `std` and `std.decision` puts it
+/// here.
+const CLOSED_IMPORTS: &str =
+    "an import of a module the check is not given, or without a list (E1604 in 0.6)";
 
 /// A program of 0.5 with a `///` line: as 0.5 a comment; as 0.6 a doc line,
 /// in the IR and the hashes, or E0101 where it documents nothing.
@@ -68,8 +72,11 @@ fn rules_of(text: &str, kind: SourceKind, given: &[String]) -> Vec<&'static str>
         .and_then(Value::as_array)
         .unwrap_or_default()
         .iter()
-        .filter_map(|u| u.get("module").and_then(Value::as_str))
-        .any(|m| !mandate_check::STD_MODULES.contains(&m) && !given.iter().any(|g| g == m));
+        .filter_map(|u| Some((u.get("module").and_then(Value::as_str)?, u.get("names"))))
+        .any(|(m, names)| {
+            let builtin = KnownModules::is_builtin(m);
+            !builtin && (names.is_none() || !given.iter().any(|g| g == m))
+        });
     if open {
         out.push(CLOSED_IMPORTS);
     }

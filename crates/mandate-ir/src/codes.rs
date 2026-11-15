@@ -576,7 +576,7 @@ pub const CODES: &[CodeRow] = &[
     CodeRow {
         code: "MDT-E1602",
         title: "Definition not public",
-        explain: "A module of language 0.6 lets other modules name only its `pub` definitions. This name, in a `use` list or written with its module (`types.Order`), is a definition of a 0.6 module that is not `pub`. Mark it `pub` in its module, or do not name it. A module names its own definitions freely, and every definition of a module of 0.1 to 0.5 may still be named, from any program (spec/library.md).",
+        explain: "A module of language 0.6 lets other modules name only its `pub` definitions. This name, in a `use` list (the one place a program of 0.6 names a definition of another module), is a definition of a 0.6 module that is not `pub`. Mark it `pub` in its module, or do not name it. A module names its own definitions freely, and every definition of a module of 0.1 to 0.5 may still be named, from any program (spec/library.md).",
         reference: Reference::Rust,
     },
     CodeRow {
@@ -588,7 +588,7 @@ pub const CODES: &[CodeRow] = &[
     CodeRow {
         code: "MDT-E1604",
         title: "Import not closed",
-        explain: "Every `use` of a program or module of language 0.6 names `std` itself, `std.decision`, the built-in `std.patterns`, a module the check was given (`--module`, the modules of a call or of a package) or a module of a library the lock pins. Before 0.6 an import of a module that is not loaded is taken on trust, its types unknown; 0.6 refuses it. Give the module, or remove the `use`. Reported at the `use` (spec/library.md).",
+        explain: "Every `use` of a program or module of language 0.6 names `std` itself, `std.decision`, the built-in `std.patterns`, a module the check was given (`--module`, the modules of a call or of a package) or a module of a library the lock pins. A `use` of any module but the standard library's also lists the names it brings (`use acme.types.{Order}`): a program of 0.6 names a definition of another module through that list alone, never by its module's path. Before 0.6 an import of a module that is not loaded, and a name written with its module's path, are taken on trust, their types unknown; 0.6 refuses both. Give the module and list the names, or remove the `use`. Reported at the `use` (spec/library.md).",
         reference: Reference::Rust,
     },
 ];

@@ -3,9 +3,10 @@
   "format": "mandate/conformance-case/0.1",
   "id": "E1602a",
   "kind": "compile",
-  "title": "A 0.6 program that writes a type of a 0.6 module with the module's name is refused at the name when the type is not pub.",
+  "title": "In a 0.6 program a type written with the path of a module that is not the standard library's is no name, even of a pub type its use lists: an unknown type at that place.",
   "spec": [
-    "spec/library.md#pub-and-visibility"
+    "spec/library.md#pub-and-visibility",
+    "spec/library.md#closed-imports"
   ],
   "language": "mandate/0.6",
   "input": {
@@ -19,18 +20,18 @@
     {
       "op": "replace",
       "path": "/defs/Read/params/0/type/ref",
-      "value": "types.Note"
+      "value": "example.library.types.Invoice"
     }
   ],
   "expect": {
     "ok": false,
     "diagnostics": [
       {
-        "code": "MDT-E1602",
+        "code": "MDT-E0120",
         "path": "/defs/Read/params/0/type/ref",
         "facts": {
-          "name": "Note",
-          "module": "example.library.types"
+          "name": "example.library.types.Invoice",
+          "expected": "type"
         }
       }
     ]

@@ -370,7 +370,7 @@ pub const FAMILIES: &[Family] = &[
     Family {
         glob: "*MDT-E1602*",
         codes: "E1602",
-        stage: "Rust only: the import checks of a 0.6 program (a use list, crates/mandate-check/src/imports.rs) and resolveNames (a name written with its module)",
+        stage: "Rust only: the import checks of a 0.6 program (a use list, crates/mandate-check/src/imports.rs)",
         ported: true,
         reference: Reference::Rust,
     },

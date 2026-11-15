@@ -7,14 +7,21 @@
 //! **What stays as it was.** Before 0.6 an import of a module that is not
 //! loaded is taken on trust: [`crate::link`] adds nothing for it, and
 //! [`crate::resolve_names`] accepts its names as imported, so that the
-//! static checks see them with unknown types. That trust is not changed
-//! here, for any version: in a program of 0.6, every `use` that would be
-//! taken on trust is E1604 instead, so the trust is never reached without
-//! an error. And every definition of a module of 0.1 to 0.5 may be named,
-//! from any program. So for a program of 0.1 to 0.5 this module adds one
-//! thing only, E1603, for a module of 0.6 given to its check, which no
-//! stored result of such a program has (no TypeScript loads a module of
-//! 0.6); everything else is read for a program of 0.6 alone.
+//! static checks see them with unknown types. So is a name written with a
+//! module path (`types.Order` after `use acme.types`, `acme.types.Order`
+//! after any `use acme.types`), which `link` never links: the resolver takes
+//! the path as a module's and what it names on trust. That trust is not
+//! changed for 0.1 to 0.5. In a program of 0.6 it is never reached without
+//! an error: a `use` of a module the check does not know is E1604, a `use`
+//! of a module that is not the standard library's lists the names it brings
+//! or is E1604 too, and the resolver reads neither the last segment of such
+//! a module nor a name written with its path as a name (it reports each as
+//! the unknown name of its place). So in 0.6 a module's definitions are
+//! named through a `use` list alone, and E1602 is a `use` list's. Every
+//! definition of a module of 0.1 to 0.5 may still be named, from any
+//! program. For a program of 0.1 to 0.5 this module adds one thing only,
+//! E1603, for a module of 0.6 given to its check, which no stored result of
+//! such a program has (no TypeScript loads a module of 0.6).
 //!
 //! **What a check knows.** [`KnownModules`] is the one answer to "is this
 //! module known to this check". It knows `std` itself and `std.decision`
@@ -25,13 +32,8 @@
 //! lock pins under `libraries`; neither exists in the compiler yet, so a
 //! `use std.patterns…` that no given module satisfies is E1604 today. The
 //! step that adds libraries adds both in [`KnownModules::knows`], the one
-//! place that decides.
-//!
-//! **Where a name of a module is.** In a `use` list (`use acme.types.{Order}`,
-//! E1602 at `/uses/<i>/names/<j>`), checked here; and written with its module
-//! (`types.Order`, `acme.types.Order` as a type, a record literal's type or
-//! an effect, and `types.helper` as a value), checked by the name resolution,
-//! which knows what a name means where it is ([`Visibility`]).
+//! place that decides; [`KnownModules::is_builtin`] is the one answer to "is
+//! this module the standard library's", whose path and members stay names.
 
 use mandate_ir::{
     Diagnostic, JsObject, Language, Location, Program, Spans, Value, nearest_span, ptr,
@@ -63,7 +65,17 @@ impl KnownModules<'_> {
     /// manifest `requires`).
     #[must_use]
     pub fn knows(&self, module: &str) -> bool {
-        STD_MODULES.contains(&module) || self.given.is_some_and(|m| m.contains_key(module))
+        Self::is_builtin(module) || self.given.is_some_and(|m| m.contains_key(module))
+    }
+
+    /// Whether `module` is built into the compiler, the standard library:
+    /// `std` and `std.decision`, whose members a program names through the
+    /// module (`fs.read`, `decision.threshold`) and which a `use` may import
+    /// without a list. A program of 0.6 imports every other module through
+    /// the list of its `use`. RL8 adds the built-in `std.patterns` here.
+    #[must_use]
+    pub fn is_builtin(module: &str) -> bool {
+        STD_MODULES.contains(&module)
     }
 
     /// What the check knows, as a message says it.
@@ -123,9 +135,10 @@ pub fn parent_of_subprogram(program: Program<'_>, claimed: bool) -> Option<&str>
     (claimed && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())).then_some(parent)
 }
 
-/// The checks of a program's imports: E1603 for a program of 0.1 to 0.5,
-/// E1604 and the E1602 of its `use` lists for a program of 0.6, in the order
-/// of its `uses`. `modules` are the modules the check was given; `own` is
+/// The checks of a program's imports: E1603 for a program of 0.1 to 0.5;
+/// for a program of 0.6, E1604 for a `use` of a module the check does not
+/// know or of a module not the standard library's without a list, and the
+/// E1602 of its `use` lists; in the order of its `uses`. `modules` are the modules the check was given; `own` is
 /// the module whose definitions the program names as its own, `pub` or not
 /// (the parent of a sub-program, [`parent_of_subprogram`]).
 #[must_use]
@@ -167,6 +180,17 @@ pub fn import_checks(
                 format!(
                     "Module {module} is not known to this check: a program of mandate/0.6 imports only {}. Give the module, or remove the use.",
                     known.described()
+                ),
+                Location::path_span(&path, nearest_span(spans, &path)),
+                Some(JsObject::new().with("module", module)),
+            ));
+            continue;
+        }
+        if u.get("names").is_none() && !KnownModules::is_builtin(module) {
+            out.push(Diagnostic::new(
+                "E1604",
+                format!(
+                    "The use of {module} lists no names: in a program of mandate/0.6 an import of a module that is not the standard library's brings only the names it lists. List them, as in use {module}.{{…}}."
                 ),
                 Location::path_span(&path, nearest_span(spans, &path)),
                 Some(JsObject::new().with("module", module)),
@@ -216,78 +240,4 @@ fn earlier_program(
                 .with("language", language),
         ),
     )
-}
-
-/// Visibility where a name is written with its module, for the name
-/// resolution of a program of 0.6: `types.Order` (after `use acme.types`)
-/// or `acme.types.Order` (after any `use acme.types`).
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Visibility<'a> {
-    program: Program<'a>,
-    modules: &'a Modules,
-    own: Option<&'a str>,
-}
-
-impl<'a> Visibility<'a> {
-    /// The visibility of `program` with `modules` given, `own` the module
-    /// whose definitions it names as its own ([`import_checks`]); `None` for
-    /// a program of 0.1 to 0.5, which names every definition as before, and
-    /// for a check given no module.
-    pub(crate) fn of(
-        program: Program<'a>,
-        modules: Option<&'a Modules>,
-        own: Option<&'a str>,
-    ) -> Option<Self> {
-        let modules = modules?;
-        reads_0_6(program.language()).then_some(Visibility {
-            program,
-            modules,
-            own,
-        })
-    }
-
-    /// The module `prefix` stands for: the module of a `use` that names it
-    /// whole (`acme.types`), or the module of a `use` without names whose
-    /// last part it is (`types` for `use acme.types`).
-    fn module_of(&self, prefix: &str) -> Option<&'a str> {
-        let mut by_alias = None;
-        for u in self.program.imports() {
-            let Some(module) = u.module() else { continue };
-            if module == prefix {
-                return Some(module);
-            }
-            let alias = module.rsplit('.').next().unwrap_or(module);
-            if by_alias.is_none() && u.names_given().is_none() && alias == prefix {
-                by_alias = Some(module);
-            }
-        }
-        by_alias
-    }
-
-    /// The E1602 for `name` written as a member of `prefix` at `path`, when
-    /// `prefix` stands for a 0.6 module the check was given and `name` is a
-    /// definition of it that is not `pub`.
-    pub(crate) fn member(
-        &self,
-        prefix: &str,
-        name: &str,
-        path: &str,
-        spans: Option<&Spans>,
-    ) -> Option<Diagnostic> {
-        let module = self.module_of(prefix).filter(|m| self.own != Some(*m))?;
-        let m = self.modules.get(module)?;
-        not_public(module, m, name, path, spans)
-    }
-
-    /// The E1602 for a qualified name (`types.Order`) at `path`, as
-    /// [`Visibility::member`] of its last part.
-    pub(crate) fn qualified(
-        &self,
-        qualified: &str,
-        path: &str,
-        spans: Option<&Spans>,
-    ) -> Option<Diagnostic> {
-        let (prefix, name) = qualified.rsplit_once('.')?;
-        self.member(prefix, name, path, spans)
-    }
 }

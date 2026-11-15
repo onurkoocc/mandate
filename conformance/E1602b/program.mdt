@@ -1,20 +1,20 @@
 // A program of language 0.6 that names definitions of a 0.5 module, none of
-// them `pub`, in a `use` list and with the module's name. An older module
-// keeps every definition visible.
+// them `pub`, through its `use` list: an older module keeps every
+// definition visible. (In 0.6 a module that is not the standard library's
+// is named through the list alone, an older one too.)
 
 mandate @ 0.6
 
 module example.library.tickets @ 0.1
 
 use std.{model}
-use example.older.domain.{Ticket}
-use example.older.domain
+use example.older.domain.{MAX_TICKETS, Ticket}
 
 capability ModelStd = model.infer(tier: standard, max_class: internal)
 
-let MOST: Int = domain.MAX_TICKETS
+let MOST: Int = MAX_TICKETS
 
-type Batch = { first: domain.Ticket }
+type Batch = { first: Ticket }
 
 agent Triage {
   role   "Reads one ticket."

@@ -1,5 +1,5 @@
 // A program of language 0.6 that imports the `pub` definitions of the 0.6
-// module invoices.mdt, which its checks are given, and std: every import is
+// module shared.mdt, which its checks are given, and std: every import is
 // closed (spec/library.md "Closed imports"). Checked without that module, it
 // is refused at the import (E1604). Only the Rust compiler reads it.
 
@@ -8,7 +8,7 @@ mandate @ 0.6
 module example.library.summarize @ 0.1
 
 use std.{model}
-use example.library.invoices.{Invoice, ModelStd, Summarizer}
+use example.library.shared.{Invoice, ModelStd, Summarizer}
 
 /// Asks for the summary of an invoice.
 workflow Summarize(i: Invoice) -> Inferred<Text>

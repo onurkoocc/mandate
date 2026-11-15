@@ -297,3 +297,223 @@ fn the_codes_of_0_6_are_explained_and_come_last_in_the_table() {
         ["MDT-E1602", "MDT-E1603", "MDT-E1604"]
     );
 }
+
+/// A module of `language` for the module-path tests: a record, a record
+/// with a model's output in it, a constant, a lower-case constant and a
+/// capability, all `pub` (in 0.5, the same without `pub`).
+fn order_module(language: &str) -> String {
+    let p = if language == "0.6" { "pub " } else { "" };
+    format!(
+        "mandate @ {language}
+
+module example.library.order @ 1.0
+
+use std.{{model}}
+
+{p}type Order = {{ order_no: Text, total_cents: Int }}
+
+{p}type Draft = {{ issue: Text, text: Inferred<Text> }}
+
+{p}let LIMIT: Int = 100
+
+{p}let limits: Int = 3
+
+{p}capability ModelStd = model.infer(tier: standard, max_class: internal)
+"
+    )
+}
+
+/// A program of `language` with `uses` and the definitions `defs`.
+fn order_program(language: &str, uses: &str, defs: &str) -> String {
+    format!("mandate @ {language}\n\nmodule example.library.q @ 0.1\n\n{uses}\n\n{defs}\n")
+}
+
+/// One program of the module-path tests, in two forms: a name of the module
+/// used through the `use` list, and written with the module's path (the
+/// `use` without a list, or, for "the full path", the module's whole name
+/// after a listed `use`). With what each gives in 0.6: through the list and
+/// with the path.
+struct ByPath {
+    name: &'static str,
+    listed_uses: &'static str,
+    listed: &'static str,
+    path_uses: &'static str,
+    by_path: &'static str,
+    gives_listed: &'static [&'static str],
+    gives_by_path: &'static [&'static str],
+}
+
+const EFFECT_LISTED: &str = "capability PR = git.pr(\"company/backend\")\n\nworkflow W(d: Draft) -> Bool\n  caps PR\n{\n  effect git.comment(d.issue, d.text) idempotent_by d.issue\n  true\n}";
+const EFFECT_BY_PATH: &str = "capability PR = git.pr(\"company/backend\")\n\nworkflow W(d: order.Draft) -> Bool\n  caps PR\n{\n  effect git.comment(d.issue, d.text) idempotent_by d.issue\n  true\n}";
+
+const BY_PATH: &[ByPath] = &[
+    // (a) a name the module does not define, as a type and as a value.
+    ByPath {
+        name: "a missing type",
+        listed_uses: "use example.library.order.{Missing}",
+        listed: "type Pair = { o: Missing }",
+        path_uses: "use example.library.order",
+        by_path: "type Pair = { o: order.Missing }",
+        gives_listed: &["MDT-E0120 at /uses/0/names"],
+        gives_by_path: &[
+            "MDT-E1604 at /uses/0",
+            "MDT-E0120 at /defs/Pair/type/record/o/ref",
+        ],
+    },
+    ByPath {
+        name: "a missing value",
+        listed_uses: "use example.library.order.{MISSING}",
+        listed: "let Y: Int = MISSING",
+        path_uses: "use example.library.order",
+        by_path: "let Y: Int = order.MISSING",
+        gives_listed: &["MDT-E0120 at /uses/0/names"],
+        gives_by_path: &["MDT-E1604 at /uses/0", "MDT-E0120 at /defs/Y/value/of"],
+    },
+    // (b) a parameter of type Order whose Int field is returned as Text, and
+    // a field it does not have.
+    ByPath {
+        name: "an Int as Text",
+        listed_uses: "use example.library.order.{Order}",
+        listed: "fn label(o: Order) -> Text ! {} {\n  o.total_cents\n}",
+        path_uses: "use example.library.order",
+        by_path: "fn label(o: order.Order) -> Text ! {} {\n  o.total_cents\n}",
+        gives_listed: &["MDT-E0201 at /defs/label/body/0/value"],
+        gives_by_path: &[
+            "MDT-E1604 at /uses/0",
+            "MDT-E0120 at /defs/label/params/0/type/ref",
+        ],
+    },
+    ByPath {
+        name: "a field it does not have",
+        listed_uses: "use example.library.order.{Order}",
+        listed: "fn label(o: Order) -> Text ! {} {\n  o.nothing\n}",
+        path_uses: "use example.library.order",
+        by_path: "fn label(o: order.Order) -> Text ! {} {\n  o.nothing\n}",
+        gives_listed: &["MDT-E0202 at /defs/label/body/0/value"],
+        gives_by_path: &[
+            "MDT-E1604 at /uses/0",
+            "MDT-E0120 at /defs/label/params/0/type/ref",
+        ],
+    },
+    // (c) a model's output carried to a critical effect (V01, E0210).
+    ByPath {
+        name: "a model's output to a critical effect",
+        listed_uses: "use std.{git}\nuse example.library.order.{Draft}",
+        listed: EFFECT_LISTED,
+        path_uses: "use std.{git}\nuse example.library.order",
+        by_path: EFFECT_BY_PATH,
+        gives_listed: &["MDT-E0210 at /defs/W/body/0/value/args/1/value"],
+        gives_by_path: &[
+            "MDT-E1604 at /uses/0",
+            "MDT-E0120 at /defs/W/params/0/type/ref",
+        ],
+    },
+    // The whole name of a module after a listed `use`, and the bare last
+    // segment of a module.
+    ByPath {
+        name: "the full path",
+        listed_uses: "use example.library.order.{Order}",
+        listed: "type Pair = { o: Order }",
+        path_uses: "use example.library.order.{Order}",
+        by_path: "type Pair = { o: example.library.order.Missing }",
+        gives_listed: &[],
+        gives_by_path: &["MDT-E0120 at /defs/Pair/type/record/o/ref"],
+    },
+    ByPath {
+        name: "the last segment",
+        listed_uses: "use example.library.order.{Order}",
+        listed: "type Pair = { o: Order }",
+        path_uses: "use example.library.order",
+        by_path: "type Pair = { o: order }",
+        gives_listed: &[],
+        gives_by_path: &[
+            "MDT-E1604 at /uses/0",
+            "MDT-E0120 at /defs/Pair/type/record/o/ref",
+        ],
+    },
+];
+
+/// Before this slice closed it, a program of 0.6 that wrote a name with its
+/// module path was given what its `use` list refuses: a definition the
+/// module does not have (a), a value of another type (b), and a model's
+/// output past the rule that keeps it from a critical effect (c), each with
+/// no diagnostic. That is the trust an earlier program gives an import, and
+/// 0.6 withdraws it: the path is no name in 0.6, and a `use` without a list
+/// is E1604. A program of 0.5 keeps every acceptance: the path is taken on
+/// trust, and what the list refuses it refuses as before.
+#[test]
+fn a_name_written_with_its_module_path_is_no_name_in_0_6() {
+    for language in ["0.5", "0.6"] {
+        let module = order_module(language);
+        let (modules, problems) = loaded(&[("order.mdt", &module)]);
+        assert!(problems.is_empty(), "{problems:?}");
+        for p in BY_PATH {
+            let listed = checked(&order_program(language, p.listed_uses, p.listed), &modules);
+            let by_path = checked(&order_program(language, p.path_uses, p.by_path), &modules);
+            assert_eq!(
+                listed, p.gives_listed,
+                "{language} {}: through the list",
+                p.name
+            );
+            let want: &[&str] = if language == "0.6" {
+                p.gives_by_path
+            } else {
+                &[]
+            };
+            assert_eq!(by_path, want, "{language} {}: with the path", p.name);
+        }
+    }
+}
+
+/// Documents today's behaviour, not a rule: other roads by which a program
+/// of 0.6 gets a name of a module it was given with no type the checks can
+/// see, which this slice leaves as they are (none is a module path). Each is
+/// accepted with no diagnostic, where the same with a definition of the
+/// program's own is refused. When one is closed, its line here changes.
+#[test]
+fn other_roads_to_an_unknown_type_documented_as_they_are() {
+    let module = order_module("0.6");
+    let (modules, problems) = loaded(&[("order.mdt", &module)]);
+    assert!(problems.is_empty(), "{problems:?}");
+    for (uses, defs) in [
+        // A listed constant used as a type, and as a parameter's type whose
+        // field is anything.
+        ("use example.library.order.{LIMIT}", "type P = { x: LIMIT }"),
+        (
+            "use example.library.order.{LIMIT}",
+            "fn f(x: LIMIT) -> Int ! {} {\n  x.anything\n}",
+        ),
+        // A listed capability as a parameter's type.
+        (
+            "use example.library.order.{ModelStd}",
+            "fn f(x: ModelStd) -> Int ! {} {\n  x.anything\n}",
+        ),
+        // A listed type used as a value.
+        ("use example.library.order.{Order}", "let X: Int = Order"),
+        // A listed lower-case name, read as a module, used as a path.
+        (
+            "use example.library.order.{limits}",
+            "type P = { x: limits.Anything }",
+        ),
+        (
+            "use example.library.order.{limits}",
+            "let X: Int = limits.anything",
+        ),
+    ] {
+        assert_eq!(
+            checked(&order_program("0.6", uses, defs), &modules),
+            Vec::<String>::new(),
+            "{uses} / {defs}"
+        );
+    }
+    // The program's own constant as a type is refused.
+    let own = order_program(
+        "0.6",
+        "use std.{model}",
+        "let LIMIT: Int = 3\n\ntype P = { x: LIMIT }",
+    );
+    assert_eq!(
+        checked(&own, &modules),
+        vec!["MDT-E0120 at /defs/P/type/record/x/ref"]
+    );
+}

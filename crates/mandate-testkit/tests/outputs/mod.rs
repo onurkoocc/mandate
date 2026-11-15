@@ -30,7 +30,7 @@ pub fn module_files_of(program: &str) -> Vec<String> {
     let files: &[&str] = if program == "fixtures/envelope/migrate-all.mdt" {
         &["fixtures/envelope/domain.mdt"]
     } else if program == "fixtures/library/summarize.mdt" {
-        &["fixtures/library/invoices.mdt"]
+        &["fixtures/library/shared.mdt"]
     } else {
         &[
             "fixtures/system/acme.system.mdt",

@@ -448,17 +448,17 @@
         "ok": false,
         "diagnostics": [
           {
-            "code": "MDT-E1602",
+            "code": "MDT-E0120",
             "severity": "error",
-            "message": "'Note' of example.library.types is not pub: a module of mandate/0.6 lets another module name only its pub definitions.",
+            "message": "Unknown type 'example.library.types.Invoice'.",
             "at": {
               "path": "/defs/Read/params/0/type/ref",
-              "span": [1, 812, 1, 824]
+              "span": [1, 771, 1, 802]
             },
-            "docs": "mandate explain MDT-E1602",
+            "docs": "mandate explain MDT-E0120",
             "facts": {
-              "name": "Note",
-              "module": "example.library.types"
+              "name": "example.library.types.Invoice",
+              "expected": "type"
             }
           }
         ]
@@ -480,10 +480,10 @@
       "result": {
         "ok": true,
         "hashes": {
-          "program": "sha256:f343f9b726270c194ba2d4de589840ec71b938567808ed12fa1438ec0f81f286",
+          "program": "sha256:6c69457972b87feba57c19db94f6c0d5f8b8ae901e79a40067f5e833ea3e42aa",
           "defs": {
-            "Batch": "sha256:8f933c26d62ce61b9ad5c9b3320aab6cbd2a1324c156e30d5e743ee79e369687",
-            "MOST": "sha256:0e67f79411c611be308cfb5e74403e63dbe0bb1b5243dfda9b823471d6acadf3",
+            "Batch": "sha256:1038993f1132cb11bf9183c754cdf3a4e96dea361432cd3fc53e99746b848052",
+            "MOST": "sha256:b5398de7722b0daa3b3fdcdc9dff839bf00660b776de99964dd2c94db7eb4528",
             "ModelStd": "sha256:0c86667ebbdcf268d82fcb600cca36fe21ccb44e3b1f660e6f7e80b4e8e27a6e",
             "Read": "sha256:a8bf6ce3514cd06aef9418b700d7021ee49026b2701ca31e4d8958f05bafcab5",
             "Triage": "sha256:e48c5396e04418975e253b499ec89844089bef2153b36df32f5adc73304ec37f"
@@ -497,11 +497,11 @@
       "kind": "compile",
       "door": "check_patched",
       "input": {
-        "file": "../E1602a/program.mdt",
+        "file": "program.mdt",
         "kind": "mdt"
       },
       "modules": [
-        "../E1602/types.mdt"
+        "../E1602b/older.mdt"
       ],
       "lock": null,
       "uses": [
@@ -511,17 +511,44 @@
         "ok": false,
         "diagnostics": [
           {
-            "code": "MDT-E1602",
+            "code": "MDT-E1604",
             "severity": "error",
-            "message": "'SECRET' of example.library.types is not pub: a module of mandate/0.6 lets another module name only its pub definitions.",
+            "message": "The use of example.older.domain lists no names: in a program of mandate/0.6 an import of a module that is not the standard library's brings only the names it lists. List them, as in use example.older.domain.{\u2026}.",
             "at": {
-              "path": "/defs/MOST/value",
-              "span": [1, 370, 1, 433]
+              "path": "/uses/0",
+              "span": [1, 290, 1, 323]
             },
-            "docs": "mandate explain MDT-E1602",
+            "docs": "mandate explain MDT-E1604",
             "facts": {
-              "name": "SECRET",
-              "module": "example.library.types"
+              "module": "example.older.domain"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown name 'domain'.",
+            "at": {
+              "path": "/defs/MOST/value/of",
+              "span": [1, 132, 1, 160]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "domain",
+              "expected": "value"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown type 'domain.Ticket'.",
+            "at": {
+              "path": "/defs/Batch/type/record/first/ref",
+              "span": [1, 261, 1, 276]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "domain.Ticket",
+              "expected": "type"
             }
           }
         ]
@@ -690,6 +717,40 @@
           }
         },
         "diagnostics": []
+      }
+    },
+    {
+      "name": "E1604c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1604",
+            "severity": "error",
+            "message": "The use of example.library.types lists no names: in a program of mandate/0.6 an import of a module that is not the standard library's brings only the names it lists. List them, as in use example.library.types.{\u2026}.",
+            "at": {
+              "path": "/uses/2",
+              "span": [1, 1151, 1, 1185]
+            },
+            "docs": "mandate explain MDT-E1604",
+            "facts": {
+              "module": "example.library.types"
+            }
+          }
+        ]
       }
     },
     {
