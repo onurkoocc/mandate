@@ -606,6 +606,14 @@ pub(crate) fn authority_cap(v: &Value) -> Result<Capability, String> {
         return Err(format!("a capability is {}, not an object", type_name(v)));
     };
     let mut read = map.clone();
+    // 0.6: a `tool.call` part is a read or a write by its `write`, which is
+    // then a boolean (no TypeScript capability is one, so none is read
+    // otherwise than before).
+    if map.get("ctor").and_then(Value::as_str) == Some(crate::caps::TOOL_CALL)
+        && !matches!(map.get("write"), Some(Value::Bool(_)))
+    {
+        return Err("a tool.call capability's `write` is not a boolean".to_owned());
+    }
     match map.get("write") {
         None => return Err("a capability has no `write`".to_owned()),
         Some(Value::Null) => return Err("a capability's `write` is null".to_owned()),

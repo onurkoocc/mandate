@@ -1,0 +1,118 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1406a",
+  "kind": "compile",
+  "title": "A map whose with caps hands a write tool and whose body delegates through a function is refused: the write tool would reach the agent.",
+  "spec": [
+    "spec/library.md#toolcall"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/via_fn",
+      "value": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "v",
+            "type": {
+              "ref": "Text"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Inferred",
+          "args": [
+            {
+              "ref": "Text"
+            }
+          ]
+        },
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "delegate",
+              "agent": "Reader",
+              "skill": "orders",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "v"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Draft/body/1/value",
+      "value": {
+        "op": "map",
+        "bind": "x",
+        "over": {
+          "op": "list",
+          "items": [
+            {
+              "op": "var",
+              "name": "vendor_id"
+            }
+          ]
+        },
+        "max": 3,
+        "caps": [
+          {
+            "op": "var",
+            "name": "ErpDraft"
+          }
+        ],
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "var",
+                "name": "via_fn"
+              },
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "x"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1406",
+        "path": "/defs/Draft/body/1/value/caps/0",
+        "facts": {
+          "through": "map with caps"
+        }
+      },
+      {
+        "code": "MDT-W0310",
+        "path": "/defs/Draft/caps/2"
+      }
+    ]
+  }
+}

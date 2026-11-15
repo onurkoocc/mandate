@@ -1,0 +1,32 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1407b",
+  "kind": "compile",
+  "title": "A lock entry whose url is not the connector's declared URL is refused: the credential goes to the URL the lock names.",
+  "spec": [
+    "spec/library.md#the-lock-binding-and-schema-digests",
+    "spec/lock.md#libraries-and-connectors-06"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1407",
+        "path": "/connectors/example.erp.erp/url",
+        "facts": {
+          "connector": "example.erp.erp",
+          "problem": "url",
+          "url": "https://erp.example.org/mcp",
+          "declared": "https://erp.example.com/mcp"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+// A module of 0.6 with a connector of its own, which the check is given and
+// the program of T01 does not import.
+
+mandate @ 0.6
+
+module example.crm @ 0.1
+
+pub type Lead = { name: Text }
+
+pub connector crm = mcp("https://crm.example.com/mcp")
+  version "1.0"
+  class   internal
+{
+  tool list_leads() -> Untrusted<List<Lead>>
+    read_only
+}

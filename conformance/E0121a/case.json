@@ -1,0 +1,79 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0121a",
+  "kind": "compile",
+  "title": "An effect named Tool cannot authorize an agent's skill that declares Tool either: the definition is refused.",
+  "spec": [
+    "spec/library.md#toolcall"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Tool",
+      "value": {
+        "kind": "effect",
+        "params": [
+          {
+            "name": "x",
+            "type": {
+              "ref": "Text"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Text"
+        },
+        "requires_caps": [
+          {
+            "op": "call",
+            "callee": {
+              "op": "field",
+              "of": {
+                "op": "var",
+                "name": "model"
+              },
+              "name": "infer"
+            },
+            "args": [
+              {
+                "name": "tier",
+                "value": {
+                  "op": "var",
+                  "name": "standard"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Reader/caps",
+      "value": [
+        {
+          "op": "var",
+          "name": "ModelAll"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0121",
+        "path": "/defs/Tool",
+        "facts": {
+          "name": "Tool"
+        }
+      }
+    ]
+  }
+}

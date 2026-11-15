@@ -1,15 +1,15 @@
 {
   "fixtures/library/drafts.mdt": {
-    "check": "sha256:71f6d9dd972fad51b8a44f567221bf92db7340d4df6bb045e0cd81fcc4664db9",
-    "check --module": "sha256:620c3f5942ebca94aebb15f934486ff10bccb1c5290d1d53ee50d99573668aad",
+    "check": "sha256:0b00eafe6f8296c0ca0fb9343b5cb1fd9bff4dcf8973f07b66944776fa31b3bc",
+    "check --module": "sha256:e9c6c05bec4d7258001c7d92c6003adb27bfd70e646f75e63637e25024206a92",
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
-    "ir --canonical": "sha256:276ae5a7f65bb7d7314a0144e5b55178692617f40ccbc5f3ec5ad8deca536110",
-    "fmt": "sha256:89834bad836c62b0d33fa0fb77db4b4e35c031d23a3e93da2709a7f150dde0ae",
-    "view --format json": "sha256:730551fcf6d1af0eadafa35963646150d1903e897844efa44bd34b3313413c57",
-    "view --format md": "sha256:c0a20a4cb9f4b4b9f626536756b3ccfc2ffddf45e0591515a8f756c0c321e30e",
-    "view --format html": "sha256:36607650c6782995d1399b44950273c15f7a48cc562b53752cc841922f5f6c67",
-    "view --against itself": "sha256:40cdbe6ba0d2dea3b487c6dc628b56d306fffbcb4d68cecde32af5295b33ace9",
-    "sandbox": "sha256:f0e90f3474f4d6677c235cae2af50ec86b7b5e71cd9717f2869f7a3cdda04010"
+    "ir --canonical": "sha256:a285fc3e80d4d97e294c24817882ca823d6721c37a35da8cb5ed0320099dcec0",
+    "fmt": "sha256:24f9e4af4e59aacbe4edc334ebf65f233e3c46e1745dd873f45ef2066c8e30cc",
+    "view --format json": "sha256:5d7c8a5a47bab7a76527f690a7f008fb87dab3b5f9bdd306b439906c1279bcc4",
+    "view --format md": "sha256:a1381651e1a6e9379f3d010ef9c0f1acb72125cb1f1cf254a5fa2ec2b51c8a77",
+    "view --format html": "sha256:6727023a5ea1a86d8541ce48fdb8c5d0bedcbce75466e8e3fb2a4ce6b38c3b15",
+    "view --against itself": "sha256:851bfcefde70e305dce165510f4326ac5550aec7ec9623bbe1cccfa34289eb38",
+    "sandbox": "sha256:0e0d38a3bdd3c86629af11f395e0e3868155bc362e44e733b351d08c91bebdbf"
   },
   "fixtures/library/fetch.mdt": {
     "check": "sha256:aeb69f06731dc36edb01af03e0e53eedb45a879273216d23792d036385e1726d",
@@ -39,16 +39,16 @@
     "sandbox": "sha256:c8a2943b96fb4e1dcdbb42c2cc2d8bc7ead2675dd163089373f2f2e43940645e"
   },
   "fixtures/library/review.mdt": {
-    "check": "sha256:0b15092a879c80d71ee0d830f42753d77b5f0f2c333c92157463ac2739a8651d",
-    "check --module": "sha256:31e1b2c8c086933ee79655b22c9fb771777b5018bc303a15d7099ef259b8dbde",
+    "check": "sha256:ad1672b635b277a87a3d9688043d30a2cb5745e2ff18b3c8c09749ffbe522a84",
+    "check --module": "sha256:5dca3e9063f6ea317a2d236b8207215ed6d73017dd0bd51d20504c32a2664d0e",
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
-    "ir --canonical": "sha256:678c58d40896a205c50d21b39d120c8ff385042470a85097279e4556f8786cc3",
-    "fmt": "sha256:feb3300e7da683acdf322776674f127d6fb470242939ca68e2c667169bf52aa5",
-    "view --format json": "sha256:a9e22676f899290468e81b6a996006774992fc76979d4756df148b29f02b16e8",
-    "view --format md": "sha256:56a7d57c3b4e032653d53c4266ea10c37f562602f75123f0c70621a4ea2bd8b0",
-    "view --format html": "sha256:986ec1fd6c63ac9508599cdc79da9559014b89d94c042319239d79fe8b1a57e8",
-    "view --against itself": "sha256:c6675bc48a318d60b4d1e004d604df06bca7c3eee151a4eac7b06d0502804a06",
-    "sandbox": "sha256:5a3972412e2d204780528a08f5630b48d8cb51141882e3e69cdfa27ba7aad79a"
+    "ir --canonical": "sha256:90469fae99560aaed76eb33e224bbcaaf3f243d417a09ad43eddf727d6264b18",
+    "fmt": "sha256:6d85a5198584a451cce77fb01f414f20b3d7b476694c1302e865eddd08e7699e",
+    "view --format json": "sha256:2877e9a5373a01a3011e09f523ac6780e4bfab245c094ddfe196125e169400d0",
+    "view --format md": "sha256:8f323cdb5b650644f3c2c91bab6830d831c9acf9553a8eae234a0346309fb320",
+    "view --format html": "sha256:d171a16477a9bf5e38db0b1c2974b49d99f9c20280478db2a11b260d5f7bd835",
+    "view --against itself": "sha256:449fe4ed032f4b8538b99940ccdc9cd0635a707c4c1d66a3a6659752de88a949",
+    "sandbox": "sha256:7029d570826f45d9ab69ecf89ec41c2c19e2b313b94dbbe1264a346b3607b716"
   },
   "fixtures/library/shared.mdt": {
     "check": "sha256:2eda72389f6229bf1bc847f45b8c71ab873d9c59e67b3ccb84a1eba527f53737",

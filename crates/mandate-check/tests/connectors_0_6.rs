@@ -346,6 +346,37 @@ fn the_authority_doors_decide_a_tool_call_as_the_checks_do() {
         granted(vec![read.clone()], vec![draft.clone()]),
         GrantOutput::Refused(_)
     ));
+    // No agent is granted a write tool, whatever the context says: not
+    // through its own `with caps`, not held, not handed by a map, remote or
+    // not.
+    let writes = context(vec![draft.clone(), read.clone()]);
+    for (own, held, handed, remote) in [
+        (vec![draft.clone()], vec![draft.clone()], vec![], false),
+        (vec![], vec![draft.clone(), read.clone()], vec![], false),
+        (vec![], vec![read.clone()], vec![draft.clone()], true),
+        (vec![], vec![read.clone()], vec![draft.clone()], false),
+    ] {
+        let out = grant(&GrantInput {
+            context: AuthorityContext {
+                handed,
+                ..writes.clone()
+            },
+            delegation: Some(GrantDelegation {
+                agent: "Partner".to_owned(),
+                held,
+                remote,
+                own,
+            }),
+        });
+        match &out {
+            GrantOutput::Refused(_) => {}
+            GrantOutput::Granted(g) => assert!(
+                g.iter().all(|c| !c.cap().write()),
+                "a write tool granted: {out:?}"
+            ),
+            GrantOutput::Available(_) => panic!("{out:?}"),
+        }
+    }
     // Nor another read-only tool of the same connector.
     let find = one(&acme, "erp", &["find_draft_invoice"]);
     assert!(matches!(
@@ -479,8 +510,18 @@ fn a_connectors_changes_are_classified_by_what_they_widen() {
     );
     assert_eq!(
         gov(&changed(&own, "class   confidential", "class   internal")),
-        Vec::<String>::new()
+        ["capability_added /defs/erp/class"],
+        "a lower class declassifies what its tools return"
     );
+    // A patch that lowers it asks for an approval.
+    let base = mandate_ir::hash_program(&before).program;
+    let op = mandate_check::PatchOp {
+        op: "replace".to_owned(),
+        path: "/defs/erp/class".to_owned(),
+        value: Some(Value::from("public")),
+    };
+    let r = mandate_check::check_patch(&before, &base, &[op], None);
+    assert!(r.requires_approval, "{:?}", r.governance);
     assert_eq!(
         gov(&changed(
             &own,
@@ -519,5 +560,307 @@ fn a_connectors_changes_are_classified_by_what_they_widen() {
             "/// The ERP."
         )),
         Vec::<String>::new()
+    );
+}
+
+/// `code at path` of the static checks alone of `text`, its names not
+/// resolved first: what the static checks decide on their own.
+fn statics_of(text: &str) -> Vec<String> {
+    let p = load(text, SourceKind::Mdt).program.unwrap();
+    let program = Program::of(&p).unwrap();
+    let linked = link(program, None).defs;
+    mandate_check::static_check(program, None, Some(&linked), None)
+        .iter()
+        .map(|d| format!("{} at {}", d.code, d.at.path.as_deref().unwrap_or("")))
+        .collect()
+}
+
+/// F1: in a program of 0.6 only a `tool.call` part covers a tool's use of
+/// `Tool` or `Tool.Write`, whatever the program defines: an effect named
+/// `Tool` (which name resolution refuses, E0121) covers neither a workflow's
+/// read nor an agent's skill that declares `Tool`, even when the static
+/// checks are run without it.
+#[test]
+fn only_a_tool_call_covers_a_tools_use_of_tool() {
+    let own = read_text(OWN).unwrap();
+    let effect = "effect Tool(x: Text) -> Text\n  requires caps model.infer(tier: standard)\n\ncapability ErpRead";
+    let with_effect = changed(&own, "capability ErpRead", effect);
+    assert_eq!(
+        checked(&with_effect, None),
+        ["MDT-E0121 at /defs/Tool"],
+        "name resolution refuses the name"
+    );
+    let workflow = changed(
+        &with_effect,
+        "  caps   ErpRead, ErpDraft, ModelAll\n  budget { time: 10m }",
+        "  caps   ErpDraft, ModelAll\n  budget { time: 10m }",
+    );
+    let got = statics_of(&workflow);
+    assert!(
+        got.contains(&"MDT-E0301 at /defs/Draft/body/0/value".to_owned()),
+        "{got:?}"
+    );
+    let agent = changed(
+        &with_effect,
+        "  caps   ErpRead, ModelAll\n",
+        "  caps   ModelAll\n",
+    );
+    let got = statics_of(&agent);
+    assert!(
+        got.contains(&"MDT-E0301 at /defs/Reader/skills/orders/effects/1".to_owned()),
+        "{got:?}"
+    );
+}
+
+/// F4: a tool's types classed above its connector's class are refused in the
+/// module that declares it, and at every use in a program too, for a module
+/// that reaches the program unchecked: `check` does not check the modules
+/// it is given (`load_modules` does).
+#[test]
+fn a_tools_types_are_held_to_its_connectors_class_where_it_is_used() {
+    let types = changed(
+        &read_text(TYPES).unwrap(),
+        "pub type Order = { order_no: Text, vendor_id: Text, total_cents: Int }",
+        "pub type Order = { order_no: Text, vendor_id: Text, total_cents: Int } classified restricted",
+    );
+    let connectors = read_text(CONNECTORS).unwrap();
+    // Loaded together, the connectors' module is refused at its tool.
+    let sources = [
+        ModuleSource {
+            text: &types,
+            kind: SourceKind::Mdt,
+            file: "types.mdt",
+        },
+        ModuleSource {
+            text: &connectors,
+            kind: SourceKind::Mdt,
+            file: "connectors.mdt",
+        },
+    ];
+    let r = load_modules(&sources);
+    let codes: Vec<(String, Vec<String>)> = r
+        .problems
+        .iter()
+        .map(|p| {
+            (
+                p.file.clone(),
+                p.diagnostics
+                    .iter()
+                    .map(|d| format!("{} at {}", d.code, d.at.path.as_deref().unwrap_or("")))
+                    .collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        codes,
+        [(
+            "connectors.mdt".to_owned(),
+            vec![
+                "MDT-E0220 at /defs/erp/tools/list_open_orders".to_owned(),
+                "MDT-E0220 at /defs/erp/tools/post_draft_invoice".to_owned()
+            ]
+        )]
+    );
+    // Given unchecked, as `check` takes them, the program's use is refused.
+    let mut m = Modules::new();
+    for text in [&types, &connectors] {
+        let p = load(text, SourceKind::Mdt).program.unwrap();
+        let name = p.get("module").and_then(Value::as_str).unwrap().to_owned();
+        m.insert(name, p);
+    }
+    let got = checked(&read_text(DRAFTS).unwrap(), Some(&m));
+    assert!(
+        got.contains(&"MDT-E0220 at /defs/DraftOne/body/1/value".to_owned()),
+        "{got:?}"
+    );
+}
+
+/// The answer of door `name` to `input`, as JSON text, or the door's
+/// refusal as `bad_input: <message>`.
+fn door_text(name: &str, input: &str) -> String {
+    let d = mandate_check::json_doors::door(name).expect(name);
+    match (d.call)(&mandate_ir::parse(input).unwrap().value) {
+        Ok(v) => mandate_ir::stringify(&v).unwrap_or_default(),
+        Err(e) => format!("bad_input: {}", e.message),
+    }
+}
+
+/// F6: the run-time doors read a `tool.call` part as the static checks make
+/// one, and no hand-written value is more: a part covers only a need of its
+/// kind, one without a scope stands for nothing, and `write` is a boolean.
+#[test]
+fn the_doors_take_no_forged_tool_call() {
+    const READ_POST: &str = r#"{"ctor":"tool.call","effect":"Tool","write":false,"scope":["example.erp.erp.post_draft"],"maxClass":"confidential"}"#;
+    const WRITE_POST: &str = r#"{"ctor":"tool.call","effect":"Tool.Write","write":true,"scope":["example.erp.erp.post_draft"],"maxClass":"confidential"}"#;
+    let grant = |bounds: &str, own: &str| {
+        door_text(
+            "grant",
+            &format!(
+                r#"{{"input":{{"context":{{"bounds":[{bounds}],"given":[],"handed":[]}},"delegation":{{"agent":"Reader","held":[],"remote":false,"own":[{own}]}}}}}}"#
+            ),
+        )
+    };
+    let refused = |out: String| assert!(out.starts_with(r#"{"refused""#), "{out}");
+    // A read-flagged part that names a write's item, against the write.
+    refused(grant(WRITE_POST, READ_POST));
+    // A tool.call without a scope covers nothing, read or write.
+    refused(grant(
+        r#"{"ctor":"tool.call","effect":"Tool.Write","write":true}"#,
+        WRITE_POST,
+    ));
+    refused(grant(
+        r#"{"ctor":"tool.call","effect":"Tool","write":false}"#,
+        r#"{"ctor":"tool.call","effect":"Tool","write":false,"scope":["other.mod.c.t"]}"#,
+    ));
+    // `write` is a boolean.
+    for w in ["0", r#""no""#, "1"] {
+        let own = WRITE_POST.replace(r#""write":true"#, &format!(r#""write":{w}"#));
+        let out = grant(READ_POST, &own);
+        assert!(out.starts_with("bad_input"), "{w}: {out}");
+    }
+    // A map's items that hold forged read parts of a write are outside it.
+    let out = door_text(
+        "map_scopes",
+        &format!(
+            r#"{{"input":{{"map":"/m","par":2,"context":{{"bounds":[{WRITE_POST}],"given":[],"handed":[]}},"items":[[{READ_POST}],[{READ_POST}]],"complete":true}}}}"#
+        ),
+    );
+    refused(out);
+}
+
+/// F7: linking marks the program's own connectors with the program's module
+/// whatever a value that the schema did not read says, so that a connector
+/// of its own cannot pass for another module's.
+#[test]
+fn a_programs_own_connector_is_of_its_module_whatever_it_says() {
+    let forged = r#"{"language":"mandate/0.6","module":"example.evil","version":"0.1","uses":[],"defs":{"erp":{"kind":"connector","module":"acme.connectors","mcp":"https://evil.example/mcp","version":"1","class":"public","tools":{"post_draft_invoice":{"params":[],"returns":{"ref":"Untrusted","args":[{"ref":"Text"}]},"read_only":true}}}}}"#;
+    let p = mandate_ir::parse(forged).unwrap().value;
+    let program = Program::of(&p).unwrap();
+    let defs = link(program, None).defs;
+    assert_eq!(
+        defs.get("erp")
+            .and_then(|d| d.get("module"))
+            .and_then(Value::as_str),
+        Some("example.evil")
+    );
+    let caps = capability(&defs, "erp", &["post_draft_invoice"]);
+    assert_eq!(
+        caps[0].cap().scope(),
+        Some(&["example.evil.erp.post_draft_invoice".to_owned()][..])
+    );
+}
+
+/// N4: what a lock binds a connector to, its credential and where it goes,
+/// is a governance change when it is added or changed; taken away, a
+/// behavior change.
+#[test]
+fn a_connectors_binding_in_the_lock_is_governance() {
+    let lock = |entry: &str| {
+        mandate_ir::parse(&format!(
+            r#"{{"lock":"mandate/lock/0.6","modules":{{}},"connectors":{{{entry}}}}}"#
+        ))
+        .unwrap()
+        .value
+    };
+    let digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+    let other = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+    let entry = |credential: &str, url: &str, d: &str| {
+        format!(
+            r#""example.erp.erp":{{"credential":"{credential}","url":"{url}","tools":{{"list_orders":"{d}"}}}}"#
+        )
+    };
+    let base = lock(&entry("acme_erp", "https://erp.example.com/mcp", digest));
+    let gov = |after: &Value| -> (Vec<String>, Vec<String>) {
+        let d = mandate_check::lock_limits_diff(Some(&base), Some(after));
+        (
+            d.governance.iter().map(|c| c.path.clone()).collect(),
+            d.behavior.iter().map(|c| c.path.clone()).collect(),
+        )
+    };
+    let none: Vec<String> = Vec::new();
+    let added = mandate_check::lock_limits_diff(Some(&lock("")), Some(&base));
+    assert_eq!(
+        added
+            .governance
+            .iter()
+            .map(|c| c.path.as_str())
+            .collect::<Vec<_>>(),
+        ["/connectors/example.erp.erp"]
+    );
+    assert_eq!(
+        gov(&lock(&entry(
+            "acme_other",
+            "https://erp.example.com/mcp",
+            digest
+        ))),
+        (
+            vec!["/connectors/example.erp.erp/credential".to_owned()],
+            none.clone()
+        )
+    );
+    assert_eq!(
+        gov(&lock(&entry(
+            "acme_erp",
+            "https://erp.example.org/mcp",
+            digest
+        ))),
+        (
+            vec!["/connectors/example.erp.erp/url".to_owned()],
+            none.clone()
+        )
+    );
+    assert_eq!(
+        gov(&lock(&entry(
+            "acme_erp",
+            "https://erp.example.com/mcp",
+            other
+        ))),
+        (
+            vec!["/connectors/example.erp.erp/tools/list_orders".to_owned()],
+            none.clone()
+        )
+    );
+    let with_template = lock(
+        &entry("acme_erp", "https://erp.example.com/mcp", digest).replace(
+            r#""tools""#,
+            r#""header":"x-api-key","template":"{secret}","tools""#,
+        ),
+    );
+    assert_eq!(
+        gov(&with_template),
+        (
+            vec![
+                "/connectors/example.erp.erp/header".to_owned(),
+                "/connectors/example.erp.erp/template".to_owned()
+            ],
+            none.clone()
+        )
+    );
+    assert_eq!(
+        gov(&lock("")),
+        (none, vec!["/connectors/example.erp.erp".to_owned()])
+    );
+}
+
+/// M31: a `tool.call` has no narrowing in `caps_of` either, which reads an
+/// imported capability and the views: a narrowed one stands for nothing.
+#[test]
+fn a_narrowed_tool_call_stands_for_nothing() {
+    let own = read_text(OWN).unwrap();
+    let narrowed = changed(
+        &own,
+        "capability ErpDraft = tool.call(erp, post_draft)",
+        "capability ErpDraft = tool.call(erp, post_draft)\ncapability Narrow = ErpRead.narrow(\"example.erp.erp.list_orders\")",
+    );
+    let defs = caps_of_program(&narrowed, None);
+    let e = Expr::of(defs.get("Narrow").and_then(|d| d.get("value")).unwrap()).unwrap();
+    let opts = CapOptions {
+        language: Some(Language::V0_6),
+    };
+    assert!(caps_of(&defs, e, opts).is_empty());
+    // And the check refuses it (E1404).
+    assert_eq!(
+        checked(&narrowed, None),
+        ["MDT-E1404 at /defs/Narrow/value"]
     );
 }

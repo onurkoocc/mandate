@@ -323,6 +323,9 @@ pub(crate) struct Frame<'a> {
     pub(crate) in_map: Option<String>,
     /// 0.6: inside a map's body, the map, as the batch commit step reads it.
     pub(crate) map_site: Option<Rc<MapSite>>,
+    /// 0.6 (Rust only): typed in a workflow's frame without being its body:
+    /// its `ensures`, where no connector's tool is called (E1405).
+    pub(crate) beside_body: bool,
 }
 
 impl<'a> Frame<'a> {
@@ -346,6 +349,7 @@ impl<'a> Frame<'a> {
             envelope: None,
             in_map: None,
             map_site: None,
+            beside_body: false,
         }
     }
 
@@ -536,7 +540,11 @@ pub(crate) fn canonical_parts(program: Program<'_>, linked: Option<&Map>) -> (Va
     // 0.6: the program's own connectors are of its module (an imported one
     // says its module already, `crate::modules::link`).
     if let Some(module) = program.module() {
-        crate::modules::mark_connectors(&mut defs, module);
+        let own: Vec<&str> = program
+            .defs()
+            .map(|d| d.keys().collect())
+            .unwrap_or_default();
+        crate::modules::mark_own_connectors(&mut defs, &own, module);
     }
     (canonical_program, defs)
 }

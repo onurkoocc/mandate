@@ -1,0 +1,71 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0120d",
+  "kind": "compile",
+  "title": "A program's own type of the name a tool's signature uses is not the type the tool means: its use is refused.",
+  "spec": [
+    "spec/library.md#toolcall"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/drafts.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../../fixtures/library/acme.connectors/types.mdt",
+    "../../fixtures/library/acme.connectors/connectors.mdt"
+  ],
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/uses/1/names",
+      "value": [
+        "Invoice",
+        "Order",
+        "DraftId"
+      ]
+    },
+    {
+      "op": "add",
+      "path": "/defs/Match",
+      "value": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "invoice_no": {
+              "ref": "Text"
+            },
+            "anything": {
+              "ref": "Text"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/ErpDraft/value",
+        "facts": {
+          "name": "Match",
+          "module": "acme.connectors.types"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/DraftOne/body/4/value",
+        "facts": {
+          "name": "Match"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/same_invoice/by/static"
+      }
+    ]
+  }
+}

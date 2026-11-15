@@ -987,8 +987,8 @@ fn one_secret(template: &str) -> bool {
 ///   no entry in `connectors`, or its entry has no digest for one of the
 ///   tools it declares;
 /// - E1408: an entry names a connector that no module of the package
-///   defines (the program's module, or a module of `modules`), or a tool
-///   that connector does not declare;
+///   defines (the program's module, or a module it imports, whatever else
+///   `modules` holds), or a tool that connector does not declare;
 /// - E0140: an entry's `template` that does not hold `{secret}` exactly
 ///   once, as the lock's other malformed members are.
 #[must_use]
@@ -1029,6 +1029,27 @@ pub fn connector_lock_checks(
         else {
             continue;
         };
+        // The credential goes to the URL the lock names, which is the one
+        // the connector declares.
+        let bound = entry.get("url").and_then(Value::as_str);
+        if bound != c.mcp() {
+            out.push(Diagnostic::new(
+                "E1407",
+                format!(
+                    "The lock binds the connector {id} at {}, and it declares {}: the credential goes to the URL the lock names.",
+                    bound.unwrap_or("no URL"),
+                    c.mcp().unwrap_or("no URL")
+                ),
+                Location::path(ptr(&[&"connectors", &id, &"url"])),
+                Some(
+                    JsObject::new()
+                        .with("connector", id.as_str())
+                        .with("problem", "url")
+                        .with("url", bound)
+                        .with("declared", c.mcp()),
+                ),
+            ));
+        }
         let tools = entry.get("tools");
         for (tool, _) in c.tools() {
             if own(tools, tool).is_none() {
@@ -1067,8 +1088,13 @@ pub fn connector_lock_checks(
             ));
         }
         let (module, name) = id.rsplit_once('.').unwrap_or(("", id.as_str()));
+        // The package is the program and the modules it imports, whatever
+        // else the check was given.
+        let imported = program.imports().any(|u| u.module() == Some(module));
         let defs = if module == own_module {
             program.defs()
+        } else if !imported {
+            None
         } else {
             modules
                 .and_then(|ms| ms.get(module))

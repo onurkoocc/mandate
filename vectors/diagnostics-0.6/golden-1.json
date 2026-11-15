@@ -33,7 +33,7 @@
               "message": "Module acme.connectors.types is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
               "at": {
                 "path": "/uses/1",
-                "span": [15, 1, 15, 52]
+                "span": [15, 1, 15, 59]
               },
               "docs": "mandate explain MDT-E1604",
               "facts": {
@@ -45,7 +45,7 @@
         "check_module": {
           "ok": true,
           "hashes": {
-            "program": "sha256:eeaed7c87a130f38d76384b376747770530b5e8b944fd80b49180d855980006f",
+            "program": "sha256:6a12b35ba05184a56055ea95c2386ed5eeb1acac52a669c789da31cd49b0d781",
             "defs": {
               "DraftOne": "sha256:c1e97dbd6d430d5a8a39400195b6561491036df4da61952a5eb032d591b2f8f6",
               "ErpDraft": "sha256:91f4779de7c6cd75cafd362ea2a38edc91030ae222e19de9d7a34ba8c8235d84",
@@ -190,7 +190,7 @@
               "message": "Module acme.connectors.types is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
               "at": {
                 "path": "/uses/1",
-                "span": [18, 1, 18, 58]
+                "span": [18, 1, 18, 65]
               },
               "docs": "mandate explain MDT-E1604",
               "facts": {
@@ -202,7 +202,7 @@
         "check_module": {
           "ok": true,
           "hashes": {
-            "program": "sha256:b8f3880dcf61b49ad6f04b518c7121325e315ff0e5991cf1a02bdf11fe374973",
+            "program": "sha256:39c0803529eeef6b2a26b6e5915191e75e18d9912186d22aa1d06f691c4f434d",
             "defs": {
               "Batch": "sha256:59da9c47643e06f32072d4a42898937e7d4cb9de330165c0b602f3045a05d135",
               "ErpDraft": "sha256:91f4779de7c6cd75cafd362ea2a38edc91030ae222e19de9d7a34ba8c8235d84",

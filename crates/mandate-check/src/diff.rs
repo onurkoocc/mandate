@@ -941,12 +941,13 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
 }
 
 /// What changed in a connector (0.6), as its authority signature reads it
-/// (spec/library.md "The authority signature"): another server, a higher
-/// class, a tool it did not have, a read-only tool that writes, and a write
-/// tool's class, retry class, `reconcile by` or `compensation` changed, and
-/// any tool's parameters or result, are governance changes (authority
-/// widened); a lower class, a tool taken away, a write tool that became
-/// read-only and another `version` are behavior changes.
+/// (spec/library.md "The authority signature"): another server, another
+/// class (a higher one lets more be sent to it, a lower one declassifies
+/// everything its tools return), a tool it did not have, a read-only tool
+/// that writes, and a write tool's class, retry class, `reconcile by` or
+/// `compensation` changed, and any tool's parameters or result, are
+/// governance changes (authority widened); a tool taken away, a write tool
+/// that became read-only and another `version` are behavior changes.
 fn connector_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a: &Value) {
     let gov = |out: &mut Classified, at: String, text: String| {
         out.gov(GovernanceChangeKind::CapabilityAdded, at, text);
@@ -962,11 +963,6 @@ fn connector_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a:
             ),
         );
     }
-    let rank = |v: Option<&Value>| {
-        v.and_then(Value::as_str)
-            .and_then(crate::stdlib::DataClass::from_name)
-            .map(crate::stdlib::class_rank)
-    };
     let (bc, ac) = (b.get("class"), a.get("class"));
     if j_or_null(bc) != j_or_null(ac) {
         let text = format!(
@@ -974,17 +970,7 @@ fn connector_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a:
             js_text(bc),
             js_text(ac)
         );
-        // A class that is no data class, or none, is read as the highest.
-        let higher = match (rank(bc), rank(ac)) {
-            (Some(x), Some(y)) => y > x,
-            (_, None) => true,
-            (None, Some(_)) => false,
-        };
-        if higher {
-            gov(out, format!("{path}/class"), text);
-        } else {
-            out.beh(format!("{path}/class"), text);
-        }
+        gov(out, format!("{path}/class"), text);
     }
     if j_or_null(b.get("version")) != j_or_null(a.get("version")) {
         out.beh(

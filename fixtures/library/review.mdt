@@ -15,7 +15,7 @@ module acme.finance.review @ 0.1
 
 use std.{human, model, tool}
 use acme.connectors.{erp, mailbox}
-use acme.connectors.types.{Invoice, Match, DraftId, near}
+use acme.connectors.types.{Invoice, Order, Match, DraftId, near}
 
 role accountant   "Accountant"
 role finance_lead "Finance lead"

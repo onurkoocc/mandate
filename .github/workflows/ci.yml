@@ -51,7 +51,25 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm run build
+      # The Rust compiler as the WebAssembly module the bridge runs in process (bridge/src/wasm/), linked with its
+      # memory ceiling and stack (the root's build:wasm). rustup is on the runner; with no argument it installs the
+      # toolchain rust-toolchain.toml pins, with the wasm32-wasip1 target. The module is built, never committed.
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+      - name: Build the Rust compiler's WebAssembly module
+        run: npm run build:wasm
       - run: npm test
+      # The bridge and the runtime with both compilers asked on every call and compared (bridge/src/compare.ts): a
+      # difference fails the test that made the call, and each run prints how many calls each named exemption of
+      # vectors/README.md excused.
+      - name: The bridge's tests, with the TypeScript and the Rust compilers compared on every call
+        run: npm test -w bridge
+        env:
+          MANDATE_COMPILER: both
+      - name: The runtime's tests, with the TypeScript and the Rust compilers compared on every call
+        run: npm test -w runtime
+        env:
+          MANDATE_COMPILER: both
       # The compiled corpus (vectors/corpus/) is complete: the suite runs again with every call it makes to a front door
       # of the compiler recorded, and corpus.test.ts fails if that is not exactly what the corpus holds, so a new test
       # that calls a door cannot leave the corpus incomplete (vectors/README.md, "corpus/", "How it is made").

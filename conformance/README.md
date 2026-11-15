@@ -308,6 +308,27 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E0140c` | A connector's `template` in the lock with `{secret}` twice | E0140 |
 | `E0301a` | An effect with two `requires caps`, the second covered by no capability of the workflow (B12) | E0301, W0310 |
 | `E0301b` | The program of `E0301a` as 0.5: only the first `requires caps` is compared, as before | — |
+| `E0121` | An effect named `Tool` in a program of 0.6, which would decide what covers every read-only tool (a mutation: the effect added, the workflow without `ErpRead`) | E0121 |
+| `E0121a` | The same effect, with the agent that declares `Tool` holding only its model capability | E0121 |
+| `E0121b` | A program of 0.5 with an effect named `Model` is read as before | — |
+| `E1406a` | A map's `with caps` that hands a write tool, its body delegating through a function | E1406 |
+| `E1406b` | A map's `with caps` that hands a write tool, its body delegating directly | E1406 |
+| `E0220c` | An agent that holds a connector's read-only tools whose class is above what its model capability may receive | E0220 |
+| `E0220d` | A delegation whose `with caps` narrows the agent's model below its connector's class | E0220 |
+| `E0220e` | A tool whose result type is classed above its connector's class, in the module that declares it | E0220 |
+| `E0120c` | A program that calls a tool whose types it does not import: the type names of the signature are not the connector module's definitions in it | E0120 |
+| `E0120d` | A program whose own `Match` stands where the tool means the types module's `Match` | E0120 |
+| `E1408b` | A lock entry of a connector of a module the program does not import, though the check is given it | E1408 |
+| `E1405e` | A tool called in a workflow's `ensures` | E1405 |
+| `E1407b` | A lock entry whose `url` is not the connector's declared URL | E1407 |
+| `E1405c` | A tool called in a contract's static criterion | E1405 |
+| `E1405d` | A tool called in a workflow's handler | E1405 |
+| `E1708m` | A write tool's effect in a map's body, its key not read from the item | E1708 |
+| `E0403a` | A write tool's effect without `idempotent_by` | E0403 |
+| `E0301c` | An effect whose second `requires caps` stands for no capability: nothing covers it (B12) | E0301, W0310 |
+| `E0408a` | A skill that declares a write tool's effect: a write tool is a critical effect | E0408 |
+| `E0210a` | A write tool whose parameter is `Untrusted`, in its declaration | E0210 |
+| `E1404a` | A `tool.call` of a connector the program reaches through an imported capability and does not list | E1404 |
 | `H06` | A review over a verifying map checks: one wait for the list, its accepted items committed by a batch commit step through a connector's write tool | — |
 | `H07` | A review whose role is not among the waive by roles of the waived criterion (a mutation: the role) | E1508 |
 | `E1508` | A review whose `escalate_to` may not waive the waived criterion | E1508 |
@@ -370,10 +391,11 @@ semantic diff's waivers, a program of 0.5 as before) is in
 spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
 (human steps), L (libraries) and N11 (shapes), and the code numbers of its
 families; the cases above use P01 (which spec/library.md names), the S02 claim,
-E0101, E0104, E0120, E0140, E0301 and E0320, which 0.6 extends, T01, T02 and T06
-(which spec/library.md names), H06 and H07 (which it names), the letters of
-E1708 from b on (E1708b and E1708c, which it names, and one letter for each
-further refused condition), and the code numbers of E14xx, E1504 to E1508 and
+E0101, E0104, E0120, E0121, E0140, E0210, E0220, E0301, E0320, E0403, E0408 and
+E1708, which 0.6 extends, T01, T02 and T06 (which spec/library.md names), H06 and
+H07 (which it names), the letters of E1708 from b on (E1708b and E1708c, which it
+names, one letter for each further refused condition of the batch commit step, and
+E1708m, the connectors' own), and the code numbers of E14xx, E1504 to E1508 and
 E16xx.
 
 ## What the Rust crates run
@@ -412,13 +434,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 226, passed 226, pending 0
+conformance cases: ran 247, passed 247, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 101 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 122 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(242 cases: 226 `compile`, 101 of them of language 0.6, and 16 `journal`; no case
+(263 cases: 247 `compile`, 122 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

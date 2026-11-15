@@ -496,9 +496,11 @@ impl<'a> Checker<'a> {
     pub(crate) fn effect_names(&mut self, effects: &'a [Value], base: &str) {
         for (i, e) in effects.iter().enumerate() {
             let effect = e.get("effect").and_then(Value::as_str).unwrap_or_default();
+            // 0.6: a connector's tool, `c.t`, is an effect of the program too.
             if is_builtin_effect(effect)
                 || std_effect(effect).is_some()
                 || self.def_of(effect, DefKind::Effect).is_some()
+                || self.connector_tool(effect).is_some()
             {
                 continue;
             }
@@ -549,6 +551,9 @@ impl<'a> Checker<'a> {
     /// that authorize a usage. A usage with a scope needs a capability
     /// whose scope covers it.
     fn caps_for(&self, effect: &str, scope: Option<&[String]>, caps: &[CapVal]) -> Vec<usize> {
+        if let Some(by) = self.tool_effect_caps(effect, scope, caps) {
+            return by;
+        }
         if let Some(reqs) = self.requirements(effect) {
             return Self::covering(&reqs, scope, caps);
         }
@@ -603,6 +608,9 @@ impl<'a> Checker<'a> {
     fn authorizing(&self, x: &Value, caps: &[CapVal]) -> Vec<usize> {
         let effect = x.get("effect").and_then(Value::as_str).unwrap_or_default();
         let scope = Self::effect_scope(x);
+        if let Some(by) = self.tool_effect_caps(effect, scope.as_deref(), caps) {
+            return by;
+        }
         if let Some(reqs) = self.requirements(effect) {
             return Self::covering(&reqs, scope.as_deref(), caps);
         }
@@ -660,6 +668,10 @@ impl<'a> Checker<'a> {
         let caps = self.cap_list(d.caps(), &format!("{base}/caps"));
         // 0.6: no agent holds a write tool (E1406).
         self.agent_write_tools(name, d.caps(), base);
+        // 0.6: what its loop reads reaches its model (E0220).
+        self.agent_read_classes(name, d.caps(), base);
+        // 0.6: the types of the tools it holds are the program's (E0120).
+        self.agent_unbound(d.caps(), base);
         // `used` is a Set of the capabilities by identity: here, by index.
         let mut used = vec![false; caps.len()];
         let skills: Vec<(&'a str, &'a Value)> = d.skills().collect();
@@ -829,6 +841,7 @@ impl<'a> Checker<'a> {
                 Val::public(frame.returns.clone().unwrap_or(UNKNOWN)),
             );
             let mut inner = Self::child(&frame, vars);
+            inner.beside_body = true;
             let v = self.expr(ensures, &mut inner, &at);
             self.expect_bool(&v, &at);
         }
@@ -1612,6 +1625,9 @@ impl<'a> Checker<'a> {
     ) {
         let usages = frame.usages_from(usages_before);
         self.map_bound(e, frame, path, &usages);
+        // 0.6: what a map hands the delegations of its body, through a
+        // function however deep, holds no write tool (E1406).
+        self.map_hands_write_tools(e, path, &usages);
         // A person is asked once about the list, after the map (E1708). A
         // step in a map inside this one was reported there, for that map.
         for u in &usages {
@@ -1893,10 +1909,6 @@ impl<'a> Checker<'a> {
             if !own.contains(k.ctor())
                 && (remote.is_some() || agent_caps.iter().any(|a| cap_covers(a, k)))
             {
-                // 0.6: nor does a map's `with caps` (E1406).
-                if k.ctor() == crate::caps::TOOL_CALL && k.write() {
-                    self.holds_write_tool(agent_name, k, path, "map with caps");
-                }
                 given.push(k.clone());
             }
         }
@@ -2065,6 +2077,14 @@ impl<'a> Checker<'a> {
         // 0.6: what the agent receives, against the classes of the
         // connectors whose tools it is granted.
         self.grant_classes(g.who, g.effective, g.cls, path);
+        let held: Vec<CapVal> = g
+            .agent
+            .caps()
+            .iter()
+            .filter_map(Expr::of)
+            .flat_map(|c| caps_of(self.defs, c, self.cap_opts()))
+            .collect();
+        self.grant_read_classes(g.who, g.effective, &held, path);
         let effects = g
             .skill
             .get("effects")

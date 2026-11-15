@@ -1,0 +1,43 @@
+{
+  "lock": "mandate/lock/0.6",
+  "modules": {},
+  "models": {
+    "standard": {
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "max_input_tokens": 1000,
+      "max_output_tokens": 1000
+    }
+  },
+  "tariffs": {
+    "claude-opus-5-5": {
+      "currency": "USD",
+      "as_of": "2026-10-09",
+      "micros_per_mtok": {
+        "input": 4000000,
+        "output": 20000000,
+        "cache_read": 200000,
+        "cache_write": 5000000
+      }
+    }
+  },
+  "connectors": {
+    "example.erp.erp": {
+      "credential": "acme_erp",
+      "url": "https://erp.example.com/mcp",
+      "tools": {
+        "list_orders": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "find_draft": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "post_draft": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+      }
+    },
+    "example.crm.crm": {
+      "credential": "acme_crm",
+      "url": "https://crm.example.com/mcp",
+      "tools": {
+        "list_leads": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    }
+  }
+}

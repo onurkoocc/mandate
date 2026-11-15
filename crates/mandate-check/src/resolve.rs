@@ -42,8 +42,9 @@ use mandate_ir::{
     TypeExpr, TypeForm, Value, Variant, Verifier, VerifierForm, nearest_span, ptr, ptr_token,
 };
 
+use crate::caps::TOOL_WRITE_EFFECT;
 use crate::imports::KnownModules;
-use crate::stdlib::{STD_EFFECTS, std_effect};
+use crate::stdlib::{STD_EFFECTS, is_builtin_effect, std_effect};
 
 /// The built-in types, in order: `BUILTIN_TYPES`.
 pub const BUILTIN_TYPES: [&str; 36] = [
@@ -179,6 +180,7 @@ pub fn resolve_names(
             insert(&mut r.imported_modules, last);
         }
     }
+    r.builtin_effect_names();
     r.run();
     r.out
 }
@@ -292,6 +294,37 @@ fn kind_of(d: &Value) -> Option<DefKind> {
 }
 
 impl<'a> Resolver<'a> {
+    /// 0.6: no definition of a program takes the name of a built-in effect
+    /// (`Tool`, `Model`, `Fs.Read` …, and `Tool.Write`, the effect of a
+    /// `tool.call`'s write tools): a definition so named would decide what
+    /// covers that effect. E0121, the collision of a name with one the
+    /// language has, at the definition. Before 0.6 such a name is read as it
+    /// always was.
+    fn builtin_effect_names(&mut self) {
+        if !self
+            .program
+            .language()
+            .is_some_and(|l| l.at_least(Language::V0_6))
+        {
+            return;
+        }
+        for name in self.defs.keys() {
+            if !is_builtin_effect(name) && name != TOOL_WRITE_EFFECT {
+                continue;
+            }
+            let path = ptr(&[&"defs", &name]);
+            let span = nearest_span(self.spans, &path);
+            self.out.push(Diagnostic::new(
+                "E0121",
+                format!(
+                    "'{name}' is the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\")."
+                ),
+                Location::path_span(&path, span),
+                Some(JsObject::new().with("name", name).with("builtin", "effect")),
+            ));
+        }
+    }
+
     fn run(&mut self) {
         for (name, def) in self.defs.iter() {
             self.def(def, &ptr(&[&"defs", &name]));

@@ -41,7 +41,8 @@
 // lock file named by --lock, or else mandate.lock.json next to <file> if there
 // is one. `view --against` reads the old version's lock the same way, from
 // --against-lock or else mandate.lock.json next to the old file. Exit status is 1 when any error diagnostic is reported, 2 on usage
-// errors.
+// errors and when the compiler behind the bridge fails (a CompilerFailure: its module missing, trapping, out of
+// memory, or answering what is not an answer), which is never read as a program that checks.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -79,6 +80,7 @@ import {
   type PatchOp,
 } from "./index.js";
 import { serveStdio } from "./mcp.js";
+import { CompilerFailure } from "./wasm/errors.js";
 
 function usage(): never {
   process.stderr.write(
@@ -381,6 +383,22 @@ async function control(argv: string[]): Promise<void> {
   process.exit(await runtime.main(argv));
 }
 
+/**
+ * A failure of the compiler behind the bridge (its module missing, trapping, out of memory, or answering what is
+ * not an answer) is the command's failure, never a program that checks: exit status 2, with what failed.
+ */
+function failed(e: unknown): never {
+  if (!(e instanceof CompilerFailure)) throw e;
+  process.stderr.write(`mandate: ${e.message}\n`);
+  process.exit(2);
+}
+
 const argv = process.argv.slice(2);
-if (CONTROL.has(argv[0] ?? "")) void control(argv);
-else main(argv);
+if (CONTROL.has(argv[0] ?? "")) void control(argv).catch(failed);
+else {
+  try {
+    main(argv);
+  } catch (e) {
+    failed(e);
+  }
+}
