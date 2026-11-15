@@ -1612,6 +1612,38 @@
       }
     },
     {
+      "name": "E1408b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "crm.mdt"
+      ],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1408",
+            "severity": "error",
+            "message": "The lock binds connectors.example.crm.crm, and no module of the package defines a connector crm in example.crm.",
+            "at": {
+              "path": "/connectors/example.crm.crm"
+            },
+            "docs": "mandate explain MDT-E1408",
+            "facts": {
+              "connector": "example.crm.crm",
+              "problem": "no_connector"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1602",
       "kind": "compile",
       "door": "check_patched",
