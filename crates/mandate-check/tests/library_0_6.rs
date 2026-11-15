@@ -231,11 +231,15 @@ fn a_value_slot_takes_a_constant_of_its_type_and_nothing_else() {
         "\"a brief\"",
         "editor",
         "Writer",
+        // A record of another type with the same fields.
+        "Memo { topic: \"x\" }",
     ] {
-        let text = MAKER.replace(
-            "input: Brief { topic: \"the release\" }",
-            &format!("input: {wrong}"),
-        );
+        let text = MAKER
+            .replace("type Draft", "type Memo  = { topic: Text }\ntype Draft")
+            .replace(
+                "input: Brief { topic: \"the release\" }",
+                &format!("input: {wrong}"),
+            );
         let r = checked(&text, Some(&modules));
         let codes: Vec<(&str, &str)> = r
             .diagnostics
