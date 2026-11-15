@@ -63,16 +63,14 @@ fn missing(field: &str) -> String {
 
 #[test]
 fn the_specifications_example_is_read() {
-    let text = format!(
-        r#"{{
+    let text = r#"{
   "library": "mandate/library/0.6",
   "name": "acme.connectors",
   "version": "2.3.0",
   "modules": ["connectors.mdt", "types.mdt"],
-  "requires": {{ "std.patterns": "^1.0" }}
-}}"#
-    );
-    let manifest = read_manifest(&text).unwrap();
+  "requires": { "std.patterns": "^1.0" }
+}"#;
+    let manifest = read_manifest(text).unwrap();
     assert_eq!(manifest.name(), "acme.connectors");
     assert_eq!(manifest.version().to_string(), "2.3.0");
     assert_eq!(manifest.modules(), ["connectors.mdt", "types.mdt"]);
@@ -309,7 +307,7 @@ fn text_that_is_not_strict_json_has_one_problem() {
     );
     t.eq(
         "raw control character",
-        problems(&format!("{{\"name\":\"a\tb\"}}")),
+        problems("{\"name\":\"a\tb\"}"),
         vec![invalid_json("syntax", "/name")],
     );
     t.finish();
