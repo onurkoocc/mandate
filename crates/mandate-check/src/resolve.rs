@@ -44,7 +44,7 @@ use mandate_ir::{
 
 use crate::caps::TOOL_WRITE_EFFECT;
 use crate::imports::KnownModules;
-use crate::stdlib::{STD_EFFECTS, is_builtin_effect, std_effect};
+use crate::stdlib::{STD_EFFECTS, STD_MODULE_ROOTS, is_builtin_effect, std_effect};
 
 /// The built-in types, in order: `BUILTIN_TYPES`.
 pub const BUILTIN_TYPES: [&str; 36] = [
@@ -300,7 +300,10 @@ impl<'a> Resolver<'a> {
     /// covers that effect. Nor of a built-in type of 0.6, `Review` or
     /// `Declined`, whose fields say what a review accepted and what it
     /// declined: neither a definition nor a name a `use` lists from another
-    /// module, so that what types a review is the language's alone. E0121,
+    /// module, so that what types a review is the language's alone. Nor the
+    /// root of a standard module (`human`, `tool` …, `STD_MODULE_ROOTS`),
+    /// imported or not, so that `human.review(…)` is never a connector's
+    /// tool or anything else a program wrote. E0121,
     /// the collision of a name with one the language has, at the definition
     /// or at the name in the list. Before 0.6 such a name is read as it
     /// always was.
@@ -317,6 +320,8 @@ impl<'a> Resolver<'a> {
                 "effect"
             } else if BUILTIN_TYPES_0_6.contains(&name) {
                 "type"
+            } else if STD_MODULE_ROOTS.contains(&name) {
+                "module"
             } else {
                 continue;
             };
@@ -331,20 +336,27 @@ impl<'a> Resolver<'a> {
             }
             for (j, n) in u.names_given().unwrap_or_default().iter().enumerate() {
                 let Some(name) = n.as_str() else { continue };
-                if BUILTIN_TYPES_0_6.contains(&name) {
-                    let path = format!("/uses/{i}/names/{j}");
-                    self.language_name(&path, name, "type");
-                }
+                let builtin = if BUILTIN_TYPES_0_6.contains(&name) {
+                    "type"
+                } else if STD_MODULE_ROOTS.contains(&name) {
+                    "module"
+                } else {
+                    continue;
+                };
+                let path = format!("/uses/{i}/names/{j}");
+                self.language_name(&path, name, builtin);
             }
         }
     }
 
     /// E0121 at `path` for `name`, a name the language has as a `builtin`
-    /// (`effect`, `type`).
+    /// (`effect`, `type`, `module`).
     fn language_name(&mut self, path: &str, name: &str, builtin: &str) {
         let span = nearest_span(self.spans, path);
         let why = if builtin == "type" {
             "a built-in type of 0.6, what a review gives; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a review's accepted and declined items are typed as the language types them (spec/library.md \"human.review\")"
+        } else if builtin == "module" {
+            "the root of a standard module; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a call written with it (human.review, human.approve …) is the standard library's, as the runtime reads it (spec/library.md \"Closed imports\")"
         } else {
             "the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\")"
         };

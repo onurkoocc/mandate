@@ -649,6 +649,74 @@
       }
     },
     {
+      "name": "E0121e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../H06/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'human' is the root of a standard module; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a call written with it (human.review, human.approve \u2026) is the standard library's, as the runtime reads it (spec/library.md \"Closed imports\").",
+            "at": {
+              "path": "/defs/human",
+              "span": [1, 7014, 1, 7245]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "human",
+              "builtin": "module"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../H06/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "roots.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'tool' is the root of a standard module; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a call written with it (human.review, human.approve \u2026) is the standard library's, as the runtime reads it (spec/library.md \"Closed imports\").",
+            "at": {
+              "path": "/uses/1/names/0",
+              "span": [1, 7100, 1, 7106]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "tool",
+              "builtin": "module"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0140",
       "kind": "compile",
       "door": "check",

@@ -254,5 +254,10 @@ names one is E0213. No definition of a program, a module or a sub-program
 of 0.6 takes either name, and no `use` list brings one of that name from
 another module: E0121, at the definition or the listed name, with the facts
 `name` and `builtin: "type"` (E0121c, E0121d), so that what types a review
-is the language's alone. A `human.review` is a `human.*` step, so E1708 in
+is the language's alone. Nor does one take the root of a standard module
+(`component`, `data`, `decision`, `env`, `exec`, `fs`, `git`, `human`,
+`model`, `money`, `net`, `test`, `time`, `tool`), whether the program imports
+it or not: E0121 with `builtin: "module"` (E0121e, a connector named `human`;
+E0121f, a listed name), so that a call written `human.review(…)` is the
+standard library's, as the runtime reads a call by its path. A `human.review` is a `human.*` step, so E1708 in
 a map's body (E1708l).
