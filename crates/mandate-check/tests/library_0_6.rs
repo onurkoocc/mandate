@@ -6,6 +6,7 @@
     clippy::expect_used,
     clippy::panic,
     clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
     missing_docs
 )]
 
@@ -366,6 +367,30 @@ fn the_lock_of_the_upgrade_cases_pins_acme_ops_1_0_0() {
     }
 }
 
+/// A changed `requires`, and nothing else, is a governance change of an
+/// upgrade: the library reaches other code.
+#[test]
+fn an_upgrade_that_changes_requires_writes_no_lock_without_acceptance() {
+    let lock = ops_lock();
+    let pinned = published("1.0.0").source;
+    let mut requiring = published("1.0.1");
+    requiring.source.manifest = requiring.source.manifest.replace(
+        "\"modules\": [\"ops.mdt\"]",
+        "\"modules\": [\"ops.mdt\"],\n  \"requires\": { \"std.patterns\": \"^1.0\" }",
+    );
+    assert!(requiring.source.manifest.contains("requires"));
+    let versions = [published("1.0.0"), requiring];
+    let at = now("2026-11-15T00:00:00Z");
+    let r = upgrade(
+        &request(Some("1.0.1"), &lock, &versions, None, at),
+        &pinned,
+        false,
+    );
+    assert!(r.ok, "{:#?}", r.diagnostics);
+    assert!(r.lock.is_none());
+    assert_eq!(kinds(&r), ["requires_changed + requires std.patterns ^1.0"]);
+}
+
 /// Publish's version rule over acme.ops, with 1.0.0 published.
 #[test]
 fn a_minor_version_that_widens_is_refused_and_a_major_one_is_not() {
@@ -676,10 +701,8 @@ fn the_diff_and_a_patch_classify_alike() {
     }
     let diff = mandate_check::semantic_diff_with(&program, &after, None, Some(&modules));
     let patch = mandate_check::governance_changes(&program, &after, Some(&modules));
-    let texts = |v: Vec<String>| v;
-    assert_eq!(
-        texts(diff.governance.iter().map(|c| c.text.clone()).collect()),
-        texts(patch.iter().map(|c| c.text.clone()).collect())
-    );
+    let from_diff: Vec<&str> = diff.governance.iter().map(|c| c.text.as_str()).collect();
+    let from_patch: Vec<&str> = patch.iter().map(|c| c.text.as_str()).collect();
+    assert_eq!(from_diff, from_patch);
     assert!(!patch.is_empty());
 }

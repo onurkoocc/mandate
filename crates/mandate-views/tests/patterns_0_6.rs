@@ -211,6 +211,30 @@ fn the_views_of_a_program_that_applies_no_pattern_do_not_depend_on_the_modules()
     );
 }
 
+/// The acceptance program, whose pattern is the built-in std.patterns and
+/// whose connectors and types are a library's: given the library's modules,
+/// as a package carries them, the views show the expansion (the commit of
+/// each draft, the review, the cost of 60 delegations at 0.30 USD); the
+/// views add the built-in std.patterns themselves.
+#[test]
+fn the_acceptance_program_is_shown_as_its_expansion_with_its_library() {
+    let p = program("fixtures/library/invoices.mdt");
+    let (manifest, files) =
+        mandate_testkit::library_files("fixtures/library/acme.connectors").unwrap();
+    let lib = mandate_check::library::load_library(
+        &mandate_check::library::LibrarySource { manifest, files },
+        false,
+        "acme",
+    )
+    .unwrap();
+    let auth = text(&mandate_views::authority_with(&p, Some(&lib.modules)).to_js());
+    assert!(auth.contains("erp.post_draft_invoice"), "{auth}");
+    let arch = text(&mandate_views::architecture_with(&p, Some(&lib.modules)).to_js());
+    assert!(arch.contains("person: review"), "{arch}");
+    let c = text(&mandate_views::cost_with(&p, None, Some(&lib.modules)).to_js());
+    assert!(c.contains("18 USD"), "{c}");
+}
+
 #[test]
 fn a_module_of_patterns_has_views() {
     let p = program("fixtures/library/batch.patterns.mdt");

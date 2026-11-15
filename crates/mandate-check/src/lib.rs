@@ -36,6 +36,12 @@
 //!   named through a `use` list alone: its path is no name.
 //! - [`imports`]: what a `use` may name from 0.6 on ([`import_checks`],
 //!   [`KnownModules`]): E1602, E1603 and E1604. Rust only.
+//! - [`library`]: libraries from 0.6 on: a library read and checked
+//!   ([`library::load_library`], E1601), the built-in `std.patterns`
+//!   ([`library::STD_PATTERNS`]), the libraries a lock pins resolved for
+//!   [`check()`] (E1605, E1606, E1608), the authority signature
+//!   ([`library::signature`]) and `add`, `upgrade` and `publish` as pure
+//!   functions ([`library::ops`], E1607). Rust only.
 //! - [`expand`]: patterns and their expansion from 0.6 on
 //!   ([`expand::expand`], [`expand::Expansion`], [`expand::for_views`]):
 //!   E1301 to E1307. Rust only.

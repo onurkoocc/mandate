@@ -261,17 +261,13 @@ pub fn compare(old: &LoadedLibrary, new: &LoadedLibrary, deps: &[LoadedLibrary])
     }
 }
 
+/// The versions read, each with its candidate.
+type Read = Vec<(Candidate, LoadedLibrary)>;
+
 /// The candidates of `library` among `versions`: each loaded, with its
 /// publication time; the E1601s of those that are malformed, and the
 /// versions with no `index.json`.
-fn candidates(
-    library: &str,
-    versions: &[Published],
-) -> (
-    Vec<(Candidate, LoadedLibrary)>,
-    Vec<Diagnostic>,
-    Vec<String>,
-) {
+fn candidates(library: &str, versions: &[Published]) -> (Read, Vec<Diagnostic>, Vec<String>) {
     let mut out = Vec::new();
     let mut diagnostics = Vec::new();
     let mut unpublished = Vec::new();
@@ -465,12 +461,12 @@ fn with_pin(lock: &Value, library: &str, pin: &LockLibrary) -> Value {
 
 /// The resolution of a request: the chosen version's library, the
 /// resolution as JSON, and what refuses it.
-fn resolved(r: &Request<'_>) -> Result<(LoadedLibrary, JsObject, Vec<Diagnostic>), Outcome> {
+fn resolved(r: &Request<'_>) -> Result<(LoadedLibrary, JsObject, Vec<Diagnostic>), Box<Outcome>> {
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     let range = match r.range.map(Range::parse).transpose() {
         Ok(range) => range,
         Err(fault) => {
-            return Err(refused(
+            return Err(Box::new(refused(
                 vec![diagnostic(
                     "E1606",
                     format!(
@@ -487,7 +483,7 @@ fn resolved(r: &Request<'_>) -> Result<(LoadedLibrary, JsObject, Vec<Diagnostic>
                         .with("fault", fault.id()),
                 )],
                 JsObject::new(),
-            ));
+            )));
         }
     };
     let pins = read_lock_libraries(r.lock.get("libraries")).unwrap_or_default();
@@ -538,7 +534,7 @@ fn resolved(r: &Request<'_>) -> Result<(LoadedLibrary, JsObject, Vec<Diagnostic>
                         .spread(&p.to_js()),
                 ));
             }
-            return Err(refused(diagnostics, JsObject::new()));
+            return Err(Box::new(refused(diagnostics, JsObject::new())));
         }
     };
     let shown = resolution.to_js().with(
@@ -591,10 +587,10 @@ fn resolved(r: &Request<'_>) -> Result<(LoadedLibrary, JsObject, Vec<Diagnostic>
                     .spread(&s.to_js()),
             ));
         }
-        return Err(refused(diagnostics, shown));
+        return Err(Box::new(refused(diagnostics, shown)));
     };
     let Some((_, library)) = found.into_iter().find(|(c, _)| c.version == chosen.version) else {
-        return Err(refused(diagnostics, shown));
+        return Err(Box::new(refused(diagnostics, shown)));
     };
     Ok((library, shown, diagnostics))
 }
@@ -604,7 +600,7 @@ fn resolved(r: &Request<'_>) -> Result<(LoadedLibrary, JsObject, Vec<Diagnostic>
 pub fn add(r: &Request<'_>) -> Outcome {
     let (library, resolution, mut diagnostics) = match resolved(r) {
         Ok(x) => x,
-        Err(o) => return o,
+        Err(o) => return *o,
     };
     let (deps, mut dep_problems) = read_deps(r.libraries);
     diagnostics.append(&mut dep_problems);
