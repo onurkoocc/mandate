@@ -1469,7 +1469,7 @@ impl<'a> Checker<'a> {
         // the body's call.
         let before = self.map_before(e, frame, path);
         let body = self.body(e.body(), &before.inner, &before.at, false);
-        self.map_value(e, frame, path, before, body)
+        self.map_value(e, frame, path, &before, body)
     }
 
     /// What a map's body is typed with: its list, its frame and the kinds
@@ -1497,7 +1497,7 @@ impl<'a> Checker<'a> {
         e: Expr<'a>,
         frame: &mut Frame<'a>,
         path: &str,
-        before: Box<MapBefore<'a>>,
+        before: &MapBefore<'a>,
         body: Val,
     ) -> Val {
         self.map_after(
