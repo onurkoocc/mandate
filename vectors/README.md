@@ -1396,7 +1396,8 @@ fails when an entry of a list passes or names nothing.
   mode compares the two with the TypeScript's lone surrogates as U+FFFD (the rule
   `rendering-lone-surrogate` of `bridge/src/compare.ts`). Every other value a request
   cannot carry is the next entry's.
-- **A value a request cannot carry, through the bridge in `rust` mode: answered by the
+- **A value a request cannot carry, through the bridge in `rust` mode (the default
+  of the bridge, `MANDATE_COMPILER` unset): answered by the
   TypeScript, refused by the bridge.** The module's strict reader takes integers within
   ±(2^53−1) only, no −0, no lone UTF-16 surrogate, at most 128 levels of nesting; JSON
   has no hole in an array and no `undefined` in one, which `JSON.stringify` would write as

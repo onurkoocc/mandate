@@ -9,7 +9,33 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { realDocker } from "../src/boundary.js";
-import { childEnv } from "../src/env.js";
+import { childEnv, COMPILER_ENV, verifierEnv } from "../src/env.js";
+
+describe("the compiler's mode and module in a child process", () => {
+  // The verifier process loads the bridge, which reads these two when it loads: with no word of them it would run
+  // the default mode and the bridge's own module whatever the runtime that started it runs.
+  const from = { PATH: "/usr/bin", MANDATE_COMPILER: "both", MANDATE_WASM: "/opt/mandate/mandate-wasm.wasm", MANDATE_GITHUB_TOKEN: "made-up", CLAUDE_API_KEY: "made-up" };
+
+  it("are the two variables of the operator's choice, and nothing else of the Mandate namespace", () => {
+    expect([...COMPILER_ENV]).toEqual(["MANDATE_COMPILER", "MANDATE_WASM"]);
+  });
+
+  it("reach the verifier process, with or without a model and with or without the gateway, and no secret with them", () => {
+    const kept = { PATH: "/usr/bin", MANDATE_COMPILER: "both", MANDATE_WASM: "/opt/mandate/mandate-wasm.wasm" };
+    expect(verifierEnv({ model: false }, from)).toEqual(kept);
+    expect(verifierEnv({ model: true }, from)).toEqual({ ...kept, CLAUDE_API_KEY: "made-up" });
+    expect(Object.keys(verifierEnv({ model: true, gateway: { url: "http://127.0.0.1:1", placeholder: "mdt-ph-0" } }, from))).toEqual(expect.arrayContaining(["MANDATE_COMPILER", "MANDATE_WASM"]));
+    expect(verifierEnv({ model: true, gateway: { url: "http://127.0.0.1:1", placeholder: "mdt-ph-0" } }, from)).not.toHaveProperty("CLAUDE_API_KEY");
+  });
+
+  it("are not there when the runtime was told neither: the child then runs the same default as its parent", () => {
+    expect(verifierEnv({ model: false }, { PATH: "/usr/bin" })).toEqual({ PATH: "/usr/bin" });
+  });
+
+  it("are matched without regard to case on Windows, as every variable is", () => {
+    expect(childEnv({ pass: COMPILER_ENV }, { Path: "C:\\Windows", Mandate_Compiler: "ts" }, true)).toEqual({ Path: "C:\\Windows", Mandate_Compiler: "ts" });
+  });
+});
 
 describe("childEnv", () => {
   it("keeps what a program needs and what the caller names, and drops the rest", () => {

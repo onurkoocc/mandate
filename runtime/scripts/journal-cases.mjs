@@ -10,8 +10,12 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { check } from "@mandate/bridge";
-import { buildPackage, EvidenceSigner, EXPORT_LIMITS, openDb, Runtime, simulate, verifyExport } from "../dist/index.js";
+
+// The runs are made with the reference compiler, which needs no module (the bridge's default is the Rust compiler's).
+// Set before the bridge is loaded, which reads it.
+process.env["MANDATE_COMPILER"] = "ts";
+const { check } = await import("@mandate/bridge");
+const { buildPackage, EvidenceSigner, EXPORT_LIMITS, openDb, Runtime, simulate, verifyExport } = await import("../dist/index.js");
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "conformance");
 

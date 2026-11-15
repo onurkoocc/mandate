@@ -54,11 +54,25 @@ jobs:
       # The Rust compiler as the WebAssembly module the bridge runs in process (bridge/src/wasm/), linked with its
       # memory ceiling and stack (the root's build:wasm). rustup is on the runner; with no argument it installs the
       # toolchain rust-toolchain.toml pins, with the wasm32-wasip1 target. The module is built, never committed.
+      # The bridge answers with it unless MANDATE_COMPILER says otherwise, so every step below that loads the bridge
+      # needs it.
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
       - name: Build the Rust compiler's WebAssembly module
         run: npm run build:wasm
+      # The default: MANDATE_COMPILER is not set, so the bridge answers with the Rust compiler's module. The compiler's
+      # own tests (workspace compiler) call the reference compiler directly and do not load the bridge.
       - run: npm test
+      # During 0.6 the bridge and the runtime are also tested on the reference compiler alone, so that the runtime
+      # stays shown to work on it (MANDATE_COMPILER=ts needs no module).
+      - name: The bridge's tests, on the reference compiler alone
+        run: npm test -w bridge
+        env:
+          MANDATE_COMPILER: ts
+      - name: The runtime's tests, on the reference compiler alone
+        run: npm test -w runtime
+        env:
+          MANDATE_COMPILER: ts
       # The bridge and the runtime with both compilers asked on every call and compared (bridge/src/compare.ts): a
       # difference fails the test that made the call, and each run prints how many calls each named exemption of
       # vectors/README.md excused.
@@ -77,16 +91,19 @@ jobs:
         run: npm test -w compiler
         env:
           MANDATE_CORPUS: "1"
+      # In the default mode, the Rust compiler's module.
       - name: Runtime tests on PostgreSQL
         run: npm test -w runtime
         env:
           MANDATE_TEST_DATABASE_URL: postgresql://mandate:mandate@localhost:5432/mandate_test
+      # The `mandate` command line of the bridge (bridge/dist/cli.js), in the default mode: the Rust compiler's module
+      # answers the first three commands (the fourth, `test`, is the runtime's and runs the program's tests).
       - name: Check the FixBug fixture with the CLI
         run: |
-          node compiler/dist/cli.js check fixtures/fixbug/fixbug.mdt
-          node compiler/dist/cli.js check fixtures/fixbug/fixbug.ir.json
-          node compiler/dist/cli.js sandbox fixtures/fixbug/fixbug.ir.json > /dev/null
-          node compiler/dist/cli.js test fixtures/fixbug/fixbug.mdt
+          node bridge/dist/cli.js check fixtures/fixbug/fixbug.mdt
+          node bridge/dist/cli.js check fixtures/fixbug/fixbug.ir.json
+          node bridge/dist/cli.js sandbox fixtures/fixbug/fixbug.ir.json > /dev/null
+          node bridge/dist/cli.js test fixtures/fixbug/fixbug.mdt
       # A real OPA for the generated Rego (compiler/test/acs.test.ts, X05). The binary is the static Linux build of one
       # release, from the project's GitHub releases; its sha256 is the one the release publishes next to it
       # (opa_linux_amd64_static.sha256), fixed here and checked before the binary is run. 1.4.2 is the version the test
@@ -190,6 +207,13 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           bwrap --version
       - run: npm ci --ignore-scripts
+      # The runtime's tests below load the bridge, which answers with the Rust compiler's module unless
+      # MANDATE_COMPILER says otherwise: the pinned toolchain and the module are built before them (the toolchain is
+      # also what verify-journal is built with, further down).
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+      - name: Build the Rust compiler's WebAssembly module
+        run: npm run build:wasm
       - name: Make /work writable for the Gate 3 rehearsal
         run: sudo mkdir -p /work && sudo chown "$(id -u):$(id -g)" /work
       - name: Sandbox enforcement on Bubblewrap (G05, G07), sandbox egress through the proxy (G15, G16), the acceptance of 0.5 in a real sandbox, the Gate 3 rehearsal, and two components in two sandboxes (B3)
@@ -213,8 +237,6 @@ jobs:
           node ../scripts/assert-ran.mjs "$VITEST_REPORT" "the container sandbox host on a real Docker engine"
       # The independent verifier on what the run in the real sandbox left: its journal's export must verify, and the
       # export made after one event was changed in the database must be chain_broken at that event.
-      - name: Install the pinned Rust toolchain
-        run: rustup toolchain install
       - name: Build verify-journal
         run: cargo build --locked -p verify-journal
       - name: verify-journal verifies the export of the run in the real sandbox, and finds the event changed in the next
@@ -251,6 +273,13 @@ jobs:
           node-version: 24.22.1
           cache: npm
       - run: npm ci --ignore-scripts
+      # The runtime's tests below load the bridge, which answers with the Rust compiler's module unless
+      # MANDATE_COMPILER says otherwise. rustup is on the Windows runner too; build:wasm starts `cargo` without a shell,
+      # and finds the cargo.exe that rustup puts on the path.
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+      - name: Build the Rust compiler's WebAssembly module
+        run: npm run build:wasm
       - name: Sandbox enforcement in an AppContainer (G05, G07; P2-27)
         working-directory: runtime
         env:

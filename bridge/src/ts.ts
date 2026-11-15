@@ -1,6 +1,6 @@
 // The TypeScript side of the facade: every door-backed function (doors.ts) as the reference compiler, frozen at
 // language 0.5, and the bridge's own run-time authority decisions (authority.ts) give it. `ts` mode exports these
-// very functions (index.ts), so that the default changes nothing.
+// very functions (index.ts), so that it changes nothing of the reference compiler; it is not the default (`rust` is).
 
 export {
   acsTarget,

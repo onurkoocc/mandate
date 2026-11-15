@@ -28,9 +28,12 @@ afterAll(() => {
   rmSync(work, { recursive: true, force: true });
 });
 
-function run(args: string[], env: Record<string, string>): Promise<{ code: number | null; out: string; err: string }> {
+/** The command line with the test's environment and `env` over it; a variable given as `undefined` is not set. */
+function run(args: string[], env: Record<string, string | undefined>): Promise<{ code: number | null; out: string; err: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [tree.bridgeCli, ...args], { cwd: work, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+    const merged: Record<string, string | undefined> = { ...process.env, ...env };
+    for (const [k, v] of Object.entries(merged)) if (v === undefined) delete merged[k];
+    const child = spawn(process.execPath, [tree.bridgeCli, ...args], { cwd: work, env: merged as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     child.stdout.on("data", (c: Buffer) => out.push(c));
@@ -66,8 +69,25 @@ describe("the command line, when the compiler fails", () => {
     expect(r.out).toBe("");
   }, 30_000);
 
-  it("is unchanged in the default mode, whatever MANDATE_WASM names", async () => {
-    const r = await run(["check", FIXBUG], { MANDATE_COMPILER: "", MANDATE_WASM: TRAP });
+  it("answers with the Rust compiler when MANDATE_COMPILER is not set or empty: the module that traps fails the command, which is not checked by the reference compiler instead", async () => {
+    for (const MANDATE_COMPILER of [undefined, ""]) {
+      const r = await run(["check", FIXBUG], { MANDATE_COMPILER, MANDATE_WASM: TRAP });
+      expect({ MANDATE_COMPILER, code: r.code }).toEqual({ MANDATE_COMPILER, code: 2 });
+      expect(r.err).toContain("the Rust compiler failed");
+      expect(r.out).toBe("");
+    }
+  }, 60_000);
+
+  it("fails by name when the default mode finds no module, and says that MANDATE_COMPILER=ts needs none", async () => {
+    const r = await run(["check", FIXBUG], { MANDATE_COMPILER: undefined, MANDATE_WASM: join(work, "missing.wasm") });
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("(module_missing)");
+    expect(r.err).toContain("MANDATE_COMPILER=ts runs the reference compiler, which needs no module");
+    expect(r.out).toBe("");
+  }, 30_000);
+
+  it("is the reference compiler's and nothing else in `ts` mode, whatever MANDATE_WASM names", async () => {
+    const r = await run(["check", FIXBUG], { MANDATE_COMPILER: "ts", MANDATE_WASM: TRAP });
     expect(r.code).toBe(0);
     expect(r.out).toMatch(/^ok sha256:/);
   }, 30_000);
@@ -93,7 +113,7 @@ try {
 process.stdout.write("swallowed\\n");
 `,
     );
-    const r = spawnSync(process.execPath, [script, FIXBUG, wrong], { encoding: "utf8", env: { ...process.env, MANDATE_COMPILER: "" } });
+    const r = spawnSync(process.execPath, [script, FIXBUG, wrong], { encoding: "utf8", env: { ...process.env, MANDATE_COMPILER: "ts" } });
     expect(r.stdout).toBe("swallowed\n");
     expect(r.status).toBe(70);
     expect(r.stderr).toContain("answered differently, which nothing took");

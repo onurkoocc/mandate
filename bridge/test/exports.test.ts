@@ -5,8 +5,8 @@ import * as compiler from "../../compiler/src/index.js";
 import { DOOR_BACKED } from "../src/doors.js";
 import { compilerMode } from "../src/mode.js";
 
-// In `ts` mode, the default, every name is the reference compiler's (or the authority decision's) very value. In
-// `rust` and `both`, a door-backed function is the facade's and CODES the Rust's table (test/facade.test.ts), and
+// In `ts` mode (MANDATE_COMPILER=ts), every name is the reference compiler's (or the authority decision's) very value. In
+// `rust` (the default) and `both`, a door-backed function is the facade's and CODES the Rust's table (test/facade.test.ts), and
 // every other name is still the very value.
 const ours = compilerMode() === "ts" ? new Set<string>() : new Set<string>([...Object.keys(DOOR_BACKED), "CODES"]);
 

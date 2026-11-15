@@ -1,7 +1,8 @@
-// Which compiler answers: `MANDATE_COMPILER=ts|rust|both`, read once, when the bridge is loaded. `ts` (the default
-// until the next slice) is the reference compiler and nothing else: the facade exports its very functions and no
-// call reaches the module. `rust` is the Rust compiler's module (rust.ts). `both` asks the two on every call and
-// compares them (compare.ts), and gives the Rust's result.
+// Which compiler answers: `MANDATE_COMPILER=ts|rust|both`, read once, when the bridge is loaded; unset or empty is
+// `rust`. `rust` (the default) is the Rust compiler's module (rust.ts); a process without the module fails by name
+// (`CompilerFailure`, `module_missing`) and never falls back to the reference compiler. `ts` is the reference
+// compiler and nothing else: the facade exports its very functions, no call reaches the module and none is needed.
+// `both` asks the two on every call and compares them (compare.ts), and gives the Rust's result.
 //
 // This is also the bridge's second entry point, `@mandate/bridge/mode`, for what is not a compiler's: the mode and a
 // way for a test to run a block under another (or under another module), the hand-over of the compiled module to a
@@ -26,15 +27,17 @@ export { CompilerFailure, FAILURE_KINDS, type FailureKind } from "./wasm/errors.
 export const MODES = ["ts", "rust", "both"] as const;
 export type CompilerMode = (typeof MODES)[number];
 
-/** The mode MANDATE_COMPILER names; unset or empty is `ts`, and any other value is refused rather than guessed at. */
-function fromEnvironment(): CompilerMode {
-  const v = process.env["MANDATE_COMPILER"];
-  if (v === undefined || v === "") return "ts";
+/** The mode nothing chooses: the Rust compiler's module. */
+export const DEFAULT_MODE: CompilerMode = "rust";
+
+/** The mode MANDATE_COMPILER names; unset or empty is `rust`, and any other value is refused rather than guessed at. */
+export function modeFrom(v: string | undefined): CompilerMode {
+  if (v === undefined || v === "") return DEFAULT_MODE;
   if ((MODES as readonly string[]).includes(v)) return v as CompilerMode;
   throw new Error(`MANDATE_COMPILER is ${JSON.stringify(v)}: it is ts, rust or both`);
 }
 
-let mode: CompilerMode = fromEnvironment();
+let mode: CompilerMode = modeFrom(process.env["MANDATE_COMPILER"]);
 const listeners: Array<(m: CompilerMode) => void> = [];
 
 /** The mode calls are answered in now. */

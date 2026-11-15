@@ -16,8 +16,12 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { check } from "@mandate/bridge";
-import { buildPackage, EvidenceSigner, openDb, Runtime, simulate, verifyExport } from "../dist/index.js";
+
+// The run is made with the reference compiler, which needs no module: CI's rust job runs this before it builds the
+// Rust compiler's module, and the bridge's default is that module. Set before the bridge is loaded, which reads it.
+process.env["MANDATE_COMPILER"] = "ts";
+const { check } = await import("@mandate/bridge");
+const { buildPackage, EvidenceSigner, openDb, Runtime, simulate, verifyExport } = await import("../dist/index.js");
 
 const [dir, seedArg] = process.argv.slice(2);
 if (!dir) throw new Error("usage: node runtime/scripts/journal-fresh.mjs <dir> [seed]");
