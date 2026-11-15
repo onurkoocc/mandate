@@ -171,6 +171,21 @@ fn signed(
     )
 }
 
+/// The signature of `library` with the libraries `deps` (and the built-in
+/// `std.patterns`) beside it, and what is wrong with it there: the E1601s
+/// of `deps` that do not read and of its modules that do not check, and the
+/// E1606s of its requirements they do not meet.
+#[must_use]
+pub fn signed_with(
+    library: &LoadedLibrary,
+    deps: &[LibrarySource],
+) -> (Signature, Vec<Diagnostic>) {
+    let (deps, mut diagnostics) = read_deps(deps);
+    let (sig, mut more) = signed(library, &deps, library.name() != STD_PATTERNS);
+    diagnostics.append(&mut more);
+    (sig, diagnostics)
+}
+
 /// `old` against `new`, both with `deps` beside them.
 #[must_use]
 pub fn compare(old: &LoadedLibrary, new: &LoadedLibrary, deps: &[LoadedLibrary]) -> Comparison {

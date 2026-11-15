@@ -91,6 +91,7 @@ use mandate_ir::{JsObject, JsValue, Value};
 mod authority;
 mod front;
 pub mod input;
+mod library;
 mod lock;
 mod patch;
 mod program;
@@ -476,3 +477,50 @@ pub static DOORS: &[Door] = &[
         tables::tables,
     ),
 ];
+
+/// The note of a library door: no TypeScript function stands for it.
+const LIBRARY_NOTE: &str = "Language 0.6, which only the Rust compiler reads: no TypeScript function stands for it, and crates/mandate-check/tests/library_doors.rs holds it to the compiler's functions (crate::library).";
+
+/// The library doors of language 0.6 (spec/library.md "The bridge"), in a
+/// table of their own, since no TypeScript function stands for them and
+/// [`DOORS`] is held to the TypeScript call for call. It is committed as
+/// `crates/mandate-check/tests/library_doors/doors.json`, and the
+/// dispatcher (`mandate-doors`) joins it after the views' table.
+pub static LIBRARY_DOORS: &[Door] = &[
+    Door::own(
+        "library_verify",
+        library::LIBRARY_VERIFY,
+        LIBRARY_NOTE,
+        library::library_verify,
+    ),
+    Door::own(
+        "library_add",
+        library::LIBRARY_ADD,
+        LIBRARY_NOTE,
+        library::library_add,
+    ),
+    Door::own(
+        "library_upgrade",
+        library::LIBRARY_UPGRADE,
+        LIBRARY_NOTE,
+        library::library_upgrade,
+    ),
+    Door::own(
+        "library_publish",
+        library::LIBRARY_PUBLISH,
+        LIBRARY_NOTE,
+        library::library_publish,
+    ),
+    Door::own(
+        "authority_signature",
+        library::AUTHORITY_SIGNATURE,
+        LIBRARY_NOTE,
+        library::authority_signature,
+    ),
+];
+
+/// The library door named `name`.
+#[must_use]
+pub fn library_door(name: &str) -> Option<&'static Door> {
+    LIBRARY_DOORS.iter().find(|d| d.name == name)
+}

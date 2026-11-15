@@ -95,7 +95,11 @@ pub(super) const CHECK: &[&str] = &["text", "kind", "opts"];
 /// Input: `{ text: string, kind: "mdt" | "json", opts?: { lock?, modules?,
 /// claim? } }`: `lock` is the lock as read (any value: the check validates
 /// it), `modules` the loaded modules by name (each a program), `claim` the
-/// `{ envelope, lead }` a sub-program's check is given.
+/// `{ envelope, lead }` a sub-program's check is given. Language 0.6 adds two
+/// members the TypeScript does not read: `libraries`, the libraries the lock
+/// pins as `[{ manifest, files }]` (as the library doors take them), and
+/// `config`, the `libraries` member of the runtime's configuration, whose
+/// revoked digests a pin is held to (E1608).
 /// Output: `CheckResult`, `{ program?, spans, diagnostics, ok, hashes? }`,
 /// `spans` as [`load`] gives it and `hashes` `{ program, defs }`.
 pub(super) fn check(input: &Value) -> Result<JsValue, DoorError> {
@@ -103,11 +107,21 @@ pub(super) fn check(input: &Value) -> Result<JsValue, DoorError> {
     let text = a.str("text")?;
     let kind = a.kind("kind")?;
     let mut opts = CheckOptions::default();
+    let mut libraries = Vec::new();
+    let mut config = None;
     if let Some(o) = a.opt_members("opts", "opts.")? {
         opts.lock = o.opt_lock("lock");
         opts.modules = o.opt_modules("modules")?;
         opts.claim = o.opt_object("claim")?;
+        // 0.6, the Rust's alone: the libraries the lock pins, and the
+        // configuration's `libraries` member (its revoked digests).
+        libraries = super::library::sources_of(o, "libraries")?;
+        config = super::library::config_of(o)?;
     }
+    if !libraries.is_empty() {
+        opts.libraries = Some(&libraries);
+    }
+    opts.revoked = config.as_ref().map(mandate_lib::LibrariesConfig::revoked);
     let r = crate::check::check(text, kind, &opts);
     Ok(JsObject::new()
         .with_some("program", r.program.as_ref().map(ir))

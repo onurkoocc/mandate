@@ -10,19 +10,22 @@
 //! printing a program, its parts, the lock, the sandbox, patches and diffs,
 //! the constants) and `mandate_views::json_doors::DOORS` (the views, the
 //! documents with their Markdown and HTML, the card, the ACS target), then
-//! the one door of this crate, `doors`. [`tables`] gives the three, [`doors`]
+//! the library doors of language 0.6, `mandate_check::json_doors::LIBRARY_DOORS`
+//! (`library_verify`, `library_add`, `library_upgrade`, `library_publish`,
+//! `authority_signature`, which no TypeScript function stands for), then
+//! the one door of this crate, `doors`. [`tables`] gives the four, [`doors`]
 //! every door in that order, and [`door`] finds one by name. No name is in
 //! two tables; a test holds that. Each door keeps the contract that
 //! `mandate_check::json_doors` states: a pure function from a JSON object to
-//! a JSON value, named after the TypeScript function it stands for, whose
-//! output is what `JSON.stringify` gives for that function's result.
+//! a JSON value, named after the TypeScript function it stands for (a door
+//! with none says what it answers in its note), whose output is what
+//! `JSON.stringify` gives for that function's result.
 //!
 //! The door `doors` takes `{}` and gives the table as data, `{ "format":
 //! "mandate/doors/0.1", "doors": [{ name, ts, params, note? }, …] }`, every
 //! door in the order of [`doors`], itself last: so that a host can check, when
 //! it loads the module, that the module has the doors it expects. It is the
-//! two committed `doors.json` files of the crates, one after the other, and
-//! its own row.
+//! three committed `doors.json` files, one after the other, and its own row.
 //!
 //! # The request and the answer
 //!
@@ -147,18 +150,20 @@ impl From<DoorError> for Refusal {
 }
 
 /// The note of the door `doors`.
-const DOORS_NOTE: &str = "The doors of the module, as data: { format: \"mandate/doors/0.1\", doors: [{ name, ts, params, note? }] }, every door of the checker's table, then of the views', then this one, in their order; the two tables are the doors.json files of crates/mandate-check and crates/mandate-views. A host checks with it, when it loads the module, that the module has the doors it expects.";
+const DOORS_NOTE: &str = "The doors of the module, as data: { format: \"mandate/doors/0.1\", doors: [{ name, ts, params, note? }] }, every door of the checker's table, then of the views', then of the library doors of 0.6, then this one, in their order; the three tables are the doors.json files of crates/mandate-check (tests/json_doors and tests/library_doors) and crates/mandate-views. A host checks with it, when it loads the module, that the module has the doors it expects.";
 
 /// The doors of this crate: `doors`.
 static OWN: &[Door] = &[Door::own("doors", &[], DOORS_NOTE, doors_door)];
 
-/// The three tables, in order: the checker's, the views', and this crate's
-/// own (`doors`).
+/// The four tables, in order: the checker's, the views', the library doors
+/// of language 0.6 (`mandate_check::json_doors::LIBRARY_DOORS`, which no
+/// TypeScript function stands for), and this crate's own (`doors`).
 #[must_use]
-pub fn tables() -> [&'static [Door]; 3] {
+pub fn tables() -> [&'static [Door]; 4] {
     [
         mandate_check::json_doors::DOORS,
         mandate_views::json_doors::DOORS,
+        mandate_check::json_doors::LIBRARY_DOORS,
         OWN,
     ]
 }
