@@ -453,6 +453,43 @@ fn an_upgrade_that_changes_requires_writes_no_lock_without_acceptance() {
     assert_eq!(kinds(&r), ["requires_changed + requires std.patterns ^1.0"]);
 }
 
+/// A write tool whose retry class changes, and a read-only tool that becomes
+/// a write tool, widen the connector's signature.
+#[test]
+fn a_tool_whose_class_changes_widens_the_connector() {
+    let base = load_library(&published("1.0.0").source, false, "x").unwrap();
+    let changed = |from: &str, to: &str| {
+        let mut s = published("1.0.0").source;
+        for (_, text) in &mut s.files {
+            assert!(text.contains(from), "{from}");
+            *text = text.replace(from, to);
+        }
+        load_library(&s, false, "x").unwrap()
+    };
+    let retry = changed(
+        "    retry_class reconcilable\n    reconcile by find_item\n",
+        "    retry_class idempotent\n",
+    );
+    let c = mandate_check::library::ops::compare(&base, &retry, &[]);
+    let texts: Vec<&str> = c.widenings.iter().map(|w| w.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        ["~ connector acme.ops.store.put_item: write reconcilable → write idempotent"]
+    );
+    let writes = changed(
+        "  tool list_items() -> Untrusted<List<Item>>\n    read_only\n",
+        "  tool list_items(key: Text) -> Receipt<Text>\n    critical\n    idempotency key key\n    retry_class idempotent\n",
+    );
+    let c = mandate_check::library::ops::compare(&base, &writes, &[]);
+    assert!(
+        c.widenings.iter().any(
+            |w| w.text == "~ connector acme.ops.store.list_items: read_only → write idempotent"
+        ),
+        "{:#?}",
+        c.widenings
+    );
+}
+
 /// Publish's version rule over acme.ops, with 1.0.0 published.
 #[test]
 fn a_minor_version_that_widens_is_refused_and_a_major_one_is_not() {
@@ -599,7 +636,7 @@ fn add_resolves_the_highest_eligible_version() {
 /// is not read as a pin the schema took and the reader refused.
 #[test]
 fn the_lock_schema_and_the_reader_agree_on_library_names() {
-    for (key, module) in [("Acme.ops", "Acme.ops"), ("acme.ops", "acme.Ops")] {
+    for (key, module) in [("Acme.ops", "acme.ops"), ("acme.ops", "acme.Ops")] {
         let text = format!(
             r#"{{"lock":"mandate/lock/0.6","modules":{{}},"libraries":{{"{key}":{{"version":"1.0.0","digest":"sha256:{d}","modules":{{"{module}":"sha256:{d}"}}}}}}}}"#,
             d = "0".repeat(64)

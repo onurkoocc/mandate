@@ -294,6 +294,7 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E1604a` | A `use` of `std.patterns`, built into the compiler, needs no module; a name of its list the library does not define (a mutation: one `use` added) | E0120 |
 | `E1604b` | Imports of `std`, `std.decision` and a module the check is given | — |
 | `E1604c` | A `use` of a module the check is given, without a list of names (a mutation: one `use` added) | E1604 |
+| `E1604d` | A `use` of the built-in `std.patterns` without a list of names: it is a library, linked by the names its `use` lists (a mutation: one `use` added) | E1604 |
 | `E1601` | A library handed to the check, one of whose modules defines an `extern` (a mutation: one definition added) | E1601 |
 | `E1601a` | A library named `std.extras`: `std` and the names under it are the compiler's own | E1601 |
 | `E1606` | A library whose manifest requires `std.patterns ^2.0`, which the compiler builds in at 1.0.0 (a mutation: one member added) | E1606 |
@@ -547,13 +548,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 371, passed 371, pending 0
+conformance cases: ran 372, passed 372, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 246 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 247 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(387 cases: 371 `compile`, 246 of them of language 0.6, and 16 `journal`; no case
+(388 cases: 372 `compile`, 247 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

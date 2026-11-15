@@ -8125,6 +8125,40 @@
       }
     },
     {
+      "name": "E1604d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1604",
+            "severity": "error",
+            "message": "The use of std.patterns lists no names: in a program of mandate/0.6 an import of a module that is not the standard library's brings only the names it lists. List them, as in use std.patterns.{\u2026}.",
+            "at": {
+              "path": "/uses/2",
+              "span": [1, 1059, 1, 1084]
+            },
+            "docs": "mandate explain MDT-E1604",
+            "facts": {
+              "module": "std.patterns"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1606",
       "kind": "compile",
       "door": "check",
