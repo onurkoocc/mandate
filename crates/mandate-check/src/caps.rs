@@ -1346,10 +1346,13 @@ pub fn cap_covers(cap: &CapVal, need: &CapVal) -> bool {
     if cap.ctor != need.ctor {
         return false;
     }
-    // 0.6: the read part of a `tool.call` never covers a write; every other
-    // constructor's `write` is its constructor's, so this asks nothing of
-    // them.
-    if cap.ctor == TOOL_CALL && need.write && !cap.write {
+    // 0.6: a part of a `tool.call` covers only a need of its own kind, read
+    // or write, and one without a scope stands for nothing, as cap or as
+    // need; every other constructor's `write` is its constructor's, so this
+    // asks nothing of them.
+    if cap.ctor == TOOL_CALL
+        && (need.write != cap.write || cap.scope.is_none() || need.scope.is_none())
+    {
         return false;
     }
     if !scope_within(&cap.ctor, need.scope(), cap.scope()) {
@@ -1387,6 +1390,10 @@ pub fn cap_covers(cap: &CapVal, need: &CapVal) -> bool {
 /// `git.*` authorizes every effect that starts with `git.`.
 #[must_use]
 pub fn cap_authorizes(cap: &CapVal, effect: &str, scope: Option<&[String]>) -> bool {
+    // 0.6: a `tool.call` part without a scope authorizes nothing.
+    if cap.ctor == TOOL_CALL && cap.scope.is_none() {
+        return false;
+    }
     if let Some(namespace) = cap
         .effect
         .strip_suffix('*')

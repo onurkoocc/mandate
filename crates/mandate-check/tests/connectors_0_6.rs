@@ -664,3 +664,56 @@ fn a_tools_types_are_held_to_its_connectors_class_where_it_is_used() {
         "{got:?}"
     );
 }
+
+/// The answer of door `name` to `input`, as JSON text, or the door's
+/// refusal as `bad_input: <message>`.
+fn door_text(name: &str, input: &str) -> String {
+    let d = mandate_check::json_doors::door(name).expect(name);
+    match (d.call)(&mandate_ir::parse(input).unwrap().value) {
+        Ok(v) => mandate_ir::stringify(&v).unwrap_or_default(),
+        Err(e) => format!("bad_input: {}", e.message),
+    }
+}
+
+/// F6: the run-time doors read a `tool.call` part as the static checks make
+/// one, and no hand-written value is more: a part covers only a need of its
+/// kind, one without a scope stands for nothing, and `write` is a boolean.
+#[test]
+fn the_doors_take_no_forged_tool_call() {
+    const READ_POST: &str = r#"{"ctor":"tool.call","effect":"Tool","write":false,"scope":["example.erp.erp.post_draft"],"maxClass":"confidential"}"#;
+    const WRITE_POST: &str = r#"{"ctor":"tool.call","effect":"Tool.Write","write":true,"scope":["example.erp.erp.post_draft"],"maxClass":"confidential"}"#;
+    let grant = |bounds: &str, own: &str| {
+        door_text(
+            "grant",
+            &format!(
+                r#"{{"input":{{"context":{{"bounds":[{bounds}],"given":[],"handed":[]}},"delegation":{{"agent":"Reader","held":[],"remote":false,"own":[{own}]}}}}}}"#
+            ),
+        )
+    };
+    let refused = |out: String| assert!(out.starts_with(r#"{"refused""#), "{out}");
+    // A read-flagged part that names a write's item, against the write.
+    refused(grant(WRITE_POST, READ_POST));
+    // A tool.call without a scope covers nothing, read or write.
+    refused(grant(
+        r#"{"ctor":"tool.call","effect":"Tool.Write","write":true}"#,
+        WRITE_POST,
+    ));
+    refused(grant(
+        r#"{"ctor":"tool.call","effect":"Tool","write":false}"#,
+        r#"{"ctor":"tool.call","effect":"Tool","write":false,"scope":["other.mod.c.t"]}"#,
+    ));
+    // `write` is a boolean.
+    for w in ["0", r#""no""#, "1"] {
+        let own = WRITE_POST.replace(r#""write":true"#, &format!(r#""write":{w}"#));
+        let out = grant(READ_POST, &own);
+        assert!(out.starts_with("bad_input"), "{w}: {out}");
+    }
+    // A map's items that hold forged read parts of a write are outside it.
+    let out = door_text(
+        "map_scopes",
+        &format!(
+            r#"{{"input":{{"map":"/m","par":2,"context":{{"bounds":[{WRITE_POST}],"given":[],"handed":[]}},"items":[[{READ_POST}],[{READ_POST}]],"complete":true}}}}"#
+        ),
+    );
+    refused(out);
+}
