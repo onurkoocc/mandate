@@ -64,6 +64,11 @@ jobs:
       - run: npm run build
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
+      # The command line (the bridge's) and the runtime behind it check the program with the Rust compiler's module
+      # unless MANDATE_COMPILER says otherwise; they find it in the bridge's own wasm/. It is built before the steps
+      # that have a secret.
+      - name: Build the Rust compiler's WebAssembly module
+        run: npm run build:wasm
       - name: Build verify-journal
         run: cargo build --locked -p verify-journal
 
@@ -95,7 +100,7 @@ jobs:
           MANDATE_EGRESS_GITHUB: ${{ secrets.GITHUB_TOKEN }}
         run: |
           w="$RUNNER_TEMP/boundary"
-          nohup node compiler/dist/cli.js egress serve --config fixtures/boundary/reach.egress.json > "$w/egress.log" 2>&1 &
+          nohup node bridge/dist/cli.js egress serve --config fixtures/boundary/reach.egress.json > "$w/egress.log" 2>&1 &
           echo "$!" > "$w/egress.pid"
           for _ in $(seq 1 60); do
             if grep -q '^mandate egress: ready, ' "$w/egress.log"; then
@@ -117,7 +122,7 @@ jobs:
         run: |
           w="$RUNNER_TEMP/boundary"
           code=0
-          node compiler/dist/cli.js run fixtures/boundary/reach.mdt --lock fixtures/boundary/reach.lock.json --workflow Reach --input "$w/input.json" --run-id reach1 --config "$w/mandate.runtime.json" > "$w/run.out" 2>&1 || code=$?
+          node bridge/dist/cli.js run fixtures/boundary/reach.mdt --lock fixtures/boundary/reach.lock.json --workflow Reach --input "$w/input.json" --run-id reach1 --config "$w/mandate.runtime.json" > "$w/run.out" 2>&1 || code=$?
           echo "mandate run: exit $code"
           if [ "$code" -ne 0 ]; then echo "::error::mandate run exited $code; its output is printed by the check step"; exit 1; fi
 
@@ -127,7 +132,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           w="$RUNNER_TEMP/boundary"
-          m() { node compiler/dist/cli.js "$@"; }
+          m() { node bridge/dist/cli.js "$@"; }
           m show reach1 --audit --config "$w/mandate.runtime.json" > "$w/audit.md" 2>> "$w/audit.err" || echo "mandate show --audit: exit $?"
           m show reach1 --audit --format json --config "$w/mandate.runtime.json" > "$w/audit.json" 2>> "$w/audit.err" || echo "mandate show --audit --format json: exit $?"
           m journal export reach1 --out "$w/run.json" --config "$w/mandate.runtime.json" >> "$w/export.out" 2>&1 || echo "mandate journal export: exit $?"
