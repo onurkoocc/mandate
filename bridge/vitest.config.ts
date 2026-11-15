@@ -8,5 +8,8 @@ export default defineConfig({
   },
   test: {
     include: ["test/**/*.test.ts"],
+    // The compiler behind the bridge (MANDATE_COMPILER): the module it needs, the divergences of `both`, its counts.
+    globalSetup: ["test/global-setup.ts"],
+    setupFiles: ["test/setup.ts"],
   },
 });

@@ -1348,3 +1348,21 @@ fails when an entry of a list passes or names nothing.
   the strict reader refuses (`left_out` in `vectors/corpus/summary.json`). The same
   `summary.json` says that a call is also left out when it gave two results or holds a
   credential-shaped string; none does.
+- **`LAXER` in `crates/mandate-views/tests/json_doors.rs`: 12 documents and views the
+  views' doors refuse where the TypeScript answers.** Each is outside the TypeScript's
+  types (a string where an array is, which the TypeScript iterates as its characters; a
+  mark or a language that is not of its type, read by its truthiness or written as text;
+  a member of a view that is not of its type, written as it is), and the typed reader of
+  the Rust's doors answers `bad_input` (`to_markdown`, `to_html`, `architecture_blocks`,
+  `authority_blocks`). The test holds each to that refusal and names what the TypeScript
+  gives. No document or view the compiler makes has such a member, and the bridge's
+  `both` mode excuses none: a call with one is a divergence.
+- **A lone UTF-16 surrogate in a document given to `toMarkdown` or `toHtml`, through
+  the bridge.** A request to the module cannot carry one (its reader refuses it, as the
+  IR's does), and a document can hold text a model wrote. So the bridge sends each lone
+  surrogate of the document as U+FFFD (`bridge/src/rust.ts`, `wellFormed`), and the Rust
+  writes U+FFFD where the TypeScript writes the surrogate through. The bridge's `both`
+  mode compares the two with the TypeScript's lone surrogates as U+FFFD (the rule
+  `rendering-lone-surrogate` of `bridge/src/compare.ts`). Any other input that holds a
+  lone surrogate, a number that is not an integer within ±(2^53−1) or a value JSON cannot
+  carry is never changed to fit: the bridge refuses it (`unrepresentable`).
