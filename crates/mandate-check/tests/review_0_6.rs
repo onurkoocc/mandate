@@ -285,6 +285,39 @@ fn review_and_declined_are_built_in_types_the_runtime_alone_makes() {
     );
 }
 
+/// No effect's adapter makes a review either, and a call written
+/// `human.review(…)` is held to a review's rules wherever `human` stands for
+/// something else.
+#[test]
+fn no_review_comes_from_elsewhere() {
+    let text = read_text(REVIEW).unwrap();
+    let effect = changed(
+        &text,
+        "/// A match names",
+        "effect fetch_review(key: Text) -> Review<Match, Matched>\n  critical\n  idempotency required\n\n/// A match names",
+    );
+    assert_eq!(
+        checked(&effect),
+        ["MDT-E0213 at /defs/fetch_review/returns"]
+    );
+    // With `human` a variable, the call is still a review: its role is held
+    // to the contract's waivers, and in a map's body it waits for a person.
+    let shadowed = after_review(
+        "  let human = items\n  let again = human.review(checked, role: controller, deadline: 1d)",
+    );
+    assert_eq!(
+        checked(&shadowed),
+        ["MDT-E1508 at /defs/MatchAll/body/5/value/args/1/value"]
+    );
+    let in_map = after_review(
+        "  let human = items\n  let again = map x in items max 2 {\n    human.review(checked, role: accountant, deadline: 1d)\n  }",
+    );
+    assert_eq!(
+        checked(&in_map),
+        ["MDT-E1708 at /defs/MatchAll/body/5/value/body/0/value"]
+    );
+}
+
 /// The arguments a review may take in other forms than the cases': no
 /// `escalate_to`, a role as a text, a deadline as a constant.
 #[test]
@@ -372,6 +405,74 @@ fn a_waivers_roles_are_roles() {
                 "/defs/Matched/accept/totals/waive/1".to_owned()
             )
         ]
+    );
+}
+
+/// What a value's type says it was verified against is held as what it
+/// rests on: a parameter, a field of a record or a variant of a union whose
+/// declared type names a contract with a waiver.
+#[test]
+fn a_waiver_a_type_names_is_held_by_the_type() {
+    let text = read_text(RELEASE).unwrap();
+    let with = |defs: &str, params: &str, arg: &str| {
+        let t = changed(
+            &text,
+            "/// The change, as it was given.",
+            &format!("{defs}\n\n/// The change, as it was given."),
+        );
+        let t = changed(
+            &t,
+            "workflow Ship(change: Change)",
+            &format!("workflow Ship(change: Change{params})"),
+        );
+        changed(
+            &t,
+            "effect git.merge(same(named))",
+            &format!("effect git.merge({arg})"),
+        )
+    };
+    let at = "MDT-E1505 at /defs/Ship/body/3/value/args/0/value";
+    assert_eq!(
+        checked(&with("", ", given: Verified<Change, Small>", "given")),
+        [at]
+    );
+    // An irreversible effect that takes the record, or the union.
+    let effect = |t: &str| {
+        format!(
+            "effect ship_{t}(x: {t}) -> Receipt<Text>\n  requires caps git.pr(\"example/app\")\n  critical\n  irreversible\n  idempotency required"
+        )
+    };
+    let tag = "MDT-E1505 at /defs/Ship/body/4/value/args/0/value";
+    let ship = |defs: &str, params: &str, call: &str| {
+        let t = with(defs, params, "same(named)");
+        changed(&t, "effect tag_release(change.branch)", call)
+    };
+    assert_eq!(
+        checked(&ship(
+            &format!(
+                "type Held = {{ c: Verified<Change, Small> }}\n\n{}",
+                effect("Held")
+            ),
+            ", held: Held",
+            "effect ship_Held(held)"
+        )),
+        [tag]
+    );
+    assert_eq!(
+        checked(&ship(
+            &format!(
+                "type Either = Kept(c: Verified<Change, Small>) | Lost\n\n{}",
+                effect("Either")
+            ),
+            ", either: Either",
+            "effect ship_Either(either)"
+        )),
+        [tag]
+    );
+    // What names a contract without a waiver is not held.
+    assert_eq!(
+        checked(&with("", ", given: Verified<Change, Named>", "given")),
+        Vec::<String>::new()
     );
 }
 

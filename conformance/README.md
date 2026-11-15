@@ -308,19 +308,73 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E0140c` | A connector's `template` in the lock with `{secret}` twice | E0140 |
 | `E0301a` | An effect with two `requires caps`, the second covered by no capability of the workflow (B12) | E0301, W0310 |
 | `E0301b` | The program of `E0301a` as 0.5: only the first `requires caps` is compared, as before | — |
+| `H06` | A review over a verifying map checks: one wait for the list, its accepted items committed by a batch commit step through a connector's write tool | — |
+| `H07` | A review whose role is not among the waive by roles of the waived criterion (a mutation: the role) | E1508 |
+| `E1508` | A review whose `escalate_to` may not waive the waived criterion | E1508 |
+| `E1508a` | A review of a map that verifies against a contract with no waiver (a mutation: the waiver taken away) | E1508 |
+| `E1506` | A review of a workflow's parameter | E1506 |
+| `E1506a` | A review of a field that holds a verifying map's outcomes | E1506 |
+| `E1506b` | A review of a call's result | E1506 |
+| `E1506c` | A review of a map whose body does not end with a verify | E1506 |
+| `E1506d` | A review of a map whose verify has `on unmet` | E1506 |
+| `E1506e` | A review of a name bound again, after the map, to what is not a map | E1506 |
+| `E1506f` | A review of a map whose body ends with an `if` that verifies on each path | E1506 |
+| `E1506g` | A review in a function | E1506 |
+| `E1506h` | A review that names no results first | E1506 |
+| `E1507` | A review without a role | E1507 |
+| `E1507a` | A review without a deadline | E1507 |
+| `E1507b` | A review with an argument it does not take | E1507 |
+| `E1507c` | A review that gives its role twice | E1507 |
+| `E1507d` | A review with a second value without a name | E1507 |
+| `E1507e` | A review whose role names no role definition | E1507 |
+| `E1507f` | A review whose deadline is zero | E1507 |
+| `E1507g` | A review whose deadline is a variable, not a constant | E1507 |
+| `E1507h` | A review that escalates to the role it asks first | E1507 |
+| `E1507i` | A review whose `escalate_to` names no role definition | E1507 |
+| `E1504` | A criterion met by `human.approve` with a waiver (a mutation: a contract added) | E1504 |
+| `E1504a` | A criterion whose method includes `human.approve` through `and`, with a waiver | E1504 |
+| `E1505` | A value verified against a contract with a waiver as an argument of `git.merge`, after an approval (a mutation of a program that checks) | E1505 |
+| `E1505a` | The same through a `let` whose declared type names no contract | E1505 |
+| `E1505b` | A field of such a value as an argument of a declared irreversible effect | E1505 |
+| `E1505c` | What a function gives back of such a value | E1505 |
+| `E1505d` | What a function gives back that verifies against such a contract itself | E1505 |
+| `E1505e` | A map's item made of such a value, where the irreversible effect is no batch commit step either | E1708, E1505 |
+| `E1505f` | Such a value standing for the approval, its contract asking a person too | E1505, E0405 |
+| `E1505g` | A review's `accepted` list as an argument of an irreversible effect | E1505 |
+| `E1708b` | A batch commit step that checks, in a workflow with an envelope: a connector's write tool and a declared critical effect, each in a map's body | — |
+| `E1708c` | An irreversible effect in a map's body, after an approval | E1708 |
+| `E1708d` | An effect the envelope names under `approve` | E1708 |
+| `E1708e` | An effect an environment asks a person to authorize | E1708 |
+| `E1708f` | An effect whose key is a constant | E1708 |
+| `E1708g` | An effect whose key is a variable of the enclosing scope | E1708 |
+| `E1708h` | An effect whose key reads the item's name after a `let` of the body bound it again | E1708 |
+| `E1708i` | A change set in a map's body, in a program of 0.6 | E1708 |
+| `E1708j` | An effect in a map with `par 2` | E1708 |
+| `E1708k` | An effect in a map in the body of another map | E1708 |
+| `E1708l` | A review in a map's body | E1708 |
 
 The import cases share the 0.6 module `E1602/types.mdt` and the program
 `E1602/program.mdt`; the connector cases share `T01/program.mdt`, a program
-with a connector of its own, and `E0301b` is `E0301a/program.mdt` as 0.5. What a case cannot say, because its modules must load, is in
+with a connector of its own, and `E0301b` is `E0301a/program.mdt` as 0.5. The
+review cases share `H06/program.mdt` (a verifying map, its review and a commit
+map), the cases of what may not reach an irreversible effect `E1505/program.mdt`
+(and `E1505g` and `E1708l` the review program), and those of the batch commit
+step `E1708b/program.mdt`; `E1708i` is a program of its own. What a case cannot say, because its modules must load, is in
 `crates/mandate-check/tests/language_0_6.rs`: a module of 0.5 among the modules given
 to a check that imports one of 0.6 (E1603), and one of 0.6 that imports a module
-nobody gave (E1604), do not load.
+nobody gave (E1604), do not load. What the cases of reviews and waivers cannot
+say (the types a review's lists have, a change set's irreversible member, the
+semantic diff's waivers, a program of 0.5 as before) is in
+`crates/mandate-check/tests/review_0_6.rs`.
 
 spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
 (human steps), L (libraries) and N11 (shapes), and the code numbers of its
 families; the cases above use P01 (which spec/library.md names), the S02 claim,
 E0101, E0104, E0120, E0140, E0301 and E0320, which 0.6 extends, T01, T02 and T06
-(which spec/library.md names), and the code numbers of E14xx and E16xx.
+(which spec/library.md names), H06 and H07 (which it names), the letters of
+E1708 from b on (E1708b and E1708c, which it names, and one letter for each
+further refused condition), and the code numbers of E14xx, E1504 to E1508 and
+E16xx.
 
 ## What the Rust crates run
 
@@ -358,13 +412,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 182, passed 182, pending 0
+conformance cases: ran 226, passed 226, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 57 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 101 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(198 cases: 182 `compile`, 57 of them of language 0.6, and 16 `journal`; no case
+(242 cases: 226 `compile`, 101 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

@@ -24,7 +24,8 @@
 //! - [`RUST_CODES`]: the output of the `codes` door, the whole table of
 //!   diagnostic codes, is compared without the rows whose reference is the
 //!   Rust compiler (`mandate_ir::codes::Reference::Rust`: the codes added
-//!   from 0.6 on, E1602 to E1604 today), which come after every row of the
+//!   from 0.6 on: E1602 to E1604, E1401 to E1408 and E1504 to E1508 today),
+//!   which come after every row of the
 //!   TypeScript's table ([`codes_as_typescript`]). Each of those rows is held
 //!   instead by a conformance case of 0.6 that expects it
 //!   (`tests/language_0_6.rs`), and the `explain` door's answer for each by

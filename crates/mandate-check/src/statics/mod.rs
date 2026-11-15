@@ -17,6 +17,12 @@
 //! - the system model (`system.rs`): providers, working copies,
 //!   declared reads, `data.read` and change sets, and `leadClasses`.
 //!
+//! Two more parts are the Rust's alone, for language 0.6: connectors and
+//! their tools (`tools.rs`), and `human.review`, waivers and the batch commit
+//! step (`review.rs`). A value also carries, the Rust's alone, whether a
+//! waiver may be what it rests on ([`Val::waivable`]), which is `false` in
+//! every program of 0.1 to 0.5.
+//!
 //! The diagnostics come out in the order the checker meets them, never
 //! sorted or de-duplicated, so what fixes that order is copied: the program
 //! and the definitions are first put in the order `JSON.parse(canonicalize(…))`

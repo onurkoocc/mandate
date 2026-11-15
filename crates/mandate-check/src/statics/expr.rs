@@ -465,11 +465,11 @@ impl<'a> Checker<'a> {
         // what a waiver may rest on.
         let builtin = self.review_fields(&ep.inner);
         let waivable = match &builtin {
-            Some((_, review)) => *review && name == "accepted" && base.waivable,
+            Some(b) => b.review && name == "accepted" && base.waivable,
             None => base.waivable,
         };
         let Some(fields) = builtin
-            .map(|(f, _)| f)
+            .map(|b| b.fields)
             .or_else(|| fields_of(&ep.inner, self))
         else {
             return Val::like(with_level(UNKNOWN, unverified(ep.level), None), &base);
@@ -695,7 +695,10 @@ impl<'a> Checker<'a> {
             return self.data_read(e, frame, path);
         }
         // 0.6: one wait for a person about the outcomes of a verifying map.
-        if p == "human.review" && self.at_least(Language::V0_6) && module_root(self) {
+        // Every call written `human.review(…)` is held to its rules, also
+        // where a variable is named `human`, so that none is a review the
+        // checks did not see.
+        if p == "human.review" && self.at_least(Language::V0_6) {
             return self.human_review(e, frame, path, of);
         }
         if let Some(f) = std_fn(&p).filter(|_| !p.is_empty() && module_root(self)) {

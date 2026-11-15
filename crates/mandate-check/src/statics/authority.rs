@@ -477,6 +477,19 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+        // 0.6: an effect's result is never a review, which only the runtime
+        // makes (E0213).
+        let ret = self.ty(d.returns());
+        if let Some(p) = self.review_type_in(&ret) {
+            self.report(
+                "E0213",
+                format!(
+                    "Effect '{name}' cannot return {p}; only the runtime produces it (§5.2, S08)."
+                ),
+                &format!("{base}/returns"),
+                Some(JsObject::new().with("type", p)),
+            );
+        }
     }
 
     /// `effectNames(effects, base)`: every effect named exists (E0402).

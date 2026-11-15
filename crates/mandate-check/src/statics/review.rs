@@ -90,6 +90,27 @@ impl Refusal {
     }
 }
 
+/// A criterion of a contract that has a waiver, and the roles that may
+/// waive it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Waiver<'a> {
+    /// The criterion's name.
+    pub(crate) criterion: &'a str,
+    /// The roles its `waive by` names.
+    pub(crate) roles: Vec<&'a str>,
+}
+
+/// The fields of a built-in type of a review (`Review<T, C>` or
+/// `Declined<T>`), and whether it is the review itself.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ReviewFields {
+    /// The fields, by name, in order.
+    pub(crate) fields: Vec<(String, Ty)>,
+    /// Whether the type is `Review`, whose `accepted` alone is what a
+    /// waiver may rest on.
+    pub(crate) review: bool,
+}
+
 /// The roles `human.review` asks, each with the place of its argument, once
 /// E1507 has held them.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -137,7 +158,7 @@ fn reads_free(m: &Map, name: &str) -> bool {
         _ => {}
     }
     m.iter()
-        .any(|(k, x)| !(op == Some("verify") && k == "on_unmet") && reads_free_in(x, name))
+        .any(|(k, x)| (op != Some("verify") || k != "on_unmet") && reads_free_in(x, name))
 }
 
 /// [`reads_free`] of what a member holds.
@@ -150,7 +171,7 @@ fn reads_free_in(v: &Value, name: &str) -> bool {
 }
 
 /// A role as an argument names it: `role: r` or `role: "r"`.
-fn role_written<'e>(e: Expr<'e>) -> Option<&'e str> {
+fn role_written(e: Expr<'_>) -> Option<&str> {
     match e.op() {
         Some(ExprOp::Var) => e.name(),
         Some(ExprOp::Text) => e.text(),
@@ -198,7 +219,7 @@ impl<'a> Checker<'a> {
     /// - `Declined<T>`: `index: Int`, `value: Inferred<T>`, `unmet:
     ///   List<Text>`, `by: Option<Text>`. Its value is never verified: it is
     ///   a model's output, or untrusted content when `T` says so.
-    pub(crate) fn review_fields(&self, ty: &Ty) -> Option<(Vec<(String, Ty)>, bool)> {
+    pub(crate) fn review_fields(&self, ty: &Ty) -> Option<ReviewFields> {
         let name = ty.name()?;
         if !self.review_type(name) {
             return None;
@@ -210,8 +231,8 @@ impl<'a> Checker<'a> {
                 .name()
                 .filter(|c| self.def_of(c, DefKind::Contract).is_some());
             let verified = with_level(epistemic(&t).inner, Level::Verified, contract);
-            return Some((
-                vec![
+            return Some(ReviewFields {
+                fields: vec![
                     ("accepted".to_owned(), named("List", vec![verified])),
                     (
                         "declined".to_owned(),
@@ -219,39 +240,41 @@ impl<'a> Checker<'a> {
                     ),
                     ("failed".to_owned(), named("List", vec![named0("Int")])),
                 ],
-                true,
-            ));
+                review: true,
+            });
         }
-        Some((
-            vec![
+        Some(ReviewFields {
+            fields: vec![
                 ("index".to_owned(), named0("Int")),
                 ("value".to_owned(), named("Inferred", vec![t])),
                 ("unmet".to_owned(), named("List", vec![text_ty()])),
                 ("by".to_owned(), named("Option", vec![text_ty()])),
             ],
-            false,
-        ))
+            review: false,
+        })
     }
 
     // ── waivers ─────────────────────────────────────────────────────────
 
     /// The criteria of `contract` that have a waiver, each with its roles,
     /// in the contract's order (`accept`, then `invariant`).
-    pub(crate) fn waivers(&self, contract: &str) -> Vec<(&'a str, Vec<&'a str>)> {
+    pub(crate) fn waivers(&self, contract: &str) -> Vec<Waiver<'a>> {
         let Some(c) = self.def_of(contract, DefKind::Contract) else {
             return Vec::new();
         };
-        c.accept()
-            .chain(c.invariant())
-            .filter_map(|(n, cr)| {
-                let roles: Vec<&'a str> = Criterion::of(cr)?
-                    .waive()
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .collect();
-                (!roles.is_empty()).then_some((n, roles))
-            })
-            .collect()
+        let mut out = Vec::new();
+        for (criterion, cr) in c.accept().chain(c.invariant()) {
+            let roles: Vec<&'a str> = Criterion::of(cr)
+                .map(Criterion::waive)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(Value::as_str)
+                .collect();
+            if !roles.is_empty() {
+                out.push(Waiver { criterion, roles });
+            }
+        }
+        out
     }
 
     /// Whether `contract` has a criterion a person may waive (0.6).
@@ -294,7 +317,7 @@ impl<'a> Checker<'a> {
     pub(crate) fn waivable_in(&self, ty: &Ty, seen: &mut HashSet<String>) -> Option<String> {
         match ty {
             Ty::Named(n) => {
-                if (n.name == "Verified" || self.review_type(&n.name) && n.name == REVIEW)
+                if (n.name == "Verified" || (n.name == REVIEW && self.review_type(&n.name)))
                     && let Some(c) = n.args.get(1).and_then(Ty::name)
                     && self.waivable_contract(c)
                 {
@@ -699,8 +722,8 @@ impl<'a> Checker<'a> {
         for (role, at) in [&roles.role, &roles.escalate].into_iter().flatten() {
             let cannot: Vec<&str> = waivers
                 .iter()
-                .filter(|(_, rs)| !rs.contains(&role.as_str()))
-                .map(|(c, _)| *c)
+                .filter(|w| !w.roles.contains(&role.as_str()))
+                .map(|w| w.criterion)
                 .collect();
             if cannot.is_empty() {
                 continue;
@@ -841,17 +864,20 @@ impl<'a> Checker<'a> {
     /// authorize `name` (`authorize name by human(…)`), and the role.
     fn environment_approver(&self, name: &str) -> Option<(String, String)> {
         let defs: &'a Map = self.defs;
-        defs.iter().find_map(|(env, d)| {
+        for (env, d) in defs.iter() {
             let d = Definition::of(d);
             if d.kind() != Some(DefKind::Environment) {
-                return None;
+                continue;
             }
-            d.authorize().find_map(|(effect, tier)| {
-                let tier = Tier::of(tier)?;
-                (effect == name && tier.by() == Some(TierBy::Human))
-                    .then(|| (env.to_owned(), tier.role().unwrap_or_default().to_owned()))
-            })
-        })
+            for (effect, tier) in d.authorize() {
+                let Some(tier) = Tier::of(tier) else { continue };
+                if effect == name && tier.by() == Some(TierBy::Human) {
+                    let role = tier.role().unwrap_or_default().to_owned();
+                    return Some((env.to_owned(), role));
+                }
+            }
+        }
+        None
     }
 
     /// Whether the key `key` reads the map's item: the item's name, where
