@@ -287,7 +287,9 @@ and `expected: "function"`, a member of a value (`x.m()`, E0120f), a
 standard function whose module's name a variable takes (`let human = …;
 human.ask(…)`, E0120e), a workflow or an extern (E0120g); not a criterion's
 own method, a constant's call or a supervision strategy. `await` is E0711
-(E0711). A value of a form the checker still cannot type, of which no
+(E0711). An effect in a workflow's `ensures`, which states what holds once
+the run is done and does nothing, is E0408 at the effect, with the facts
+`effect` and `place: "ensures"` (E0408b; a tool there is E1405). A value of a form the checker still cannot type, of which no
 diagnostic already stands for the unknown (a field of a type it sees no
 fields of, a range, the result of a standard effect the table does not
 type, a constant on a cycle, a name the runtime gives as itself), is never

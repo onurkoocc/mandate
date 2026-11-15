@@ -2187,6 +2187,18 @@ impl<'a> Checker<'a> {
         }
         let cls = max_class(args.iter().map(|a| a.cls));
         let name = e.name().unwrap_or_default();
+        // 0.6: a workflow's `ensures` states what holds once the run is done,
+        // and does nothing; no effect runs there (a tool there is E1405).
+        if frame.beside_body && self.at_least(Language::V0_6) {
+            self.report(
+                "E0408",
+                format!(
+                    "The effect {name} runs in a workflow's ensures, which states what holds once the run is done and does nothing. Effects run in the workflow's body, through prepare → authorize → commit (§8.8)."
+                ),
+                path,
+                Some(JsObject::new().with("effect", name).with("place", "ensures")),
+            );
+        }
         let decl = self.def_of(name, DefKind::Effect);
         let std = if decl.is_some() {
             None

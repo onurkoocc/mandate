@@ -403,6 +403,7 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `H08` | A `verify` whose `on unmet` handler is an escalation, and one whose handler is a pause, each keeping the verified value's type: the one exception to the joins | — |
 | `E0201a` | The program of `H08`, the first handler giving another value: the `verify` is that value or the verified one | E0201 |
 | `E1506i` | A review of a map's name after an `on error` handler that gives a value of its own | E1506 |
+| `E0408b` | An effect in a workflow's `ensures` | E0408 |
 
 The import cases share the 0.6 module `E1602/types.mdt` and the program
 `E1602/program.mdt`; the connector cases share `T01/program.mdt`, a program
@@ -417,8 +418,8 @@ each the review program with what the case adds, a program of its own. The
 cases of the typing of 0.6 (each form typed as the runtime evaluates it) are
 programs of their own too: `E1505h` to `E1505l` the release program of
 `E1505` with what the case adds, `E0210b` to `E0210e` and `E1506i` the review
-program, `E0220f` a program of classes, and the others a small program that
-opens or lands a change. What a case cannot say, because its modules must load, is in
+program, `E0220f` a program of classes, and the others (and `E0408b`) a small
+program that opens or lands a change. What a case cannot say, because its modules must load, is in
 `crates/mandate-check/tests/language_0_6.rs`: a module of 0.5 among the modules given
 to a check that imports one of 0.6 (E1603), and one of 0.6 that imports a module
 nobody gave (E1604), do not load. What the cases of reviews and waivers cannot
@@ -472,13 +473,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 277, passed 277, pending 0
+conformance cases: ran 278, passed 278, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 152 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 153 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(293 cases: 277 `compile`, 152 of them of language 0.6, and 16 `journal`; no case
+(294 cases: 278 `compile`, 153 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

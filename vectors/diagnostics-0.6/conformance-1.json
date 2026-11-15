@@ -2037,6 +2037,57 @@
       }
     },
     {
+      "name": "E0408b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0408",
+            "severity": "error",
+            "message": "The effect git.close_pr runs in a workflow's ensures, which states what holds once the run is done and does nothing. Effects run in the workflow's body, through prepare \u2192 authorize \u2192 commit (\u00a78.8).",
+            "at": {
+              "path": "/defs/Land/ensures",
+              "span": [29, 11, 29, 66]
+            },
+            "docs": "mandate explain MDT-E0408",
+            "facts": {
+              "effect": "git.close_pr",
+              "place": "ensures"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [16, 15, 16, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [22, 15, 22, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
       "name": "E0711",
       "kind": "compile",
       "door": "check",
