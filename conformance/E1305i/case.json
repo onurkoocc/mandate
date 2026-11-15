@@ -1,0 +1,32 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1305i",
+  "kind": "compile",
+  "title": "A const List<Item> slot given a list whose record lacks a field of the item type (a mutation: the argument) is refused at the argument.",
+  "spec": ["spec/library.md#slots", "spec/library.md#application", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../L09/program.mdt", "kind": "mdt" },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/MigrateAll/apply/args/0/value",
+      "value": {
+        "op": "list",
+        "items": [
+          { "op": "record", "type": "Repo", "fields": { "name": { "op": "text", "value": "api" } } }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1305",
+        "path": "/defs/MigrateAll/apply/args/0/value",
+        "facts": { "problem": "type", "slot": "items", "expected": "List<Repo>" }
+      }
+    ]
+  }
+}

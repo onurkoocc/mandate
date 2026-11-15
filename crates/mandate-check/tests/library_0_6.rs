@@ -89,6 +89,7 @@ agent Reporter {
 
 /// Migrates every repository, eight at a time, then sums up.
 workflow MigrateAll = FanOutMerge<Repo, Summary, Summary>(
+    items: [Repo { name: "api", root: "api" }, Repo { name: "web", root: "web" }],
     work: Migrator.migrate, scope: SrcWrite, part: root,
     merge: Reporter.sum, max_items: 40, concurrency: 8)
   caps   RepoRead, SrcWrite, ModelStd
@@ -134,6 +135,7 @@ contract Short(b: Brief, d: Draft) {
 
 /// Drafts one text and has it checked.
 workflow Write = MakerChecker<Brief, Draft>(
+    input: Brief { topic: "the release" },
     make: Writer.draft, check: Reader.review, accepted: Short, owner: editor)
   caps   Notes, Out, ModelStd
   budget { tokens: 100k, spend: 1 USD, steps: 20, time: 30m }
@@ -146,21 +148,51 @@ fn library(dir: &str) -> LibrarySource {
 }
 
 #[test]
+/// The lock of the acceptance program pins what its libraries are, and so
+/// does the lock of L01, which is that lock with one digit of the digest of
+/// acme.connectors changed. Written from what the compiler computes: a
+/// normal run compares, `MANDATE_UPDATE_0_6=1` writes both again (after
+/// std.patterns changes, its digest does).
 fn the_lock_of_the_acceptance_program_pins_what_the_libraries_are() {
-    let lock = read_json("fixtures/library/invoices.lock.json").unwrap();
+    let mut lock = read_json("fixtures/library/invoices.lock.json").unwrap();
     for l in [
         mandate_check::library::std_patterns().unwrap(),
         load_library(&library("fixtures/library/acme.connectors"), false, "x").unwrap(),
     ] {
         let pin = mandate_ir::stringify(&mandate_ir::JsValue::Object(l.pin().to_js())).unwrap();
-        let locked = lock.get("libraries").and_then(|x| x.get(l.name())).unwrap();
-        assert_eq!(
-            mandate_ir::canonicalize(&mandate_ir::parse(&pin).unwrap().value),
-            mandate_ir::canonicalize(locked),
-            "{}: the pin is {pin}",
-            l.name()
-        );
+        let pin = mandate_ir::parse(&pin).unwrap().value;
+        if let Value::Object(m) = &mut lock
+            && let Some(Value::Object(libs)) = m.get_mut("libraries")
+        {
+            libs.insert(l.name(), pin);
+        }
     }
+    let text = |v: &Value| {
+        let mut t = mandate_ir::stringify_pretty(&mandate_ir::JsValue::from(v)).unwrap();
+        t.push('\n');
+        t
+    };
+    let mut problems = Vec::new();
+    match mandate_testkit::rust_vectors::pin("fixtures/library/invoices.lock.json", &text(&lock)) {
+        Ok(line) => println!("{line}"),
+        Err(e) => problems.push(e),
+    }
+    // L01: the digest of acme.connectors with its last digit changed.
+    let mut l01 = lock.clone();
+    if let Value::Object(m) = &mut l01
+        && let Some(Value::Object(libs)) = m.get_mut("libraries")
+        && let Some(Value::Object(acme)) = libs.get_mut("acme.connectors")
+        && let Some(Value::String(d)) = acme.get_mut("digest")
+    {
+        let last = if d.ends_with('0') { '1' } else { '0' };
+        d.pop();
+        d.push(last);
+    }
+    match mandate_testkit::rust_vectors::pin("conformance/L01/mandate.lock.json", &text(&l01)) {
+        Ok(line) => println!("{line}"),
+        Err(e) => problems.push(e),
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
 #[test]
@@ -173,6 +205,50 @@ fn std_patterns_checks_as_a_module_and_each_pattern_applies() {
         let r = checked(text, Some(&modules));
         assert!(r.ok, "{name}: {:#?}", shown(&r));
         assert!(r.expanded.is_some(), "{name}");
+    }
+}
+
+/// A `const` slot of a record type takes a named constant of that type as
+/// well as a record literal; a record of another type, a literal of another
+/// type, and a name that is no constant are E1305 at the argument.
+#[test]
+fn a_value_slot_takes_a_constant_of_its_type_and_nothing_else() {
+    let modules = std_patterns_as_module();
+    let named = MAKER
+        .replace(
+            "capability Notes",
+            "let TheBrief: Brief = Brief { topic: \"the release\" }\n\ncapability Notes",
+        )
+        .replace("input: Brief { topic: \"the release\" }", "input: TheBrief");
+    let r = checked(&named, Some(&modules));
+    assert!(r.ok, "{:#?}", shown(&r));
+    let expanded = mandate_ir::canonicalize(r.expanded.as_ref().unwrap());
+    assert!(expanded.contains("TheBrief"), "{expanded}");
+    for wrong in [
+        "Draft { title: \"x\", words: 1 }",
+        "Brief { topic: 1 }",
+        "Brief { topic: \"x\", extra: 1 }",
+        "\"a brief\"",
+        "editor",
+        "Writer",
+    ] {
+        let text = MAKER.replace(
+            "input: Brief { topic: \"the release\" }",
+            &format!("input: {wrong}"),
+        );
+        let r = checked(&text, Some(&modules));
+        let codes: Vec<(&str, &str)> = r
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == mandate_ir::Severity::Error)
+            .map(|d| (d.code.as_str(), d.at.path.as_deref().unwrap_or("")))
+            .collect();
+        assert_eq!(
+            codes,
+            [("MDT-E1305", "/defs/Write/apply/args/0/value")],
+            "{wrong}: {:#?}",
+            shown(&r)
+        );
     }
 }
 

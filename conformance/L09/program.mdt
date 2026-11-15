@@ -1,0 +1,40 @@
+// A program of 0.6 that applies std.patterns' FanOutMerge to a constant list
+// of repositories (L09): the value of a `const List<Item>` slot, a list of
+// record literals, held to the slot's type part by part where it is applied.
+// It checks; E1305i and E1305j give the slot what does not fit.
+
+mandate @ 0.6
+
+module example.fan @ 0.1
+
+use std.{fs, model}
+use std.patterns.{FanOutMerge}
+
+type Repo    = { name: Text, root: Path }
+type Summary = { moved: Int }
+
+capability RepoRead = fs.read("/work/repos")
+capability SrcWrite = fs.write("/work/repos")
+capability ModelStd = model.infer(tier: standard)
+
+agent Migrator {
+  role   "Moves one repository."
+  caps   RepoRead, SrcWrite, ModelStd
+  budget { tokens: 40k, spend: 0.5 USD, steps: 12 }
+  skill migrate(repo: Repo) -> Inferred<Summary> ! {Fs.Read, Fs.Write, Model}
+}
+
+agent Reporter {
+  role   "Sums up what was moved."
+  caps   ModelStd
+  budget { tokens: 20k, spend: 0.2 USD, steps: 4 }
+  skill sum(done: List<Outcome<Inferred<Summary>>>) -> Inferred<Summary> ! {Model}
+}
+
+/// Migrates the two repositories side by side, then sums up.
+workflow MigrateAll = FanOutMerge<Repo, Summary, Summary>(
+    items: [Repo { name: "api", root: "api" }, Repo { name: "web", root: "web" }],
+    work: Migrator.migrate, scope: SrcWrite, part: root,
+    merge: Reporter.sum, max_items: 2, concurrency: 2)
+  caps   RepoRead, SrcWrite, ModelStd
+  budget { tokens: 200k, spend: 5 USD, steps: 100, time: 1h }
