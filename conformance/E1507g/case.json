@@ -1,0 +1,59 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1507g",
+  "kind": "compile",
+  "title": "A review whose deadline is a variable is refused: the deadline is a constant (a mutation: the deadline bound by a let).",
+  "spec": [
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/MatchAll/body/2",
+      "value": {
+        "op": "let",
+        "name": "wait",
+        "value": {
+          "op": "duration",
+          "ms": 86400000
+        }
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/body/3/value/args/2/value",
+      "value": {
+        "op": "var",
+        "name": "wait"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1507",
+        "path": "/defs/MatchAll/body/3/value/args/2/value",
+        "facts": {
+          "problem": "deadline",
+          "argument": "deadline"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

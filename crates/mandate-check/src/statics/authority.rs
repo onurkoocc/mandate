@@ -20,7 +20,7 @@ use mandate_ir::{
     canonicalize, compare_utf16, ptr, ptr_token, stringify, workflow_bounds,
 };
 
-use super::{Bound, Checker, Delegated, Enveloped, Frame, Usage, Val, Where, max_class};
+use super::{Bound, Checker, Delegated, Enveloped, Frame, MapSite, Usage, Val, Where, max_class};
 use crate::caps::{
     CapVal, HTTP_METHODS, MethodProblemKind, TOOL_CALL, callee_path, cap_authorizes, cap_covers,
     caps_from_call, caps_of, read_methods, reads_methods, reads_tool_call, scope_within, show_cap,
@@ -432,7 +432,7 @@ impl<'a> Checker<'a> {
     pub(crate) fn check_extern(&mut self, name: &str, d: Definition<'a>, base: &str) {
         let _ = name;
         let ret = self.ty(d.returns());
-        if let Some(p) = mentions(&ret, &PROTECTED_TYPES) {
+        if let Some(p) = mentions(&ret, &PROTECTED_TYPES).or_else(|| self.review_type_in(&ret)) {
             self.report(
                 "E0213",
                 format!("Host code cannot produce {p}; only the runtime does (§12.3)."),
@@ -653,7 +653,8 @@ impl<'a> Checker<'a> {
         for (sn, s) in skills {
             let sb = format!("{base}/skills/{sn}");
             let ret = self.ty(s.get("returns").and_then(mandate_ir::TypeExpr::of));
-            if let Some(p) = mentions(&ret, &PROTECTED_TYPES) {
+            if let Some(p) = mentions(&ret, &PROTECTED_TYPES).or_else(|| self.review_type_in(&ret))
+            {
                 self.report(
                     "E0213",
                     format!(
@@ -1435,6 +1436,7 @@ impl<'a> Checker<'a> {
         Val {
             ty: named("List", vec![named("Outcome", vec![body.ty])]),
             cls: over.cls.max(body.cls),
+            waivable: over.waivable || body.waivable,
         }
     }
 
@@ -1488,14 +1490,19 @@ impl<'a> Checker<'a> {
         } else {
             ep.level
         };
-        let item = Val {
-            ty: with_level(elem, level, None),
-            cls: over.cls,
-        };
+        let item = Val::like(with_level(elem, level, None), over);
         let bind = e.bind().unwrap_or_default();
         let mut vars = HashMap::new();
         vars.insert(bind.to_owned(), item);
         let mut inner = Self::child_box(frame, vars);
+        // 0.6: the map, for a critical effect in its body (the batch commit
+        // step).
+        inner.map_site = Some(Rc::new(MapSite {
+            bind: bind.to_owned(),
+            scope: Rc::clone(&inner.scope),
+            par: e.get("par").and_then(Value::as_i64),
+            nested: frame.in_map.is_some(),
+        }));
         inner.in_map = Some(path.to_owned());
         let mut by_item: Vec<String> = Vec::new();
         // `with caps K`: inside the body, K takes the place of the
@@ -1820,11 +1827,11 @@ impl<'a> Checker<'a> {
         let cls = self.floor.max(max_class(args.iter().map(|a| a.cls)));
         let agent_name = e.agent().unwrap_or_default();
         let Some(agent) = self.def_of(agent_name, DefKind::Agent) else {
-            return Val { ty: UNKNOWN, cls };
+            return Val::new(UNKNOWN, cls);
         };
         let skill_name = e.skill().unwrap_or_default();
         let Some(skill) = agent.skill(skill_name) else {
-            return Val { ty: UNKNOWN, cls };
+            return Val::new(UNKNOWN, cls);
         };
         let who = format!("{agent_name}.{skill_name}");
         self.delegate_args(skill, &who, path, args);
@@ -1925,7 +1932,7 @@ impl<'a> Checker<'a> {
             }
         }
         // Model output inherits the highest class of what went in (§5.5).
-        Val { ty: ret, cls }
+        Val::new(ret, cls)
     }
 
     /// A delegation's arguments against the skill's parameters: their
@@ -2163,17 +2170,23 @@ impl<'a> Checker<'a> {
         };
         self.effect_args(e, decl, std, path, args);
         if critical && frame.in_map.is_some() {
-            self.critical(
-                frame,
-                path,
-                &format!("The critical effect {name} runs"),
-                name,
-            );
+            // E1708; in 0.6 a batch commit step, under its conditions.
+            self.commit_step(e, frame, path, name, irreversible);
         }
         if critical {
             self.effect_critical(e, frame, path);
         }
-        if irreversible && !frame.approved && !args.iter().any(|a| self.approved_by_human(&a.ty)) {
+        // 0.6: what a waiver may rest on never reaches an effect that
+        // cannot be undone (E1505), nor stands for its approval.
+        if irreversible && self.at_least(Language::V0_6) {
+            self.waivable_args(name, path, args);
+        }
+        if irreversible
+            && !frame.approved
+            && !args
+                .iter()
+                .any(|a| self.approved_by_human(&a.ty) && !self.is_waivable(a))
+        {
             self.report(
                 "E0405",
                 format!(
@@ -2210,7 +2223,7 @@ impl<'a> Checker<'a> {
             (None, Some(s)) => super::expr::std_ty(&s.returns),
             (None, None) => UNKNOWN,
         };
-        Val { ty: ret, cls }
+        Val::new(ret, cls)
     }
 
     /// An effect call's arguments against the effect's parameters, when

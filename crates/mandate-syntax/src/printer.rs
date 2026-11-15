@@ -467,6 +467,12 @@ fn print_contract(name: &str, d: &Value) -> Printed {
     fn crit(lines: &mut Vec<String>, kw: &str, n: &str, c: &Value) -> Result<(), String> {
         lines.push(format!("  {kw} {n} {}", quoted(member(c, "description"))?));
         lines.push(format!("    by {}", verifier(member(c, "by"))?));
+        // 0.6: the roles that may waive the criterion; no earlier IR has
+        // them.
+        let waive = items(c, "waive");
+        if !waive.is_empty() {
+            lines.push(format!("    waive by {}", join(waive, ", ")));
+        }
         Ok(())
     }
     for (n, c) in entries(d, "accept") {

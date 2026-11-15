@@ -1,0 +1,50 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1505b",
+  "kind": "compile",
+  "title": "Nor is a field of such a value, which its verification made plain (a mutation: what tag_release is given).",
+  "spec": [
+    "spec/library.md#waive-by",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1505/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Ship/body/4/value/args/0/value",
+      "value": {
+        "op": "field",
+        "of": {
+          "op": "var",
+          "name": "small"
+        },
+        "name": "branch"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Named/accept/named/by/static"
+      },
+      {
+        "code": "MDT-E1505",
+        "path": "/defs/Ship/body/4/value/args/0/value",
+        "facts": {
+          "effect": "tag_release"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Small/accept/small/by/static"
+      }
+    ]
+  }
+}

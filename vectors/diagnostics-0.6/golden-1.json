@@ -161,6 +161,99 @@
       "texts": {}
     },
     {
+      "program": "fixtures/library/review.mdt",
+      "modules": [
+        "fixtures/library/acme.connectors/types.mdt",
+        "fixtures/library/acme.connectors/connectors.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": false,
+          "diagnostics": [
+            {
+              "code": "MDT-E1604",
+              "severity": "error",
+              "message": "Module acme.connectors is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
+              "at": {
+                "path": "/uses/0",
+                "span": [17, 1, 17, 35]
+              },
+              "docs": "mandate explain MDT-E1604",
+              "facts": {
+                "module": "acme.connectors"
+              }
+            },
+            {
+              "code": "MDT-E1604",
+              "severity": "error",
+              "message": "Module acme.connectors.types is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
+              "at": {
+                "path": "/uses/1",
+                "span": [18, 1, 18, 58]
+              },
+              "docs": "mandate explain MDT-E1604",
+              "facts": {
+                "module": "acme.connectors.types"
+              }
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:b8f3880dcf61b49ad6f04b518c7121325e315ff0e5991cf1a02bdf11fe374973",
+            "defs": {
+              "Batch": "sha256:59da9c47643e06f32072d4a42898937e7d4cb9de330165c0b602f3045a05d135",
+              "ErpDraft": "sha256:91f4779de7c6cd75cafd362ea2a38edc91030ae222e19de9d7a34ba8c8235d84",
+              "ErpRead": "sha256:ea23f2faae2ed8a24ad065393490218cec83654e7a8109ba2b733902b32fcc06",
+              "Inbox": "sha256:6ac1491e2d922fa7ff8b3365859fc654a4947a71ed71721ac1aaa9cd2e9776aa",
+              "MatchInvoices": "sha256:7375aa519d0104cd91a9e734b2d29cef30f0b786ae3e5ed5288eff752362bb11",
+              "Matched": "sha256:89b17f9b9893ed16eec807fcdabd5fa04e43fa862659a5f63a7a91a38185c4cf",
+              "Matcher": "sha256:f6533579488273206115ad039adf88f9ca28038ce2adc5250b0324ac16c7fe21",
+              "ModelStd": "sha256:3d1b9c3435bb5678e33db8e60c2299ed4f109ecb5cc2693d02df6f8d03cc3c3f",
+              "accountant": "sha256:c723ad4bef6416c9aef9d0acb9b974c44449bc1ae759c31cd148b9e7dd57f197",
+              "finance_lead": "sha256:7a2d35f89fff50f998d449eb454627f0a50b2dc7905e38ae3da3cc65fabe8de6"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/same_invoice/by/static",
+                "span": [36, 15, 36, 45]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/totals/by/static",
+                "span": [40, 15, 40, 60]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Matched/accept/vendor/by/static",
+                "span": [38, 15, 38, 49]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
       "program": "fixtures/library/shared.mdt",
       "modules": [
         "fixtures/system/acme.system.mdt",

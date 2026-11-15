@@ -1,0 +1,35 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708i",
+  "kind": "compile",
+  "title": "A change set in a map's body is refused in a program of 0.6 as before: a member of a change set is never a batch commit step.",
+  "spec": [
+    "spec/library.md#the-batch-commit-step",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/LandAll/body/0/value/body/1/value",
+        "facts": {
+          "map": "/defs/LandAll/body/0/value",
+          "kind": "critical_effect",
+          "what": "changeset",
+          "condition": "change_set"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/PlanAccepted/accept/summarized/by/static"
+      }
+    ]
+  }
+}

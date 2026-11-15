@@ -224,6 +224,24 @@ pub fn role_sites(defs: &Map) -> Vec<RoleSite> {
                     }
                 }
             }
+            // 0.6: the roles that may waive a criterion (`waive by`), which
+            // only a 0.6 IR has.
+            Some(DefKind::Contract) => {
+                let criteria = d
+                    .accept()
+                    .map(|c| ("accept", c))
+                    .chain(d.invariant().map(|c| ("invariant", c)));
+                for (group, (cn, c)) in criteria {
+                    let roles = Criterion::of(c).map(Criterion::waive).unwrap_or_default();
+                    for (i, r) in roles.iter().enumerate() {
+                        s.text(
+                            r.as_str(),
+                            format!("{base}/{group}/{}/waive/{i}", ptr_token(cn)),
+                            "a criterion's waiver",
+                        );
+                    }
+                }
+            }
             Some(DefKind::Workflow) => {
                 if let Some(env) = d.envelope() {
                     if env.members().contains_key("owner") {

@@ -1,0 +1,42 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708j",
+  "kind": "compile",
+  "title": "An effect in a map that runs its items two at a time is no batch commit step (a mutation: par 2).",
+  "spec": [
+    "spec/library.md#the-batch-commit-step",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1708b/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/FileAll/body/1/value/par",
+      "value": 2
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Drafted/accept/positive/by/static"
+      },
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/FileAll/body/1/value/body/1/value",
+        "facts": {
+          "map": "/defs/FileAll/body/1/value",
+          "kind": "critical_effect",
+          "what": "file_draft",
+          "condition": "par"
+        }
+      }
+    ]
+  }
+}

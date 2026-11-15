@@ -1,0 +1,47 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1505",
+  "kind": "compile",
+  "title": "A value verified against a contract a person may waive is never an argument of an irreversible effect, though a person approved before it (a mutation: what git.merge is given).",
+  "spec": [
+    "spec/library.md#waive-by",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Ship/body/3/value/args/0/value",
+      "value": {
+        "op": "var",
+        "name": "small"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Named/accept/named/by/static"
+      },
+      {
+        "code": "MDT-E1505",
+        "path": "/defs/Ship/body/3/value/args/0/value",
+        "facts": {
+          "effect": "git.merge",
+          "contract": "Small"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Small/accept/small/by/static"
+      }
+    ]
+  }
+}

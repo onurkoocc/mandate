@@ -1,0 +1,45 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708d",
+  "kind": "compile",
+  "title": "An effect the envelope names under approve is no batch commit step: a person would authorize each item (a mutation: approve added).",
+  "spec": [
+    "spec/library.md#the-batch-commit-step",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1708b/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/FileAll/envelope/approve",
+      "value": {
+        "erp.post_draft": "clerk"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Drafted/accept/positive/by/static"
+      },
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/FileAll/body/0/value/body/1/value",
+        "facts": {
+          "map": "/defs/FileAll/body/0/value",
+          "kind": "critical_effect",
+          "what": "erp.post_draft",
+          "condition": "envelope_approve",
+          "role": "clerk"
+        }
+      }
+    ]
+  }
+}

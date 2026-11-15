@@ -1,0 +1,25 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708b",
+  "kind": "compile",
+  "title": "A batch commit step checks in a program of 0.6: a connector's write tool and a declared critical effect in a map's body, not irreversible, handed to no person, idempotent by the item's own key, one item at a time, in no other map.",
+  "spec": [
+    "spec/library.md#the-batch-commit-step",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Drafted/accept/positive/by/static"
+      }
+    ]
+  }
+}

@@ -89,6 +89,12 @@ pub const BUILTIN_TYPES: [&str; 36] = [
 /// came to (spec/envelope.md): `BUILTIN_TYPES_0_4`.
 pub const BUILTIN_TYPES_0_4: [&str; 1] = ["Outcome"];
 
+/// The built-in types a 0.6 program has as well (Rust only): what
+/// `human.review` gives, `Review<T, C>`, and an item it declined,
+/// `Declined<T>` (spec/library.md "human.review"). An earlier program that
+/// names one names nothing (E0120), as before.
+pub const BUILTIN_TYPES_0_6: [&str; 2] = ["Review", "Declined"];
+
 /// Functions available without an import: `BUILTIN_FUNCTIONS`.
 pub const BUILTIN_FUNCTIONS: [&str; 7] = [
     "quote",
@@ -138,6 +144,12 @@ pub fn resolve_names(
         .is_some_and(|l| l.at_least(Language::V0_4))
     {
         r.builtin_types.extend(BUILTIN_TYPES_0_4);
+    }
+    if program
+        .language()
+        .is_some_and(|l| l.at_least(Language::V0_6))
+    {
+        r.builtin_types.extend(BUILTIN_TYPES_0_6);
     }
     for u in program.use_values().iter().filter_map(Import::of) {
         if let Some(names) = u.names_given() {
@@ -696,14 +708,18 @@ impl<'a> Resolver<'a> {
                 // Subject>: Profile is a check profile. `!a.args`: an empty
                 // list is truthy.
                 let bare = a.has(TypeForm::Ref) && a.args().is_none();
-                if r == "Verified" && i == 1 && bare {
+                // 0.6: so does the C of the built-in Review<T, C>.
+                let review = r == "Review"
+                    && self.builtin_types.contains(&"Review")
+                    && self.def_kind(r) != Some(DefKind::Type);
+                if (r == "Verified" || review) && i == 1 && bare {
                     let ar = a.ref_name().unwrap_or_default();
                     if self.def_kind(ar) != Some(DefKind::Contract) && !self.imported.contains(&ar)
                     {
                         let candidates = self.defs_of_kind(DefKind::Contract);
                         self.report(
                             &format!("{ap}/ref"),
-                            format!("Unknown contract '{ar}' in Verified<…>."),
+                            format!("Unknown contract '{ar}' in {r}<…>."),
                             ar,
                             "contract",
                             candidates,

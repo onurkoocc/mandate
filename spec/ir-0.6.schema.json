@@ -1445,6 +1445,9 @@
         },
         "by": {
           "$ref": "#/$defs/Verifier"
+        },
+        "waive": {
+          "$ref": "#/$defs/NameSet"
         }
       },
       "additionalProperties": false,

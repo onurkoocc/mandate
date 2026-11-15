@@ -1008,7 +1008,19 @@ impl<'a> Parser<'a> {
                 let description = self.string("a criterion description")?;
                 self.expect_w("by")?;
                 let by = self.verifier()?;
-                let crit = self.at(obj().with("description", description).with("by", by), t);
+                let mut crit = obj().with("description", description).with("by", by);
+                // 0.6: `waive by r1, r2`, the roles that may waive the
+                // criterion: contextual, read only in a program of 0.6.
+                if self.reads_0_6() && self.is_w("waive") && is_w(self.la(1), "by") {
+                    self.bump();
+                    self.bump();
+                    let mut roles = vec![self.ident("a role name")?];
+                    while self.eat_p(",") {
+                        roles.push(self.ident("a role name")?);
+                    }
+                    crit.set("waive", sorted_set(roles));
+                }
+                let crit = self.at(crit, t);
                 // `def.invariant ??= …` is evaluated before the duplicate check.
                 if !accept && !def.has("invariant") {
                     def.set("invariant", obj());

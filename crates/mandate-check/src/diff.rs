@@ -607,6 +607,12 @@ pub enum GovernanceChangeKind {
     RemoteBindingChanged,
     /// A definition replaced by one of another kind under the same name.
     KindChanged,
+    /// 0.6: a criterion may be waived by a role it could not be waived by
+    /// before (`waive by` added, or a role added to it).
+    WaiverAdded,
+    /// 0.6: a role may no longer waive a criterion (`waive by` taken away,
+    /// or a role taken from it).
+    WaiverRemoved,
 }
 
 impl GovernanceChangeKind {
@@ -625,6 +631,8 @@ impl GovernanceChangeKind {
             GovernanceChangeKind::RemoteAgentAdded => "remote_agent_added",
             GovernanceChangeKind::RemoteBindingChanged => "remote_binding_changed",
             GovernanceChangeKind::KindChanged => "kind_changed",
+            GovernanceChangeKind::WaiverAdded => "waiver_added",
+            GovernanceChangeKind::WaiverRemoved => "waiver_removed",
         }
     }
 }
@@ -1254,6 +1262,14 @@ fn contract_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a: 
                             ),
                         );
                     }
+                    let crit_was = was.and_then(|m| m.get(k));
+                    waiver_changes(
+                        out,
+                        &format!("{name}.{k}"),
+                        &format!("{path}/{group}/{k}"),
+                        crit_was,
+                        c,
+                    );
                 }
             }
         }
@@ -1272,6 +1288,41 @@ fn contract_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a: 
             GovernanceChangeKind::RequireChanged,
             format!("{path}/require"),
             format!("~ {name}: require changed"),
+        );
+    }
+}
+
+/// The roles a criterion's `waive` names (0.6), in its order.
+fn waive_roles(c: Option<&Value>) -> Vec<&str> {
+    c.and_then(|c| c.get("waive"))
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect()
+}
+
+/// 0.6: who may waive the criterion `who` (at `path`) from `b` to `a`: a
+/// role that may waive it now and could not before is a governance change,
+/// `waiver_added` (a person may then accept what fails it); one that could
+/// and may not, `waiver_removed`. Before 0.6 no criterion has a waiver, so
+/// nothing is found.
+fn waiver_changes(out: &mut Classified, who: &str, path: &str, b: Option<&Value>, a: &Value) {
+    let (was, now) = (waive_roles(b), waive_roles(Some(a)));
+    let added: Vec<&str> = now.iter().copied().filter(|r| !was.contains(r)).collect();
+    let removed: Vec<&str> = was.iter().copied().filter(|r| !now.contains(r)).collect();
+    if !added.is_empty() {
+        out.gov(
+            GovernanceChangeKind::WaiverAdded,
+            format!("{path}/waive"),
+            format!("+ {who}: may be waived by {}", added.join(", ")),
+        );
+    }
+    if !removed.is_empty() {
+        out.gov(
+            GovernanceChangeKind::WaiverRemoved,
+            format!("{path}/waive"),
+            format!("- {who}: no longer waived by {}", removed.join(", ")),
         );
     }
 }

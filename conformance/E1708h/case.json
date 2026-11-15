@@ -1,0 +1,59 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708h",
+  "kind": "compile",
+  "title": "An effect whose key reads the item's name after a let of the body bound it again is no batch commit step: the key no longer reads the item (a mutation: one let added).",
+  "spec": [
+    "spec/library.md#the-batch-commit-step",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1708b/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/FileAll/body/1/value/body/0",
+      "value": {
+        "op": "let",
+        "name": "d",
+        "value": {
+          "op": "record",
+          "type": "Draft",
+          "fields": {
+            "invoice_no": {
+              "op": "text",
+              "value": "same"
+            },
+            "total_cents": {
+              "op": "int",
+              "value": 1
+            }
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Drafted/accept/positive/by/static"
+      },
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/FileAll/body/1/value/body/2/value",
+        "facts": {
+          "map": "/defs/FileAll/body/1/value",
+          "kind": "critical_effect",
+          "what": "file_draft",
+          "condition": "key"
+        }
+      }
+    ]
+  }
+}

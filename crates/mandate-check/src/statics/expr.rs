@@ -13,7 +13,7 @@ use mandate_ir::{
     DefKind, Expr, ExprOp, JsObject, Language, Pattern, PatternKind, Value, VerifierForm,
 };
 
-use super::{Checker, Frame, Usage, Val, callee_is, max_class, sub, sub_i};
+use super::{Checker, Frame, Usage, Val, any_waivable, callee_is, max_class, sub, sub_i};
 use crate::caps::callee_path;
 use crate::path::path_problem;
 use crate::stdlib::{
@@ -59,30 +59,28 @@ fn kind(p: Option<Pattern<'_>>) -> Option<PatternKind> {
 
 /// `bindPattern(p, subject, armType, into, cls)`: the names a pattern
 /// binds, a tag's arguments to the arm's fields (and their own arguments
-/// to nothing).
+/// to nothing), each of the class of the switch's subject `of` and resting
+/// on what it rests on.
 fn bind_pattern(
     p: Option<Pattern<'_>>,
     subject: &Ty,
     arm: &dyn Fn(&str) -> Vec<Ty>,
     into: &mut HashMap<String, Val>,
-    cls: DataClass,
+    of: &Val,
 ) {
     let Some(p) = p else { return };
     match p.kind() {
         Some(PatternKind::Bind) => {
             into.insert(
                 p.name().unwrap_or_default().to_owned(),
-                Val {
-                    ty: subject.clone(),
-                    cls,
-                },
+                Val::like(subject.clone(), of),
             );
         }
         Some(PatternKind::Tag) => {
             let fields = arm(p.tag().unwrap_or_default());
             for (i, a) in p.args().iter().enumerate() {
                 let t = fields.get(i).cloned().unwrap_or(UNKNOWN);
-                bind_pattern(Pattern::of(a), &t, &|_| Vec::new(), into, cls);
+                bind_pattern(Pattern::of(a), &t, &|_| Vec::new(), into, of);
             }
         }
         _ => {}
@@ -150,7 +148,7 @@ impl<'a> Checker<'a> {
     /// `{ ty: v.ty, cls: maxClass(v.cls, typeClass(v.ty)) }`.
     fn raised(&self, v: Val) -> Val {
         let cls = v.cls.max(self.type_class(&v.ty));
-        Val { ty: v.ty, cls }
+        Val { cls, ..v }
     }
 
     /// `exprInner(e, frame, path)`.
@@ -230,20 +228,22 @@ impl<'a> Checker<'a> {
         Val {
             ty: named(name, vec![ty]),
             cls: max_class(items.iter().map(|x| x.cls)),
+            waivable: any_waivable(items),
         }
     }
 
     /// A `template`: text, of the highest class of its parts.
     fn template(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let mut cls = DataClass::Public;
+        let mut out = Val::new(text_ty(), DataClass::Public);
         for (i, p) in e.parts().iter().enumerate() {
             if let Some(x) = p.get("expr").and_then(Expr::of) {
                 let at = sub_i(path, "parts", i, "/expr");
                 let v = self.expr(x, frame, &at);
-                cls = cls.max(v.cls);
+                out.cls = out.cls.max(v.cls);
+                out.waivable = out.waivable || v.waivable;
             }
         }
-        Val { ty: text_ty(), cls }
+        out
     }
 
     /// A `var`: a variable in scope, a constant, a capability, or unknown.
@@ -270,10 +270,7 @@ impl<'a> Checker<'a> {
     fn unary_of(e: Expr<'a>, v: Val) -> Val {
         if e.get("uop").and_then(Value::as_str) == Some("not") {
             let lvl = epistemic(&v.ty).level;
-            return Val {
-                ty: with_level(bool_ty(), unverified(lvl), None),
-                cls: v.cls,
-            };
+            return Val::like(with_level(bool_ty(), unverified(lvl), None), &v);
         }
         v
     }
@@ -313,6 +310,7 @@ impl<'a> Checker<'a> {
         Val {
             ty: with_level(inner, lvl, None),
             cls: l.cls.max(r.cls),
+            waivable: l.waivable || r.waivable,
         }
     }
 
@@ -396,16 +394,13 @@ impl<'a> Checker<'a> {
         } else {
             UNKNOWN
         };
-        Val {
-            ty: with_level(inner, unverified(ep.level), None),
-            cls: v.cls,
-        }
+        Val::like(with_level(inner, unverified(ep.level), None), &v)
     }
 
     /// `prompt(e, frame, path)`: untrusted content and model output stand in
     /// a prompt's instructions only quoted (E0215).
     fn prompt(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let mut cls = DataClass::Public;
+        let mut out = Val::new(named0("Prompt"), DataClass::Public);
         for (i, p) in e.parts().iter().enumerate() {
             if p.get("expr").is_none() {
                 continue;
@@ -415,13 +410,11 @@ impl<'a> Checker<'a> {
             };
             let pp = sub_i(path, "parts", i, "/expr");
             let v = self.expr(x, frame, &pp);
-            cls = cls.max(v.cls);
+            out.cls = out.cls.max(v.cls);
+            out.waivable = out.waivable || v.waivable;
             self.prompt_part(x, &v, &pp);
         }
-        Val {
-            ty: named0("Prompt"),
-            cls,
-        }
+        out
     }
 
     /// E0215 for a part of a prompt's instructions that is untrusted or
@@ -466,13 +459,21 @@ impl<'a> Checker<'a> {
     /// The member `e.name` of the value `base`.
     fn field_of(&mut self, e: Expr<'a>, base: Val, path: &str) -> Val {
         let ep = epistemic(&base.ty);
-        let Some(fields) = fields_of(&ep.inner, self) else {
-            return Val {
-                ty: with_level(UNKNOWN, unverified(ep.level), None),
-                cls: base.cls,
-            };
-        };
         let name = e.name().unwrap_or_default();
+        // 0.6: the built-in `Review<T, C>` and `Declined<T>` have the fields
+        // spec/library.md "human.review" gives them; only `accepted` is
+        // what a waiver may rest on.
+        let builtin = self.review_fields(&ep.inner);
+        let waivable = match &builtin {
+            Some((_, review)) => *review && name == "accepted" && base.waivable,
+            None => base.waivable,
+        };
+        let Some(fields) = builtin
+            .map(|(f, _)| f)
+            .or_else(|| fields_of(&ep.inner, self))
+        else {
+            return Val::like(with_level(UNKNOWN, unverified(ep.level), None), &base);
+        };
         match field(&fields, name) {
             None => {
                 let shown = show(&ep.inner);
@@ -488,14 +489,12 @@ impl<'a> Checker<'a> {
                             .with("fields", names),
                     ),
                 );
-                Val {
-                    ty: UNKNOWN,
-                    cls: base.cls,
-                }
+                Val::like(UNKNOWN, &base)
             }
             Some(f) => Val {
                 ty: with_level(f.clone(), unverified(ep.level), None),
                 cls: base.cls,
+                waivable,
             },
         }
     }
@@ -552,7 +551,13 @@ impl<'a> Checker<'a> {
             return v;
         }
         let p = e.callee().and_then(callee_path);
-        let cls = max_class(args.iter().map(|a| a.cls));
+        // What a call gives is made of its arguments: of their class, and
+        // resting on what they rest on.
+        let of = Val {
+            ty: UNKNOWN,
+            cls: max_class(args.iter().map(|a| a.cls)),
+            waivable: any_waivable(&args),
+        };
         let local = p
             .as_deref()
             .filter(|p| {
@@ -560,14 +565,17 @@ impl<'a> Checker<'a> {
             })
             .and_then(|p| self.def(p));
         match (local.filter(|d| d.kind() == Some(DefKind::Fn)), p) {
-            (Some(d), Some(p)) => self.call_fn(d, &p, frame, path, &args, cls),
-            (_, p) => self.call_other(e, p.unwrap_or_default(), frame, path, &args, cls),
+            (Some(d), Some(p)) => self.call_fn(d, &p, frame, path, &args, &of),
+            (_, p) => self.call_other(e, p.unwrap_or_default(), frame, path, &args, &of),
         }
     }
 
     /// A call of the program's function `p` (`d`): its arguments against
     /// its parameters (E0201 and the rest of `assignable`), what in it waits
-    /// for a person in a map (E1708), and what it does, done here.
+    /// for a person in a map (E1708), and what it does, done here. Its
+    /// value is of the class of its arguments (`of`), and rests on what
+    /// they rest on and on a verification in the function a person may
+    /// waive.
     fn call_fn(
         &mut self,
         d: mandate_ir::Definition<'a>,
@@ -575,8 +583,9 @@ impl<'a> Checker<'a> {
         frame: &mut Frame<'a>,
         path: &str,
         args: &[Val],
-        cls: DataClass,
+        of: &Val,
     ) -> Val {
+        let cls = of.cls;
         self.call_fn_args(d, p, path, args);
         if frame.in_map.is_some() {
             self.fn_waits_in_map(p, frame, path);
@@ -589,6 +598,7 @@ impl<'a> Checker<'a> {
         Val {
             ty: self.ty(d.returns()),
             cls,
+            waivable: of.waivable || self.fn_waivable(p, &mut HashSet::new()),
         }
     }
 
@@ -641,7 +651,8 @@ impl<'a> Checker<'a> {
 
     /// A call of anything but the program's own function: `quote`, `len`,
     /// `peek` (W0207), a decision policy, `data.read`, a std function,
-    /// `cap.narrow(…)`, or something unknown.
+    /// `cap.narrow(…)`, or something unknown; in 0.6 `human.review`. Its
+    /// value is made of its arguments (`of`).
     fn call_other(
         &mut self,
         e: Expr<'a>,
@@ -649,16 +660,11 @@ impl<'a> Checker<'a> {
         frame: &mut Frame<'a>,
         path: &str,
         args: &[Val],
-        cls: DataClass,
+        of: &Val,
     ) -> Val {
         match p.as_str() {
-            "quote" => return Val { ty: text_ty(), cls },
-            "len" => {
-                return Val {
-                    ty: named0("Int"),
-                    cls,
-                };
-            }
+            "quote" => return Val::like(text_ty(), of),
+            "len" => return Val::like(named0("Int"), of),
             "peek" => {
                 self.report(
                     "W0207",
@@ -667,10 +673,7 @@ impl<'a> Checker<'a> {
                     None,
                 );
                 let ty = args.first().map_or(UNKNOWN, |a| a.ty.clone());
-                return Val {
-                    ty: epistemic(&ty).inner,
-                    cls,
-                };
+                return Val::like(epistemic(&ty).inner, of);
             }
             _ => {}
         }
@@ -684,15 +687,16 @@ impl<'a> Checker<'a> {
             } else {
                 UNKNOWN
             };
-            return Val {
-                ty: named("DecisionOutcome", vec![dec]),
-                cls,
-            };
+            return Val::like(named("DecisionOutcome", vec![dec]), of);
         }
         let callee = e.callee();
         let module_root = |c: &Checker<'a>| callee.is_some_and(|x| c.is_module_root(x, frame));
         if p == "data.read" && module_root(self) {
             return self.data_read(e, frame, path);
+        }
+        // 0.6: one wait for a person about the outcomes of a verifying map.
+        if p == "human.review" && self.at_least(Language::V0_6) && module_root(self) {
+            return self.human_review(e, frame, path, of);
         }
         if let Some(f) = std_fn(&p).filter(|_| !p.is_empty() && module_root(self)) {
             for eff in f.effects {
@@ -716,45 +720,37 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
-            return Val {
-                ty: std_ty(&f.returns),
-                cls,
-            };
+            return Val::like(std_ty(&f.returns), of);
         }
         if let Some(c) = callee
             && c.is(ExprOp::Field)
             && c.name() == Some("narrow")
         {
             self.eval_cap(e, path, frame);
-            return Val {
-                ty: named0("Capability"),
-                cls,
-            };
+            return Val::like(named0("Capability"), of);
         }
-        Val { ty: UNKNOWN, cls }
+        Val::like(UNKNOWN, of)
     }
 
     /// `record(e, frame, path)`: a record of a local type, field by field
     /// (E0202, E0203), never of a protected type (E0213).
     fn record(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
         let fields = self.record_fields(e, path);
-        let mut acc = Val {
-            ty: UNKNOWN,
-            cls: DataClass::Public,
-        };
+        let mut acc = Val::unknown();
         let mut level = Level::Plain;
         for (fname, fe) in e.fields() {
             let at = sub(&sub(path, "fields"), fname);
             let v = self.expr_or_unknown(Expr::of(fe), frame, &at);
             level = self.record_field(e, fields.as_deref(), fname, v, &at, level, &mut acc);
         }
-        self.record_end(e, fields.as_deref(), path, level, acc.cls)
+        self.record_end(e, fields.as_deref(), path, level, &acc)
     }
 
     /// The fields of a record's type (E0213 for a protected type first).
     fn record_fields(&mut self, e: Expr<'a>, path: &str) -> Option<Vec<(String, Ty)>> {
         let type_name = e.record_type().unwrap_or_default();
-        if is_protected_type(type_name) {
+        // 0.6: so are a review and a declined item, `Review` and `Declined`.
+        if is_protected_type(type_name) || self.review_type(type_name) {
             self.report(
                 "E0213",
                 format!(
@@ -767,8 +763,8 @@ impl<'a> Checker<'a> {
         fields_of(&named0(type_name), self)
     }
 
-    /// One field of a record, its value typed (`v`): its class and level
-    /// into the record's, and it against the type's field (E0202, and the
+    /// One field of a record, its value typed (`v`): its class, its waivers
+    /// and level into the record's, and it against the type's field (E0202, and the
     /// rest of `assignable` at the field's own level, R6). The record's
     /// level so far.
     #[allow(clippy::too_many_arguments)]
@@ -783,6 +779,7 @@ impl<'a> Checker<'a> {
         acc: &mut Val,
     ) -> Level {
         acc.cls = acc.cls.max(v.cls);
+        acc.waivable = acc.waivable || v.waivable;
         let ep = epistemic(&v.ty);
         let level = join_level(level, ep.level);
         if let Some(fields) = fields {
@@ -808,14 +805,15 @@ impl<'a> Checker<'a> {
         level
     }
 
-    /// The fields a record leaves out (E0203), and its value.
+    /// The fields a record leaves out (E0203), and its value, made of its
+    /// fields (`made`).
     fn record_end(
         &mut self,
         e: Expr<'a>,
         fields: Option<&[(String, Ty)]>,
         path: &str,
         level: Level,
-        cls: DataClass,
+        made: &Val,
     ) -> Val {
         let type_name = e.record_type().unwrap_or_default();
         if let Some(fields) = fields {
@@ -841,10 +839,7 @@ impl<'a> Checker<'a> {
                 );
             }
         }
-        Val {
-            ty: with_level(named0(type_name), level, None),
-            cls,
-        }
+        Val::like(with_level(named0(type_name), level, None), made)
     }
 
     /// `infer(e, frame, path)`: model output (`Inferred<T>`), never a
@@ -860,7 +855,9 @@ impl<'a> Checker<'a> {
     /// An `infer`, what it reads typed (`from`).
     fn infer_of(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str, from: &Val) -> Val {
         let mut target = self.ty(e.type_expr());
-        if let Some(prot) = mentions(&target, &PROTECTED_TYPES) {
+        if let Some(prot) =
+            mentions(&target, &PROTECTED_TYPES).or_else(|| self.review_type_in(&target))
+        {
             self.report(
                 "E0213",
                 format!(
@@ -881,10 +878,8 @@ impl<'a> Checker<'a> {
         let mut u = Usage::new("Model", path);
         u.cls = Some(cls);
         Self::use_effect(frame, u);
-        Val {
-            ty: named("Inferred", vec![target]),
-            cls,
-        }
+        // A model's answer rests on no verification, so on no waiver.
+        Val::new(named("Inferred", vec![target]), cls)
     }
 
     /// `choiceOptions(opt, path)`.
@@ -973,9 +968,18 @@ impl<'a> Checker<'a> {
             self.verify_unmet(u, frame, path);
         }
         let contract = e.contract().unwrap_or_default();
+        let ep = epistemic(&v.ty);
+        // 0.6: what was verified, for a review of a map that ends here.
+        if self.at_least(Language::V0_6) {
+            self.verified
+                .insert(path.to_owned(), (ep.inner.clone(), ep.level));
+        }
+        // The value rests on this verification alone: on a waiver when its
+        // contract has one (0.6), and on nothing it rested on before.
         Val {
-            ty: with_level(epistemic(&v.ty).inner, Level::Verified, Some(contract)),
+            ty: with_level(ep.inner, Level::Verified, Some(contract)),
             cls: v.cls,
+            waivable: self.waivable_contract(contract),
         }
     }
 
@@ -1037,10 +1041,7 @@ impl<'a> Checker<'a> {
                 result = Some(v);
             }
         }
-        result.unwrap_or(Val {
-            ty: UNKNOWN,
-            cls: subj.cls,
-        })
+        result.unwrap_or(Val::like(UNKNOWN, &subj))
     }
 
     /// What a switch is on, against how it is known and its cases (E0231,
@@ -1181,7 +1182,7 @@ impl<'a> Checker<'a> {
     ) -> HashMap<String, Val> {
         let mut binds = HashMap::new();
         match arm {
-            Arm::None => bind_pattern(c.pattern(), &subj.ty, &|_| Vec::new(), &mut binds, subj.cls),
+            Arm::None => bind_pattern(c.pattern(), &subj.ty, &|_| Vec::new(), &mut binds, subj),
             Arm::Confident(opt) => bind_pattern(
                 c.pattern(),
                 &subj.ty,
@@ -1193,14 +1194,14 @@ impl<'a> Checker<'a> {
                     }
                 },
                 &mut binds,
-                subj.cls,
+                subj,
             ),
             Arm::Variant(inner) => bind_pattern(
                 c.pattern(),
                 &subj.ty,
                 &|tag| self.variant_fields(inner, tag),
                 &mut binds,
-                subj.cls,
+                subj,
             ),
         }
         binds

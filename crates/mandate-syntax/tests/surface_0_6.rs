@@ -252,6 +252,78 @@ fn before_0_6_a_doc_line_is_a_comment() {
     assert_eq!(canonicalize(&p), canonicalize(&read(&stripped)));
 }
 
+/// A contract of 0.6 whose second criterion may be waived (spec/library.md
+/// "waive by"), its roles written in no order and one twice.
+const WAIVED: &str = "mandate @ 0.6
+
+module example.waive @ 0.1
+
+role accountant \"Accountant\"
+
+role finance_lead \"Finance lead\"
+
+contract Near(a: Int, b: Int) {
+  accept same \"The same\"
+    by static a == b
+  accept close \"Within two\"
+    by static a <= b + 2
+    waive by finance_lead, accountant, finance_lead
+}
+";
+
+#[test]
+fn a_waiver_reads_to_a_sorted_set_of_roles_and_prints_back() {
+    let p = read(WAIVED);
+    let accept = def(&p, "Near").get("accept").unwrap();
+    assert!(accept.get("same").unwrap().get("waive").is_none());
+    assert_eq!(
+        canonicalize(accept.get("close").unwrap().get("waive").unwrap()),
+        r#"["accountant","finance_lead"]"#,
+        "sorted, each role once"
+    );
+    let printed = print_program(&p).unwrap();
+    assert_eq!(
+        printed,
+        WAIVED.replace(
+            "waive by finance_lead, accountant, finance_lead",
+            "waive by accountant, finance_lead"
+        )
+    );
+    assert_eq!(canonicalize(&read(&printed)), canonicalize(&p));
+    // An invariant may name its waivers too, and a waiver needs a role.
+    let invariant = WAIVED.replace("  accept close", "  invariant close");
+    let p = read(&invariant);
+    assert!(
+        def(&p, "Near")
+            .get("invariant")
+            .and_then(|i| i.get("close"))
+            .and_then(|c| c.get("waive"))
+            .is_some()
+    );
+    let (code, _, at) = refused(&WAIVED.replace(
+        "waive by finance_lead, accountant, finance_lead",
+        "waive by",
+    ));
+    assert_eq!((code.as_str(), at), ("MDT-E0101", Some((15, 1))));
+}
+
+/// `waive` is contextual: before 0.6 it is no part of a contract, and in 0.6
+/// it is still a name.
+#[test]
+fn before_0_6_a_waiver_is_no_part_of_a_contract() {
+    let old = WAIVED.replace("mandate @ 0.6", "mandate @ 0.5");
+    let (code, message, at) = refused(&old);
+    assert_eq!(
+        (code.as_str(), message.as_str(), at),
+        (
+            "MDT-E0101",
+            "Expected require, accept or invariant in contract body but found 'waive'.",
+            Some((14, 5))
+        )
+    );
+    read("mandate @ 0.6\n\nmodule m @ 0.1\n\ntype T = { waive: Text, by: Text }\n");
+}
+
 /// A connector of 0.6 (spec/library.md "Declaration"), as the fixture of the
 /// acme.connectors library declares two.
 fn connectors_text() -> String {

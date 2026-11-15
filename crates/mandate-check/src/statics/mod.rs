@@ -28,6 +28,7 @@
 
 mod authority;
 mod expr;
+mod review;
 mod system;
 mod tools;
 
@@ -47,25 +48,52 @@ use crate::caps::{CapOptions, CapVal, callee_path};
 use crate::cost::{Budget, CostEnv, StaticCost, block_cost, micros_text};
 use crate::stdlib::DataClass;
 use crate::ty::{
-    Problem, Ty, TypeEnv, UNKNOWN, assignable, bool_ty, from_type_expr, peeled_type, ty_of,
+    Level, Problem, Ty, TypeEnv, UNKNOWN, assignable, bool_ty, from_type_expr, peeled_type, ty_of,
 };
 use crate::walk::{walk_exprs, walk_stmt_exprs};
 
-/// A value's type and data class: `Val`, `{ ty, cls }`.
+/// A value's type and data class: `Val`, `{ ty, cls }`; and, the Rust's
+/// alone, whether it rests on a verification a person may waive.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Val {
     /// Its type.
     pub(crate) ty: Ty,
     /// Its data class.
     pub(crate) cls: DataClass,
+    /// 0.6 (spec/library.md "waive by"): the value comes from one verified
+    /// against a contract with a `waive by` criterion, so a waiver may be
+    /// what it rests on, and it never clears an irreversible effect (E1505).
+    /// It flows as the data class does, from what a value is made of to the
+    /// value, and through a `let`'s or a function's declared type, which
+    /// the type alone would not show; a value no waiver can touch starts
+    /// without it: a literal, a model's or a tool's answer, an effect's
+    /// receipt, and the result of a `verify` against a contract without a
+    /// waiver. Always `false` before 0.6, where no contract has a waiver.
+    pub(crate) waivable: bool,
 }
 
 impl Val {
     /// `{ ty, cls: PUBLIC }`.
     pub(crate) fn public(ty: Ty) -> Val {
+        Val::new(ty, DataClass::Public)
+    }
+
+    /// `{ ty, cls }`, resting on no waiver.
+    pub(crate) fn new(ty: Ty, cls: DataClass) -> Val {
         Val {
             ty,
-            cls: DataClass::Public,
+            cls,
+            waivable: false,
+        }
+    }
+
+    /// A value of type `ty` made from `from`: of its class, and resting on
+    /// what it rests on.
+    pub(crate) fn like(ty: Ty, from: &Val) -> Val {
+        Val {
+            ty,
+            cls: from.cls,
+            waivable: from.waivable,
         }
     }
 
@@ -73,6 +101,55 @@ impl Val {
     pub(crate) fn unknown() -> Val {
         Val::public(UNKNOWN)
     }
+}
+
+/// Whether any of `vals` rests on a waiver: what a value made of them rests
+/// on, as its class is their highest.
+pub(crate) fn any_waivable<'v>(vals: impl IntoIterator<Item = &'v Val>) -> bool {
+    vals.into_iter().any(|v| v.waivable)
+}
+
+/// 0.6: what a map whose body ends with `verify x against C(…)` lets a
+/// review ask about (spec/library.md "human.review").
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ReviewSource {
+    /// The contract `C`.
+    pub(crate) contract: String,
+    /// What was verified, its wrappers peeled: the `T` of `Verified<T, C>`.
+    pub(crate) item: Ty,
+    /// Whether what was verified was untrusted content, which a declined
+    /// item stays.
+    pub(crate) untrusted: bool,
+}
+
+/// 0.6: what a `let` bound its name to, as `human.review` reads its source
+/// (E1506): a map whose body ends with a `verify`, or how it is not one.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum LetMap {
+    /// Not a `map`.
+    NotMap,
+    /// A map whose body does not end with `verify`.
+    NotVerifying,
+    /// A map whose body ends with a `verify` that has `on unmet`.
+    OnUnmet,
+    /// A map whose body holds a `return`, which ends an item otherwise.
+    Returns,
+    /// A map whose body ends with `verify x against C(…)`.
+    Verifying(ReviewSource),
+}
+
+/// 0.6: the map whose body a frame is in, as the batch commit step reads it
+/// (spec/library.md "The batch commit step").
+#[derive(Debug)]
+pub(crate) struct MapSite {
+    /// The name the map binds each item to.
+    pub(crate) bind: String,
+    /// The scope that binds it.
+    pub(crate) scope: Rc<Scope>,
+    /// The map's `par`, when it has one.
+    pub(crate) par: Option<i64>,
+    /// Whether the map is itself in the body of another map.
+    pub(crate) nested: bool,
 }
 
 /// One effect use: `Usage`.
@@ -115,6 +192,9 @@ impl Usage {
 pub(crate) struct Scope {
     vars: HashMap<String, Val>,
     parent: Option<Rc<Scope>>,
+    /// 0.6: for the scope of a `let`, what it bound its one name to, as a
+    /// review's source; `None` for every other scope (E1506).
+    let_map: Option<LetMap>,
 }
 
 /// The kind of body a frame is in: `Where`.
@@ -235,6 +315,8 @@ pub(crate) struct Frame<'a> {
     pub(crate) envelope: Option<Bound<'a>>,
     /// `inMap`: inside a map's body, the map's path.
     pub(crate) in_map: Option<String>,
+    /// 0.6: inside a map's body, the map, as the batch commit step reads it.
+    pub(crate) map_site: Option<Rc<MapSite>>,
 }
 
 impl<'a> Frame<'a> {
@@ -243,7 +325,11 @@ impl<'a> Frame<'a> {
         Frame {
             where_,
             def: def.to_owned(),
-            scope: Rc::new(Scope { vars, parent: None }),
+            scope: Rc::new(Scope {
+                vars,
+                parent: None,
+                let_map: None,
+            }),
             usages: Rc::new(RefCell::new(Vec::new())),
             avail: None,
             returns: None,
@@ -253,6 +339,7 @@ impl<'a> Frame<'a> {
             max_class: None,
             envelope: None,
             in_map: None,
+            map_site: None,
         }
     }
 
@@ -361,6 +448,10 @@ pub(crate) struct Checker<'a> {
     /// data class of what each `plan` hands its lead, by the plan's path,
     /// in insertion order (a `Map`).
     pub(crate) leads: Vec<(String, DataClass)>,
+    /// 0.6: what each `verify` verified, by its path: the type with its
+    /// wrappers peeled, and how it was known (`human.review` reads the
+    /// one a review's source map ends with).
+    pub(crate) verified: HashMap<String, (Ty, Level)>,
 }
 
 impl TypeEnv for Checker<'_> {
@@ -495,6 +586,7 @@ impl<'a> Checker<'a> {
             const_vals: HashMap::new(),
             recursive: HashSet::new(),
             leads: Vec::new(),
+            verified: HashMap::new(),
         }
     }
 
@@ -640,7 +732,7 @@ impl<'a> Checker<'a> {
             Some(t) => {
                 let t = self.ty(Some(t));
                 self.expect(&v.ty, &t, at);
-                Val { ty: t, cls: v.cls }
+                Val::like(t, &v)
             }
             None => v,
         }
@@ -673,7 +765,7 @@ impl<'a> Checker<'a> {
         for (name, t) in params_of(params) {
             let ty = self.ty(t);
             let cls = self.type_class(&ty);
-            vars.insert(name.to_owned(), Val { ty, cls });
+            vars.insert(name.to_owned(), Val::new(ty, cls));
         }
         let mut f = Frame::new(where_, def, vars);
         f.avail = avail.map(Rc::new);
@@ -750,6 +842,8 @@ impl<'a> Checker<'a> {
     /// `checkContract(name, d, base)`: contract parameters are the subjects
     /// under test, so they may hold unverified values.
     fn check_contract(&mut self, name: &str, d: Definition<'a>, base: &str) {
+        // 0.6: what a person approves is never waived (E1504).
+        self.check_waivers(name, d, base);
         let mut frame = self.body_frame(Where::Contract, name, d.params(), None, None);
         for (i, r) in d.require().iter().enumerate() {
             let at = format!("{base}/require/{i}");
@@ -901,13 +995,36 @@ impl<'a> Checker<'a> {
 
     /// `child(frame, vars)`: `{ ...frame, scope: { vars, parent: frame.scope } }`.
     pub(crate) fn child(frame: &Frame<'a>, vars: HashMap<String, Val>) -> Frame<'a> {
+        Self::child_of(frame, vars, None)
+    }
+
+    /// [`Checker::child`], its scope that of a `let` when `let_map` says
+    /// what the `let` bound its name to (0.6).
+    fn child_of(
+        frame: &Frame<'a>,
+        vars: HashMap<String, Val>,
+        let_map: Option<LetMap>,
+    ) -> Frame<'a> {
         Frame {
             scope: Rc::new(Scope {
                 vars,
                 parent: Some(Rc::clone(&frame.scope)),
+                let_map,
             }),
             ..frame.clone()
         }
+    }
+
+    /// The scope of `scope`'s chain that binds `name`, the innermost.
+    pub(crate) fn binding<'s>(name: &str, scope: &'s Rc<Scope>) -> Option<&'s Rc<Scope>> {
+        let mut s = Some(scope);
+        while let Some(sc) = s {
+            if sc.vars.contains_key(name) {
+                return Some(sc);
+            }
+            s = sc.parent.as_ref();
+        }
+        None
     }
 
     /// [`Checker::child`], boxed: made in a frame of its own, so that the
@@ -999,19 +1116,26 @@ impl<'a> Checker<'a> {
     fn let_stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) {
         let at = sub(path, "value");
         let v = self.expr_or_unknown(s.value(), frame, &at);
+        // 0.6: what the name is bound to, as a review's source reads it.
+        let let_map = if self.at_least(Language::V0_6) {
+            s.value().map(|e| self.let_map(e, &at))
+        } else {
+            None
+        };
         let bound = self.declared(s, v, &at);
         let mut vars = HashMap::new();
         vars.insert(s.name().unwrap_or_default().to_owned(), bound);
-        *frame = Self::child(frame, vars);
+        *frame = Self::child_of(frame, vars, let_map);
     }
 
-    /// A `let`'s value as bound: of its declared type, when it has one.
+    /// A `let`'s value as bound: of its declared type, when it has one, and
+    /// of the class and waivers of its value whatever the type says.
     fn declared(&mut self, s: Stmt<'a>, v: Val, at: &str) -> Val {
         match s.type_expr() {
             Some(t) => {
                 let t = self.ty(Some(t));
                 self.expect(&v.ty, &t, at);
-                Val { ty: t, cls: v.cls }
+                Val::like(t, &v)
             }
             None => v,
         }
