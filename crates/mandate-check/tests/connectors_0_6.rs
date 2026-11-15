@@ -510,8 +510,18 @@ fn a_connectors_changes_are_classified_by_what_they_widen() {
     );
     assert_eq!(
         gov(&changed(&own, "class   confidential", "class   internal")),
-        Vec::<String>::new()
+        ["capability_added /defs/erp/class"],
+        "a lower class declassifies what its tools return"
     );
+    // A patch that lowers it asks for an approval.
+    let base = mandate_ir::hash_program(&before).program;
+    let op = mandate_check::PatchOp {
+        op: "replace".to_owned(),
+        path: "/defs/erp/class".to_owned(),
+        value: Some(Value::from("public")),
+    };
+    let r = mandate_check::check_patch(&before, &base, &[op], None);
+    assert!(r.requires_approval, "{:?}", r.governance);
     assert_eq!(
         gov(&changed(
             &own,
