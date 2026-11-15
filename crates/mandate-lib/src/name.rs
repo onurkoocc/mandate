@@ -6,9 +6,9 @@
 //! A library's name is "dot-separated lower-case names, as a module's name"
 //! (spec/library.md "The manifest"). The parser reads a module's name as
 //! names of ASCII letters, digits and `_` that do not start with a digit
-//! joined by `.` (`qname`), and the lock schema holds a key to the same
-//! rule (`QName`), both allowing upper-case letters; the specification says
-//! lower-case, and so does this crate: a name is one or more *segments*
+//! joined by `.` (`qname`), allowing upper-case letters; the specification says
+//! lower-case, and so do the lock schema (`LibraryName`, for the keys of its
+//! `libraries` and their `modules`) and this crate: a name is one or more *segments*
 //! joined by `.`, each of `[a-z_][a-z0-9_]*`, at most [`NAME_MAX_BYTES`]
 //! bytes in all. Every module of a library has a name that is the library's
 //! or begins with it and a `.`, so a module's name is held to the same rule.

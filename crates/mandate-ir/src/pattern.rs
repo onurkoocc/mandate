@@ -45,10 +45,17 @@ pub(crate) enum Pattern {
     /// `^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$`, a
     /// library's version in a 0.6 lock: `MAJOR.MINOR.PATCH`.
     LibraryVersion,
+    /// `^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$`, the name of a library and
+    /// of each of its modules in a 0.6 lock: lower-case names joined by dots.
+    LibraryName,
 }
 
 /// Every pattern with its source text, as the schemas write it.
-const SOURCES: [(Pattern, &str); 13] = [
+const SOURCES: [(Pattern, &str); 14] = [
+    (
+        Pattern::LibraryName,
+        r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$",
+    ),
     (
         Pattern::ProgramVersion,
         r"^[0-9]+(\.[0-9]+)*([-+][0-9A-Za-z.]+)?$",
@@ -134,6 +141,15 @@ impl Pattern {
             // ^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$ : names
             // joined by dots.
             Pattern::QName => s.split('.').all(is_name),
+            // ^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$ : lower-case names
+            // joined by dots.
+            Pattern::LibraryName => s.split('.').all(|part| {
+                let mut chars = part.chars();
+                chars
+                    .next()
+                    .is_some_and(|c| c.is_ascii_lowercase() || c == '_')
+                    && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+            }),
             // ^[A-Z]{3}$
             Pattern::Currency => s.len() == 3 && s.bytes().all(|b| b.is_ascii_uppercase()),
             // ^-?[0-9]+\.[0-9]+$
@@ -307,6 +323,29 @@ mod tests {
                 ("9a.b", false),
                 ("a.b\n", false),
                 ("a.b\u{1F600}", false),
+                ("", false),
+            ],
+        );
+    }
+
+    #[test]
+    fn library_name() {
+        check(
+            Pattern::LibraryName,
+            &[
+                ("a", true),
+                ("acme.connectors", true),
+                ("std.patterns", true),
+                ("_x.y_2", true),
+                ("Acme", false),
+                ("acme.Types", false),
+                ("a.", false),
+                ("a..b", false),
+                (".a", false),
+                ("a.9b", false),
+                ("a-b", false),
+                ("a.b\n", false),
+                ("a\u{1F600}", false),
                 ("", false),
             ],
         );
