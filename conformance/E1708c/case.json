@@ -1,0 +1,69 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708c",
+  "kind": "compile",
+  "title": "An irreversible effect in a map's body is no batch commit step, though a person approved before the map (a mutation: the effect made irreversible).",
+  "spec": [
+    "spec/library.md#the-batch-commit-step",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1708b/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/file_draft/irreversible",
+      "value": true
+    },
+    {
+      "op": "add",
+      "path": "/defs/FileAll/body/1",
+      "value": {
+        "op": "expr",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "human"
+            },
+            "name": "approve"
+          },
+          "args": [
+            {
+              "name": "role",
+              "value": {
+                "op": "var",
+                "name": "clerk"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Drafted/accept/positive/by/static"
+      },
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/FileAll/body/2/value/body/1/value",
+        "facts": {
+          "map": "/defs/FileAll/body/2/value",
+          "kind": "critical_effect",
+          "what": "file_draft",
+          "condition": "irreversible"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1506g",
+  "kind": "compile",
+  "title": "A review in a function is refused: a review stands in a workflow's body, whose let binds its results (a mutation: a function added).",
+  "spec": [
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/ask",
+      "value": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "xs",
+            "type": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Outcome",
+                  "args": [
+                    {
+                      "ref": "Verified",
+                      "args": [
+                        {
+                          "ref": "Match"
+                        },
+                        {
+                          "ref": "Matched"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Review",
+          "args": [
+            {
+              "ref": "Match"
+            },
+            {
+              "ref": "Matched"
+            }
+          ]
+        },
+        "effects": [
+          {
+            "effect": "Human"
+          }
+        ],
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "human"
+                },
+                "name": "review"
+              },
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "xs"
+                  }
+                },
+                {
+                  "name": "role",
+                  "value": {
+                    "op": "var",
+                    "name": "accountant"
+                  }
+                },
+                {
+                  "name": "deadline",
+                  "value": {
+                    "op": "duration",
+                    "ms": 86400000
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      },
+      {
+        "code": "MDT-E1506",
+        "path": "/defs/ask/body/0/value",
+        "facts": {
+          "problem": "outside_workflow"
+        }
+      }
+    ]
+  }
+}

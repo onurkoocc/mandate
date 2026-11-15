@@ -1,0 +1,50 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1507b",
+  "kind": "compile",
+  "title": "A review with an argument it does not take is refused (a mutation: reviewer added).",
+  "spec": [
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/MatchAll/body/2/value/args/-",
+      "value": {
+        "name": "reviewer",
+        "value": {
+          "op": "var",
+          "name": "controller"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1507",
+        "path": "/defs/MatchAll/body/2/value/args/4/value",
+        "facts": {
+          "problem": "unknown_argument",
+          "argument": "reviewer"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

@@ -1,0 +1,149 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1505f",
+  "kind": "compile",
+  "title": "Nor does such a value stand for the approval an irreversible effect needs, though its contract asks a person too (a mutation: the approval taken out, the value verified against a contract that asks one).",
+  "spec": [
+    "spec/library.md#waive-by",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1505/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Signed",
+      "value": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "c",
+            "type": {
+              "ref": "Change"
+            }
+          }
+        ],
+        "accept": {
+          "signed": {
+            "description": "The reviewer signed it",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "human"
+                  },
+                  "name": "approve"
+                },
+                "args": [
+                  {
+                    "name": "role",
+                    "value": {
+                      "op": "var",
+                      "name": "reviewer"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "small": {
+            "description": "The change is small",
+            "by": {
+              "static": {
+                "op": "binary",
+                "bop": "<",
+                "left": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "c"
+                  },
+                  "name": "risk"
+                },
+                "right": {
+                  "op": "int",
+                  "value": 3
+                }
+              }
+            },
+            "waive": [
+              "owner"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Ship/body/2",
+      "value": {
+        "op": "let",
+        "name": "signed",
+        "value": {
+          "op": "verify",
+          "value": {
+            "op": "var",
+            "name": "change"
+          },
+          "contract": "Signed",
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "change"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Ship/body/3/value/args/0/value",
+      "value": {
+        "op": "var",
+        "name": "signed"
+      }
+    },
+    {
+      "op": "remove",
+      "path": "/defs/Ship/body/4"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Named/accept/named/by/static"
+      },
+      {
+        "code": "MDT-E1505",
+        "path": "/defs/Ship/body/3/value/args/0/value",
+        "facts": {
+          "effect": "git.merge",
+          "contract": "Signed"
+        }
+      },
+      {
+        "code": "MDT-E0405",
+        "path": "/defs/Ship/body/3/value"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Signed/accept/small/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Small/accept/small/by/static"
+      }
+    ]
+  }
+}

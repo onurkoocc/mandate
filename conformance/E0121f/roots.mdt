@@ -1,0 +1,9 @@
+// A module of 0.5 with a constant named tool, which 0.5 may name as it likes:
+// the case E0121f lists it in a program of 0.6, where tool is the root of a
+// standard module.
+
+mandate @ 0.5
+
+module example.roots @ 0.1
+
+let tool: Int = 1

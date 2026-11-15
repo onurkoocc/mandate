@@ -44,7 +44,7 @@ use mandate_ir::{
 
 use crate::caps::TOOL_WRITE_EFFECT;
 use crate::imports::KnownModules;
-use crate::stdlib::{STD_EFFECTS, is_builtin_effect, std_effect};
+use crate::stdlib::{STD_EFFECTS, STD_MODULE_ROOTS, is_builtin_effect, std_effect};
 
 /// The built-in types, in order: `BUILTIN_TYPES`.
 pub const BUILTIN_TYPES: [&str; 36] = [
@@ -89,6 +89,12 @@ pub const BUILTIN_TYPES: [&str; 36] = [
 /// The built-in types a 0.4 program has as well, what one item of a `map`
 /// came to (spec/envelope.md): `BUILTIN_TYPES_0_4`.
 pub const BUILTIN_TYPES_0_4: [&str; 1] = ["Outcome"];
+
+/// The built-in types a 0.6 program has as well (Rust only): what
+/// `human.review` gives, `Review<T, C>`, and an item it declined,
+/// `Declined<T>` (spec/library.md "human.review"). An earlier program that
+/// names one names nothing (E0120), as before.
+pub const BUILTIN_TYPES_0_6: [&str; 2] = ["Review", "Declined"];
 
 /// Functions available without an import: `BUILTIN_FUNCTIONS`.
 pub const BUILTIN_FUNCTIONS: [&str; 7] = [
@@ -139,6 +145,12 @@ pub fn resolve_names(
         .is_some_and(|l| l.at_least(Language::V0_4))
     {
         r.builtin_types.extend(BUILTIN_TYPES_0_4);
+    }
+    if program
+        .language()
+        .is_some_and(|l| l.at_least(Language::V0_6))
+    {
+        r.builtin_types.extend(BUILTIN_TYPES_0_6);
     }
     for u in program.use_values().iter().filter_map(Import::of) {
         if let Some(names) = u.names_given() {
@@ -285,8 +297,15 @@ impl<'a> Resolver<'a> {
     /// 0.6: no definition of a program takes the name of a built-in effect
     /// (`Tool`, `Model`, `Fs.Read` …, and `Tool.Write`, the effect of a
     /// `tool.call`'s write tools): a definition so named would decide what
-    /// covers that effect. E0121, the collision of a name with one the
-    /// language has, at the definition. Before 0.6 such a name is read as it
+    /// covers that effect. Nor of a built-in type of 0.6, `Review` or
+    /// `Declined`, whose fields say what a review accepted and what it
+    /// declined: neither a definition nor a name a `use` lists from another
+    /// module, so that what types a review is the language's alone. Nor the
+    /// root of a standard module (`human`, `tool` …, `STD_MODULE_ROOTS`),
+    /// imported or not, so that `human.review(…)` is never a connector's
+    /// tool or anything else a program wrote. E0121,
+    /// the collision of a name with one the language has, at the definition
+    /// or at the name in the list. Before 0.6 such a name is read as it
     /// always was.
     fn builtin_effect_names(&mut self) {
         if !self
@@ -297,20 +316,56 @@ impl<'a> Resolver<'a> {
             return;
         }
         for name in self.defs.keys() {
-            if !is_builtin_effect(name) && name != TOOL_WRITE_EFFECT {
+            let builtin = if is_builtin_effect(name) || name == TOOL_WRITE_EFFECT {
+                "effect"
+            } else if BUILTIN_TYPES_0_6.contains(&name) {
+                "type"
+            } else if STD_MODULE_ROOTS.contains(&name) {
+                "module"
+            } else {
+                continue;
+            };
+            let path = ptr(&[&"defs", &name]);
+            self.language_name(&path, name, builtin);
+        }
+        let program = self.program;
+        for (i, u) in program.use_values().iter().enumerate() {
+            let Some(u) = Import::of(u) else { continue };
+            if u.module().is_none_or(KnownModules::is_builtin) {
                 continue;
             }
-            let path = ptr(&[&"defs", &name]);
-            let span = nearest_span(self.spans, &path);
-            self.out.push(Diagnostic::new(
-                "E0121",
-                format!(
-                    "'{name}' is the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\")."
-                ),
-                Location::path_span(&path, span),
-                Some(JsObject::new().with("name", name).with("builtin", "effect")),
-            ));
+            for (j, n) in u.names_given().unwrap_or_default().iter().enumerate() {
+                let Some(name) = n.as_str() else { continue };
+                let builtin = if BUILTIN_TYPES_0_6.contains(&name) {
+                    "type"
+                } else if STD_MODULE_ROOTS.contains(&name) {
+                    "module"
+                } else {
+                    continue;
+                };
+                let path = format!("/uses/{i}/names/{j}");
+                self.language_name(&path, name, builtin);
+            }
         }
+    }
+
+    /// E0121 at `path` for `name`, a name the language has as a `builtin`
+    /// (`effect`, `type`, `module`).
+    fn language_name(&mut self, path: &str, name: &str, builtin: &str) {
+        let span = nearest_span(self.spans, path);
+        let why = if builtin == "type" {
+            "a built-in type of 0.6, what a review gives; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a review's accepted and declined items are typed as the language types them (spec/library.md \"human.review\")"
+        } else if builtin == "module" {
+            "the root of a standard module; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a call written with it (human.review, human.approve …) is the standard library's, as the runtime reads it (spec/library.md \"Closed imports\")"
+        } else {
+            "the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\")"
+        };
+        self.out.push(Diagnostic::new(
+            "E0121",
+            format!("'{name}' is {why}."),
+            Location::path_span(path, span),
+            Some(JsObject::new().with("name", name).with("builtin", builtin)),
+        ));
     }
 
     fn run(&mut self) {
@@ -729,14 +784,16 @@ impl<'a> Resolver<'a> {
                 // Subject>: Profile is a check profile. `!a.args`: an empty
                 // list is truthy.
                 let bare = a.has(TypeForm::Ref) && a.args().is_none();
-                if r == "Verified" && i == 1 && bare {
+                // 0.6: so does the C of the built-in Review<T, C>.
+                let review = r == "Review" && self.builtin_types.contains(&"Review");
+                if (r == "Verified" || review) && i == 1 && bare {
                     let ar = a.ref_name().unwrap_or_default();
                     if self.def_kind(ar) != Some(DefKind::Contract) && !self.imported.contains(&ar)
                     {
                         let candidates = self.defs_of_kind(DefKind::Contract);
                         self.report(
                             &format!("{ap}/ref"),
-                            format!("Unknown contract '{ar}' in Verified<…>."),
+                            format!("Unknown contract '{ar}' in {r}<…>."),
                             ar,
                             "contract",
                             candidates,

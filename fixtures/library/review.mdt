@@ -1,0 +1,68 @@
+// A program of language 0.6 that reads as the body of the acceptance flow
+// will once patterns expand it (spec/library.md "BatchWithExceptions", "The
+// acceptance program"): a map that has an agent match every invoice of the
+// mailbox and verifies each match against a contract one of whose criteria
+// the accountant or the finance lead may waive, one review of the map's
+// outcomes, and a map that posts each accepted match to the ERP through the
+// connector's write tool, a batch commit step. It uses the connectors of the
+// acme.connectors fixture (acme.connectors/), which its checks are given. It
+// is the compile-time side only: the runtime does not run a program of 0.6
+// yet. Only the Rust compiler reads it.
+
+mandate @ 0.6
+
+module acme.finance.review @ 0.1
+
+use std.{human, model, tool}
+use acme.connectors.{erp, mailbox}
+use acme.connectors.types.{Invoice, Order, Match, DraftId, near}
+
+role accountant   "Accountant"
+role finance_lead "Finance lead"
+
+capability Inbox    = tool.call(mailbox, list_invoices)
+capability ErpRead  = tool.call(erp, list_open_orders)
+capability ErpDraft = tool.call(erp, post_draft_invoice)
+capability ModelStd = model.infer(tier: standard, max_class: confidential)
+
+/// What a batch came to: each post's outcome, the matches the review
+/// declined, and the indices of the invoices whose matching failed.
+type Batch = { posted: List<Outcome<Receipt<DraftId>>>, declined: List<Declined<Match>>, failed: List<Int> }
+
+/// An invoice is matched when the match is for it, names its vendor's order,
+/// and its total is within 2% of the order's; a larger gap may be accepted.
+contract Matched(inv: Invoice, m: Match) {
+  accept same_invoice "The match is for this invoice"
+    by static m.invoice_no == inv.invoice_no
+  accept vendor "The invoice's vendor is the order's vendor"
+    by static inv.vendor_id == m.order.vendor_id
+  accept totals "The total is within 2% of the order's"
+    by static near(inv.total_cents, m.order.total_cents, 2)
+    waive by accountant, finance_lead
+}
+
+agent Matcher {
+  role   "Matches one invoice to an open order of its vendor. Writes nothing."
+  caps   ErpRead, ModelStd
+  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }
+  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}
+}
+
+/// Matches the invoices in the mailbox to open orders and posts each match to
+/// the ERP as a draft. Asks the accountant once about the rest, and the
+/// finance lead after a day.
+workflow MatchInvoices() -> Batch
+  caps   Inbox, ErpRead, ErpDraft, ModelStd
+  budget { spend: 20 USD, time: 2h }
+{
+  let items = mailbox.list_invoices()
+  let checked = map it in items max 60 par 6 {
+    let out = delegate Matcher.match(it)
+    verify out against Matched(it, out)
+  }
+  let reviewed = human.review(checked, role: accountant, deadline: 1d, escalate_to: finance_lead)
+  let posted = map v in reviewed.accepted max 60 {
+    effect erp.post_draft_invoice(v) idempotent_by v.invoice_no
+  }
+  Batch { posted: posted, declined: reviewed.declined, failed: reviewed.failed }
+}

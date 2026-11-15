@@ -1,0 +1,102 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1505d",
+  "kind": "compile",
+  "title": "Nor is what a function gives back that verifies against such a contract itself (a mutation: a function added and called).",
+  "spec": [
+    "spec/library.md#waive-by",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1505/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/vetted",
+      "value": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "c",
+            "type": {
+              "ref": "Change"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Verified",
+          "args": [
+            {
+              "ref": "Change"
+            }
+          ]
+        },
+        "effects": [],
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "verify",
+              "value": {
+                "op": "var",
+                "name": "c"
+              },
+              "contract": "Small",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "c"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Ship/body/3/value/args/0/value",
+      "value": {
+        "op": "call",
+        "callee": {
+          "op": "var",
+          "name": "vetted"
+        },
+        "args": [
+          {
+            "value": {
+              "op": "var",
+              "name": "change"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Named/accept/named/by/static"
+      },
+      {
+        "code": "MDT-E1505",
+        "path": "/defs/Ship/body/3/value/args/0/value",
+        "facts": {
+          "effect": "git.merge"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Small/accept/small/by/static"
+      }
+    ]
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1505e",
+  "kind": "compile",
+  "title": "Nor is a map's item made of such a value, where the irreversible effect is no batch commit step either (a mutation: a map added).",
+  "spec": [
+    "spec/library.md#waive-by",
+    "spec/library.md#the-batch-commit-step",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1505/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Ship/body/5",
+      "value": {
+        "op": "expr",
+        "value": {
+          "op": "map",
+          "bind": "c",
+          "over": {
+            "op": "list",
+            "items": [
+              {
+                "op": "var",
+                "name": "small"
+              }
+            ]
+          },
+          "max": 1,
+          "body": [
+            {
+              "op": "expr",
+              "value": {
+                "op": "effect",
+                "name": "git.merge",
+                "args": [
+                  {
+                    "value": {
+                      "op": "var",
+                      "name": "c"
+                    }
+                  }
+                ],
+                "idempotent_by": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "c"
+                  },
+                  "name": "branch"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Named/accept/named/by/static"
+      },
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/Ship/body/5/value/body/0/value",
+        "facts": {
+          "map": "/defs/Ship/body/5/value",
+          "kind": "critical_effect",
+          "what": "git.merge",
+          "condition": "irreversible"
+        }
+      },
+      {
+        "code": "MDT-E1505",
+        "path": "/defs/Ship/body/5/value/body/0/value/args/0/value",
+        "facts": {
+          "effect": "git.merge"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Small/accept/small/by/static"
+      }
+    ]
+  }
+}

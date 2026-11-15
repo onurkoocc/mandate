@@ -251,6 +251,56 @@ pub fn role_sites(defs: &Map) -> Vec<RoleSite> {
     s.out
 }
 
+/// 0.6: every place the definitions name a role that may waive a criterion
+/// (`waive by`, which only a 0.6 IR has), in the order of their paths. The
+/// checks of a program of 0.6 add them to [`role_sites`] (E1501, and E1502
+/// with the lock, `role_sites_of`); [`role_sites`] and [`roles_named`]
+/// stay the TypeScript's `roleSites` and `rolesNamed`.
+#[must_use]
+pub fn waiver_role_sites(defs: &Map) -> Vec<RoleSite> {
+    let mut s = Sites {
+        out: Vec::new(),
+        def: String::new(),
+    };
+    for (name, value) in defs.iter() {
+        let d = Definition::of(value);
+        if d.kind() != Some(DefKind::Contract) {
+            continue;
+        }
+        let base = ptr(&[&"defs", &name]);
+        s.def = name.to_owned();
+        let criteria = d
+            .accept()
+            .map(|c| ("accept", c))
+            .chain(d.invariant().map(|c| ("invariant", c)));
+        for (group, (cn, c)) in criteria {
+            let roles = Criterion::of(c).map(Criterion::waive).unwrap_or_default();
+            for (i, r) in roles.iter().enumerate() {
+                s.text(
+                    r.as_str(),
+                    format!("{base}/{group}/{}/waive/{i}", ptr_token(cn)),
+                    "a criterion's waiver",
+                );
+            }
+        }
+    }
+    s.out.sort_by(|a, b| compare_utf16(&a.path, &b.path));
+    s.out
+}
+
+/// The places a program of `language` names a role, as its checks read
+/// them: [`role_sites`], and in 0.6 [`waiver_role_sites`] too, in the
+/// order of their paths.
+#[must_use]
+pub fn role_sites_of(defs: &Map, language: Option<Language>) -> Vec<RoleSite> {
+    let mut sites = role_sites(defs);
+    if language.is_some_and(|l| l.at_least(Language::V0_6)) {
+        sites.extend(waiver_role_sites(defs));
+        sites.sort_by(|a, b| compare_utf16(&a.path, &b.path));
+    }
+    sites
+}
+
 /// The roles the definitions name, each once, sorted: `rolesNamed(defs)`.
 #[must_use]
 pub fn roles_named(defs: &Map) -> Vec<String> {
@@ -395,7 +445,7 @@ pub fn role_checks(
     sort_utf16(&mut roles);
     let roles_js = || JsValue::Array(roles.iter().map(|r| JsValue::from(r.as_str())).collect());
 
-    let sites = role_sites(defs);
+    let sites = role_sites_of(defs, program.language());
     for s in &sites {
         let Some(role) = s.role.as_deref() else {
             out.push(Diagnostic::new(

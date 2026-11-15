@@ -38,6 +38,18 @@
     "view --against itself": "sha256:8f62105d74178033594f03c0e5e6c03fd7cfdfd13b6c10248f9dde279822f0eb",
     "sandbox": "sha256:c8a2943b96fb4e1dcdbb42c2cc2d8bc7ead2675dd163089373f2f2e43940645e"
   },
+  "fixtures/library/review.mdt": {
+    "check": "sha256:ad1672b635b277a87a3d9688043d30a2cb5745e2ff18b3c8c09749ffbe522a84",
+    "check --module": "sha256:5dca3e9063f6ea317a2d236b8207215ed6d73017dd0bd51d20504c32a2664d0e",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:90469fae99560aaed76eb33e224bbcaaf3f243d417a09ad43eddf727d6264b18",
+    "fmt": "sha256:6d85a5198584a451cce77fb01f414f20b3d7b476694c1302e865eddd08e7699e",
+    "view --format json": "sha256:2877e9a5373a01a3011e09f523ac6780e4bfab245c094ddfe196125e169400d0",
+    "view --format md": "sha256:8f323cdb5b650644f3c2c91bab6830d831c9acf9553a8eae234a0346309fb320",
+    "view --format html": "sha256:d171a16477a9bf5e38db0b1c2974b49d99f9c20280478db2a11b260d5f7bd835",
+    "view --against itself": "sha256:449fe4ed032f4b8538b99940ccdc9cd0635a707c4c1d66a3a6659752de88a949",
+    "sandbox": "sha256:7029d570826f45d9ab69ecf89ec41c2c19e2b313b94dbbe1264a346b3607b716"
+  },
   "fixtures/library/shared.mdt": {
     "check": "sha256:2eda72389f6229bf1bc847f45b8c71ab873d9c59e67b3ccb84a1eba527f53737",
     "check --module": "sha256:2eda72389f6229bf1bc847f45b8c71ab873d9c59e67b3ccb84a1eba527f53737",

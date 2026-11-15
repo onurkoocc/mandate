@@ -1,0 +1,77 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1506",
+  "kind": "compile",
+  "title": "A review of a workflow's parameter is refused: its results are a name a let binds to a verifying map (a mutation: a parameter of the same type).",
+  "spec": [
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/params",
+      "value": [
+        {
+          "name": "earlier",
+          "type": {
+            "ref": "List",
+            "args": [
+              {
+                "ref": "Outcome",
+                "args": [
+                  {
+                    "ref": "Verified",
+                    "args": [
+                      {
+                        "ref": "Match"
+                      },
+                      {
+                        "ref": "Matched"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/body/2/value/args/0/value",
+      "value": {
+        "op": "var",
+        "name": "earlier"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1506",
+        "path": "/defs/MatchAll/body/2/value/args/0/value",
+        "facts": {
+          "problem": "not_let",
+          "source": "earlier"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

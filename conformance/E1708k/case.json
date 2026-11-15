@@ -1,0 +1,114 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708k",
+  "kind": "compile",
+  "title": "An effect in a map that is itself in the body of another map is no batch commit step (a mutation: the map put in another).",
+  "spec": [
+    "spec/library.md#the-batch-commit-step",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1708b/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/FileAll/body/1/value",
+      "value": {
+        "op": "map",
+        "bind": "batch",
+        "over": {
+          "op": "list",
+          "items": [
+            {
+              "op": "var",
+              "name": "drafts"
+            }
+          ]
+        },
+        "max": 2,
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "map",
+              "bind": "d",
+              "over": {
+                "op": "var",
+                "name": "batch"
+              },
+              "max": 20,
+              "body": [
+                {
+                  "op": "let",
+                  "name": "checked",
+                  "value": {
+                    "op": "verify",
+                    "value": {
+                      "op": "var",
+                      "name": "d"
+                    },
+                    "contract": "Drafted",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "d"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "effect",
+                    "name": "file_draft",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "checked"
+                        }
+                      }
+                    ],
+                    "idempotent_by": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "d"
+                      },
+                      "name": "invoice_no"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Drafted/accept/positive/by/static"
+      },
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/FileAll/body/1/value/body/0/value/body/1/value",
+        "facts": {
+          "map": "/defs/FileAll/body/1/value/body/0/value",
+          "kind": "critical_effect",
+          "what": "file_draft",
+          "condition": "nested_map"
+        }
+      }
+    ]
+  }
+}

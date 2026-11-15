@@ -1,0 +1,53 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708e",
+  "kind": "compile",
+  "title": "An effect an environment of the system model asks a person to authorize is no batch commit step (a mutation: an environment added).",
+  "spec": [
+    "spec/library.md#the-batch-commit-step",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1708b/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/books",
+      "value": {
+        "kind": "environment",
+        "class": "internal",
+        "authorize": {
+          "file_draft": {
+            "by": "human",
+            "role": "clerk"
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Drafted/accept/positive/by/static"
+      },
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/FileAll/body/1/value/body/1/value",
+        "facts": {
+          "map": "/defs/FileAll/body/1/value",
+          "kind": "critical_effect",
+          "what": "file_draft",
+          "condition": "environment_authorize",
+          "environment": "books",
+          "role": "clerk"
+        }
+      }
+    ]
+  }
+}

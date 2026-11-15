@@ -1,0 +1,50 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1506d",
+  "kind": "compile",
+  "title": "A review of a map whose verify has on unmet is refused: the map handles what is unmet itself (a mutation: on unmet added).",
+  "spec": [
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/MatchAll/body/1/value/body/1/value/on_unmet",
+      "value": {
+        "bind": "unmet",
+        "then": {
+          "op": "var",
+          "name": "out"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1506",
+        "path": "/defs/MatchAll/body/2/value/args/0/value",
+        "facts": {
+          "problem": "on_unmet",
+          "source": "checked"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

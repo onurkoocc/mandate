@@ -1,0 +1,51 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "H07",
+  "kind": "compile",
+  "title": "A review whose role is not among the waive by roles of the contract's waived criterion is refused at the role (a mutation: the role).",
+  "spec": [
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/body/2/value/args/1/value",
+      "value": {
+        "op": "var",
+        "name": "controller"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1508",
+        "path": "/defs/MatchAll/body/2/value/args/1/value",
+        "facts": {
+          "problem": "cannot_waive",
+          "role": "controller",
+          "contract": "Matched",
+          "criteria": [
+            "totals"
+          ]
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

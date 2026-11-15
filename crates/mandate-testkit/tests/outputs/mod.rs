@@ -31,7 +31,7 @@ pub fn module_files_of(program: &str) -> Vec<String> {
         &["fixtures/envelope/domain.mdt"]
     } else if program == "fixtures/library/summarize.mdt" {
         &["fixtures/library/shared.mdt"]
-    } else if program == "fixtures/library/drafts.mdt" {
+    } else if program == "fixtures/library/drafts.mdt" || program == "fixtures/library/review.mdt" {
         &[
             "fixtures/library/acme.connectors/types.mdt",
             "fixtures/library/acme.connectors/connectors.mdt",

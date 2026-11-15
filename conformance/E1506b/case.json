@@ -1,0 +1,121 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1506b",
+  "kind": "compile",
+  "title": "A review of a call's result is refused, though the call gives back the verifying map's outcomes (a mutation: a function around the results).",
+  "spec": [
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/again",
+      "value": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "xs",
+            "type": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Outcome",
+                  "args": [
+                    {
+                      "ref": "Verified",
+                      "args": [
+                        {
+                          "ref": "Match"
+                        },
+                        {
+                          "ref": "Matched"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "List",
+          "args": [
+            {
+              "ref": "Outcome",
+              "args": [
+                {
+                  "ref": "Verified",
+                  "args": [
+                    {
+                      "ref": "Match"
+                    },
+                    {
+                      "ref": "Matched"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "effects": [],
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "var",
+              "name": "xs"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/body/2/value/args/0/value",
+      "value": {
+        "op": "call",
+        "callee": {
+          "op": "var",
+          "name": "again"
+        },
+        "args": [
+          {
+            "value": {
+              "op": "var",
+              "name": "checked"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1506",
+        "path": "/defs/MatchAll/body/2/value/args/0/value",
+        "facts": {
+          "problem": "not_a_name"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

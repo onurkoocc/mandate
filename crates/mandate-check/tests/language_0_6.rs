@@ -311,7 +311,12 @@ fn the_codes_of_0_6_are_explained_and_come_last_in_the_table() {
             "MDT-E1405",
             "MDT-E1406",
             "MDT-E1407",
-            "MDT-E1408"
+            "MDT-E1408",
+            "MDT-E1504",
+            "MDT-E1505",
+            "MDT-E1506",
+            "MDT-E1507",
+            "MDT-E1508"
         ]
     );
     for row in &rust {

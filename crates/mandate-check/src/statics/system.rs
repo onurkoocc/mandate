@@ -15,10 +15,11 @@
 use std::collections::HashMap;
 
 use mandate_ir::{
-    ComponentDef, DefKind, Expr, ExprOp, JsObject, JsValue, Map, Program, Value, compare_utf16,
-    ptr, sort_utf16, trim, unique_in_order, write_json_string,
+    ComponentDef, DefKind, Expr, ExprOp, JsObject, JsValue, Language, Map, Program, Value,
+    compare_utf16, ptr, sort_utf16, trim, unique_in_order, write_json_string,
 };
 
+use super::review::Refusal;
 use super::{Checker, Frame, Usage, Val, Where, canonical_parts};
 use crate::caps::paths_overlap;
 use crate::governance::pattern_problem;
@@ -542,10 +543,7 @@ impl<'a> Checker<'a> {
         u.scope = Some(vec![format!("{env_name}.{read_name}")]);
         Self::use_effect(frame, u);
         let cls = self.type_class(&shown);
-        Val {
-            ty: named("Untrusted", vec![named("List", vec![shown])]),
-            cls,
-        }
+        Val::new(named("Untrusted", vec![named("List", vec![shown])]), cls)
     }
 
     /// `changeset(e, frame, path)` (static.ts 1815-1888): a change set
@@ -557,12 +555,17 @@ impl<'a> Checker<'a> {
     /// `Receipt<?>` with the plan's class on every path.
     pub(crate) fn changeset(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
         if frame.in_map.is_some() {
-            self.critical(
-                frame,
-                path,
-                "A change set commits critical effects, and this one stands",
-                "changeset",
-            );
+            if self.at_least(Language::V0_6) {
+                // 0.6: a member of a change set is never a batch commit step.
+                self.commit_refused(frame, path, "changeset", &Refusal::change_set());
+            } else {
+                self.critical(
+                    frame,
+                    path,
+                    "A change set commits critical effects, and this one stands",
+                    "changeset",
+                );
+            }
         }
         let plan = self.expr_or_unknown(e.plan(), frame, &format!("{path}/plan"));
         if epistemic(&plan.ty).level != Level::Verified {
@@ -604,6 +607,7 @@ impl<'a> Checker<'a> {
             .collect();
         let member_list: Vec<(&'a str, mandate_ir::ChangesetMember<'a>)> =
             e.changeset_members().collect();
+        let mut irreversible_member = false;
         for (m, mem) in &member_list {
             let mp = format!("{path}/members/{m}");
             let mut typed: Vec<Val> = Vec::new();
@@ -616,6 +620,12 @@ impl<'a> Checker<'a> {
                 continue;
             };
             let effect = mem.effect().unwrap_or_default();
+            // 0.6: a member that cannot be undone takes nothing a waiver may
+            // rest on (E1505).
+            if self.at_least(Language::V0_6) && self.is_irreversible(effect) {
+                irreversible_member = true;
+                self.waivable_args(effect, &mp, &typed);
+            }
             let params: Option<Vec<Ty>> = match self.def_of(effect, DefKind::Effect) {
                 Some(decl) => Some(decl.params().iter().map(|p| self.param_type(p)).collect()),
                 None => {
@@ -637,7 +647,7 @@ impl<'a> Checker<'a> {
                 }
                 for (i, t) in params.iter().enumerate() {
                     if let Some(a) = typed.get(i) {
-                        self.expect(&a.ty, t, &format!("{mp}/args/{i}/value"));
+                        self.expect_val(a, t, &format!("{mp}/args/{i}/value"));
                     }
                 }
             }
@@ -663,6 +673,11 @@ impl<'a> Checker<'a> {
                     .to_owned(),
             ]);
             Self::use_effect(frame, u);
+        }
+        // 0.6: nor is the plan of a change set that commits such a member
+        // one a waiver may rest on: it is what lets the set land (E1505).
+        if irreversible_member && self.is_waivable(&plan) {
+            self.waivable_plan(&plan, &format!("{path}/plan"));
         }
         let members: Vec<&str> = member_list.iter().map(|(m, _)| *m).collect();
         let order: Vec<&str> = e
@@ -715,10 +730,7 @@ impl<'a> Checker<'a> {
                         .with("twice", strings_js(&twice)),
                 ),
             );
-            return Val {
-                ty: named("Receipt", vec![Ty::Unknown]),
-                cls: plan.cls,
-            };
+            return Val::new(named("Receipt", vec![Ty::Unknown]), plan.cls);
         }
         let pos: HashMap<&str, usize> = order.iter().enumerate().map(|(i, m)| (*m, i)).collect();
         let mut edges: Vec<Edge<'a>> = Vec::new();
@@ -795,9 +807,11 @@ impl<'a> Checker<'a> {
                 Some(JsObject::new().with("cycle", strings_js(&cycle))),
             );
         }
+        // 0.6: the runtime's receipt of the landing, of a type the checker
+        // does not tell.
         Val {
-            ty: named("Receipt", vec![Ty::Unknown]),
-            cls: plan.cls,
+            silent: self.at_least(Language::V0_6),
+            ..Val::new(named("Receipt", vec![Ty::Unknown]), plan.cls)
         }
     }
 }

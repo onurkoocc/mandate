@@ -639,6 +639,36 @@ pub const CODES: &[CodeRow] = &[
         explain: "An entry of the lock's `connectors` names a connector that no module of the package defines (the program's own module or a module the check is given), or a tool that the connector does not declare. Remove the entry, or the tool's digest (spec/library.md \"The lock binding and schema digests\").",
         reference: Reference::Rust,
     },
+    CodeRow {
+        code: "MDT-E1504",
+        title: "Waiver of a criterion a person approves",
+        explain: "`waive by r…` after a criterion's method names the roles that may waive the criterion in a review. A criterion whose method is or includes human.approve cannot be waived: the person who would waive it is the one it asks. Remove the waiver, or the approval from the criterion (spec/library.md \"waive by\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1505",
+        title: "Waivable value reaches an irreversible effect",
+        explain: "A value verified against a contract with a `waive by` criterion may have been accepted by a person's waiver instead of the criterion, so it never clears an irreversible effect: it is not an argument of one, directly or through a `let`, a field, a function, a map's item or an element of a review's `accepted`, and it does not stand for the approval an irreversible effect needs (E0405). The same holds for a change set that commits an irreversible effect. Verify the value against a contract without a waiver, or ask with human.approve before the effect and pass it a value no waiver touched (spec/library.md \"waive by\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1506",
+        title: "Review of a list that is not a verifying map's",
+        explain: "human.review(results, …) asks a person once about the outcomes of a map: `results` is a name bound by `let`, in the same workflow body, to a `map` whose body ends with `verify x against C(…)` with no `on unmet`. A parameter, a field, the result of a call, a name bound otherwise or bound again, a map that ends with something else, and a review outside a workflow's body are refused; the fact `problem` says which (spec/library.md \"human.review\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1507",
+        title: "Malformed review",
+        explain: "human.review takes its results first, then `role: r` and `deadline: d`, both required, and `escalate_to: r2`, optional, each once: `r` and `r2` name role definitions, `r2` another than `r`, and `d` is a constant Duration above zero. Any other argument, one given twice or one missing is refused; the fact `problem` says which (spec/library.md \"human.review\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1508",
+        title: "Review role cannot waive",
+        explain: "The role a review asks, and the role it escalates to, decide by waiving what their items failed, so each is among the `waive by` roles of every criterion of the contract that has a waiver, and the contract has at least one. A role that could waive nothing is refused (spec/library.md \"human.review\").",
+        reference: Reference::Rust,
+    },
 ];
 
 /// The row of `code` (`MDT-E0103`), when the table has one.

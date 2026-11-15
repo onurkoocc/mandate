@@ -1,0 +1,29 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0220f",
+  "kind": "compile",
+  "title": "Restricted data that a later arm of a switch gives goes to no model capability below its class: the switch is either arm.",
+  "spec": [
+    "spec/checks.md#data-classes-55",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0220",
+        "path": "/defs/Summarize/body/1/value",
+        "facts": {
+          "data_class": "restricted",
+          "allowed": "internal"
+        }
+      }
+    ]
+  }
+}

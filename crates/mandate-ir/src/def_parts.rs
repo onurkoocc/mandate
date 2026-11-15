@@ -179,6 +179,13 @@ impl<'a> Criterion<'a> {
     pub fn by(self) -> Option<Verifier<'a>> {
         self.map.get("by").and_then(Verifier::of)
     }
+
+    /// `waive` (0.6): the roles that may waive the criterion, each a role
+    /// name; none for a criterion no one may waive.
+    #[must_use]
+    pub fn waive(self) -> &'a [Value] {
+        list(self.map, "waive")
+    }
 }
 
 /// A verifier: `{ static }`, `{ call }` or `{ all }`, told apart by which

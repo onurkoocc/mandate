@@ -1,0 +1,45 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708g",
+  "kind": "compile",
+  "title": "An effect whose idempotent_by key is a variable of the enclosing scope is no batch commit step (a mutation: the key).",
+  "spec": [
+    "spec/library.md#the-batch-commit-step",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1708b/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/FileAll/body/1/value/body/1/value/idempotent_by",
+      "value": {
+        "op": "var",
+        "name": "drafts"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Drafted/accept/positive/by/static"
+      },
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/FileAll/body/1/value/body/1/value",
+        "facts": {
+          "map": "/defs/FileAll/body/1/value",
+          "kind": "critical_effect",
+          "what": "file_draft",
+          "condition": "key"
+        }
+      }
+    ]
+  }
+}

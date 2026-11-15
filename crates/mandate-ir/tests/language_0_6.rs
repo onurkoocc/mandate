@@ -85,13 +85,15 @@ fn the_embedded_schemas_are_the_files_in_spec_and_prepare() {
 
 /// The 0.6 IR schema is the schema of 0.1 to 0.5 under the new version, with
 /// the constructs of 0.6 so far: `pub` and `doc` on every kind of definition
-/// (spec/library.md "The 0.6 surface"). Each slice that adds one lists its
+/// (spec/library.md "The 0.6 surface"), connectors, and a criterion's
+/// `waive` (spec/library.md "waive by"). Each slice that adds one lists its
 /// pointers here.
 #[test]
 fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
     assert_eq!(
         differences_of(IR_SCHEMA_TEXT, IR_0_6_SCHEMA_TEXT),
         [
+            "/$defs/Criterion/properties/waive",
             "/$defs/Def/oneOf",
             "/$defs/Tool",
             "/$id",
@@ -159,6 +161,44 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
             .map(canonicalize)
             .as_deref(),
         Some(r#"{"enum":["mandate/0.6"]}"#)
+    );
+}
+
+/// A criterion's `waive` (0.6) is a set of role names: at least one, each
+/// once; and a program of 0.5 that has one is refused as before (E0104).
+#[test]
+fn a_criterions_waive_is_a_set_of_names_in_0_6_alone() {
+    let v = json(IR_0_6_SCHEMA_TEXT);
+    let waive = v
+        .get("$defs")
+        .and_then(|d| d.get("Criterion"))
+        .and_then(|c| c.get("properties"))
+        .and_then(|p| p.get("waive"))
+        .map(canonicalize);
+    assert_eq!(waive.as_deref(), Some(r##"{"$ref":"#/$defs/NameSet"}"##));
+    let with = |language: &str, waive: &str| {
+        format!(
+            r#"{{"language":"{language}","module":"example.waive","version":"0.1","defs":{{"accountant":{{"kind":"role","description":"Accountant"}},"C":{{"kind":"contract","params":[{{"name":"x","type":{{"ref":"Int"}}}}],"accept":{{"small":{{"description":"Small","by":{{"static":{{"op":"bool","value":true}}}}{waive}}}}}}}}}}}"#
+        )
+    };
+    assert_eq!(
+        loaded(&with("mandate/0.6", r#","waive":["accountant"]"#)),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        loaded(&with("mandate/0.6", r#","waive":[]"#)),
+        ["MDT-E0104 at /defs/C/accept/small/waive"]
+    );
+    assert_eq!(
+        loaded(&with(
+            "mandate/0.6",
+            r#","waive":["accountant","accountant"]"#
+        )),
+        ["MDT-E0104 at /defs/C/accept/small/waive"]
+    );
+    assert_eq!(
+        loaded(&with("mandate/0.5", r#","waive":["accountant"]"#)),
+        ["MDT-E0104 at /defs/C/accept/small/waive"]
     );
 }
 

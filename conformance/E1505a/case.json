@@ -1,0 +1,66 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1505a",
+  "kind": "compile",
+  "title": "Nor is it through a let whose declared type names no contract: what a value rests on is not its declared type's (a mutation: a let added).",
+  "spec": [
+    "spec/library.md#waive-by",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1505/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Ship/body/2",
+      "value": {
+        "op": "let",
+        "name": "plain",
+        "type": {
+          "ref": "Verified",
+          "args": [
+            {
+              "ref": "Change"
+            }
+          ]
+        },
+        "value": {
+          "op": "var",
+          "name": "small"
+        }
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Ship/body/4/value/args/0/value",
+      "value": {
+        "op": "var",
+        "name": "plain"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Named/accept/named/by/static"
+      },
+      {
+        "code": "MDT-E1505",
+        "path": "/defs/Ship/body/4/value/args/0/value",
+        "facts": {
+          "effect": "git.merge"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Small/accept/small/by/static"
+      }
+    ]
+  }
+}

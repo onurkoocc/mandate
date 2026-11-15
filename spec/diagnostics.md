@@ -138,7 +138,7 @@ to the lead, and the Notes column says so.
 | MDT-E1705 | Not allowed in a sub-program | N09, E1705, E1705a | assigned; a definition a sub-program may not make, an envelope or a `plan` of its own, a workflow with parameters, or not exactly one workflow; returned to the lead, never to the run |
 | MDT-E1706 | Sub-program does not fit the envelope | N01, N01a, N01b, E1706, E1706a, E1706b | assigned; facts name the dimension (`capability`, `write_scope`, a budget dimension, `time`, `data_class`) with what was asked and what is left; returned to the lead, never to the run |
 | MDT-E1707 | `plan` outside an envelope | E1707 | assigned; a `plan` anywhere but the body of a workflow with an envelope |
-| MDT-E1708 | Person or critical effect in a map body | E1708, E1708a | assigned; a wait for a person in a map body or in a function it calls, a critical effect, a change set |
+| MDT-E1708 | Person or critical effect in a map body | E1708, E1708a; 0.6: E1708b (allowed), E1708c to E1708l | assigned; a wait for a person in a map body or in a function it calls, a critical effect, a change set. In a program of 0.6 a critical effect there is a batch commit step, and allowed, when it is not irreversible, the workflow's envelope does not name it under `approve`, no environment asks a person to authorize it, its `idempotent_by` key reads the map's item, the map has no `par` above 1 and is in no other map's body, and it stands in a workflow's body; a change set there never is. Otherwise E1708 at the effect, its facts `condition` (`irreversible`, `envelope_approve` with `role`, `environment_authorize` with `environment` and `role`, `key`, `par`, `nested_map`, `change_set`, `workflow`) besides `map`, `kind` and `what`. A wait for a person, `human.review` included, is E1708 in a program of 0.6 as before (E1708l). A program of 0.1 to 0.5 keeps the rule and its message exactly |
 | MDT-E1709 | Amendment narrows the envelope | N04, E1709, E1709a, E1709b, E1709c | assigned; a capability left out, a budget dimension lowered, dropped or added, fewer delegations at once or a lower data class; facts name the dimension (`capability`, a budget dimension, `max_concurrent`, `max_class`) with what the envelope gave and what was asked; returned to the lead, never to the run |
 
 ## The boundary (0.5)
@@ -228,3 +228,75 @@ write tool's effect, and a read-only tool's call, are covered only by a
 `tool.call` that lists a write tool is a write capability, so two branches of
 a `par` that call one write tool overlap (E0320b). E0140: a connector's `template` in a lock of 0.6 that
 does not hold `{secret}` exactly once (E0140c).
+
+## Reviews and waivers (0.6)
+
+Specified in [`library.md`](library.md#humanreview-and-waivers). E1504 to
+E1508 extend E15xx (roles and people). As E14xx and E16xx, they are the Rust
+compiler's alone, in its table of codes, each with hand-written conformance
+cases of `mandate/0.6`, and `mandate check` reports them.
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E1504 | Waiver of a criterion a person approves | E1504, E1504a, E1504b | 0.6 only; a criterion with `waive by` whose method is, or includes through `and`, a call of `human.approve`, or calls a function of the program whose body holds one, itself or through the functions it calls (E1504b); at `/defs/<C>/accept/<k>/waive` (or `invariant`). Facts: `contract`, `criterion`, `waive` |
+| MDT-E1505 | Waivable value reaches an irreversible effect | E1505 to E1505l | 0.6 only; an argument of an irreversible effect (declared `irreversible`, or `git.merge`, `deploy`, `migrate`) that may rest on a waiver: a value verified against a contract with a `waive by` criterion, or a value made of one (a `let` of any declared type, a field, what a function gives back of it or verifies itself, a map's item, an element of a review's `accepted`, and each value a form of 0.6 may be: a later arm of a `switch`, `pause and x`, a block that ends with a `let`, an `if` or a `loop`, E1505h to E1505l), or one whose type names such a contract (`Verified<T, C>`, `Review<T, C>`, in its arguments or fields); at the argument. Such a value does not stand for the approval E0405 asks for either (E1505f: E1505 and E0405). The same for an argument of an irreversible member of a change set, and for the plan of a change set that has one. Facts: `effect`, and `contract` when the value's type names it |
+| MDT-E1506 | Review of a list that is not a verifying map's | E1506 to E1506i | 0.6 only; the first argument of `human.review` is not a name that a `let` of the same workflow body binds, as the last binding of it, to a `map` whose body ends with `verify x against C(…)` with no `on unmet`, and after which no `on error` handler gives a value of its own (E1506i); at the argument, or at the call when it has none or stands outside a workflow's body. Facts: `problem` (`missing`, `outside_workflow`, `not_a_name`, `not_let`, `not_a_map`, `not_verifying`, `on_unmet`, `returns`, `on_error`), `source` (the name, when there is one) |
+| MDT-E1507 | Malformed review | E1507 to E1507i | 0.6 only; an argument of `human.review` after its results: a second one without a name, one it does not take, one given twice, `role` or `escalate_to` that names no role definition, `escalate_to` that names `role`'s role, a `deadline` that is not a duration literal above zero or a constant whose value is one; at the argument, or at the call for `role` or `deadline` missing. Facts: `problem` (`positional`, `unknown_argument`, `repeated`, `missing`, `not_a_role`, `same_role`, `deadline`), `argument` |
+| MDT-E1508 | Review role cannot waive | H07, E1508, E1508a | 0.6 only; the review's `role`, or its `escalate_to`, is not among the `waive by` roles of a criterion of the contract its source verifies against (at the argument; facts `problem: "cannot_waive"`, `role`, `contract`, `criteria`), or that contract has no criterion with `waive by` (at the call; `problem: "no_waiver"`, `contract`) |
+
+A role a `waive by` names is a role definition, E1501, as every place that
+names a role, and with the lock it is held by a member, E1502.
+`Review<T, C>` and `Declined<T>` are built-in types of a program of 0.6 (in
+an earlier program they name nothing, E0120), whose `C` is a contract as
+`Verified`'s is (E0120 otherwise), and which only the runtime makes: a
+record literal of either (or of an alias of one), a model's answer, a
+skill's, host code's or a declared effect's result that holds one, in its
+arguments, its fields or the type definitions it names (an alias, a record,
+a union's variants), is E0213 (E0213a to E0213f). No definition of a program, a module or a sub-program
+of 0.6 takes either name, and no `use` list brings one of that name from
+another module: E0121, at the definition or the listed name, with the facts
+`name` and `builtin: "type"` (E0121c, E0121d), so that what types a review
+is the language's alone. Nor does one take the root of a standard module
+(`component`, `data`, `decision`, `env`, `exec`, `fs`, `git`, `human`,
+`model`, `money`, `net`, `test`, `time`, `tool`), whether the program imports
+it or not: E0121 with `builtin: "module"` (E0121e, a connector named `human`;
+E0121f, a listed name), so that a call written `human.review(…)` is the
+standard library's, as the runtime reads a call by its path. A `human.review` is a `human.*` step, so E1708 in
+a map's body (E1708l).
+
+In a program of 0.6 each form is typed as the runtime evaluates it, and the
+codes of the front end hold what that gives. Where the runtime gives one of
+several values the type is their join (the weaker level, a contract only when
+both name it, the higher class, resting on a waiver when either does, and of
+two types one of which holds an unknown the other's, as `[]` joins any list,
+E0201e, or none when that unknown is silent): the
+arms of a `switch` (E1505h, E0210b, E0220f), a statement and the `on error`
+handler after it (E0210c; a supervision strategy there gives no value), a
+`verify` and its `on unmet` handler (E0210d, E0201a), the branches of an `if`
+(E0210e), and a block has the value of its last statement, a `let`, an `if`
+or a `loop` included (E1505j to E1505l), which a function's declared return
+type holds as it holds an expression (E0201b, at the statement). The one
+exception: a `verify` whose `on unmet` handler is nothing but `escalate …` or
+`pause` keeps the verified value's type, as in 0.5 (H08), for the runtime
+refuses the person's answer at a `Verified` parameter. `pause and x` is `x`
+(E1505i); `x?` of what is not a `Result` is `x`, its contract kept (E0212); a
+person's answer (`escalate`, `pause` alone) and what an `on error` pattern
+binds are `Untrusted`, of the highest class. A call is of a function of the
+program, a standard function under its module's name, a connector's tool, a
+decision policy, `quote`, `len`, `peek` or `human.review`, as the runtime
+calls nothing else: any other is E0120 at its callee, with the facts `name`
+and `expected: "function"`, a member of a value (`x.m()`, E0120f), a
+standard function whose module's name a variable takes (`let human = …;
+human.ask(…)`, E0120e), a workflow or an extern (E0120g); not a criterion's
+own method, a constant's call or a supervision strategy. `await` is E0711
+(E0711). An effect in a workflow's `ensures`, which states what holds once
+the run is done and does nothing, is E0408 at the effect, with the facts
+`effect` and `place: "ensures"` (E0408b; a tool there is E1405). A value of a form the checker still cannot type, of which no
+diagnostic already stands for the unknown (a field of a type it sees no
+fields of, a range, the result of a standard effect the table does not
+type, a constant on a cycle, a name the runtime gives as itself, what
+`peek` gives of such a value, E0201d), is never accepted where a verified
+value is required: E0201, at that place. A record's field declared
+`Verified` takes only a verified value, as the record holds what it is
+given: E0201 (or E0210, E0211, E0212) at the field (E0201c). A program
+of 0.1 to 0.5 is typed as before.

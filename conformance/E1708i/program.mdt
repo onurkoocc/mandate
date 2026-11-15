@@ -1,0 +1,44 @@
+// A change set in a map's body (spec/library.md "The batch commit step"):
+// a member of a change set is never a batch commit step, so a program of 0.6
+// refuses it as 0.4 does, with the condition named.
+
+mandate @ 0.6
+
+module example.batches @ 0.1
+
+use std.{component, git}
+
+role architect "Architect"
+
+component app {
+  repo     "example/app"
+  root     "/work/app"
+  lang     ts
+  owner    role "architect"
+}
+
+capability Repos = component.repo(app)
+
+type Plan = { summary: Text }
+
+/// A plan says what changes.
+contract PlanAccepted(plan: Plan) {
+  accept summarized "The plan says what changes"
+    by static len(plan.summary) >= 1
+}
+
+/// Lands each task's plan as a change set of its own.
+workflow LandAll(tasks: List<Text>) -> Bool
+  caps   Repos
+  budget { time: 1h }
+{
+  let landed = map t in tasks max 3 {
+    let plan = verify Plan { summary: t } against PlanAccepted(Plan { summary: t })
+    changeset(plan) {
+      member app = git.merge(plan)
+      order app
+      approve role "architect"
+    } idempotent_by t
+  }
+  true
+}

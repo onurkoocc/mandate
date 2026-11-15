@@ -1,0 +1,157 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1505g",
+  "kind": "compile",
+  "title": "Nor is a review's accepted list, every element of which is verified against a contract a person may waive (a mutation: an irreversible effect added after an approval).",
+  "spec": [
+    "spec/library.md#waive-by",
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/publish",
+      "value": {
+        "kind": "effect",
+        "params": [
+          {
+            "name": "ms",
+            "type": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Verified",
+                  "args": [
+                    {
+                      "ref": "Match"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Receipt",
+          "args": [
+            {
+              "ref": "DraftId"
+            }
+          ]
+        },
+        "requires_caps": [
+          {
+            "op": "call",
+            "callee": {
+              "op": "field",
+              "of": {
+                "op": "var",
+                "name": "tool"
+              },
+              "name": "call"
+            },
+            "args": [
+              {
+                "value": {
+                  "op": "var",
+                  "name": "erp"
+                }
+              },
+              {
+                "value": {
+                  "op": "var",
+                  "name": "post_draft"
+                }
+              }
+            ]
+          }
+        ],
+        "critical": true,
+        "irreversible": true,
+        "idempotency_required": true
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/MatchAll/body/4",
+      "value": {
+        "op": "expr",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "human"
+            },
+            "name": "approve"
+          },
+          "args": [
+            {
+              "name": "role",
+              "value": {
+                "op": "var",
+                "name": "controller"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/MatchAll/body/5",
+      "value": {
+        "op": "expr",
+        "value": {
+          "op": "effect",
+          "name": "publish",
+          "args": [
+            {
+              "value": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "reviewed"
+                },
+                "name": "accepted"
+              }
+            }
+          ],
+          "idempotent_by": {
+            "op": "text",
+            "value": "batch"
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1505",
+        "path": "/defs/MatchAll/body/5/value/args/0/value",
+        "facts": {
+          "effect": "publish",
+          "contract": "Matched"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

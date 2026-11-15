@@ -492,13 +492,11 @@ impl<'a> Checker<'a> {
             !self.outside_workflow(r, frame, path)
         };
         if write {
+            // A connector's tool is never irreversible: in a map's body it is
+            // a batch commit step, under its conditions (a program of 0.6
+            // alone has connectors).
             if frame.in_map.is_some() {
-                self.critical(
-                    frame,
-                    path,
-                    &format!("The critical effect {shown} runs"),
-                    &shown,
-                );
+                self.commit_step(e, frame, path, &shown, false);
             }
             if e.idempotent_by().is_none() {
                 self.report(
@@ -533,7 +531,7 @@ impl<'a> Checker<'a> {
         };
         let class = r.class().unwrap_or(DataClass::Restricted);
         let cls = args.iter().map(|a| a.cls).fold(class, DataClass::max);
-        Val { ty, cls }
+        Val::new(ty, cls)
     }
 
     /// A tool's arguments: their count (E0201), each against its parameter,
@@ -572,7 +570,7 @@ impl<'a> Checker<'a> {
         for (i, p) in params.iter().enumerate() {
             if let Some(a) = args.get(i) {
                 let t = self.param_type(p);
-                self.expect(&a.ty, &t, &sub_i(path, "args", i, "/value"));
+                self.expect_val(a, &t, &sub_i(path, "args", i, "/value"));
             }
         }
         let allowed = r.class().unwrap_or(DataClass::Public);

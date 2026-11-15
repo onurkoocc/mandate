@@ -1,0 +1,67 @@
+// A batch commit step that checks (spec/library.md "The batch commit
+// step"): in a workflow with an envelope, a map commits for each item a
+// connector's write tool, and another a declared critical effect, each
+// idempotent by the item's own key, one item at a time, in no other map, and
+// handed to no person. The cases E1708c to E1708k each break one of its
+// conditions.
+
+mandate @ 0.6
+
+module example.commit @ 0.1
+
+use std.{fs, human, tool}
+
+role owner "Owner"
+role clerk "Clerk"
+
+type Draft   = { invoice_no: Text, total_cents: Int }
+type DraftId = { draft_id: Text }
+
+/// The ERP, where a draft invoice is posted.
+connector erp = mcp("https://erp.example.com/mcp")
+  version "1.0"
+  class   confidential
+{
+  tool find_draft(key: Text) -> Untrusted<Option<DraftId>>
+    read_only
+
+  tool post_draft(d: Verified<Draft>, key: Text) -> Receipt<DraftId>
+    critical
+    idempotency key key
+    retry_class reconcilable
+    reconcile by find_draft
+}
+
+capability ErpDraft = tool.call(erp, post_draft)
+capability Files    = fs.write("/work/drafts")
+
+effect file_draft(d: Verified<Draft>) -> Receipt<DraftId>
+  requires caps fs.write("/work/drafts")
+  critical
+  idempotency required
+
+/// A draft has a total above zero.
+contract Drafted(d: Draft) {
+  accept positive "The total is above zero"
+    by static d.total_cents > 0
+}
+
+/// Posts each draft to the ERP, and files each, every one an action of its
+/// own, authorized by policy.
+workflow FileAll(drafts: List<Draft>) -> Bool
+  envelope {
+    owner  owner
+    caps   ErpDraft, Files
+    budget { time: 1h, agents: 1 }
+  }
+{
+  let posted = map d in drafts max 20 {
+    let checked = verify d against Drafted(d)
+    effect erp.post_draft(checked) idempotent_by d.invoice_no
+  }
+  let filed = map d in drafts max 20 {
+    let checked = verify d against Drafted(d)
+    effect file_draft(checked) idempotent_by d.invoice_no
+  }
+  true
+}
