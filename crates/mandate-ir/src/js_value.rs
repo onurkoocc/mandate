@@ -53,8 +53,30 @@ pub enum JsValue {
     /// (`JSON.parse(JSON.stringify(v))`): both writers write that value as
     /// they would have written it, and so does `String`; [`JsValue::get`]
     /// and the other readers of a value's insides see none of it. Only an
-    /// output holds one.
-    Json(Arc<str>),
+    /// output holds one. Its text is a [`JsonText`], which only
+    /// [`JsValue::written`] makes, from a value: no other text can be one.
+    Json(JsonText),
+}
+
+/// The compact JSON text of a value, as [`stringify`] wrote it, shared. It
+/// has no public constructor: [`JsValue::written`] is the only way to make
+/// one, from a value tree, so a [`JsValue::Json`] always holds what the
+/// writer of this crate wrote, never a text from outside.
+///
+/// Two are equal when their texts are (`PartialEq`): the texts of equal
+/// trees are equal, so a `JsValue::Json` compares equal to another written
+/// from an equal value, and unequal to the tree it was written from, which
+/// is another variant; nothing compares the two forms (the doors' outputs
+/// are compared as text, after both writers wrote them alike).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JsonText(Arc<str>);
+
+impl JsonText {
+    /// The text.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl JsValue {
@@ -62,7 +84,9 @@ impl JsValue {
     /// itself, since it has no text.
     #[must_use]
     pub fn written(v: &JsValue) -> JsValue {
-        stringify(v).map_or(JsValue::Undefined, |text| JsValue::Json(Arc::from(text)))
+        stringify(v).map_or(JsValue::Undefined, |text| {
+            JsValue::Json(JsonText(Arc::from(text)))
+        })
     }
 
     /// The value the text of a [`JsValue::Json`] stands for, read back by
@@ -99,7 +123,7 @@ impl JsValue {
                     }
                     let nullish = match item {
                         JsValue::Undefined | JsValue::Null => true,
-                        JsValue::Json(text) => &**text == "null",
+                        JsValue::Json(text) => text.as_str() == "null",
                         _ => false,
                     };
                     if !nullish {
@@ -108,9 +132,9 @@ impl JsValue {
                 }
             }
             JsValue::Object(_) => out.push_str("[object Object]"),
-            JsValue::Json(text) => match JsValue::read_back(text) {
+            JsValue::Json(text) => match JsValue::read_back(text.as_str()) {
                 Some(v) => v.write_js_string(out),
-                None => out.push_str(text),
+                None => out.push_str(text.as_str()),
             },
         }
     }
@@ -455,9 +479,9 @@ fn write(out: &mut String, v: &JsValue, gap: Option<&str>, level: usize) -> bool
             }
             out.push(']');
         }
-        JsValue::Json(text) => match (gap, gap.and_then(|_| JsValue::read_back(text))) {
+        JsValue::Json(text) => match (gap, gap.and_then(|_| JsValue::read_back(text.as_str()))) {
             (Some(_), Some(v)) => return write(out, &v, gap, level),
-            _ => out.push_str(text),
+            _ => out.push_str(text.as_str()),
         },
         JsValue::Object(o) => {
             out.push('{');
