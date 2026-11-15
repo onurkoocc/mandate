@@ -23,7 +23,7 @@ import { createInterface } from "node:readline";
 import type { Lock, Program } from "@mandate/bridge";
 import type { CheckBinding, CheckResult, Cost, VerifierAdapter, VerifyRequest } from "./adapters.js";
 import { statementOf, type Attestation } from "./attestation.js";
-import { childEnv } from "./env.js";
+import { childEnv, COMPILER_ENV } from "./env.js";
 import type { EvidenceSigner, Signature, TrustedKeys } from "./evidence.js";
 import { isObj, type Value } from "./values.js";
 
@@ -178,9 +178,10 @@ export class ProcessVerifier implements VerifierAdapter {
     return this.starting;
   }
 
-  private start(env: NodeJS.ProcessEnv = childEnv()): ChildProcessWithoutNullStreams {
+  private start(env: NodeJS.ProcessEnv = childEnv({ pass: COMPILER_ENV })): ChildProcessWithoutNullStreams {
     const [cmd, ...args] = this.o.command;
-    // Only what the caller gives, or what any program needs: never the runtime's whole environment (env.ts).
+    // Only what the caller gives, or what any program needs and the compiler's mode and module: never the runtime's
+    // whole environment (env.ts).
     const child = spawn(cmd!, args, { stdio: ["pipe", "pipe", "pipe"], env });
     const lines = createInterface({ input: child.stdout });
     lines.on("line", (line) => {

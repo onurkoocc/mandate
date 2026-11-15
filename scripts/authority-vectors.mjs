@@ -43,6 +43,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const root = new URL("..", import.meta.url);
+// The vectors are what the TypeScript gives, whatever compiler the bridge answers with unless told (the Rust
+// compiler's module is its default, and it is what these vectors hold the Rust to): the reference compiler, and no
+// module, whatever the operator's environment says.
+process.env["MANDATE_COMPILER"] = "ts";
 let bridge;
 try {
   bridge = await import(new URL("bridge/dist/index.js", root).href);
