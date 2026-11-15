@@ -66,8 +66,9 @@ pub(crate) struct Problem {
     pub(crate) message: String,
     /// The path inside the definition.
     pub(crate) at: String,
-    /// The facts.
-    pub(crate) facts: JsObject,
+    /// The facts, boxed: a problem is the error of the readers of an
+    /// application (`apply.rs`), and stays small for it.
+    pub(crate) facts: Box<JsObject>,
 }
 
 impl Problem {
@@ -76,7 +77,7 @@ impl Problem {
             code,
             message,
             at: at.to_owned(),
-            facts,
+            facts: Box::new(facts),
         }
     }
 }
