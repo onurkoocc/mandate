@@ -307,6 +307,9 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `L06` | `publish` of 1.0.5 between 1.0.0 and 1.1.0, against which 1.1.0 would widen without being a major version | E1607 |
 | `L07` | A lead's sub-program calls a read tool of a connector its parent imports, with its types, from given modules | — |
 | `L07a` | The same with `acme.connectors` as a library, the parent importing none of the tool's types: the sub-program's check, handed the library's modules, links them through what they reach | — |
+| `L08` | A lead's sub-program, a workflow with no parameters, applies `FanOutMerge` to a constant list of repositories it writes, and is admitted | — |
+| `L08a` | The same with `MakerChecker` and a constant brief | — |
+| `L09` | An application of `FanOutMerge` whose `const List<Item>` slot is given a list of record literals checks | — |
 | `E0120` | A listed constant used as a type: a listed name is the definition it names, held to its kind as the program's own (a mutation) | E0120 |
 | `E0120a` | A lower-case listed name of a module that is not the standard library's used as a module path, `most.Anything` (a mutation) | E0120 |
 | `E0120b` | A listed type named as the contract of `Verified` (a mutation) | E0120 |
@@ -461,6 +464,8 @@ on `fixtures/library/batch.mdt` and its modules) and those of a sub-program
 | `E1303`, `E1303a` | An agent applied; a name nothing defines | E1303 |
 | `E1304` to `E1304m` | A slot without an argument, an argument for no slot, another number of type arguments, an argument twice, and each kind given another's: tool, skill, contract, role, effect, field, const, type, capability, and a write tool given to a tool slot | E1304 |
 | `E1305` to `E1305h` | An effect's parameter, a skill's result, a contract's parameters, a constant's type, a count of zero, a field the type has not, a `read_only` skill of an agent that writes, a tool's parameters, an expression that is no constant | E1305 |
+| `E1305i` | A `const List<Item>` slot given a list whose record lacks a field of the item type (a mutation: the argument) | E1305 |
+| `E1305j` | A `const List<Item>` slot given a list that names a capability: a value slot brings no authority (a mutation: the argument) | E1305 |
 | `E1306` to `E1306e` | A run parameter like a slot, a type parameter like a definition, a body binding a slot's name, an argument the body captures, a name the expansion adds that the program defines, a run parameter like a binding of the body | E1306 |
 | `E1307` to `E1307e` | An application with an envelope, in a pattern's body, in a workflow's body, as a slot's argument, as a capability, with a body | E1307 |
 | `E1602d`, `E1602e` | A pattern of another module that is not `pub`; one whose expansion names a definition that is not | E1602 |
@@ -548,13 +553,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 372, passed 372, pending 0
+conformance cases: ran 377, passed 377, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 247 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 252 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(388 cases: 372 `compile`, 247 of them of language 0.6, and 16 `journal`; no case
+(393 cases: 377 `compile`, 252 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

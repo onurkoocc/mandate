@@ -1,0 +1,76 @@
+// A program of 0.6 whose lead plans under an envelope, and imports the two
+// patterns of std.patterns its sub-programs apply (L08: FanOutMerge,
+// L08a: MakerChecker). A sub-program's workflow takes no parameters, so
+// what each pattern works on is a constant the sub-program writes in its
+// application: the repositories, the brief.
+
+mandate @ 0.6
+
+module example.fleet @ 0.1
+
+use std.{fs, model}
+use std.patterns.{FanOutMerge, MakerChecker}
+
+role platform_lead "Platform lead"
+role editor        "Editor"
+
+type Repo    = { name: Text, root: Path }
+type Summary = { moved: Int }
+type Brief   = { topic: Text }
+type Draft   = { title: Text, words: Int }
+
+capability RepoRead = fs.read("/work/repos")
+capability SrcWrite = fs.write("/work/repos")
+capability Notes    = fs.read("/work/notes")
+capability ModelStd = model.infer(tier: standard)
+
+agent Migrator {
+  role   "Moves one repository."
+  caps   RepoRead, SrcWrite, ModelStd
+  budget { tokens: 40k, spend: 0.5 USD, steps: 12 }
+  skill migrate(repo: Repo) -> Inferred<Summary> ! {Fs.Read, Fs.Write, Model}
+}
+
+agent Reporter {
+  role   "Sums up what was moved."
+  caps   ModelStd
+  budget { tokens: 20k, spend: 0.2 USD, steps: 4 }
+  skill sum(done: List<Outcome<Inferred<Summary>>>) -> Inferred<Summary> ! {Model}
+}
+
+agent Writer {
+  role   "Drafts a text."
+  caps   Notes, ModelStd
+  budget { tokens: 40k, spend: 0.4 USD, steps: 8 }
+  skill draft(b: Brief) -> Inferred<Draft> ! {Fs.Read, Model}
+}
+
+agent Reader {
+  role   "Looks for what is wrong with a draft. Writes nothing."
+  caps   Notes, ModelStd
+  budget { tokens: 20k, spend: 0.2 USD, steps: 4 }
+  skill review(b: Brief, d: Inferred<Draft>) -> Inferred<Draft> ! {Fs.Read, Model}
+}
+
+contract Short(b: Brief, d: Draft) {
+  accept short "The draft is at most 800 words"
+    by static d.words <= 800
+}
+
+agent Lead {
+  role   "Plans the work that is left."
+  caps   ModelStd
+  budget { tokens: 5000, spend: 2 USD, steps: 20 }
+  skill finish(n: Int) -> Inferred<Summary> ! {Model}
+}
+
+workflow Run(n: Int) -> Inferred<Summary>
+  envelope {
+    owner   platform_lead
+    caps    RepoRead, SrcWrite, Notes, ModelStd
+    budget  { tokens: 1000k, time: 2h, spend: 40 USD, steps: 500, agents: 40 }
+    spawn   { max_concurrent: 8 }
+  }
+{
+  plan Lead.finish(n) within envelope
+}

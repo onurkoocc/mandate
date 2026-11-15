@@ -1116,6 +1116,10 @@ impl<'a> Checker<'a> {
     /// Types a block and returns the value of its last expression
     /// statement; with `result` the block is a definition's body, whose
     /// value must match the declared return type: `body(stmts, outer, base, result)`.
+    ///
+    /// Inlined, so that a block nested in a block nests one frame, the one
+    /// of [`Checker::plain_body`] or of [`Checker::typed_body`], not two.
+    #[inline(always)]
     pub(crate) fn body(
         &mut self,
         stmts: &'a [Value],
@@ -1124,8 +1128,21 @@ impl<'a> Checker<'a> {
         result: bool,
     ) -> Val {
         if self.at_least(Language::V0_6) {
-            return self.typed_body(stmts, outer, base, result);
+            self.typed_body(stmts, outer, base, result)
+        } else {
+            self.plain_body(stmts, outer, base, result)
         }
+    }
+
+    /// [`Checker::body`] in 0.1 to 0.5.
+    #[inline(never)]
+    fn plain_body(
+        &mut self,
+        stmts: &'a [Value],
+        outer: &Frame<'a>,
+        base: &str,
+        result: bool,
+    ) -> Val {
         // Boxed: a block nested in a block nests this frame, and a `Frame` is
         // large.
         let mut frame = Self::child_box(outer, HashMap::new());
@@ -1256,6 +1273,7 @@ impl<'a> Checker<'a> {
     /// replaces with its child; the value of an `expr` statement, and in 0.6
     /// the value the runtime gives for a `let`, an `if`, a `loop` and a
     /// `par` too.
+    #[inline(always)]
     fn stmt(&mut self, s: Stmt<'a>, frame: &mut Frame<'a>, path: &str) -> Option<Val> {
         match s.op() {
             Some(StmtOp::Let) => self.let_stmt(s, frame, path),
@@ -1274,7 +1292,7 @@ impl<'a> Checker<'a> {
                 self.operand(s.target(), frame, path, "target");
                 None
             }
-            Some(StmtOp::Expr) => Some(self.operand(s.value(), frame, path, "value")),
+            Some(StmtOp::Expr) => Some(self.expr_or_unknown(s.value(), frame, &sub(path, "value"))),
             None => None,
         }
     }
@@ -1326,6 +1344,21 @@ impl<'a> Checker<'a> {
         self.condition(s.cond(), frame, path, "cond");
         let at = sub(path, "then");
         let then = self.body(s.then_block(), frame, &at, false);
+        self.if_else(s, frame, path, then)
+    }
+
+    /// The rest of an `if` once its `then` block is typed: the `else` block,
+    /// and in 0.6 the value of the two. Apart from [`Self::if_stmt`], so that
+    /// the frame of a nested `then`, which a chain of `if`s nests once per
+    /// level, holds none of it.
+    #[inline(never)]
+    fn if_else(
+        &mut self,
+        s: Stmt<'a>,
+        frame: &mut Frame<'a>,
+        path: &str,
+        then: Val,
+    ) -> Option<Val> {
         let other = s.else_block().map(|e| {
             let at = sub(path, "else");
             self.body(e, frame, &at, false)

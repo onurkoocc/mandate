@@ -47,17 +47,19 @@ pub pattern BatchWithExceptions<Item, Out, R>(
   Batch { posted, declined: reviewed.declined, failed: reviewed.failed }
 }
 
-/// Works on disjoint parts side by side, then merges the results. Each item
+/// Works on disjoint parts side by side, then merges the results: `items`,
+/// a constant list the applying workflow writes, a part each. Each item
 /// is handed `scope` narrowed to its own `part`, so no two items write the
 /// same place.
 pub pattern FanOutMerge<Item, Out, M>(
+  items:       const List<Item>,
   work:        skill(Item) -> Inferred<Out>,
   scope:       capability,
   part:        field(Item),
   merge:       skill(List<Outcome<Inferred<Out>>>) -> Inferred<M>,
   max_items:   const Int,
   concurrency: const Int
-) (items: List<Item>) -> Inferred<M>
+) -> Inferred<M>
 {
   let done = map it in items max max_items par concurrency with caps scope.narrow(it.part) {
     delegate work(it)
@@ -65,15 +67,17 @@ pub pattern FanOutMerge<Item, Out, M>(
   delegate merge(done)
 }
 
-/// One agent makes; another, isolated and holding no write capability,
+/// One agent makes from `input`, a constant the applying workflow writes;
+/// another, isolated and holding no write capability,
 /// looks for a counterexample. What it finds is held to the contract, and
 /// the criteria left open go to the owner.
 pub pattern MakerChecker<In, Out>(
+  input:    const In,
   make:     skill(In) -> Inferred<Out>,
   check:    skill(In, Inferred<Out>) -> Inferred<Out> read_only,
   accepted: contract(In, Out),
   owner:    role
-) (input: In) -> Verified<Out, accepted>
+) -> Verified<Out, accepted>
 {
   let made    = delegate make(input)
   let checked = delegate check(input, made) isolated
