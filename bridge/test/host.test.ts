@@ -1,12 +1,12 @@
 // The host of the Rust compiler's module (src/wasm/): what the module is (its imports, exports, memory and stack,
-// pinned), that every recorded call of the two crates' doors gives through it the output the TypeScript gave
-// (twice, and with random bytes for the seed of Rust's HashMap instead of zeros), and every way a call can fail,
-// each produced for real and classified.
+// pinned), that every recorded call of the two crates' doors and of the authority decisions gives through it the
+// output the TypeScript gave, byte for byte the same whatever the seed of Rust's HashMap (random bytes, the host's
+// default, and three fixed seeds), and every way a call can fail, each produced for real and classified.
 //
 // It needs the module (`npm run build:wasm`): without it, in the default mode, these tests are skipped and say so;
 // in `rust` and `both` the run does not start without it (test/compiler-setup.ts).
 
-import { createHash, randomFillSync } from "node:crypto";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { EXEMPTIONS } from "../src/compare.js";
@@ -123,21 +123,36 @@ needs("the module", () => {
       const expected = new Map(expectedOf(crate).map((e) => [e.name, e]));
       return callsOf(crate).map((c) => ({ ...c, expected: expected.get(c.name)! }));
     });
-    const zeros = there ? new WasmHost(module) : undefined;
-    const random = there ? new WasmHost(module, { random: (b) => void randomFillSync(b) }) : undefined;
+    // The host as the bridge runs it (random bytes for the seed of Rust's HashMap, fresh for each call), and three
+    // fixed seeds: what each call answers may not depend on which.
+    const fixed = (f: (i: number) => number) => (b: Uint8Array) => void b.forEach((_, i) => (b[i] = f(i)));
+    const hosts = there
+      ? {
+          random: new WasmHost(module),
+          zeros: new WasmHost(module, { random: fixed(() => 0) }),
+          ones: new WasmHost(module, { random: fixed(() => 0xff) }),
+          pattern: new WasmHost(module, { random: fixed((i) => (i * 37 + 11) & 0xff) }),
+        }
+      : undefined;
     const tables = EXEMPTIONS.find((e) => e.name === "versions-only-rust-reads")!;
+    /** The answer texts of one request: twice under the random default, once under each fixed seed. */
+    const answers = (request: Uint8Array): Array<[string, string]> =>
+      (["random", "random", "zeros", "ones", "pattern"] as const).map((k) => [k, Buffer.from(hosts![k].run(request).stdout).toString("utf8")]);
+    const seedless = (label: string, texts: Array<[string, string]>, wrong: string[]): void => {
+      for (const [k, t] of texts.slice(1)) if (t !== texts[0]![1]) wrong.push(`${label}: the answer under the seed ${k} is not the one under random bytes`);
+    };
 
-    it(`gives the TypeScript's output, twice, and the same with random bytes for the seed: ${calls.length} calls`, () => {
+    it(`gives the TypeScript's output, the same under random bytes for the seed (twice) and under three fixed seeds, byte for byte: ${calls.length} calls`, () => {
       const wrong: string[] = [];
       let changedByRule = 0;
       for (const c of calls) {
         const request = Buffer.from(requestText(c.door, c.input), "utf8");
-        const runs = [zeros!.run(request), zeros!.run(request), random!.run(request)];
-        const texts = runs.map((r) => Buffer.from(r.stdout).toString("utf8"));
-        if (texts[1] !== texts[0] || texts[2] !== texts[0]) wrong.push(`${c.name}: the answer differs between runs`);
+        const texts = answers(request);
+        seedless(c.name, texts, wrong);
+        const runs = [{ stdout: Buffer.from(texts[0]![1], "utf8") }];
         if (c.expected.error) {
-          const a = JSON.parse(texts[0]!) as { ok: boolean; error?: { kind: string } };
-          if (a.ok !== false || a.error?.kind !== "bad_input") wrong.push(`${c.name}: not bad_input: ${texts[0]!.slice(0, 200)}`);
+          const a = JSON.parse(texts[0]![1]) as { ok: boolean; error?: { kind: string } };
+          if (a.ok !== false || a.error?.kind !== "bad_input") wrong.push(`${c.name}: not bad_input: ${texts[0]![1].slice(0, 200)}`);
           continue;
         }
         let out = outputText(runs[0]!);
@@ -153,9 +168,37 @@ needs("the module", () => {
       expect(wrong).toEqual([]);
       // The tables call alone: as rust_only::PINNED pins it for these calls.
       expect(changedByRule).toBe(1);
-      expect(zeros!.imported["clock_time_get"]).toBe(0);
-      expect(zeros!.imported["random_get"]).toBeGreaterThan(0);
+      for (const h of Object.values(hosts!)) {
+        expect(h.imported["clock_time_get"]).toBe(0);
+        expect(h.imported["random_get"]).toBeGreaterThan(0);
+      }
+    }, 300_000);
+
+    it("and so does every recorded case of the run-time authority decisions, through their doors", () => {
+      const cases = JSON.parse(readFileSync(new URL("./authority-cases.json", import.meta.url), "utf8")) as Array<{ name: string; fn: string; input: unknown; output: unknown }>;
+      const door: Record<string, string> = { grant: "grant", narrow: "narrow", mapScopes: "map_scopes", inFlightOverlap: "in_flight_overlap" };
+      const wrong: string[] = [];
+      for (const c of cases) {
+        const texts = answers(Buffer.from(requestText(door[c.fn]!, { input: c.input }), "utf8"));
+        seedless(`${c.fn}: ${c.name}`, texts, wrong);
+        if (texts[0]![1] !== JSON.stringify({ ok: true, output: c.output })) wrong.push(`${c.fn}: ${c.name}: not the recorded output`);
+      }
+      expect(wrong).toEqual([]);
     }, 120_000);
+
+    it("the seed is random by default: what random_get gives a module differs from call to call", () => {
+      // A module that asks random_get for 32 bytes and writes them as its answer.
+      const echo = new WasmHost(compileModuleBytes(MODULES.randomEcho(32)));
+      const seen = Array.from({ length: 4 }, () => Buffer.from(echo.run(new Uint8Array()).stdout).toString("hex"));
+      for (const s of seen) expect(s).toHaveLength(64);
+      expect(new Set(seen).size).toBe(4);
+      expect(seen).not.toContain("00".repeat(32));
+      // A fixed fill stays one a test can give.
+      const zeros = new WasmHost(compileModuleBytes(MODULES.randomEcho(32)), { random: (b) => void b.fill(0) });
+      expect(Buffer.from(zeros.run(new Uint8Array()).stdout).toString("hex")).toBe("00".repeat(32));
+      // A request for no bytes is answered with none.
+      expect(new WasmHost(compileModuleBytes(MODULES.randomEcho(0))).run(new Uint8Array()).stopped).toBeUndefined();
+    });
   });
 
   describe("each failure, produced for real and classified", () => {

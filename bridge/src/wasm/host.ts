@@ -9,8 +9,12 @@
 //   fd_write           on 1, the answer, at most 64 MiB (more stops the call); on 2, what the module says when it
 //                      fails, of which the first 64 KiB are kept to classify the failure and never shown; on any
 //                      other, EBADF
-//   random_get         zeros: its only caller is the seeding of Rust's HashMap, no output depends on it (a test holds
-//                      that with random bytes), and zeros keep a call reproducible
+//   random_get         random bytes (node:crypto), for each call afresh: its one caller is the seed of Rust's
+//                      HashMap (SipHash), and part of what the module hashes is a model's writing (a sub-program,
+//                      its patch, its scopes), so a seed anyone could know would let such input be made to fall in
+//                      one bucket and slow the main thread down. No output depends on the seed: a test runs the
+//                      recorded calls under fixed seeds and random ones and compares the answers byte for byte. A
+//                      test may give a fixed fill (`HostOptions.random`)
 //   environ_sizes_get  no variables; environ_get then writes nothing
 //   clock_time_get     ENOSYS ("not supported"), and counted: nothing in the module should ask the time
 //   proc_exit          ends the call with its status
@@ -23,6 +27,7 @@
 // What can go wrong is a `CompilerFailure` of a kind of its own (errors.ts); a door's refusal of its input is a
 // `DoorRefusal`, which the facade turns into what the TypeScript function throws.
 
+import { randomFillSync } from "node:crypto";
 import { isWellFormed } from "../text.js";
 import { CompilerFailure, DoorRefusal } from "./errors.js";
 
@@ -52,9 +57,17 @@ class Exit {
 class AnswerTooLarge {}
 
 export interface HostOptions {
-  /** What `random_get` writes into the module's buffer. Zeros unless a test asks otherwise. */
+  /**
+   * What `random_get` writes into the module's buffer (a view into its memory, of the length it asked for, perhaps
+   * none). Cryptographically random bytes unless a test gives a fixed fill.
+   */
   random?: (into: Uint8Array) => void;
 }
+
+/** The bytes `random_get` gives by default: random, from node:crypto. */
+export const randomBytes = (into: Uint8Array): void => {
+  if (into.byteLength) randomFillSync(into);
+};
 
 /** What one run of the module gave, before it is read as an answer. */
 export interface Run {
@@ -118,7 +131,7 @@ export class WasmHost {
     options: HostOptions = {},
   ) {
     validateModule(module);
-    this.random = options.random ?? ((into) => into.fill(0));
+    this.random = options.random ?? randomBytes;
   }
 
   /** The output of `door` for `input`: what the door's answer holds as `output`. */

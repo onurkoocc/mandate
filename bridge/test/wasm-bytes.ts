@@ -152,6 +152,9 @@ export const MODULES = {
   outOfMemory: (): Uint8Array => writing([[2, "memory allocation of 1048576 bytes failed\n"]], op.unreachable),
   /** Panics as Rust does, with a source path of the machine that built it, and traps. */
   panic: (): Uint8Array => writing([[2, "\nthread 'main' panicked at /home/builder/secret-place/src/lib.rs:7:9:\nindex out of bounds\n"]], op.unreachable),
+  /** Asks random_get for `n` bytes at 1024 and writes them on standard output. */
+  randomEcho: (n: number): Uint8Array =>
+    wasmModule({ data: [[16, u32s(1024, n)]], body: [...op.i32(1024), ...op.i32(n), ...op.call(FN.random_get), ...op.drop, ...op.write(1, 16, 8)] }),
   /** Answers with `text` and returns. */
   answering: (text: string): Uint8Array => writing([[1, text]]),
   /** Answers and also writes to standard error. */
