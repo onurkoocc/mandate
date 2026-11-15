@@ -655,6 +655,8 @@ impl<'a> Checker<'a> {
         self.agent_write_tools(name, d.caps(), base);
         // 0.6: what its loop reads reaches its model (E0220).
         self.agent_read_classes(name, d.caps(), base);
+        // 0.6: the types of the tools it holds are the program's (E0120).
+        self.agent_unbound(d.caps(), base);
         // `used` is a Set of the capabilities by identity: here, by index.
         let mut used = vec![false; caps.len()];
         let skills: Vec<(&'a str, &'a Value)> = d.skills().collect();

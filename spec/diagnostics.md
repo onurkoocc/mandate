@@ -204,7 +204,15 @@ decide what covers that effect (E0121, E0121a; E0121b: a program of 0.5 is read
 as before); in 0.6 a `Tool` or `Tool.Write` use is covered by a `tool.call` part
 alone. E0120: a tool a connector
 does not declare, in a call (`/…/callee/name`) or as an effect's name, a
-connector used as a value, and a tool named without a call. E0220: an
+connector used as a value, and a tool named without a call; and a type name of a
+tool's signature that the program does not have as the definition the
+connector's module means by it (not imported, or a definition of the program's
+own of that name), at each use: a call, a write's effect, a `tool.call`, an
+agent's capability that holds the tool (E0120c, E0120d). Facts: `name`,
+`expected: "type"`, `module`, `tool`. E0220: a tool
+whose parameter or result types are classed above its connector's `class`, at
+the tool in the module that declares it (E0220e), and at each use of an imported
+one, since a module given to `check` is not checked with the program; an
 argument of a tool's call of a class above its connector's `class` (at the
 argument, T06), and a delegation whose agent holds tools of a connector and
 receives data of a class above that connector's (at the delegation, T06a); an agent that holds a connector's read-only tools above the class its

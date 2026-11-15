@@ -20,7 +20,8 @@
 //! (E0220), as what a model receives is held to its capability's.
 
 use mandate_ir::{
-    ConnectorDef, DefKind, Definition, Expr, JsObject, JsValue, Language, Tool, Value, canonicalize,
+    ConnectorDef, DefKind, Definition, Expr, JsObject, JsValue, Language, Map, Tool, Value,
+    canonicalize,
 };
 
 use super::{Checker, Frame, Usage, Val, Where, sub, sub_i};
@@ -211,6 +212,123 @@ impl<'a> Checker<'a> {
         tool_call_caps(self.defs, &r.connector, &[r.name.as_str()]).caps
     }
 
+    /// What a use of tool `tool` of the linked connector `def` stands on
+    /// that the program does not have (`unbound`, which linking writes,
+    /// `crate::modules`): each type name of its signature the program does
+    /// not hold as the definition the connector's module means, with that
+    /// definition's module.
+    fn unbound(def: ConnectorDef<'a>, tool: &str) -> Vec<(&'a str, &'a str)> {
+        def.members()
+            .get("unbound")
+            .and_then(|u| u.get(tool))
+            .and_then(Value::as_object)
+            .into_iter()
+            .flat_map(Map::iter)
+            .map(|(n, m)| (n, m.as_str().unwrap_or_default()))
+            .collect()
+    }
+
+    /// E0120 at `path` for each type name of tool `tool`'s signature that the
+    /// program does not have as the definition the connector's module means
+    /// (F5): a program uses a tool only with the types it means, never with
+    /// a definition of its own of the same name, and never with an unknown
+    /// type. `seen` holds the names reported at `path` already.
+    fn unbound_names(
+        &mut self,
+        connector: &str,
+        def: ConnectorDef<'a>,
+        tool: &str,
+        path: &str,
+        seen: &mut Vec<&'a str>,
+    ) {
+        for (name, module) in Self::unbound(def, tool) {
+            if seen.contains(&name) {
+                continue;
+            }
+            seen.push(name);
+            let place = if module.is_empty() {
+                "a name its connector's module does not define".to_owned()
+            } else {
+                format!("{module}.{name}")
+            };
+            let how = if module.is_empty() {
+                String::new()
+            } else {
+                format!(": list it in a use, use {module}.{{{name}}}")
+            };
+            self.report(
+                "E0120",
+                format!(
+                    "The tool {connector}.{tool} takes or gives the type {name}, which is {place}; this program has no such definition{how}."
+                ),
+                path,
+                Some(
+                    JsObject::new()
+                        .with("name", name)
+                        .with("expected", "type")
+                        .with("module", module)
+                        .with("tool", format!("{connector}.{tool}").as_str()),
+                ),
+            );
+        }
+    }
+
+    /// What a use of a tool holds its signature to, at the use: its type
+    /// names are the definitions its connector's module means (E0120), and
+    /// none of them is classed above the connector's class (E0220), as its
+    /// declaration is held in its module; a program may be given a module
+    /// that was not checked.
+    fn tool_signature(&mut self, r: &ToolRef<'a>, path: &str) {
+        self.unbound_names(&r.connector, r.def, &r.name, path, &mut Vec::new());
+        // The program's own connector is held at its declaration.
+        if !self
+            .program
+            .defs()
+            .is_some_and(|d| d.contains_key(&r.connector))
+        {
+            self.signature_class(&r.connector, r.def, &r.name, r.tool, path);
+        }
+    }
+
+    /// E0220 at `path` when a type of tool `tool`'s signature is classed
+    /// above its connector's class: a read-only tool would give data of a
+    /// class its connector does not say, a write tool take it.
+    fn signature_class(
+        &mut self,
+        connector: &str,
+        c: ConnectorDef<'a>,
+        tool: &str,
+        t: Tool<'a>,
+        path: &str,
+    ) {
+        let Some(allowed) = c.class().and_then(DataClass::from_name) else {
+            return;
+        };
+        let mut types: Vec<crate::ty::Ty> = t.params().iter().map(|p| self.param_type(p)).collect();
+        types.push(self.ty(t.returns()));
+        let Some(cls) = types.iter().map(|ty| self.type_class(ty)).max() else {
+            return;
+        };
+        if cls > allowed {
+            self.report(
+                "E0220",
+                format!(
+                    "The tool {connector}.{tool} takes or gives {} data, and its connector's class is {} (spec/library.md \"Declaration\").",
+                    cls.as_str(),
+                    allowed.as_str()
+                ),
+                path,
+                Some(
+                    JsObject::new()
+                        .with("data_class", cls.as_str())
+                        .with("allowed", allowed.as_str())
+                        .with("connector", connector)
+                        .with("tool", tool),
+                ),
+            );
+        }
+    }
+
     /// In a program of 0.6, what covers a use of `Tool` (a read-only tool's
     /// call, or a skill that declares it) or of `Tool.Write`: the `tool.call`
     /// parts of that kind whose scope holds the use's ([`cap_authorizes`]),
@@ -320,6 +438,7 @@ impl<'a> Checker<'a> {
         r: &ToolRef<'a>,
         args: &[Val],
     ) -> Val {
+        self.tool_signature(r, path);
         if r.tool.is_write() {
             let shown = r.shown();
             self.misplaced(
@@ -352,6 +471,7 @@ impl<'a> Checker<'a> {
         r: &ToolRef<'a>,
         args: &[Val],
     ) -> Val {
+        self.tool_signature(r, path);
         let shown = r.shown();
         let write = r.tool.is_write();
         let placed = if !write {
@@ -535,6 +655,41 @@ impl<'a> Checker<'a> {
         )
     }
 
+    /// E0120 for an agent whose `caps` hold, through a capability of any
+    /// module, read-only tools whose signatures name types the program does
+    /// not have as their connector's module means them: the agent's loop
+    /// calls those tools with the program's types. At the capability.
+    pub(crate) fn agent_unbound(&mut self, caps: &'a [Value], base: &str) {
+        for (i, c) in caps.iter().enumerate() {
+            let Some(e) = Expr::of(c) else { continue };
+            let at = format!("{base}/caps/{i}");
+            let mut seen = Vec::new();
+            for v in caps_of(self.defs, e, self.cap_opts()) {
+                if v.ctor() != TOOL_CALL {
+                    continue;
+                }
+                for item in v.scope().unwrap_or_default() {
+                    let Some((rest, tool)) = item.rsplit_once('.') else {
+                        continue;
+                    };
+                    let connector = rest.rsplit_once('.').map_or(rest, |(_, n)| n);
+                    let defs: &'a Map = self.defs;
+                    let Some((name, def)) = defs
+                        .iter()
+                        .find(|(n, _)| *n == connector)
+                        .and_then(|(n, d)| ConnectorDef::of(d).map(|c| (n, c)))
+                    else {
+                        continue;
+                    };
+                    let Some(tool) = def.tools().map(|(n, _)| n).find(|n| *n == tool) else {
+                        continue;
+                    };
+                    self.unbound_names(name, def, tool, &at, &mut seen);
+                }
+            }
+        }
+    }
+
     /// E0220 for an agent whose declared `caps` hold read-only tools of a
     /// connector above the class its model may receive: what its loop reads
     /// reaches its model. At the capability that holds them.
@@ -691,6 +846,20 @@ impl<'a> Checker<'a> {
                 format!("'{c}' is a connector that the program neither defines nor lists in a use")
             })
         });
+        if problem.is_none()
+            && let Some(c) = e.args().next().and_then(|a| a.value()).and_then(Expr::name)
+            && let Some(def) = self.connector_def(c)
+        {
+            let mut seen = Vec::new();
+            for t in e
+                .args()
+                .skip(1)
+                .filter_map(|a| a.value())
+                .filter_map(Expr::name)
+            {
+                self.unbound_names(c, def, t, path, &mut seen);
+            }
+        }
         if let Some(problem) = problem {
             self.report(
                 "E1404",
@@ -848,6 +1017,7 @@ impl<'a> Checker<'a> {
             );
             return;
         }
+        self.signature_class(cn, c, tn, t, tb);
         if t.read_only() {
             if wrapped(t.members().get("returns"), "Untrusted").is_none() {
                 self.wrong_result(cn, tn, tb, t, "Untrusted<T>");

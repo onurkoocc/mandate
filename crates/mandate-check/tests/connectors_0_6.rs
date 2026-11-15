@@ -601,3 +601,66 @@ fn only_a_tool_call_covers_a_tools_use_of_tool() {
         "{got:?}"
     );
 }
+
+/// F4: a tool's types classed above its connector's class are refused in the
+/// module that declares it, and at every use in a program too, for a module
+/// that reaches the program unchecked: `check` does not check the modules
+/// it is given (`load_modules` does).
+#[test]
+fn a_tools_types_are_held_to_its_connectors_class_where_it_is_used() {
+    let types = changed(
+        &read_text(TYPES).unwrap(),
+        "pub type Order = { order_no: Text, vendor_id: Text, total_cents: Int }",
+        "pub type Order = { order_no: Text, vendor_id: Text, total_cents: Int } classified restricted",
+    );
+    let connectors = read_text(CONNECTORS).unwrap();
+    // Loaded together, the connectors' module is refused at its tool.
+    let sources = [
+        ModuleSource {
+            text: &types,
+            kind: SourceKind::Mdt,
+            file: "types.mdt",
+        },
+        ModuleSource {
+            text: &connectors,
+            kind: SourceKind::Mdt,
+            file: "connectors.mdt",
+        },
+    ];
+    let r = load_modules(&sources);
+    let codes: Vec<(String, Vec<String>)> = r
+        .problems
+        .iter()
+        .map(|p| {
+            (
+                p.file.clone(),
+                p.diagnostics
+                    .iter()
+                    .map(|d| format!("{} at {}", d.code, d.at.path.as_deref().unwrap_or("")))
+                    .collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        codes,
+        [(
+            "connectors.mdt".to_owned(),
+            vec![
+                "MDT-E0220 at /defs/erp/tools/list_open_orders".to_owned(),
+                "MDT-E0220 at /defs/erp/tools/post_draft_invoice".to_owned()
+            ]
+        )]
+    );
+    // Given unchecked, as `check` takes them, the program's use is refused.
+    let mut m = Modules::new();
+    for text in [&types, &connectors] {
+        let p = load(text, SourceKind::Mdt).program.unwrap();
+        let name = p.get("module").and_then(Value::as_str).unwrap().to_owned();
+        m.insert(name, p);
+    }
+    let got = checked(&read_text(DRAFTS).unwrap(), Some(&m));
+    assert!(
+        got.contains(&"MDT-E0220 at /defs/DraftOne/body/1/value".to_owned()),
+        "{got:?}"
+    );
+}

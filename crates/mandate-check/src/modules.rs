@@ -159,10 +159,115 @@ pub fn link(program: Program<'_>, modules: Option<&Modules>) -> Linked {
     if let Some(own) = program.module() {
         mark_connectors(&mut defs, own);
     }
+    if let Some(modules) = modules {
+        mark_unbound(&mut defs, program, &origin, modules);
+    }
     Linked {
         defs,
         origin,
         diagnostics,
+    }
+}
+
+/// The type names a value of a tool's signature refers to (`ref`), each
+/// once, in the order found, the built-in types left out.
+fn type_names(v: &Value, out: &mut Vec<String>) {
+    match v {
+        Value::Array(items) => items.iter().for_each(|x| type_names(x, out)),
+        Value::Object(o) => {
+            if let Some(r) = o.get("ref").and_then(Value::as_str)
+                && !crate::resolve::BUILTIN_TYPES.contains(&r)
+                && !crate::resolve::BUILTIN_TYPES_0_4.contains(&r)
+                && !out.iter().any(|n| n == r)
+            {
+                out.push(r.to_owned());
+            }
+            o.iter().for_each(|(_, x)| type_names(x, out));
+        }
+        _ => {}
+    }
+}
+
+/// 0.6: for each connector linked from a module, the type names of each of
+/// its tools' signatures that the program does not have as the very
+/// definition that module means by them, written into the linked connector
+/// as `unbound`, `{ <tool>: { <name>: <the module that defines it there> } }`
+/// (an empty module when that module has no such name). That module means by
+/// a name its own definition, or the definition a `use` of it lists; the
+/// program has it when its own definition or a linked one of that name comes
+/// from the same module. A use of such a tool refuses the name (E0120,
+/// `crate::statics`): a program calls a tool only with the types it means.
+/// Only a table of linked definitions holds `unbound`; the schema refuses it
+/// in a program.
+fn mark_unbound(
+    defs: &mut Map,
+    program: Program<'_>,
+    origin: &[(String, String)],
+    modules: &Modules,
+) {
+    let own = program.module().unwrap_or_default();
+    let mine = program.defs();
+    let has = |name: &str| -> Option<String> {
+        if mine.is_some_and(|d| d.contains_key(name)) {
+            return Some(own.to_owned());
+        }
+        origin
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, m)| m.clone())
+    };
+    let mut marks: Vec<(String, Map)> = Vec::new();
+    for (name, d) in defs.iter() {
+        let Some(c) = ConnectorDef::of(d) else {
+            continue;
+        };
+        if mine.is_some_and(|m| m.contains_key(name)) {
+            continue;
+        }
+        let Some(module) = origin
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, m)| m.as_str())
+        else {
+            continue;
+        };
+        let Some(m) = modules.get(module).and_then(Program::of) else {
+            continue;
+        };
+        let means = |n: &str| -> String {
+            if m.defs().is_some_and(|d| d.contains_key(n)) {
+                return module.to_owned();
+            }
+            m.imports()
+                .find(|u| u.names().any(|x| x == n))
+                .and_then(|u| u.module())
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let mut unbound = Map::new();
+        for (tool, t) in c.tools() {
+            let mut names = Vec::new();
+            type_names(&Value::Object(t.members().clone()), &mut names);
+            let mut missing = Map::new();
+            for n in names {
+                let meant = means(&n);
+                if meant.is_empty() || has(&n).as_deref() != Some(meant.as_str()) {
+                    missing.insert(n, meant);
+                }
+            }
+            if !missing.is_empty() {
+                unbound.insert(tool, Value::Object(missing));
+            }
+        }
+        marks.push((name.to_owned(), unbound));
+    }
+    for (name, unbound) in marks {
+        if let Some(Value::Object(d)) = defs.get_mut(&name) {
+            d.remove("unbound");
+            if !unbound.is_empty() {
+                d.insert("unbound", Value::Object(unbound));
+            }
+        }
     }
 }
 

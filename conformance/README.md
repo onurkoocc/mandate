@@ -315,6 +315,9 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E1406b` | A map's `with caps` that hands a write tool, its body delegating directly | E1406 |
 | `E0220c` | An agent that holds a connector's read-only tools whose class is above what its model capability may receive | E0220 |
 | `E0220d` | A delegation whose `with caps` narrows the agent's model below its connector's class | E0220 |
+| `E0220e` | A tool whose result type is classed above its connector's class, in the module that declares it | E0220 |
+| `E0120c` | A program that calls a tool whose types it does not import: the type names of the signature are not the connector module's definitions in it | E0120 |
+| `E0120d` | A program whose own `Match` stands where the tool means the types module's `Match` | E0120 |
 
 The import cases share the 0.6 module `E1602/types.mdt` and the program
 `E1602/program.mdt`; the connector cases share `T01/program.mdt`, a program
@@ -365,13 +368,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 189, passed 189, pending 0
+conformance cases: ran 192, passed 192, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 64 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 67 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(205 cases: 189 `compile`, 64 of them of language 0.6, and 16 `journal`; no case
+(208 cases: 192 `compile`, 67 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

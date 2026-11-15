@@ -374,6 +374,122 @@
       }
     },
     {
+      "name": "E0120c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/library/acme.connectors/types.mdt",
+        "../../fixtures/library/acme.connectors/connectors.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "The tool erp.list_open_orders takes or gives the type Order, which is acme.connectors.types.Order; this program has no such definition: list it in a use, use acme.connectors.types.{Order}.",
+            "at": {
+              "path": "/defs/ErpRead/value",
+              "span": [12, 22, 12, 54]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Order",
+              "expected": "type",
+              "module": "acme.connectors.types",
+              "tool": "erp.list_open_orders"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "The tool erp.list_open_orders takes or gives the type Order, which is acme.connectors.types.Order; this program has no such definition: list it in a use, use acme.connectors.types.{Order}.",
+            "at": {
+              "path": "/defs/Orders/body/0/value",
+              "span": [18, 16, 18, 47]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Order",
+              "expected": "type",
+              "module": "acme.connectors.types",
+              "tool": "erp.list_open_orders"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0120d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/library/drafts.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/library/acme.connectors/types.mdt",
+        "../../fixtures/library/acme.connectors/connectors.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "The tool erp.post_draft_invoice takes or gives the type Match, which is acme.connectors.types.Match; this program has no such definition: list it in a use, use acme.connectors.types.{Match}.",
+            "at": {
+              "path": "/defs/ErpDraft/value",
+              "span": [1, 557, 1, 736]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Match",
+              "expected": "type",
+              "module": "acme.connectors.types",
+              "tool": "erp.post_draft_invoice"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "The tool erp.post_draft_invoice takes or gives the type Match, which is acme.connectors.types.Match; this program has no such definition: list it in a use, use acme.connectors.types.{Match}.",
+            "at": {
+              "path": "/defs/DraftOne/body/4/value",
+              "span": [1, 2845, 1, 3023]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Match",
+              "expected": "type",
+              "module": "acme.connectors.types",
+              "tool": "erp.post_draft_invoice"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/same_invoice/by/static",
+              "span": [1, 1196, 1, 1367]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
       "name": "E0121",
       "kind": "compile",
       "door": "check_patched",
@@ -682,6 +798,41 @@
               "data_class": "confidential",
               "allowed": "public",
               "connector": "example.erp.erp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0220e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "The tool erp.list_orders takes or gives restricted data, and its connector's class is confidential (spec/library.md \"Declaration\").",
+            "at": {
+              "path": "/defs/erp/tools/list_orders",
+              "span": [1, 482, 1, 633]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "restricted",
+              "allowed": "confidential",
+              "connector": "erp",
+              "tool": "list_orders"
             }
           }
         ]
