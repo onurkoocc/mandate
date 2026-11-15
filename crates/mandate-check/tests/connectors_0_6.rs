@@ -841,3 +841,26 @@ fn a_connectors_binding_in_the_lock_is_governance() {
         (none, vec!["/connectors/example.erp.erp".to_owned()])
     );
 }
+
+/// M31: a `tool.call` has no narrowing in `caps_of` either, which reads an
+/// imported capability and the views: a narrowed one stands for nothing.
+#[test]
+fn a_narrowed_tool_call_stands_for_nothing() {
+    let own = read_text(OWN).unwrap();
+    let narrowed = changed(
+        &own,
+        "capability ErpDraft = tool.call(erp, post_draft)",
+        "capability ErpDraft = tool.call(erp, post_draft)\ncapability Narrow = ErpRead.narrow(\"example.erp.erp.list_orders\")",
+    );
+    let defs = caps_of_program(&narrowed, None);
+    let e = Expr::of(defs.get("Narrow").and_then(|d| d.get("value")).unwrap()).unwrap();
+    let opts = CapOptions {
+        language: Some(Language::V0_6),
+    };
+    assert!(caps_of(&defs, e, opts).is_empty());
+    // And the check refuses it (E1404).
+    assert_eq!(
+        checked(&narrowed, None),
+        ["MDT-E1404 at /defs/Narrow/value"]
+    );
+}

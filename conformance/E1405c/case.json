@@ -1,0 +1,31 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1405c",
+  "kind": "compile",
+  "title": "A tool called in a contract's criterion is refused: a tool is called in a workflow's body.",
+  "spec": [
+    "spec/library.md#toolcall"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1405",
+        "path": "/defs/HasOrders/accept/some/by/static/left/args/0/value",
+        "facts": {
+          "problem": "contract"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/HasOrders/accept/some/by/static"
+      }
+    ]
+  }
+}

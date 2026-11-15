@@ -1,0 +1,74 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708b",
+  "kind": "compile",
+  "title": "A write tool's effect in a map's body, its key not read from the item, is refused: each item's would be authorized on its own.",
+  "spec": [
+    "spec/library.md#toolcall",
+    "spec/envelope.md"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Draft/body/2",
+      "value": {
+        "op": "let",
+        "name": "drafts",
+        "value": {
+          "op": "map",
+          "bind": "x",
+          "over": {
+            "op": "list",
+            "items": [
+              {
+                "op": "var",
+                "name": "order_no"
+              }
+            ]
+          },
+          "max": 3,
+          "body": [
+            {
+              "op": "expr",
+              "value": {
+                "op": "effect",
+                "name": "erp.post_draft",
+                "args": [
+                  {
+                    "value": {
+                      "op": "var",
+                      "name": "x"
+                    }
+                  }
+                ],
+                "idempotent_by": {
+                  "op": "var",
+                  "name": "order_no"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/Draft/body/2/value/body/0/value",
+        "facts": {
+          "kind": "critical_effect",
+          "what": "erp.post_draft"
+        }
+      }
+    ]
+  }
+}

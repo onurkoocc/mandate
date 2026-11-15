@@ -483,9 +483,11 @@ impl<'a> Checker<'a> {
     pub(crate) fn effect_names(&mut self, effects: &'a [Value], base: &str) {
         for (i, e) in effects.iter().enumerate() {
             let effect = e.get("effect").and_then(Value::as_str).unwrap_or_default();
+            // 0.6: a connector's tool, `c.t`, is an effect of the program too.
             if is_builtin_effect(effect)
                 || std_effect(effect).is_some()
                 || self.def_of(effect, DefKind::Effect).is_some()
+                || self.connector_tool(effect).is_some()
             {
                 continue;
             }

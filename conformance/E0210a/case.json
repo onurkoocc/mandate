@@ -1,0 +1,38 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0210a",
+  "kind": "compile",
+  "title": "A write tool whose parameter is untrusted content is refused in its declaration: critical parameters take only T or Verified<T> (R4).",
+  "spec": [
+    "spec/library.md#tool-classes"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/erp/tools/post_draft/params/0/type",
+      "value": {
+        "ref": "Untrusted",
+        "args": [
+          {
+            "ref": "Text"
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0210",
+        "path": "/defs/erp/tools/post_draft/params/0/type"
+      }
+    ]
+  }
+}

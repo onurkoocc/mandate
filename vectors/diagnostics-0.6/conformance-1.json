@@ -751,6 +751,35 @@
       }
     },
     {
+      "name": "E0210a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Write tool 'erp.post_draft' cannot take Untrusted<Text>; critical parameters take only T or Verified<T> (R4).",
+            "at": {
+              "path": "/defs/erp/tools/post_draft/params/0/type",
+              "span": [1, 826, 1, 869]
+            },
+            "docs": "mandate explain MDT-E0210"
+          }
+        ]
+      }
+    },
+    {
       "name": "E0220c",
       "kind": "compile",
       "door": "check_patched",
@@ -921,6 +950,49 @@
       }
     },
     {
+      "name": "E0301c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0301",
+            "severity": "error",
+            "message": "Publish uses publish, but no capability in its caps authorizes it.",
+            "at": {
+              "path": "/defs/Publish/body/0/value",
+              "span": [22, 3, 22, 42]
+            },
+            "docs": "mandate explain MDT-E0301",
+            "facts": {
+              "required": "publish",
+              "available": [
+                "Notes = fs.write(\"/srv/notes\")"
+              ]
+            }
+          },
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "Publish holds Notes = fs.write(\"/srv/notes\") but neither its body nor its delegates use it.",
+            "at": {
+              "path": "/defs/Publish/caps/0",
+              "span": [19, 10, 19, 15]
+            },
+            "docs": "mandate explain MDT-W0310"
+          }
+        ]
+      }
+    },
+    {
       "name": "E0320b",
       "kind": "compile",
       "door": "check_patched",
@@ -953,6 +1025,67 @@
               "left": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
               "right": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")"
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0403a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0403",
+            "severity": "error",
+            "message": "Critical effect erp.post_draft needs 'idempotent_by' at the call site (\u00a78.4).",
+            "at": {
+              "path": "/defs/Draft/body/2/value",
+              "span": [1, 2818, 1, 2907]
+            },
+            "docs": "mandate explain MDT-E0403",
+            "facts": {
+              "repair_hint": "add `idempotent_by <business key>`"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0408a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0408",
+            "severity": "error",
+            "message": "Skill 'Reader.orders' declares the critical effect 'erp.post_draft'. External writes happen only in a workflow's commit step, never inside a delegated task.",
+            "at": {
+              "path": "/defs/Reader/skills/orders/effects/2",
+              "span": [1, 2046, 1, 2073]
+            },
+            "docs": "mandate explain MDT-E0408"
           }
         ]
       }
@@ -1231,6 +1364,38 @@
       }
     },
     {
+      "name": "E1404a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "caps.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1404",
+            "severity": "error",
+            "message": "'erp' is a connector that the program neither defines nor lists in a use (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Mine/value",
+              "span": [11, 19, 11, 46]
+            },
+            "docs": "mandate explain MDT-E1404",
+            "facts": {
+              "problem": "'erp' is a connector that the program neither defines nor lists in a use"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1405",
       "kind": "compile",
       "door": "check_patched",
@@ -1337,6 +1502,80 @@
               "connector": "erp",
               "tool": "list_orders",
               "problem": "fn"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1405c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1405",
+            "severity": "error",
+            "message": "The tool erp.list_orders is called in a contract. A connector's tools are called only in a workflow's body: a read-only one as an expression, a write one as a critical effect (an agent's loop calls the read-only tools its delegation grants) (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/HasOrders/accept/some/by/static/left/args/0/value",
+              "span": [54, 19, 54, 37]
+            },
+            "docs": "mandate explain MDT-E1405",
+            "facts": {
+              "connector": "erp",
+              "tool": "list_orders",
+              "problem": "contract"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "HasOrders.some: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/HasOrders/accept/some/by/static",
+              "span": [54, 15, 54, 43]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1405d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1405",
+            "severity": "error",
+            "message": "The tool erp.post_draft is called in a handler. A connector's tools are called only in a workflow's body: a read-only one as an expression, a write one as a critical effect (an agent's loop calls the read-only tools its delegation grants) (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/on/0/then",
+              "span": [51, 32, 51, 76]
+            },
+            "docs": "mandate explain MDT-E1405",
+            "facts": {
+              "connector": "erp",
+              "tool": "post_draft",
+              "problem": "handler"
             }
           }
         ]
@@ -2078,6 +2317,40 @@
             "docs": "mandate explain MDT-E1604",
             "facts": {
               "module": "example.library.types"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1708b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1708",
+            "severity": "error",
+            "message": "The critical effect erp.post_draft runs inside a map's body, where each item's would be authorized on its own. Run it after the map, or land a batch with a change set (spec/envelope.md \"map\").",
+            "at": {
+              "path": "/defs/Draft/body/2/value/body/0/value",
+              "span": [1, 2955, 1, 3084]
+            },
+            "docs": "mandate explain MDT-E1708",
+            "facts": {
+              "map": "/defs/Draft/body/2/value",
+              "kind": "critical_effect",
+              "what": "erp.post_draft"
             }
           }
         ]
