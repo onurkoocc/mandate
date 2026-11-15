@@ -83,20 +83,65 @@ fn the_embedded_schemas_are_the_files_in_spec_and_prepare() {
     lock_schema_0_6().expect("the 0.6 lock schema");
 }
 
-/// The 0.6 IR schema is the schema of 0.1 to 0.5 under the new version: no
-/// construct of 0.6 is in it yet. Each slice that adds one lists its
+/// The 0.6 IR schema is the schema of 0.1 to 0.5 under the new version, with
+/// the constructs of 0.6 so far: `pub` and `doc` on every kind of definition
+/// (spec/library.md "The 0.6 surface"). Each slice that adds one lists its
 /// pointers here.
 #[test]
 fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
     assert_eq!(
         differences_of(IR_SCHEMA_TEXT, IR_0_6_SCHEMA_TEXT),
         [
+            "/$defs/Def/oneOf",
             "/$id",
             "/description",
             "/properties/language/enum",
             "/title"
         ]
     );
+    // The definitions, branch by branch: the earlier branch with `pub`
+    // (`true` alone) and `doc` (a string) among its properties, and nothing
+    // else changed; a `fn` had `pub` already.
+    let branches = |text: &str| {
+        json(text)
+            .get("$defs")
+            .and_then(|d| d.get("Def"))
+            .and_then(|d| d.get("oneOf"))
+            .and_then(Value::as_array)
+            .expect("the branches of a definition")
+            .to_vec()
+    };
+    let (old, new) = (branches(IR_SCHEMA_TEXT), branches(IR_0_6_SCHEMA_TEXT));
+    assert_eq!(old.len(), new.len());
+    assert_eq!(new.len(), 13, "the kinds of 0.6 so far");
+    for (o, n) in old.iter().zip(new.iter()) {
+        let kind = n
+            .get("properties")
+            .and_then(|p| p.get("kind"))
+            .map(canonicalize)
+            .unwrap_or_default();
+        let mut found = Vec::new();
+        differences(o, n, "", &mut found);
+        found.sort();
+        let had_pub = o.get("properties").and_then(|p| p.get("pub")).is_some();
+        let want: Vec<&str> = if had_pub {
+            vec!["/properties/doc"]
+        } else {
+            vec!["/properties/doc", "/properties/pub"]
+        };
+        assert_eq!(found, want, "{kind}");
+        let props = n.get("properties").expect("properties");
+        assert_eq!(
+            props.get("pub").map(canonicalize).as_deref(),
+            Some(r#"{"const":true}"#),
+            "{kind}"
+        );
+        assert_eq!(
+            props.get("doc").map(canonicalize).as_deref(),
+            Some(r#"{"type":"string"}"#),
+            "{kind}"
+        );
+    }
     let v = json(IR_0_6_SCHEMA_TEXT);
     assert_eq!(
         v.get("properties")
@@ -239,9 +284,7 @@ fn the_two_fields_of_0_6_are_held_to_their_shape() {
         ["MDT-E0140 at /libraries/a.b/version"]
     );
     assert_eq!(
-        shape(&format!(
-            r#","libraries":{{"a.b":{{"version":"1.0.0","digest":"sha256:short","modules":{{}}}}}}"#
-        )),
+        shape(r#","libraries":{"a.b":{"version":"1.0.0","digest":"sha256:short","modules":{}}}"#),
         [
             "MDT-E0140 at /libraries/a.b/digest",
             "MDT-E0140 at /libraries/a.b/modules"

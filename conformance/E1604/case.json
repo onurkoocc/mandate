@@ -1,0 +1,43 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1604",
+  "kind": "compile",
+  "title": "A 0.6 program that imports a module the check was not given is refused at the use: its names are not taken on trust.",
+  "spec": [
+    "spec/library.md#closed-imports",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1602/program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../E1602/types.mdt"
+  ],
+  "patch": [
+    {
+      "op": "add",
+      "path": "/uses/-",
+      "value": {
+        "module": "example.library.missing",
+        "names": [
+          "Thing"
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1604",
+        "path": "/uses/2",
+        "facts": {
+          "module": "example.library.missing"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1604b",
+  "kind": "compile",
+  "title": "A 0.6 program whose imports are std itself, std.decision and a module it is given checks.",
+  "spec": [
+    "spec/library.md#closed-imports"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../E1602/types.mdt"
+  ],
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

@@ -1,0 +1,10 @@
+// A module of language 0.5, definitions only, that imports a module written
+// in 0.6: it would read the 0.6 definitions by the rules of 0.5.
+
+mandate @ 0.5
+
+module example.older.report @ 0.1
+
+use example.library.types.{Invoice}
+
+type Report = { invoice: Invoice, lines: List<Text> }

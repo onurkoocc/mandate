@@ -1,0 +1,363 @@
+{
+  "language": "mandate/0.6",
+  "module": "example.library.every",
+  "version": "1.0",
+  "defs": {
+    "finance_owner": {
+      "kind": "role",
+      "description": "Finance owner",
+      "pub": true,
+      "doc": "Who answers for the ledger."
+    },
+    "LedgerApi": {
+      "kind": "interface",
+      "protocol": "openapi",
+      "spec": "docs/openapi.json",
+      "pub": true,
+      "doc": "What the ledger offers."
+    },
+    "ledger": {
+      "kind": "component",
+      "repo": "example/ledger",
+      "root": "/work/ledger",
+      "lang": "ts",
+      "owner": "finance_owner",
+      "provides": [
+        "LedgerApi"
+      ],
+      "pub": true,
+      "doc": "The ledger, as one repository."
+    },
+    "staging": {
+      "kind": "environment",
+      "class": "internal",
+      "pub": true,
+      "doc": "Where the ledger runs before production."
+    },
+    "LedgerRead": {
+      "kind": "capability",
+      "value": {
+        "op": "call",
+        "callee": {
+          "op": "field",
+          "of": {
+            "op": "var",
+            "name": "net"
+          },
+          "name": "https"
+        },
+        "args": [
+          {
+            "name": "hosts",
+            "value": {
+              "op": "list",
+              "items": [
+                {
+                  "op": "text",
+                  "value": "ledger.example.org"
+                }
+              ]
+            }
+          },
+          {
+            "name": "methods",
+            "value": {
+              "op": "list",
+              "items": [
+                {
+                  "op": "var",
+                  "name": "GET"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "pub": true,
+      "doc": "What reading the ledger takes."
+    },
+    "ModelStd": {
+      "kind": "capability",
+      "value": {
+        "op": "call",
+        "callee": {
+          "op": "field",
+          "of": {
+            "op": "var",
+            "name": "model"
+          },
+          "name": "infer"
+        },
+        "args": [
+          {
+            "name": "tier",
+            "value": {
+              "op": "var",
+              "name": "standard"
+            }
+          },
+          {
+            "name": "max_class",
+            "value": {
+              "op": "var",
+              "name": "internal"
+            }
+          }
+        ]
+      },
+      "pub": true
+    },
+    "Invoice": {
+      "kind": "type",
+      "type": {
+        "record": {
+          "invoice_no": {
+            "ref": "Text"
+          },
+          "total_cents": {
+            "ref": "Int"
+          }
+        }
+      },
+      "pub": true,
+      "doc": "An invoice.\n\nIts total is in cents."
+    },
+    "Note": {
+      "kind": "type",
+      "type": {
+        "record": {
+          "text": {
+            "ref": "Text"
+          }
+        }
+      },
+      "doc": "A note no other module may name."
+    },
+    "MAX_TOTAL": {
+      "kind": "const",
+      "value": {
+        "op": "int",
+        "value": 1000000
+      },
+      "type": {
+        "ref": "Int"
+      },
+      "pub": true,
+      "doc": "The largest total, in cents."
+    },
+    "record_invoice": {
+      "kind": "effect",
+      "params": [
+        {
+          "name": "i",
+          "type": {
+            "ref": "Invoice"
+          }
+        }
+      ],
+      "returns": {
+        "ref": "Text"
+      },
+      "pub": true,
+      "doc": "Records an invoice in the ledger."
+    },
+    "parse_invoice": {
+      "kind": "extern",
+      "lang": "py",
+      "file": "tools/invoice.py",
+      "symbol": "parse_invoice",
+      "params": [
+        {
+          "name": "text",
+          "type": {
+            "ref": "Text"
+          }
+        }
+      ],
+      "returns": {
+        "ref": "Invoice"
+      },
+      "effects": [],
+      "pub": true,
+      "doc": "Reads an invoice from its text."
+    },
+    "within": {
+      "kind": "fn",
+      "params": [
+        {
+          "name": "total",
+          "type": {
+            "ref": "Int"
+          }
+        }
+      ],
+      "returns": {
+        "ref": "Bool"
+      },
+      "body": [
+        {
+          "op": "expr",
+          "value": {
+            "op": "binary",
+            "bop": "<=",
+            "left": {
+              "op": "var",
+              "name": "total"
+            },
+            "right": {
+              "op": "var",
+              "name": "MAX_TOTAL"
+            }
+          }
+        }
+      ],
+      "pub": true,
+      "effects": [],
+      "doc": "Whether a total is within the limit."
+    },
+    "Summarized": {
+      "kind": "contract",
+      "params": [
+        {
+          "name": "s",
+          "type": {
+            "ref": "Text"
+          }
+        }
+      ],
+      "accept": {
+        "owner": {
+          "description": "The finance owner accepts the summary",
+          "by": {
+            "call": {
+              "op": "call",
+              "callee": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "human"
+                },
+                "name": "approve"
+              },
+              "args": [
+                {
+                  "name": "role",
+                  "value": {
+                    "op": "var",
+                    "name": "finance_owner"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "pub": true,
+      "doc": "What a summary of an invoice must be."
+    },
+    "Summarizer": {
+      "kind": "agent",
+      "caps": [
+        {
+          "op": "var",
+          "name": "ModelStd"
+        }
+      ],
+      "skills": {
+        "summarize": {
+          "params": [
+            {
+              "name": "i",
+              "type": {
+                "ref": "Invoice"
+              }
+            }
+          ],
+          "returns": {
+            "ref": "Inferred",
+            "args": [
+              {
+                "ref": "Text"
+              }
+            ]
+          },
+          "effects": [
+            {
+              "effect": "Model"
+            }
+          ]
+        }
+      },
+      "role": "Summarizes one invoice.",
+      "budget": {
+        "time": {
+          "ms": 120000
+        },
+        "steps": 2
+      },
+      "pub": true,
+      "doc": "Summarizes one invoice."
+    },
+    "Summarize": {
+      "kind": "workflow",
+      "params": [
+        {
+          "name": "i",
+          "type": {
+            "ref": "Invoice"
+          }
+        }
+      ],
+      "returns": {
+        "ref": "Inferred",
+        "args": [
+          {
+            "ref": "Text"
+          }
+        ]
+      },
+      "caps": [
+        {
+          "op": "var",
+          "name": "ModelStd"
+        }
+      ],
+      "body": [
+        {
+          "op": "expr",
+          "value": {
+            "op": "delegate",
+            "agent": "Summarizer",
+            "skill": "summarize",
+            "args": [
+              {
+                "value": {
+                  "op": "var",
+                  "name": "i"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "budget": {
+        "time": {
+          "ms": 300000
+        },
+        "steps": 4
+      },
+      "pub": true,
+      "doc": "Asks for the summary of an invoice."
+    }
+  },
+  "uses": [
+    {
+      "module": "std",
+      "names": [
+        "human",
+        "model",
+        "net"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0120a",
+  "kind": "compile",
+  "title": "In a 0.6 program a lower-case name listed from a module that is not the standard library's is no module path: most.Anything is an unknown type.",
+  "spec": [
+    "spec/library.md#closed-imports"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1602a/program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../E1602/types.mdt"
+  ],
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Read/params/0/type/ref",
+      "value": "most.Anything"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/Read/params/0/type/ref",
+        "facts": {
+          "name": "most.Anything",
+          "expected": "type"
+        }
+      }
+    ]
+  }
+}

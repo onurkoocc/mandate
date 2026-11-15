@@ -25,6 +25,13 @@
 //! - The regular expressions of `escapeText` and `money` are written as
 //!   character and suffix operations, with the pattern in a comment.
 //!
+//! What language 0.6 adds before a definition, its `doc` as `///` lines and
+//! `pub` before any kind, is printed by [`print_documented`], which the
+//! TypeScript does not have; the IR of 0.1 to 0.5 has neither, so its text
+//! is the TypeScript's. A `doc` given as JSON IR whose line ends in a
+//! carriage return does not read back the same (the reader takes the
+//! carriage return of a line as its ending); no text reads to one.
+//!
 //! Where the TypeScript throws on a program that is not well formed (a
 //! `TypeError` for `x.map` of `undefined`), the port reads the missing list
 //! as empty, or gives an error when it has nothing to print; it never
@@ -121,7 +128,7 @@ pub fn print_program(program: &Value) -> Printed {
         sort_utf16(&mut names);
         for name in names {
             out.push(String::new());
-            out.push(print_def(name, member(member(p, "defs"), name))?);
+            out.push(print_documented(name, member(member(p, "defs"), name))?);
         }
     }
     let mut workflows: Vec<&str> = defs
@@ -256,6 +263,33 @@ fn quote_all(xs: &[Value]) -> Printed {
 }
 
 // ── definitions ──────────────────────────────────────────────────────────
+
+/// A definition with what language 0.6 adds before it (spec/library.md "The
+/// 0.6 surface"): its `doc`, one `///` line for each of its lines (`///`
+/// and a space before a line that is not empty), and `pub ` before any kind
+/// but `fn`, whose `pub` [`print_def`] prints as in every version. The IR of
+/// a program of 0.1 to 0.5 has neither (its schema has `pub` on a `fn`
+/// only, and no `doc`), so what is printed for it is [`print_def`]'s.
+fn print_documented(name: &str, d: &Value) -> Printed {
+    let mut s = String::new();
+    if d.get("doc").is_some() {
+        for line in text(member(d, "doc"))?.split('\n') {
+            if line.is_empty() {
+                s.push_str("///\n");
+            } else {
+                s.push_str("/// ");
+                s.push_str(line);
+                s.push('\n');
+            }
+        }
+    }
+    let is_fn = DefKind::from_value(member(d, "kind")) == Some(DefKind::Fn);
+    if truthy(member(d, "pub")) && !is_fn {
+        s.push_str("pub ");
+    }
+    s.push_str(&print_def(name, d)?);
+    Ok(s)
+}
 
 /// `printDef(name, d)`.
 fn print_def(name: &str, d: &Value) -> Printed {

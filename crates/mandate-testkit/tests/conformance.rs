@@ -349,17 +349,24 @@ fn prepare(c: &Case) -> Result<(Value, Observed), String> {
                 Some(l) => l,
                 None => Some(language.to_owned()),
             },
-            None => None,
+            // Mandate text that does not read (a case of 0.6 about where a
+            // doc line may stand): the header it starts with.
+            None => header_of(&text),
         };
         // A case about a version no compiler reads (it expects E0103) may
         // name instead the version of the compiler it is written for: one of
-        // the versions only the Rust reads (`conformance/README.md`).
-        let unread = declared
-            .as_deref()
-            .is_none_or(|d| mandate_ir::Language::from_tag(d).is_none());
-        let for_rust = rust_only::RUST_ONLY_LANGUAGES.contains(&language)
-            && unread
-            && expects(case, "MDT-E0103");
+        // the versions only the Rust reads (`conformance/README.md`). So may
+        // a case about how a program of an earlier version meets what that
+        // version adds (a 0.6 field in a program of 0.5, E0104d; a program
+        // of 0.5 that imports a module of 0.6, E1603), which the TypeScript
+        // could not run or would write vectors for.
+        let read = declared.as_deref().and_then(mandate_ir::Language::from_tag);
+        let rust_only = rust_only::RUST_ONLY_LANGUAGES.contains(&language);
+        let for_rust = rust_only
+            && match read {
+                None => expects(case, "MDT-E0103"),
+                Some(d) => mandate_ir::Language::from_tag(language).is_some_and(|l| d < l),
+            };
         if declared.as_deref() != Some(language) && !for_rust {
             return Err(format!(
                 "the case says language {language}, the program declares {declared:?}"
@@ -370,6 +377,29 @@ fn prepare(c: &Case) -> Result<(Value, Observed), String> {
         case.get("expect").ok_or("no expect")?.clone(),
         Observed::from(&result),
     ))
+}
+
+/// The language a Mandate text declares, read from its first line that is
+/// neither blank nor a comment: `mandate @ 0.6` is `mandate/0.6`, and a text
+/// whose first line is something else declares none (it is not read further:
+/// the parser has said what it is).
+fn header_of(text: &str) -> Option<String> {
+    let line = text
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with("//"))?;
+    let version = line.strip_prefix("mandate @ ")?;
+    Some(format!("mandate/{}", version.trim()))
+}
+
+#[test]
+fn the_header_of_a_text_that_does_not_read() {
+    assert_eq!(
+        header_of("// a comment\n\n  mandate @ 0.6\n\nmodule m @ 0.1\n/// x\n").as_deref(),
+        Some("mandate/0.6")
+    );
+    assert_eq!(header_of("module m @ 0.1\n"), None);
+    assert_eq!(header_of(""), None);
 }
 
 #[test]

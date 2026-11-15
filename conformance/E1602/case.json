@@ -1,0 +1,42 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1602",
+  "kind": "compile",
+  "title": "A 0.6 program that names in a use list a definition of a 0.6 module that is not pub is refused at the name.",
+  "spec": [
+    "spec/library.md#pub-and-visibility",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "types.mdt"
+  ],
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/uses/0/names",
+      "value": [
+        "Invoice",
+        "Note"
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1602",
+        "path": "/uses/0/names/1",
+        "facts": {
+          "name": "Note",
+          "module": "example.library.types"
+        }
+      }
+    ]
+  }
+}

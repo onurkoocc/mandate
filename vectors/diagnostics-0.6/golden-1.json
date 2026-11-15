@@ -89,6 +89,115 @@
         "load": []
       },
       "texts": {}
+    },
+    {
+      "program": "fixtures/library/shared.mdt",
+      "modules": [
+        "fixtures/system/acme.system.mdt",
+        "fixtures/system/repos.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:bb5dfe5868a3f3b89a5bea6338da42bd8bfe3988d8b599858ca3319f21eae2e2",
+            "defs": {
+              "Invoice": "sha256:8494a83c0453526968f6e18018b8bd26a03f09512389602ad0700a3fe84ba316",
+              "Line": "sha256:8c14173a7c11e2a19e61e97ce446d41ae61bcca26102fd4c3faecd6bd7058986",
+              "MAX_TOTAL": "sha256:8e220c0291e14b83cdcb103c47a5830e8837bc3494a9a371b8130a7c929c1c2c",
+              "ModelStd": "sha256:ccf74faa07c428e9bd3c0aec602fe6a30cacd162a26650732585ebb1754788bb",
+              "Summarizer": "sha256:dfb7d587d501f2a4725b070b24398b8adcdd8c8413127ea35c18ce8eed92b893",
+              "within": "sha256:5fb249ac021f61add177a3e682fe55b915973da9f20e91979d62be9aadfa5b03"
+            }
+          },
+          "diagnostics": []
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:bb5dfe5868a3f3b89a5bea6338da42bd8bfe3988d8b599858ca3319f21eae2e2",
+            "defs": {
+              "Invoice": "sha256:8494a83c0453526968f6e18018b8bd26a03f09512389602ad0700a3fe84ba316",
+              "Line": "sha256:8c14173a7c11e2a19e61e97ce446d41ae61bcca26102fd4c3faecd6bd7058986",
+              "MAX_TOTAL": "sha256:8e220c0291e14b83cdcb103c47a5830e8837bc3494a9a371b8130a7c929c1c2c",
+              "ModelStd": "sha256:ccf74faa07c428e9bd3c0aec602fe6a30cacd162a26650732585ebb1754788bb",
+              "Summarizer": "sha256:dfb7d587d501f2a4725b070b24398b8adcdd8c8413127ea35c18ce8eed92b893",
+              "within": "sha256:5fb249ac021f61add177a3e682fe55b915973da9f20e91979d62be9aadfa5b03"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
+      "program": "fixtures/library/summarize.mdt",
+      "modules": [
+        "fixtures/library/shared.mdt"
+      ],
+      "lock": null,
+      "results": {
+        "check": {
+          "ok": false,
+          "diagnostics": [
+            {
+              "code": "MDT-E1604",
+              "severity": "error",
+              "message": "Module example.library.shared is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
+              "at": {
+                "path": "/uses/0",
+                "span": [11, 1, 11, 59]
+              },
+              "docs": "mandate explain MDT-E1604",
+              "facts": {
+                "module": "example.library.shared"
+              }
+            },
+            {
+              "code": "MDT-E0120",
+              "severity": "error",
+              "message": "Unknown capability 'ModelStd'.",
+              "at": {
+                "path": "/defs/Summarize/caps/0",
+                "span": [15, 10, 15, 18]
+              },
+              "docs": "mandate explain MDT-E0120",
+              "facts": {
+                "name": "ModelStd",
+                "expected": "capability"
+              }
+            },
+            {
+              "code": "MDT-E0120",
+              "severity": "error",
+              "message": "Unknown agent 'Summarizer'.",
+              "at": {
+                "path": "/defs/Summarize/body/0/value/agent",
+                "span": [18, 3, 18, 35]
+              },
+              "docs": "mandate explain MDT-E0120",
+              "facts": {
+                "name": "Summarizer",
+                "expected": "agent"
+              }
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:1483cda8e1d0dce28ea4197c7bfbaaa80f191f2c44379cf4083ef8d71b4b06be",
+            "defs": {
+              "Summarize": "sha256:9628572e73be8e2efb0c59d8ee946f9b80421cf27eadc2414ffde1ff362d7d5f"
+            }
+          },
+          "diagnostics": []
+        },
+        "load": []
+      },
+      "texts": {}
     }
   ]
 }

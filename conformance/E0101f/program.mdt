@@ -1,0 +1,32 @@
+// A program of language 0.5 with `///` lines where 0.6 would read doc lines
+// and where 0.6 would refuse them: before 0.6 each is a comment, which the
+// lexer drops. Its IR and hashes are those of the same text without them.
+
+/// Before the header.
+mandate @ 0.5
+
+/// Before the module.
+module example.older.comments @ 0.1
+
+/// Before a use.
+use std.{model}
+
+/// Before a definition.
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+/// Followed by a blank line.
+
+agent Reader {
+  role   "Reads one line." /// At the end of a line.
+  caps   ModelStd
+  /// Inside a body.
+  budget { time: 2m, steps: 2 }
+  skill read(line: Text) -> Inferred<Text> ! {Model}
+}
+
+workflow Read(line: Text) -> Inferred<Text>
+  caps   ModelStd
+  budget { time: 5m, steps: 4 }
+{
+  delegate Reader.read(line)
+}
+/// At the end of the file.

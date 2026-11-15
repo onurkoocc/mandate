@@ -90,7 +90,14 @@ test holds the rows whose reference is the TypeScript to this file: the same
 codes, in the same order, with the same texts. A row whose reference is Rust (a
 code added in language 0.6 or later, which the TypeScript compiler, frozen at
 0.5, does not have) is not compared, and is not in this file; the test fails if
-it is.
+it is. There are three such rows, E1602, E1603 and E1604 (spec/library.md "The
+0.6 surface"), after every row of the TypeScript's (a unit test of `codes.rs`
+holds that order, so the TypeScript's rows stay a prefix of the table). Each is
+held instead by a conformance case of 0.6 that expects it, by its row in
+`spec/diagnostics.md`, and by `crates/mandate-check/tests/language_0_6.rs`,
+which holds what the `explain` door answers for it. The `codes` door gives the
+whole table, so its stored call is compared without these rows (`rust_only`,
+"What they do not reach" below).
 
 ## authority/
 
@@ -1185,17 +1192,23 @@ held by what a person writes and by what the Rust writes:
   `diagnostic-vectors.test.ts`, `diff-vectors.test.ts`) skip them, and each checks
   that what it skipped is exactly the directories whose `case.json` names 0.6, read
   as plain JSON, and that there are `RUST_ONLY_CASES` of them
-  (`compiler/test/cases-runner.ts`, 6 today): a case of 0.6 added or taken away
+  (`compiler/test/cases-runner.ts`, 31 today): a case of 0.6 added or taken away
   changes that number in the same commit. The cases today: `S02f` (a 0.6 program
   checks), `S02g` (an unknown field of a 0.6 program, E0104), `S02h` (an unknown
   version, E0103, whose list has 0.6), `E0140` (a 0.5 lock that carries `libraries`),
-  `E0140a` and `E0140b` (a 0.6 lock with a malformed library and connector).
+  `E0140a` and `E0140b` (a 0.6 lock with a malformed library and connector), and the
+  25 of the 0.6 surface (`pub`, doc lines, closed imports: `P01`, `P01a`, `P01b`,
+  `E0101` to `E0101g`, `E0104d`, `E1602` to `E1602c`, `E1603`, `E1603a`, `E1604` to
+  `E1604c`, `E0120`, `E0120a`, `E0120b`), listed in `conformance/README.md`.
 - **`golden/0.6.json`**: for every 0.6 program of the repository (each `.mdt` and
-  `.ir.json` file of `fixtures/library/`, 2 today, 23 outputs), the digest of each
+  `.ir.json` file of `fixtures/library/`, 4 today, 44 outputs), the digest of each
   output text, in the shape of `compiler/test/golden/outputs.json`
   (`crates/mandate-testkit/tests/golden_0_6.rs`). The texts are made by the code of
   `crates/mandate-testkit/tests/outputs/`, which the same test holds to every digest
-  of the TypeScript's golden file.
+  of the TypeScript's golden file. A program is given the modules its imports name
+  (`summarize.mdt` the module `shared.mdt`, beside it); every one checks with its
+  modules, and one that imports a module of `fixtures/library/` is refused when
+  checked alone, at that import (E1604), so that it has no `hash` output.
 - **`diagnostics-0.6/`**: the whole result of every compile case of 0.6 and of the
   checks and `load` of every 0.6 program, in the layout and formats of `diagnostics/`
   (`conformance-1.json`, `golden-1.json`, `summary.json`;
@@ -1208,7 +1221,9 @@ again and fails when the committed file differs; `MANDATE_UPDATE_0_6=1` (passed 
 a rule is right, which the cases do. Beside them,
 `crates/mandate-testkit/tests/language_0_6.rs` checks every 0.5 fixture and every 0.5
 conformance case with only its header rewritten to 0.6, against its 0.5 run (version
-and hashes aside), and that every code whose reference is the Rust compiler
+and hashes aside; a program 0.6 reads otherwise on purpose, because it imports a module
+its check is not given or has a `///` line, would be left out by a named rule that lists
+it, and none does), and that every code whose reference is the Rust compiler
 (`mandate_ir::codes`, `Reference::Rust`) has a case of 0.6 that expects it, and every
 code a case of 0.6 expects is in the table.
 
@@ -1231,7 +1246,7 @@ the compiler's order. The gates that do this:
 | diagnostic vectors | the whole result of every compile case of `conformance/` and of the checks of every golden program | 193 | `crates/mandate-testkit/tests/diagnostics.rs` |
 | diff vectors | the results of the comparing functions and the documents of 183 pairs | 183 | `crates/mandate-testkit/tests/diff_vectors.rs` |
 | corpus | every call the TypeScript's own tests make to a front door, input and whole result | 1226 | `crates/mandate-testkit/tests/corpus.rs` |
-| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 131: the TypeScript's 125, and 6 of language 0.6 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
+| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 156: the TypeScript's 125, and 31 of language 0.6 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
 | JSON doors | the output text of every call of `crates/*/tests/json_doors/inputs.json`, each through a door of `doors.json` beside it and through the TypeScript function it stands for, serialised by the door contract (`scripts/json-doors-vectors.mjs`, its function `doorJson`); every door has a call | 159 calls over 46 doors (`mandate-check`) and 68 over 13 (`mandate-views`), each also through the dispatcher of `mandate-doors` | `crates/mandate-check/tests/json_doors.rs`, `crates/mandate-views/tests/json_doors.rs`, `crates/mandate-doors/tests/doors.rs` |
@@ -1272,8 +1287,20 @@ fails when an entry of a list passes or names nothing.
   2; diagnostic vectors 2; conformance cases 2 (S02a and S02b, run by the Rust but
   written for the TypeScript); corpus 5 (the stored results that hold an E0103, which
   the corpus counts when it is read, since its test compares one entry at a time); the
-  JSON doors of `mandate-check` 1 (the `tables` call; the count is kept by the directory of the calls, `json doors of crates/mandate-check/tests/json_doors`, so the same call set is pinned once whether its own test or the dispatcher of `mandate-doors` runs it). No golden output, diff vector or
+  JSON doors of `mandate-check` 2 (the `tables` call, and the `codes` call of the next
+  item; the count is kept by the directory of the calls, `json doors of crates/mandate-check/tests/json_doors`, so the same call set is pinned once whether its own test or the dispatcher of `mandate-doors` runs it). No golden output, diff vector or
   version gate holds an E0103. A case or vector of 0.6 is compared whole, with no rule.
+
+- **The codes only the Rust compiler has: 1 stored result, by one rule.** The table of
+  codes has the rows of language 0.6 (E1602, E1603, E1604; `Reference::Rust`), after
+  every row of the TypeScript's, and the `codes` door gives the whole table. Its one
+  stored call (`codes: the table`, in `crates/mandate-check/tests/json_doors/`) is
+  compared with those rows taken out (`rust_only::RUST_CODES`), the others whole and in
+  their order; it is counted in the JSON doors' 2 above. No other stored result holds
+  the table: `vectors/codes.json` has the TypeScript's rows alone (see `codes.json`), the
+  `tables` door's `CODES` is the TypeScript's rows, and the `explain` calls stored ask
+  for codes of 0.5. What the doors answer for the rows of 0.6 is held by
+  `crates/mandate-check/tests/language_0_6.rs`.
 
 - **The corpus: nothing excluded.** `OUT_OF_SCOPE` (whole doors) and `EXCLUDED` (single
   entries) in `crates/mandate-testkit/tests/corpus.rs` are both empty: the ACS/Rego
@@ -1308,11 +1335,11 @@ fails when an entry of a list passes or names nothing.
   `crates/mandate-syntax/tests/deep.rs` (`calls_nested_as_deep_as_the_size_limit`,
   `records_nested_as_deep_as_the_size_limit`, `a_capability_too_deep_for_typescript_to_sort`),
   where the Rust's diagnostic is written down; no vector carries these inputs.
-- **The `fmt` round trip excludes 1 program of 77: `conformance/S11j/program.mdt`.**
+- **The `fmt` round trip excludes 1 program of 89: `conformance/S11j/program.mdt`.**
   `crates/mandate-syntax/tests/roundtrip.rs` prints `excluded 1: does not read
   (refused with no program): conformance/S11j/program.mdt (MDT-E0101)`. The case expects
   that refusal; a file excluded by this rule must give an error and no program, and
-  one that reads after all fails the gate. The 76 others (the two programs of 0.6 in `fixtures/library/` among them) are read, printed, read back to
+  one that reads after all fails the gate. The 88 others (the four programs of 0.6 in `fixtures/library/` and the programs and modules of the 0.6 cases in `conformance/` among them; a 0.6 case whose text is refused gives it inline in its `case.json`, so it is not a file here) are read, printed, read back to
   the same canonical IR, and printed to the same text.
 - **A lone UTF-16 surrogate.** A Rust string cannot hold one, so where the TypeScript's
   message quotes half of a surrogate pair (an unexpected character outside the Basic

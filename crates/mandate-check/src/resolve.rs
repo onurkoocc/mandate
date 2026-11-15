@@ -10,6 +10,16 @@
 //! identifier passed as an argument to such a call (`tier: standard`,
 //! `methods: [GET, POST]`) is read as a symbol rather than a variable.
 //!
+//! In a program of 0.6 (Rust only) a module that is not the standard
+//! library's is named through the list of a `use` alone: the last segment
+//! of such a module is no name, and neither is a name written with its path
+//! (`types.Order`, `acme.types.Order`), which is reported as the unknown
+//! name of its place (`Resolver::names_listed_only`). And a name such a list
+//! brings is the definition it names (`Resolver::listed`), held to its kind
+//! in every place as a definition of the program's own is, and never a
+//! module path; before 0.6 an imported name is anything a place asks for.
+//! A program of 0.1 to 0.5 resolves as the TypeScript does.
+//!
 //! The TypeScript walks the IR with a class; here a `Resolver` does, one
 //! method for each of its methods. Scopes are a chain (`{ names, parent }`),
 //! shared with `Rc` where the TypeScript shares the object. The candidate
@@ -32,6 +42,7 @@ use mandate_ir::{
     TypeExpr, TypeForm, Value, Variant, Verifier, VerifierForm, nearest_span, ptr, ptr_token,
 };
 
+use crate::imports::KnownModules;
 use crate::stdlib::{STD_EFFECTS, std_effect};
 
 /// The built-in types, in order: `BUILTIN_TYPES`.
@@ -118,6 +129,7 @@ pub fn resolve_names(
         all: linked.unwrap_or(defs),
         imported: Vec::new(),
         imported_modules: Vec::new(),
+        listed: Vec::new(),
         builtin_types: BUILTIN_TYPES.to_vec(),
         out: Vec::new(),
     };
@@ -129,7 +141,16 @@ pub fn resolve_names(
     }
     for u in program.use_values().iter().filter_map(Import::of) {
         if let Some(names) = u.names_given() {
+            let as_definitions = u.module().is_some_and(|m| r.names_listed_only(m));
             for n in names.iter().filter_map(Value::as_str) {
+                // 0.6: a name listed from a module that is not the standard
+                // library's is the definition it names, which `link` linked
+                // (a module that is not given is E1604, a name it does not
+                // define E0120, and their names stay as before).
+                if as_definitions && r.all.contains_key(n) {
+                    insert(&mut r.listed, n);
+                    continue;
+                }
                 insert(&mut r.imported, n);
                 // `use std.{fs, net}` imports modules; their members are
                 // called as fs.read(…). `/^[a-z]/.test(n)`.
@@ -137,7 +158,9 @@ pub fn resolve_names(
                     insert(&mut r.imported_modules, n);
                 }
             }
-        } else if let Some(module) = u.module() {
+        } else if let Some(module) = u.module()
+            && !r.names_listed_only(module)
+        {
             // `u.module.split(".").pop()!`.
             let last = module.rsplit('.').next().unwrap_or(module);
             insert(&mut r.imported, last);
@@ -242,6 +265,10 @@ struct Resolver<'a> {
     all: &'a Map,
     /// Names brought in by `use`: module aliases and imported members.
     imported: Vec<&'a str>,
+    /// 0.6: the names a `use` lists from a module that is not the standard
+    /// library's, each the linked definition it names, read as a definition
+    /// of the program's own is, by its kind; never a module path.
+    listed: Vec<&'a str>,
     imported_modules: Vec<&'a str>,
     /// The built-in type names of the program's language version.
     builtin_types: Vec<&'static str>,
@@ -315,7 +342,7 @@ impl<'a> Resolver<'a> {
         if let Some(d) = self.defs.get(name) {
             return Some(d);
         }
-        if self.imported.contains(&name) {
+        if self.imported.contains(&name) || self.listed.contains(&name) {
             self.all.get(name)
         } else {
             None
@@ -330,7 +357,7 @@ impl<'a> Resolver<'a> {
     /// `defsOfKind(kind)`.
     fn defs_of_kind(&self, kind: DefKind) -> Vec<&'a str> {
         let mut names: Vec<&'a str> = self.defs.keys().collect();
-        for n in &self.imported {
+        for n in self.imported.iter().chain(&self.listed) {
             if self.all.contains_key(n) {
                 insert(&mut names, n);
             }
@@ -732,7 +759,22 @@ impl<'a> Resolver<'a> {
                 .use_values()
                 .iter()
                 .filter_map(Import::of)
-                .any(|u| u.module() == Some(qname))
+                .any(|u| u.module() == Some(qname) && !self.names_listed_only(qname))
+    }
+
+    /// 0.6: whether a program names what `module` defines only through the
+    /// list of a `use` (spec/library.md "Closed imports", as the Rust
+    /// compiler reads it): `module` is not the standard library's, and the
+    /// program is of 0.6. Its last segment (`types` of `acme.types`) is then
+    /// no name, and a name written with its path (`types.Order`,
+    /// `acme.types.Order`) is none either: each is reported as the unknown
+    /// name of its place. Before 0.6 a module path is a name, and what it
+    /// names is taken on trust.
+    fn names_listed_only(&self, module: &str) -> bool {
+        self.program
+            .language()
+            .is_some_and(|l| l.at_least(Language::V0_6))
+            && !KnownModules::is_builtin(module)
     }
 
     // ── statements and expressions ─────────────────────────────────────────
@@ -844,6 +886,7 @@ impl<'a> Resolver<'a> {
             s = at.parent.as_ref();
         }
         self.defs.contains_key(name)
+            || self.listed.contains(&name)
             || self.imported.contains(&name)
             || BUILTIN_FUNCTIONS.contains(&name)
     }
@@ -860,6 +903,7 @@ impl<'a> Resolver<'a> {
             s = at.parent.as_ref();
         }
         out.extend(self.defs.keys());
+        out.extend(self.listed.iter().copied());
         out.extend(self.imported.iter().copied());
         out.extend(BUILTIN_FUNCTIONS);
         out

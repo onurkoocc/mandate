@@ -573,6 +573,24 @@ pub const CODES: &[CodeRow] = &[
         explain: "An agent bound to Claude Managed Agents may send its model data above `internal`. The service keeps session history and is not zero-retention, so such an agent runs on the local runtime instead (K46).",
         reference: Reference::TypeScript,
     },
+    CodeRow {
+        code: "MDT-E1602",
+        title: "Definition not public",
+        explain: "A module of language 0.6 lets other modules name only its `pub` definitions. This name, in a `use` list (the one place a program of 0.6 names a definition of another module), is a definition of a 0.6 module that is not `pub`. Mark it `pub` in its module, or do not name it. A module names its own definitions freely, and every definition of a module of 0.1 to 0.5 may still be named, from any program (spec/library.md).",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1603",
+        title: "0.6 module imported by an earlier program",
+        explain: "A program or module of language 0.1 to 0.5 imports a module written in 0.6. It would read the 0.6 definitions by its own rules, which do not know what 0.6 adds. Write the importing program in mandate/0.6. Reported at the `use`; the runtime refuses such a package at load too (load_verification_failed) (spec/library.md).",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1604",
+        title: "Import not closed",
+        explain: "Every `use` of a program or module of language 0.6 names `std` itself, `std.decision`, the built-in `std.patterns`, a module the check was given (`--module`, the modules of a call or of a package) or a module of a library the lock pins. A `use` of any module but the standard library's also lists the names it brings (`use acme.types.{Order}`): a program of 0.6 names a definition of another module through that list alone, never by its module's path. Before 0.6 an import of a module that is not loaded, and a name written with its module's path, are taken on trust, their types unknown; 0.6 refuses both. Give the module and list the names, or remove the `use`. Reported at the `use` (spec/library.md).",
+        reference: Reference::Rust,
+    },
 ];
 
 /// The row of `code` (`MDT-E0103`), when the table has one.
@@ -624,5 +642,27 @@ mod tests {
         );
         assert!(lookup("MDT-E9999").is_none());
         assert!(lookup("E0101").is_none());
+    }
+
+    /// The rows of the Rust compiler come after every row of the TypeScript
+    /// table, so that the TypeScript's rows are a prefix of the table, in
+    /// its order, whatever 0.6 adds.
+    #[test]
+    fn the_rows_of_the_rust_come_after_the_typescripts() {
+        let first_rust = CODES
+            .iter()
+            .position(|r| r.reference == Reference::Rust)
+            .unwrap_or(CODES.len());
+        let (typescript, rust) = CODES.split_at(first_rust);
+        assert!(
+            typescript
+                .iter()
+                .all(|r| r.reference == Reference::TypeScript)
+        );
+        assert!(rust.iter().all(|r| r.reference == Reference::Rust));
+        assert!(
+            lookup("MDT-E1602").is_some_and(|r| r.reference == Reference::Rust),
+            "the first codes of 0.6"
+        );
     }
 }

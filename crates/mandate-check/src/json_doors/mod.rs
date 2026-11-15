@@ -441,7 +441,7 @@ pub static DOORS: &[Door] = &[
     Door::own(
         "codes",
         tables::CODES,
-        "The whole table of diagnostic codes, { \"MDT-E0101\": { title, explain }, ... } in the table's order, as CODES is written: every row of the Rust table, those added from language 0.6 on included (today it has none, and equals CODES).",
+        "The whole table of diagnostic codes, { \"MDT-E0101\": { title, explain }, ... } in the table's order, as CODES is written: every row of the Rust table, those added from language 0.6 on included: the rows of CODES, then the codes of 0.6, which CODES does not have.",
         tables::codes,
     ),
     Door::own(

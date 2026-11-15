@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1604c",
+  "kind": "compile",
+  "title": "A 0.6 program that imports a module it is given without a list of names is refused at the use: an import that lists no names brings none.",
+  "spec": [
+    "spec/library.md#closed-imports"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1602a/program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../E1602/types.mdt"
+  ],
+  "patch": [
+    {
+      "op": "add",
+      "path": "/uses/-",
+      "value": {
+        "module": "example.library.types"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1604",
+        "path": "/uses/2",
+        "facts": {
+          "module": "example.library.types"
+        }
+      }
+    ]
+  }
+}

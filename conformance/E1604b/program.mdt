@@ -1,0 +1,28 @@
+// A program of language 0.6 whose every import is closed: std itself,
+// std.decision, and a module the check is given.
+
+mandate @ 0.6
+
+module example.library.closed @ 0.1
+
+use std.{model}
+use std.decision.{Choice}
+use example.library.types.{Invoice, LIMIT}
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+let MOST: Int = LIMIT
+
+agent Reader {
+  role   "Reads one invoice."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill read(i: Invoice) -> Inferred<Text> ! {Model}
+}
+
+workflow Read(i: Invoice) -> Inferred<Text>
+  caps   ModelStd
+  budget { time: 5m, steps: 4 }
+{
+  delegate Reader.read(i)
+}

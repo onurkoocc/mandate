@@ -25,5 +25,30 @@
     "view --format html": "sha256:94ffeb553474cf188c46505913ca36f230ff67b6c7b8d22ad2f3ced0a4acdad8",
     "view --against itself": "sha256:8f62105d74178033594f03c0e5e6c03fd7cfdfd13b6c10248f9dde279822f0eb",
     "sandbox": "sha256:c8a2943b96fb4e1dcdbb42c2cc2d8bc7ead2675dd163089373f2f2e43940645e"
+  },
+  "fixtures/library/shared.mdt": {
+    "check": "sha256:2eda72389f6229bf1bc847f45b8c71ab873d9c59e67b3ccb84a1eba527f53737",
+    "check --module": "sha256:2eda72389f6229bf1bc847f45b8c71ab873d9c59e67b3ccb84a1eba527f53737",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:bf66c49e927193f371c3d631b6c76775824c024d1064d440f62daf65bf2fe893",
+    "fmt": "sha256:e139d95a822c3eac2f9b73206932f2a900871fcaab361e823355b4f274f31eb0",
+    "hash": "sha256:59109c15ca222e3209f52a01365114531f2e1fd49b306e0798823e0d5c43ce7a",
+    "view --format json": "sha256:7f8f84c51fc0706400524abc132d101d32ee1556aaf95e6d86a87fb5c9f80fc7",
+    "view --format md": "sha256:1e63895dc022b6bed5a91da71065f319e30a12d9fad45e819782bf6fa1063f66",
+    "view --format html": "sha256:6291994c396bea787f6e2515bf88195c6f22bd080ba7a3eb60d0d589a92f67b1",
+    "view --against itself": "sha256:1b8329f44240f66f3d61f9f3ad7d14f4b0f4ae4d8e5af752ce2414782bf9e276",
+    "sandbox": "sha256:aefedec2ac26cb67fb5632266dfd2c4d4126b864b85ee380e55f1a62ecd50feb"
+  },
+  "fixtures/library/summarize.mdt": {
+    "check": "sha256:8f644cf654265dad4a4cb018e4ed0f1cd064697067715d480e1fd1f86705c391",
+    "check --module": "sha256:ceef1664b48811f16da9b68540e24914edae97d9b268e4cb23cd81f8780014f8",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:eac8f836616309f1b1704d5f90ceb634ce211e2981254f819ee2e373cc02788a",
+    "fmt": "sha256:f393bb85964203b0af8601768c6cd8ce0be1bffa5fb91461c60e784ac72c959e",
+    "view --format json": "sha256:32e21778a50ba6366128945ad0ce3df5d390cd5c235c5240895a1c9f15e5a7ef",
+    "view --format md": "sha256:7783016e89a34f06aabe234cba82889de33ab3ffe662783a86dd2dc9be847f1c",
+    "view --format html": "sha256:27e9abb449da7560707293bfcd14bdfb082e3a8bc2a1ac2c9b637760b988ab6b",
+    "view --against itself": "sha256:3882f91017a298d09c43127cd5ad38c793f7d60749a4eaaf78cf62902c679df0",
+    "sandbox": "sha256:6bfcdd65aabd38f75ecba94a73b11c947746cace7f862d60658719d13d1e299b"
   }
 }
