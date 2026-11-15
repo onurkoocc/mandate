@@ -340,7 +340,8 @@ nobody gave (E1604), do not load.
 spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
 (human steps), L (libraries) and N11 (shapes), and the code numbers of its
 families; the cases above use P01 (which spec/library.md names), the S02 claim,
-E0101, E0104, E0120, E0140, E0301 and E0320, which 0.6 extends, T01, T02 and T06
+E0101, E0104, E0120, E0121, E0140, E0210, E0220, E0301, E0320, E0403, E0408 and
+E1708, which 0.6 extends, T01, T02 and T06
 (which spec/library.md names), and the code numbers of E14xx and E16xx.
 
 ## What the Rust crates run
