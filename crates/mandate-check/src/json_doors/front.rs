@@ -115,7 +115,7 @@ pub(super) fn check(input: &Value) -> Result<JsValue, DoorError> {
         .with("diagnostics", diagnostics_js(&r.diagnostics))
         .with("ok", r.ok)
         .with_some("hashes", r.hashes.as_ref().map(ProgramHashes::to_js))
-        // 0.6: only for a program that applies a pattern.
+        // 0.6: only for a program that applies a pattern and checks.
         .with_some("expanded", r.expanded.as_ref().map(ir))
         .into())
 }

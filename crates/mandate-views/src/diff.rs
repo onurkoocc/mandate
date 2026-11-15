@@ -2,7 +2,7 @@
 //! `compiler/src/views/views.ts` (lines 1549-1561 and 1585-1596). The
 //! analysis is [`mandate_check::semantic_diff`]; this is how it is shown.
 
-use mandate_check::{Change, DiffView, Locks, VIEW_FORMAT, semantic_diff};
+use mandate_check::{Change, DiffView, Locks, Modules, VIEW_FORMAT, semantic_diff_with};
 use mandate_ir::Value;
 
 use crate::doc::{Block, Cell, Doc};
@@ -43,7 +43,20 @@ pub fn diff_blocks(v: &DiffView) -> Vec<Block> {
 /// two program hashes.
 #[must_use]
 pub fn diff_doc(before: &Value, after: &Value, locks: Option<Locks<'_>>) -> Doc {
-    let v = semantic_diff(before, after, locks);
+    diff_doc_with(before, after, locks, None)
+}
+
+/// [`diff_doc`] with the modules the programs import (0.6, which only the
+/// Rust reads): what a workflow that applies a pattern of one of them commits
+/// is what its expansion commits ([`mandate_check::semantic_diff_with`]).
+#[must_use]
+pub fn diff_doc_with(
+    before: &Value,
+    after: &Value,
+    locks: Option<Locks<'_>>,
+    modules: Option<&Modules>,
+) -> Doc {
+    let v = semantic_diff_with(before, after, locks, modules);
     Doc {
         title: format!("{}: {} → {}", v.to.module, v.from.version, v.to.version),
         meta: vec![

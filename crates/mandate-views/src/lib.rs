@@ -40,6 +40,13 @@
 //! start as the checker does, with `mandate_check::static_cost`
 //! (`check/cost.ts`).
 //!
+//! 0.6, which only the Rust reads: a workflow that applies a pattern is shown
+//! as its expansion. The views that the TypeScript gives the program alone
+//! have a form that takes the modules too ([`architecture_with`],
+//! [`authority_with`], [`cost_with`], [`diff_doc_with`]), since the pattern is
+//! most often in one of them; without it, a stand-in shows what the
+//! application's arguments name and says that the cost is unknown.
+//!
 //! Programs are the IR as [`mandate_ir::Value`], as in `mandate-check`; the
 //! views walk them in the order of their members, as JavaScript does.
 //!
@@ -66,19 +73,22 @@ pub use acs::{
     AcsTarget, acs_target,
 };
 pub use architecture::{
-    ArchitectureView, WorkflowArchitecture, architecture, architecture_blocks, mermaid,
+    ArchitectureView, WorkflowArchitecture, architecture, architecture_blocks, architecture_with,
+    mermaid,
 };
-pub use authority::{AuthorityRow, AuthorityView, authority, authority_blocks, late_kinds};
+pub use authority::{
+    AuthorityRow, AuthorityView, authority, authority_blocks, authority_with, late_kinds,
+};
 pub use card::{
     CardApproval, CardApproves, CardBudgetRow, CardBudgetText, CardHanded, CardMap, CardMember,
     CardPlan, CardPlanNumbers, CardTouches, CardView, CardWait, card, card_blocks, card_doc,
     envelope_workflows,
 };
 pub use cost::{
-    BudgetFrom, CostRow, CostView, DelegateBudget, Sum, WorkflowCost, cost, cost_blocks,
+    BudgetFrom, CostRow, CostView, DelegateBudget, Sum, WorkflowCost, cost, cost_blocks, cost_with,
     delegate_budget,
 };
-pub use diff::{diff_blocks, diff_doc};
+pub use diff::{diff_blocks, diff_doc, diff_doc_with};
 pub use doc::{Block, Cell, Doc, cell_text, html_escape, md_escape, to_html, to_markdown};
 pub use program_doc::program_doc;
 pub use shown::{list, mermaid_text, show, show_command, type_text};

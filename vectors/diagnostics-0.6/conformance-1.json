@@ -269,6 +269,72 @@
       }
     },
     {
+      "name": "E0104e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Value matches more than one form the IR schema allows here (#/oneOf/18/oneOf); it must be exactly one of them.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/1/value/body/0/value",
+              "span": [1, 6311, 1, 6420]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "oneOf",
+              "schema_path": "#/oneOf/18/oneOf"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0104f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Value matches more than one form the IR schema allows here (#/oneOf); it must be exactly one of them.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/9",
+              "span": [1, 8425, 1, 8510]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "oneOf",
+              "schema_path": "#/oneOf"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0120",
       "kind": "compile",
       "door": "check_patched",
@@ -1048,6 +1114,42 @@
       }
     },
     {
+      "name": "E1301g",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1301",
+            "severity": "error",
+            "message": "Slot source of pattern BatchWithExceptions is a tool slot, which the body cannot use as a value.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/0/value",
+              "span": [1, 6111, 1, 6139]
+            },
+            "docs": "mandate explain MDT-E1301",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "problem": "slot_use",
+              "slot": "source",
+              "kind": "tool",
+              "use": "as a value"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1302",
       "kind": "compile",
       "door": "check_patched",
@@ -1282,6 +1384,144 @@
               "names": "agent",
               "name": "Matcher",
               "via": "ask"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1302g",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the role written as text other than through a slot: a pattern brings no authority; give it a slot, and the applying program names the role (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/2/value/args/1/value",
+              "span": [1, 6798, 1, 6832]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "names": "role",
+              "name": "written as text"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1302h",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the agent Matcher (through pick) other than through a slot: a pattern brings no authority; give it a slot, and the applying program names the agent (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/callee",
+              "span": [1, 6321, 1, 6347]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "names": "agent",
+              "name": "Matcher",
+              "via": "pick"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1302i",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the capability constructor exec other than through a slot: a pattern brings no authority; give it a slot, and the applying program names the capability constructor (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/caps/0/callee",
+              "span": [1, 6416, 1, 6442]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "names": "capability constructor",
+              "name": "exec"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1302j",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the role accountant (through Matched) other than through a slot: a pattern brings no authority; give it a slot, and the applying program names the role (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/1/value/body/1/value/contract",
+              "span": [1, 6469, 1, 6478]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "names": "role",
+              "name": "accountant",
+              "via": "Matched"
             }
           }
         ]
@@ -1828,6 +2068,41 @@
               "slot": "read",
               "kind": "capability",
               "pattern": "One"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304m",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot source of BatchWithExceptions is a tool slot, which takes a read-only tool c.t; erp.post_draft writes, and a tool that writes is given to an effect slot.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/0/value",
+              "span": [1, 7826, 1, 7891]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "kind",
+              "slot": "source",
+              "kind": "tool",
+              "pattern": "BatchWithExceptions"
             }
           }
         ]
@@ -3148,6 +3423,46 @@
               "connector": "example.erp.erp",
               "tool": "delete_draft",
               "problem": "no_tool"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1501a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1501",
+            "severity": "error",
+            "message": "human.approve names the role 'WHO', but 'WHO' is a const, not a role. Define it: role WHO \"\u2026\" (spec/envelope.md).",
+            "at": {
+              "path": "/defs/MatchAll/apply",
+              "span": [1, 7905, 1, 8693]
+            },
+            "docs": "mandate explain MDT-E1501",
+            "facts": {
+              "role": "WHO",
+              "where": "human.approve",
+              "roles": [
+                "accountant",
+                "finance_lead"
+              ],
+              "pattern": "BatchWithExceptions",
+              "pattern_path": "/defs/BatchWithExceptions/body/0/value/args/1/value",
+              "expanded_path": "/defs/MatchAll/body/0/value/args/1/value"
             }
           }
         ]

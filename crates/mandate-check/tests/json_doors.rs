@@ -74,6 +74,8 @@ const RULES: Rules<'static> = Rules {
         ("apply_patch", "modules"),
         ("check_patch", "modules"),
         ("semantic_diff", "locks"),
+        // The Rust's alone (0.6): the modules an applied pattern comes from.
+        ("semantic_diff", "modules"),
         ("governance_changes", "modules"),
         ("envelope_changes", "modules"),
     ],

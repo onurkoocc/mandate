@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104f",
+  "kind": "compile",
+  "title": "A slot argument that is both a value and a type matches two forms of the IR of 0.6, and is refused when it is read (a mutation: the deadline given a type too).",
+  "spec": [
+    "spec/library.md#application",
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/MatchAll/apply/args/9/type",
+      "value": {
+        "ref": "Duration"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/MatchAll/apply/args/9",
+        "facts": {
+          "keyword": "oneOf"
+        }
+      }
+    ]
+  }
+}

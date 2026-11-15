@@ -1,0 +1,43 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1304m",
+  "kind": "compile",
+  "title": "A write tool given to a tool slot, which only a read-only tool fills (a mutation: source: erp.post_draft).",
+  "spec": [
+    "spec/library.md#application",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/apply/args/0/value",
+      "value": {
+        "op": "field",
+        "of": {
+          "op": "var",
+          "name": "erp"
+        },
+        "name": "post_draft"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1304",
+        "path": "/defs/MatchAll/apply/args/0/value",
+        "facts": {
+          "problem": "kind",
+          "slot": "source"
+        }
+      }
+    ]
+  }
+}

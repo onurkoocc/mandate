@@ -372,10 +372,11 @@ on `fixtures/library/batch.mdt` and its modules) and those of a sub-program
 | `P06` | A sub-program that applies its parent's pattern, admitted | — |
 | `P06a` | The same with a width above the envelope's `max_concurrent`, at the argument | E1703 |
 | `P06b` | A sub-program that applies a pattern with a run parameter: its workflow takes one | E1705 |
-| `E1301` to `E1301f` | A slot of no kind, two slots of one name, a type parameter twice, a signature its kind does not take, no body, a tool slot delegated to, a map counted by a role slot | E1301 |
-| `E1302` to `E1302f` | An effect run with `effect`, an agent, a connector's tool, a capability constructor in `with caps`, a role, a contract a person approves through a type, an agent through a function: each other than through a slot | E1302 |
+| `E0104e`, `E0104f` | A delegation with its slot and an `Agent.skill` too; a slot argument with a value and a type: each two forms of the IR of 0.6, refused when it is read | E0104 |
+| `E1301` to `E1301g` | A slot of no kind, two slots of one name, a type parameter twice, a signature its kind does not take, no body, a tool slot delegated to, a map counted by a role slot, a tool slot read as a value | E1301 |
+| `E1302` to `E1302j` | An effect run with `effect`, an agent, a connector's tool, a capability constructor in `with caps`, a role, a contract a person approves through a type, an agent through a function, a role written as text, an agent through a function that calls another, a constructor called by its own name in `with caps`, a contract verified against whose criterion a person may waive: each other than through a slot | E1302 |
 | `E1303`, `E1303a` | An agent applied; a name nothing defines | E1303 |
-| `E1304` to `E1304l` | A slot without an argument, an argument for no slot, another number of type arguments, an argument twice, and each kind given another's: tool, skill, contract, role, effect, field, const, type, capability | E1304 |
+| `E1304` to `E1304m` | A slot without an argument, an argument for no slot, another number of type arguments, an argument twice, and each kind given another's: tool, skill, contract, role, effect, field, const, type, capability, and a write tool given to a tool slot | E1304 |
 | `E1305` to `E1305h` | An effect's parameter, a skill's result, a contract's parameters, a constant's type, a count of zero, a field the type has not, a `read_only` skill of an agent that writes, a tool's parameters, an expression that is no constant | E1305 |
 | `E1306` to `E1306e` | A run parameter like a slot, a type parameter like a definition, a body binding a slot's name, an argument the body captures, a name the expansion adds that the program defines, a run parameter like a binding of the body | E1306 |
 | `E1307` to `E1307e` | An application with an envelope, in a pattern's body, in a workflow's body, as a slot's argument, as a capability, with a body | E1307 |
@@ -383,6 +384,7 @@ on `fixtures/library/batch.mdt` and its modules) and those of a sub-program
 | `E1708m`, `E1708n` | A person in a map of the expansion; a commit map of the expansion run side by side | E1708 |
 | `E1505h` | An irreversible effect given to the commit slot | E1708, E1505, E0405 |
 | `E1506i` | A review in the expansion of a list that is no verifying map's | E1506 |
+| `E1501a` | A person asked by a role that is a constant of the program, in the expansion | E1501 |
 | `E0301c` | The commit's capability taken from the applying workflow | E0301 |
 | `E0220c` | The model's class below the connector's | E0220 |
 | `E0210` | Model output posted by the commit map | E0210 |
@@ -401,10 +403,13 @@ say (the types a review's lists have, a change set's irreversible member, the
 semantic diff's waivers, a program of 0.5 as before) is in
 `crates/mandate-check/tests/review_0_6.rs`. What the cases of patterns cannot
 say (the expanded program itself and its hash, an imported pattern checked
-again from a module that was never checked, a module's import named by its
-pattern, the limits of an expansion, the semantic diff of an application, a
-program of 0.5 as before) is in `crates/mandate-check/tests/patterns_0_6.rs`,
-and their views in `crates/mandate-views/tests/patterns_0_6.rs`.
+again from a module that was never checked, which may carry a slot beside an
+agent or name what its module does not know, a module's import named by its
+pattern, the limits of an expansion and when it stops, the semantic diff of
+an application and of the pattern it means, a program of 0.5 as before) is in
+`crates/mandate-check/tests/patterns_0_6.rs`, and their views in
+`crates/mandate-views/tests/patterns_0_6.rs`: a case's modules must load, and
+such a module does not.
 
 spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
 (human steps), L (libraries) and N11 (shapes), and the code numbers of its
@@ -451,13 +456,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 295, passed 295, pending 0
+conformance cases: ran 304, passed 304, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 170 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 179 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(311 cases: 295 `compile`, 170 of them of language 0.6, and 16 `journal`; no case
+(320 cases: 304 `compile`, 179 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

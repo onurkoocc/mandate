@@ -10,8 +10,8 @@
 //! typed view that would read them in another order.
 
 use mandate_check::{
-    Authority, CapVal, ProgramRef, VIEW_FORMAT, authority_of, caps_in, chosen_at_run_time, defs_of,
-    grant_of, handed_by, is_kind, program_ref, widest, workflow_effects,
+    Authority, CapVal, Modules, ProgramRef, VIEW_FORMAT, authority_of, caps_in, chosen_at_run_time,
+    defs_of, grant_of, handed_by, is_kind, program_ref, widest, workflow_effects,
 };
 use mandate_ir::{Definition, Expr, ExprOp, JsObject, JsValue, Program, Value, workflow_bounds};
 
@@ -205,9 +205,20 @@ fn js_name(e: Expr<'_>, key: &str) -> String {
 /// program has no rows.
 #[must_use]
 pub fn authority(program: &Value) -> AuthorityView {
+    authority_with(program, None)
+}
+
+/// [`authority`] with the modules the program imports (0.6, which only the
+/// Rust reads): a workflow that applies a pattern of one of them is shown as
+/// its expansion, and one whose pattern is in a module that is not given as
+/// the stand-in of [`mandate_check::expand::for_views`], which shows no less
+/// than the expansion may do. A program that applies no pattern is shown as
+/// [`authority`] shows it.
+#[must_use]
+pub fn authority_with(program: &Value, modules: Option<&Modules>) -> AuthorityView {
     let mut rows: Vec<AuthorityRow> = Vec::new();
     // 0.6: a workflow that applies a pattern is shown as its expansion.
-    let expanded = mandate_check::expand::for_views(program, None);
+    let expanded = mandate_check::expand::for_views(program, modules);
     if let Some(p) = Program::of(expanded.as_ref().unwrap_or(program)) {
         let defs = sorted_defs(p);
         for (name, d) in &defs {

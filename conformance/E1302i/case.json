@@ -1,0 +1,63 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1302i",
+  "kind": "compile",
+  "title": "A pattern that writes a capability constructor of the standard library, called by its own name, in a delegation's with caps brings authority (a mutation: with caps [exec(commands: [\"sh\"])], exec imported from std).",
+  "spec": [
+    "spec/library.md#what-a-pattern-may-not-do",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/uses/0/names/3",
+      "value": "exec"
+    },
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/caps",
+      "value": [
+        {
+          "op": "call",
+          "callee": {
+            "op": "var",
+            "name": "exec"
+          },
+          "args": [
+            {
+              "name": "commands",
+              "value": {
+                "op": "list",
+                "items": [
+                  {
+                    "op": "text",
+                    "value": "sh"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1302",
+        "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/caps/0/callee",
+        "facts": {
+          "names": "capability constructor",
+          "name": "exec"
+        }
+      }
+    ]
+  }
+}

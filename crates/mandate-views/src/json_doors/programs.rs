@@ -32,45 +32,54 @@ impl<'a> CardOpts<'a> {
 }
 
 /// The parameters of [`architecture`].
-pub(super) const ARCHITECTURE: &[&str] = &["program"];
+pub(super) const ARCHITECTURE: &[&str] = &["program", "modules"];
 
 /// `architecture(program)`, `compiler/src/views/views.ts`: each workflow as a
 /// graph of its steps.
 ///
-/// Input: `{ program }`.
+/// Input: `{ program, modules?: { <name>: program } }`. `modules` is the
+/// Rust's alone (0.6): the modules a workflow's pattern comes from, so that
+/// it is shown as its expansion (`crate::architecture_with`); the TypeScript
+/// takes the program alone, and a program that applies no pattern is shown
+/// the same with or without them.
 /// Output: `ArchitectureView`, `{ format, kind: "architecture", program,
 /// workflows: [{ workflow, budget, nodes, edges, mermaid }] }`.
 pub(super) fn architecture(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, ARCHITECTURE)?;
-    Ok(crate::architecture(a.program("program")?).to_js())
+    let modules = a.opt_modules("modules")?;
+    Ok(crate::architecture_with(a.program("program")?, modules).to_js())
 }
 
 /// The parameters of [`authority`].
-pub(super) const AUTHORITY: &[&str] = &["program"];
+pub(super) const AUTHORITY: &[&str] = &["program", "modules"];
 
 /// `authority(program)`, `compiler/src/views/views.ts`: what each agent,
 /// workflow and delegation may touch.
 ///
-/// Input: `{ program }`.
+/// Input: `{ program, modules?: { <name>: program } }`, `modules` as
+/// [`architecture`] takes it (`crate::authority_with`).
 /// Output: `AuthorityView`, `{ format, kind: "authority", program, rows:
 /// [{ who, kind, effects, read, write, network, model, exec, repos, money,
 /// unbounded }] }`.
 pub(super) fn authority(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, AUTHORITY)?;
-    Ok(crate::authority(a.program("program")?).to_js())
+    let modules = a.opt_modules("modules")?;
+    Ok(crate::authority_with(a.program("program")?, modules).to_js())
 }
 
 /// The parameters of [`cost`].
-pub(super) const COST: &[&str] = &["program", "lock"];
+pub(super) const COST: &[&str] = &["program", "lock", "modules"];
 
 /// `cost(program, lock)`, `compiler/src/views/views.ts`: the static upper
 /// bound of what each workflow hands out.
 ///
-/// Input: `{ program, lock?: the lock as read }`.
+/// Input: `{ program, lock?: the lock as read, modules?: { <name>: program }
+/// }`, `modules` as [`architecture`] takes it (`crate::cost_with`).
 /// Output: `CostView`, `{ format, kind: "cost", program, workflows }`.
 pub(super) fn cost(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, COST)?;
-    Ok(crate::cost(a.program("program")?, a.opt_lock("lock")).to_js())
+    let modules = a.opt_modules("modules")?;
+    Ok(crate::cost_with(a.program("program")?, a.opt_lock("lock"), modules).to_js())
 }
 
 /// The parameters of [`program_doc`].
@@ -90,13 +99,14 @@ pub(super) fn program_doc(input: &Value) -> Result<JsValue, DoorError> {
 }
 
 /// The parameters of [`diff_doc`].
-pub(super) const DIFF_DOC: &[&str] = &["before", "after", "locks"];
+pub(super) const DIFF_DOC: &[&str] = &["before", "after", "locks", "modules"];
 
 /// `diffDoc(before, after, locks)`, `compiler/src/views/views.ts`: the
 /// semantic diff of two programs as a document.
 ///
-/// Input: `{ before: program, after: program, locks?: { before?, after? } }`,
-/// each lock as read.
+/// Input: `{ before: program, after: program, locks?: { before?, after? },
+/// modules?: { <name>: program } }`, each lock as read; `modules` as
+/// [`architecture`] takes it (`crate::diff_doc_with`).
 /// Output: `Doc`.
 pub(super) fn diff_doc(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, DIFF_DOC)?;
@@ -106,7 +116,8 @@ pub(super) fn diff_doc(input: &Value) -> Result<JsValue, DoorError> {
         before: l.opt_value("before"),
         after: l.opt_value("after"),
     });
-    Ok(doc_js(&crate::diff_doc(before, after, locks)))
+    let modules = a.opt_modules("modules")?;
+    Ok(doc_js(&crate::diff_doc_with(before, after, locks, modules)))
 }
 
 /// The parameters of [`envelope_workflows`].

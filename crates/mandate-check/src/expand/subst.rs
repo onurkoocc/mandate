@@ -88,11 +88,47 @@ pub(crate) struct Subst<'a> {
     /// paths in the applying program.
     pub(crate) problems: Vec<Problem>,
     /// The bytes of canonical text copied from arguments so far.
-    copied: usize,
+    pub(crate) copied: usize,
+    /// The canonical length and the depth of what each slot's use copies,
+    /// by slot, and of each type argument, by type parameter: each measured
+    /// once, when the expansion starts, never at a use.
+    measures: Vec<(String, Measure)>,
+    /// The copies have passed the size limit: nothing more is written.
+    stopped: bool,
     /// One capture reported per slot and name.
     captured: Vec<(String, String)>,
     /// The depth limit was reported.
     too_deep: bool,
+}
+
+/// What one copy of an argument adds: its canonical length in bytes and
+/// its depth.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Measure {
+    bytes: usize,
+    depth: usize,
+}
+
+impl Measure {
+    fn of(v: &Value) -> Measure {
+        Measure {
+            bytes: canonicalize(v).len(),
+            depth: depth_of(v),
+        }
+    }
+}
+
+/// The measure of what a use of a slot bound to `b` copies into the
+/// expansion, when it copies anything: a constant's value, a type, a tool's
+/// callee, a role's or a capability's name.
+fn measure_of(b: &Bound) -> Option<Measure> {
+    match b {
+        Bound::Const { value, .. } | Bound::Type(value) | Bound::Tool(value) => {
+            Some(Measure::of(value))
+        }
+        Bound::Role(r) | Bound::Capability(r) => Some(Measure::of(&var(r))),
+        _ => None,
+    }
 }
 
 /// The depth of a value: 1 for a scalar, one more for each level of
@@ -127,6 +163,15 @@ impl<'a> Subst<'a> {
         types: &'a [(String, Value, String)],
         pattern: &'a str,
     ) -> Subst<'a> {
+        let mut measures: Vec<(String, Measure)> = Vec::new();
+        for b in bindings {
+            if let Some(m) = measure_of(&b.bound) {
+                measures.push((b.slot.clone(), m));
+            }
+        }
+        for (g, arg, _) in types {
+            measures.push((format!("<{g}>"), Measure::of(arg)));
+        }
         Subst {
             bindings,
             types,
@@ -134,9 +179,30 @@ impl<'a> Subst<'a> {
             origins: Vec::new(),
             problems: Vec::new(),
             copied: 0,
+            measures,
+            stopped: false,
             captured: Vec::new(),
             too_deep: false,
         }
+    }
+
+    /// The measure of `key`'s copy (a slot, or `<T>` for a type
+    /// parameter); `v`'s own when it was not measured (it is then small).
+    fn measure(&self, key: &str, v: &Value) -> Measure {
+        self.measures
+            .iter()
+            .find(|(k, _)| k == key)
+            .map_or_else(|| Measure::of(v), |(_, m)| *m)
+    }
+
+    /// Counts the bytes of one copy; `false`, and nothing more is written,
+    /// once they pass the reader's limit.
+    fn count(&mut self, bytes: usize) -> bool {
+        self.copied = self.copied.saturating_add(bytes);
+        if self.copied > limits::SOURCE_BYTES {
+            self.stopped = true;
+        }
+        !self.stopped
     }
 
     fn binding(&self, slot: &str) -> Option<&'a Binding> {
@@ -195,7 +261,8 @@ impl<'a> Subst<'a> {
                 ));
             }
         }
-        let deepest = depth.saturating_add(depth_of(v)).saturating_sub(1);
+        let measure = self.measure(&b.slot, v);
+        let deepest = depth.saturating_add(measure.depth).saturating_sub(1);
         if deepest > limits::JSON_DEPTH && !self.too_deep {
             self.too_deep = true;
             self.problems.push(Problem::new(
@@ -213,13 +280,16 @@ impl<'a> Subst<'a> {
                     .with("slot", b.slot.as_str()),
             ));
         }
-        self.copied = self.copied.saturating_add(canonicalize(v).len());
+        if !self.count(measure.bytes) {
+            return Value::Null;
+        }
         v.clone()
     }
 
-    /// Whether the bytes copied are over the reader's limit.
+    /// Whether the bytes copied passed the reader's limit, which stopped the
+    /// expansion.
     pub(crate) fn over_size(&self) -> bool {
-        self.copied > limits::SOURCE_BYTES
+        self.stopped
     }
 
     /// A list of statements: `let` and `par` bind for what follows.
@@ -234,6 +304,9 @@ impl<'a> Subst<'a> {
         let mut scope = Rc::clone(scope);
         let mut out = Vec::with_capacity(stmts.len());
         for (i, s) in stmts.iter().enumerate() {
+            if self.stopped {
+                break;
+            }
             out.push(self.node(
                 s,
                 &format!("{path}/{i}"),
@@ -277,6 +350,10 @@ impl<'a> Subst<'a> {
         scope: &Rc<Scope>,
         depth: usize,
     ) -> Value {
+        // Past the size limit nothing more is written (E0105 follows).
+        if self.stopped {
+            return Value::Null;
+        }
         match v {
             Value::Array(items) => Value::Array(
                 items
@@ -343,6 +420,9 @@ impl<'a> Subst<'a> {
         let Some(m) = t.as_object() else {
             return t.clone();
         };
+        if self.stopped {
+            return Value::Null;
+        }
         if let Some(r) = t.get("ref").and_then(Value::as_str) {
             if t.get("args").is_none() {
                 if let Some((_, arg, at)) = self.types.iter().find(|(g, _, _)| g == r) {
@@ -354,7 +434,8 @@ impl<'a> Subst<'a> {
                             subtree: true,
                         },
                     );
-                    let deepest = depth.saturating_add(depth_of(arg)).saturating_sub(1);
+                    let measure = self.measure(&format!("<{r}>"), arg);
+                    let deepest = depth.saturating_add(measure.depth).saturating_sub(1);
                     if deepest > limits::JSON_DEPTH && !self.too_deep {
                         self.too_deep = true;
                         self.problems.push(Problem::new(
@@ -370,7 +451,9 @@ impl<'a> Subst<'a> {
                                 .with("limit", limits::JSON_DEPTH),
                         ));
                     }
-                    self.copied = self.copied.saturating_add(canonicalize(arg).len());
+                    if !self.count(measure.bytes) {
+                        return Value::Null;
+                    }
                     return arg.clone();
                 }
                 if let Some(b) = self.binding(r)
@@ -441,6 +524,9 @@ impl<'a> Subst<'a> {
         let Some(m) = v.as_object() else {
             return v.clone();
         };
+        if self.stopped {
+            return Value::Null;
+        }
         let op = v.get("op").and_then(Value::as_str).unwrap_or_default();
         let name = v.get("name").and_then(Value::as_str);
         let d1 = depth.saturating_add(1);
@@ -532,8 +618,11 @@ impl<'a> Subst<'a> {
                     out.insert("op", "delegate");
                     out.insert("agent", agent.as_str());
                     out.insert("skill", skill.as_str());
+                    // The slot's argument is the agent and the skill: an
+                    // `agent` or `skill` of the body's own (E1301) never
+                    // takes their place.
                     for (k, x) in m.iter() {
-                        if matches!(k, "op" | "slot") {
+                        if matches!(k, "op" | "slot" | "agent" | "skill") {
                             continue;
                         }
                         out.insert(k, self.node(x, &sub(path, k), &sub(pp, k), scope, d1));

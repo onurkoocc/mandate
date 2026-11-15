@@ -380,6 +380,82 @@ fn malformed(name: &str, p: PatternDef<'_>, out: &mut Vec<Problem>) {
                 .with("problem", "body"),
         ));
     }
+    if let Some(body) = p.members().get("body") {
+        slot_members(name, body, "/body", out);
+    }
+}
+
+/// E1301 for a slot written beside what it stands for: a delegation that
+/// names both a skill slot and `agent` or `skill` (which the reader of 0.6
+/// refuses, but a module handed to the check as IR was read by no one), and
+/// a `slot` on any statement or expression but a delegation. Only a
+/// delegation names its slot in a member of its own; every other use of a
+/// slot (an effect's name, a tool's callee, a contract, a role, a count) is
+/// the slot's name in the place of what it stands for, so nothing can be
+/// written beside it.
+fn slot_members(name: &str, v: &Value, path: &str, out: &mut Vec<Problem>) {
+    match v {
+        Value::Array(items) => {
+            for (i, x) in items.iter().enumerate() {
+                slot_members(name, x, &format!("{path}/{i}"), out);
+            }
+        }
+        Value::Object(m) => {
+            // A statement or an expression (a record's fields, a type's, are
+            // named by the program and may be called `slot`).
+            let op = m.get("op").and_then(Value::as_str);
+            if let (Some(op), Some(slot)) = (op, m.get("slot")) {
+                let beside: Vec<&str> = ["agent", "skill"]
+                    .into_iter()
+                    .filter(|k| m.get(k).is_some())
+                    .collect();
+                let slot = slot.as_str().unwrap_or_default();
+                if op != "delegate" {
+                    out.push(Problem::new(
+                        "E1301",
+                        format!(
+                            "Pattern {name} names the slot {slot} in '{op}': only a delegation names its slot in a member of its own, 'delegate {slot}(…)'."
+                        ),
+                        &format!("{path}/slot"),
+                        JsObject::new()
+                            .with("pattern", name)
+                            .with("problem", "slot_use")
+                            .with("slot", slot)
+                            .with("use", op),
+                    ));
+                } else if !beside.is_empty() {
+                    out.push(Problem::new(
+                        "E1301",
+                        format!(
+                            "A delegation in pattern {name} names the skill slot {slot} and {} too: it delegates to the slot's argument, or to an Agent.skill written out, never both.",
+                            beside.join(" and ")
+                        ),
+                        path,
+                        JsObject::new()
+                            .with("pattern", name)
+                            .with("problem", "slot_beside")
+                            .with("slot", slot)
+                            .with(
+                                "beside",
+                                beside
+                                    .iter()
+                                    .map(|k| mandate_ir::JsValue::from(*k))
+                                    .collect::<Vec<_>>(),
+                            ),
+                    ));
+                }
+            }
+            for (k, x) in m.iter() {
+                slot_members(
+                    name,
+                    x,
+                    &format!("{path}/{}", mandate_ir::ptr_token(k)),
+                    out,
+                );
+            }
+        }
+        _ => {}
+    }
 }
 
 /// E1306: a slot, type parameter or run parameter named like another of
@@ -674,7 +750,7 @@ fn builtin_ctor(path: &str) -> bool {
 /// What authority a definition of the home named `n` brings, followed
 /// through the functions, constants, types and contracts it names: the kind
 /// named, the name, and the definition it was reached through.
-fn def_authority(
+pub(crate) fn def_authority(
     site: &Site<'_>,
     n: &str,
     m: Meaning<'_>,

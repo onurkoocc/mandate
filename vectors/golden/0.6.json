@@ -5,10 +5,10 @@
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
     "ir --canonical": "sha256:49c485d79e56087581e519702cf5c102b0266875fea2f959f770bcb3026bc7a9",
     "fmt": "sha256:07799eb225b77423c05931e20d249e8d95189eb6a17fb8b400cdd30ae46b53bc",
-    "view --format json": "sha256:c5d0af567ad54a1669eefc7c431b2d71b970970e789ed8e8d427ad640d2aff9a",
-    "view --format md": "sha256:c0b63f6f33d62b776f2b34ccd3b74287c699e9d5e53889de68fa1d5ef3870a61",
-    "view --format html": "sha256:f54f33743bd590045ee4fe031eab9d57ed74d1b69837f2898141f745ce346b54",
-    "view --against itself": "sha256:933dec7a2ea3a6117ea7b7ab8a1f8839c573639cd450a667d636e3ff761a1105",
+    "view --format json": "sha256:fc1f92ab01f354c4772bd8508866b7de8c8e7a14f4e3cccdd7169cc15de7481b",
+    "view --format md": "sha256:8c4b8296e90a54f617a09b466c5d169e30ad9190ba8c66c0838ee1e1224d0eec",
+    "view --format html": "sha256:f9609ca0f4e64318425da9e5a13a9c02b8432f3082d0389f1820e1ddb7b2932d",
+    "view --against itself": "sha256:e8e96606fb8a36e5a2fdbb603293d50b002e5a622881b1b8dcbaf405a7371f26",
     "sandbox": "sha256:37508fb9b2e39606626cde902d9af2959a7cc4df20bf8901963e29dbc70d1fd5"
   },
   "fixtures/library/batch.patterns.mdt": {
@@ -69,9 +69,9 @@
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
     "ir --canonical": "sha256:678c58d40896a205c50d21b39d120c8ff385042470a85097279e4556f8786cc3",
     "fmt": "sha256:feb3300e7da683acdf322776674f127d6fb470242939ca68e2c667169bf52aa5",
-    "view --format json": "sha256:a9e22676f899290468e81b6a996006774992fc76979d4756df148b29f02b16e8",
-    "view --format md": "sha256:56a7d57c3b4e032653d53c4266ea10c37f562602f75123f0c70621a4ea2bd8b0",
-    "view --format html": "sha256:986ec1fd6c63ac9508599cdc79da9559014b89d94c042319239d79fe8b1a57e8",
+    "view --format json": "sha256:a1330a0724d2cb9a048d5a95c425aeae0350ecfd9fe0f581f1282eec9934b0fd",
+    "view --format md": "sha256:417376f4e00c6cee1a9e254de7e58ec18321339270d36bb0c1747c19ce4c9b81",
+    "view --format html": "sha256:378ae0c5cdb0603971b2aeadf5ab5dec15b9c65d0159091e189eea91472c0abc",
     "view --against itself": "sha256:c6675bc48a318d60b4d1e004d604df06bca7c3eee151a4eac7b06d0502804a06",
     "sandbox": "sha256:5a3972412e2d204780528a08f5630b48d8cb51141882e3e69cdfa27ba7aad79a"
   },

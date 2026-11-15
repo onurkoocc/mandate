@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104e",
+  "kind": "compile",
+  "title": "A pattern's delegation that names its skill slot and an Agent.skill too matches two forms of the IR of 0.6, and is refused when it is read (a mutation: agent Matcher and skill match beside the slot work).",
+  "spec": [
+    "spec/library.md#slots",
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/agent",
+      "value": "Matcher"
+    },
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/skill",
+      "value": "match"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0104",
+        "path": "/defs/BatchWithExceptions/body/1/value/body/0/value",
+        "facts": {
+          "keyword": "oneOf"
+        }
+      }
+    ]
+  }
+}

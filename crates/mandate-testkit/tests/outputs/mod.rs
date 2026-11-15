@@ -11,13 +11,13 @@
 
 #![allow(dead_code)]
 
-use mandate_check::{CheckResult, requirements_to_js, sandbox_requirements, semantic_diff};
+use mandate_check::{CheckResult, requirements_to_js, sandbox_requirements, semantic_diff_with};
 use mandate_ir::{Diagnostic, JsObject, JsValue, canonicalize, stringify_pretty};
 use mandate_syntax::{kind_of, load};
 use mandate_testkit::read_json;
 use mandate_views::{
-    architecture, authority, card, card_doc, cost, envelope_workflows, program_doc, to_html,
-    to_markdown,
+    architecture_with, authority_with, card, card_doc, cost_with, envelope_workflows, program_doc,
+    to_html, to_markdown,
 };
 
 use crate::common::{check_text, check_with, modules_of, read_source};
@@ -154,10 +154,14 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
         let files = module_files_of(program);
         let modules = modules_of(&files, &files)?;
         let lock = lock_path.as_deref().map(read_json).transpose()?;
+        // The views as `mandate view --module …` gives them: with the
+        // modules, so that a workflow that applies a pattern of one of them
+        // is shown as its expansion (the same as without them for a program
+        // that applies none).
         let views = JsObject::new()
-            .with("architecture", architecture(p).to_js())
-            .with("authority", authority(p).to_js())
-            .with("cost", cost(p, lock.as_ref()).to_js());
+            .with("architecture", architecture_with(p, Some(&modules)).to_js())
+            .with("authority", authority_with(p, Some(&modules)).to_js())
+            .with("cost", cost_with(p, lock.as_ref(), Some(&modules)).to_js());
         out.push((
             "view --format json".to_owned(),
             pretty(&JsValue::Object(views)),
@@ -167,7 +171,7 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
         out.push(("view --format html".to_owned(), to_html(&doc)));
         out.push((
             "view --against itself".to_owned(),
-            pretty(&semantic_diff(p, p, None).to_js()),
+            pretty(&semantic_diff_with(p, p, None, Some(&modules)).to_js()),
         ));
         let hashes = checked
             .hashes

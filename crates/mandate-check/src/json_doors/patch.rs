@@ -140,13 +140,17 @@ pub(super) fn check_amendment(input: &Value) -> Result<JsValue, DoorError> {
 }
 
 /// The parameters of [`semantic_diff`].
-pub(super) const SEMANTIC_DIFF: &[&str] = &["before", "after", "locks"];
+pub(super) const SEMANTIC_DIFF: &[&str] = &["before", "after", "locks", "modules"];
 
 /// `semanticDiff(before, after, locks)`, `compiler/src/views/views.ts`: the
 /// semantic diff of two programs.
 ///
-/// Input: `{ before: program, after: program, locks?: { before?, after? } }`,
-/// each lock as read.
+/// Input: `{ before: program, after: program, locks?: { before?, after? },
+/// modules?: { <name>: program } }`, each lock as read. `modules` is the
+/// Rust's alone (0.6): the modules a workflow's pattern comes from, so that
+/// what it commits is read from its expansion
+/// (`crate::diff::semantic_diff_with`); the TypeScript takes none, and two
+/// programs that apply no pattern compare the same with or without them.
 /// Output: `DiffView`, `{ format, kind, from, to, governance, behavior,
 /// unchanged }`.
 pub(super) fn semantic_diff(input: &Value) -> Result<JsValue, DoorError> {
@@ -157,7 +161,8 @@ pub(super) fn semantic_diff(input: &Value) -> Result<JsValue, DoorError> {
         before: l.opt_value("before"),
         after: l.opt_value("after"),
     });
-    Ok(crate::diff::semantic_diff(before, after, locks).to_js())
+    let modules = a.opt_modules("modules")?;
+    Ok(crate::diff::semantic_diff_with(before, after, locks, modules).to_js())
 }
 
 /// The parameters of [`governance_changes`].

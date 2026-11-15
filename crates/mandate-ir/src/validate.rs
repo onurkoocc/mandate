@@ -73,7 +73,7 @@ pub fn validate_ir(value: &Value, spans: Option<&Spans>) -> Vec<Diagnostic> {
         return vec![unknown_language(program.members().get("language"), spans)];
     };
     let out = match ir_schema_errors(value) {
-        Ok(errors) => schema_diagnostics(&errors, spans),
+        Ok(errors) => schema_diagnostics(&errors, spans, language.at_least(Language::V0_6)),
         // The embedded schema always prepares (a test holds it to that);
         // were it not to, nothing is accepted.
         Err(why) => vec![Diagnostic::new(
@@ -347,12 +347,26 @@ fn unknown_language(found: Option<&Value>, spans: Option<&Spans>) -> Diagnostic 
 
 /// `schemaDiagnostics`: the raw errors as E0104, the ones that reach
 /// deepest into the value, each message once, sorted by path.
-fn schema_diagnostics(errors: &[SchemaError], spans: Option<&Spans>) -> Vec<Diagnostic> {
+///
+/// `one_form` (language 0.6, which only the Rust reads): a value that
+/// matches more than one branch of a `oneOf` is refused too. The TypeScript
+/// drops every `oneOf` error, which loses nothing when no branch passes (the
+/// branches' errors stay) and, in the schema of 0.1 to 0.5, nothing at all:
+/// no value can match two of its branches. The schema of 0.6 has branches a
+/// value can match together (a delegation with both `agent` and `skill` and
+/// a `slot`; a workflow with both a body and `apply`), and those it refuses.
+fn schema_diagnostics(
+    errors: &[SchemaError],
+    spans: Option<&Spans>,
+    one_form: bool,
+) -> Vec<Diagnostic> {
     // oneOf without a discriminator reports every failed branch; keep the
     // errors that reach deepest into the instance, which name the problem.
+    let more_than_one =
+        |e: &SchemaError| matches!(e.params.get("passingSchemas"), Some(JsValue::Array(_)));
     let relevant: Vec<&SchemaError> = errors
         .iter()
-        .filter(|e| e.keyword != "oneOf" && e.keyword != "if")
+        .filter(|e| (e.keyword != "oneOf" || (one_form && more_than_one(e))) && e.keyword != "if")
         .collect();
     // `instancePath.split("/").length`, one more for additionalProperties.
     let depth = |e: &SchemaError| {
@@ -414,6 +428,10 @@ fn schema_diagnostics(errors: &[SchemaError], spans: Option<&Spans>) -> Vec<Diag
                 param("pattern")
             ),
             "discriminator" => format!("Unknown or missing tag: {}.", e.message),
+            "oneOf" => format!(
+                "Value matches more than one form the IR schema allows here ({}); it must be exactly one of them.",
+                e.schema_path
+            ),
             _ => format!("Schema violation: {}.", e.message),
         };
         if !seen.insert(format!("{path}|{message}")) {

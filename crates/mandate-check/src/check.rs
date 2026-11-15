@@ -62,11 +62,12 @@ pub struct CheckResult {
     pub ok: bool,
     /// The program's hashes, when `ok`.
     pub hashes: Option<ProgramHashes>,
-    /// 0.6: when the program applies a pattern and every application
-    /// expanded, the expanded program: the program with every application
-    /// replaced by its expansion, a program of 0.6 with no `apply` in it
-    /// (spec/library.md "Expansion"). The checks after the expansion read
-    /// it; the hashes are the program's. `None` for every other program.
+    /// 0.6: when the program applies a pattern and checks (`ok`), the
+    /// expanded program: the program with every application replaced by its
+    /// expansion, a program of 0.6 with no `apply` in it (spec/library.md
+    /// "Expansion"). The checks after the expansion read it; the hashes are
+    /// the program's. `None` for every other program, and for one that does
+    /// not check.
     pub expanded: Option<Value>,
 }
 
@@ -385,7 +386,9 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
         }
     }
     let ok = !has_errors(&diagnostics);
-    // The program hash covers the application, not the expansion.
+    // The program hash covers the application, not the expansion; and the
+    // expansion is given only for a program that checks, as the hash is: a
+    // caller never holds an expanded program that was refused.
     let hashes = ok.then(|| hash_program(program_value));
     CheckResult {
         program: loaded.program.clone(),
@@ -393,7 +396,7 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
         diagnostics,
         ok,
         hashes,
-        expanded,
+        expanded: expanded.filter(|_| ok),
     }
 }
 

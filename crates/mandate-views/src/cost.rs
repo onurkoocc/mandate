@@ -15,7 +15,7 @@
 //! E0501 agree.
 
 use mandate_check::{
-    CapVal, Lock, ProgramRef, VIEW_FORMAT, defs_of, grant_of, handed_by, is_kind, js_text,
+    CapVal, Lock, Modules, ProgramRef, VIEW_FORMAT, defs_of, grant_of, handed_by, is_kind, js_text,
     per_call_bound, program_ref, static_cost, to_number, view_children,
 };
 use mandate_ir::{
@@ -525,9 +525,20 @@ pub(crate) fn delegate_of_plan(e: Expr<'_>) -> Value {
 /// shows the per-call bound.
 #[must_use]
 pub fn cost(program: &Value, lock: Option<&Value>) -> CostView {
+    cost_with(program, lock, None)
+}
+
+/// [`cost`] with the modules the program imports (0.6, which only the Rust
+/// reads): a workflow that applies a pattern of one of them is shown as its
+/// expansion. One whose pattern is in a module that is not given has no
+/// bound the view can know: its delegations' `times` are unknown (`null`)
+/// and its total says so. A program that applies no pattern is shown as
+/// [`cost`] shows it.
+#[must_use]
+pub fn cost_with(program: &Value, lock: Option<&Value>, modules: Option<&Modules>) -> CostView {
     let mut workflows: Vec<WorkflowCost> = Vec::new();
     // 0.6: a workflow that applies a pattern is shown as its expansion.
-    let expanded = mandate_check::expand::for_views(program, None);
+    let expanded = mandate_check::expand::for_views(program, modules);
     if let Some(p) = Program::of(expanded.as_ref().unwrap_or(program)) {
         for (name, d) in sorted_defs(p) {
             if !is_kind(d, "workflow") {
@@ -550,10 +561,17 @@ pub fn cost(program: &Value, lock: Option<&Value>) -> CostView {
                     format!("{total} · {agents}")
                 };
             }
+            let mut rows = walk.rows;
+            if let Some(u) = d.get("unexpanded") {
+                total = unknown_total(name, u);
+                for r in &mut rows {
+                    r.times = f64::NAN;
+                }
+            }
             workflows.push(WorkflowCost {
                 workflow: name.to_owned(),
                 limit: show(workflow_bounds(d).budget),
-                rows: walk.rows,
+                rows,
                 total,
             });
         }
@@ -562,6 +580,20 @@ pub fn cost(program: &Value, lock: Option<&Value>) -> CostView {
         program: program_ref(program),
         workflows,
     }
+}
+
+/// The total of a workflow whose application the view could not expand
+/// (`unexpanded` of [`mandate_check::expand::for_views`]).
+fn unknown_total(workflow: &str, unexpanded: &Value) -> String {
+    let pattern = js_text(unexpanded.get("pattern"));
+    let from = unexpanded
+        .get("module")
+        .and_then(Value::as_str)
+        .map(|m| format!(" of module {m}"))
+        .unwrap_or_default();
+    format!(
+        "unknown: {workflow} applies {pattern}{from}, which this view is not given, so how many times each delegation runs is not known"
+    )
 }
 
 /// The blocks of the cost in a document: `costBlocks(v)`.
@@ -588,9 +620,16 @@ pub fn cost_blocks(v: &CostView) -> Vec<Block> {
                 .rows
                 .iter()
                 .map(|r| {
+                    // 0.6: the times of a delegation of an application the
+                    // view could not expand are not known.
+                    let times = if r.times.is_nan() && w.total.starts_with("unknown: ") {
+                        "unknown".to_owned()
+                    } else {
+                        number_to_string(r.times)
+                    };
                     vec![
                         Cell::plain(r.call.as_str()),
-                        Cell::plain(number_to_string(r.times)),
+                        Cell::plain(times),
                         Cell::plain(r.budget.as_str()),
                         Cell::plain(r.from.as_str()),
                         Cell::plain(r.per_call.as_deref().unwrap_or("—")),

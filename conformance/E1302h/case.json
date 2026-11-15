@@ -1,0 +1,148 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1302h",
+  "kind": "compile",
+  "title": "A pattern that calls a function of its module that calls another that delegates to an agent brings authority through the first (a mutation: pick calls pick_one, which delegates to Matcher; pick is called first in the map's body).",
+  "spec": [
+    "spec/library.md#what-a-pattern-may-not-do",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/pick",
+      "value": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "i",
+            "type": {
+              "ref": "Untrusted",
+              "args": [
+                {
+                  "ref": "Invoice"
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Inferred",
+          "args": [
+            {
+              "ref": "Match"
+            }
+          ]
+        },
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "var",
+                "name": "pick_one"
+              },
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "i"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/pick_one",
+      "value": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "i",
+            "type": {
+              "ref": "Untrusted",
+              "args": [
+                {
+                  "ref": "Invoice"
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Inferred",
+          "args": [
+            {
+              "ref": "Match"
+            }
+          ]
+        },
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "delegate",
+              "agent": "Matcher",
+              "skill": "match",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "i"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/body/1/value/body/0",
+      "value": {
+        "op": "expr",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "var",
+            "name": "pick"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "var",
+                "name": "it"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1302",
+        "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/callee",
+        "facts": {
+          "names": "agent",
+          "name": "Matcher",
+          "via": "pick"
+        }
+      }
+    ]
+  }
+}

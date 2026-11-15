@@ -359,17 +359,13 @@ impl Walk {
                 return;
             }
             "delegate" | "spawn" | "plan" => {
-                match (
-                    v.get("slot").and_then(Value::as_str),
-                    v.get("agent").and_then(Value::as_str),
-                ) {
-                    (Some(s), _) => {
-                        self.found(Named::SkillSlot(s.to_owned()), sub(path, "slot"), false)
-                    }
-                    (None, Some(a)) => {
-                        self.found(Named::Agent(a.to_owned()), sub(path, "agent"), false)
-                    }
-                    (None, None) => {}
+                // Both, when both are written (E1301): an agent is named
+                // whether or not a slot is beside it.
+                if let Some(s) = v.get("slot").and_then(Value::as_str) {
+                    self.found(Named::SkillSlot(s.to_owned()), sub(path, "slot"), false);
+                }
+                if let Some(a) = v.get("agent").and_then(Value::as_str) {
+                    self.found(Named::Agent(a.to_owned()), sub(path, "agent"), false);
                 }
                 for (k, x) in m.iter() {
                     if matches!(k, "op" | "agent" | "skill" | "slot") {

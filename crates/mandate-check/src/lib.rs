@@ -91,7 +91,9 @@
 //!   another crate.
 //! - [`diff`]: the semantic diff of two programs ([`semantic_diff`],
 //!   [`governance_changes`], [`envelope_changes`], [`classify`]), with
-//!   [`lock_diff`] for what two locks bind and ask of a host and a sandbox.
+//!   [`lock_diff`] for what two locks bind and ask of a host and a sandbox;
+//!   [`semantic_diff_with`] reads an application of 0.6 with the modules its
+//!   pattern comes from.
 //! - [`patch`]: structural patches ([`apply_ops`], [`apply_patch`]), which
 //!   report the governance changes they make.
 //! - [`js_number`]: what JavaScript's `Number(string)` gives.
@@ -178,7 +180,7 @@ pub use check::{
 pub use diff::{
     BudgetChanges, Change, Classified, DiffView, GovernanceChangeKind, KindedChange, Locks,
     ScopeDiff, budget_changes, classify, envelope_changes, governance_changes, scope_diff,
-    scope_diffs, semantic_diff, shown_caps, steps, system_changes,
+    scope_diffs, semantic_diff, semantic_diff_with, shown_caps, steps, system_changes,
 };
 pub use doors::{
     AmendmentCheck, AmendmentInput, PatchCheck, SubprogramCheck, SubprogramInput, check_amendment,

@@ -1,0 +1,79 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1501a",
+  "kind": "compile",
+  "title": "A role of an expansion that names a constant rather than a role is refused by the role checks of the expansion, at the application (a mutation: the body first asks human.approve(role: WHO), WHO a constant of the program).",
+  "spec": [
+    "spec/library.md#expansion",
+    "spec/envelope.md#roles"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/WHO",
+      "value": {
+        "kind": "const",
+        "type": {
+          "ref": "Text"
+        },
+        "value": {
+          "op": "text",
+          "value": "accountant"
+        }
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/body/0",
+      "value": {
+        "op": "expr",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "human"
+            },
+            "name": "approve"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "go?"
+              }
+            },
+            {
+              "name": "role",
+              "value": {
+                "op": "var",
+                "name": "WHO"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1501",
+        "path": "/defs/MatchAll/apply",
+        "facts": {
+          "role": "WHO",
+          "pattern": "BatchWithExceptions",
+          "pattern_path": "/defs/BatchWithExceptions/body/0/value/args/1/value"
+        }
+      }
+    ]
+  }
+}

@@ -58,7 +58,7 @@
 //! Each door's doc comment names the TypeScript function and file it stands
 //! for, its input members and its output.
 
-use mandate_check::json_doors::Door;
+use mandate_check::json_doors::{Door, MODULES_NOTE};
 
 mod documents;
 mod programs;
@@ -73,10 +73,11 @@ pub fn door(name: &str) -> Option<&'static Door> {
 /// their blocks, the documents, the card, the ACS target, then the two
 /// renderings of a document.
 pub static DOORS: &[Door] = &[
-    Door::new(
+    Door::noted(
         "architecture",
         "architecture",
         programs::ARCHITECTURE,
+        MODULES_NOTE,
         programs::architecture,
     ),
     Door::new(
@@ -85,10 +86,11 @@ pub static DOORS: &[Door] = &[
         documents::ARCHITECTURE_BLOCKS,
         documents::architecture_blocks,
     ),
-    Door::new(
+    Door::noted(
         "authority",
         "authority",
         programs::AUTHORITY,
+        MODULES_NOTE,
         programs::authority,
     ),
     Door::new(
@@ -97,17 +99,18 @@ pub static DOORS: &[Door] = &[
         documents::AUTHORITY_BLOCKS,
         documents::authority_blocks,
     ),
-    Door::new("cost", "cost", programs::COST, programs::cost),
+    Door::noted("cost", "cost", programs::COST, MODULES_NOTE, programs::cost),
     Door::new(
         "program_doc",
         "programDoc",
         programs::PROGRAM_DOC,
         programs::program_doc,
     ),
-    Door::new(
+    Door::noted(
         "diff_doc",
         "diffDoc",
         programs::DIFF_DOC,
+        MODULES_NOTE,
         programs::diff_doc,
     ),
     Door::new(

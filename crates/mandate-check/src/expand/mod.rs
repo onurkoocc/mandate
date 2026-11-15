@@ -119,14 +119,20 @@ pub fn expanded_program(program: &Value, modules: Option<&Modules>) -> Option<Va
 }
 
 /// The program a view of `program` reads (spec/library.md "Expansion"):
-/// its expansion when it applies a pattern; when an application cannot be
-/// expanded (its pattern is in a module the view is not given), that
-/// workflow with a step that names the application, `P(slot: argument, …)`,
-/// then a delegation for each argument that is a skill of one of the
-/// program's agents and an effect for each that is one of its effects (or a
-/// std effect), so that no view shows an applied workflow as one that does
-/// nothing; `None` when the program applies no pattern, which a view reads
-/// as it is.
+/// its expansion when it applies a pattern, with `modules` the modules its
+/// patterns come from. When an application cannot be expanded (its pattern
+/// is in a module the view is not given), that workflow is a stand-in that
+/// shows no less than the expansion may do: a step that names the
+/// application, `P(slot: argument, …)`, then, for what each argument names
+/// (read with the modules that are given), a delegation for a skill of an
+/// agent, an effect for an effect (one of the program's, or a std effect)
+/// and for a tool `c.t` that is not known to be read-only (a write tool runs
+/// only as an effect), and a review by each role, which is how a pattern
+/// asks a person by a role slot (an approval or an escalation the view
+/// cannot tell apart without the pattern). The stand-in carries
+/// `unexpanded: { pattern, module? }`, by which a view says that what it
+/// bounds (the cost) is unknown rather than show a number. `None` when the
+/// program applies no pattern, which a view reads as it is.
 #[must_use]
 pub fn for_views(program: &Value, modules: Option<&Modules>) -> Option<Value> {
     if !applies_pattern(program) {
@@ -136,6 +142,7 @@ pub fn for_views(program: &Value, modules: Option<&Modules>) -> Option<Value> {
         return Some(e);
     }
     let view = Program::of(program)?;
+    let linked = link(view, modules).defs;
     let mut members = view.members().clone();
     let mut defs = Map::new();
     for (n, d) in view.definitions() {
@@ -175,18 +182,18 @@ pub fn for_views(program: &Value, modules: Option<&Modules>) -> Option<Value> {
             Value::Object(s)
         };
         let mut body = vec![step(call)];
-        // And what the program's own definitions say of its arguments: a
-        // skill of one of its agents is a delegation the expansion may make,
-        // one of its effects (or a std effect) an effect it may run.
+        // And what the definitions the view can see say of its arguments.
+        let def = |name: &str| linked.get(name).map(Definition::of);
+        let kind = |name: &str| def(name).and_then(Definition::kind);
         for arg in a.args() {
             let Some(e) = arg.value() else { continue };
-            let own = |name: &str| view.defs().and_then(|d| d.get(name)).map(Definition::of);
+            // `Agent.skill`: a delegation the expansion may make.
             if e.is(mandate_ir::ExprOp::Field)
                 && let Some(agent) = e
                     .operand()
                     .filter(|o| o.is(mandate_ir::ExprOp::Var))
                     .and_then(mandate_ir::Expr::name)
-                && own(agent).and_then(Definition::kind) == Some(DefKind::Agent)
+                && kind(agent) == Some(DefKind::Agent)
             {
                 let mut dl = Map::new();
                 dl.insert("op", "delegate");
@@ -197,8 +204,34 @@ pub fn for_views(program: &Value, modules: Option<&Modules>) -> Option<Value> {
                 continue;
             }
             let name = apply::dotted(e).unwrap_or_default();
-            let effect = own(&name).and_then(Definition::kind) == Some(DefKind::Effect)
-                || (own(&name).is_none() && crate::stdlib::std_effect(&name).is_some());
+            // A role: a person the expansion may ask.
+            if e.is(mandate_ir::ExprOp::Var) && kind(&name) == Some(DefKind::Role) {
+                let mut callee = Map::new();
+                callee.insert("op", "field");
+                callee.insert("of", var_of("human"));
+                callee.insert("name", "review");
+                let mut role = Map::new();
+                role.insert("name", "role");
+                role.insert("value", var_of(&name));
+                let mut call = Map::new();
+                call.insert("op", "call");
+                call.insert("callee", Value::Object(callee));
+                call.insert("args", Value::Array(vec![Value::Object(role)]));
+                body.push(step(call));
+                continue;
+            }
+            // An effect, or a tool `c.t` not known to be read-only (its
+            // connector in a module the view is not given, or a write tool):
+            // an effect the expansion may run.
+            let maybe_write = name.split_once('.').is_some_and(|(c, t)| match def(c) {
+                None => true,
+                Some(d) => mandate_ir::ConnectorDef::of(d.value())
+                    .is_some_and(|conn| conn.tool(t).is_none_or(|tool| tool.is_write())),
+            });
+            let effect = match kind(&name) {
+                Some(k) => k == DefKind::Effect,
+                None => crate::stdlib::std_effect(&name).is_some() || maybe_write,
+            };
             if effect {
                 let mut ef = Map::new();
                 ef.insert("op", "effect");
@@ -212,10 +245,25 @@ pub fn for_views(program: &Value, modules: Option<&Modules>) -> Option<Value> {
         wf.insert("params", Value::Array(Vec::new()));
         wf.insert("returns", subst::type_ref("?"));
         wf.insert("body", Value::Array(body));
+        let mut unexpanded = Map::new();
+        let pattern = a.pattern().unwrap_or_default();
+        unexpanded.insert("pattern", pattern);
+        if let Some(m) = imported_from(view, pattern) {
+            unexpanded.insert("module", m);
+        }
+        wf.insert("unexpanded", Value::Object(unexpanded));
         defs.insert(n, Value::Object(wf));
     }
     members.insert("defs", defs);
     Some(Value::Object(members))
+}
+
+/// `{ op: "var", name }`.
+fn var_of(name: &str) -> Value {
+    let mut m = Map::new();
+    m.insert("op", "var");
+    m.insert("name", name);
+    Value::Object(m)
 }
 
 /// `problem` as a diagnostic at `base` + its path, with `spans`.
@@ -228,6 +276,15 @@ fn at_path(problem: Problem, base: &str, spans: Option<&Spans>) -> Diagnostic {
         Location::path_span(path, span),
         Some(problem.facts),
     )
+}
+
+/// A module an application's pattern comes from: its definitions with its
+/// own imports linked, and the errors the resolver finds in it, read as
+/// the module it is. A module handed to the check as IR was checked by no
+/// one; a pattern of one whose names do not resolve there is not applied.
+struct Home {
+    linked: Map,
+    unresolved: Vec<Diagnostic>,
 }
 
 /// The members a workflow that applies a pattern may have besides
@@ -287,8 +344,9 @@ pub fn expand(program: Program<'_>, linked: &Linked, opts: &ExpandOptions<'_>) -
     if !opts.applications {
         return out;
     }
-    // The modules an application's pattern comes from, linked once.
-    let mut homes: HashMap<String, Map> = HashMap::new();
+    // The modules an application's pattern comes from, linked and resolved
+    // once.
+    let mut homes: HashMap<String, Home> = HashMap::new();
     for (_, d) in program.definitions() {
         let Some(a) = Application::of_workflow(d.value()) else {
             continue;
@@ -297,9 +355,14 @@ pub fn expand(program: Program<'_>, linked: &Linked, opts: &ExpandOptions<'_>) -
         if let Some(module) = imported_from(program, p)
             && let Some(m) = modules.and_then(|ms| ms.get(module)).and_then(Program::of)
         {
-            homes
-                .entry(module.to_owned())
-                .or_insert_with(|| link(m, modules).defs);
+            homes.entry(module.to_owned()).or_insert_with(|| {
+                let linked = link(m, modules).defs;
+                let unresolved = crate::resolve::resolve_names(m, None, Some(&linked))
+                    .into_iter()
+                    .filter(|d| d.severity == mandate_ir::Severity::Error)
+                    .collect();
+                Home { linked, unresolved }
+            });
         }
     }
     let mut expanded: Vec<(String, Value)> = Vec::new();
@@ -418,7 +481,7 @@ fn application<'a>(
     program: Program<'a>,
     linked: &'a Linked,
     opts: &ExpandOptions<'a>,
-    homes: &'a HashMap<String, Map>,
+    homes: &'a HashMap<String, Home>,
     name: &str,
     w: &'a Value,
     a: Application<'a>,
@@ -489,7 +552,7 @@ fn application<'a>(
             let home = modules.and_then(|ms| ms.get(m)).and_then(Program::of);
             let found = home.and_then(|h| h.defs().and_then(|d| d.get(p)).map(|v| (v, h)));
             match (found, homes.get(m)) {
-                (Some((v, h)), Some(l)) => (v, h, l),
+                (Some((v, h)), Some(l)) => (v, h, &l.linked),
                 _ => {
                     push(
                         &mut diags,
@@ -552,6 +615,37 @@ fn application<'a>(
                 apply_at.clone(),
                 facts,
             );
+        }
+        // Its names resolve in its module, or it is not applied: a name the
+        // module does not know is never looked up in this program.
+        let unresolved = homes
+            .get(m)
+            .map(|h| h.unresolved.as_slice())
+            .unwrap_or_default();
+        let foreign = Foreign {
+            program,
+            linked,
+            pattern: p,
+            value,
+            module: m,
+            apply_at: &apply_at,
+            spans,
+        };
+        for d in unresolved {
+            let at = d.at.path.as_deref().unwrap_or_default();
+            if under(at, &pattern_base) {
+                let n = d
+                    .facts
+                    .as_ref()
+                    .and_then(|f| f.get("name"))
+                    .and_then(JsValue::as_str);
+                match n {
+                    Some(n) if d.code == "MDT-E0120" => foreign.unknown(&mut diags, n, at),
+                    _ => foreign.again(&mut diags, d, "pattern_path"),
+                }
+            } else {
+                foreign.again(&mut diags, d, "module_path");
+            }
         }
     } else if bad_local.contains(&p) {
         return Err(diags);
@@ -689,7 +783,28 @@ fn application<'a>(
                         );
                     }
                 }
-                Meaning::Unknown => {}
+                // A name the module's resolver lets stand without a
+                // definition (a supervision strategy after `on error`): it
+                // stays such a name only while this program does not name
+                // something by it.
+                Meaning::Unknown => {
+                    if taken(program, n, None).is_some() {
+                        Foreign {
+                            program,
+                            linked,
+                            pattern: p,
+                            value,
+                            module: m,
+                            apply_at: &apply_at,
+                            spans,
+                        }
+                        .unknown(
+                            &mut diags,
+                            n,
+                            &format!("{pattern_base}{}", place.path),
+                        );
+                    }
+                }
             }
         }
     }
@@ -730,6 +845,8 @@ fn application<'a>(
         &scope,
         4,
     );
+    // The expansion stopped at the copy that passed the limit: `copied` is
+    // at most the limit and one argument.
     if subst.over_size() {
         push(
             &mut diags,
@@ -742,7 +859,8 @@ fn application<'a>(
             apply_at.clone(),
             JsObject::new()
                 .with("pattern", p)
-                .with("limit", mandate_ir::limits::SOURCE_BYTES),
+                .with("limit", mandate_ir::limits::SOURCE_BYTES)
+                .with("copied", subst.copied),
         );
     }
     for problem in std::mem::take(&mut subst.problems) {
@@ -819,6 +937,94 @@ fn taken(program: Program<'_>, n: &str, module: Option<&str>) -> Option<&'static
     None
 }
 
+/// An imported pattern whose module does not resolve one of its names, as
+/// the application reports it (spec/library.md "Declaration": a pattern's names
+/// mean what they mean in its module, and nothing else).
+struct Foreign<'a> {
+    program: Program<'a>,
+    linked: &'a Linked,
+    pattern: &'a str,
+    value: &'a Value,
+    module: &'a str,
+    apply_at: &'a str,
+    spans: Option<&'a Spans>,
+}
+
+impl Foreign<'_> {
+    /// `n`, at `at` in the module, a name the module does not know: E1302
+    /// when this program's `n` would bring authority into the expansion
+    /// (followed as E1302 follows a pattern's own names), else E0120.
+    fn unknown(&self, diags: &mut Vec<Diagnostic>, n: &str, at: &str) {
+        let (p, m) = (self.pattern, self.module);
+        let here = Site {
+            name: p,
+            value: self.value,
+            home: self.program,
+            linked: &self.linked.defs,
+        };
+        let mut visited = std::collections::HashSet::new();
+        match pattern::def_authority(&here, n, here.meaning(n), &mut visited) {
+            Some((what, name, via)) => {
+                let through = via
+                    .as_deref()
+                    .map(|v| format!(" (through {v})"))
+                    .unwrap_or_default();
+                push(
+                    diags,
+                    self.spans,
+                    "E1302",
+                    format!(
+                        "Pattern {p} names {n}, which its module {m} does not know: in this program's expansion it would be this program's {what} {name}{through}, which no slot gave it. A pattern's names mean what they mean in its module, and a pattern brings no authority (spec/library.md \"What a pattern may not do\")."
+                    ),
+                    self.apply_at.to_owned(),
+                    JsObject::new()
+                        .with("pattern", p)
+                        .with("names", what)
+                        .with("name", name.as_str())
+                        .with_some("via", via.as_deref())
+                        .with("module", m)
+                        .with("pattern_path", at),
+                );
+            }
+            None => push(
+                diags,
+                self.spans,
+                "E0120",
+                format!(
+                    "Pattern {p} names {n}, which its module {m} neither defines nor imports: a pattern's names mean what they mean in its module, never what this program names {n} (spec/library.md \"Declaration\")."
+                ),
+                self.apply_at.to_owned(),
+                JsObject::new()
+                    .with("pattern", p)
+                    .with("module", m)
+                    .with("name", n)
+                    .with("pattern_path", at),
+            ),
+        }
+    }
+
+    /// Another error of the module's resolver, at the application, with its
+    /// path in the module as `key`.
+    fn again(&self, diags: &mut Vec<Diagnostic>, d: &Diagnostic, key: &str) {
+        let (p, m) = (self.pattern, self.module);
+        let mut facts = d.facts.clone().unwrap_or_default();
+        facts.insert("pattern", p);
+        facts.insert("module", m);
+        facts.insert(key, d.at.path.as_deref().unwrap_or_default());
+        push(
+            diags,
+            self.spans,
+            d.code.strip_prefix("MDT-").unwrap_or(&d.code),
+            format!(
+                "Pattern {p} comes from {m}, whose names do not resolve, so it is not applied: {}",
+                d.message
+            ),
+            self.apply_at.to_owned(),
+            facts,
+        );
+    }
+}
+
 /// Whether `path` is `prefix` or below it.
 fn under(path: &str, prefix: &str) -> bool {
     path == prefix
@@ -834,44 +1040,65 @@ impl Expansion {
     /// a `use` the expansion added, at the application that needs it.
     /// Anything else is as it was. `spans` are the program's.
     #[must_use]
-    pub fn map(&self, d: Diagnostic, spans: Option<&Spans>) -> Diagnostic {
+    pub fn map(&self, mut d: Diagnostic, spans: Option<&Spans>) -> Diagnostic {
+        // The places a fact names too: the `at` of each part of an E0501's
+        // `breakdown`, a path into the expansion like the diagnostic's own.
+        if let Some(facts) = d.facts.as_mut()
+            && let Some(JsValue::Array(parts)) = facts.get_mut("breakdown")
+        {
+            for part in parts.iter_mut() {
+                let JsValue::Object(part) = part else {
+                    continue;
+                };
+                let Some(at) = part.get("at").and_then(JsValue::as_str).map(str::to_owned) else {
+                    continue;
+                };
+                if let Some((to, more)) = self.place(&at) {
+                    part.insert("at", to.as_str());
+                    for (k, v) in more {
+                        if part.get(k).is_none() {
+                            part.insert(k, v);
+                        }
+                    }
+                }
+            }
+        }
         let Some(path) = d.at.path.clone() else {
             return d;
         };
+        match self.place(&path) {
+            Some((to, facts)) => moved(d, &to, spans, facts),
+            None => d,
+        }
+    }
+
+    /// Where `path`, a place of the expanded program, is in the program
+    /// that was checked, with the facts that say where it comes from; `None`
+    /// for a place that is where it was.
+    fn place(&self, path: &str) -> Option<(String, Vec<(&'static str, JsValue)>)> {
         for (i, app) in &self.added_uses {
-            if under(&path, &format!("/uses/{i}")) {
-                return moved(
-                    d,
-                    app,
-                    spans,
-                    vec![("expanded_path", JsValue::from(path.as_str()))],
-                );
+            if under(path, &format!("/uses/{i}")) {
+                return Some((app.clone(), vec![("expanded_path", JsValue::from(path))]));
             }
         }
-        let Some(o) = self.origins.iter().find(|o| under(&path, &o.base)) else {
-            return d;
-        };
-        let Some((prefix, origin)) = o.records.iter().find(|(p, _)| under(&path, p)) else {
-            return d;
-        };
+        let o = self.origins.iter().find(|o| under(path, &o.base))?;
+        let (prefix, origin) = o.records.iter().find(|(p, _)| under(path, p))?;
         let rest = path.get(prefix.len()..).unwrap_or_default();
         match origin {
-            Origin::Same => d,
+            Origin::Same => None,
             Origin::Arg { at, slot, subtree } => {
                 let to = if *subtree {
                     format!("{at}{rest}")
                 } else {
                     at.clone()
                 };
-                moved(
-                    d,
-                    &to,
-                    spans,
+                Some((
+                    to,
                     vec![
                         ("slot", JsValue::from(slot.as_str())),
-                        ("expanded_path", JsValue::from(path.as_str())),
+                        ("expanded_path", JsValue::from(path)),
                     ],
-                )
+                ))
             }
             Origin::Body { pattern_path } => {
                 let mut facts = vec![
@@ -880,12 +1107,12 @@ impl Expansion {
                         "pattern_path",
                         JsValue::from(format!("{pattern_path}{rest}")),
                     ),
-                    ("expanded_path", JsValue::from(path.as_str())),
+                    ("expanded_path", JsValue::from(path)),
                 ];
                 if let Some(m) = &o.module {
                     facts.push(("module", JsValue::from(m.as_str())));
                 }
-                moved(d, &o.apply, spans, facts)
+                Some((o.apply.clone(), facts))
             }
         }
     }
