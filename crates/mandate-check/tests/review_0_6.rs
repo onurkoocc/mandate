@@ -682,3 +682,113 @@ fn a_waiver_added_or_taken_away_is_a_governance_change() {
     // The same contract, its waiver unchanged: nothing.
     assert!(kinds(&before, &before).is_empty());
 }
+
+/// The rule the diff holds for waivers: a change after which a person may
+/// accept, without the contract being met, what they could not accept before
+/// is a governance change, `waiver_added`. A criterion new in a contract that
+/// carries a waiver is one, as is a contract new in the program with waivers,
+/// and a `verify` that now checks against a contract whose criterion a role
+/// may waive that the contract it checked against did not have under that
+/// name with that role. A review's role, deadline and escalation stay
+/// behavior: the contract's roles bound them (E1508).
+#[test]
+fn a_change_that_lets_a_person_accept_more_is_a_governance_change() {
+    let text = read_text(REVIEW).unwrap();
+    let ir = |t: &str| load(t, SourceKind::Mdt).program.unwrap();
+    let kinds = |a: &str, b: &str| {
+        governance_changes(&ir(a), &ir(b), None)
+            .iter()
+            .map(|c| format!("{} {} {}", c.kind.as_str(), c.path, c.text))
+            .collect::<Vec<_>>()
+    };
+    let waive = "    waive by accountant, finance_lead\n}\n";
+    // A criterion that is new and carries a waiver.
+    let order = changed(
+        &text,
+        waive,
+        "    waive by accountant, finance_lead\n  accept order \"The order is open\"\n    by static len(m.order.order_no) > 0\n    waive by accountant\n}\n",
+    );
+    assert_eq!(
+        kinds(&text, &order),
+        [
+            "waiver_added /defs/Matched/accept/order/waive + Matched.order: may be waived by accountant"
+        ]
+    );
+    let view = semantic_diff(&ir(&text), &ir(&order), None);
+    let behavior: Vec<&str> = view.behavior.iter().map(|c| c.text.as_str()).collect();
+    assert_eq!(behavior, ["+ Matched.order by static"]);
+    // The same criterion without a waiver is behavior only.
+    let plain = changed(&order, "> 0\n    waive by accountant\n", "> 0\n");
+    assert!(kinds(&text, &plain).is_empty());
+    // A criterion renamed carries its waiver to a name it did not have.
+    let renamed = changed(&text, "accept totals", "accept totals2");
+    assert_eq!(
+        kinds(&text, &renamed),
+        [
+            "criterion_removed /defs/Matched/accept/totals - Matched.totals (static) removed",
+            "waiver_added /defs/Matched/accept/totals2/waive + Matched.totals2: may be waived by accountant, finance_lead"
+        ]
+    );
+    // A contract that is new, with waivers.
+    let loose = "/// Everything a person may waive.\ncontract Loose(inv: Invoice, m: Match) {\n  accept vendor \"The invoice's vendor is the order's vendor\"\n    by static inv.vendor_id == m.order.vendor_id\n    waive by accountant\n  accept totals \"The total is within 2% of the order's\"\n    by static near(inv.total_cents, m.order.total_cents, 2)\n    waive by accountant, finance_lead\n}\n\nagent Matcher {";
+    let same = "/// Matched again, by another name.\ncontract Same(inv: Invoice, m: Match) {\n  accept vendor \"The invoice's vendor is the order's vendor\"\n    by static inv.vendor_id == m.order.vendor_id\n  accept totals \"The total is within 2% of the order's\"\n    by static near(inv.total_cents, m.order.total_cents, 2)\n    waive by finance_lead, accountant\n}\n\nagent Matcher {";
+    let with_loose = changed(&text, "agent Matcher {", loose);
+    assert_eq!(
+        kinds(&text, &with_loose),
+        [
+            "waiver_added /defs/Loose/accept/totals/waive + Loose.totals: may be waived by accountant, finance_lead",
+            "waiver_added /defs/Loose/accept/vendor/waive + Loose.vendor: may be waived by accountant"
+        ]
+    );
+    // A verify swapped for one against a contract with more to waive: the
+    // contracts are in both programs, so only the verify changed.
+    let verify = "    verify out against Matched(it, out)\n";
+    let to_loose = changed(
+        &with_loose,
+        verify,
+        "    verify out against Loose(it, out)\n",
+    );
+    let at = "/defs/MatchAll/body/1/value/body/1/value";
+    assert_eq!(
+        kinds(&with_loose, &to_loose),
+        [format!(
+            "waiver_added {at} + MatchAll: verifies against Loose, whose vendor may be waived by accountant"
+        )]
+    );
+    let view = semantic_diff(&ir(&with_loose), &ir(&to_loose), None);
+    assert!(!view.unchanged.iter().any(|u| u == "no authority added"));
+    // The same with the contract new: its waivers and the verify's.
+    assert_eq!(
+        kinds(&text, &to_loose),
+        [
+            "waiver_added /defs/Loose/accept/totals/waive + Loose.totals: may be waived by accountant, finance_lead".to_owned(),
+            "waiver_added /defs/Loose/accept/vendor/waive + Loose.vendor: may be waived by accountant".to_owned(),
+            format!(
+                "waiver_added {at} + MatchAll: verifies against Loose, whose vendor may be waived by accountant"
+            )
+        ]
+    );
+    // Back to the stricter contract, or to one with the same waivers under
+    // the same names, lets no one accept more: not a governance change.
+    assert!(kinds(&to_loose, &with_loose).is_empty());
+    let with_same = changed(&text, "agent Matcher {", same);
+    let to_same = changed(&with_same, verify, "    verify out against Same(it, out)\n");
+    assert!(kinds(&with_same, &to_same).is_empty());
+    // A verify that a step put before it moved still checks against its
+    // contract: nothing.
+    let moved = changed(
+        &text,
+        "  let checked = map",
+        "  let count = len(items)\n  let checked = map",
+    );
+    assert!(kinds(&text, &moved).is_empty());
+    // A review's role, deadline and escalation are behavior.
+    let review = "human.review(checked, role: accountant, deadline: 1d, escalate_to: finance_lead)";
+    for to in [
+        "human.review(checked, role: finance_lead, deadline: 1d)",
+        "human.review(checked, role: accountant, deadline: 1ms, escalate_to: finance_lead)",
+        "human.review(checked, role: accountant, deadline: 1d)",
+    ] {
+        assert!(kinds(&text, &changed(&text, review, to)).is_empty(), "{to}");
+    }
+}
