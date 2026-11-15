@@ -1,0 +1,41 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "P03",
+  "kind": "compile",
+  "title": "A pattern that declares caps brings authority (a mutation: caps added to the pattern).",
+  "spec": [
+    "spec/library.md#what-a-pattern-may-not-do",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/caps",
+      "value": [
+        {
+          "op": "var",
+          "name": "Inbox"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1302",
+        "path": "/defs/BatchWithExceptions/caps",
+        "facts": {
+          "pattern": "BatchWithExceptions",
+          "declares": "caps"
+        }
+      }
+    ]
+  }
+}

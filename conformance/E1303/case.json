@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1303",
+  "kind": "compile",
+  "title": "A workflow that applies a name that is no pattern (a mutation: the agent Matcher applied).",
+  "spec": [
+    "spec/library.md#application",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/apply/pattern",
+      "value": "Matcher"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1303",
+        "path": "/defs/MatchAll/apply/pattern",
+        "facts": {
+          "pattern": "Matcher",
+          "kind": "agent"
+        }
+      }
+    ]
+  }
+}

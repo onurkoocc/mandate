@@ -10,7 +10,12 @@
 //! adds so far is held by [`imports`]: closed imports (E1604) and the
 //! visibility of a module's `pub` definitions (E1602), and E1603 for a
 //! program of 0.1 to 0.5 that imports a module of 0.6. A definition's `doc`
-//! is not a governance change in the semantic diff ([`diff`]).
+//! is not a governance change in the semantic diff ([`diff`]). Patterns and
+//! their applications are [`expand`]'s: after the role checks and the check
+//! of imported method limits, it checks the patterns and the applications
+//! (E1301 to E1307) and writes the expanded program, which every check after
+//! it reads in the program's place ([`CheckResult::expanded`]), and from
+//! whose diagnostics it reports in the program that was checked.
 //!
 //! It holds the front door, the stages before the static checks, the static
 //! checks, and the lock and the sandbox requirements that stand on them:
@@ -31,6 +36,9 @@
 //!   named through a `use` list alone: its path is no name.
 //! - [`imports`]: what a `use` may name from 0.6 on ([`import_checks`],
 //!   [`KnownModules`]): E1602, E1603 and E1604. Rust only.
+//! - [`expand`]: patterns and their expansion from 0.6 on
+//!   ([`expand::expand`], [`expand::Expansion`], [`expand::for_views`]):
+//!   E1301 to E1307. Rust only.
 //! - [`roles`]: [`role_checks`], [`role_sites`] and [`roles_named`],
 //!   `compiler/src/check/roles.ts`.
 //! - [`lock`]: the lock, `compiler/src/lock.ts`: [`Lock`], [`validate_lock`],
@@ -83,7 +91,9 @@
 //!   another crate.
 //! - [`diff`]: the semantic diff of two programs ([`semantic_diff`],
 //!   [`governance_changes`], [`envelope_changes`], [`classify`]), with
-//!   [`lock_diff`] for what two locks bind and ask of a host and a sandbox.
+//!   [`lock_diff`] for what two locks bind and ask of a host and a sandbox;
+//!   [`semantic_diff_with`] reads an application of 0.6 with the modules its
+//!   pattern comes from.
 //! - [`patch`]: structural patches ([`apply_ops`], [`apply_patch`]), which
 //!   report the governance changes they make.
 //! - [`js_number`]: what JavaScript's `Number(string)` gives.
@@ -136,6 +146,7 @@ pub mod check;
 pub mod cost;
 pub mod diff;
 pub mod doors;
+pub mod expand;
 pub mod governance;
 pub mod grant;
 pub mod imports;
@@ -169,7 +180,7 @@ pub use check::{
 pub use diff::{
     BudgetChanges, Change, Classified, DiffView, GovernanceChangeKind, KindedChange, Locks,
     ScopeDiff, budget_changes, classify, envelope_changes, governance_changes, scope_diff,
-    scope_diffs, semantic_diff, shown_caps, steps, system_changes,
+    scope_diffs, semantic_diff, semantic_diff_with, shown_caps, steps, system_changes,
 };
 pub use doors::{
     AmendmentCheck, AmendmentInput, PatchCheck, SubprogramCheck, SubprogramInput, check_amendment,

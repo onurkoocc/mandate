@@ -23,6 +23,15 @@
 //! (`Parser::doc_of_definition`) and are `MDT-E0101` anywhere else. A
 //! program of 0.1 to 0.5 is read as before: the doc lines are not looked at,
 //! and `pub` stands before `fn` alone.
+//!
+//! Language 0.6 also has patterns (spec/library.md "Patterns"), with words
+//! that are contextual: `pattern Name<T…>(slot: kind, …) [(params)] -> T
+//! { body }` (`decl::pattern_decl`), in whose body a skill slot is delegated
+//! to by its name (`delegate work(it)`, `{ op: "delegate", slot }`) and a
+//! map's `max` and `par` may be a const slot's name; and `workflow W =
+//! P<A, …>(slot: value, …)` with the workflow's caps and budget
+//! (`decl::application`), the workflow's `apply`. The list of reserved words
+//! does not change.
 
 mod decl;
 mod expr;
@@ -249,6 +258,10 @@ pub(crate) struct Parser<'a> {
     docs: &'a [DocLine],
     /// The first of [`Parser::docs`] that no definition has taken yet.
     doc_next: usize,
+    /// 0.6: the parser is in the body of a pattern, where a skill slot is
+    /// delegated to by its name (`delegate work(it)`) and a const slot may
+    /// stand for a map's `max` or `par` (spec/library.md "Slots").
+    pub(crate) in_pattern: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -263,6 +276,7 @@ impl<'a> Parser<'a> {
             postfix_depth: 0,
             docs: &[],
             doc_next: 0,
+            in_pattern: false,
         }
     }
 

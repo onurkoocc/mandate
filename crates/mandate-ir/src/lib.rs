@@ -42,7 +42,9 @@
 //!   definitions [`Skill`], [`Remote`], [`Envelope`], [`OnHandler`],
 //!   [`Criterion`], [`Verifier`], [`Read`], [`Tier`], [`TestDef`]; and the
 //!   kinds the capability checks read, [`CapabilityDef`], [`ComponentDef`],
-//!   [`Command`], [`EnvironmentDef`]). A view is a `Copy` struct that borrows the value and
+//!   [`Command`], [`EnvironmentDef`]; and of 0.6, [`ConnectorDef`], [`Tool`],
+//!   a pattern [`PatternDef`] with its [`Slot`]s, and the [`Application`] a
+//!   workflow carries with its [`SlotArg`]s). A view is a `Copy` struct that borrows the value and
 //!   has one method per member, which converts it (a tag to its enum, a list
 //!   to an iterator of views); a member that is missing or of another type
 //!   reads as `None` or as nothing, so a view never panics, even on a value
@@ -137,7 +139,10 @@ mod value;
 mod view;
 
 pub use def_parts::{Criterion, Envelope, OnHandler, Read, Remote, Skill, TestDef, Tier, Verifier};
-pub use defs::{CapabilityDef, Command, ComponentDef, ConnectorDef, EnvironmentDef, Tool};
+pub use defs::{
+    Application, CapabilityDef, Command, ComponentDef, ConnectorDef, EnvironmentDef, PatternDef,
+    Slot, SlotArg, Tool,
+};
 pub use diag::{
     Diagnostic, Location, PtrToken, Repair, RepairOp, RepairOpKind, Risk, Severity, Span,
     format_diagnostic, has_errors, ptr, ptr_token,

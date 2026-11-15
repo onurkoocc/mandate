@@ -124,7 +124,8 @@ function program(s: Source): void {
   const p = r.program;
   const used = Object.fromEntries(Object.entries(s.modules).filter(([m]) => (p.uses ?? []).some((u) => u.module === m)));
   const lock = s.lock;
-  for (const fn of ["hashProgram", "printProgram", "canonicalize", "programRef", "leadClasses", "modelTiers", "envelopeWorkflows", "architecture", "authority"] as const) both(s.label, fn, [p]);
+  const shown: Record<string, unknown> = {};
+  for (const fn of ["hashProgram", "printProgram", "canonicalize", "programRef", "leadClasses", "modelTiers", "envelopeWorkflows", "architecture", "authority"] as const) shown[fn] = both(s.label, fn, [p]);
   both(s.label, "rolesNamed", [p.defs]);
   const linked = both(s.label, "link", [p, used]) as { defs: Record<string, unknown> } | undefined;
   both(s.label, "linkedProgram", [p, used]);
@@ -134,8 +135,10 @@ function program(s: Source): void {
   const doc = both(s.label, "programDoc", [p, lock, used]);
   both(s.label, "toMarkdown", [doc]);
   both(s.label, "toHtml", [doc]);
-  both(s.label, "architectureBlocks", [reference.architecture(p as never)]);
-  both(s.label, "authorityBlocks", [reference.authority(p as never)]);
+  // The blocks of the views the Rust gave: the TypeScript's own, compared above, but for a program of 0.6, which only
+  // the Rust reads (a workflow that applies a pattern has no body the TypeScript could walk).
+  if (shown["architecture"] !== undefined) both(s.label, "architectureBlocks", [shown["architecture"]]);
+  if (shown["authority"] !== undefined) both(s.label, "authorityBlocks", [shown["authority"]]);
   both(s.label, "semanticDiff", [p, p, lock ? { before: lock, after: lock } : undefined]);
   const diff = both(s.label, "diffDoc", [p, p]);
   both(s.label, "toMarkdown", [diff]);

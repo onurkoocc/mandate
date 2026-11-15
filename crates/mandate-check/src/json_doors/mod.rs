@@ -191,6 +191,26 @@ impl Door {
         }
     }
 
+    /// A door named `name` that stands for the TypeScript function `ts`,
+    /// with `note` saying how it differs from it (a parameter of `params`
+    /// that is the Rust's alone, which the function is not given).
+    #[must_use]
+    pub const fn noted(
+        name: &'static str,
+        ts: &'static str,
+        params: &'static [&'static str],
+        note: &'static str,
+        call: DoorFn,
+    ) -> Door {
+        Door {
+            name,
+            ts: Some(ts),
+            params,
+            note: Some(note),
+            call,
+        }
+    }
+
     /// A door named `name` that has no TypeScript function of its own, with
     /// `note` saying what it answers.
     #[must_use]
@@ -209,6 +229,10 @@ impl Door {
         }
     }
 }
+
+/// The note of a view door that takes the modules besides what its
+/// TypeScript function takes (language 0.6, which only the Rust reads).
+pub const MODULES_NOTE: &str = "modules (optional) is the Rust's alone: the modules a workflow's pattern comes from (language 0.6), so that a workflow that applies one is read as its expansion. The TypeScript function is not given it; a program that applies no pattern gives the same with or without it.";
 
 /// Every door, in the order of `doors.json`: reading and checking, the parts
 /// of a program, the lock and the sandbox, patches and diffs, the run-time
@@ -400,10 +424,11 @@ pub static DOORS: &[Door] = &[
         patch::CHECK_AMENDMENT,
         patch::check_amendment,
     ),
-    Door::new(
+    Door::noted(
         "semantic_diff",
         "semanticDiff",
         patch::SEMANTIC_DIFF,
+        MODULES_NOTE,
         patch::semantic_diff,
     ),
     Door::new(

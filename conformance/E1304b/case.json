@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1304b",
+  "kind": "compile",
+  "title": "Another number of type arguments than the pattern has type parameters.",
+  "spec": [
+    "spec/library.md#application",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/MatchAll/apply/types/2"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1304",
+        "path": "/defs/MatchAll/apply/types",
+        "facts": {
+          "problem": "type_arguments",
+          "expected": 3,
+          "given": 2
+        }
+      }
+    ]
+  }
+}

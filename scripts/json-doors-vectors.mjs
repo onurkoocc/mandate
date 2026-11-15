@@ -15,7 +15,9 @@
 // note? }] }`: a door's name, the function of compiler/src/index.ts it stands
 // for (null for a door that has none of its own: its meaning is computed here
 // from TypeScript functions, `OWN` below), and the members of its input, the
-// function's parameters in order. A function the compiler does not export is
+// function's parameters in order (and after them, for a view of language 0.6,
+// an optional `modules` the function does not take, which its note says is the
+// Rust's alone: the calls here leave it out). A function the compiler does not export is
 // looked for in the bridge (bridge/src/index.ts, built to bridge/dist), which
 // exports the compiler's names and, besides them, the run-time authority
 // decisions of bridge/src/authority.ts (`grant`, `narrow`, `mapScopes`,

@@ -93,8 +93,13 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
     assert_eq!(
         differences_of(IR_SCHEMA_TEXT, IR_0_6_SCHEMA_TEXT),
         [
+            "/$defs/Apply",
+            "/$defs/Count",
             "/$defs/Criterion/properties/waive",
             "/$defs/Def/oneOf",
+            "/$defs/Expr/oneOf",
+            "/$defs/Slot",
+            "/$defs/SlotArg",
             "/$defs/Tool",
             "/$id",
             "/description",
@@ -106,7 +111,10 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
     // (`true` alone) and `doc` (a string) among its properties, and nothing
     // else changed; a `fn` had `pub` already. After them, the kinds 0.6
     // adds: `connector` (spec/library.md "Connectors"), with a tool of
-    // `$defs/Tool` by name.
+    // `$defs/Tool` by name, and `pattern` (spec/library.md "Patterns"), with
+    // its slots of `$defs/Slot`. A workflow may be an application instead
+    // (`apply`, of `$defs/Apply`): it then has no parameters, result or body
+    // of its own, which the branch's `oneOf` says.
     let branches = |text: &str| {
         json(text)
             .get("$defs")
@@ -118,14 +126,14 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
     };
     let (old, new) = (branches(IR_SCHEMA_TEXT), branches(IR_0_6_SCHEMA_TEXT));
     assert_eq!(old.len(), 13);
-    assert_eq!(new.len(), 14, "the kinds of 0.6 so far");
+    assert_eq!(new.len(), 15, "the kinds of 0.6 so far");
     let added: Vec<String> = new
         .iter()
         .skip(old.len())
         .filter_map(|n| n.get("properties")?.get("kind")?.get("const")?.as_str())
         .map(str::to_owned)
         .collect();
-    assert_eq!(added, ["connector"]);
+    assert_eq!(added, ["connector", "pattern"]);
     for (o, n) in old.iter().zip(new.iter()) {
         let kind = n
             .get("properties")
@@ -136,11 +144,15 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
         differences(o, n, "", &mut found);
         found.sort();
         let had_pub = o.get("properties").and_then(|p| p.get("pub")).is_some();
-        let want: Vec<&str> = if had_pub {
+        let mut want: Vec<&str> = if had_pub {
             vec!["/properties/doc"]
         } else {
             vec!["/properties/doc", "/properties/pub"]
         };
+        if kind == r#"{"const":"workflow"}"# {
+            want.extend(["/oneOf", "/properties/apply", "/required"]);
+            want.sort_unstable();
+        }
         assert_eq!(found, want, "{kind}");
         let props = n.get("properties").expect("properties");
         assert_eq!(
@@ -153,6 +165,46 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
             Some(r#"{"type":"string"}"#),
             "{kind}"
         );
+    }
+    // The expressions, branch by branch: the same but for what a pattern's
+    // body writes (spec/library.md "Slots"): `delegate slot(…)`, a skill
+    // slot's name in the place of `Agent.skill`, and a map's `max` and `par`
+    // of `$defs/Count`, a whole number or a const slot's name.
+    let exprs = |text: &str| {
+        json(text)
+            .get("$defs")
+            .and_then(|d| d.get("Expr"))
+            .and_then(|d| d.get("oneOf"))
+            .and_then(Value::as_array)
+            .expect("the branches of an expression")
+            .to_vec()
+    };
+    let (old, new) = (exprs(IR_SCHEMA_TEXT), exprs(IR_0_6_SCHEMA_TEXT));
+    assert_eq!(old.len(), new.len());
+    for (o, n) in old.iter().zip(new.iter()) {
+        let op = n
+            .get("properties")
+            .and_then(|p| p.get("op"))
+            .and_then(|p| p.get("const"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let mut found = Vec::new();
+        differences(o, n, "", &mut found);
+        found.sort();
+        let want: Vec<&str> = match op.as_str() {
+            "delegate" => vec!["/oneOf", "/properties/slot", "/required"],
+            "map" => vec![
+                "/properties/max/$ref",
+                "/properties/max/minimum",
+                "/properties/max/type",
+                "/properties/par/$ref",
+                "/properties/par/minimum",
+                "/properties/par/type",
+            ],
+            _ => Vec::new(),
+        };
+        assert_eq!(found, want, "{op}");
     }
     let v = json(IR_0_6_SCHEMA_TEXT);
     assert_eq!(

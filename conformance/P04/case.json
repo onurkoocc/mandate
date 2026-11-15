@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "P04",
+  "kind": "compile",
+  "title": "An expansion over 1000 static nodes is E0105, at the application, with the pattern's path.",
+  "spec": [
+    "spec/library.md#expansion",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "text": "mandate @ 0.6\n\nmodule example.large @ 0.1\n\nuse std.{fs}\n\ncapability Docs = fs.read(\"/work/docs\")\n\n/// Six hundred rounds of two statements: an expansion of 1,202 static nodes.\npattern Repeat(n: const Int) -> Int {\n  loop max_iter 600 {\n    let a = n\n    let b = n\n  }\n  n\n}\n\nworkflow Many = Repeat(n: 1)\n  caps Docs\n",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0310",
+        "path": "/defs/Many/caps/0"
+      },
+      {
+        "code": "MDT-E0105",
+        "path": "/defs/Many/apply",
+        "facts": {
+          "nodes": 1202,
+          "limit": 1000,
+          "pattern": "Repeat",
+          "pattern_path": "/defs/Repeat",
+          "expanded_path": "/defs/Many"
+        }
+      }
+    ]
+  }
+}

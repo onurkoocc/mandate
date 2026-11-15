@@ -1,0 +1,109 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1302e",
+  "kind": "compile",
+  "title": "A pattern whose run parameter is of a type that names a contract a person approves brings authority, through the type.",
+  "spec": [
+    "spec/library.md#what-a-pattern-may-not-do",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Signed",
+      "value": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "m",
+            "type": {
+              "ref": "Match"
+            }
+          }
+        ],
+        "accept": {
+          "signed": {
+            "description": "The accountant signed it",
+            "by": {
+              "call": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "human"
+                  },
+                  "name": "approve"
+                },
+                "args": [
+                  {
+                    "name": "role",
+                    "value": {
+                      "op": "var",
+                      "name": "accountant"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/Approved",
+      "value": {
+        "kind": "type",
+        "type": {
+          "ref": "Verified",
+          "args": [
+            {
+              "ref": "Match"
+            },
+            {
+              "ref": "Signed"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/params",
+      "value": [
+        {
+          "name": "hint",
+          "type": {
+            "ref": "Option",
+            "args": [
+              {
+                "ref": "Approved"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1302",
+        "path": "/defs/BatchWithExceptions/params/0/type/args/0/ref",
+        "facts": {
+          "names": "role",
+          "name": "accountant",
+          "via": "Approved"
+        }
+      }
+    ]
+  }
+}

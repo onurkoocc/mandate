@@ -251,7 +251,7 @@ pub enum Applied {
     Source(String),
     /// `{ ok: false, diagnostics }`: the stale base (E0130) or the operation
     /// that failed (E0131), or what the patched program is refused for.
-    Refused(CheckResult),
+    Refused(Box<CheckResult>),
 }
 
 /// The door `apply_ops` of `runCompileCase`: the input loaded, which must
@@ -275,13 +275,14 @@ pub fn applied_source(
         Some(p) => mandate_ir::stringify(&JsValue::from(&p))
             .map(Applied::Source)
             .ok_or_else(|| "no JSON text".to_owned()),
-        None => Ok(Applied::Refused(CheckResult {
+        None => Ok(Applied::Refused(Box::new(CheckResult {
             program: None,
             spans: Spans::new(),
             diagnostics: applied.diagnostics,
             ok: false,
             hashes: None,
-        })),
+            expanded: None,
+        }))),
     }
 }
 

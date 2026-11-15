@@ -1,0 +1,76 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1305f",
+  "kind": "compile",
+  "title": "A read_only skill slot given the skill of an agent that holds a write capability.",
+  "spec": [
+    "spec/library.md#slots",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/uses/0/names/3",
+      "value": "fs"
+    },
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/slots/1/read_only",
+      "value": true
+    },
+    {
+      "op": "add",
+      "path": "/defs/Scratch",
+      "value": {
+        "kind": "capability",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "fs"
+            },
+            "name": "write"
+          },
+          "args": [
+            {
+              "value": {
+                "op": "text",
+                "value": "/work/scratch"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/Matcher/caps/2",
+      "value": {
+        "op": "var",
+        "name": "Scratch"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1305",
+        "path": "/defs/MatchAll/apply/args/1/value",
+        "facts": {
+          "problem": "read_only",
+          "slot": "work",
+          "agent": "Matcher"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1302a",
+  "kind": "compile",
+  "title": "A pattern that delegates to an agent other than through a slot brings authority.",
+  "spec": [
+    "spec/library.md#what-a-pattern-may-not-do",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/1/value/body/0/value",
+      "value": {
+        "op": "delegate",
+        "agent": "Matcher",
+        "skill": "match",
+        "args": [
+          {
+            "value": {
+              "op": "var",
+              "name": "it"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1302",
+        "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/agent",
+        "facts": {
+          "names": "agent",
+          "name": "Matcher"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "P05",
+  "kind": "compile",
+  "title": "The program hash covers the application, its type arguments and its slot arguments, not the expansion; check gives the expansion as expanded.",
+  "spec": [
+    "spec/library.md#hashes-and-what-the-runtime-stores",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/batch.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../../fixtures/library/acme.connectors/types.mdt",
+    "../../fixtures/library/acme.connectors/connectors.mdt",
+    "../../fixtures/library/batch.patterns.mdt"
+  ],
+  "expect": {
+    "ok": true,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/same_invoice/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ],
+    "hashes": {
+      "program": "sha256:442671e1af2720fd835fd0a496c2757078a8f4ef5129f6b6aa47cb5de405bc92",
+      "defs": {
+        "ErpDraft": "sha256:91f4779de7c6cd75cafd362ea2a38edc91030ae222e19de9d7a34ba8c8235d84",
+        "ErpRead": "sha256:ea23f2faae2ed8a24ad065393490218cec83654e7a8109ba2b733902b32fcc06",
+        "Inbox": "sha256:6ac1491e2d922fa7ff8b3365859fc654a4947a71ed71721ac1aaa9cd2e9776aa",
+        "MatchInvoices": "sha256:ea5cd261a4f2f867395cd243b792e33094ce24ef0088ec78085c961ac4cef823",
+        "Matched": "sha256:89b17f9b9893ed16eec807fcdabd5fa04e43fa862659a5f63a7a91a38185c4cf",
+        "Matcher": "sha256:f6533579488273206115ad039adf88f9ca28038ce2adc5250b0324ac16c7fe21",
+        "ModelStd": "sha256:3d1b9c3435bb5678e33db8e60c2299ed4f109ecb5cc2693d02df6f8d03cc3c3f",
+        "accountant": "sha256:c723ad4bef6416c9aef9d0acb9b974c44449bc1ae759c31cd148b9e7dd57f197",
+        "finance_lead": "sha256:7a2d35f89fff50f998d449eb454627f0a50b2dc7905e38ae3da3cc65fabe8de6"
+      }
+    }
+  }
+}

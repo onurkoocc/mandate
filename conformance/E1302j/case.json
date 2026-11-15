@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1302j",
+  "kind": "compile",
+  "title": "A pattern that verifies against a contract of its module whose criterion a person may waive brings that person's role (a mutation: verify out against Matched, not the slot accepted).",
+  "spec": [
+    "spec/library.md#what-a-pattern-may-not-do",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/1/value/body/1/value/contract",
+      "value": "Matched"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1302",
+        "path": "/defs/BatchWithExceptions/body/1/value/body/1/value/contract",
+        "facts": {
+          "names": "role",
+          "name": "accountant",
+          "via": "Matched"
+        }
+      }
+    ]
+  }
+}

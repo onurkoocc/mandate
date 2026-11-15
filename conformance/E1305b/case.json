@@ -1,0 +1,67 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1305b",
+  "kind": "compile",
+  "title": "A contract argument whose parameters are not the slot's.",
+  "spec": [
+    "spec/library.md#slots",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Ordered",
+      "value": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "o",
+            "type": {
+              "ref": "Order"
+            }
+          }
+        ],
+        "accept": {
+          "open": {
+            "description": "The order is open",
+            "by": {
+              "static": {
+                "op": "bool",
+                "value": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/apply/args/2/value",
+      "value": {
+        "op": "var",
+        "name": "Ordered"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1305",
+        "path": "/defs/MatchAll/apply/args/2/value",
+        "facts": {
+          "problem": "arity",
+          "slot": "accepted",
+          "expected": 2,
+          "given": 1
+        }
+      }
+    ]
+  }
+}

@@ -957,6 +957,28 @@ impl<'a> Graph<'a> {
                             &prev,
                         )]
                     }
+                    // 0.6: a review is a person's step too, by the roles
+                    // it names (spec/library.md "human.review").
+                    Some(p)
+                        if p == "human.review"
+                            && self
+                                .program
+                                .language()
+                                .is_some_and(|l| l.at_least(mandate_ir::Language::V0_6)) =>
+                    {
+                        let detail: Vec<String> = e
+                            .args()
+                            .filter_map(|a| {
+                                let key = a.name().filter(|k| {
+                                    matches!(*k, "role" | "escalate_to" | "distinct_from")
+                                })?;
+                                let v = a.value()?;
+                                let who = v.name().or_else(|| v.text())?;
+                                Some(format!("{} {who}", key.replace('_', " ")))
+                            })
+                            .collect();
+                        vec![self.add(ArchKind::Human, "person: review".to_owned(), detail, &prev)]
+                    }
                     Some(p) if std_fn(&p).is_some() && p != "human.approve" => {
                         vec![self.add(ArchKind::Read, p, Vec::new(), &prev)]
                     }

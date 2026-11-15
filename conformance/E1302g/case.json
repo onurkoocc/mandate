@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1302g",
+  "kind": "compile",
+  "title": "A pattern that asks a person by a role written as text brings authority (a mutation: role: \"accountant\" in the review).",
+  "spec": [
+    "spec/library.md#what-a-pattern-may-not-do",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/2/value/args/1/value",
+      "value": {
+        "op": "text",
+        "value": "accountant"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1302",
+        "path": "/defs/BatchWithExceptions/body/2/value/args/1/value",
+        "facts": {
+          "names": "role",
+          "name": "written as text"
+        }
+      }
+    ]
+  }
+}

@@ -669,6 +669,48 @@ pub const CODES: &[CodeRow] = &[
         explain: "The role a review asks, and the role it escalates to, decide by waiving what their items failed, so each is among the `waive by` roles of every criterion of the contract that has a waiver, and the contract has at least one. A role that could waive nothing is refused (spec/library.md \"human.review\").",
         reference: Reference::Rust,
     },
+    CodeRow {
+        code: "MDT-E1301",
+        title: "Malformed pattern",
+        explain: "A pattern has type parameters, then slots, each a name and one of the kinds type, skill(sig) [read_only], tool(sig), effect(sig), contract(sig), role, capability, const T and field(T), then its run parameters, its result and a body that is a block. A slot of another kind, a slot or a type parameter named twice, a signature its kind does not take, a body that is missing, and a slot used in the body other than its kind allows (a skill slot is delegated to, a tool slot called, an effect slot run with `effect`, a contract slot verified against, a const slot read as a value or as a map's max or par) are refused; the fact `problem` says which (spec/library.md \"Patterns\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1302",
+        title: "Pattern brings authority",
+        explain: "A pattern grants itself nothing: it declares no caps, budget or envelope, and its body and its signature name no capability (a definition or a constructor such as fs.write(…)), agent, connector or tool, effect run with `effect`, or role except through a slot, directly or through a function, constant, type or contract of its module that names one. What its body uses is a requirement the applying workflow's caps cover (C1), and the applying program names every agent, tool, effect, role and capability the expansion reaches (INV-21). An imported pattern is checked again where it is applied, at the application (spec/library.md \"What a pattern may not do\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1303",
+        title: "Not a pattern",
+        explain: "`workflow W = P<…>(…)` applies P, which is a pattern definition of the program or a pattern a `use` list names from a module the check is given (one of another module is `pub`, E1602). A name that is no definition, or one of another kind, is refused (spec/library.md \"Application\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1304",
+        title: "Slots and arguments do not match",
+        explain: "An application gives each slot of the pattern exactly one argument, by the slot's name, and as many type arguments as the pattern has type parameters; each argument is of its slot's kind: a type, a skill Agent.skill, a read-only tool c.t, an effect (a user effect, a std effect, or a write tool c.t), a contract, a role, a capability, a constant expression, or a field's name. A slot without an argument, an argument for no slot or given twice, an argument of another kind and another number of type arguments are refused (spec/library.md \"Application\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1305",
+        title: "Argument does not fit its slot",
+        explain: "An argument fits its slot's signature, in the order of how a value is known (spec/core.md §2.1): each parameter type of the slot is accepted where the argument's parameter is expected, and the argument's result where the slot's is (a skill, a tool, an effect); a contract's parameters take the slot's; a constant is of the slot's type, and one a map's max or par reads is a whole number of at least 1; a field is a field of the named record type. A tool's parameter Verified<T> accepts a Verified<T, C> of any contract, and the parameter a write tool names in `idempotency key` is no part of its signature. A `skill(…) read_only` slot is given the skill of an agent that holds no write capability. Whatever fits is checked again in the expansion, as written code (spec/library.md \"Slots\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1306",
+        title: "Name collision in a pattern",
+        explain: "A slot, type parameter or run parameter is named like another of them, or like a definition the pattern's module defines or imports, or like a name the body binds (a `let`, a map's item, a branch, `on unmet`). Where a pattern is applied, no name may mean two things: a name a slot's argument names is not bound by the body around the slot's use, and a definition of the pattern's module that the expansion names is not named otherwise in the applying program, which names it through its `use` list (spec/library.md \"What a pattern may not do\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1307",
+        title: "Nested or misplaced application",
+        explain: "A pattern is applied only as the whole definition of a workflow: `workflow W = P<…>(…)` with the workflow's caps and budget. An application anywhere else (in a body, as a constant or a capability, as a slot's argument, inside a pattern's body), one with an envelope, parameters, a result, a body, `ensures` or handlers of its own, and a name of a pattern used as a value are refused. A check that meets a workflow that was not expanded refuses it too, rather than read it as one that does nothing (spec/library.md \"Application\").",
+        reference: Reference::Rust,
+    },
 ];
 
 /// The row of `code` (`MDT-E0103`), when the table has one.

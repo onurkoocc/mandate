@@ -1,0 +1,47 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708n",
+  "kind": "compile",
+  "title": "A commit map of an expansion that runs its items side by side is no batch commit step (a mutation: par concurrency on the commit map).",
+  "spec": [
+    "spec/library.md#expansion",
+    "spec/library.md#the-batch-commit-step",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/body/3/value/par",
+      "value": "concurrency"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/MatchAll/apply/args/5/value",
+        "facts": {
+          "kind": "critical_effect",
+          "what": "erp.post_draft",
+          "condition": "par",
+          "slot": "commit"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

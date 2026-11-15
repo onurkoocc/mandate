@@ -1,0 +1,77 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1305a",
+  "kind": "compile",
+  "title": "A skill argument whose result is not the slot's.",
+  "spec": [
+    "spec/library.md#slots",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Matcher/skills/extract",
+      "value": {
+        "params": [
+          {
+            "name": "inv",
+            "type": {
+              "ref": "Untrusted",
+              "args": [
+                {
+                  "ref": "Invoice"
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Inferred",
+          "args": [
+            {
+              "ref": "Invoice"
+            }
+          ]
+        },
+        "effects": [
+          {
+            "effect": "Model"
+          }
+        ]
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/apply/args/1/value",
+      "value": {
+        "op": "field",
+        "of": {
+          "op": "var",
+          "name": "Matcher"
+        },
+        "name": "extract"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1305",
+        "path": "/defs/MatchAll/apply/args/1/value",
+        "facts": {
+          "problem": "result",
+          "slot": "work",
+          "slot_type": "Inferred<Match>",
+          "argument_type": "Inferred<Invoice>"
+        }
+      }
+    ]
+  }
+}

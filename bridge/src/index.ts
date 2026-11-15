@@ -20,10 +20,18 @@
 import { CODES as TS_CODES } from "@mandate/compiler";
 import { facade, onCompilerMode, rustCodes } from "./mode.js";
 import * as ts from "./ts.js";
+import type { Modules } from "@mandate/compiler";
 
 // The names below are exported here and so are not taken from the reference compiler's `export *`.
 export * from "@mandate/compiler";
 export type { AuthorityContext, GrantDelegation, GrantInput, GrantOutput, InFlightOverlapInput, InFlightOverlapOutput, ItemScopes, MapScopesInput, MapScopesOutput, NarrowInput, NarrowOutput, Refusal } from "./authority.js";
+
+/**
+ * A view or a diff of a program that takes the modules besides, last (doors.ts): the Rust's alone, for a program of
+ * language 0.6 whose workflow applies a pattern of one of them. The TypeScript function, frozen at 0.5, is not given
+ * them; for a program of 0.1 to 0.5 a caller passes none (util.ts, viewModules).
+ */
+export type WithModules<F> = F extends (...args: infer A) => infer R ? (...args: [...A, modules?: Modules]) => R : never;
 
 export let load = ts.load;
 export let check = ts.check;
@@ -60,20 +68,20 @@ export let applyPatch = ts.applyPatch;
 export let checkPatch = ts.checkPatch;
 export let checkSubprogram = ts.checkSubprogram;
 export let checkAmendment = ts.checkAmendment;
-export let semanticDiff = ts.semanticDiff;
+export let semanticDiff: WithModules<typeof ts.semanticDiff> = ts.semanticDiff;
 export let governanceChanges = ts.governanceChanges;
 export let envelopeChanges = ts.envelopeChanges;
 export let grant = ts.grant;
 export let narrow = ts.narrow;
 export let mapScopes = ts.mapScopes;
 export let inFlightOverlap = ts.inFlightOverlap;
-export let architecture = ts.architecture;
+export let architecture: WithModules<typeof ts.architecture> = ts.architecture;
 export let architectureBlocks = ts.architectureBlocks;
-export let authority = ts.authority;
+export let authority: WithModules<typeof ts.authority> = ts.authority;
 export let authorityBlocks = ts.authorityBlocks;
-export let cost = ts.cost;
+export let cost: WithModules<typeof ts.cost> = ts.cost;
 export let programDoc = ts.programDoc;
-export let diffDoc = ts.diffDoc;
+export let diffDoc: WithModules<typeof ts.diffDoc> = ts.diffDoc;
 export let envelopeWorkflows = ts.envelopeWorkflows;
 export let card = ts.card;
 export let cardDoc = ts.cardDoc;

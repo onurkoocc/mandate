@@ -48,8 +48,9 @@ type Printed = Result<String, String>;
 static NULL: Value = Value::Null;
 
 /// Definitions are printed by kind in this order, by name inside each kind.
-/// A connector (0.6) comes before the capabilities, which name it.
-const KIND_ORDER: [DefKind; 14] = [
+/// A connector (0.6) comes before the capabilities, which name it, and a
+/// pattern (0.6) before the workflows, which apply it.
+const KIND_ORDER: [DefKind; 15] = [
     DefKind::Role,
     DefKind::Interface,
     DefKind::Component,
@@ -63,6 +64,7 @@ const KIND_ORDER: [DefKind; 14] = [
     DefKind::Fn,
     DefKind::Contract,
     DefKind::Agent,
+    DefKind::Pattern,
     DefKind::Workflow,
 ];
 
@@ -379,7 +381,127 @@ fn print_def(name: &str, d: &Value) -> Printed {
         .join("\n")),
         DefKind::Environment => print_environment(name, d),
         DefKind::Connector => print_connector(name, d),
+        DefKind::Pattern => print_pattern(name, d),
     }
+}
+
+/// A pattern (0.6, spec/library.md "Declaration"), which the TypeScript does
+/// not have: its type parameters, one slot a line, its run parameters when
+/// it has any, its result, what it may not declare when it does (so that
+/// the text reads back to the IR the check refuses), and its body.
+fn print_pattern(name: &str, d: &Value) -> Printed {
+    let mut s = format!("pattern {name}");
+    if truthy(member(d, "generics")) {
+        s.push_str(&format!("<{}>", join(items(d, "generics"), ", ")));
+    }
+    let slots = items(d, "slots");
+    if slots.is_empty() {
+        s.push_str("()");
+    } else {
+        s.push_str("(\n");
+        let mut lines: Vec<String> = Vec::new();
+        for slot in slots {
+            lines.push(format!("  {}", print_slot(slot)?));
+        }
+        s.push_str(&lines.join(",\n"));
+        s.push_str("\n)");
+    }
+    if !items(d, "params").is_empty() {
+        s.push_str(&format!(" ({})", params(items(d, "params"))?));
+    }
+    s.push_str(&format!(" -> {}", type_(member(d, "returns"))?));
+    if truthy(member(d, "envelope")) {
+        s.push('\n');
+        s.push_str(&print_envelope(member(d, "envelope"))?);
+    }
+    if d.get("caps").is_some() {
+        s.push_str(&format!(
+            "\n  caps    {}",
+            no_struct_all(items(d, "caps"), "  ")?
+        ));
+    }
+    if truthy(member(d, "budget")) {
+        s.push_str(&format!("\n  {}", budget(member(d, "budget"))?));
+    }
+    s.push('\n');
+    s.push_str(&block(items(d, "body"), "")?);
+    Ok(s)
+}
+
+/// One slot of a pattern: `name: kind` and what its kind takes.
+fn print_slot(slot: &Value) -> Printed {
+    let kind = show(slot, "kind");
+    let mut s = format!("{}: {kind}", show(slot, "name"));
+    if slot.get("type").is_some() {
+        let t = type_(member(slot, "type"))?;
+        if kind == "field" {
+            s.push_str(&format!("({t})"));
+        } else {
+            s.push_str(&format!(" {t}"));
+        }
+    }
+    if slot.get("params").is_some() {
+        let mut ts: Vec<String> = Vec::new();
+        for t in items(slot, "params") {
+            ts.push(type_(t)?);
+        }
+        s.push_str(&format!("({})", ts.join(", ")));
+    }
+    if slot.get("returns").is_some() {
+        s.push_str(&format!(" -> {}", type_(member(slot, "returns"))?));
+    }
+    if truthy(member(slot, "read_only")) {
+        s.push_str(" read_only");
+    }
+    Ok(s)
+}
+
+/// A workflow that applies a pattern (0.6, spec/library.md "Application"):
+/// `workflow W = P<A, …>(` and one argument a line, then its caps and
+/// budget, as a workflow writes them, and an envelope when it has one (the
+/// check refuses it, E1307).
+fn print_application(name: &str, d: &Value) -> Printed {
+    let apply = member(d, "apply");
+    let mut s = format!("workflow {name} = {}", show(apply, "pattern"));
+    if truthy(member(apply, "types")) {
+        let mut ts: Vec<String> = Vec::new();
+        for t in items(apply, "types") {
+            ts.push(type_(t)?);
+        }
+        s.push_str(&format!("<{}>", ts.join(", ")));
+    }
+    let args = items(apply, "args");
+    if args.is_empty() {
+        s.push_str("()");
+    } else {
+        s.push_str("(\n");
+        let mut lines: Vec<String> = Vec::new();
+        for a in args {
+            let value = if a.get("type").is_some() {
+                type_(member(a, "type"))?
+            } else {
+                expr(member(a, "value"), 0, "    ")?
+            };
+            lines.push(format!("    {}: {value}", show(a, "name")));
+        }
+        s.push_str(&lines.join(",\n"));
+        s.push(')');
+    }
+    let has_envelope = truthy(member(d, "envelope"));
+    if has_envelope {
+        s.push('\n');
+        s.push_str(&print_envelope(member(d, "envelope"))?);
+    }
+    if !has_envelope || !items(d, "caps").is_empty() {
+        s.push_str(&format!(
+            "\n  caps    {}",
+            no_struct_all(items(d, "caps"), "  ")?
+        ));
+    }
+    if truthy(member(d, "budget")) {
+        s.push_str(&format!("\n  {}", budget(member(d, "budget"))?));
+    }
+    Ok(s)
 }
 
 /// A connector (0.6, spec/library.md "Declaration"), which the TypeScript
@@ -602,6 +724,10 @@ fn print_envelope(env: &Value) -> Printed {
 
 /// `case "workflow"` of `printDef`.
 fn print_workflow(name: &str, d: &Value) -> Printed {
+    // 0.6: an application of a pattern, which no earlier IR has.
+    if d.get("apply").is_some() {
+        return print_application(name, d);
+    }
     let mut s = format!(
         "workflow {name}({}) -> {}",
         params(items(d, "params"))?,
@@ -1302,12 +1428,21 @@ fn record(e: &Value, ind: &str) -> Printed {
 
 /// `case "delegate"` of `exprInner`.
 fn delegate(e: &Value, ind: &str) -> Printed {
-    let mut s = format!(
-        "delegate {}.{}({})",
-        show(e, "agent"),
-        show(e, "skill"),
-        args(items(e, "args"), ind)?
-    );
+    // 0.6: in a pattern's body, a skill slot is delegated to by its name.
+    let mut s = if e.get("slot").is_some() {
+        format!(
+            "delegate {}({})",
+            show(e, "slot"),
+            args(items(e, "args"), ind)?
+        )
+    } else {
+        format!(
+            "delegate {}.{}({})",
+            show(e, "agent"),
+            show(e, "skill"),
+            args(items(e, "args"), ind)?
+        )
+    };
     if truthy(member(e, "caps")) {
         s.push_str(&format!(
             " with caps {}",

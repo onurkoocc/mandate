@@ -1,0 +1,49 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "P02a",
+  "kind": "compile",
+  "title": "A diagnostic found in the expansion is reported at the slot argument whose value it is about: a deadline of zero, given to the deadline slot, is the review's E1507 at that argument.",
+  "spec": [
+    "spec/library.md#expansion",
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/apply/args/9/value",
+      "value": {
+        "op": "duration",
+        "ms": 0
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1507",
+        "path": "/defs/MatchAll/apply/args/9/value",
+        "facts": {
+          "problem": "deadline",
+          "slot": "deadline",
+          "expanded_path": "/defs/MatchAll/body/2/value/args/2/value"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

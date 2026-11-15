@@ -51,6 +51,11 @@ fn doors() -> Vec<JsonDoor<'static>> {
 const RULES: Rules<'static> = Rules {
     // The parameters a door may be called without (`null` is the same).
     optional: &[
+        // The Rust's alone (0.6): the modules an applied pattern comes from.
+        ("architecture", "modules"),
+        ("authority", "modules"),
+        ("cost", "modules"),
+        ("diff_doc", "modules"),
         ("cost", "lock"),
         ("program_doc", "lock"),
         ("program_doc", "modules"),

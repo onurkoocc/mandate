@@ -5,7 +5,12 @@
 // `both` (index.ts). Its door takes the function's parameters as the members of its input, by these names, which
 // the module's own table (the door `doors`) must give when the module is loaded (wasm/call.ts).
 
-/** The door-backed functions: the door each calls, and the members of its input, the function's parameters in order. */
+/**
+ * The door-backed functions: the door each calls, and the members of its input, the function's parameters in order.
+ * The views and the diffs of a program (architecture, authority, cost, semanticDiff, diffDoc) take the modules
+ * besides, last: the Rust's alone (language 0.6, whose workflow may apply a pattern of a module), which the
+ * TypeScript function is not given; a caller passes them only for a program of 0.6 (util.ts, viewModules).
+ */
 export const DOOR_BACKED = {
   // Reading, checking, hashing and printing.
   load: { door: "load", params: ["text", "kind"] },
@@ -46,7 +51,7 @@ export const DOOR_BACKED = {
   checkPatch: { door: "check_patch", params: ["program", "base", "ops", "modules"] },
   checkSubprogram: { door: "check_subprogram", params: ["i"] },
   checkAmendment: { door: "check_amendment", params: ["i"] },
-  semanticDiff: { door: "semantic_diff", params: ["before", "after", "locks"] },
+  semanticDiff: { door: "semantic_diff", params: ["before", "after", "locks", "modules"] },
   governanceChanges: { door: "governance_changes", params: ["before", "after", "modules"] },
   envelopeChanges: { door: "envelope_changes", params: ["before", "after", "workflow", "modules"] },
   // The run-time authority decisions (authority.ts).
@@ -55,13 +60,13 @@ export const DOOR_BACKED = {
   mapScopes: { door: "map_scopes", params: ["input"] },
   inFlightOverlap: { door: "in_flight_overlap", params: ["input"] },
   // The views, the documents, the card and the ACS target.
-  architecture: { door: "architecture", params: ["program"] },
+  architecture: { door: "architecture", params: ["program", "modules"] },
   architectureBlocks: { door: "architecture_blocks", params: ["v"] },
-  authority: { door: "authority", params: ["program"] },
+  authority: { door: "authority", params: ["program", "modules"] },
   authorityBlocks: { door: "authority_blocks", params: ["v"] },
-  cost: { door: "cost", params: ["program", "lock"] },
+  cost: { door: "cost", params: ["program", "lock", "modules"] },
   programDoc: { door: "program_doc", params: ["program", "lock", "modules"] },
-  diffDoc: { door: "diff_doc", params: ["before", "after", "locks"] },
+  diffDoc: { door: "diff_doc", params: ["before", "after", "locks", "modules"] },
   envelopeWorkflows: { door: "envelope_workflows", params: ["program"] },
   card: { door: "card", params: ["program", "workflow", "opts"] },
   cardDoc: { door: "card_doc", params: ["program", "workflow", "opts"] },

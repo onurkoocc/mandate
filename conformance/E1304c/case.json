@@ -1,0 +1,42 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1304c",
+  "kind": "compile",
+  "title": "A slot given an argument twice.",
+  "spec": [
+    "spec/library.md#application",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/MatchAll/apply/args/10",
+      "value": {
+        "name": "deadline",
+        "value": {
+          "op": "duration",
+          "ms": 172800000
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1304",
+        "path": "/defs/MatchAll/apply/args/10/name",
+        "facts": {
+          "problem": "twice",
+          "slot": "deadline"
+        }
+      }
+    ]
+  }
+}

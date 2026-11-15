@@ -613,6 +613,13 @@ pub enum GovernanceChangeKind {
     /// 0.6: a role may no longer waive a criterion (`waive by` taken away,
     /// or a role taken from it).
     WaiverRemoved,
+    /// 0.6: what a workflow's expansion may do changed: the application it
+    /// is (its pattern, type arguments or slot arguments) came, went or
+    /// changed, or a pattern a workflow applies changed. Every such change
+    /// is a person's to see, whatever it does: a slot argument swapped for
+    /// an effect of a higher class, a contract for a weaker one, another
+    /// reviewer, a higher `max_items` (spec/library.md "Patterns").
+    ApplicationChanged,
 }
 
 impl GovernanceChangeKind {
@@ -633,6 +640,7 @@ impl GovernanceChangeKind {
             GovernanceChangeKind::KindChanged => "kind_changed",
             GovernanceChangeKind::WaiverAdded => "waiver_added",
             GovernanceChangeKind::WaiverRemoved => "waiver_removed",
+            GovernanceChangeKind::ApplicationChanged => "application_changed",
         }
     }
 }
@@ -755,6 +763,9 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
             let text = format!("- {kind} {name} removed");
             if kind == "contract" {
                 out.gov(GovernanceChangeKind::CriterionRemoved, path, text);
+            } else if kind == "pattern" && !applied_by(bp, name).is_empty() {
+                // 0.6: a pattern a workflow applied is gone from under it.
+                out.gov(GovernanceChangeKind::ApplicationChanged, path, text);
             } else if is_system(&kind) {
                 out.gov(GovernanceChangeKind::SystemModelChanged, path, text);
             } else {
@@ -815,6 +826,14 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                             GovernanceChangeKind::EnvelopeChanged,
                             format!("{path}/envelope"),
                             format!("+ {name}: envelope"),
+                        );
+                    }
+                    // 0.6: what the new workflow's expansion does.
+                    if let Some(p) = applied(a) {
+                        out.gov(
+                            GovernanceChangeKind::ApplicationChanged,
+                            format!("{path}/apply"),
+                            format!("+ {name}: applies {p}"),
                         );
                     }
                 }
@@ -900,7 +919,23 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                 if a_kind == "agent" {
                     agent_changes(&mut out, name, &path, b, a);
                 } else {
+                    application_changes(&mut out, name, &path, b, a);
                     workflow_changes(&mut out, (lb, la), name, &path, b, a);
+                }
+            }
+            // 0.6: a pattern's body is what its applications do.
+            "pattern" => {
+                let mut by = applied_by(bp, name);
+                by.extend(applied_by(ap, name));
+                let by = unique_in_order(by);
+                if by.is_empty() {
+                    out.beh(path, format!("~ pattern {name} changed"));
+                } else {
+                    out.gov(
+                        GovernanceChangeKind::ApplicationChanged,
+                        path,
+                        format!("~ pattern {name} changed, which {} applies", by.join(", ")),
+                    );
                 }
             }
             "fn" => {
@@ -942,7 +977,107 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
             _ => out.beh(path, format!("~ {a_kind} {name} changed")),
         }
     }
+    // 0.6: an application written the same in both whose pattern or
+    // arguments mean something else now.
+    for name in &names {
+        if let (Some(b), Some(a)) = (bdefs.get(name), adefs.get(name)) {
+            resolution_changes(&mut out, (bp, ap), name, b, a);
+        }
+    }
     out
+}
+
+/// What the pattern `p` names in `program`: `"local"` for one it defines,
+/// `"module m"` for one a `use` list brings from `m`, else `"unknown"`.
+fn resolved(program: Program<'_>, p: &str) -> String {
+    if program
+        .defs()
+        .and_then(|d| d.get(p))
+        .is_some_and(|d| kind_text(d) == "pattern")
+    {
+        return "local".to_owned();
+    }
+    program
+        .imports()
+        .find(|u| u.module().is_some_and(|m| m != "std") && u.names().any(|n| n == p))
+        .and_then(|u| u.module())
+        .map_or_else(|| "unknown".to_owned(), |m| format!("module {m}"))
+}
+
+/// The names the arguments of an application refer to, each once, in the
+/// order found: a variable's name and a dotted path's root.
+fn argument_names(apply: &Value) -> Vec<String> {
+    fn walk(v: &Value, out: &mut Vec<String>) {
+        match v {
+            Value::Array(items) => items.iter().for_each(|x| walk(x, out)),
+            Value::Object(m) => {
+                if m.get("op").and_then(Value::as_str) == Some("var")
+                    && let Some(n) = m.get("name").and_then(Value::as_str)
+                    && !out.iter().any(|x| x == n)
+                {
+                    out.push(n.to_owned());
+                }
+                for (_, x) in m.iter() {
+                    walk(x, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    if let Some(args) = apply.get("args") {
+        walk(args, &mut out);
+    }
+    out
+}
+
+/// 0.6: a workflow whose application is written the same before and after,
+/// but whose pattern name now means another pattern (one the program
+/// defines rather than one a module gives, or one of another module), or one
+/// of whose arguments names a constant whose value changed (a map's `max`
+/// read from it, say): what the expansion may do changed with nothing in
+/// the workflow changing, a governance change as the application's own
+/// change is ([`application_changes`]).
+fn resolution_changes(
+    out: &mut Classified,
+    (bp, ap): (Program<'_>, Program<'_>),
+    name: &str,
+    b: &Value,
+    a: &Value,
+) {
+    let (Some(was), Some(now)) = (b.get("apply"), a.get("apply")) else {
+        return;
+    };
+    if j(was) != j(now) {
+        return;
+    }
+    let path = format!("/defs/{name}/apply");
+    let p = js_text(now.get("pattern"));
+    let (rb, ra) = (resolved(bp, &p), resolved(ap, &p));
+    if rb != ra {
+        let said = |r: &str| match r.strip_prefix("module ") {
+            Some(m) => format!("the pattern of module {m}"),
+            None if r == "local" => "the program's own pattern".to_owned(),
+            None => "no pattern the program defines or imports".to_owned(),
+        };
+        out.gov(
+            GovernanceChangeKind::ApplicationChanged,
+            path.clone(),
+            format!("~ {name}: {p} is now {}, not {}", said(&ra), said(&rb)),
+        );
+    }
+    let (bdefs, adefs) = (defs_of(bp), defs_of(ap));
+    for n in argument_names(now) {
+        let (bc, ac) = (bdefs.get(&n), adefs.get(&n));
+        let constant = |d: Option<&Value>| d.is_some_and(|d| kind_text(d) == "const");
+        if (constant(bc) || constant(ac)) && j_or_null(bc) != j_or_null(ac) {
+            out.gov(
+                GovernanceChangeKind::ApplicationChanged,
+                path.clone(),
+                format!("~ {name}: the constant {n} its application of {p} names changed"),
+            );
+        }
+    }
 }
 
 /// What changed in a connector (0.6), as its authority signature reads it
@@ -1160,6 +1295,85 @@ fn skill_shape(s: &Value) -> String {
     }
     m.insert("b", s.get("body").cloned().unwrap_or(Value::Null));
     j(&Value::Object(m))
+}
+
+/// 0.6: each workflow of `after` that applies a pattern from the same module
+/// as in `before`, where the two locks pin that module to another hash: the
+/// application is written the same, its pattern is another.
+fn pattern_pin_changes(before: &Value, after: &Value, locks: Locks<'_>) -> Vec<Change> {
+    let (Some(lb), Some(la)) = (locks.before, locks.after) else {
+        return Vec::new();
+    };
+    let (Some(bp), Some(ap)) = (Program::of(before), Program::of(after)) else {
+        return Vec::new();
+    };
+    let pin = |lock: &Value, m: &str| lock.get("modules").and_then(|ms| ms.get(m)).cloned();
+    let mut out = Vec::new();
+    for (name, d) in defs_of(ap).iter() {
+        let Some(p) = applied(d) else { continue };
+        let was = defs_of(bp).get(name).and_then(applied);
+        let (rb, ra) = (resolved(bp, &p), resolved(ap, &p));
+        let Some(m) = ra.strip_prefix("module ") else {
+            continue;
+        };
+        if was.as_deref() != Some(p.as_str()) || rb != ra {
+            continue;
+        }
+        if pin(lb, m) != pin(la, m) {
+            out.push(Change::new(
+                format!("/defs/{name}/apply"),
+                format!("~ {name}: {p} comes from module {m}, which the lock pins to another hash"),
+            ));
+        }
+    }
+    out
+}
+
+/// The pattern a workflow applies, when it is an application (0.6).
+fn applied(w: &Value) -> Option<String> {
+    let a = w.get("apply")?;
+    Some(js_text(a.get("pattern")))
+}
+
+/// The workflows of `p` that apply the pattern `name`, sorted.
+fn applied_by(p: Program<'_>, name: &str) -> Vec<String> {
+    let mut out: Vec<String> = p
+        .definitions()
+        .filter(|(_, d)| {
+            d.kind() == Some(mandate_ir::DefKind::Workflow)
+                && d.value()
+                    .get("apply")
+                    .and_then(|a| a.get("pattern"))
+                    .and_then(Value::as_str)
+                    == Some(name)
+        })
+        .map(|(n, _)| n.to_owned())
+        .collect();
+    sort_utf16(&mut out);
+    out
+}
+
+/// 0.6: a workflow's application that came, went or changed (its pattern,
+/// type arguments or slot arguments): a governance change, whatever it
+/// changes, since what the expansion may do is what the slots are given
+/// (the workflow case of [`classify`]). A later slice classifies it finer.
+fn application_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a: &Value) {
+    let (was, now) = (b.get("apply"), a.get("apply"));
+    if j_or_null(was) == j_or_null(now) {
+        return;
+    }
+    let text = match (applied(b), applied(a)) {
+        (None, Some(p)) => format!("~ {name}: now applies {p}"),
+        (Some(p), None) => format!("~ {name}: no longer applies {p}"),
+        (Some(p), Some(q)) if p != q => format!("~ {name}: applies {q}, not {p}"),
+        (_, Some(p)) => format!("~ {name}: the application of {p} changed"),
+        (None, None) => return,
+    };
+    out.gov(
+        GovernanceChangeKind::ApplicationChanged,
+        format!("{path}/apply"),
+        text,
+    );
 }
 
 /// The steps, the envelope, the postcondition and the handlers of a workflow
@@ -1486,6 +1700,22 @@ pub struct Locks<'a> {
 /// contracts are compared in the order the program holds them.
 #[must_use]
 pub fn semantic_diff(before: &Value, after: &Value, locks: Option<Locks<'_>>) -> DiffView {
+    semantic_diff_with(before, after, locks, None)
+}
+
+/// [`semantic_diff`] with the modules the programs import (0.6, which only
+/// the Rust reads): what a workflow that applies a pattern of one of them
+/// commits is what its expansion commits. The changes are classified as
+/// [`semantic_diff`] classifies them; with `locks`, a pattern whose module
+/// the locks pin to another hash is a governance change too. A program that
+/// applies no pattern is compared as [`semantic_diff`] compares it.
+#[must_use]
+pub fn semantic_diff_with(
+    before: &Value,
+    after: &Value,
+    locks: Option<Locks<'_>>,
+    modules: Option<&Modules>,
+) -> DiffView {
     let changes = classify(before, after, None);
     let mut governance: Vec<Change> = changes
         .governance
@@ -1493,6 +1723,7 @@ pub fn semantic_diff(before: &Value, after: &Value, locks: Option<Locks<'_>>) ->
         .map(|c| Change::new(c.path, c.text))
         .collect();
     let mut behavior = changes.behavior;
+    let mut repinned = false;
     // After the program's own changes, so a diff without locks, or with the same people in both, reads as it did.
     if let Some(locks) = locks {
         governance.extend(lock_diff(locks.before, locks.after));
@@ -1500,9 +1731,29 @@ pub fn semantic_diff(before: &Value, after: &Value, locks: Option<Locks<'_>>) ->
         let limits = lock_limits_diff(locks.before, locks.after);
         governance.extend(limits.governance);
         behavior.extend(limits.behavior);
+        // 0.6: the module an applied pattern comes from, pinned to another
+        // hash: another pattern under the same application.
+        let pins = pattern_pin_changes(before, after, locks);
+        repinned = !pins.is_empty();
+        governance.extend(pins);
     }
+    // 0.6: what each workflow applies, as this diff can tell it.
+    let applications = |p: &Value| -> Vec<String> {
+        Program::of(p)
+            .into_iter()
+            .flat_map(|q| {
+                q.definitions()
+                    .filter_map(move |(n, d)| applied(d.value()).map(|a| (n, a, q)))
+            })
+            .map(|(n, a, q)| format!("{n} {a} {}", resolved(q, &a)))
+            .collect()
+    };
     let critical = |p: &Value| -> Vec<String> {
-        let Some(program) = Program::of(p) else {
+        // 0.6: a workflow that applies a pattern commits what its expansion
+        // does; one this diff cannot expand (its pattern is in a module it
+        // is not given) is said to, so that no line says it commits nothing.
+        let expanded = crate::expand::for_views(p, modules);
+        let Some(program) = Program::of(expanded.as_ref().unwrap_or(p)) else {
             return Vec::new();
         };
         let mut all: Vec<String> = defs_of(program)
@@ -1510,13 +1761,26 @@ pub fn semantic_diff(before: &Value, after: &Value, locks: Option<Locks<'_>>) ->
             .filter(|(_, d)| d.get("kind").and_then(Value::as_str) == Some("workflow"))
             .flat_map(|(_, w)| workflow_effects(program, Definition::of(w).body()))
             .collect();
+        for (n, w) in defs_of(program).iter() {
+            if let Some(u) = w.get("unexpanded") {
+                all.push(format!(
+                    "what {n}'s expansion of {} commits",
+                    js_text(u.get("pattern"))
+                ));
+            }
+        }
         sort_utf16(&mut all);
         all
     };
     let mut unchanged: Vec<String> = Vec::new();
     let cb = critical(before);
     let ca = critical(after);
-    if cb == ca {
+    // What an application's pattern is may change with nothing in the
+    // workflow changing (another module, or a pattern the program defines
+    // now, or its module pinned to another hash): what it commits is then
+    // not known to be the same, whatever the two sides show.
+    let same_patterns = applications(before) == applications(after) && !repinned;
+    if cb == ca && same_patterns {
         unchanged.push(if cb.is_empty() {
             "no external effects, before or after".to_owned()
         } else {

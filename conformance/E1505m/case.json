@@ -1,0 +1,103 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1505m",
+  "kind": "compile",
+  "title": "A value a waiver may rest on reaches an irreversible effect given to the commit slot.",
+  "spec": [
+    "spec/library.md#expansion",
+    "spec/library.md#waive-by",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/file_draft",
+      "value": {
+        "kind": "effect",
+        "params": [
+          {
+            "name": "m",
+            "type": {
+              "ref": "Verified",
+              "args": [
+                {
+                  "ref": "Match"
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Receipt",
+          "args": [
+            {
+              "ref": "DraftId"
+            }
+          ]
+        },
+        "requires_caps": [
+          {
+            "op": "var",
+            "name": "ErpDraft"
+          }
+        ],
+        "critical": true,
+        "irreversible": true,
+        "idempotency_required": true
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/apply/args/5/value",
+      "value": {
+        "op": "var",
+        "name": "file_draft"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/MatchAll/apply/args/5/value",
+        "facts": {
+          "kind": "critical_effect",
+          "what": "file_draft",
+          "condition": "irreversible",
+          "slot": "commit"
+        }
+      },
+      {
+        "code": "MDT-E1505",
+        "path": "/defs/MatchAll/apply",
+        "facts": {
+          "effect": "file_draft",
+          "contract": "Matched",
+          "pattern_path": "/defs/BatchWithExceptions/body/3/value/body/0/value/args/0/value"
+        }
+      },
+      {
+        "code": "MDT-E0405",
+        "path": "/defs/MatchAll/apply/args/5/value",
+        "facts": {
+          "slot": "commit"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

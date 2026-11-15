@@ -1,0 +1,9 @@
+mandate @ 0.6
+
+module example.lead.plan_1 @ 0.1
+
+use example.lead
+
+workflow Look = Each(work: Worker.look, width: 2)
+  caps   M, R
+  budget { tokens: 2000, time: 10m, spend: 2 USD, steps: 10, agents: 2 }

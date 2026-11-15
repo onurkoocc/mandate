@@ -33,7 +33,7 @@
 import { readFileSync } from "node:fs";
 import type { Readable, Writable } from "node:stream";
 import { architecture, authority, check, checkPatch, CODES, cost, hasErrors, LIMITS, load, loadModules, programRef, semanticDiff, type Lock, type Modules, type PatchOp, type Program, type SourceKind } from "./index.js";
-import { ptrToken } from "./util.js";
+import { ptrToken, viewModules } from "./util.js";
 import { CompilerFailure } from "./wasm/errors.js";
 
 export const MODERN_VERSIONS = ["2026-07-28"];
@@ -185,7 +185,7 @@ export function callTool(name: string, args: Record<string, unknown>, serverModu
     case "mandate.caps_of": {
       const p = program(str(args, "source"), args["kind"], modules);
       const who = str(args, "name");
-      const rows = authority(p).rows.filter((r) => r.who === who || r.who === `${who} (remote)` || r.who.startsWith(`${who} → `));
+      const rows = authority(p, viewModules(modules, p)).rows.filter((r) => r.who === who || r.who === `${who} (remote)` || r.who.startsWith(`${who} → `));
       if (!rows.length) throw new ToolError(`${who} is not an agent or workflow of this program`);
       return { program: programRef(p), rows };
     }
@@ -193,14 +193,17 @@ export function callTool(name: string, args: Record<string, unknown>, serverModu
       const lock = args["lock"] as Lock | undefined;
       const p = program(str(args, "source"), args["kind"], modules, lock);
       switch (args["view"]) {
+        // 0.6: a workflow that applies a pattern of a module is shown, and compared, as its expansion.
         case "architecture":
-          return architecture(p);
+          return architecture(p, viewModules(modules, p));
         case "authority":
-          return authority(p);
+          return authority(p, viewModules(modules, p));
         case "cost":
-          return cost(p, lock);
-        case "diff":
-          return semanticDiff(program(str(args, "before"), args["before_kind"], modules), p);
+          return cost(p, lock, viewModules(modules, p));
+        case "diff": {
+          const before = program(str(args, "before"), args["before_kind"], modules);
+          return semanticDiff(before, p, undefined, viewModules(modules, before, p));
+        }
       }
       throw new ToolError("view must be architecture, authority, cost or diff");
     }

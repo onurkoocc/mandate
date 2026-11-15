@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1302",
+  "kind": "compile",
+  "title": "A pattern that runs an effect with effect other than through a slot brings authority (a mutation: the connector's write tool named in the body).",
+  "spec": [
+    "spec/library.md#what-a-pattern-may-not-do",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/3/value/body/0/value/name",
+      "value": "erp.post_draft"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1302",
+        "path": "/defs/BatchWithExceptions/body/3/value/body/0/value/name",
+        "facts": {
+          "names": "effect",
+          "name": "erp.post_draft"
+        }
+      }
+    ]
+  }
+}

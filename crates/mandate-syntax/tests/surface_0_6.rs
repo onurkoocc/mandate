@@ -401,3 +401,140 @@ fn before_0_6_a_connector_is_no_declaration() {
     let names = "mandate @ 0.6\n\nmodule m @ 0.1\n\ntype T = { connector: Text, tool: Text, read_only: Bool, critical: Bool, idempotency: Text, key: Text, retry_class: Text, reconcile: Text, by: Text, compensation: Text, mcp: Text, version: Text, class: Text }\n";
     read(names);
 }
+
+/// Reads `text`, prints it, and reads the print: the same IR, and the same
+/// print again.
+fn round_trip(text: &str) -> Value {
+    let p = read(text);
+    let printed = print_program(&p).unwrap();
+    assert_eq!(canonicalize(&read(&printed)), canonicalize(&p), "{printed}");
+    assert_eq!(print_program(&read(&printed)).unwrap(), printed);
+    p
+}
+
+/// A pattern (spec/library.md "Declaration") reads to its IR, its type
+/// parameters, slots, result and body, and prints back; so does every
+/// program that defines or applies one here.
+#[test]
+fn a_pattern_reads_to_its_ir_and_prints_back() {
+    let p = round_trip(&mandate_testkit::read_text("fixtures/library/batch.patterns.mdt").unwrap());
+    let b = def(&p, "BatchWithExceptions");
+    assert_eq!(b.get("kind").and_then(Value::as_str), Some("pattern"));
+    assert_eq!(b.get("pub"), Some(&Value::Bool(true)));
+    assert_eq!(
+        canonicalize(b.get("generics").unwrap()),
+        r#"["Item","Out","R"]"#
+    );
+    let slots = b.get("slots").and_then(Value::as_array).unwrap();
+    let shown: Vec<String> = slots.iter().map(canonicalize).collect();
+    assert_eq!(
+        shown,
+        [
+            r#"{"kind":"tool","name":"source","params":[],"returns":{"args":[{"args":[{"ref":"Item"}],"ref":"List"}],"ref":"Untrusted"}}"#,
+            r#"{"kind":"skill","name":"work","params":[{"args":[{"ref":"Item"}],"ref":"Untrusted"}],"returns":{"args":[{"ref":"Out"}],"ref":"Inferred"}}"#,
+            r#"{"kind":"contract","name":"accepted","params":[{"ref":"Item"},{"ref":"Out"}]}"#,
+            r#"{"kind":"role","name":"reviewer"}"#,
+            r#"{"kind":"role","name":"escalate_to"}"#,
+            r#"{"kind":"effect","name":"commit","params":[{"args":[{"ref":"Out"},{"ref":"accepted"}],"ref":"Verified"}],"returns":{"args":[{"ref":"R"}],"ref":"Receipt"}}"#,
+            r#"{"kind":"field","name":"key","type":{"ref":"Out"}}"#,
+            r#"{"kind":"const","name":"max_items","type":{"ref":"Int"}}"#,
+            r#"{"kind":"const","name":"concurrency","type":{"ref":"Int"}}"#,
+            r#"{"kind":"const","name":"deadline","type":{"ref":"Duration"}}"#,
+        ]
+    );
+    // In its body a skill slot is delegated to by its name, and a map is
+    // counted by its const slots.
+    let body = b.get("body").and_then(Value::as_array).unwrap();
+    let map = body[1].get("value").unwrap();
+    assert_eq!(map.get("max").and_then(Value::as_str), Some("max_items"));
+    assert_eq!(map.get("par").and_then(Value::as_str), Some("concurrency"));
+    assert_eq!(
+        canonicalize(
+            map.get("body")
+                .and_then(Value::as_array)
+                .and_then(|b| b.first())
+                .and_then(|s| s.get("value"))
+                .unwrap()
+        ),
+        r#"{"args":[{"value":{"name":"it","op":"var"}}],"op":"delegate","slot":"work"}"#
+    );
+    assert_eq!(
+        b.get("returns").map(canonicalize).as_deref(),
+        Some(r#"{"args":[{"ref":"Out"},{"ref":"R"}],"ref":"Batch"}"#)
+    );
+    round_trip(&mandate_testkit::read_text("conformance/P02/program.mdt").unwrap());
+}
+
+/// An application (spec/library.md "Application") is the whole definition
+/// of a workflow: `apply` with the pattern's name, its type arguments and an
+/// argument per slot, then the workflow's caps and budget; it prints back.
+/// A type written as one (`List<Note>`) is a type argument of a slot; a name
+/// alone, an expression.
+#[test]
+fn an_application_reads_to_its_ir_and_prints_back() {
+    let p = round_trip(&mandate_testkit::read_text("fixtures/library/batch.mdt").unwrap());
+    let w = def(&p, "MatchInvoices");
+    let keys: Vec<&str> = w.as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["kind", "apply", "caps", "budget", "doc"]);
+    let apply = w.get("apply").unwrap();
+    assert_eq!(
+        apply.get("pattern").and_then(Value::as_str),
+        Some("BatchWithExceptions")
+    );
+    assert_eq!(
+        canonicalize(apply.get("types").unwrap()),
+        r#"[{"ref":"Invoice"},{"ref":"Match"},{"ref":"DraftId"}]"#
+    );
+    let args = apply.get("args").and_then(Value::as_array).unwrap();
+    assert_eq!(args.len(), 10);
+    assert_eq!(
+        canonicalize(&args[0]),
+        r#"{"name":"source","value":{"name":"list_invoices","of":{"name":"mailbox","op":"var"},"op":"field"}}"#
+    );
+    assert_eq!(
+        canonicalize(&args[9]),
+        r#"{"name":"deadline","value":{"ms":86400000,"op":"duration"}}"#
+    );
+    // A type written as one, and an expression that only looks like one.
+    let text = "mandate @ 0.6\n\nmodule m @ 0.1\n\nworkflow W = P(page: List<Note>, many: a < b, rec: { a: Int })\n  caps K\n";
+    let w = round_trip(text);
+    let args = def(&w, "W")
+        .get("apply")
+        .and_then(|a| a.get("args"))
+        .and_then(Value::as_array)
+        .unwrap();
+    let shown: Vec<String> = args.iter().map(canonicalize).collect();
+    assert_eq!(
+        shown,
+        [
+            r#"{"name":"page","type":{"args":[{"ref":"Note"}],"ref":"List"}}"#,
+            r#"{"name":"many","value":{"bop":"<","left":{"name":"a","op":"var"},"op":"binary","right":{"name":"b","op":"var"}}}"#,
+            r#"{"name":"rec","type":{"record":{"a":{"ref":"Int"}}}}"#,
+        ]
+    );
+}
+
+/// The words of a pattern are contextual: in a program of 0.5 `pattern` is
+/// no declaration and `workflow W =` no application, as before; `delegate
+/// s(…)` and `max n` with a name are read in a pattern's body only.
+#[test]
+fn before_0_6_and_outside_a_pattern_its_words_are_what_they_were() {
+    let text = mandate_testkit::read_text("fixtures/library/batch.patterns.mdt").unwrap();
+    let old = text
+        .replace("mandate @ 0.6", "mandate @ 0.5")
+        .replace("pub type", "type")
+        .replace("pub pattern", "pattern");
+    let (code, message, _) = refused(&old);
+    assert_eq!(code, "MDT-E0101");
+    assert_eq!(message, "Expected a declaration but found 'pattern'.");
+    let application = "mandate @ 0.5\n\nmodule m @ 0.1\n\nworkflow W = P()\n  caps K\n";
+    assert_eq!(refused(application).1, "Expected '(' but found '='.");
+    let outside = "mandate @ 0.6\n\nmodule m @ 0.1\n\nworkflow W() -> Int\n  caps K\n{\n  delegate work(1)\n}\n";
+    assert_eq!(refused(outside).0, "MDT-E0101");
+    let count = "mandate @ 0.6\n\nmodule m @ 0.1\n\nworkflow W(xs: List<Int>) -> Int\n  caps K\n{\n  map x in xs max n {\n    x\n  }\n}\n";
+    assert_eq!(refused(count).0, "MDT-E0101");
+    // `pattern` stays a name.
+    read(
+        "mandate @ 0.6\n\nmodule m @ 0.1\n\ntype T = { pattern: Text, slot: Text, field: Text }\n",
+    );
+}

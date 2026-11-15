@@ -37,7 +37,7 @@
     {"name":"check_patch","ts":"checkPatch","params":["program","base","ops","modules"]},
     {"name":"check_subprogram","ts":"checkSubprogram","params":["i"]},
     {"name":"check_amendment","ts":"checkAmendment","params":["i"]},
-    {"name":"semantic_diff","ts":"semanticDiff","params":["before","after","locks"]},
+    {"name":"semantic_diff","ts":"semanticDiff","params":["before","after","locks","modules"],"note":"modules (optional) is the Rust's alone: the modules a workflow's pattern comes from (language 0.6), so that a workflow that applies one is read as its expansion. The TypeScript function is not given it; a program that applies no pattern gives the same with or without it."},
     {"name":"governance_changes","ts":"governanceChanges","params":["before","after","modules"]},
     {"name":"envelope_changes","ts":"envelopeChanges","params":["before","after","workflow","modules"]},
     {"name":"grant","ts":"grant","params":["input"]},
