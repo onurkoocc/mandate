@@ -323,7 +323,7 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E1407b` | A lock entry whose `url` is not the connector's declared URL | E1407 |
 | `E1405c` | A tool called in a contract's static criterion | E1405 |
 | `E1405d` | A tool called in a workflow's handler | E1405 |
-| `E1708b` | A write tool's effect in a map's body, its key not read from the item | E1708 |
+| `E1708m` | A write tool's effect in a map's body, its key not read from the item | E1708 |
 | `E0403a` | A write tool's effect without `idempotent_by` | E0403 |
 | `E0301c` | An effect whose second `requires caps` stands for no capability: nothing covers it (B12) | E0301, W0310 |
 | `E0408a` | A skill that declares a write tool's effect: a write tool is a critical effect | E0408 |

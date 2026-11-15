@@ -1,7 +1,7 @@
 {
   "$schema": "../case.schema.json",
   "format": "mandate/conformance-case/0.1",
-  "id": "E1708b",
+  "id": "E1708m",
   "kind": "compile",
   "title": "A write tool's effect in a map's body, its key not read from the item, is refused: each item's would be authorized on its own.",
   "spec": [

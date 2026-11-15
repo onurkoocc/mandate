@@ -1202,7 +1202,7 @@ held by what a person writes and by what the Rust writes:
   `E1604c`, `E0120`, `E0120a`, `E0120b`), and the 47 of the connectors (`T01`, `T01a`,
   `T01b`, `T02`, `T06`, `T06a`, `E1401` to `E1408` with their variants, `E0121` to
   `E0121b`, `E0120c`, `E0120d`, `E0140c`, `E0210a`, `E0220c` to `E0220e`, `E0301a` to
-  `E0301c`, `E0320b`, `E0403a`, `E0408a`, `E1708b`), listed in `conformance/README.md`.
+  `E0301c`, `E0320b`, `E0403a`, `E0408a`, `E1708m`), listed in `conformance/README.md`.
 - **`golden/0.6.json`**: for every 0.6 program of the repository (each `.mdt` and
   `.ir.json` file of `fixtures/library/`, 5 today, 54 outputs), the digest of each
   output text, in the shape of `compiler/test/golden/outputs.json`
