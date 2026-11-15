@@ -1254,9 +1254,11 @@ The compiler runs in the runtime's process as a WebAssembly module
   `library_publish`, `authority_signature`, `tool_schema_digest`). A value
   such as the current time is an input of the door that needs it.
 - **Nothing outside.** The module has no filesystem, no network, no clock,
-  no environment and no arguments; a request for random bytes gets zeros.
-  It reads its request and writes its answer, and nothing else crosses.
-  The list of what it imports is fixed, and a test fails on a new one.
+  no environment and no arguments. The one thing it asks its host for is
+  random bytes, which seed the hashing of its own tables and nothing
+  else: they are fresh for each call, and no answer depends on them. It
+  reads its request and writes its answer, and nothing else crosses. The
+  list of what it imports is fixed, and a test fails on a new one.
 - **A fixed ceiling.** Its memory ceiling, 256 MiB, and its stack, 4 MiB,
   are fixed when it is linked; nothing at run time raises them. A request
   over 32 MiB is refused (`too_large`).

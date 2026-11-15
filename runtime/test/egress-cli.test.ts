@@ -32,14 +32,15 @@ beforeAll(async () => {
     platform: "node",
     format: "esm",
     target: "node22",
-    alias: { "@mandate/bridge": here("../../bridge/src/index.ts") },
+    alias: { "@mandate/bridge": here("../../bridge/src/index.ts"), "@mandate/bridge/mode": here("../../bridge/src/mode.ts") },
     external: ["pg", "@electric-sql/pglite", "@anthropic-ai/sdk", "@temporalio/*", "ajv", "ajv/*", "ajv-formats", "@microsoft/mxc-sdk", "@microsoft/mxc-sdk/*"],
     plugins: [
       {
-        // The compiler reads its schemas from beside its own files, so each of its files keeps its own address.
+        // The compiler reads its schemas from beside its own files, and the bridge its module from its own wasm/,
+        // so each of their files keeps its own address.
         name: "own-address",
         setup(b) {
-          b.onLoad({ filter: /[\\/]compiler[\\/]src[\\/].*\.ts$/ }, (a) => ({ contents: readFileSync(a.path, "utf8").replaceAll("import.meta.url", JSON.stringify(pathToFileURL(a.path).href)), loader: "ts" }));
+          b.onLoad({ filter: /[\\/](compiler|bridge)[\\/]src[\\/].*\.ts$/ }, (a) => ({ contents: readFileSync(a.path, "utf8").replaceAll("import.meta.url", JSON.stringify(pathToFileURL(a.path).href)), loader: "ts" }));
         },
       },
     ],

@@ -34,6 +34,7 @@ import { readFileSync } from "node:fs";
 import type { Readable, Writable } from "node:stream";
 import { architecture, authority, check, checkPatch, CODES, cost, hasErrors, LIMITS, load, loadModules, programRef, semanticDiff, type Lock, type Modules, type PatchOp, type Program, type SourceKind } from "./index.js";
 import { ptrToken } from "./util.js";
+import { CompilerFailure } from "./wasm/errors.js";
 
 export const MODERN_VERSIONS = ["2026-07-28"];
 export const LEGACY_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -395,7 +396,7 @@ export async function serveStdio(input: Readable = process.stdin, output: Writab
       res = server.handle(msg);
     } catch (e) {
       const id = msg && typeof msg === "object" && "id" in msg ? ((msg as { id: string | number | null }).id ?? null) : null;
-      res = { jsonrpc: "2.0", id, error: { code: -32603, message: `Internal error: ${(e as Error).message}` } };
+      res = { jsonrpc: "2.0", id, error: { code: -32603, message: `Internal error: ${e instanceof CompilerFailure ? e.shown : (e as Error).message}` } };
     }
     if (res) output.write(JSON.stringify(res) + "\n");
   }

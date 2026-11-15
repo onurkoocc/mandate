@@ -58,6 +58,7 @@ import { randomUUID, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, printProgram, toHtml, toMarkdown, type Doc, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters } from "./adapters.js";
 import { adaptersFor, anthropicClient, connect, operatorAdapters, readConfig, replayAdapters, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { credentialAdvice } from "./gateway.js";
@@ -364,6 +365,12 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
       // A violation's message starts with its code.
       process.stderr.write(`mandate: ${e.message}\n`);
       return 1;
+    }
+    // The compiler behind the bridge failed (its module missing, trapping, out of memory, answering what is not an
+    // answer): the command did not do what it was asked, as with a usage error, and nothing was taken as checked.
+    if (e instanceof CompilerFailure) {
+      process.stderr.write(`mandate: ${e.message}\n`);
+      return 2;
     }
     throw e;
   } finally {

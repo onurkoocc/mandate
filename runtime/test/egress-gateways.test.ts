@@ -23,7 +23,7 @@ import { runView } from "../src/views.js";
 import { adminPath, OTHER_SECRET, SECRET, seenHeader, world as egressWorld, type World as EgressWorld } from "./egress-world.js";
 import { waitOf } from "./fixbug.js";
 import { Runtime } from "../src/runtime.js";
-import { closeAll, UNSIGNED, world as runtimeWorld } from "./helpers.js";
+import { closeAll, OWN_ADDRESS, UNSIGNED, world as runtimeWorld } from "./helpers.js";
 import { LOCK } from "./models.js";
 
 const here = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
@@ -420,8 +420,9 @@ describe("the verifier's process", () => {
       platform: "node",
       format: "esm",
       target: "node22",
-      alias: { "@mandate/bridge": here("../../bridge/src/index.ts") },
+      alias: { "@mandate/bridge": here("../../bridge/src/index.ts"), "@mandate/bridge/mode": here("../../bridge/src/mode.ts") },
       external: ["pg", "@electric-sql/pglite", "@anthropic-ai/sdk", "@temporalio/*", "ajv", "ajv/*", "ajv-formats", "@microsoft/mxc-sdk", "@microsoft/mxc-sdk/*"],
+      plugins: [OWN_ADDRESS],
       logLevel: "error",
     });
   }, 60_000);

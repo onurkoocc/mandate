@@ -10263,5 +10263,107 @@
     "output": {
       "overlap": null
     }
+  },
+  {
+    "name": "an outer model capability whose tier is \"\" covers only the tier \"\": a held capability with that tier is granted, one without a tier or with another is not",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "tier": ""
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "Writer",
+        "held": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "tier": ""
+          },
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false
+          },
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "tier": "standard"
+          }
+        ],
+        "remote": false,
+        "own": []
+      }
+    },
+    "output": {
+      "granted": [
+        {
+          "ctor": "model.infer",
+          "effect": "Model",
+          "write": false,
+          "tier": ""
+        }
+      ]
+    }
+  },
+  {
+    "name": "an outer model capability whose tier is \"\" does not cover a delegation's own with the tier \"standard\": refused",
+    "fn": "grant",
+    "input": {
+      "context": {
+        "bounds": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "tier": ""
+          }
+        ],
+        "given": [],
+        "handed": []
+      },
+      "delegation": {
+        "agent": "Writer",
+        "held": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "tier": ""
+          }
+        ],
+        "remote": false,
+        "own": [
+          {
+            "ctor": "model.infer",
+            "effect": "Model",
+            "write": false,
+            "tier": "standard"
+          }
+        ]
+      }
+    },
+    "output": {
+      "refused": {
+        "tag": "PolicyDenied",
+        "args": [
+          {
+            "reason": "outside_authority",
+            "delegate": "Writer",
+            "capability": "model.infer"
+          }
+        ]
+      }
+    }
   }
 ]
