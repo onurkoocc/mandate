@@ -304,6 +304,8 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `L04a` | The acceptance program checked with a configuration that revokes the digest its lock pins | E1608 |
 | `L05` | `upgrade` of `acme.ops` 1.0.0 to 1.0.1, a doc line: no governance change, the lock given back | — (`written: true`) |
 | `L06` | `publish` of 1.0.5 between 1.0.0 and 1.1.0, against which 1.1.0 would widen without being a major version | E1607 |
+| `L07` | A lead's sub-program calls a read tool of a connector its parent imports, with its types, from given modules | — |
+| `L07a` | The same with `acme.connectors` as a library, the parent importing none of the tool's types: the sub-program's check, handed the library's modules, links them through what they reach | — |
 | `E0120` | A listed constant used as a type: a listed name is the definition it names, held to its kind as the program's own (a mutation) | E0120 |
 | `E0120a` | A lower-case listed name of a module that is not the standard library's used as a module path, `most.Anything` (a mutation) | E0120 |
 | `E0120b` | A listed type named as the contract of `Verified` (a mutation) | E0120 |
@@ -545,13 +547,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 369, passed 369, pending 0
+conformance cases: ran 371, passed 371, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 244 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 246 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(385 cases: 369 `compile`, 244 of them of language 0.6, and 16 `journal`; no case
+(387 cases: 371 `compile`, 246 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

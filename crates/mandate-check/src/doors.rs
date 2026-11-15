@@ -23,7 +23,7 @@ use mandate_syntax::SourceKind;
 use crate::amendment::narrowings;
 use crate::caps::{CapOptions, caps_of};
 use crate::check::{CheckOptions, check};
-use crate::modules::{Modules, link};
+use crate::modules::{Modules, link, link_reaching, reach_of_modules};
 use crate::patch::{GovernanceChange, PatchOp, apply_ops, apply_patch};
 use crate::stdlib::DataClass;
 use crate::subprogram::{
@@ -258,6 +258,10 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
     // `{ ...(i.modules ?? {}), [i.parent.module]: i.parent }`.
     let mut modules = i.modules.cloned().unwrap_or_default();
     modules.insert(parent_module, i.parent.clone());
+    // 0.6: the sub-program sees what its parent sees, the modules of its
+    // parent's libraries linked through what they reach (a connector's
+    // types among them), which the check is handed as modules.
+    let reach = reads_0_6(i.parent).then(|| reach_of_modules(&modules));
     let claim = {
         let mut c = Map::new();
         c.insert("envelope", envelope.clone());
@@ -271,6 +275,7 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
             lock: None,
             modules: Some(&modules),
             claim: Some(&claim),
+            reach: reach.as_ref(),
             ..CheckOptions::default()
         },
     );
@@ -357,7 +362,7 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
             })
             .unwrap_or_default();
         if let Some(view_program) = Program::of(&view) {
-            let defs = link(view_program, Some(&modules)).defs;
+            let defs = link_reaching(view_program, Some(&modules), reach.as_ref()).defs;
             diagnostics.extend(containment(
                 &defs,
                 &workflow,
@@ -494,11 +499,18 @@ pub fn check_amendment(i: &AmendmentInput<'_>) -> Result<AmendmentCheck, String>
         program.insert("defs", Value::Object(defs));
         Value::Object(program)
     };
+    // 0.6: the program's library modules, handed as modules, linked through
+    // what they reach, as its own check links them.
+    let reach = i
+        .modules
+        .filter(|_| reads_0_6(i.parent))
+        .map(reach_of_modules);
     let checked = check(
         &json_text(&amended),
         SourceKind::Json,
         &CheckOptions {
             modules: i.modules,
+            reach: reach.as_ref(),
             ..CheckOptions::default()
         },
     );
@@ -539,6 +551,11 @@ pub fn check_amendment(i: &AmendmentInput<'_>) -> Result<AmendmentCheck, String>
     }
 }
 
+/// Whether `program` is of language 0.6 or later.
+fn reads_0_6(program: &Value) -> bool {
+    language_of(program).is_some_and(|l| l.at_least(mandate_ir::Language::V0_6))
+}
+
 /// An admitted sub-program as the interpreter runs it: its own definitions
 /// and all its parent sees. Never hashed: `subprogramLinked(sub, parent,
 /// modules)`, `{ ...sub, defs: link(view, { ...modules, [parent.module]:
@@ -554,8 +571,11 @@ pub fn subprogram_linked(sub: &Value, parent: &Value, modules: Option<&Modules>)
             .unwrap_or("undefined"),
         parent.clone(),
     );
+    // 0.6: what the parent's library modules reach is linked too, as the
+    // sub-program's check links it.
+    let reach = reads_0_6(parent).then(|| reach_of_modules(&all));
     let defs = Program::of(&view)
-        .map(|p| link(p, Some(&all)).defs)
+        .map(|p| link_reaching(p, Some(&all), reach.as_ref()).defs)
         .unwrap_or_default();
     let mut out = sub.as_object().cloned().unwrap_or_default();
     out.insert("defs", Value::Object(defs));

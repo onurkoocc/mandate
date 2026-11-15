@@ -1,10 +1,10 @@
 {
   "format": "mandate/vectors/diagnostics/summary/0.1",
-  "conformance_cases": 244,
+  "conformance_cases": 246,
   "conformance_by_door": {
     "check": 80,
     "check_patched": 156,
-    "check_subprogram": 3,
+    "check_subprogram": 5,
     "library": 5
   },
   "golden_results": 29,

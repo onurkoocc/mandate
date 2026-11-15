@@ -188,6 +188,38 @@ pub fn link_reaching(
 /// from a third module is not linked through it.
 pub type Reach = std::collections::BTreeMap<String, Vec<String>>;
 
+/// 0.6: what each module of 0.6 among `modules` reaches when a check is
+/// handed modules rather than libraries for a program that sees all its
+/// parent sees (a lead's sub-program, an amended envelope's program): the
+/// modules it imports by a `use` list that are among `modules`. A package's
+/// libraries come to those checks as modules, and their modules import only
+/// what their library reaches (E1601 otherwise), so this is the reach their
+/// libraries give them. A module of 0.1 to 0.5 reaches nothing.
+#[must_use]
+pub fn reach_of_modules(modules: &Modules) -> Reach {
+    let mut out = Reach::new();
+    for (name, m) in modules.iter() {
+        let Some(p) = Program::of(m) else { continue };
+        if !p
+            .language()
+            .is_some_and(|l| l.at_least(mandate_ir::Language::V0_6))
+        {
+            continue;
+        }
+        let mut reached: Vec<String> = vec![name.to_owned()];
+        for u in p.imports() {
+            if let Some(module) = u.module()
+                && modules.contains_key(module)
+                && !reached.iter().any(|r| r == module)
+            {
+                reached.push(module.to_owned());
+            }
+        }
+        out.insert(name.to_owned(), reached);
+    }
+    out
+}
+
 /// The tables [`link_closure`] writes into.
 struct LinkInto<'a> {
     defs: &'a mut Map,

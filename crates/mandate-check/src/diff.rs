@@ -1716,7 +1716,16 @@ pub fn semantic_diff_with(
     locks: Option<Locks<'_>>,
     modules: Option<&Modules>,
 ) -> DiffView {
-    let changes = classify(before, after, None);
+    // 0.6 (B13): one classification of a change for the semantic diff, a
+    // patch (`governance_changes`), and an upgrade or a publication of a
+    // library (`crate::library::ops`): `classify` with the modules. Before
+    // 0.6 the diff classifies without them, as the TypeScript does.
+    let both_0_6 = [before, after].iter().all(|p| {
+        Program::of(p)
+            .and_then(Program::language)
+            .is_some_and(|l| l.at_least(mandate_ir::Language::V0_6))
+    });
+    let changes = classify(before, after, modules.filter(|_| both_0_6));
     let mut governance: Vec<Change> = changes
         .governance
         .into_iter()

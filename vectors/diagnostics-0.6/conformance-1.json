@@ -9485,6 +9485,210 @@
       }
     },
     {
+      "name": "L07",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/library/acme.connectors/types.mdt",
+        "../../fixtures/library/acme.connectors/connectors.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.6",
+          "module": "example.orders.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.orders"
+            }
+          ],
+          "defs": {
+            "Read": {
+              "kind": "workflow",
+              "params": [],
+              "returns": {
+                "ref": "Int"
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ErpRead"
+                }
+              ],
+              "body": [
+                {
+                  "op": "let",
+                  "name": "orders",
+                  "value": {
+                    "op": "call",
+                    "callee": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "erp"
+                      },
+                      "name": "list_open_orders"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "text",
+                          "value": "v1"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "call",
+                    "callee": {
+                      "op": "var",
+                      "name": "len"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "orders"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "budget": {
+                "tokens": 2000,
+                "time": {
+                  "ms": 600000
+                },
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 10,
+                "agents": 2
+              }
+            }
+          }
+        },
+        "hash": "sha256:1e722ae9fca8d2fe45942bba07be0c0a2321d3d4cbebc39c8b6d4939804fbd1c",
+        "workflow": "Read"
+      }
+    },
+    {
+      "name": "L07a",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram",
+        "libraries"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.6",
+          "module": "example.orders.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.orders"
+            }
+          ],
+          "defs": {
+            "Read": {
+              "kind": "workflow",
+              "params": [],
+              "returns": {
+                "ref": "Int"
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ErpRead"
+                }
+              ],
+              "body": [
+                {
+                  "op": "let",
+                  "name": "orders",
+                  "value": {
+                    "op": "call",
+                    "callee": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "erp"
+                      },
+                      "name": "list_open_orders"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "text",
+                          "value": "v1"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "call",
+                    "callee": {
+                      "op": "var",
+                      "name": "len"
+                    },
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "orders"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "budget": {
+                "tokens": 2000,
+                "time": {
+                  "ms": 600000
+                },
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 10,
+                "agents": 2
+              }
+            }
+          }
+        },
+        "hash": "sha256:1e722ae9fca8d2fe45942bba07be0c0a2321d3d4cbebc39c8b6d4939804fbd1c",
+        "workflow": "Read"
+      }
+    },
+    {
       "name": "P01",
       "kind": "compile",
       "door": "check",

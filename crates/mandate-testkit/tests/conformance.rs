@@ -45,9 +45,9 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::{
-    Applied, Observed, applied_source, case_config, case_libraries, check_with,
-    check_with_libraries, kind_named, modules_of, patched_source, read_source, run_amendment,
-    run_library_case, run_subprogram, subprogram_case,
+    Applied, Observed, applied_source, case_config, case_libraries, check_with_libraries,
+    kind_named, modules_of, patched_source, read_source, run_amendment, run_library_case,
+    run_subprogram, subprogram_case, with_library_modules,
 };
 use mandate_ir::{JsValue, Value, canonicalize, parse, stringify};
 use mandate_syntax::SourceKind;
@@ -292,7 +292,11 @@ fn prepare(c: &Case) -> Result<(Value, Observed), String> {
     // `check_subprogram` and `check_amendment`: the case's input must check
     // without errors (`standsOn`), and is the program the door stands on.
     if matches!(c.door, "check_subprogram" | "check_amendment") {
-        let parent = check_with(&text, kind, Some(&modules), None)?;
+        // 0.6: a parent whose lock pins libraries is checked with them, and
+        // the door is handed their modules as the package carries them.
+        let libraries = case_libraries(&dir, case);
+        let parent = check_with_libraries(&text, kind, Some(&modules), None, &libraries, None)?;
+        let modules = with_library_modules(&modules, &libraries)?;
         let (Some(program), true) = (parent.program.as_ref(), parent.ok) else {
             return Err("the parent must check without errors".to_owned());
         };

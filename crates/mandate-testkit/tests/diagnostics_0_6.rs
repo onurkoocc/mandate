@@ -26,9 +26,9 @@ mod outputs;
 use std::collections::BTreeMap;
 
 use common::{
-    Applied, applied_source, case_config, case_libraries, check_with, check_with_libraries,
-    kind_named, modules_of, patched_source, read_source, run_amendment, run_library_case,
-    run_subprogram, subprogram_case,
+    Applied, applied_source, case_config, case_libraries, check_with_libraries, kind_named,
+    modules_of, patched_source, read_source, run_amendment, run_library_case, run_subprogram,
+    subprogram_case, with_library_modules,
 };
 use mandate_ir::{Diagnostic, JsObject, JsValue, Value};
 use mandate_syntax::{SourceKind, kind_of, load};
@@ -94,7 +94,11 @@ fn result_of(id: &str, case: &Value, door: &str) -> Result<JsValue, String> {
     let door_value = |text: &str| parse_json(text.as_bytes()).map(|v| JsValue::from(&v));
     match door {
         "check_subprogram" | "check_amendment" => {
-            let parent = check_with(&text, kind, Some(&modules), None)?;
+            // 0.6: a parent whose lock pins libraries is checked with them, and
+            // the door is handed their modules as the package carries them.
+            let libraries = case_libraries(&dir, case);
+            let parent = check_with_libraries(&text, kind, Some(&modules), None, &libraries, None)?;
+            let modules = with_library_modules(&modules, &libraries)?;
             let (Some(program), true) = (parent.program.as_ref(), parent.ok) else {
                 return Err("the parent must check without errors".to_owned());
             };

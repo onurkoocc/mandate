@@ -239,7 +239,7 @@ export function caseDirs(): string[] {
 export const RUST_ONLY_LANGUAGES: readonly string[] = ["mandate/0.6"];
 
 /** How many case directories are of a language only the Rust compiler reads. A commit that adds or takes away one changes it. */
-export const RUST_ONLY_CASES = 244;
+export const RUST_ONLY_CASES = 246;
 
 /** Whether this compiler skips the case: its `language` is one only the Rust compiler reads. */
 export function rustOnly(c: Pick<Case, "language">): boolean {

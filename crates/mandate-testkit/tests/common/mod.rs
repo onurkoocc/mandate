@@ -578,6 +578,22 @@ pub fn case_libraries(dir: &str, case: &Value) -> Vec<String> {
         .collect()
 }
 
+/// `modules` with the modules of the libraries in the repository
+/// directories `dirs` (0.6): what a door that is given modules rather than
+/// libraries (a sub-program's check, an amendment's) is handed of a package
+/// whose lock pins them.
+pub fn with_library_modules(modules: &Modules, dirs: &[String]) -> Result<Modules, String> {
+    let mut all = modules.clone();
+    for source in libraries_of(dirs)? {
+        let l = mandate_check::library::load_library(&source, false, "a library")
+            .map_err(|d| format!("a library does not load: {d:?}"))?;
+        for (m, ir) in l.modules.iter() {
+            all.insert(m, ir.clone());
+        }
+    }
+    Ok(all)
+}
+
 /// The configuration of a case (`config`, 0.6): the `libraries` member of
 /// the runtime's configuration, read.
 pub fn case_config(

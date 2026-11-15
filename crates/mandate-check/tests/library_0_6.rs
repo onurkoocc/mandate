@@ -506,3 +506,180 @@ fn add_resolves_the_highest_eligible_version() {
     let digest = mandate_check::library::std_patterns_digest().unwrap();
     assert_eq!(r.chosen.as_ref().unwrap().1, digest.as_str());
 }
+
+/// The schema of a 0.6 lock names a library and its modules as the reader
+/// of `mandate-lib` does, in lower case: an upper-case name is E0140, and
+/// is not read as a pin the schema took and the reader refused.
+#[test]
+fn the_lock_schema_and_the_reader_agree_on_library_names() {
+    for (key, module) in [("Acme.ops", "Acme.ops"), ("acme.ops", "acme.Ops")] {
+        let text = format!(
+            r#"{{"lock":"mandate/lock/0.6","modules":{{}},"libraries":{{"{key}":{{"version":"1.0.0","digest":"sha256:{d}","modules":{{"{module}":"sha256:{d}"}}}}}}}}"#,
+            d = "0".repeat(64)
+        );
+        let lock = mandate_ir::parse(&text).unwrap().value;
+        let found = mandate_check::validate_lock(&lock);
+        assert!(
+            found.iter().any(|d| d.code == "MDT-E0140"),
+            "{key} {module}: {found:#?}"
+        );
+        assert!(mandate_lib::read_lock_libraries(lock.get("libraries")).is_err());
+    }
+}
+
+/// The acceptance library's modules, as given modules.
+fn acme_modules() -> Modules {
+    let files = [
+        "fixtures/library/acme.connectors/types.mdt",
+        "fixtures/library/acme.connectors/connectors.mdt",
+    ];
+    let texts: Vec<String> = files.iter().map(|f| read_text(f).unwrap()).collect();
+    let sources: Vec<ModuleSource<'_>> = files
+        .iter()
+        .zip(&texts)
+        .map(|(f, text)| ModuleSource {
+            text,
+            kind: SourceKind::Mdt,
+            file: f,
+        })
+        .collect();
+    load_modules(&sources).modules
+}
+
+/// The parent of conformance/L07 checks with the acceptance library's
+/// modules: it imports the ERP connector and never calls it.
+#[test]
+fn the_parent_of_l07_checks() {
+    let r = checked(
+        &read_text("conformance/L07/parent.mdt").unwrap(),
+        Some(&acme_modules()),
+    );
+    assert!(r.ok, "{:#?}", shown(&r));
+}
+
+/// A library of two modules: `acme.flows.types` defines `Note`, and
+/// `acme.flows` a pattern whose run parameter and result are a `Note`, which
+/// it imports from the other module of its library; `extra` is a `use` the
+/// pattern's module adds.
+fn flows(extra: &str, requires: &str) -> LibrarySource {
+    LibrarySource {
+        manifest: format!(
+            r#"{{"library":"mandate/library/0.6","name":"acme.flows","version":"1.0.0","modules":["flows.mdt","types.mdt"]{requires}}}"#
+        ),
+        files: vec![
+            (
+                "flows.mdt".to_owned(),
+                format!(
+                    "mandate @ 0.6\n\nmodule acme.flows @ 1.0\n\nuse acme.flows.types.{{Note}}\n{extra}\n/// Gives the note back.\npub pattern Keep(times: const Int) (note: Note) -> Note {{\n  note\n}}\n"
+                ),
+            ),
+            (
+                "types.mdt".to_owned(),
+                "mandate @ 0.6\n\nmodule acme.flows.types @ 1.0\n\n/// A note.\npub type Note = { text: Text }\n".to_owned(),
+            ),
+        ],
+    }
+}
+
+const KEEP: &str = "mandate @ 0.6\n\nmodule app @ 0.1\n\nuse std.{fs}\nuse acme.flows.{Keep}\n\ncapability R = fs.read(\"/w\")\n\nworkflow W = Keep(times: 1)\n  caps   R\n  budget { time: 1m }\n";
+
+/// Linking is transitive through a library: a pattern of a library's module
+/// may name what its module imports from another module of its library, and
+/// the expansion names it in the applying program through that module. A
+/// module of a library may not import a module of a library its manifest
+/// does not require (E1604, so the library is malformed, E1601).
+#[test]
+fn a_library_pattern_names_what_its_library_reaches() {
+    let r = with_libraries(KEEP, &[flows("", "")], None);
+    assert!(r.ok, "{:#?}", shown(&r));
+    let uses = mandate_ir::canonicalize(r.expanded.as_ref().unwrap().get("uses").unwrap());
+    assert!(
+        uses.contains(r#"{"module":"acme.flows.types","names":["Note"]}"#),
+        "{uses}"
+    );
+    // The same modules given as modules, not as a library: not transitive.
+    let lib = load_library(&flows("", ""), false, "x").unwrap();
+    let r = checked(KEEP, Some(&lib.modules));
+    assert_eq!(
+        r.diagnostics
+            .iter()
+            .filter(|d| d.severity == mandate_ir::Severity::Error)
+            .map(|d| d.code.as_str())
+            .collect::<Vec<_>>(),
+        ["MDT-E1602"],
+        "{:#?}",
+        shown(&r)
+    );
+    // A module that imports a library its library does not require.
+    let outside = with_libraries(
+        KEEP,
+        &[
+            flows("use acme.connectors.types.{Order}\n", ""),
+            library(ACME),
+        ],
+        None,
+    );
+    let e1601 = outside
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "MDT-E1601")
+        .unwrap_or_else(|| panic!("{:#?}", shown(&outside)));
+    let facts =
+        mandate_ir::stringify(&mandate_ir::JsValue::Object(e1601.facts.clone().unwrap())).unwrap();
+    assert!(
+        facts.contains("module_does_not_check") && facts.contains("MDT-E1604"),
+        "{facts}"
+    );
+    // Required, it may.
+    let required = with_libraries(
+        KEEP,
+        &[
+            flows(
+                "use acme.connectors.types.{Order}\n",
+                r#","requires":{"acme.connectors":"^2.3"}"#,
+            ),
+            library(ACME),
+        ],
+        None,
+    );
+    assert!(required.ok, "{:#?}", shown(&required));
+}
+
+/// 0.6 (B13): the semantic diff and a patch classify a change by one rule
+/// set, with the modules: the governance changes of each are the same.
+#[test]
+fn the_diff_and_a_patch_classify_alike() {
+    let before = check(
+        &read_text(INVOICES).unwrap(),
+        SourceKind::Mdt,
+        &CheckOptions {
+            libraries: Some(&[library(ACME)]),
+            ..CheckOptions::default()
+        },
+    );
+    let program = before.program.unwrap();
+    let text = read_text(INVOICES).unwrap().replace(
+        "budget { spend: 20 USD, time: 2h }",
+        "budget { spend: 40 USD, time: 2h }",
+    );
+    let after = mandate_syntax::load(&text, SourceKind::Mdt)
+        .program
+        .unwrap();
+    let lib = load_library(&library(ACME), false, "x").unwrap();
+    let mut modules = lib.modules.clone();
+    for (m, p) in mandate_check::library::std_patterns()
+        .unwrap()
+        .modules
+        .iter()
+    {
+        modules.insert(m, p.clone());
+    }
+    let diff = mandate_check::semantic_diff_with(&program, &after, None, Some(&modules));
+    let patch = mandate_check::governance_changes(&program, &after, Some(&modules));
+    let texts = |v: Vec<String>| v;
+    assert_eq!(
+        texts(diff.governance.iter().map(|c| c.text.clone()).collect()),
+        texts(patch.iter().map(|c| c.text.clone()).collect())
+    );
+    assert!(!patch.is_empty());
+}

@@ -204,7 +204,9 @@ pub use managed_agents::{
     AgentModels, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, MA_MAX_CLASS, ProfileLevel,
     agent_models, binding_checks,
 };
-pub use modules::{Linked, Modules, Reach, link, link_reaching, linked_program, references};
+pub use modules::{
+    Linked, Modules, Reach, link, link_reaching, linked_program, reach_of_modules, references,
+};
 pub use patch::{GovernanceChange, OpsResult, PatchOp, PatchResult, apply_ops, apply_patch};
 pub use resolve::{
     BUILTIN_FUNCTIONS, BUILTIN_TYPES, BUILTIN_TYPES_0_4, SUPERVISION_STRATEGIES, closest,

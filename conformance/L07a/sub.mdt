@@ -1,0 +1,13 @@
+mandate @ 0.6
+
+module example.orders.plan_1 @ 0.1
+
+use example.orders
+
+workflow Read() -> Int
+  caps   ErpRead
+  budget { tokens: 2000, time: 10m, spend: 2 USD, steps: 10, agents: 2 }
+{
+  let orders = erp.list_open_orders("v1")
+  len(orders)
+}
