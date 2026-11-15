@@ -205,6 +205,19 @@ fn an_admitted_sub_program_names_the_shape_it_applies() {
         js.ends_with(r#","workflow":"Look","shape":{"pattern":"Each","module":"example.shaped"}}"#),
         "{js}"
     );
+    // As the interpreter runs it, it sees what its parent imports of the
+    // built-in std.patterns, which nobody hands in.
+    let linked = mandate_check::subprogram_linked(r.program.as_ref().unwrap(), &parent, None);
+    let kind = |name: &str| {
+        linked
+            .get("defs")
+            .and_then(|d| d.get(name))
+            .and_then(|d| d.get("kind"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    };
+    assert_eq!(kind("FanOutMerge").as_deref(), Some("pattern"));
+    assert_eq!(kind("Each").as_deref(), Some("pattern"));
     // Without shapes the result has no `shape` member, as before 0.6.
     let unshaped = program_of(&read_text(UNSHAPED).unwrap());
     let r = sub_check(&unshaped, "Run", 1.0, EACH);
