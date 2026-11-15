@@ -365,6 +365,7 @@ fn the_static_checks_types_and_costs_are_the_typescript_ones() {
                 lock: None,
                 modules,
                 claim: c.get("claim"),
+                ..CheckOptions::default()
             },
         );
         let got = result_text(r.ok, &r.diagnostics);

@@ -1,0 +1,6 @@
+{
+  "library": "mandate/library/0.6",
+  "name": "std.patterns",
+  "version": "1.0.0",
+  "modules": ["patterns.mdt"]
+}

@@ -1,0 +1,82 @@
+// std.patterns 1.0.0 (spec/library.md "std.patterns"): the three patterns
+// built into the compiler. A program imports them with
+// `use std.patterns.{…}` and no directory; its lock pins this library's
+// digest like any other's. Each brings no authority of its own: every
+// agent, tool, effect, role and capability its expansion reaches is an
+// argument of the application, and the applying workflow's caps and budget
+// bound all of it.
+
+mandate @ 0.6
+
+module std.patterns @ 1.0
+
+use std.{human}
+
+/// The result of a batch: each commit's outcome, what was declined, and the
+/// indices of the items whose work failed.
+pub type Batch<Out, R> = {
+  posted:   List<Outcome<Receipt<R>>>,
+  declined: List<Declined<Out>>,
+  failed:   List<Int>
+}
+
+/// Works on every item of a list. What passes goes on; what does not is
+/// asked about once, as one list.
+pub pattern BatchWithExceptions<Item, Out, R>(
+  source:      tool() -> Untrusted<List<Item>>,
+  work:        skill(Untrusted<Item>) -> Inferred<Out>,
+  accepted:    contract(Item, Out),
+  reviewer:    role,
+  escalate_to: role,
+  commit:      effect(Verified<Out, accepted>) -> Receipt<R>,
+  key:         field(Out),
+  max_items:   const Int,
+  concurrency: const Int,
+  deadline:    const Duration
+) -> Batch<Out, R>
+{
+  let items    = source()
+  let checked  = map it in items max max_items par concurrency {
+    let out = delegate work(it)
+    verify out against accepted(it, out)
+  }
+  let reviewed = human.review(checked, role: reviewer, deadline: deadline, escalate_to: escalate_to)
+  let posted   = map v in reviewed.accepted max max_items {
+    effect commit(v) idempotent_by v.key
+  }
+  Batch { posted, declined: reviewed.declined, failed: reviewed.failed }
+}
+
+/// Works on disjoint parts side by side, then merges the results. Each item
+/// is handed `scope` narrowed to its own `part`, so no two items write the
+/// same place.
+pub pattern FanOutMerge<Item, Out, M>(
+  work:        skill(Item) -> Inferred<Out>,
+  scope:       capability,
+  part:        field(Item),
+  merge:       skill(List<Outcome<Inferred<Out>>>) -> Inferred<M>,
+  max_items:   const Int,
+  concurrency: const Int
+) (items: List<Item>) -> Inferred<M>
+{
+  let done = map it in items max max_items par concurrency with caps scope.narrow(it.part) {
+    delegate work(it)
+  }
+  delegate merge(done)
+}
+
+/// One agent makes; another, isolated and holding no write capability,
+/// looks for a counterexample. What it finds is held to the contract, and
+/// the criteria left open go to the owner.
+pub pattern MakerChecker<In, Out>(
+  make:     skill(In) -> Inferred<Out>,
+  check:    skill(In, Inferred<Out>) -> Inferred<Out> read_only,
+  accepted: contract(In, Out),
+  owner:    role
+) (input: In) -> Verified<Out, accepted>
+{
+  let made    = delegate make(input)
+  let checked = delegate check(input, made) isolated
+  verify checked against accepted(input, checked)
+    on unmet(c) => escalate human("Open criteria: {c}", role: owner)
+}

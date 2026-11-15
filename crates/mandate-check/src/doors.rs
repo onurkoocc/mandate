@@ -271,6 +271,7 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
             lock: None,
             modules: Some(&modules),
             claim: Some(&claim),
+            ..CheckOptions::default()
         },
     );
     // A name the sub-program defines and its parent already has is

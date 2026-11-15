@@ -152,6 +152,7 @@ pub mod grant;
 pub mod imports;
 pub mod js_number;
 pub mod json_doors;
+pub mod library;
 pub mod lock;
 pub mod lock_diff;
 pub mod managed_agents;
@@ -191,7 +192,7 @@ pub use grant::{
     InFlightOverlapOutput, InFlightProgram, ItemScopes, MapScopesInput, MapScopesOutput,
     NarrowInput, NarrowOutput, Refusal, grant, in_flight_overlap, map_scopes, narrow,
 };
-pub use imports::{KnownModules, STD_MODULES, import_checks};
+pub use imports::{KnownModules, STD_MODULES, import_checks, import_checks_known};
 pub use js_number::js_to_number;
 pub use lock::{
     LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, Lock, ModelLock, PerCallBound, Tariff,
@@ -203,7 +204,7 @@ pub use managed_agents::{
     AgentModels, MA_BETA, MA_BINDING_FORMAT, MA_BRIDGE_PROFILE, MA_MAX_CLASS, ProfileLevel,
     agent_models, binding_checks,
 };
-pub use modules::{Linked, Modules, link, linked_program, references};
+pub use modules::{Linked, Modules, Reach, link, link_reaching, linked_program, references};
 pub use patch::{GovernanceChange, OpsResult, PatchOp, PatchResult, apply_ops, apply_patch};
 pub use resolve::{
     BUILTIN_FUNCTIONS, BUILTIN_TYPES, BUILTIN_TYPES_0_4, SUPERVISION_STRATEGIES, closest,

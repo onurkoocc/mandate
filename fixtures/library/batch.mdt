@@ -1,7 +1,7 @@
 // The acceptance program of spec/library.md ("The acceptance program"),
 // applying BatchWithExceptions from the fixture module beside it
-// (batch.patterns.mdt) where the release will import it from std.patterns,
-// with the connectors of acme.connectors/. Every check runs on the
+// (batch.patterns.mdt, which the pattern tests change; invoices.mdt takes it
+// from std.patterns), with the modules of acme.connectors/. Every check runs on the
 // expansion, which comes to the checks of review.mdt, the same flow written
 // out by hand. It is the compile-time side only: the runtime does not run a
 // program of 0.6 yet. Only the Rust compiler reads it.

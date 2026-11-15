@@ -204,6 +204,7 @@ fn checked(text: &str, kind: SourceKind, modules: &Modules, what: &str) -> Resul
             lock: None,
             modules: Some(modules),
             claim: None,
+            ..CheckOptions::default()
         },
     );
     match r.program {

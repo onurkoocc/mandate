@@ -276,7 +276,7 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E1603` | A program of 0.5 that imports a module of 0.6 (a mutation: the program's `language`) | E1603 |
 | `E1603a` | A module of 0.5, definitions only, that imports a module of 0.6 | E1603 |
 | `E1604` | A `use` of a module the check is not given (a mutation: one `use` added) | E1604 |
-| `E1604a` | A `use` of `std.patterns`, which this compiler does not build in yet | E1604 |
+| `E1604a` | A `use` of `std.patterns`, built into the compiler, needs no module; a name of its list the library does not define (a mutation: one `use` added) | E0120 |
 | `E1604b` | Imports of `std`, `std.decision` and a module the check is given | — |
 | `E1604c` | A `use` of a module the check is given, without a list of names (a mutation: one `use` added) | E1604 |
 | `E0120` | A listed constant used as a type: a listed name is the definition it names, held to its kind as the program's own (a mutation) | E0120 |

@@ -3,7 +3,7 @@
   "format": "mandate/conformance-case/0.1",
   "id": "E1604a",
   "kind": "compile",
-  "title": "A 0.6 program that imports std.patterns, which this compiler does not build in yet, and is not given a module of that name, is refused at the use.",
+  "title": "A 0.6 program may import std.patterns, which is built into the compiler, with no module given; a name its list brings that the library does not define is refused at the list.",
   "spec": [
     "spec/library.md#closed-imports",
     "spec/library.md#stdpatterns"
@@ -23,7 +23,7 @@
       "value": {
         "module": "std.patterns",
         "names": [
-          "BatchWithExceptions"
+          "Nothing"
         ]
       }
     }
@@ -32,10 +32,12 @@
     "ok": false,
     "diagnostics": [
       {
-        "code": "MDT-E1604",
-        "path": "/uses/2",
+        "code": "MDT-E0120",
+        "path": "/uses/2/names",
         "facts": {
-          "module": "std.patterns"
+          "name": "Nothing",
+          "module": "std.patterns",
+          "expected": "definition"
         }
       }
     ]

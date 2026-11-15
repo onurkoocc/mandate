@@ -1,0 +1,45 @@
+mandate @ 0.6
+
+module acme.finance.invoices @ 1.0
+
+use std.{model, tool}
+use std.patterns.{BatchWithExceptions}
+use acme.connectors.{erp, mailbox}
+use acme.connectors.types.{Invoice, Match, DraftId, near}
+
+role accountant   "Accountant"
+role finance_lead "Finance lead"
+
+capability Inbox    = tool.call(mailbox, list_invoices)
+capability ErpRead  = tool.call(erp, list_open_orders)
+capability ErpDraft = tool.call(erp, post_draft_invoice)
+capability ModelStd = model.infer(tier: standard, max_class: confidential)
+
+/// An invoice is matched when the match is for it, names its vendor's order,
+/// and its total is within 2% of the order's; a larger gap may be accepted.
+contract Matched(inv: Invoice, m: Match) {
+  accept same_invoice "The match is for this invoice"
+    by static m.invoice_no == inv.invoice_no
+  accept vendor "The invoice's vendor is the order's vendor"
+    by static inv.vendor_id == m.order.vendor_id
+  accept totals "The total is within 2% of the order's"
+    by static near(inv.total_cents, m.order.total_cents, 2)
+    waive by accountant, finance_lead
+}
+
+agent Matcher {
+  role   "Matches one invoice to an open order of its vendor. Writes nothing."
+  caps   ErpRead, ModelStd
+  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }
+  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}
+}
+
+/// Matches the invoices in the mailbox to open orders and posts each match to
+/// the ERP as a draft. Asks the accountant once about the rest.
+workflow MatchInvoices = BatchWithExceptions<Invoice, Match, DraftId>(
+    source: mailbox.list_invoices, work: Matcher.match, accepted: Matched,
+    reviewer: accountant, escalate_to: finance_lead,
+    commit: erp.post_draft_invoice, key: invoice_no,
+    max_items: 60, concurrency: 6, deadline: 1d)
+  caps   Inbox, ErpRead, ErpDraft, ModelStd
+  budget { spend: 20 USD, time: 2h }

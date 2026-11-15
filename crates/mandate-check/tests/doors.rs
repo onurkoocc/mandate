@@ -281,6 +281,7 @@ fn run_check(inputs: &Inputs, c: &Value) -> Got {
             lock: None,
             modules: modules.as_ref(),
             claim: c.get("claim"),
+            ..CheckOptions::default()
         },
     );
     Got::Text(check_result(r.ok, &r.diagnostics))

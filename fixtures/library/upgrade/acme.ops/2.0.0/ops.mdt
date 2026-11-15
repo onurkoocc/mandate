@@ -1,0 +1,42 @@
+// acme.ops 2.0.0, 1.1.0 as a major version, the budget of Inventory raised from 1.0.0: the version of the library that
+// fixtures/library/upgrade/ holds in the layout of the operator's directory
+// (<name>/<version>/). 1.0.1 changes a doc line only; 1.1.0 raises the
+// budget of the workflow Inventory; 1.2.0 raises the class of the connector
+// store; 2.0.0 is 1.1.0 as a major version.
+
+mandate @ 0.6
+
+module acme.ops @ 1.0
+
+use std.{tool}
+
+/// An item of the store.
+pub type Item = { id: Text, size: Int }
+
+/// The store: lists its items, finds one, puts one.
+pub connector store = mcp("https://store.acme.example/mcp")
+  version "1.0"
+  class   internal
+{
+  tool list_items() -> Untrusted<List<Item>>
+    read_only
+
+  tool find_item(key: Text) -> Untrusted<Option<Text>>
+    read_only
+
+  tool put_item(item: Verified<Item>, key: Text) -> Receipt<Text>
+    critical
+    idempotency key key
+    retry_class reconcilable
+    reconcile by find_item
+}
+
+pub capability StoreRead = tool.call(store, list_items)
+
+/// Lists the items of the store.
+pub workflow Inventory() -> Untrusted<List<Item>>
+  caps   StoreRead
+  budget { time: 1h }
+{
+  store.list_items()
+}

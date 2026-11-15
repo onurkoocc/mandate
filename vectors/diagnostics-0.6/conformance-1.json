@@ -7948,7 +7948,7 @@
           {
             "code": "MDT-E1604",
             "severity": "error",
-            "message": "Module example.library.missing is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
+            "message": "Module example.library.missing is not known to this check: a program of mandate/0.6 imports only std, std.decision, std.patterns, the modules the check was given and those of the libraries the lock pins. Give the module, or remove the use.",
             "at": {
               "path": "/uses/2",
               "span": [1, 1059, 1, 1113]
@@ -7980,16 +7980,18 @@
         "ok": false,
         "diagnostics": [
           {
-            "code": "MDT-E1604",
+            "code": "MDT-E0120",
             "severity": "error",
-            "message": "Module std.patterns is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
+            "message": "Module std.patterns has no definition 'Nothing'.",
             "at": {
-              "path": "/uses/2",
-              "span": [1, 1059, 1, 1116]
+              "path": "/uses/2/names",
+              "span": [1, 1092, 1, 1103]
             },
-            "docs": "mandate explain MDT-E1604",
+            "docs": "mandate explain MDT-E0120",
             "facts": {
-              "module": "std.patterns"
+              "name": "Nothing",
+              "module": "std.patterns",
+              "expected": "definition"
             }
           }
         ]

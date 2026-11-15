@@ -151,6 +151,7 @@ fn run_check(inputs: &Inputs, c: &Value) -> JsValue {
             lock: Some(lock),
             modules: Some(&mods),
             claim: None,
+            ..CheckOptions::default()
         },
     );
     let ours: Vec<Diagnostic> = r

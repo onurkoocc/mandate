@@ -6,14 +6,14 @@
     "check_patched": 156,
     "check_subprogram": 3
   },
-  "golden_results": 25,
-  "diagnostics": 420,
+  "golden_results": 29,
+  "diagnostics": 428,
   "by_code": {
     "MDT-E0101": 7,
     "MDT-E0103": 1,
     "MDT-E0104": 6,
     "MDT-E0105": 1,
-    "MDT-E0120": 15,
+    "MDT-E0120": 16,
     "MDT-E0121": 6,
     "MDT-E0140": 7,
     "MDT-E0201": 5,
@@ -51,12 +51,12 @@
     "MDT-E1508": 3,
     "MDT-E1602": 3,
     "MDT-E1603": 2,
-    "MDT-E1604": 12,
+    "MDT-E1604": 13,
     "MDT-E1703": 1,
     "MDT-E1705": 1,
     "MDT-E1708": 15,
     "MDT-W0207": 1,
     "MDT-W0310": 6,
-    "MDT-W0601": 168
+    "MDT-W0601": 174
   }
 }

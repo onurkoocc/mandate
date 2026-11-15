@@ -1,0 +1,6 @@
+{
+  "library": "mandate/library/0.6",
+  "name": "acme.ops",
+  "version": "1.0.1",
+  "modules": ["ops.mdt"]
+}

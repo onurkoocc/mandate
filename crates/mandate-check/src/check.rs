@@ -23,11 +23,11 @@ use mandate_syntax::{SourceKind, load};
 
 use crate::caps::imported_methods;
 use crate::expand::{ExpandOptions, expand};
-use crate::imports::{import_checks, parent_of_subprogram};
+use crate::imports::{KnownModules, import_checks_known, parent_of_subprogram};
 use crate::lock::{
     Lock, connector_lock_checks, lock_checks, module_lock_checks, role_lock_checks, validate_lock,
 };
-use crate::modules::{Modules, link};
+use crate::modules::{Modules, Reach, link_reaching};
 use crate::resolve::resolve_names;
 use crate::roles::role_checks;
 
@@ -45,6 +45,21 @@ pub struct CheckOptions<'a> {
     /// its lead's data class, as `checkSubprogram` passes it, `{ envelope,
     /// lead }`.
     pub claim: Option<&'a Value>,
+    /// 0.6: the libraries handed to the check (`crate::library`): the
+    /// manifest and the module files of each library the lock pins, read
+    /// from the operator's directory by the caller. With a lock, each must
+    /// match its pin (E1605); without one, their modules are known as given
+    /// modules are, and checked as a library's. The built-in `std.patterns`
+    /// is never handed in.
+    pub libraries: Option<&'a [crate::library::LibrarySource]>,
+    /// 0.6: the digests the runtime's configuration revokes
+    /// (`libraries.revoked`): a pinned library with one is E1608.
+    pub revoked: Option<&'a std::collections::BTreeSet<mandate_lib::Digest>>,
+    /// 0.6: the check is of a module of a library, whose given modules are
+    /// what its library reaches, with what each of them reaches: no library
+    /// is read besides, and linking follows the modules' imports into
+    /// those they reach ([`crate::link_reaching`]).
+    pub reach: Option<&'a crate::modules::Reach>,
 }
 
 /// What [`check`] gives: `CheckResult`, `LoadResult` with `ok` and
@@ -242,7 +257,13 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
             expanded: None,
         };
     };
-    let linked = link(program, opts.modules);
+    // 0.6: the libraries the program reads (`crate::library`), whose
+    // modules it links as given ones, each linked through what it reaches.
+    // A check of a module of a library reads none: it is given them.
+    let (libraries, merged) = libraries_of(program, opts);
+    let modules: Option<&Modules> = merged.as_deref().or(opts.modules);
+    let reach: Option<&Reach> = opts.reach.or(libraries.as_ref().map(|l| &l.reach));
+    let linked = link_reaching(program, modules, reach);
     diagnostics.extend(
         linked
             .diagnostics
@@ -250,12 +271,22 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
             .cloned()
             .map(|d| with_exact_span(d, &loaded.spans)),
     );
+    if let Some(l) = &libraries {
+        diagnostics.extend(l.diagnostics.iter().cloned());
+    }
+    let known = KnownModules {
+        given: opts.modules,
+        libraries: libraries
+            .as_ref()
+            .map(|l| &l.modules)
+            .filter(|m| !m.is_empty()),
+    };
     // 0.6: what a `use` may name (E1602, E1604); before 0.6, a module of
     // 0.6 given to an earlier program (E1603). Rust only.
     let own = parent_of_subprogram(program, opts.claim.is_some());
-    diagnostics.extend(import_checks(
+    diagnostics.extend(import_checks_known(
         program,
-        opts.modules,
+        known,
         Some(&loaded.spans),
         own,
     ));
@@ -280,7 +311,7 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
             program,
             &linked.defs,
             origin,
-            opts.modules.unwrap_or(&no_modules),
+            modules.unwrap_or(&no_modules),
         )
         .into_iter()
         .map(|d| with_exact_span(d, &loaded.spans)),
@@ -293,7 +324,8 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
         program,
         &linked,
         &ExpandOptions {
-            modules: opts.modules,
+            modules,
+            reach,
             spans: Some(&loaded.spans),
             own,
             applications: !has_errors(&diagnostics),
@@ -306,7 +338,7 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
     let expanded_linked = expanded
         .as_ref()
         .and_then(Program::of)
-        .map(|p| link(p, opts.modules));
+        .map(|p| link_reaching(p, modules, reach));
     let (target, target_linked) = match (expanded.as_ref().and_then(Program::of), &expanded_linked)
     {
         (Some(p), Some(l)) => (p, l),
@@ -325,17 +357,7 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
     if let Some(e) = expansion.as_ref().filter(|_| expanded.is_some())
         && !has_errors(&diagnostics)
     {
-        let mut again = import_checks(target, opts.modules, Some(&loaded.spans), own);
-        again.extend(resolve_names(
-            target,
-            Some(&loaded.spans),
-            Some(&target_linked.defs),
-        ));
-        again.extend(role_checks(
-            target,
-            Some(&loaded.spans),
-            Some(&target_linked.defs),
-        ));
+        let again = again_stage(target, target_linked, known, &loaded.spans, own);
         diagnostics.extend(
             again
                 .into_iter()
@@ -355,34 +377,10 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
     if let Some(lock) = opts.lock.filter(|l| l.is_truthy())
         && !has_errors(&diagnostics)
     {
-        let lock_diags = validate_lock(lock);
-        if lock_diags.is_empty() {
-            let view = Lock::of(lock);
-            let mut found: Vec<Diagnostic> = Vec::new();
-            // `{ ...loaded.program, defs: linked.defs }`.
-            let mut with_linked = target.members().clone();
-            with_linked.insert("defs", target_linked.defs.clone());
-            let with_linked = Value::Object(with_linked);
-            if let Some(with_linked) = Program::of(&with_linked) {
-                found.extend(lock_checks(with_linked, view, Some(&loaded.spans)));
-            }
-            found.extend(role_lock_checks(
-                target,
-                target_linked,
-                view,
-                Some(&loaded.spans),
-            ));
-            found.extend(module_lock_checks(target, view, opts.modules));
-            // 0.6: the connectors the package can call, bound (E1407, E1408).
-            found.extend(connector_lock_checks(
-                target,
-                target_linked,
-                view,
-                opts.modules,
-            ));
-            diagnostics.extend(found.into_iter().map(back));
-        } else {
-            diagnostics.extend(lock_diags);
+        let pinned = libraries.as_ref().map(|l| &l.pinned);
+        match lock_stage(lock, target, target_linked, &loaded.spans, modules, pinned) {
+            Ok(found) => diagnostics.extend(found.into_iter().map(back)),
+            Err(lock_diags) => diagnostics.extend(lock_diags),
         }
     }
     let ok = !has_errors(&diagnostics);
@@ -400,6 +398,66 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
     }
 }
 
+/// The stages before the static checks, run again on what the expansion
+/// wrote: its names resolve, its roles are roles, and the names it adds to
+/// the `use`s may be named. Apart from [`check`], so that its frame, which
+/// the static checks run under, stays small.
+#[inline(never)]
+fn again_stage(
+    target: Program<'_>,
+    target_linked: &crate::modules::Linked,
+    known: KnownModules<'_>,
+    spans: &Spans,
+    own: Option<&str>,
+) -> Vec<Diagnostic> {
+    let mut again = import_checks_known(target, known, Some(spans), own);
+    again.extend(resolve_names(
+        target,
+        Some(spans),
+        Some(&target_linked.defs),
+    ));
+    again.extend(role_checks(target, Some(spans), Some(&target_linked.defs)));
+    again
+}
+
+/// The lock checks of a program with no error so far: `Err` with what
+/// `validateLock` finds when it finds something, else `Ok` with the
+/// diagnostics of `lockChecks`, `roleLockChecks`, `moduleLockChecks` (but
+/// for a module a library pins, 0.6) and, 0.6, the connectors' binding.
+/// Apart from [`check`], so that its frame stays small.
+#[inline(never)]
+fn lock_stage(
+    lock: &Value,
+    target: Program<'_>,
+    target_linked: &crate::modules::Linked,
+    spans: &Spans,
+    modules: Option<&Modules>,
+    pinned: Option<&std::collections::BTreeSet<String>>,
+) -> Result<Vec<Diagnostic>, Vec<Diagnostic>> {
+    let lock_diags = validate_lock(lock);
+    if !lock_diags.is_empty() {
+        return Err(lock_diags);
+    }
+    let view = Lock::of(lock);
+    let mut found: Vec<Diagnostic> = Vec::new();
+    // `{ ...loaded.program, defs: linked.defs }`.
+    let mut with_linked = target.members().clone();
+    with_linked.insert("defs", target_linked.defs.clone());
+    let with_linked = Value::Object(with_linked);
+    if let Some(with_linked) = Program::of(&with_linked) {
+        found.extend(lock_checks(with_linked, view, Some(spans)));
+    }
+    found.extend(role_lock_checks(target, target_linked, view, Some(spans)));
+    found.extend(
+        module_lock_checks(target, view, modules)
+            .into_iter()
+            .filter(|d| !pinned.is_some_and(|p| pinned_by_library(d, p))),
+    );
+    // 0.6: the connectors the package can call, bound (E1407, E1408).
+    found.extend(connector_lock_checks(target, target_linked, view, modules));
+    Ok(found)
+}
+
 /// `staticCheck(program, spans, linked.defs, opts.claim)` (Gate 1): the
 /// static checks of `check/static.ts` and what it calls, with the claim of a
 /// sub-program ([`crate::statics`]): the core (types, expressions,
@@ -414,4 +472,45 @@ fn static_check(
     claim: Option<&Value>,
 ) -> Vec<Diagnostic> {
     crate::statics::static_check(program, Some(spans), Some(defs), claim)
+}
+
+/// What a check reads of the libraries (`crate::library::for_check`), and
+/// the modules it links: the given ones with those of the libraries. Both
+/// boxed and made here, so that the frame of [`check`] stays as small as it
+/// was: the deepest programs are checked within a fixed stack.
+#[inline(never)]
+fn libraries_of(
+    program: Program<'_>,
+    opts: &CheckOptions<'_>,
+) -> (Option<Box<crate::library::ForCheck>>, Option<Box<Modules>>) {
+    if opts.reach.is_some()
+        || !program
+            .language()
+            .is_some_and(|l| l.at_least(mandate_ir::Language::V0_6))
+    {
+        return (None, None);
+    }
+    let Some(libraries) = crate::library::for_check(program, opts) else {
+        return (None, None);
+    };
+    let merged = (!libraries.modules.is_empty()).then(|| {
+        let mut all = opts.modules.cloned().unwrap_or_default();
+        for (m, p) in libraries.modules.iter() {
+            all.insert(m, p.clone());
+        }
+        Box::new(all)
+    });
+    (Some(Box::new(libraries)), merged)
+}
+
+/// Whether `d` is the E0142 of a module a library of the lock pins, which
+/// the lock's top-level `modules` does not pin (0.6: its library's pin is
+/// its pin, E1605).
+fn pinned_by_library(d: &Diagnostic, pinned: &std::collections::BTreeSet<String>) -> bool {
+    d.code == "MDT-E0142"
+        && d.facts
+            .as_ref()
+            .and_then(|f| f.get("module"))
+            .and_then(JsValue::as_str)
+            .is_some_and(|m| pinned.contains(m))
 }

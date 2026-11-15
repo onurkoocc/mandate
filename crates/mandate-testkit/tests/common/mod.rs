@@ -4,6 +4,7 @@
 
 #![allow(dead_code, clippy::expect_used, clippy::panic, missing_docs)]
 
+use mandate_check::library::LibrarySource;
 use mandate_check::{
     AmendmentInput, CapVal, CheckOptions, CheckResult, DataClass, ModuleSource, Modules, PatchOp,
     Room, SubprogramInput, apply_ops, cap_ctor, check, check_amendment, check_subprogram,
@@ -11,7 +12,7 @@ use mandate_check::{
 };
 use mandate_ir::{Diagnostic, JsObject, JsValue, Spans, Value, hash_program, stringify_pretty};
 use mandate_syntax::{SourceKind, kind_of};
-use mandate_testkit::{read_bytes, read_json};
+use mandate_testkit::{library_files, read_bytes, read_json};
 
 /// The text of the repository file `rel`, decoded as
 /// `readFileSync(file, "utf8")` decodes it: each ill-formed sequence is
@@ -71,7 +72,29 @@ pub fn check_with(
     modules: Option<&Modules>,
     lock: Option<&str>,
 ) -> Result<CheckResult, String> {
+    check_with_libraries(text, kind, modules, lock, &[], None)
+}
+
+/// The libraries in the repository directories `dirs`, as a caller hands
+/// them to the compiler.
+pub fn libraries_of(dirs: &[String]) -> Result<Vec<LibrarySource>, String> {
+    dirs.iter()
+        .map(|d| library_files(d).map(|(manifest, files)| LibrarySource { manifest, files }))
+        .collect()
+}
+
+/// [`check_with`], with the libraries in the repository directories
+/// `libraries` (language 0.6) and the digests a configuration revokes.
+pub fn check_with_libraries(
+    text: &str,
+    kind: SourceKind,
+    modules: Option<&Modules>,
+    lock: Option<&str>,
+    libraries: &[String],
+    revoked: Option<&std::collections::BTreeSet<mandate_check::library::Digest>>,
+) -> Result<CheckResult, String> {
     let lock: Option<Value> = lock.map(read_json).transpose()?;
+    let libraries = libraries_of(libraries)?;
     Ok(check(
         text,
         kind,
@@ -79,6 +102,9 @@ pub fn check_with(
             lock: lock.as_ref(),
             modules,
             claim: None,
+            libraries: (!libraries.is_empty()).then_some(libraries.as_slice()),
+            revoked,
+            ..CheckOptions::default()
         },
     ))
 }
