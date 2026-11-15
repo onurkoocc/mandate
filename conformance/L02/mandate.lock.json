@@ -1,0 +1,13 @@
+{
+  "lock": "mandate/lock/0.6",
+  "modules": {},
+  "libraries": {
+    "acme.ops": {
+      "version": "1.0.0",
+      "digest": "sha256:bf9409dd82a0a437858e87b39ef88f41f89fccfda58e32a54f57514121637cc1",
+      "modules": {
+        "acme.ops": "sha256:4a4b9da91c811e1fb457cd767b0ab3d33f3fe8ae2472ab872d50b4f917fe1a3d"
+      }
+    }
+  }
+}

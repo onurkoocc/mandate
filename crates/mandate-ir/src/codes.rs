@@ -574,6 +574,12 @@ pub const CODES: &[CodeRow] = &[
         reference: Reference::TypeScript,
     },
     CodeRow {
+        code: "MDT-E1601",
+        title: "Malformed library",
+        explain: "A library is a manifest (`mandate.library.json`: `library`, `name`, `version`, `modules`, `requires`, strict JSON) and the module files it lists, each a module of language 0.6 named with the library's name, no two with one name, none defining an `extern` (a library is data and runs no code), each checking with the modules of its own library and of the libraries it requires. `std` and the names under it are the compiler's own. The facts name the library and the problem (`manifest`, `reserved_name`, `missing_file`, `unlisted_file`, `module_does_not_load`, `not_0_6`, `extern`, `module_does_not_check`, `directory_mismatch`, `index`, …) (spec/library.md \"The manifest\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
         code: "MDT-E1602",
         title: "Definition not public",
         explain: "A module of language 0.6 lets other modules name only its `pub` definitions. This name, in a `use` list (the one place a program of 0.6 names a definition of another module), is a definition of a 0.6 module that is not `pub`. Mark it `pub` in its module, or do not name it. A module names its own definitions freely, and every definition of a module of 0.1 to 0.5 may still be named, from any program (spec/library.md).",
@@ -589,6 +595,30 @@ pub const CODES: &[CodeRow] = &[
         code: "MDT-E1604",
         title: "Import not closed",
         explain: "Every `use` of a program or module of language 0.6 names `std` itself, `std.decision`, the built-in `std.patterns`, a module the check was given (`--module`, the modules of a call or of a package) or a module of a library the lock pins. A `use` of any module but the standard library's also lists the names it brings (`use acme.types.{Order}`): a program of 0.6 names a definition of another module through that list alone, never by its module's path. Before 0.6 an import of a module that is not loaded, and a name written with its module's path, are taken on trust, their types unknown; 0.6 refuses both. Give the module and list the names, or remove the `use`. Reported at the `use` (spec/library.md).",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1605",
+        title: "Library does not match the lock",
+        explain: "What the check, `add` or `upgrade` is given of a library is not what the lock pins: another version or digest, a module that hashes otherwise, is missing or is not listed, a library the program imports or the check is handed that the lock does not pin, a library the lock pins that was not handed in, or a module pinned twice (in the lock's `modules` and by a library). Trust is in the digest: a version republished with other content is another digest. Add or upgrade the library again (spec/library.md \"Lock 0.6\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1606",
+        title: "Library requirement not met",
+        explain: "A library's `requires` names a library the lock does not pin, or one it pins at a version outside the range; or `add` or `upgrade` finds no version of a library within the range asked for, or is given a range that is not one (`^MAJOR`, `^MAJOR.MINOR`, `^MAJOR.MINOR.PATCH`, or an exact `MAJOR.MINOR.PATCH`) (spec/library.md \"Versions\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1607",
+        title: "Publication breaks the version rule",
+        explain: "`mandate publish` refuses a version already published; a version that widens the authority signature of the highest published version below it, removes one of its criteria or adds a waiver, and is not a major version above it; and a version below which the lowest published version above it, of the same MAJOR, would do one of those three against it. A major version is one whose MAJOR is greater (spec/library.md \"mandate add, upgrade and publish\").",
+        reference: Reference::Rust,
+    },
+    CodeRow {
+        code: "MDT-E1608",
+        title: "Library within its waiting period or revoked",
+        explain: "`add` and `upgrade` resolve a version only once the configuration's `libraries.wait_days` have passed since its `published_at` (a version the lock pins already is not held to the wait again), and never a digest the configuration revokes; with the configuration, `mandate check` refuses a lock that pins a revoked digest. The message names the version and the day it may be resolved (spec/library.md \"Waiting period and revocation\").",
         reference: Reference::Rust,
     },
     CodeRow {

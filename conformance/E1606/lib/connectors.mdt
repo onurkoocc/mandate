@@ -1,0 +1,44 @@
+// The connectors of the acme.connectors library, as spec/library.md
+// "Declaration" declares them: the ERP, which reads open orders and posts
+// draft invoices, and the mailbox, which lists invoices. Its types are in
+// types.mdt beside it. A later slice makes the library of these two files,
+// unchanged, with its manifest. Only the Rust compiler reads them.
+
+mandate @ 0.6
+
+module acme.connectors @ 2.3
+
+use acme.connectors.types.{Invoice, Order, Match, DraftId}
+
+/// The ERP. Reads open orders; posts draft invoices, which a person still
+/// finalizes in the ERP.
+pub connector erp = mcp("https://erp.acme.example/mcp")
+  version "2.3"
+  class   confidential
+{
+  tool list_open_orders(vendor_id: Text) -> Untrusted<List<Order>>
+    read_only
+
+  tool find_draft_invoice(key: Text) -> Untrusted<Option<DraftId>>
+    read_only
+
+  tool post_draft_invoice(m: Verified<Match>, key: Text) -> Receipt<DraftId>
+    critical
+    idempotency key key
+    retry_class reconcilable
+    reconcile by find_draft_invoice
+    compensation delete_draft_invoice
+
+  tool delete_draft_invoice(id: DraftId, key: Text) -> Receipt<DraftId>
+    critical
+    idempotency key key
+    retry_class idempotent
+}
+
+pub connector mailbox = mcp("https://mail.acme.example/mcp")
+  version "1.4"
+  class   confidential
+{
+  tool list_invoices() -> Untrusted<List<Invoice>>
+    read_only
+}

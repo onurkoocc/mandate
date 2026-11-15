@@ -365,6 +365,8 @@ pub struct Observed {
     pub ok: bool,
     pub diagnostics: Vec<Diagnostic>,
     pub hashes: Option<JsValue>,
+    /// A library case of `add` or `upgrade`: whether it gives back a lock.
+    pub written: Option<bool>,
 }
 
 impl From<&CheckResult> for Observed {
@@ -373,6 +375,7 @@ impl From<&CheckResult> for Observed {
             ok: r.ok,
             diagnostics: r.diagnostics.clone(),
             hashes: r.hashes.as_ref().map(|h| JsValue::Object(h.to_js())),
+            written: None,
         }
     }
 }
@@ -518,6 +521,7 @@ pub fn run_subprogram(
             ok: r.ok,
             diagnostics: r.diagnostics.clone(),
             hashes: None,
+            written: None,
         },
         text: result_text(&r.to_js()),
     })
@@ -549,6 +553,7 @@ pub fn run_amendment(a: &Value, parent: &Value, modules: &Modules) -> Result<Doo
                 .hash
                 .as_deref()
                 .map(|h| JsObject::new().with("program", h).into()),
+            written: None,
         },
         text: result_text(&r.to_js()),
     })
@@ -559,4 +564,126 @@ fn result_text(v: &JsValue) -> String {
     let mut text = stringify_pretty(v).unwrap_or_default();
     text.push('\n');
     text
+}
+
+/// The library directories of a case (`libraries`, 0.6), as repository
+/// paths.
+pub fn case_libraries(dir: &str, case: &Value) -> Vec<String> {
+    case.get("libraries")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(Value::as_str)
+        .map(|l| mandate_testkit::repo_path(dir, l))
+        .collect()
+}
+
+/// The configuration of a case (`config`, 0.6): the `libraries` member of
+/// the runtime's configuration, read.
+pub fn case_config(
+    dir: &str,
+    case: &Value,
+) -> Result<Option<mandate_check::library::LibrariesConfig>, String> {
+    let Some(path) = case.get("config").and_then(Value::as_str) else {
+        return Ok(None);
+    };
+    let v = read_json(&mandate_testkit::repo_path(dir, path))?;
+    mandate_check::library::read_libraries_config(&v)
+        .map(Some)
+        .map_err(|p| format!("{path}: {} problems", p.len()))
+}
+
+/// A version directory of a library, as a caller reads it.
+fn published(dir: &str, version: &str) -> Result<mandate_check::library::ops::Published, String> {
+    let at = format!("{dir}/{version}");
+    let (manifest, files) = library_files(&at)?;
+    Ok(mandate_check::library::ops::Published {
+        version: version.to_owned(),
+        source: LibrarySource { manifest, files },
+        index: mandate_testkit::read_text(&format!("{at}/index.json")).ok(),
+    })
+}
+
+/// Runs a library case (`library`, 0.6): `add`, `upgrade` or `publish` of
+/// `crate::library::ops`, observed with `written` for `add` and `upgrade`.
+pub fn run_library_case(dir: &str, case: &Value) -> Result<DoorResult, String> {
+    use mandate_check::library::ops::{Request, add, publish, upgrade};
+    let l = case.get("library").ok_or("no library")?;
+    let s = |k: &str| l.get(k).and_then(Value::as_str);
+    let op = s("op").ok_or("no op")?;
+    let now = mandate_check::library::Timestamp::parse(s("now").ok_or("no now")?)
+        .map_err(|f| format!("now: {}", f.id()))?;
+    let versions_dir = s("versions").map(|v| mandate_testkit::repo_path(dir, v));
+    let only: Option<Vec<String>> = l.get("only").and_then(Value::as_array).map(|xs| {
+        xs.iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect()
+    });
+    let mut versions = Vec::new();
+    if let Some(vd) = &versions_dir {
+        for v in mandate_testkit::subdirectories(vd)? {
+            if only.as_ref().is_none_or(|o| o.contains(&v)) {
+                versions.push(published(vd, &v)?);
+            }
+        }
+    }
+    let config = case_config(dir, case)?;
+    let deps = libraries_of(&case_libraries(dir, case))?;
+    let (observed, out) = match op {
+        "publish" => {
+            let source = s("source").ok_or("no source")?;
+            let (manifest, files) = library_files(&mandate_testkit::repo_path(dir, source))?;
+            let r = publish(&LibrarySource { manifest, files }, &versions, &deps, now);
+            (
+                Observed {
+                    ok: r.ok,
+                    diagnostics: r.diagnostics.clone(),
+                    hashes: None,
+                    written: None,
+                },
+                r.to_js(),
+            )
+        }
+        "add" | "upgrade" => {
+            let lock = match case.get("lock").and_then(Value::as_str) {
+                Some(p) => read_json(&mandate_testkit::repo_path(dir, p))?,
+                None => return Err("a library case of add or upgrade needs a lock".to_owned()),
+            };
+            let request = Request {
+                library: s("name").ok_or("no name")?,
+                range: s("range"),
+                lock: &lock,
+                versions: &versions,
+                libraries: &deps,
+                config: config.as_ref(),
+                now,
+            };
+            let r = if op == "add" {
+                add(&request)
+            } else {
+                let pinned = s("pinned").ok_or("no pinned")?;
+                let (manifest, files) = library_files(&mandate_testkit::repo_path(dir, pinned))?;
+                upgrade(
+                    &request,
+                    &LibrarySource { manifest, files },
+                    l.get("accept_governance") == Some(&Value::Bool(true)),
+                )
+            };
+            (
+                Observed {
+                    ok: r.ok,
+                    diagnostics: r.diagnostics.clone(),
+                    hashes: None,
+                    written: Some(r.lock.is_some()),
+                },
+                r.to_js(),
+            )
+        }
+        other => return Err(format!("no library operation {other}")),
+    };
+    Ok(DoorResult {
+        observed,
+        text: result_text(&out),
+    })
 }

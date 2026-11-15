@@ -33,7 +33,7 @@
 
 pub mod ops;
 
-pub use mandate_lib::Digest;
+pub use mandate_lib::{Digest, LibrariesConfig, Timestamp, read_libraries_config};
 pub mod signature;
 
 use std::collections::{BTreeMap, BTreeSet};

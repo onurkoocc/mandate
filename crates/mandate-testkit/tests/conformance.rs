@@ -45,8 +45,9 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::{
-    Applied, Observed, applied_source, check_with, kind_named, modules_of, patched_source,
-    read_source, run_amendment, run_subprogram, subprogram_case,
+    Applied, Observed, applied_source, case_config, case_libraries, check_with,
+    check_with_libraries, kind_named, modules_of, patched_source, read_source, run_amendment,
+    run_library_case, run_subprogram, subprogram_case,
 };
 use mandate_ir::{JsValue, Value, canonicalize, parse, stringify};
 use mandate_syntax::SourceKind;
@@ -66,7 +67,9 @@ const PENDING: &[&str] = &[];
 /// The front door a compile case goes through, as `doorOf` in
 /// `compiler/test/diagnostic-vectors.test.ts` names it.
 fn door_of(case: &Value) -> &'static str {
-    if case.get("amendment").is_some() {
+    if case.get("library").is_some() {
+        "library"
+    } else if case.get("amendment").is_some() {
         "check_amendment"
     } else if case.get("subprogram").is_some() {
         "check_subprogram"
@@ -147,6 +150,13 @@ fn compare_result(expect: &Value, got: &Observed) -> Vec<String> {
                     ));
                 }
             }
+        }
+    }
+    // 0.6: whether a library case of `add` or `upgrade` gives back a lock.
+    if let Some(written) = expect.get("written") {
+        let want = matches!(written, Value::Bool(true));
+        if got.written != Some(want) {
+            problems.push(format!("written: expected {want}, got {:?}", got.written));
         }
     }
     if let Some(hashes) = expect.get("hashes") {
@@ -251,6 +261,11 @@ fn run(c: &Case, changed: &mut usize) -> Result<(), Miss> {
 fn prepare(c: &Case) -> Result<(Value, Observed), String> {
     let dir = format!("conformance/{}", c.id);
     let case = &c.value;
+    // 0.6: a library case, `add`, `upgrade` or `publish`.
+    if c.door == "library" {
+        let r = run_library_case(&dir, case)?;
+        return Ok((case.get("expect").ok_or("no expect")?.clone(), r.observed));
+    }
     let input = case.get("input").ok_or("no input")?;
     let kind = kind_named(input.get("kind").and_then(Value::as_str).unwrap_or("mdt"));
     let text = match input.get("text").and_then(Value::as_str) {
@@ -321,7 +336,15 @@ fn prepare(c: &Case) -> Result<(Value, Observed), String> {
         Some(patch) => (patched_source(&text, kind, patch)?, SourceKind::Json),
         None => (text, kind),
     };
-    let result = check_with(&text, kind, Some(&modules), lock.as_deref())?;
+    let revoked = case_config(&dir, case)?.map(|c| c.revoked().clone());
+    let result = check_with_libraries(
+        &text,
+        kind,
+        Some(&modules),
+        lock.as_deref(),
+        &case_libraries(&dir, case),
+        revoked.as_ref(),
+    )?;
     if let Some(language) = case.get("language").and_then(Value::as_str) {
         // A program that does not load still declares a language: from the
         // JSON text when there is no program. The runner reads that text

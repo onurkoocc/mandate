@@ -1,0 +1,32 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1601",
+  "kind": "compile",
+  "title": "A check handed the library acme.connectors, one of whose modules defines an extern (a mutation: one definition added), is refused: a library is data and runs no code.",
+  "spec": [
+    "spec/library.md#the-manifest",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/minimal.mdt",
+    "kind": "mdt"
+  },
+  "libraries": ["lib"],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1601",
+        "path": "/libraries/acme.connectors",
+        "facts": {
+          "library": "acme.connectors",
+          "problem": "extern",
+          "module": "acme.connectors.types",
+          "name": "near_py"
+        }
+      }
+    ]
+  }
+}

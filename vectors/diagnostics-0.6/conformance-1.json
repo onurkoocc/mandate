@@ -7626,6 +7626,72 @@
       }
     },
     {
+      "name": "E1601",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "libraries"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1601",
+            "severity": "error",
+            "message": "Library acme.connectors is malformed: its module acme.connectors.types defines the extern near_py: a library is data, and runs no code.",
+            "at": {
+              "path": "/libraries/acme.connectors"
+            },
+            "docs": "mandate explain MDT-E1601",
+            "facts": {
+              "library": "acme.connectors",
+              "problem": "extern",
+              "module": "acme.connectors.types",
+              "name": "near_py"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1601a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "libraries"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1601",
+            "severity": "error",
+            "message": "Library std.extras is malformed: std and the names under it are the compiler's own; a library handed to it may not have one.",
+            "at": {
+              "path": "/libraries/std.extras"
+            },
+            "docs": "mandate explain MDT-E1601",
+            "facts": {
+              "library": "std.extras",
+              "problem": "reserved_name"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1602",
       "kind": "compile",
       "door": "check_patched",
@@ -8053,6 +8119,41 @@
             "docs": "mandate explain MDT-E1604",
             "facts": {
               "module": "example.library.types"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1606",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "libraries"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1606",
+            "severity": "error",
+            "message": "Library acme.connectors's requirement is not met: requirement out of range.",
+            "at": {
+              "path": "/libraries/acme.connectors"
+            },
+            "docs": "mandate explain MDT-E1606",
+            "facts": {
+              "problem": "requirement_out_of_range",
+              "library": "acme.connectors",
+              "requirement": "std.patterns",
+              "range": "^2.0",
+              "pinned": "1.0.0"
             }
           }
         ]
@@ -8868,6 +8969,517 @@
               "span": [24, 15, 24, 25]
             },
             "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "L01",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/invoices.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "libraries"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1605",
+            "severity": "error",
+            "message": "Library acme.connectors does not match the lock: digest differs.",
+            "at": {
+              "path": "/libraries/acme.connectors"
+            },
+            "docs": "mandate explain MDT-E1605",
+            "facts": {
+              "problem": "digest_differs",
+              "library": "acme.connectors",
+              "locked": "sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3221",
+              "found": "sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "L02",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "resolution": {
+          "chosen": {
+            "version": "1.1.0",
+            "digest": "sha256:2dab5a1c65cc9cd4151fb6b0d01b8a0a512e4c2793675f36141ca264f01fd0d9",
+            "published_at": "2026-11-10T09:00:00Z"
+          },
+          "passed_over": [
+            {
+              "version": "2.0.0",
+              "digest": "sha256:ae9085eaacdc140172d00d234ec6172301098c102624f94ada765c11239e26e8",
+              "published_at": "2026-11-14T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.2.0",
+              "digest": "sha256:73256b6c238d508bc4bf6891a3bfbc7b51d579e949373b7e7840e12a9c61cad4",
+              "published_at": "2026-11-12T09:00:00Z",
+              "reason": "outside_range"
+            }
+          ],
+          "unpublished": []
+        },
+        "version": "1.1.0",
+        "digest": "sha256:2dab5a1c65cc9cd4151fb6b0d01b8a0a512e4c2793675f36141ca264f01fd0d9",
+        "signature": {
+          "acme.ops.Inventory": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.ops.store.list_items\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 3600000
+              }
+            },
+            "max_class": null
+          },
+          "acme.ops.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "find_item": "read_only",
+              "list_items": "read_only",
+              "put_item": "write reconcilable"
+            }
+          }
+        },
+        "governance": [
+          {
+            "kind": "widened",
+            "at": "acme.ops.Inventory",
+            "text": "~ acme.ops.Inventory.budget.time: 10m \u2192 1h"
+          },
+          {
+            "kind": "budget_increased",
+            "at": "acme.ops/defs/Inventory/budget",
+            "text": "~ Inventory.budget.time: 10m \u2192 1h"
+          }
+        ],
+        "behavior": [],
+        "widenings": [
+          {
+            "name": "acme.ops.Inventory",
+            "what": "budget",
+            "text": "~ acme.ops.Inventory.budget.time: 10m \u2192 1h"
+          }
+        ],
+        "before": {
+          "acme.ops.Inventory": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.ops.store.list_items\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 600000
+              }
+            },
+            "max_class": null
+          },
+          "acme.ops.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "find_item": "read_only",
+              "list_items": "read_only",
+              "put_item": "write reconcilable"
+            }
+          }
+        },
+        "lock": null
+      }
+    },
+    {
+      "name": "L03",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1607",
+            "severity": "error",
+            "message": "Version 1.1.0 of library acme.ops widens the authority signature of 1.0.0, removes one of its criteria or adds a waiver, and is not a major version above it.",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E1607",
+            "facts": {
+              "library": "acme.ops",
+              "problem": "needs_major",
+              "version": "1.1.0",
+              "base": "1.0.0",
+              "widens_authority": true,
+              "removes_criterion": false,
+              "adds_waiver": false
+            }
+          }
+        ],
+        "name": "acme.ops",
+        "version": "1.1.0",
+        "digest": "sha256:2dab5a1c65cc9cd4151fb6b0d01b8a0a512e4c2793675f36141ca264f01fd0d9",
+        "against": [
+          {
+            "version": "1.0.0",
+            "requires_major": true,
+            "widenings": [
+              {
+                "name": "acme.ops.Inventory",
+                "what": "budget",
+                "text": "~ acme.ops.Inventory.budget.time: 10m \u2192 1h"
+              }
+            ],
+            "governance": [
+              {
+                "kind": "widened",
+                "at": "acme.ops.Inventory",
+                "text": "~ acme.ops.Inventory.budget.time: 10m \u2192 1h"
+              },
+              {
+                "kind": "budget_increased",
+                "at": "acme.ops/defs/Inventory/budget",
+                "text": "~ Inventory.budget.time: 10m \u2192 1h"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "L04",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "config",
+        "library"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1608",
+            "severity": "error",
+            "message": "Version 1.2.0 of library acme.ops is within its waiting period: it may be resolved from 2026-11-14.",
+            "at": {
+              "path": "/libraries/acme.ops"
+            },
+            "docs": "mandate explain MDT-E1608",
+            "facts": {
+              "library": "acme.ops",
+              "version": "1.2.0",
+              "digest": "sha256:73256b6c238d508bc4bf6891a3bfbc7b51d579e949373b7e7840e12a9c61cad4",
+              "published_at": "2026-11-12T09:00:00Z",
+              "reason": "waiting",
+              "available_from": "2026-11-14"
+            }
+          }
+        ],
+        "resolution": {
+          "chosen": null,
+          "passed_over": [
+            {
+              "version": "2.0.0",
+              "digest": "sha256:ae9085eaacdc140172d00d234ec6172301098c102624f94ada765c11239e26e8",
+              "published_at": "2026-11-14T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.2.0",
+              "digest": "sha256:73256b6c238d508bc4bf6891a3bfbc7b51d579e949373b7e7840e12a9c61cad4",
+              "published_at": "2026-11-12T09:00:00Z",
+              "reason": "waiting",
+              "available_from": "2026-11-14"
+            },
+            {
+              "version": "1.1.0",
+              "digest": "sha256:2dab5a1c65cc9cd4151fb6b0d01b8a0a512e4c2793675f36141ca264f01fd0d9",
+              "published_at": "2026-11-10T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.0.1",
+              "digest": "sha256:27afae0bcd88639aa729c4f70115831d14346dc4cc059ffea5ca21e68dc34873",
+              "published_at": "2026-11-05T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.0.0",
+              "digest": "sha256:bf9409dd82a0a437858e87b39ef88f41f89fccfda58e32a54f57514121637cc1",
+              "published_at": "2026-11-01T09:00:00Z",
+              "reason": "outside_range"
+            }
+          ],
+          "unpublished": []
+        },
+        "lock": null
+      }
+    },
+    {
+      "name": "L04a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/invoices.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "../../fixtures/library/invoices.lock.json",
+      "uses": [
+        "libraries",
+        "config"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1608",
+            "severity": "error",
+            "message": "The digest sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220 of library acme.connectors is revoked by the runtime's configuration: it is never resolved or loaded.",
+            "at": {
+              "path": "/libraries/acme.connectors"
+            },
+            "docs": "mandate explain MDT-E1608",
+            "facts": {
+              "problem": "revoked",
+              "library": "acme.connectors",
+              "digest": "sha256:a595b65236947513762e57701405a1069cebdbe97f3daa48aff59ca3b50e3220"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "L05",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "resolution": {
+          "chosen": {
+            "version": "1.0.1",
+            "digest": "sha256:27afae0bcd88639aa729c4f70115831d14346dc4cc059ffea5ca21e68dc34873",
+            "published_at": "2026-11-05T09:00:00Z"
+          },
+          "passed_over": [
+            {
+              "version": "2.0.0",
+              "digest": "sha256:ae9085eaacdc140172d00d234ec6172301098c102624f94ada765c11239e26e8",
+              "published_at": "2026-11-14T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.2.0",
+              "digest": "sha256:73256b6c238d508bc4bf6891a3bfbc7b51d579e949373b7e7840e12a9c61cad4",
+              "published_at": "2026-11-12T09:00:00Z",
+              "reason": "outside_range"
+            },
+            {
+              "version": "1.1.0",
+              "digest": "sha256:2dab5a1c65cc9cd4151fb6b0d01b8a0a512e4c2793675f36141ca264f01fd0d9",
+              "published_at": "2026-11-10T09:00:00Z",
+              "reason": "outside_range"
+            }
+          ],
+          "unpublished": []
+        },
+        "version": "1.0.1",
+        "digest": "sha256:27afae0bcd88639aa729c4f70115831d14346dc4cc059ffea5ca21e68dc34873",
+        "signature": {
+          "acme.ops.Inventory": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.ops.store.list_items\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 600000
+              }
+            },
+            "max_class": null
+          },
+          "acme.ops.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "find_item": "read_only",
+              "list_items": "read_only",
+              "put_item": "write reconcilable"
+            }
+          }
+        },
+        "governance": [],
+        "behavior": [
+          {
+            "kind": "behavior",
+            "at": "acme.ops/defs/Inventory/doc",
+            "text": "~ workflow Inventory: doc changed"
+          }
+        ],
+        "widenings": [],
+        "before": {
+          "acme.ops.Inventory": {
+            "kind": "workflow",
+            "caps": [
+              "StoreRead = tool.call(store, list_items) \u2192 tool.call(\"acme.ops.store.list_items\")"
+            ],
+            "effects": {},
+            "roles": [],
+            "budget": {
+              "time": {
+                "ms": 600000
+              }
+            },
+            "max_class": null
+          },
+          "acme.ops.store": {
+            "kind": "connector",
+            "url": "https://store.acme.example/mcp",
+            "class": "internal",
+            "tools": {
+              "find_item": "read_only",
+              "list_items": "read_only",
+              "put_item": "write reconcilable"
+            }
+          }
+        },
+        "lock": {
+          "lock": "mandate/lock/0.6",
+          "modules": {},
+          "libraries": {
+            "acme.ops": {
+              "version": "1.0.1",
+              "digest": "sha256:27afae0bcd88639aa729c4f70115831d14346dc4cc059ffea5ca21e68dc34873",
+              "modules": {
+                "acme.ops": "sha256:d908297048d349863e39f1f8f18ff77625e00107d9cba3f4fb06f3924ad96011"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "L06",
+      "kind": "compile",
+      "door": "library",
+      "input": {
+        "library": true
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "library"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1607",
+            "severity": "error",
+            "message": "Version 1.1.0 of library acme.ops, published above 1.0.5 with its MAJOR, would widen the authority signature of 1.0.5, remove one of its criteria or add a waiver: 1.0.5 cannot be published below it.",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E1607",
+            "facts": {
+              "library": "acme.ops",
+              "problem": "next_needs_major",
+              "version": "1.0.5",
+              "next": "1.1.0",
+              "widens_authority": true,
+              "removes_criterion": false,
+              "adds_waiver": false
+            }
+          }
+        ],
+        "name": "acme.ops",
+        "version": "1.0.5",
+        "digest": "sha256:9bec08a0d724a5a3d2a98fa5cb2045c4dfe7e487a3f04e67efb3156eddda5bf0",
+        "against": [
+          {
+            "version": "1.0.0",
+            "requires_major": false,
+            "widenings": [],
+            "governance": []
+          },
+          {
+            "version": "1.1.0",
+            "requires_major": true,
+            "widenings": [
+              {
+                "name": "acme.ops.Inventory",
+                "what": "budget",
+                "text": "~ acme.ops.Inventory.budget.time: 10m \u2192 1h"
+              }
+            ],
+            "governance": [
+              {
+                "kind": "widened",
+                "at": "acme.ops.Inventory",
+                "text": "~ acme.ops.Inventory.budget.time: 10m \u2192 1h"
+              },
+              {
+                "kind": "budget_increased",
+                "at": "acme.ops/defs/Inventory/budget",
+                "text": "~ Inventory.budget.time: 10m \u2192 1h"
+              }
+            ]
           }
         ]
       }

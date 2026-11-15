@@ -1,0 +1,31 @@
+// The types of the acme.connectors library (spec/library.md "Connectors"
+// and "The acceptance program"): what the mailbox and the ERP give and take,
+// and `near`, which the acceptance program's contract calls. Its sibling
+// connectors.mdt declares the two connectors over them. A later slice makes
+// the library of these two files, unchanged, with its manifest. Only the
+// Rust compiler reads them.
+
+mandate @ 0.6
+
+module acme.connectors.types @ 2.3
+
+/// An invoice as the mailbox holds it. Its total is in cents.
+pub type Invoice = { invoice_no: Text, vendor_id: Text, total_cents: Int }
+
+/// An open order of a vendor, as the ERP lists it.
+pub type Order = { order_no: Text, vendor_id: Text, total_cents: Int }
+
+/// An invoice matched to an open order of its vendor.
+pub type Match = { invoice_no: Text, order: Order }
+
+/// A draft invoice in the ERP, which a person still finalizes there.
+pub type DraftId = { draft_id: Text }
+
+/// Whether `a` is within `pct` percent of `b`.
+pub fn near(a: Int, b: Int, pct: Int) -> Bool ! {} {
+  a * 100 <= b * (100 + pct) and a * 100 >= b * (100 - pct)
+}
+
+/// The same check, run by a Python function.
+pub extern py "tools/near.py"::near_py(a: Int, b: Int, pct: Int) -> Bool
+  ! {}

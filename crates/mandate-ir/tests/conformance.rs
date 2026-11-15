@@ -31,13 +31,18 @@ use mandate_ir::{Value, canonicalize, hash_program, load_json};
 use mandate_testkit::{read_bytes, read_json, subdirectories};
 
 /// Members of a case that only a compiler can honour.
-const NEEDS_A_COMPILER: [&str; 6] = [
+const NEEDS_A_COMPILER: [&str; 9] = [
     "patch",
     "modules",
     "lock",
     "subprogram",
     "amendment",
     "base",
+    // 0.6: the libraries a check is handed, a configuration, and a library
+    // case (which has no input).
+    "libraries",
+    "config",
+    "library",
 ];
 
 /// Reads a case file with this crate's own reader.
@@ -56,7 +61,6 @@ fn plan(case: &Value) -> Result<&Value, String> {
     if str_of(case, "kind") != "compile" {
         return Err("not a compile case".to_owned());
     }
-    let input = case.get("input").expect("a case has an input");
     let expect = case.get("expect").expect("a case has an expect");
     let diags = expect
         .get("diagnostics")
@@ -67,6 +71,7 @@ fn plan(case: &Value) -> Result<&Value, String> {
             return Err(format!("it has `{key}`, which needs a compiler"));
         }
     }
+    let input = case.get("input").expect("a case has an input");
     if str_of(input, "kind") != "json" {
         return Err("its input is Mandate text, which needs a compiler to read".to_owned());
     }

@@ -1,0 +1,9 @@
+// A library that names itself std.extras: std and the names under it are
+// the compiler's own (conformance/E1601a).
+
+mandate @ 0.6
+
+module std.extras @ 1.0
+
+/// A note.
+pub type Note = { text: Text }

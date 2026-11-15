@@ -1,0 +1,31 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1601a",
+  "kind": "compile",
+  "title": "A check handed a library named std.extras is refused: std and the names under it are the compiler's own, and only its built-in std.patterns has one.",
+  "spec": [
+    "spec/library.md#the-manifest",
+    "spec/library.md#stdpatterns",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/minimal.mdt",
+    "kind": "mdt"
+  },
+  "libraries": ["lib"],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1601",
+        "path": "/libraries/std.extras",
+        "facts": {
+          "library": "std.extras",
+          "problem": "reserved_name"
+        }
+      }
+    ]
+  }
+}

@@ -351,6 +351,21 @@ fn an_upgrade_that_widens_the_signature_writes_no_lock_without_acceptance() {
     );
 }
 
+/// The lock of the upgrade cases (L02, L05) pins acme.ops 1.0.0 as it is.
+#[test]
+fn the_lock_of_the_upgrade_cases_pins_acme_ops_1_0_0() {
+    let written = ops_lock();
+    for case in ["conformance/L02", "conformance/L05"] {
+        let lock = read_json(&format!("{case}/mandate.lock.json")).unwrap();
+        assert_eq!(
+            mandate_ir::canonicalize(&lock),
+            mandate_ir::canonicalize(&written),
+            "{case}: {}",
+            mandate_ir::canonicalize(&written)
+        );
+    }
+}
+
 /// Publish's version rule over acme.ops, with 1.0.0 published.
 #[test]
 fn a_minor_version_that_widens_is_refused_and_a_major_one_is_not() {

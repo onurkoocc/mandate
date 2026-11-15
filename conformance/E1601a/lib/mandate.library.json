@@ -1,0 +1,6 @@
+{
+  "library": "mandate/library/0.6",
+  "name": "std.extras",
+  "version": "1.0.0",
+  "modules": ["extras.mdt"]
+}

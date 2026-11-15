@@ -1,0 +1,7 @@
+{
+  "library": "mandate/library/0.6",
+  "name": "acme.connectors",
+  "version": "2.3.0",
+  "modules": ["connectors.mdt", "types.mdt"],
+  "requires": { "std.patterns": "^2.0" }
+}

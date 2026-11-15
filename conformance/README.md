@@ -39,10 +39,25 @@ own input files (`program.mdt` or `program.ir.json`, module files,
   than the case's. A text that does not read declares the version of its header
   (`mandate @ 0.6`). A case of `mandate/0.6` is a case of the Rust compiler alone
   (see "Cases of 0.6").
-- `input`: required except in a journal case. `{ "file": "<path>", "kind": "mdt" | "json" }` or
+- `input`: required except in a journal case and a library case. `{ "file": "<path>", "kind": "mdt" | "json" }` or
   `{ "text": "<source>", "kind": ... }`. Exactly one of `file` and `text`.
 - `modules`: optional list of module files, loaded the way `--module` loads them.
 - `lock`: optional path to a lock file, or `null`.
+- `libraries` (0.6): optional list of library directories (a
+  `mandate.library.json` and the module files it lists), handed to the check
+  as a package carries them, or to a library case as the libraries its lock
+  pins.
+- `config` (0.6): optional path to the `libraries` member of a runtime
+  configuration (`{ dir, wait_days?, revoked? }`): its revoked digests for a
+  check, its waiting period too for a library case.
+- `library` (0.6): optional; a library case. Instead of a check, `add`,
+  `upgrade` or `publish` as the compiler's pure functions give them:
+  `{ op, now, name?, range?, versions?, only?, pinned?, source?,
+  accept_governance? }`, `versions` a directory of `<version>/` directories
+  (each with its manifest, modules and `index.json`), `only` the ones to
+  read, `pinned` the version the lock pins (upgrade), `source` the library
+  to publish. Its `expect` may say `written`: whether `add` or `upgrade`
+  gives back the lock with the new pin.
 - `patch`: optional RFC 6902 patch, only `add`, `replace` and `remove`. It is
   applied to the IR of the input, and the patched IR is checked as JSON IR. No
   base hash is involved, unless the case gives `base`. Use it to say "this
@@ -279,6 +294,16 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E1604a` | A `use` of `std.patterns`, built into the compiler, needs no module; a name of its list the library does not define (a mutation: one `use` added) | E0120 |
 | `E1604b` | Imports of `std`, `std.decision` and a module the check is given | — |
 | `E1604c` | A `use` of a module the check is given, without a list of names (a mutation: one `use` added) | E1604 |
+| `E1601` | A library handed to the check, one of whose modules defines an `extern` (a mutation: one definition added) | E1601 |
+| `E1601a` | A library named `std.extras`: `std` and the names under it are the compiler's own | E1601 |
+| `E1606` | A library whose manifest requires `std.patterns ^2.0`, which the compiler builds in at 1.0.0 (a mutation: one member added) | E1606 |
+| `L01` | The acceptance program with a lock whose digest of `acme.connectors` differs in one digit | E1605 |
+| `L02` | `upgrade` of `acme.ops` 1.0.0 to 1.1.0, which raises a `pub` workflow's budget: a governance change, no lock given back | — (`written: false`) |
+| `L03` | `publish` of `acme.ops` 1.1.0 over 1.0.0, a minor version that widens the signature | E1607 |
+| `L04` | `add` of exactly `acme.ops` 1.2.0 within its waiting period, naming the day it may be resolved | E1608 |
+| `L04a` | The acceptance program checked with a configuration that revokes the digest its lock pins | E1608 |
+| `L05` | `upgrade` of `acme.ops` 1.0.0 to 1.0.1, a doc line: no governance change, the lock given back | — (`written: true`) |
+| `L06` | `publish` of 1.0.5 between 1.0.0 and 1.1.0, against which 1.1.0 would widen without being a major version | E1607 |
 | `E0120` | A listed constant used as a type: a listed name is the definition it names, held to its kind as the program's own (a mutation) | E0120 |
 | `E0120a` | A lower-case listed name of a module that is not the standard library's used as a module path, `most.Anything` (a mutation) | E0120 |
 | `E0120b` | A listed type named as the contract of `Verified` (a mutation) | E0120 |
@@ -520,13 +545,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 359, passed 359, pending 0
+conformance cases: ran 369, passed 369, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 234 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 244 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(375 cases: 359 `compile`, 234 of them of language 0.6, and 16 `journal`; no case
+(385 cases: 369 `compile`, 244 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the
