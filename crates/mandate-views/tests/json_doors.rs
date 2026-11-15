@@ -53,6 +53,7 @@ const RULES: Rules<'static> = Rules {
     optional: &[
         // The Rust's alone (0.6): the modules an applied pattern comes from.
         ("architecture", "modules"),
+        ("architecture", "lock"),
         ("authority", "modules"),
         ("cost", "modules"),
         ("diff_doc", "modules"),
@@ -68,6 +69,7 @@ const RULES: Rules<'static> = Rules {
     // The parameters whose TypeScript type takes any JSON value: a lock as
     // read, which the function reads as it is.
     any: &[
+        ("architecture", "lock"),
         ("cost", "lock"),
         ("program_doc", "lock"),
         ("acs_target", "lock"),

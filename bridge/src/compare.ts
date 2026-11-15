@@ -161,8 +161,9 @@ export const LANGUAGE_06: Record<DoorBacked, (a: unknown[]) => boolean> = {
   narrow: (a) => caps06(a[0]),
   mapScopes: (a) => caps06(a[0]),
   inFlightOverlap: (a) => caps06(a[0]),
-  architecture: (a) => program06(a[0]) || modules06(a[1]),
-  architectureBlocks: () => false,
+  architecture: (a) => program06(a[0]) || modules06(a[1]) || lock06(a[2]),
+  // An architecture view has no language either, but a workflow that names the `pattern` it applies is 0.6's.
+  architectureBlocks: (a) => obj(a[0]) && Array.isArray(a[0]["workflows"]) && a[0]["workflows"].some((w) => obj(w) && typeof w["pattern"] === "string"),
   authority: (a) => program06(a[0]) || modules06(a[1]),
   // An authority view has no language, but a row that names connector tools (`tools`, which only 0.6 has) is 0.6's.
   authorityBlocks: (a) => obj(a[0]) && Array.isArray(a[0]["rows"]) && a[0]["rows"].some((r) => obj(r) && Array.isArray(r["tools"]) && r["tools"].length > 0),

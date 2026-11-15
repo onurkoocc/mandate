@@ -127,7 +127,7 @@ fn the_card_names_the_pattern_and_the_library_the_lock_pins() {
     ));
     assert!(has_p(
         &doc,
-        "The library std.patterns has digest sha256:b1a7161ad2ea1dcdca950c189403b90cd65770f7e8143441a6836cacdace3548, pinned by the lock."
+        "The library std.patterns has digest sha256:cea6319dba99a4e2790b07038eba90a87a4cb9b036f3c7d87e4b26d68fbacd26, pinned by the lock."
     ));
     let js = text_of(&js(&p, Some(&lock), Some(&m)));
     assert!(
@@ -489,4 +489,168 @@ fn a_program_of_0_5_has_no_connector_tools() {
     let view = mandate_views::authority_with(&p, Some(&library_modules()));
     assert!(view.rows.iter().all(|r| r.tools.is_empty()), "{view:?}");
     assert!(!text_of(&view.to_js()).contains("tools"));
+}
+
+/// What a map runs over, when it is a list written out, is `…` in a program
+/// of 0.4 (as the TypeScript's card says it) and its length and type in 0.6.
+#[test]
+fn a_list_written_out_is_said_by_its_length_in_0_6_and_is_dots_before() {
+    let source = read_text("fixtures/envelope/migrate-all.mdt")
+        .unwrap()
+        .replacen(
+            "map repo in repos max 150",
+            "map repo in [Repo { name: \"a\", root: \"a\" }] max 150",
+            1,
+        );
+    let domain = read_text("fixtures/envelope/domain.mdt").unwrap();
+    let over = |header: &str| {
+        let text = source.replacen("mandate @ 0.4", header, 1);
+        let p = load(&text, SourceKind::Mdt).program.unwrap();
+        let domain = domain.replacen("mandate @ 0.4", header, 1);
+        let m = mandate_check::load_modules(&[mandate_check::ModuleSource {
+            text: &domain,
+            kind: SourceKind::Mdt,
+            file: "domain.mdt",
+        }])
+        .modules;
+        card(&p, "MigrateAll", None, Some(&m)).unwrap().maps[0]
+            .over
+            .clone()
+    };
+    assert_eq!(over("mandate @ 0.4"), "…");
+    assert_eq!(over("mandate @ 0.6"), "a list of 1 Repo");
+}
+
+/// A program that applies `MakerChecker` to a constant brief.
+const MAKER_CHECKER: &str = r#"mandate @ 0.6
+
+module example.write @ 0.1
+
+use std.{fs, model}
+use std.patterns.{MakerChecker}
+
+role editor "Editor"
+
+type Brief = { topic: Text }
+type Draft = { title: Text, words: Int }
+
+capability Notes    = fs.read("/work/notes")
+capability ModelStd = model.infer(tier: standard)
+
+agent Writer {
+  role   "Drafts a text."
+  caps   Notes, ModelStd
+  budget { tokens: 40k, spend: 0.4 USD, steps: 8 }
+  skill draft(b: Brief) -> Inferred<Draft> ! {Fs.Read, Model}
+}
+
+agent Reader {
+  role   "Looks for what is wrong with a draft. Writes nothing."
+  caps   Notes, ModelStd
+  budget { tokens: 20k, spend: 0.2 USD, steps: 4 }
+  skill review(b: Brief, d: Inferred<Draft>) -> Inferred<Draft> ! {Fs.Read, Model}
+}
+
+contract Short(b: Brief, d: Draft) {
+  accept short "The draft is at most 800 words"
+    by static d.words <= 800
+}
+
+workflow Write = MakerChecker<Brief, Draft>(
+    input: Brief { topic: "the release" },
+    make: Writer.draft, check: Reader.review, accepted: Short, owner: editor)
+  caps   Notes, ModelStd
+  budget { tokens: 200k, time: 1h, spend: 5 USD, steps: 100, agents: 10 }
+"#;
+
+/// A value slot (`const`) carries a constant the pattern works on. The card
+/// names the pattern and says the constant by its length and type; it never
+/// prints it.
+#[test]
+fn a_pattern_with_a_value_slot_is_named_and_its_constant_is_not_printed() {
+    // `FanOutMerge` over a constant list of two repositories.
+    let fan = program("conformance/L09/program.mdt");
+    let doc = card_doc(&fan, "MigrateAll", None, None).unwrap();
+    assert!(has_p(
+        &doc,
+        "Applies the pattern FanOutMerge (std.patterns 1.0.0)."
+    ));
+    let maps = rows(&doc, "Map");
+    assert_eq!(maps[0][..3], ["map it", "a list of 2 Repo", "2"]);
+    let md = to_markdown(&doc);
+    assert!(!md.contains("api") && !md.contains("web"), "{md}");
+    let js = text_of(&js_of(&fan, "MigrateAll"));
+    assert!(js.contains(r#""over":"a list of 2 Repo""#), "{js}");
+    assert!(!js.contains("\"api\""), "{js}");
+    // `MakerChecker` over a constant brief.
+    let mc = load(MAKER_CHECKER, SourceKind::Mdt).program.unwrap();
+    let doc = card_doc(&mc, "Write", None, None).unwrap();
+    assert!(has_p(
+        &doc,
+        "Applies the pattern MakerChecker (std.patterns 1.0.0)."
+    ));
+    let md = to_markdown(&doc);
+    assert!(!md.contains("the release"), "{md}");
+    let js = text_of(&js_of(&mc, "Write"));
+    assert!(!js.contains("the release"), "{js}");
+}
+
+fn js_of(p: &Value, workflow: &str) -> JsValue {
+    card(p, workflow, None, None).unwrap().to_js()
+}
+
+/// The architecture view names the pattern a workflow applies and its
+/// library's version (the lock's, else the built-in library's); a workflow
+/// that applies none is shown as it was.
+#[test]
+fn the_architecture_view_names_the_pattern_and_its_library_version() {
+    let p = program("fixtures/library/invoices.mdt");
+    let m = library_modules();
+    let lock = invoices_lock();
+    let with = mandate_views::architecture_with_lock(&p, Some(&lock), Some(&m));
+    assert_eq!(
+        with.workflows[0].pattern.as_deref(),
+        Some("BatchWithExceptions (std.patterns 1.0.0)")
+    );
+    let blocks = mandate_views::architecture_blocks(&with);
+    assert!(blocks.iter().any(|b| matches!(b, Block::P(t)
+        if t == "Workflow MatchInvoices, budget 20 USD · 2h. It applies the pattern BatchWithExceptions (std.patterns 1.0.0).")));
+    assert!(
+        text_of(&with.to_js()).contains(r#""pattern":"BatchWithExceptions (std.patterns 1.0.0)""#)
+    );
+    // A version the lock pins is the lock's, not the built-in library's.
+    let other = mandate_testkit::parse_json(
+        read_text("fixtures/library/invoices.lock.json")
+            .unwrap()
+            .replacen("\"version\": \"1.0.0\"", "\"version\": \"1.0.7\"", 1)
+            .as_bytes(),
+    )
+    .unwrap();
+    let pinned = mandate_views::architecture_with_lock(&p, Some(&other), Some(&m));
+    assert_eq!(
+        pinned.workflows[0].pattern.as_deref(),
+        Some("BatchWithExceptions (std.patterns 1.0.7)")
+    );
+    // The document of the program's views names it too, with the lock it is given.
+    let md = to_markdown(&mandate_views::program_doc(&p, Some(&other), Some(&m)));
+    assert!(
+        md.contains("It applies the pattern BatchWithExceptions (std.patterns 1.0.7)."),
+        "{md}"
+    );
+    // The door takes the lock besides the modules.
+    let mut input = mandate_ir::Map::new();
+    input.insert("program", p.clone());
+    input.insert("lock", other.clone());
+    input.insert("modules", Value::Object(m.clone()));
+    let door = mandate_views::json_doors::door("architecture").unwrap();
+    let got = text_of(&(door.call)(&Value::Object(input)).unwrap());
+    assert!(got.contains("std.patterns 1.0.7"), "{got}");
+    // A workflow that applies no pattern has no `pattern`.
+    let plain = mandate_views::architecture_with_lock(
+        &program("fixtures/library/review.mdt"),
+        None,
+        Some(&m),
+    );
+    assert!(plain.workflows[0].pattern.is_none());
+    assert!(!text_of(&plain.to_js()).contains("\"pattern\""));
 }

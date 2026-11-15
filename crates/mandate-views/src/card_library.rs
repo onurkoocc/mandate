@@ -847,7 +847,7 @@ struct Pin {
     pinned: &'static str,
 }
 
-fn pattern_of(
+pub(crate) fn pattern_of(
     orig: Program<'_>,
     orig_wf: &Value,
     lock: Option<&Value>,

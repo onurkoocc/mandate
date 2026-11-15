@@ -60,7 +60,7 @@ export const DOOR_BACKED = {
   mapScopes: { door: "map_scopes", params: ["input"] },
   inFlightOverlap: { door: "in_flight_overlap", params: ["input"] },
   // The views, the documents, the card and the ACS target.
-  architecture: { door: "architecture", params: ["program", "modules"] },
+  architecture: { door: "architecture", params: ["program", "modules", "lock"] },
   architectureBlocks: { door: "architecture_blocks", params: ["v"] },
   authority: { door: "authority", params: ["program", "modules"] },
   authorityBlocks: { door: "authority_blocks", params: ["v"] },

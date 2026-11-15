@@ -82,7 +82,7 @@ pub use acs::{
 };
 pub use architecture::{
     ArchitectureView, WorkflowArchitecture, architecture, architecture_blocks, architecture_with,
-    mermaid,
+    architecture_with_lock, mermaid,
 };
 pub use authority::{
     AuthorityRow, AuthorityView, authority, authority_blocks, authority_with, late_kinds,

@@ -726,6 +726,31 @@ impl Visit<'_> {
         }
     }
 
+    /// What a map runs over, as a person reads it. In 0.6 a pattern's `const`
+    /// slot may carry a list of constants, which its expansion puts here: it is
+    /// said by its length and its type (`a list of 2 Repo`), never printed.
+    fn over_text(&self, over: Option<Expr<'_>>) -> String {
+        let list = over.filter(|o| {
+            o.is(ExprOp::List)
+                && self
+                    .lp
+                    .language()
+                    .is_some_and(|l| l.at_least(Language::V0_6))
+        });
+        let Some(list) = list else {
+            return expr_text(over);
+        };
+        let types = unique_in_order(
+            list.items()
+                .filter_map(|i| i.record_type().map(str::to_owned)),
+        );
+        let n = list.item_values().len();
+        match types.as_slice() {
+            [one] => format!("a list of {n} {one}"),
+            _ => format!("a list of {n}"),
+        }
+    }
+
     fn map(&mut self, e: Expr<'_>) {
         let mut delegates: Vec<String> = Vec::new();
         for s in e.body() {
@@ -754,7 +779,7 @@ impl Visit<'_> {
             .collect();
         self.maps.push(CardMap {
             bind: js_text(e.get("bind")),
-            over: expr_text(e.over()),
+            over: self.over_text(e.over()),
             max: limit_of(e.get("max")),
             par: e.get("par").map_or(1.0, |p| match p {
                 Value::Null => 1.0,

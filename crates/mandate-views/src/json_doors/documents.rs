@@ -310,6 +310,7 @@ fn architecture_view_of(v: &Value) -> Result<ArchitectureView, DoorError> {
         Ok(WorkflowArchitecture {
             workflow: text(w, at, "workflow")?,
             budget: text(w, at, "budget")?,
+            pattern: opt_text(w, at, "pattern")?,
             nodes: items(w, at, "nodes", |n, at| {
                 Ok(ArchNode {
                     id: text(n, at, "id")?,
