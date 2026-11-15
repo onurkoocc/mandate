@@ -1,0 +1,22 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "P06a",
+  "kind": "compile",
+  "title": "A lead's sub-program is held to its envelope by the expansion of the pattern it applies: a width of 6 runs more items at once than the envelope's max_concurrent, E1703 at that argument.",
+  "spec": ["spec/library.md#expansion", "spec/envelope.md#the-sub-program", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../P06/parent.mdt", "kind": "mdt" },
+  "subprogram": {
+    "workflow": "Run",
+    "defs": { "file": "../P06/sub.mdt", "kind": "mdt" },
+    "patch": [{ "op": "replace", "path": "/defs/Look/apply/args/1/value", "value": { "op": "int", "value": 6 } }],
+    "room": { "left": { "tokens": 50000, "steps": 100, "agents": 10, "spend:USD": 10000000 }, "time_left_ms": 1800000 }
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E1703", "path": "/defs/Look/apply/args/1/value", "facts": { "par": 6, "max_concurrent": 4, "slot": "width" } }
+    ]
+  }
+}

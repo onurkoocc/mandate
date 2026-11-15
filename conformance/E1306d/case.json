@@ -1,0 +1,48 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1306d",
+  "kind": "compile",
+  "title": "An applying program that names otherwise what the expansion of an imported pattern names: a constant human, where the body asks human.review.",
+  "spec": [
+    "spec/library.md#what-a-pattern-may-not-do",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/batch.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../../fixtures/library/acme.connectors/types.mdt",
+    "../../fixtures/library/acme.connectors/connectors.mdt",
+    "../../fixtures/library/batch.patterns.mdt"
+  ],
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/human",
+      "value": {
+        "kind": "const",
+        "value": {
+          "op": "int",
+          "value": 1
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1306",
+        "path": "/defs/MatchInvoices/apply",
+        "facts": {
+          "problem": "taken",
+          "name": "human",
+          "module": "batch.patterns"
+        }
+      }
+    ]
+  }
+}

@@ -526,7 +526,9 @@ pub(crate) fn delegate_of_plan(e: Expr<'_>) -> Value {
 #[must_use]
 pub fn cost(program: &Value, lock: Option<&Value>) -> CostView {
     let mut workflows: Vec<WorkflowCost> = Vec::new();
-    if let Some(p) = Program::of(program) {
+    // 0.6: a workflow that applies a pattern is shown as its expansion.
+    let expanded = mandate_check::expand::for_views(program, None);
+    if let Some(p) = Program::of(expanded.as_ref().unwrap_or(program)) {
         for (name, d) in sorted_defs(p) {
             if !is_kind(d, "workflow") {
                 continue;

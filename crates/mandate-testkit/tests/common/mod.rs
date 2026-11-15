@@ -281,6 +281,7 @@ pub fn applied_source(
             diagnostics: applied.diagnostics,
             ok: false,
             hashes: None,
+            expanded: None,
         })),
     }
 }

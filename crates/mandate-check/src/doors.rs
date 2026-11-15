@@ -298,6 +298,37 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
             Some(_) => {}
         }
     }
+    // 0.6: a workflow that applies a pattern has the shape of its
+    // expansion: the pattern's run parameters are its parameters (E1705).
+    if let Some(expanded) = &checked.expanded {
+        let mut shaped = sub.as_object().cloned().unwrap_or_default();
+        if let Some(defs) = expanded.get("defs") {
+            shaped.insert("defs", defs.clone());
+        }
+        let applied: Vec<&str> = sub
+            .get("defs")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flat_map(Map::iter)
+            .filter(|(_, d)| d.get("apply").is_some())
+            .map(|(n, _)| n)
+            .collect();
+        for mut d in subprogram_shape(
+            &Value::Object(shaped),
+            parent_module,
+            i.number,
+            parent_language,
+        ) {
+            let at = d.at.path.clone().unwrap_or_default();
+            if let Some(w) = applied
+                .iter()
+                .find(|w| at.starts_with(&format!("{}/", ptr(&[&"defs", w]))))
+            {
+                d.at = Location::path(format!("{}/apply", ptr(&[&"defs", w])));
+                diagnostics.push(d);
+            }
+        }
+    }
     // `subprogramWorkflow(sub)!`: the shape check passed, so there is one.
     let workflow = subprogram_workflow(&sub).unwrap_or_default();
     if !has_errors(&diagnostics) {

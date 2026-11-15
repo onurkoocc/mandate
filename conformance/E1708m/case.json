@@ -1,0 +1,69 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1708m",
+  "kind": "compile",
+  "title": "A person asked in a map's body of an expansion is E1708, reported at the application with the pattern's path.",
+  "spec": [
+    "spec/library.md#expansion",
+    "spec/library.md#the-batch-commit-step",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/body/1/value/body/1",
+      "value": {
+        "op": "expr",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "field",
+            "of": {
+              "op": "var",
+              "name": "human"
+            },
+            "name": "approve"
+          },
+          "args": [
+            {
+              "name": "role",
+              "value": {
+                "op": "var",
+                "name": "reviewer"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1708",
+        "path": "/defs/MatchAll/apply",
+        "facts": {
+          "kind": "person",
+          "pattern": "BatchWithExceptions",
+          "pattern_path": "/defs/BatchWithExceptions/body/1/value/body/1/value",
+          "expanded_path": "/defs/MatchAll/body/1/value/body/1/value"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

@@ -316,7 +316,15 @@ fn the_codes_of_0_6_are_explained_and_come_last_in_the_table() {
             "MDT-E1505",
             "MDT-E1506",
             "MDT-E1507",
-            "MDT-E1508"
+            "MDT-E1508",
+            // The patterns (RL7), after the slices before them.
+            "MDT-E1301",
+            "MDT-E1302",
+            "MDT-E1303",
+            "MDT-E1304",
+            "MDT-E1305",
+            "MDT-E1306",
+            "MDT-E1307"
         ]
     );
     for row in &rust {

@@ -1,0 +1,50 @@
+// A program of 0.6 whose workflow plans under an envelope, and defines a
+// pattern its lead's sub-programs may apply (P06, P06a): every item looked at
+// by a skill the application names, side by side. A sub-program that applies
+// it is held to the envelope by its expansion.
+
+mandate @ 0.6
+
+module example.lead @ 0.1
+
+use std.{fs, model}
+
+role owner_role "Owner"
+
+type Item = { name: Text }
+
+capability M = model.infer(tier: standard)
+capability R = fs.read("/work")
+
+agent Worker {
+  role   "Looks at one item."
+  caps   M, R
+  budget { tokens: 1000, spend: 1 USD, steps: 5 }
+  skill look(i: Item) -> Inferred<Text> ! {Fs.Read, Model}
+}
+
+agent Lead {
+  role   "Plans what is left."
+  caps   M, R
+  budget { tokens: 5000, spend: 2 USD, steps: 20 }
+  skill finish(items: List<Item>) -> Inferred<Text> ! {Fs.Read, Model}
+}
+
+/// The two items, each looked at by `work`, `width` at a time.
+pattern Each(work: skill(Item) -> Inferred<Text>, width: const Int) -> List<Outcome<Inferred<Text>>> {
+  let items = [Item { name: "a" }, Item { name: "b" }]
+  map i in items max 2 par width {
+    delegate work(i)
+  }
+}
+
+workflow Run(items: List<Item>) -> Inferred<Text>
+  envelope {
+    owner   owner_role
+    caps    M, R
+    budget  { tokens: 100000, time: 1h, spend: 20 USD, steps: 200, agents: 20 }
+    spawn   { max_concurrent: 4 }
+  }
+{
+  plan Lead.finish(items) within envelope
+}

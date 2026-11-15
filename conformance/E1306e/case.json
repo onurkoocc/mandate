@@ -1,0 +1,44 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1306e",
+  "kind": "compile",
+  "title": "A run parameter named like a name the body binds.",
+  "spec": [
+    "spec/library.md#what-a-pattern-may-not-do",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/params",
+      "value": [
+        {
+          "name": "items",
+          "type": {
+            "ref": "Text"
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1306",
+        "path": "/defs/BatchWithExceptions/body/0/name",
+        "facts": {
+          "problem": "local",
+          "name": "items",
+          "kind": "run parameter"
+        }
+      }
+    ]
+  }
+}

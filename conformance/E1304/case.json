@@ -1,0 +1,35 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1304",
+  "kind": "compile",
+  "title": "A slot without an argument (a mutation: the deadline left out).",
+  "spec": [
+    "spec/library.md#application",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/MatchAll/apply/args/9"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1304",
+        "path": "/defs/MatchAll/apply/args",
+        "facts": {
+          "problem": "missing",
+          "slot": "deadline"
+        }
+      }
+    ]
+  }
+}

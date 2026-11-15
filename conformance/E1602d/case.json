@@ -1,0 +1,35 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1602d",
+  "kind": "compile",
+  "title": "A pattern of another module named in a use list is pub (a module of the case: BatchWithExceptions not pub).",
+  "spec": [
+    "spec/library.md#declaration",
+    "spec/library.md#pub-and-visibility",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/batch.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../../fixtures/library/acme.connectors/types.mdt",
+    "../../fixtures/library/acme.connectors/connectors.mdt",
+    "patterns.mdt"
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1602",
+        "path": "/uses/2/names/0",
+        "facts": {
+          "name": "BatchWithExceptions",
+          "module": "batch.patterns"
+        }
+      }
+    ]
+  }
+}

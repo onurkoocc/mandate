@@ -613,6 +613,13 @@ pub enum GovernanceChangeKind {
     /// 0.6: a role may no longer waive a criterion (`waive by` taken away,
     /// or a role taken from it).
     WaiverRemoved,
+    /// 0.6: what a workflow's expansion may do changed: the application it
+    /// is (its pattern, type arguments or slot arguments) came, went or
+    /// changed, or a pattern a workflow applies changed. Every such change
+    /// is a person's to see, whatever it does: a slot argument swapped for
+    /// an effect of a higher class, a contract for a weaker one, another
+    /// reviewer, a higher `max_items` (spec/library.md "Patterns").
+    ApplicationChanged,
 }
 
 impl GovernanceChangeKind {
@@ -633,6 +640,7 @@ impl GovernanceChangeKind {
             GovernanceChangeKind::KindChanged => "kind_changed",
             GovernanceChangeKind::WaiverAdded => "waiver_added",
             GovernanceChangeKind::WaiverRemoved => "waiver_removed",
+            GovernanceChangeKind::ApplicationChanged => "application_changed",
         }
     }
 }
@@ -755,6 +763,9 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
             let text = format!("- {kind} {name} removed");
             if kind == "contract" {
                 out.gov(GovernanceChangeKind::CriterionRemoved, path, text);
+            } else if kind == "pattern" && !applied_by(bp, name).is_empty() {
+                // 0.6: a pattern a workflow applied is gone from under it.
+                out.gov(GovernanceChangeKind::ApplicationChanged, path, text);
             } else if is_system(&kind) {
                 out.gov(GovernanceChangeKind::SystemModelChanged, path, text);
             } else {
@@ -811,6 +822,14 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                             GovernanceChangeKind::EnvelopeChanged,
                             format!("{path}/envelope"),
                             format!("+ {name}: envelope"),
+                        );
+                    }
+                    // 0.6: what the new workflow's expansion does.
+                    if let Some(p) = applied(a) {
+                        out.gov(
+                            GovernanceChangeKind::ApplicationChanged,
+                            format!("{path}/apply"),
+                            format!("+ {name}: applies {p}"),
                         );
                     }
                 }
@@ -895,7 +914,23 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                 if a_kind == "agent" {
                     agent_changes(&mut out, name, &path, b, a);
                 } else {
+                    application_changes(&mut out, name, &path, b, a);
                     workflow_changes(&mut out, (lb, la), name, &path, b, a);
+                }
+            }
+            // 0.6: a pattern's body is what its applications do.
+            "pattern" => {
+                let mut by = applied_by(bp, name);
+                by.extend(applied_by(ap, name));
+                let by = unique_in_order(by);
+                if by.is_empty() {
+                    out.beh(path, format!("~ pattern {name} changed"));
+                } else {
+                    out.gov(
+                        GovernanceChangeKind::ApplicationChanged,
+                        path,
+                        format!("~ pattern {name} changed, which {} applies", by.join(", ")),
+                    );
                 }
             }
             "fn" => {
@@ -1171,6 +1206,53 @@ fn skill_shape(s: &Value) -> String {
     j(&Value::Object(m))
 }
 
+/// The pattern a workflow applies, when it is an application (0.6).
+fn applied(w: &Value) -> Option<String> {
+    let a = w.get("apply")?;
+    Some(js_text(a.get("pattern")))
+}
+
+/// The workflows of `p` that apply the pattern `name`, sorted.
+fn applied_by(p: Program<'_>, name: &str) -> Vec<String> {
+    let mut out: Vec<String> = p
+        .definitions()
+        .filter(|(_, d)| {
+            d.kind() == Some(mandate_ir::DefKind::Workflow)
+                && d.value()
+                    .get("apply")
+                    .and_then(|a| a.get("pattern"))
+                    .and_then(Value::as_str)
+                    == Some(name)
+        })
+        .map(|(n, _)| n.to_owned())
+        .collect();
+    sort_utf16(&mut out);
+    out
+}
+
+/// 0.6: a workflow's application that came, went or changed (its pattern,
+/// type arguments or slot arguments): a governance change, whatever it
+/// changes, since what the expansion may do is what the slots are given
+/// (the workflow case of [`classify`]). A later slice classifies it finer.
+fn application_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a: &Value) {
+    let (was, now) = (b.get("apply"), a.get("apply"));
+    if j_or_null(was) == j_or_null(now) {
+        return;
+    }
+    let text = match (applied(b), applied(a)) {
+        (None, Some(p)) => format!("~ {name}: now applies {p}"),
+        (Some(p), None) => format!("~ {name}: no longer applies {p}"),
+        (Some(p), Some(q)) if p != q => format!("~ {name}: applies {q}, not {p}"),
+        (_, Some(p)) => format!("~ {name}: the application of {p} changed"),
+        (None, None) => return,
+    };
+    out.gov(
+        GovernanceChangeKind::ApplicationChanged,
+        format!("{path}/apply"),
+        text,
+    );
+}
+
 /// The steps, the envelope, the postcondition and the handlers of a workflow
 /// that changed (the workflow case of [`classify`]).
 fn workflow_changes(
@@ -1379,7 +1461,11 @@ pub fn semantic_diff(before: &Value, after: &Value, locks: Option<Locks<'_>>) ->
         behavior.extend(limits.behavior);
     }
     let critical = |p: &Value| -> Vec<String> {
-        let Some(program) = Program::of(p) else {
+        // 0.6: a workflow that applies a pattern commits what its expansion
+        // does; one this diff cannot expand (its pattern is in a module it
+        // is not given) is said to, so that no line says it commits nothing.
+        let expanded = crate::expand::for_views(p, None);
+        let Some(program) = Program::of(expanded.as_ref().unwrap_or(p)) else {
             return Vec::new();
         };
         let mut all: Vec<String> = defs_of(program)
@@ -1387,6 +1473,13 @@ pub fn semantic_diff(before: &Value, after: &Value, locks: Option<Locks<'_>>) ->
             .filter(|(_, d)| d.get("kind").and_then(Value::as_str) == Some("workflow"))
             .flat_map(|(_, w)| workflow_effects(program, Definition::of(w).body()))
             .collect();
+        if expanded.is_some() && crate::expand::expanded_program(p, None).is_none() {
+            for (n, w) in Program::of(p).into_iter().flat_map(|q| defs_of(q).iter()) {
+                if let Some(pattern) = applied(w) {
+                    all.push(format!("what {n}'s expansion of {pattern} commits"));
+                }
+            }
+        }
         sort_utf16(&mut all);
         all
     };

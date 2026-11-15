@@ -208,6 +208,11 @@ pub fn role_sites(defs: &Map) -> Vec<RoleSite> {
         let base = ptr(&[&"defs", &name]);
         s.def = name.to_owned();
         let d = Definition::of(value);
+        // 0.6: a pattern names a role through a slot, which has no value
+        // until it is applied; its expansion is where the roles are named.
+        if d.kind() == Some(DefKind::Pattern) {
+            continue;
+        }
         match d.kind() {
             Some(DefKind::Component) => {
                 s.text(d.owner(), format!("{base}/owner"), "a component's owner");

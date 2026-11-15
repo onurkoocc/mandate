@@ -196,7 +196,7 @@ impl<'a> Parser<'a> {
         Ok(ty)
     }
 
-    fn type_args(&mut self) -> Res<Vec<Node>> {
+    pub(super) fn type_args(&mut self) -> Res<Vec<Node>> {
         let mut args: Vec<Node> = Vec::new();
         loop {
             args.push(Node::Obj(self.type_expr(false)?));
@@ -961,11 +961,32 @@ impl<'a> Parser<'a> {
     }
 
     fn delegate_expr(&mut self, t: &'a Token) -> Res<O> {
-        let (agent, skill) = self.agent_skill()?;
-        let args = self.args()?;
-        let mut e = Self::agent_skill_node("delegate", agent, skill, args);
+        let mut e = if self.delegates_to_slot() {
+            self.slot_delegation()?
+        } else {
+            let (agent, skill) = self.agent_skill()?;
+            let args = self.args()?;
+            Self::agent_skill_node("delegate", agent, skill, args)
+        };
         while self.delegate_option(&mut e)? {}
         Ok(self.at(e, t))
+    }
+
+    /// 0.6: in a pattern's body, `delegate work(args)` delegates to the
+    /// skill a skill slot is given: a name and its arguments, no `.`.
+    fn delegates_to_slot(&self) -> bool {
+        self.in_pattern && self.la(1).kind == TokKind::Ident && is_p(self.la(2), "(")
+    }
+
+    /// `delegate slot(args)`: `{ op: "delegate", slot, args }`.
+    fn slot_delegation(&mut self) -> Res<O> {
+        self.bump();
+        let slot = self.ident("a skill slot")?;
+        let args = self.args()?;
+        Ok(obj()
+            .with("op", "delegate")
+            .with("slot", slot)
+            .with("args", args))
     }
 
     /// One option of a delegation, in any order and as often as written (a
@@ -1013,7 +1034,10 @@ impl<'a> Parser<'a> {
 
     /// One option of a `map`; false when none follows.
     fn map_option(&mut self, e: &mut Obj) -> Res<bool> {
-        if self.is_w("max") && self.la(1).kind == TokKind::Int {
+        if self.counted_by_slot() {
+            let (what, slot) = self.map_slot(e)?;
+            e.set(what, slot);
+        } else if self.is_w("max") && self.la(1).kind == TokKind::Int {
             let max = self.map_whole(e, "max")?;
             e.set("max", max);
         } else if self.is_w("par") && self.la(1).kind == TokKind::Int {
@@ -1034,6 +1058,26 @@ impl<'a> Parser<'a> {
             return Ok(false);
         }
         Ok(true)
+    }
+
+    /// 0.6: in a pattern's body, `max n` or `par n` where `n` is a name, the
+    /// const slot whose argument gives the number.
+    fn counted_by_slot(&self) -> bool {
+        self.in_pattern
+            && (self.is_w("max") || self.is_w("par"))
+            && self.la(1).kind == TokKind::Ident
+            && !is_reserved(&self.la(1).text)
+    }
+
+    /// `max n` or `par n` with a const slot's name: which, and the name.
+    fn map_slot(&mut self, e: &Obj) -> Res<(&'static str, Node)> {
+        let kt = self.bump();
+        let what = if kt.text == "max" { "max" } else { "par" };
+        if e.has(what) {
+            self.dup("map option", what, kt);
+        }
+        let slot = self.ident("a const slot")?;
+        Ok((what, Node::Str(slot)))
     }
 
     /// `whole(what)` in `mapExpr`: the number after `max` or `par`.

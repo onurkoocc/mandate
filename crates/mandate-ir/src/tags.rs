@@ -105,20 +105,22 @@ tags! {
         Environment = "environment",
         Role = "role",
         Connector = "connector",
+        Pattern = "pattern",
     }
 }
 
 impl DefKind {
     /// The language version that added the kind: `SINCE.kinds` in
-    /// `validate.ts`, 0.1 for a kind it does not list. `connector` is of 0.6
-    /// (spec/library.md "Connectors"), which only the Rust compiler reads: the
-    /// schema of 0.1 to 0.5 has no such kind.
+    /// `validate.ts`, 0.1 for a kind it does not list. `connector` and
+    /// `pattern` are of 0.6 (spec/library.md "Connectors", "Patterns"), which
+    /// only the Rust compiler reads: the schema of 0.1 to 0.5 has no such
+    /// kind.
     #[must_use]
     pub const fn since(self) -> Language {
         match self {
             DefKind::Component | DefKind::Interface | DefKind::Environment => Language::V0_3,
             DefKind::Role => Language::V0_4,
-            DefKind::Connector => Language::V0_6,
+            DefKind::Connector | DefKind::Pattern => Language::V0_6,
             _ => Language::V0_1,
         }
     }

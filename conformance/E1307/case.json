@@ -1,0 +1,50 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1307",
+  "kind": "compile",
+  "title": "An application with an envelope.",
+  "spec": [
+    "spec/library.md#application",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/MatchAll/envelope",
+      "value": {
+        "owner": "accountant",
+        "caps": [
+          {
+            "op": "var",
+            "name": "Inbox"
+          }
+        ],
+        "budget": {
+          "spend": {
+            "micros": 20000000,
+            "currency": "USD"
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1307",
+        "path": "/defs/MatchAll/envelope",
+        "facts": {
+          "problem": "member",
+          "member": "envelope"
+        }
+      }
+    ]
+  }
+}

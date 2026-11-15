@@ -1,0 +1,49 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1506i",
+  "kind": "compile",
+  "title": "A review in an expansion of a list that is not a verifying map's.",
+  "spec": [
+    "spec/library.md#expansion",
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/2/value/args/0/value",
+      "value": {
+        "op": "var",
+        "name": "items"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1506",
+        "path": "/defs/MatchAll/apply",
+        "facts": {
+          "problem": "not_a_map",
+          "source": "items",
+          "pattern_path": "/defs/BatchWithExceptions/body/2/value/args/0/value"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

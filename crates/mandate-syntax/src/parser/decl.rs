@@ -85,6 +85,15 @@ impl<'a> Parser<'a> {
         {
             return self.connector_decl();
         }
+        // `pattern Name<T…>(slots) [(params)] -> T { body }` (0.6): contextual
+        // as `connector` is.
+        if text == "pattern"
+            && self.reads_0_6()
+            && self.la(1).kind == TokKind::Ident
+            && (is_p(self.la(2), "<") || is_p(self.la(2), "("))
+        {
+            return self.pattern_decl();
+        }
         match text {
             "type" => self.type_decl(),
             "capability" => self.capability_decl(),
@@ -560,6 +569,11 @@ impl<'a> Parser<'a> {
         self.bump();
         let name_tok = self.t();
         let name = self.ident("a workflow name")?;
+        // 0.6: `workflow W = P<…>(…)`, the application of a pattern.
+        if self.reads_0_6() && self.is_p("=") {
+            let def = self.application()?;
+            return Ok((name, def, name_tok));
+        }
         let params = self.params()?;
         self.expect_p("->")?;
         let returns = self.type_expr(false)?;
@@ -716,6 +730,225 @@ impl<'a> Parser<'a> {
         }
         approve.set(&effect, role);
         Ok(())
+    }
+
+    // ── patterns (0.6; spec/library.md "Patterns") ─────────────────────
+
+    /// `pattern Name<T1, T2>(slot: kind, …) [(param: Type, …)] -> Type
+    /// { body }`. A pattern may not declare `caps`, a `budget` or an
+    /// `envelope` (E1302); they are read where a workflow has them, so that
+    /// the check names them. A slot of a kind the language does not have,
+    /// and a name given twice, are read too (E1301, E1306).
+    fn pattern_decl(&mut self) -> Res<Decl<'a>> {
+        self.bump();
+        let name_tok = self.t();
+        let name = self.ident("a pattern name")?;
+        let mut generics: Option<Vec<Node>> = None;
+        if self.eat_p("<") {
+            let mut names = Vec::new();
+            loop {
+                names.push(Node::Str(self.ident("a type parameter")?));
+                if !self.eat_p(",") {
+                    break;
+                }
+            }
+            self.expect_p(">")?;
+            generics = Some(names);
+        }
+        self.expect_p("(")?;
+        let mut slots: Vec<Node> = Vec::new();
+        while !self.is_p(")") {
+            slots.push(Node::Obj(self.slot()?));
+            if !self.eat_p(",") {
+                break;
+            }
+        }
+        self.expect_p(")")?;
+        let mut def = obj()
+            .with("kind", "pattern")
+            .with_some("generics", generics)
+            .with("slots", slots);
+        if self.is_p("(") {
+            let params = self.run_params()?;
+            if !params.is_empty() {
+                def.set("params", params);
+            }
+        }
+        self.expect_p("->")?;
+        let returns = self.type_expr(false)?;
+        def.set("returns", returns);
+        if self.is_w("envelope") && is_p(self.la(1), "{") {
+            let envelope = self.envelope()?;
+            def.set("envelope", envelope);
+        }
+        if self.eat_w("caps") {
+            let caps = sort_canon(self.expr_list()?);
+            def.set("caps", caps);
+        }
+        if self.is_w("budget") {
+            let budget = self.budget()?;
+            def.set("budget", budget);
+        }
+        let was = self.in_pattern;
+        self.in_pattern = true;
+        let body = self.block();
+        self.in_pattern = was;
+        def.set("body", body?);
+        Ok((name, def, name_tok))
+    }
+
+    /// One slot: `name: kind` and what its kind takes: `const T`,
+    /// `field(T)`, or a signature `(T, …) [-> R]` and `read_only`. The kind
+    /// is any word, so that one the language does not have is the check's
+    /// to refuse (E1301).
+    fn slot(&mut self) -> Res<O> {
+        let start = self.t();
+        let name = self.ident("a slot name")?;
+        self.expect_p(":")?;
+        let kt = self.t();
+        if kt.kind != TokKind::Ident {
+            return Err(self.expected("a slot kind"));
+        }
+        let kind = self.bump().text.clone();
+        let mut slot = obj().with("name", name).with("kind", kind.as_str());
+        match kind.as_str() {
+            "const" => {
+                let ty = self.type_expr(false)?;
+                slot.set("type", ty);
+            }
+            "field" => {
+                self.expect_p("(")?;
+                let ty = self.type_expr(false)?;
+                self.expect_p(")")?;
+                slot.set("type", ty);
+            }
+            _ => {
+                if self.is_p("(") {
+                    let params = self.type_list()?;
+                    slot.set("params", params);
+                }
+                if self.eat_p("->") {
+                    let returns = self.type_expr(false)?;
+                    slot.set("returns", returns);
+                }
+                if self.eat_w("read_only") {
+                    slot.set("read_only", true);
+                }
+            }
+        }
+        Ok(self.at(slot, start))
+    }
+
+    /// `(T, …)`: the parameter types of a slot's signature.
+    fn type_list(&mut self) -> Res<Vec<Node>> {
+        self.expect_p("(")?;
+        let mut out: Vec<Node> = Vec::new();
+        while !self.is_p(")") {
+            out.push(Node::Obj(self.type_expr(false)?));
+            if !self.eat_p(",") {
+                break;
+            }
+        }
+        self.expect_p(")")?;
+        Ok(out)
+    }
+
+    /// A pattern's run parameters, `(name: Type, …)`: [`Parser::params`]
+    /// without its `MDT-E0121`, since a run parameter named twice is the
+    /// pattern's name collision (E1306).
+    fn run_params(&mut self) -> Res<Vec<Node>> {
+        self.expect_p("(")?;
+        let mut out: Vec<Node> = Vec::new();
+        while !self.is_p(")") {
+            let t = self.t();
+            let name = self.ident("a parameter name")?;
+            self.expect_p(":")?;
+            let ty = self.type_expr(true)?;
+            out.push(Node::Obj(
+                self.at(obj().with("name", name).with("type", ty), t),
+            ));
+            if !self.eat_p(",") {
+                break;
+            }
+        }
+        self.expect_p(")")?;
+        Ok(out)
+    }
+
+    /// `= P<A, …>(slot: value, …)` after a workflow's name, then the
+    /// workflow's `caps` and `budget` (spec/library.md "Application"). An
+    /// `envelope` is read where a workflow has one, so that the check names
+    /// it (E1307).
+    fn application(&mut self) -> Res<O> {
+        self.expect_p("=")?;
+        let start = self.t();
+        let pattern = self.qname()?;
+        let mut apply = obj().with("pattern", pattern);
+        if self.eat_p("<") {
+            let types = self.type_args()?;
+            apply.set("types", types);
+        }
+        self.expect_p("(")?;
+        let mut args: Vec<Node> = Vec::new();
+        while !self.is_p(")") {
+            args.push(Node::Obj(self.slot_arg()?));
+            if !self.eat_p(",") {
+                break;
+            }
+        }
+        self.expect_p(")")?;
+        apply.set("args", args);
+        let apply = self.at(apply, start);
+        let envelope = if self.is_w("envelope") && is_p(self.la(1), "{") {
+            Some(self.envelope()?)
+        } else {
+            None
+        };
+        let mut caps: Vec<Node> = Vec::new();
+        if envelope.is_none() || self.is_w("caps") {
+            self.expect_w("caps")?;
+            caps = sort_canon(self.expr_list()?);
+        }
+        let mut def = obj()
+            .with("kind", "workflow")
+            .with("apply", apply)
+            .with("caps", caps);
+        if self.is_w("budget") {
+            let budget = self.budget()?;
+            def.set("budget", budget);
+        }
+        if let Some(envelope) = envelope {
+            def.set("envelope", envelope);
+        }
+        Ok(def)
+    }
+
+    /// One argument of an application, `slot: value`: a type when it is
+    /// written as one (`List<Invoice>`, `{ a: Int }`, `enum { … }`), else an
+    /// expression; a type's name alone (`Invoice`) is read as an expression,
+    /// which the check reads by the slot's kind.
+    fn slot_arg(&mut self) -> Res<O> {
+        let start = self.t();
+        let name = self.ident("a slot name")?;
+        self.expect_p(":")?;
+        let t = self.t();
+        let as_type = (t.kind == TokKind::Ident && is_p(self.la(1), "<"))
+            || is_w(t, "enum")
+            || (is_p(t, "{") && self.la(1).kind == TokKind::Ident && is_p(self.la(2), ":"));
+        if as_type {
+            let (at, kept) = (self.i, self.diagnostics.len());
+            if let Ok(ty) = self.type_expr(false)
+                && (self.is_p(",") || self.is_p(")"))
+            {
+                let arg = obj().with("name", name).with("type", ty);
+                return Ok(self.at(arg, start));
+            }
+            self.i = at;
+            self.diagnostics.truncate(kept);
+        }
+        let value = self.expr(false)?;
+        let arg = obj().with("name", name).with("value", value);
+        Ok(self.at(arg, start))
     }
 
     // ── system model (0.3; design doc 9 §2) ───────────────────────────

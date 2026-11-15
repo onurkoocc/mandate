@@ -1,0 +1,20 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "P02b",
+  "kind": "compile",
+  "title": "A type slot and a capability slot used in a body: the type in a signature and a let, the capability in a delegation's with caps, narrowed; the expansion checks.",
+  "spec": [
+    "spec/library.md#slots",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "text": "mandate @ 0.6\n\nmodule example.slots @ 0.1\n\nuse std.{fs, model}\n\ntype Note = { text: Text }\n\ncapability Docs     = fs.read(\"/work/docs\")\ncapability ModelStd = model.infer(tier: standard, max_class: internal)\n\nagent Writer {\n  role   \"Writes a note about what it reads.\"\n  caps   Docs, ModelStd\n  budget { tokens: 1k, spend: 0.01 USD, steps: 2 }\n  skill write(topic: Text) -> Inferred<Note> ! {Fs.Read, Model}\n}\n\n/// A note on a topic, written by a skill that reads only what the read slot\n/// hands it, narrowed to the topic's folder.\npattern One(page: type, author: skill(Text) -> Inferred<page>, read: capability) -> Inferred<page> {\n  let made: Inferred<page> = delegate author(\"notes\") with caps read.narrow(\"/work/docs/notes\")\n  made\n}\n\nworkflow Draft = One(page: Note, author: Writer.write, read: Docs)\n  caps   Docs, ModelStd\n  budget { spend: 1 USD }\n",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

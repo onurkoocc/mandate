@@ -1,0 +1,37 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1301e",
+  "kind": "compile",
+  "title": "A slot used other than its kind allows (a mutation: the tool slot delegated to).",
+  "spec": [
+    "spec/library.md#slots",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/slot",
+      "value": "source"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1301",
+        "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/slot",
+        "facts": {
+          "problem": "slot_use",
+          "slot": "source",
+          "kind": "tool"
+        }
+      }
+    ]
+  }
+}

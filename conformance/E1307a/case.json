@@ -1,0 +1,46 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1307a",
+  "kind": "compile",
+  "title": "An application inside a pattern's body: a pattern does not apply another.",
+  "spec": [
+    "spec/library.md#application",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/body/4",
+      "value": {
+        "op": "expr",
+        "value": {
+          "op": "call",
+          "callee": {
+            "op": "var",
+            "name": "BatchWithExceptions"
+          },
+          "args": []
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1307",
+        "path": "/defs/BatchWithExceptions/body/4/value/callee",
+        "facts": {
+          "problem": "in_pattern",
+          "applies": "BatchWithExceptions"
+        }
+      }
+    ]
+  }
+}

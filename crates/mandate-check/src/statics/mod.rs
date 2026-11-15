@@ -692,6 +692,13 @@ impl<'a> Checker<'a> {
                 Some(DefKind::Extern) => self.check_extern(name, d, &base),
                 Some(DefKind::Effect) => self.check_effect_decl(name, d, &base),
                 Some(DefKind::Agent) => self.check_agent(name, d, &base),
+                // 0.6: a workflow that applies a pattern is read only as
+                // its expansion (`crate::expand`); met here, it was not
+                // expanded, and is refused rather than read as a workflow
+                // that does nothing.
+                Some(DefKind::Workflow) if d.value().get("apply").is_some() => {
+                    self.unexpanded(name, &base);
+                }
                 Some(DefKind::Workflow) => self.check_workflow(name, d, &base),
                 Some(DefKind::Contract) => self.check_contract(name, d, &base),
                 Some(DefKind::Connector) => self.check_connector(name, d, &base),
@@ -702,6 +709,24 @@ impl<'a> Checker<'a> {
             let usages = w.usages.borrow().clone();
             self.reach(&w.name, w.max, &usages);
         }
+    }
+
+    /// 0.6: E1307 for a workflow that still applies a pattern when the
+    /// static checks read it: they read a body, and an application has
+    /// none of its own.
+    fn unexpanded(&mut self, name: &str, base: &str) {
+        self.report(
+            "E1307",
+            format!(
+                "Workflow {name} applies a pattern and was not expanded; the checks read a workflow's body, so it is refused rather than read as one that does nothing."
+            ),
+            &format!("{base}/apply"),
+            Some(
+                JsObject::new()
+                    .with("workflow", name)
+                    .with("problem", "unexpanded"),
+            ),
+        );
     }
 
     // ── definitions ─────────────────────────────────────────────────────

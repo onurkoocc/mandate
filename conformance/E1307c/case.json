@@ -1,0 +1,40 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1307c",
+  "kind": "compile",
+  "title": "A pattern given as a slot's argument.",
+  "spec": [
+    "spec/library.md#application",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/apply/args/1/value",
+      "value": {
+        "op": "var",
+        "name": "BatchWithExceptions"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1307",
+        "path": "/defs/MatchAll/apply/args/1/value",
+        "facts": {
+          "problem": "argument",
+          "slot": "work",
+          "applies": "BatchWithExceptions"
+        }
+      }
+    ]
+  }
+}

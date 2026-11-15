@@ -271,6 +271,239 @@ impl<'a> ConnectorDef<'a> {
     }
 }
 
+/// A `pattern` definition (spec/library.md "Patterns", language 0.6): `{
+/// kind, generics?, slots, params?, returns, body?, pub?, doc? }`, and the
+/// `caps`, `budget` and `envelope` a pattern may not declare (E1302), which
+/// the schema lets through so that the check names them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PatternDef<'a> {
+    map: &'a Map,
+}
+
+impl<'a> PatternDef<'a> {
+    /// The view of `v`, when it is a `pattern` definition.
+    #[must_use]
+    pub fn of(v: &'a Value) -> Option<PatternDef<'a>> {
+        of_kind(v, DefKind::Pattern).map(|map| PatternDef { map })
+    }
+
+    /// The members, as read.
+    #[must_use]
+    pub fn members(self) -> &'a Map {
+        self.map
+    }
+
+    /// `generics`: the names of its type parameters, in order, every
+    /// element included.
+    #[must_use]
+    pub fn generics(self) -> &'a [Value] {
+        self.map
+            .get("generics")
+            .and_then(Value::as_array)
+            .unwrap_or_default()
+    }
+
+    /// `slots`, in order; the ones that are not objects are left out.
+    pub fn slots(self) -> impl Iterator<Item = Slot<'a>> {
+        self.slot_values()
+            .iter()
+            .filter_map(|s| s.as_object().map(|map| Slot { map }))
+    }
+
+    /// `slots`, every element included, so that a slot's index is its index
+    /// in the IR.
+    #[must_use]
+    pub fn slot_values(self) -> &'a [Value] {
+        self.map
+            .get("slots")
+            .and_then(Value::as_array)
+            .unwrap_or_default()
+    }
+
+    /// The slot `name`, the first of that name.
+    #[must_use]
+    pub fn slot(self, name: &str) -> Option<Slot<'a>> {
+        self.slots().find(|s| s.name() == Some(name))
+    }
+
+    /// `params`: its run parameters, every element included.
+    #[must_use]
+    pub fn params(self) -> &'a [Value] {
+        self.map
+            .get("params")
+            .and_then(Value::as_array)
+            .unwrap_or_default()
+    }
+
+    /// `returns`.
+    #[must_use]
+    pub fn returns(self) -> Option<TypeExpr<'a>> {
+        self.map.get("returns").and_then(TypeExpr::of)
+    }
+
+    /// `body`, when it is a list of statements.
+    #[must_use]
+    pub fn body(self) -> Option<&'a [Value]> {
+        self.map.get("body").and_then(Value::as_array)
+    }
+}
+
+/// One slot of a pattern: `{ name, kind, params?, returns?, type?,
+/// read_only? }`. `kind` is read as written, so that a kind the language
+/// does not have is the check's to name (E1301).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Slot<'a> {
+    map: &'a Map,
+}
+
+impl<'a> Slot<'a> {
+    /// The members, as read.
+    #[must_use]
+    pub fn members(self) -> &'a Map {
+        self.map
+    }
+
+    /// `name`.
+    #[must_use]
+    pub fn name(self) -> Option<&'a str> {
+        self.map.get("name").and_then(Value::as_str)
+    }
+
+    /// `kind`, as written: `type`, `skill`, `tool`, `effect`, `contract`,
+    /// `role`, `capability`, `const` or `field` in a pattern that is well
+    /// formed.
+    #[must_use]
+    pub fn kind(self) -> Option<&'a str> {
+        self.map.get("kind").and_then(Value::as_str)
+    }
+
+    /// `params`: the parameter types of its signature, when it has one.
+    #[must_use]
+    pub fn params(self) -> Option<&'a [Value]> {
+        self.map.get("params").and_then(Value::as_array)
+    }
+
+    /// `returns`: the result type of its signature.
+    #[must_use]
+    pub fn returns(self) -> Option<TypeExpr<'a>> {
+        self.map.get("returns").and_then(TypeExpr::of)
+    }
+
+    /// `type`: the type of a `const` slot, or the record type of a `field`
+    /// slot.
+    #[must_use]
+    pub fn type_expr(self) -> Option<TypeExpr<'a>> {
+        self.map.get("type").and_then(TypeExpr::of)
+    }
+
+    /// `read_only` of a `skill` slot.
+    #[must_use]
+    pub fn read_only(self) -> bool {
+        self.map.get("read_only") == Some(&Value::Bool(true))
+    }
+}
+
+/// The application of a pattern a workflow carries (spec/library.md
+/// "Application", language 0.6): `apply: { pattern, types?, args }`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Application<'a> {
+    map: &'a Map,
+}
+
+impl<'a> Application<'a> {
+    /// The view of a workflow's `apply`, when it is an object.
+    #[must_use]
+    pub fn of(v: &'a Value) -> Option<Application<'a>> {
+        v.as_object().map(|map| Application { map })
+    }
+
+    /// The application a definition carries, when it is a workflow with an
+    /// `apply` object.
+    #[must_use]
+    pub fn of_workflow(d: &'a Value) -> Option<Application<'a>> {
+        of_kind(d, DefKind::Workflow)
+            .and_then(|m| m.get("apply"))
+            .and_then(Application::of)
+    }
+
+    /// The members, as read.
+    #[must_use]
+    pub fn members(self) -> &'a Map {
+        self.map
+    }
+
+    /// `pattern`: the name applied.
+    #[must_use]
+    pub fn pattern(self) -> Option<&'a str> {
+        self.map.get("pattern").and_then(Value::as_str)
+    }
+
+    /// `types`: the type arguments, every element included.
+    #[must_use]
+    pub fn types(self) -> &'a [Value] {
+        self.map
+            .get("types")
+            .and_then(Value::as_array)
+            .unwrap_or_default()
+    }
+
+    /// `args`, every element included, so that an argument's index is its
+    /// index in the IR.
+    #[must_use]
+    pub fn arg_values(self) -> &'a [Value] {
+        self.map
+            .get("args")
+            .and_then(Value::as_array)
+            .unwrap_or_default()
+    }
+
+    /// `args`, in order; the ones that are not objects are left out.
+    pub fn args(self) -> impl Iterator<Item = SlotArg<'a>> {
+        self.arg_values()
+            .iter()
+            .filter_map(|a| a.as_object().map(|map| SlotArg { map }))
+    }
+}
+
+/// One argument of an application: `{ name, value }`, or `{ name, type }`
+/// for a type written as one (`List<Invoice>`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SlotArg<'a> {
+    map: &'a Map,
+}
+
+impl<'a> SlotArg<'a> {
+    /// The view of `v`, when it is an object.
+    #[must_use]
+    pub fn of(v: &'a Value) -> Option<SlotArg<'a>> {
+        v.as_object().map(|map| SlotArg { map })
+    }
+
+    /// The members, as read.
+    #[must_use]
+    pub fn members(self) -> &'a Map {
+        self.map
+    }
+
+    /// `name`: the slot it is for.
+    #[must_use]
+    pub fn name(self) -> Option<&'a str> {
+        self.map.get("name").and_then(Value::as_str)
+    }
+
+    /// `value`: an expression.
+    #[must_use]
+    pub fn value(self) -> Option<Expr<'a>> {
+        self.map.get("value").and_then(Expr::of)
+    }
+
+    /// `type`: a type.
+    #[must_use]
+    pub fn type_expr(self) -> Option<TypeExpr<'a>> {
+        self.map.get("type").and_then(TypeExpr::of)
+    }
+}
+
 /// One tool of a connector: `{ params, returns, read_only?, critical?,
 /// idempotency_key?, retry_class?, reconcile_by?, compensation? }`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

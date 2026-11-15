@@ -1,0 +1,47 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1305",
+  "kind": "compile",
+  "title": "An effect argument whose parameter does not accept what the slot says it is given: the slot says Inferred<Out>, the write tool takes Verified<Match>.",
+  "spec": [
+    "spec/library.md#slots",
+    "spec/core.md#21-how-a-value-is-known",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/slots/5/params/0",
+      "value": {
+        "ref": "Inferred",
+        "args": [
+          {
+            "ref": "Out"
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1305",
+        "path": "/defs/MatchAll/apply/args/5/value",
+        "facts": {
+          "problem": "parameter",
+          "slot": "commit",
+          "index": 0,
+          "slot_type": "Inferred<Match>",
+          "argument_type": "Verified<Match>"
+        }
+      }
+    ]
+  }
+}

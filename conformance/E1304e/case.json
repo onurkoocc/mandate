@@ -1,0 +1,44 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1304e",
+  "kind": "compile",
+  "title": "A skill slot given a tool.",
+  "spec": [
+    "spec/library.md#slots",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/apply/args/1/value",
+      "value": {
+        "op": "field",
+        "of": {
+          "op": "var",
+          "name": "erp"
+        },
+        "name": "list_invoices"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1304",
+        "path": "/defs/MatchAll/apply/args/1/value",
+        "facts": {
+          "problem": "kind",
+          "slot": "work",
+          "kind": "skill"
+        }
+      }
+    ]
+  }
+}

@@ -37,9 +37,10 @@ use std::rc::Rc;
 
 use mandate_ir::{
     Arg, CallSpec, ConnectorDef, Criterion, DefKind, Definition, Diagnostic, Expr, ExprOp, Import,
-    JsObject, JsValue, Language, Location, Map, OnHandler, Param, Pattern, PatternKind, Program,
-    Read, Repair, RepairOp, RepairOpKind, Risk, Skill, Spans, Stmt, StmtOp, TemplatePart, TestDef,
-    TypeExpr, TypeForm, Value, Variant, Verifier, VerifierForm, nearest_span, ptr, ptr_token,
+    JsObject, JsValue, Language, Location, Map, OnHandler, Param, Pattern, PatternDef, PatternKind,
+    Program, Read, Repair, RepairOp, RepairOpKind, Risk, Skill, Spans, Stmt, StmtOp, TemplatePart,
+    TestDef, TypeExpr, TypeForm, Value, Variant, Verifier, VerifierForm, nearest_span, ptr,
+    ptr_token,
 };
 
 use crate::imports::KnownModules;
@@ -137,6 +138,7 @@ pub fn resolve_names(
         imported_modules: Vec::new(),
         listed: Vec::new(),
         builtin_types: BUILTIN_TYPES.to_vec(),
+        pattern: None,
         out: Vec::new(),
     };
     if program
@@ -284,7 +286,17 @@ struct Resolver<'a> {
     imported_modules: Vec<&'a str>,
     /// The built-in type names of the program's language version.
     builtin_types: Vec<&'static str>,
+    /// 0.6: the pattern whose definition is being read, if one is.
+    pattern: Option<PatternScope>,
     out: Vec<Diagnostic>,
+}
+
+/// 0.6: the names a pattern's definition has besides the program's: its
+/// slots (with their kinds) and the names that are types in it (its type
+/// parameters and its `type` slots).
+struct PatternScope {
+    slots: Vec<(String, String)>,
+    types: Vec<String>,
 }
 
 fn kind_of(d: &Value) -> Option<DefKind> {
@@ -451,6 +463,13 @@ impl<'a> Resolver<'a> {
                     }
                 }
             }
+            // 0.6: an application's caps are the workflow's; its arguments
+            // are read by its pattern's slots (`crate::expand`), and its
+            // body is the expansion's.
+            Some(DefKind::Workflow) if value.get("apply").is_some() => {
+                self.cap_list(d.caps(), &format!("{base}/caps"), &top);
+            }
+            Some(DefKind::Pattern) => self.pattern_def(value, base, &top),
             Some(DefKind::Workflow) => {
                 let ctx = self.with_params(d.params(), &format!("{base}/params"), &top);
                 self.returns(d.returns(), base, &top);
@@ -580,6 +599,104 @@ impl<'a> Resolver<'a> {
                 }
             }
         }
+    }
+
+    /// 0.6: a pattern (spec/library.md "Patterns"): its signature's types,
+    /// its run parameters, its result and its body, with its type
+    /// parameters and `type` slots as types and every slot and run
+    /// parameter as a name of the body. What a slot may be used as is
+    /// `crate::expand`'s to hold (E1301).
+    fn pattern_def(&mut self, value: &'a Value, base: &str, top: &Ctx) {
+        let Some(p) = PatternDef::of(value) else {
+            return;
+        };
+        let slots: Vec<(String, String)> = p
+            .slots()
+            .map(|s| {
+                (
+                    s.name().unwrap_or_default().to_owned(),
+                    s.kind().unwrap_or_default().to_owned(),
+                )
+            })
+            .collect();
+        let mut types: Vec<String> = p
+            .generics()
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect();
+        types.extend(
+            slots
+                .iter()
+                .filter(|(_, k)| k == "type")
+                .map(|(n, _)| n.clone()),
+        );
+        self.pattern = Some(PatternScope { slots, types });
+        for (i, s) in p.slot_values().iter().enumerate() {
+            let sb = format!("{base}/slots/{i}");
+            for (j, t) in s
+                .get("params")
+                .and_then(Value::as_array)
+                .unwrap_or_default()
+                .iter()
+                .enumerate()
+            {
+                if let Some(t) = TypeExpr::of(t) {
+                    self.type_(t, &format!("{sb}/params/{j}"), &[], top, None);
+                }
+            }
+            for k in ["returns", "type"] {
+                if let Some(t) = s.get(k).and_then(TypeExpr::of) {
+                    self.type_(t, &format!("{sb}/{k}"), &[], top, None);
+                }
+            }
+        }
+        let ctx = self.with_params(p.params(), &format!("{base}/params"), top);
+        self.returns(p.returns(), base, top);
+        let names: Vec<String> = self
+            .pattern
+            .as_ref()
+            .map(|s| s.slots.iter().map(|(n, _)| n.clone()).collect())
+            .unwrap_or_default();
+        let ctx = ctx.inner(names);
+        if let Some(body) = p.body() {
+            self.block(body, &format!("{base}/body"), &ctx);
+        }
+        self.pattern = None;
+    }
+
+    /// 0.6: whether `name` is a slot of the pattern being read.
+    fn is_slot(&self, name: &str) -> bool {
+        self.pattern
+            .as_ref()
+            .is_some_and(|p| p.slots.iter().any(|(n, _)| n == name))
+    }
+
+    /// 0.6: E1307 for an application anywhere but as the definition of a
+    /// workflow: a pattern called, or read as a value, in a body. In a
+    /// pattern's body it is the pattern's check that says so.
+    fn pattern_named(&mut self, name: &str, path: &str, called: bool) -> bool {
+        if self.def_kind(name) != Some(DefKind::Pattern) {
+            return false;
+        }
+        if self.pattern.is_some() {
+            return true;
+        }
+        let span = nearest_span(self.spans, path);
+        let how = if called { "called" } else { "named as a value" };
+        self.out.push(Diagnostic::new(
+            "E1307",
+            format!(
+                "The pattern {name} is {how} here; a pattern is applied only as the definition of a workflow, `workflow W = {name}<…>(…)` (spec/library.md \"Application\")."
+            ),
+            Location::path_span(path, span),
+            Some(
+                JsObject::new()
+                    .with("problem", if called { "call" } else { "value" })
+                    .with("applies", name),
+            ),
+        ));
+        true
     }
 
     /// `this.type(d.returns, `${base}/returns`, new Set(), top)`.
@@ -714,7 +831,10 @@ impl<'a> Resolver<'a> {
                     && self.def_kind(r) != Some(DefKind::Type);
                 if (r == "Verified" || review) && i == 1 && bare {
                     let ar = a.ref_name().unwrap_or_default();
-                    if self.def_kind(ar) != Some(DefKind::Contract) && !self.imported.contains(&ar)
+                    // 0.6: in a pattern, a contract slot names the contract.
+                    if self.def_kind(ar) != Some(DefKind::Contract)
+                        && !self.imported.contains(&ar)
+                        && !self.is_slot(ar)
                     {
                         let candidates = self.defs_of_kind(DefKind::Contract);
                         self.report(
@@ -770,6 +890,10 @@ impl<'a> Resolver<'a> {
         if generics.contains(&name)
             || self.builtin_types.contains(&name)
             || self.imported.contains(&name)
+            || self
+                .pattern
+                .as_ref()
+                .is_some_and(|p| p.types.iter().any(|t| t == name))
         {
             return true;
         }
@@ -922,6 +1046,19 @@ impl<'a> Resolver<'a> {
             || self.listed.contains(&name)
             || self.imported.contains(&name)
             || BUILTIN_FUNCTIONS.contains(&name)
+    }
+
+    /// Whether a scope of `scope`'s chain binds `name` (a local name, not a
+    /// definition).
+    fn lookup_local(&self, name: &str, scope: &Rc<Scope>) -> bool {
+        let mut s = Some(scope);
+        while let Some(at) = s {
+            if at.names.iter().any(|n| n == name) {
+                return true;
+            }
+            s = at.parent.as_ref();
+        }
+        false
     }
 
     /// Every name in sight: `visible(scope)`.
@@ -1099,6 +1236,12 @@ impl<'a> Resolver<'a> {
             }
             ExprOp::Var => {
                 let name = e.name().unwrap_or_default();
+                if !ctx.symbolic
+                    && !self.lookup_local(name, &ctx.scope)
+                    && self.pattern_named(name, path, false)
+                {
+                    return;
+                }
                 // 0.6: a connector is no value; its tools are called.
                 if !ctx.symbolic && self.connector(name, Some(&ctx.scope)).is_some() {
                     self.report(
@@ -1162,6 +1305,18 @@ impl<'a> Resolver<'a> {
                 }
                 self.args(e.arg_values(), &format!("{path}/args"), ctx);
             }
+            ExprOp::Call
+                if let Some(n) = e
+                    .callee()
+                    .filter(|c| c.is(ExprOp::Var))
+                    .and_then(Expr::name)
+                    .filter(|n| !self.lookup_local(n, &ctx.scope))
+                    && self.def_kind(n) == Some(DefKind::Pattern) =>
+            {
+                // 0.6: a pattern called is an application in a body (E1307);
+                // its arguments are slots' and are not read here.
+                self.pattern_named(n, path, true);
+            }
             ExprOp::Call => {
                 let callee = e.callee();
                 self.sub(callee, path, "callee", ctx);
@@ -1206,6 +1361,29 @@ impl<'a> Resolver<'a> {
                 }
                 self.sub(e.from(), path, "from", ctx);
                 self.sub(e.using(), path, "using", ctx);
+            }
+            // 0.6: `delegate slot(…)` in a pattern's body delegates to its
+            // skill slot's argument; anywhere else it names nothing.
+            ExprOp::Delegate if e.get("slot").is_some() => {
+                let slot = e.get("slot").and_then(Value::as_str).unwrap_or_default();
+                if !self.is_slot(slot) {
+                    self.report(
+                        &format!("{path}/slot"),
+                        format!("'delegate {slot}(…)' names no skill slot: only in a pattern's body is a skill delegated to by a slot's name."),
+                        slot,
+                        "skill slot",
+                        Vec::new(),
+                        None,
+                    );
+                }
+                self.args(e.arg_values(), &format!("{path}/args"), ctx);
+                if let Some(caps) = e.caps() {
+                    self.cap_list_exprs(caps, &format!("{path}/caps"), ctx);
+                }
+                self.sub(e.timeout(), path, "timeout", ctx);
+                if let Some(sup) = e.supervise() {
+                    self.supervise(sup, path, ctx);
+                }
             }
             ExprOp::Delegate | ExprOp::Spawn | ExprOp::Plan => {
                 let agent_name = e.agent().unwrap_or_default();
@@ -1254,7 +1432,7 @@ impl<'a> Resolver<'a> {
             ExprOp::Verify => {
                 self.sub(e.value_expr(), path, "value", ctx);
                 let contract = e.contract().unwrap_or_default();
-                if self.def_kind(contract) != Some(DefKind::Contract) {
+                if self.def_kind(contract) != Some(DefKind::Contract) && !self.is_slot(contract) {
                     let candidates = self.defs_of_kind(DefKind::Contract);
                     self.report(
                         &format!("{path}/contract"),
@@ -1278,7 +1456,10 @@ impl<'a> Resolver<'a> {
             }
             ExprOp::Effect => {
                 let name = e.name().unwrap_or_default();
-                self.effect_name(name, &format!("{path}/name"));
+                // 0.6: in a pattern, an effect slot names the effect.
+                if !self.is_slot(name) {
+                    self.effect_name(name, &format!("{path}/name"));
+                }
                 self.args(e.arg_values(), &format!("{path}/args"), ctx);
                 self.sub(e.idempotent_by(), path, "idempotent_by", ctx);
                 // `if (e.compensate)`: an empty name is falsy.
@@ -1324,6 +1505,23 @@ impl<'a> Resolver<'a> {
             }
             ExprOp::Map => {
                 self.sub(e.over(), path, "over", ctx);
+                // 0.6: `max n` and `par n` with a name stand only in a
+                // pattern's body, for a slot (which E1301 holds to a const
+                // slot).
+                for k in ["max", "par"] {
+                    if let Some(n) = e.get(k).and_then(Value::as_str)
+                        && !self.is_slot(n)
+                    {
+                        self.report(
+                            &format!("{path}/{k}"),
+                            format!("'{k} {n}' names no const slot: a map's {k} is a whole number, or in a pattern's body the name of a const slot."),
+                            n,
+                            "const slot",
+                            Vec::new(),
+                            None,
+                        );
+                    }
+                }
                 // The element is in scope in the capabilities the map hands
                 // its body and in the body.
                 let inner = ctx.inner(vec![e.bind().unwrap_or_default().to_owned()]);

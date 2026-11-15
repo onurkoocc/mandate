@@ -1,4 +1,29 @@
 {
+  "fixtures/library/batch.mdt": {
+    "check": "sha256:eefa0a394ec6b929aa4fed789bbde02cf3237c95650f8d32cea516f638f78eda",
+    "check --module": "sha256:6a082ab8e6257a4bbec7844f2db7df1619b988dd9c9ba42429bdb4608c51bed3",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:49c485d79e56087581e519702cf5c102b0266875fea2f959f770bcb3026bc7a9",
+    "fmt": "sha256:07799eb225b77423c05931e20d249e8d95189eb6a17fb8b400cdd30ae46b53bc",
+    "view --format json": "sha256:c5d0af567ad54a1669eefc7c431b2d71b970970e789ed8e8d427ad640d2aff9a",
+    "view --format md": "sha256:c0b63f6f33d62b776f2b34ccd3b74287c699e9d5e53889de68fa1d5ef3870a61",
+    "view --format html": "sha256:f54f33743bd590045ee4fe031eab9d57ed74d1b69837f2898141f745ce346b54",
+    "view --against itself": "sha256:933dec7a2ea3a6117ea7b7ab8a1f8839c573639cd450a667d636e3ff761a1105",
+    "sandbox": "sha256:37508fb9b2e39606626cde902d9af2959a7cc4df20bf8901963e29dbc70d1fd5"
+  },
+  "fixtures/library/batch.patterns.mdt": {
+    "check": "sha256:24fe7e3add24ded4ce44038367f791da16bdc40704bc0098b5f32d5424bdf130",
+    "check --module": "sha256:24fe7e3add24ded4ce44038367f791da16bdc40704bc0098b5f32d5424bdf130",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:471808a4297cee8f82f26e94bcb7e3f477f6dcf67ba85719df02f2b9f8a75674",
+    "fmt": "sha256:86599756f998ad3363bbfaab4cff24af8e1487f2da6005c6b365ebe833b35d98",
+    "hash": "sha256:e3fbe4e57002967270ac2015761284308d875d015144845253371013cd31e0db",
+    "view --format json": "sha256:b13178af63db90bf55a265f8b23d109f7309b426f0881b74a1205c48be4f12df",
+    "view --format md": "sha256:8b451ddc83b1f1883fd5489d0e2be916cb1cd306ce7be18f9aa4b509d75a2697",
+    "view --format html": "sha256:d8ba2410c82cbb7f3e15b138659330e3d1a0a8084093dbda6a8d6c50e7f23182",
+    "view --against itself": "sha256:2edb6ed05c8c2ee67d30d8c107a14b9e5a010dff3dfff40027c598dc9bb71d6e",
+    "sandbox": "sha256:ea4260b91ca2d9da1ece517052a356376e30087cb17f4dd40f957100caa7aedf"
+  },
   "fixtures/library/drafts.mdt": {
     "check": "sha256:71f6d9dd972fad51b8a44f567221bf92db7340d4df6bb045e0cd81fcc4664db9",
     "check --module": "sha256:620c3f5942ebca94aebb15f934486ff10bccb1c5290d1d53ee50d99573668aad",

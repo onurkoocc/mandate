@@ -1,0 +1,41 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1305c",
+  "kind": "compile",
+  "title": "A const slot of Int given a text.",
+  "spec": [
+    "spec/library.md#slots",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/MatchAll/apply/args/7/value",
+      "value": {
+        "op": "text",
+        "value": "sixty"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1305",
+        "path": "/defs/MatchAll/apply/args/7/value",
+        "facts": {
+          "problem": "type",
+          "slot": "max_items",
+          "expected": "Int",
+          "given": "Text"
+        }
+      }
+    ]
+  }
+}

@@ -4,7 +4,9 @@
 //! ```text
 //! load → (stop if no program or an error) → link → (Rust: the import checks
 //!      of `crate::imports`) → resolveNames → roleChecks
-//!      → importedMethods → staticCheck (only if no error so far)
+//!      → importedMethods → (Rust, 0.6: the patterns and applications of
+//!      `crate::expand`, and the expanded program, which every stage after
+//!      this one reads) → staticCheck (only if no error so far)
 //!      → the lock checks (only with a lock and no error so far) → ok, hashes
 //! ```
 //!
@@ -20,6 +22,7 @@ use mandate_ir::{
 use mandate_syntax::{SourceKind, load};
 
 use crate::caps::imported_methods;
+use crate::expand::{ExpandOptions, expand};
 use crate::imports::{import_checks, parent_of_subprogram};
 use crate::lock::{
     Lock, connector_lock_checks, lock_checks, module_lock_checks, role_lock_checks, validate_lock,
@@ -59,6 +62,12 @@ pub struct CheckResult {
     pub ok: bool,
     /// The program's hashes, when `ok`.
     pub hashes: Option<ProgramHashes>,
+    /// 0.6: when the program applies a pattern and every application
+    /// expanded, the expanded program: the program with every application
+    /// replaced by its expansion, a program of 0.6 with no `apply` in it
+    /// (spec/library.md "Expansion"). The checks after the expansion read
+    /// it; the hashes are the program's. `None` for every other program.
+    pub expanded: Option<Value>,
 }
 
 impl CheckResult {
@@ -217,6 +226,7 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
                 diagnostics,
                 ok: false,
                 hashes: None,
+                expanded: None,
             };
         }
     };
@@ -228,6 +238,7 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
             diagnostics,
             ok: false,
             hashes: None,
+            expanded: None,
         };
     };
     let linked = link(program, opts.modules);
@@ -273,14 +284,71 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
         .into_iter()
         .map(|d| with_exact_span(d, &loaded.spans)),
     );
+    // 0.6: the patterns and the applications (E1301 to E1307), and the
+    // expanded program, which every check after this one reads in the
+    // program's place (spec/library.md "Expansion"). A program that applies
+    // no pattern is read as it is.
+    let expansion = Some(expand(
+        program,
+        &linked,
+        &ExpandOptions {
+            modules: opts.modules,
+            spans: Some(&loaded.spans),
+            own,
+            applications: !has_errors(&diagnostics),
+        },
+    ));
+    if let Some(e) = &expansion {
+        diagnostics.extend(e.diagnostics.iter().cloned());
+    }
+    let expanded = expansion.as_ref().and_then(|e| e.program.clone());
+    let expanded_linked = expanded
+        .as_ref()
+        .and_then(Program::of)
+        .map(|p| link(p, opts.modules));
+    let (target, target_linked) = match (expanded.as_ref().and_then(Program::of), &expanded_linked)
+    {
+        (Some(p), Some(l)) => (p, l),
+        _ => (program, &linked),
+    };
+    // A diagnostic of the expansion, reported in the program that was
+    // checked; any other as it is.
+    let back = |d: Diagnostic| match &expansion {
+        Some(e) if expanded.is_some() => e.map(d, Some(&loaded.spans)),
+        _ => d,
+    };
+    // What the expansion wrote is held to the stages before the static
+    // checks too: its names resolve, its roles are roles, and the names it
+    // adds to the `use`s may be named. The rest of the program was checked
+    // above, unchanged.
+    if let Some(e) = expansion.as_ref().filter(|_| expanded.is_some())
+        && !has_errors(&diagnostics)
+    {
+        let mut again = import_checks(target, opts.modules, Some(&loaded.spans), own);
+        again.extend(resolve_names(
+            target,
+            Some(&loaded.spans),
+            Some(&target_linked.defs),
+        ));
+        again.extend(role_checks(
+            target,
+            Some(&loaded.spans),
+            Some(&target_linked.defs),
+        ));
+        diagnostics.extend(
+            again
+                .into_iter()
+                .filter(|d| d.at.path.as_deref().is_some_and(|p| e.expanded(p)))
+                .map(back),
+        );
+    }
     // Static checks assume every name resolves.
     if !has_errors(&diagnostics) {
-        diagnostics.extend(static_check(
-            program,
-            &loaded.spans,
-            &linked.defs,
-            opts.claim,
-        ));
+        diagnostics.extend(
+            static_check(target, &loaded.spans, &target_linked.defs, opts.claim)
+                .into_iter()
+                .map(back),
+        );
     }
     // `opts.lock && !hasErrors(diagnostics)`: a lock that is falsy is none.
     if let Some(lock) = opts.lock.filter(|l| l.is_truthy())
@@ -289,27 +357,35 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
         let lock_diags = validate_lock(lock);
         if lock_diags.is_empty() {
             let view = Lock::of(lock);
+            let mut found: Vec<Diagnostic> = Vec::new();
             // `{ ...loaded.program, defs: linked.defs }`.
-            let mut with_linked = program.members().clone();
-            with_linked.insert("defs", linked.defs.clone());
+            let mut with_linked = target.members().clone();
+            with_linked.insert("defs", target_linked.defs.clone());
             let with_linked = Value::Object(with_linked);
             if let Some(with_linked) = Program::of(&with_linked) {
-                diagnostics.extend(lock_checks(with_linked, view, Some(&loaded.spans)));
+                found.extend(lock_checks(with_linked, view, Some(&loaded.spans)));
             }
-            diagnostics.extend(role_lock_checks(
-                program,
-                &linked,
+            found.extend(role_lock_checks(
+                target,
+                target_linked,
                 view,
                 Some(&loaded.spans),
             ));
-            diagnostics.extend(module_lock_checks(program, view, opts.modules));
+            found.extend(module_lock_checks(target, view, opts.modules));
             // 0.6: the connectors the package can call, bound (E1407, E1408).
-            diagnostics.extend(connector_lock_checks(program, &linked, view, opts.modules));
+            found.extend(connector_lock_checks(
+                target,
+                target_linked,
+                view,
+                opts.modules,
+            ));
+            diagnostics.extend(found.into_iter().map(back));
         } else {
             diagnostics.extend(lock_diags);
         }
     }
     let ok = !has_errors(&diagnostics);
+    // The program hash covers the application, not the expansion.
     let hashes = ok.then(|| hash_program(program_value));
     CheckResult {
         program: loaded.program.clone(),
@@ -317,6 +393,7 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
         diagnostics,
         ok,
         hashes,
+        expanded,
     }
 }
 

@@ -353,6 +353,39 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E1708k` | An effect in a map in the body of another map | E1708 |
 | `E1708l` | A review in a map's body | E1708 |
 
+The cases of patterns (spec/library.md "Patterns") are mutations of
+`P02/program.mdt`, a program that defines `BatchWithExceptions` and applies
+it, but for those with a program of their own (`P02b`, `P04`, `E1304k`,
+`E1304l`), those of an imported pattern (`P05`, `E1306d`, `E1602d`, `E1602e`,
+on `fixtures/library/batch.mdt` and its modules) and those of a sub-program
+(`P06`, `P06a`, on `P06/parent.mdt`):
+
+| Case | Mutation | Expected |
+|---|---|---|
+| `P02` | A pattern the program defines, applied: every check runs on the expansion | — |
+| `P02a` | A deadline of zero given to the deadline slot: the review's E1507 at that argument | E1507 |
+| `P02b` | A type slot and a capability slot, used in a signature, a `let` and a `with caps` narrowed | — |
+| `P03` | A pattern that declares `caps` | E1302 |
+| `P03a` | A pattern that names a capability other than through a slot | E1302 |
+| `P04` | An expansion of 1,202 static nodes | W0310, E0105 |
+| `P05` | An imported pattern applied: the program hash covers the application | — |
+| `P06` | A sub-program that applies its parent's pattern, admitted | — |
+| `P06a` | The same with a width above the envelope's `max_concurrent`, at the argument | E1703 |
+| `E1301` to `E1301f` | A slot of no kind, two slots of one name, a type parameter twice, a signature its kind does not take, no body, a tool slot delegated to, a map counted by a role slot | E1301 |
+| `E1302` to `E1302f` | An effect run with `effect`, an agent, a connector's tool, a capability constructor in `with caps`, a role, a contract a person approves through a type, an agent through a function: each other than through a slot | E1302 |
+| `E1303`, `E1303a` | An agent applied; a name nothing defines | E1303 |
+| `E1304` to `E1304l` | A slot without an argument, an argument for no slot, another number of type arguments, an argument twice, and each kind given another's: tool, skill, contract, role, effect, field, const, type, capability | E1304 |
+| `E1305` to `E1305h` | An effect's parameter, a skill's result, a contract's parameters, a constant's type, a count of zero, a field the type has not, a `read_only` skill of an agent that writes, a tool's parameters, an expression that is no constant | E1305 |
+| `E1306` to `E1306e` | A run parameter like a slot, a type parameter like a definition, a body binding a slot's name, an argument the body captures, a name the expansion adds that the program defines, a run parameter like a binding of the body | E1306 |
+| `E1307` to `E1307e` | An application with an envelope, in a pattern's body, in a workflow's body, as a slot's argument, as a capability, with a body | E1307 |
+| `E1602d`, `E1602e` | A pattern of another module that is not `pub`; one whose expansion names a definition that is not | E1602 |
+| `E1708m`, `E1708n` | A person in a map of the expansion; a commit map of the expansion run side by side | E1708 |
+| `E1505h` | An irreversible effect given to the commit slot | E1708, E1505, E0405 |
+| `E1506i` | A review in the expansion of a list that is no verifying map's | E1506 |
+| `E0301c` | The commit's capability taken from the applying workflow | E0301 |
+| `E0220c` | The model's class below the connector's | E0220 |
+| `E0210` | Model output posted by the commit map | E0210 |
+
 The import cases share the 0.6 module `E1602/types.mdt` and the program
 `E1602/program.mdt`; the connector cases share `T01/program.mdt`, a program
 with a connector of its own, and `E0301b` is `E0301a/program.mdt` as 0.5. The
@@ -365,15 +398,20 @@ to a check that imports one of 0.6 (E1603), and one of 0.6 that imports a module
 nobody gave (E1604), do not load. What the cases of reviews and waivers cannot
 say (the types a review's lists have, a change set's irreversible member, the
 semantic diff's waivers, a program of 0.5 as before) is in
-`crates/mandate-check/tests/review_0_6.rs`.
+`crates/mandate-check/tests/review_0_6.rs`. What the cases of patterns cannot
+say (the expanded program itself and its hash, an imported pattern checked
+again from a module that was never checked, a module's import named by its
+pattern, the limits of an expansion, the semantic diff of an application, a
+program of 0.5 as before) is in `crates/mandate-check/tests/patterns_0_6.rs`,
+and their views in `crates/mandate-views/tests/patterns_0_6.rs`.
 
 spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
 (human steps), L (libraries) and N11 (shapes), and the code numbers of its
-families; the cases above use P01 (which spec/library.md names), the S02 claim,
-E0101, E0104, E0120, E0140, E0301 and E0320, which 0.6 extends, T01, T02 and T06
+families; the cases above use P01 to P05 (which spec/library.md names) and P06, the S02 claim,
+E0101, E0104, E0105, E0120, E0140, E0210, E0220, E0301 and E0320, which 0.6 extends, T01, T02 and T06
 (which spec/library.md names), H06 and H07 (which it names), the letters of
 E1708 from b on (E1708b and E1708c, which it names, and one letter for each
-further refused condition), and the code numbers of E14xx, E1504 to E1508 and
+further refused condition), and the code numbers of E13xx, E14xx, E1504 to E1508 and
 E16xx.
 
 ## What the Rust crates run
@@ -412,13 +450,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 226, passed 226, pending 0
+conformance cases: ran 294, passed 294, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 101 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 169 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(242 cases: 226 `compile`, 101 of them of language 0.6, and 16 `journal`; no case
+(310 cases: 294 `compile`, 169 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

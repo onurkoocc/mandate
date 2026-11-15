@@ -122,7 +122,9 @@ pub fn mermaid(wf: &str, budget: &str, nodes: &[ArchNode], edges: &[ArchEdge]) -
 #[must_use]
 pub fn architecture(program: &Value) -> ArchitectureView {
     let mut workflows: Vec<WorkflowArchitecture> = Vec::new();
-    if let Some(p) = Program::of(program) {
+    // 0.6: a workflow that applies a pattern is shown as its expansion.
+    let expanded = mandate_check::expand::for_views(program, None);
+    if let Some(p) = Program::of(expanded.as_ref().unwrap_or(program)) {
         for (name, d) in sorted_defs(p) {
             if !is_kind(d, "workflow") {
                 continue;

@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1301c",
+  "kind": "compile",
+  "title": "A slot signature its kind does not take (a mutation: the tool slot without a result).",
+  "spec": [
+    "spec/library.md#slots",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/BatchWithExceptions/slots/0/returns"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1301",
+        "path": "/defs/BatchWithExceptions/slots/0",
+        "facts": {
+          "problem": "signature",
+          "slot": "source",
+          "kind": "tool",
+          "missing": [
+            "returns"
+          ]
+        }
+      }
+    ]
+  }
+}

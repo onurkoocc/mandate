@@ -1,0 +1,102 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1302f",
+  "kind": "compile",
+  "title": "A pattern that calls a function of its module that delegates to an agent brings authority, through the function.",
+  "spec": [
+    "spec/library.md#what-a-pattern-may-not-do",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/ask",
+      "value": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "i",
+            "type": {
+              "ref": "Untrusted",
+              "args": [
+                {
+                  "ref": "Invoice"
+                }
+              ]
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Inferred",
+          "args": [
+            {
+              "ref": "Match"
+            }
+          ]
+        },
+        "effects": [
+          {
+            "effect": "Delegate"
+          }
+        ],
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "delegate",
+              "agent": "Matcher",
+              "skill": "match",
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "i"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/1/value/body/0/value",
+      "value": {
+        "op": "call",
+        "callee": {
+          "op": "var",
+          "name": "ask"
+        },
+        "args": [
+          {
+            "value": {
+              "op": "var",
+              "name": "it"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1302",
+        "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/callee",
+        "facts": {
+          "names": "agent",
+          "name": "Matcher",
+          "via": "ask"
+        }
+      }
+    ]
+  }
+}

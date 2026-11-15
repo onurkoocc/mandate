@@ -830,6 +830,9 @@
             "skill": {
               "$ref": "#/$defs/Name"
             },
+            "slot": {
+              "$ref": "#/$defs/Name"
+            },
             "args": {
               "$ref": "#/$defs/Args"
             },
@@ -855,9 +858,22 @@
           "additionalProperties": false,
           "required": [
             "op",
-            "agent",
-            "skill",
             "args"
+          ],
+          "oneOf": [
+            {
+              "description": "Agent.skill, written out.",
+              "required": [
+                "agent",
+                "skill"
+              ]
+            },
+            {
+              "description": "In a pattern's body: the skill slot whose argument it delegates to.",
+              "required": [
+                "slot"
+              ]
+            }
           ]
         },
         {
@@ -1151,12 +1167,10 @@
               "$ref": "#/$defs/Expr"
             },
             "max": {
-              "type": "integer",
-              "minimum": 1
+              "$ref": "#/$defs/Count"
             },
             "par": {
-              "type": "integer",
-              "minimum": 1
+              "$ref": "#/$defs/Count"
             },
             "caps": {
               "type": "array",
@@ -1867,15 +1881,31 @@
                 ]
               },
               "minItems": 1
+            },
+            "apply": {
+              "$ref": "#/$defs/Apply"
             }
           },
           "additionalProperties": false,
           "required": [
             "kind",
-            "params",
-            "returns",
-            "caps",
-            "body"
+            "caps"
+          ],
+          "oneOf": [
+            {
+              "description": "A workflow written out: its parameters, its result and its body.",
+              "required": [
+                "params",
+                "returns",
+                "body"
+              ]
+            },
+            {
+              "description": "The application of a pattern (spec/library.md \"Application\"): the pattern's run parameters are its parameters, its result is the pattern's, and its body is the pattern's, expanded.",
+              "required": [
+                "apply"
+              ]
+            }
           ]
         },
         {
@@ -2120,6 +2150,163 @@
             "kind",
             "mcp",
             "tools"
+          ]
+        },
+        {
+          "type": "object",
+          "description": "A pattern (spec/library.md \"Patterns\"): a workflow with slots, applied by a workflow. Its body is type-checked only through its applications. A slot of a kind the language does not have, a name given twice, a body that is not a block, and caps, a budget or an envelope are the check's to refuse (E1301, E1302, E1306), so the schema reads them.",
+          "properties": {
+            "kind": {
+              "const": "pattern"
+            },
+            "pub": {
+              "const": true
+            },
+            "doc": {
+              "type": "string"
+            },
+            "generics": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Name"
+              },
+              "minItems": 1
+            },
+            "slots": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Slot"
+              }
+            },
+            "params": {
+              "$ref": "#/$defs/Params"
+            },
+            "returns": {
+              "$ref": "#/$defs/TypeExpr"
+            },
+            "body": {
+              "$ref": "#/$defs/Block"
+            },
+            "caps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "budget": {
+              "$ref": "#/$defs/Budget"
+            },
+            "envelope": {
+              "$ref": "#/$defs/Envelope"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "slots",
+            "returns"
+          ]
+        }
+      ]
+    },
+    "Count": {
+      "description": "A whole number, at least 1; in a pattern's body, the name of a const slot that gives it (spec/library.md \"Slots\").",
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "$ref": "#/$defs/Name"
+        }
+      ]
+    },
+    "Slot": {
+      "type": "object",
+      "description": "One slot of a pattern: its name, its kind, and the signature its kind takes: params and returns for a skill, tool or effect, params for a contract, type for a const or a field.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Name"
+        },
+        "kind": {
+          "$ref": "#/$defs/Name"
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TypeExpr"
+          }
+        },
+        "returns": {
+          "$ref": "#/$defs/TypeExpr"
+        },
+        "type": {
+          "$ref": "#/$defs/TypeExpr"
+        },
+        "read_only": {
+          "const": true
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind"
+      ]
+    },
+    "Apply": {
+      "type": "object",
+      "description": "The application of a pattern: the pattern's name, its type arguments in order, and one argument per slot, by name. The program hash covers it; the expansion is a function of it and the pattern's module.",
+      "properties": {
+        "pattern": {
+          "$ref": "#/$defs/QName"
+        },
+        "types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TypeExpr"
+          },
+          "minItems": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SlotArg"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "pattern",
+        "args"
+      ]
+    },
+    "SlotArg": {
+      "type": "object",
+      "description": "The argument of one slot: an expression, or a type written as one (List<Invoice>).",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Name"
+        },
+        "value": {
+          "$ref": "#/$defs/Expr"
+        },
+        "type": {
+          "$ref": "#/$defs/TypeExpr"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "value"
+          ]
+        },
+        {
+          "required": [
+            "type"
           ]
         }
       ]

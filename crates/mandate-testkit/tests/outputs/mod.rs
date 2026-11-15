@@ -36,6 +36,13 @@ pub fn module_files_of(program: &str) -> Vec<String> {
             "fixtures/library/acme.connectors/types.mdt",
             "fixtures/library/acme.connectors/connectors.mdt",
         ]
+    } else if program == "fixtures/library/batch.mdt" {
+        // The acceptance program's flow, its pattern in a module of its own.
+        &[
+            "fixtures/library/acme.connectors/types.mdt",
+            "fixtures/library/acme.connectors/connectors.mdt",
+            "fixtures/library/batch.patterns.mdt",
+        ]
     } else {
         &[
             "fixtures/system/acme.system.mdt",

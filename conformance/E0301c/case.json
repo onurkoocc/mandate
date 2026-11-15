@@ -1,0 +1,43 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0301c",
+  "kind": "compile",
+  "title": "The expansion's commit effect needs a capability the applying workflow does not hold (a mutation: ErpDraft taken from its caps).",
+  "spec": [
+    "spec/library.md#expansion",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/MatchAll/caps/0"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0301",
+        "path": "/defs/MatchAll/apply/args/5/value",
+        "facts": {
+          "required": "erp.post_draft",
+          "slot": "commit"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

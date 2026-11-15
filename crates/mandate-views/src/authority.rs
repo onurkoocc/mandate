@@ -206,7 +206,9 @@ fn js_name(e: Expr<'_>, key: &str) -> String {
 #[must_use]
 pub fn authority(program: &Value) -> AuthorityView {
     let mut rows: Vec<AuthorityRow> = Vec::new();
-    if let Some(p) = Program::of(program) {
+    // 0.6: a workflow that applies a pattern is shown as its expansion.
+    let expanded = mandate_check::expand::for_views(program, None);
+    if let Some(p) = Program::of(expanded.as_ref().unwrap_or(program)) {
         let defs = sorted_defs(p);
         for (name, d) in &defs {
             if is_kind(d, "agent") {

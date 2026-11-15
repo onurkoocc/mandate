@@ -1,0 +1,56 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1307b",
+  "kind": "compile",
+  "title": "An application in a workflow's body.",
+  "spec": [
+    "spec/library.md#application",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Again",
+      "value": {
+        "kind": "workflow",
+        "params": [],
+        "returns": {
+          "ref": "Bool"
+        },
+        "caps": [],
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "var",
+                "name": "BatchWithExceptions"
+              },
+              "args": []
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1307",
+        "path": "/defs/Again/body/0/value",
+        "facts": {
+          "problem": "call",
+          "applies": "BatchWithExceptions"
+        }
+      }
+    ]
+  }
+}

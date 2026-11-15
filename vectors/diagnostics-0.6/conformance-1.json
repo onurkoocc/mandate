@@ -529,6 +529,115 @@
       }
     },
     {
+      "name": "E0210",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Expected Verified<Match> but got Inferred<Match>; verify the value first.",
+            "at": {
+              "path": "/defs/MatchAll/apply",
+              "span": [1, 7768, 1, 8556]
+            },
+            "docs": "mandate explain MDT-E0210",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "pattern_path": "/defs/BatchWithExceptions/body/3/value/body/0/value/args/0/value",
+              "expanded_path": "/defs/MatchAll/body/3/value/body/0/value/args/0/value"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4224, 1, 4502]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 3938, 1, 4142]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0220c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "Matcher.match receives confidential data, but its model capability allows at most internal (\u00a75.5).",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/1/value",
+              "span": [1, 7915, 1, 7979]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "internal",
+              "slot": "work",
+              "expanded_path": "/defs/MatchAll/body/1/value/body/0/value"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4220, 1, 4498]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 3934, 1, 4138]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
       "name": "E0301a",
       "kind": "compile",
       "door": "check",
@@ -596,6 +705,65 @@
       }
     },
     {
+      "name": "E0301c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0301",
+            "severity": "error",
+            "message": "MatchAll uses erp.post_draft, but no capability in its caps authorizes it.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/5/value",
+              "span": [1, 8195, 1, 8260]
+            },
+            "docs": "mandate explain MDT-E0301",
+            "facts": {
+              "required": "erp.post_draft",
+              "available": [
+                "ErpRead = tool.call(erp, list_orders) \u2192 tool.call(\"example.patterns.erp.list_orders\")",
+                "Inbox = tool.call(erp, list_invoices) \u2192 tool.call(\"example.patterns.erp.list_invoices\")",
+                "ModelStd = model.infer"
+              ],
+              "slot": "commit",
+              "expanded_path": "/defs/MatchAll/body/3/value/body/0/value"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4224, 1, 4502]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 3938, 1, 4142]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
       "name": "E0320b",
       "kind": "compile",
       "door": "check_patched",
@@ -627,6 +795,1784 @@
               ],
               "left": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
               "right": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1301",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1301",
+            "severity": "error",
+            "message": "Slot reviewer of pattern BatchWithExceptions is of the kind 'person', which no slot is; a slot is one of type, skill, tool, effect, contract, role, capability, const, field.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/slots/3/kind",
+              "span": [1, 5578, 1, 5586]
+            },
+            "docs": "mandate explain MDT-E1301",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "problem": "unknown_kind",
+              "slot": "reviewer",
+              "kind": "person"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1301a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1301",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions has two slots named reviewer.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/slots/4/name",
+              "span": [1, 5594, 1, 5604]
+            },
+            "docs": "mandate explain MDT-E1301",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "problem": "slot_twice",
+              "slot": "reviewer"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1301b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1301",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the type parameter Out twice.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/generics/3",
+              "span": [1, 5204, 1, 5209]
+            },
+            "docs": "mandate explain MDT-E1301",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "problem": "type_parameter_twice",
+              "name": "Out"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1301c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1301",
+            "severity": "error",
+            "message": "Slot source of pattern BatchWithExceptions is a tool slot, whose signature is written tool(T, \u2026) -> R.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/slots/0",
+              "span": [1, 5214, 1, 5257]
+            },
+            "docs": "mandate explain MDT-E1301",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "problem": "signature",
+              "slot": "source",
+              "kind": "tool",
+              "missing": [
+                "returns"
+              ],
+              "extra": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1301d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1301",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions has no body: a pattern's body is a block, as a workflow's.",
+            "at": {
+              "path": "/defs/BatchWithExceptions",
+              "span": [1, 5157, 1, 6177]
+            },
+            "docs": "mandate explain MDT-E1301",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "problem": "body"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1301e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1301",
+            "severity": "error",
+            "message": "Slot source of pattern BatchWithExceptions is a tool slot, which the body cannot use as a delegation.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/slot",
+              "span": [1, 6335, 1, 6343]
+            },
+            "docs": "mandate explain MDT-E1301",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "problem": "slot_use",
+              "slot": "source",
+              "kind": "tool",
+              "use": "as a delegation"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1301f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1301",
+            "severity": "error",
+            "message": "Slot reviewer of pattern BatchWithExceptions is a role slot, which the body cannot use as a map's max or par.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/1/value/max",
+              "span": [1, 6569, 1, 6579]
+            },
+            "docs": "mandate explain MDT-E1301",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "problem": "slot_use",
+              "slot": "reviewer",
+              "kind": "role",
+              "use": "as a map's max or par"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1302",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the effect erp.post_draft other than through a slot: a pattern brings no authority; give it a slot, and the applying program names the effect (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/3/value/body/0/value/name",
+              "span": [1, 7143, 1, 7159]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "names": "effect",
+              "name": "erp.post_draft"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1302a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the agent Matcher other than through a slot: a pattern brings no authority; give it a slot, and the applying program names the agent (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/agent",
+              "span": [1, 6336, 1, 6345]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "names": "agent",
+              "name": "Matcher"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1302b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the connector erp other than through a slot: a pattern brings no authority; give it a slot, and the applying program names the connector (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/0/value/callee/of",
+              "span": [1, 6152, 1, 6177]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "names": "connector",
+              "name": "erp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1302c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the capability constructor model.infer other than through a slot: a pattern brings no authority; give it a slot, and the applying program names the capability constructor (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/caps/0",
+              "span": [1, 6394, 1, 6543]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "names": "capability constructor",
+              "name": "model.infer"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1302d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the role accountant other than through a slot: a pattern brings no authority; give it a slot, and the applying program names the role (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/2/value/args/1/value",
+              "span": [1, 6798, 1, 6830]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "names": "role",
+              "name": "accountant"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1302e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the role accountant (through Approved) other than through a slot: a pattern brings no authority; give it a slot, and the applying program names the role (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/params/0/type/args/0/ref",
+              "span": [1, 7722, 1, 7732]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "names": "role",
+              "name": "accountant",
+              "via": "Approved"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1302f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the agent Matcher (through ask) other than through a slot: a pattern brings no authority; give it a slot, and the applying program names the agent (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/callee",
+              "span": [1, 6333, 1, 6358]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "names": "agent",
+              "name": "Matcher",
+              "via": "ask"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1303",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1303",
+            "severity": "error",
+            "message": "Workflow MatchAll applies Matcher, which is an agent, not a pattern.",
+            "at": {
+              "path": "/defs/MatchAll/apply/pattern",
+              "span": [1, 7709, 1, 7718]
+            },
+            "docs": "mandate explain MDT-E1303",
+            "facts": {
+              "workflow": "MatchAll",
+              "pattern": "Matcher",
+              "kind": "agent"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1303a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1303",
+            "severity": "error",
+            "message": "Workflow MatchAll applies Batched, which names no definition of this program and no name a use list brings.",
+            "at": {
+              "path": "/defs/MatchAll/apply/pattern",
+              "span": [1, 7709, 1, 7718]
+            },
+            "docs": "mandate explain MDT-E1303",
+            "facts": {
+              "workflow": "MatchAll",
+              "pattern": "Batched"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot deadline of BatchWithExceptions is given no argument.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args",
+              "span": [1, 7800, 1, 8425]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "missing",
+              "slot": "deadline",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "BatchWithExceptions has no slot due.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/9/name",
+              "span": [1, 8433, 1, 8438]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "no_slot",
+              "slot": "due",
+              "slots": [
+                "source",
+                "work",
+                "accepted",
+                "reviewer",
+                "escalate_to",
+                "commit",
+                "key",
+                "max_items",
+                "concurrency",
+                "deadline"
+              ],
+              "pattern": "BatchWithExceptions"
+            }
+          },
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot deadline of BatchWithExceptions is given no argument.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args",
+              "span": [1, 7800, 1, 8480]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "missing",
+              "slot": "deadline",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "BatchWithExceptions takes 3 type arguments, and 2 are given; 0.6 does not infer them.",
+            "at": {
+              "path": "/defs/MatchAll/apply/types",
+              "span": [1, 7739, 1, 7774]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "type_arguments",
+              "expected": 3,
+              "given": 2,
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot deadline of BatchWithExceptions is given twice.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/10/name",
+              "span": [1, 8493, 1, 8503]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "twice",
+              "slot": "deadline",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot source of BatchWithExceptions is a tool slot, which takes a read-only tool c.t; Matcher is no connector.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/0/value",
+              "span": [1, 7826, 1, 7890]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "kind",
+              "slot": "source",
+              "kind": "tool",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot work of BatchWithExceptions is a skill slot, which takes a skill Agent.skill; erp is no agent.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/1/value",
+              "span": [1, 7919, 1, 7987]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "kind",
+              "slot": "work",
+              "kind": "skill",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot accepted of BatchWithExceptions is a contract slot, which takes a contract the program defines or imports; accountant is none.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/2/value",
+              "span": [1, 8012, 1, 8044]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "kind",
+              "slot": "accepted",
+              "kind": "contract",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304g",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot reviewer of BatchWithExceptions is a role slot, which takes a role the program defines or imports; Matched is none.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/3/value",
+              "span": [1, 8070, 1, 8099]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "kind",
+              "slot": "reviewer",
+              "kind": "role",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304h",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot commit of BatchWithExceptions is an effect slot, which takes an effect; erp.find_draft is a read-only tool, which is given to a tool slot.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/5/value",
+              "span": [1, 8195, 1, 8260]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "kind",
+              "slot": "commit",
+              "kind": "effect",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304i",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot key of BatchWithExceptions is a field slot, which takes the name of a field; this is none.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/6/value",
+              "span": [1, 8284, 1, 8306]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "kind",
+              "slot": "key",
+              "kind": "field",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304j",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot deadline of BatchWithExceptions is a const slot, which takes a constant expression; a type is none.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/9/type",
+              "span": [1, 8451, 1, 8469]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "kind",
+              "slot": "deadline",
+              "kind": "const",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304k",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot page of One is a type slot, which takes a type; Docs names no type.",
+            "at": {
+              "path": "/defs/Draft/apply/args/0/value",
+              "span": [1, 1809, 1, 1835]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "kind",
+              "slot": "page",
+              "kind": "type",
+              "pattern": "One"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1304l",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1304",
+            "severity": "error",
+            "message": "The slot read of One is a capability slot, which takes a capability the program defines or imports; Writer is none.",
+            "at": {
+              "path": "/defs/Draft/apply/args/2/value",
+              "span": [1, 1950, 1, 1978]
+            },
+            "docs": "mandate explain MDT-E1304",
+            "facts": {
+              "problem": "kind",
+              "slot": "read",
+              "kind": "capability",
+              "pattern": "One"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1305",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1305",
+            "severity": "error",
+            "message": "Parameter 1 of the slot commit of BatchWithExceptions is Inferred<Match>, which its argument does not accept where it expects Verified<Match>: Expected Verified<Match> but got Inferred<Match>; verify the value first.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/5/value",
+              "span": [1, 8176, 1, 8241]
+            },
+            "docs": "mandate explain MDT-E1305",
+            "facts": {
+              "problem": "parameter",
+              "slot": "commit",
+              "index": 0,
+              "slot_type": "Inferred<Match>",
+              "argument_type": "Verified<Match>",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1305a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1305",
+            "severity": "error",
+            "message": "The slot work of BatchWithExceptions gives Inferred<Match>, and its argument gives Inferred<Invoice>: Expected Inferred<Match> but got Inferred<Invoice>.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/1/value",
+              "span": [1, 8098, 1, 8164]
+            },
+            "docs": "mandate explain MDT-E1305",
+            "facts": {
+              "problem": "result",
+              "slot": "work",
+              "slot_type": "Inferred<Match>",
+              "argument_type": "Inferred<Invoice>",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1305b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1305",
+            "severity": "error",
+            "message": "The slot accepted of BatchWithExceptions takes 2 parameters, and its argument takes 1.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/2/value",
+              "span": [1, 8012, 1, 8041]
+            },
+            "docs": "mandate explain MDT-E1305",
+            "facts": {
+              "problem": "arity",
+              "slot": "accepted",
+              "expected": 2,
+              "given": 1,
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1305c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1305",
+            "severity": "error",
+            "message": "The slot max_items of BatchWithExceptions takes a constant of type Int, and is given one of type Text: Expected Int but got Text.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/7/value",
+              "span": [1, 8346, 1, 8375]
+            },
+            "docs": "mandate explain MDT-E1305",
+            "facts": {
+              "problem": "type",
+              "slot": "max_items",
+              "expected": "Int",
+              "given": "Text",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1305d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1305",
+            "severity": "error",
+            "message": "The slot concurrency of BatchWithExceptions is a map's max or par, which is a whole number of at least 1.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/8/value",
+              "span": [1, 8401, 1, 8423]
+            },
+            "docs": "mandate explain MDT-E1305",
+            "facts": {
+              "problem": "count",
+              "slot": "concurrency",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1305e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1305",
+            "severity": "error",
+            "message": "The slot key of BatchWithExceptions takes a field of Match, which has no field order_no.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/6/value",
+              "span": [1, 8284, 1, 8314]
+            },
+            "docs": "mandate explain MDT-E1305",
+            "facts": {
+              "problem": "field",
+              "slot": "key",
+              "type": "Match",
+              "fields": [
+                "invoice_no",
+                "order"
+              ],
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1305f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1305",
+            "severity": "error",
+            "message": "The slot work of BatchWithExceptions takes the skill of an agent that holds no write capability, and Matcher holds Scratch = fs.write(\"/work/scratch\").",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/1/value",
+              "span": [1, 7966, 1, 8030]
+            },
+            "docs": "mandate explain MDT-E1305",
+            "facts": {
+              "problem": "read_only",
+              "slot": "work",
+              "agent": "Matcher",
+              "capability": "Scratch = fs.write(\"/work/scratch\")",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1305g",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1305",
+            "severity": "error",
+            "message": "The slot source of BatchWithExceptions takes 0 parameters, and its argument takes 1.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/0/value",
+              "span": [1, 7826, 1, 7892]
+            },
+            "docs": "mandate explain MDT-E1305",
+            "facts": {
+              "problem": "arity",
+              "slot": "source",
+              "expected": 0,
+              "given": 1,
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1305h",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1305",
+            "severity": "error",
+            "message": "The slot deadline of BatchWithExceptions takes a constant: a literal, or a constant the program defines.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/9/value",
+              "span": [1, 8452, 1, 8481]
+            },
+            "docs": "mandate explain MDT-E1305",
+            "facts": {
+              "problem": "not_constant",
+              "slot": "deadline",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1306",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1306",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions has a run parameter and a slot named key.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/params/0/name",
+              "span": [1, 7677, 1, 7682]
+            },
+            "docs": "mandate explain MDT-E1306",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "name": "key",
+              "problem": "twice",
+              "kinds": [
+                "slot",
+                "run parameter"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1306a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1306",
+            "severity": "error",
+            "message": "The type parameter Invoice of pattern BatchWithExceptions is named like a definition its module defines; a name of the pattern's module means that definition in its body.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/generics/3",
+              "span": [1, 5204, 1, 5213]
+            },
+            "docs": "mandate explain MDT-E1306",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "name": "Invoice",
+              "problem": "module_name",
+              "module_name": "defines"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1306b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1306",
+            "severity": "error",
+            "message": "The body of pattern BatchWithExceptions binds reviewer, the name of its slot: in an expansion the one would be read as the other.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/0/name",
+              "span": [1, 6095, 1, 6105]
+            },
+            "docs": "mandate explain MDT-E1306",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "name": "reviewer",
+              "problem": "local",
+              "kind": "slot"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1306c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1306",
+            "severity": "error",
+            "message": "The argument of the slot deadline names items, and the body of BatchWithExceptions binds items where it uses the slot: in the expansion the name would be the body's.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/9/value",
+              "span": [1, 8452, 1, 8479]
+            },
+            "docs": "mandate explain MDT-E1306",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "problem": "captured",
+              "slot": "deadline",
+              "name": "items"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1306d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/library/batch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/library/acme.connectors/types.mdt",
+        "../../fixtures/library/acme.connectors/connectors.mdt",
+        "../../fixtures/library/batch.patterns.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1306",
+            "severity": "error",
+            "message": "BatchWithExceptions's expansion names the module human of the standard library, and this program defines human already.",
+            "at": {
+              "path": "/defs/MatchInvoices/apply",
+              "span": [1, 2832, 1, 3632]
+            },
+            "docs": "mandate explain MDT-E1306",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "module": "batch.patterns",
+              "name": "human",
+              "pattern_path": "/defs/BatchWithExceptions/body/2/value/callee/of",
+              "problem": "taken"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1306e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1306",
+            "severity": "error",
+            "message": "The body of pattern BatchWithExceptions binds items, the name of its run parameter: in an expansion the one would be read as the other.",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/0/name",
+              "span": [1, 6095, 1, 6102]
+            },
+            "docs": "mandate explain MDT-E1306",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "name": "items",
+              "problem": "local",
+              "kind": "run parameter"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1307",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1307",
+            "severity": "error",
+            "message": "Workflow MatchAll applies a pattern, which is the whole of its definition with its caps and its budget; it has an envelope too. Its parameters, result and body are the pattern's (spec/library.md \"Application\").",
+            "at": {
+              "path": "/defs/MatchAll/envelope",
+              "span": [1, 8853, 1, 8968]
+            },
+            "docs": "mandate explain MDT-E1307",
+            "facts": {
+              "workflow": "MatchAll",
+              "problem": "member",
+              "member": "envelope"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1307a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1307",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the pattern BatchWithExceptions: a pattern does not apply another (spec/library.md \"Application\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/4/value/callee",
+              "span": [1, 7334, 1, 7375]
+            },
+            "docs": "mandate explain MDT-E1307",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "problem": "in_pattern",
+              "applies": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1307b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1307",
+            "severity": "error",
+            "message": "The pattern BatchWithExceptions is called here; a pattern is applied only as the definition of a workflow, `workflow W = BatchWithExceptions<\u2026>(\u2026)` (spec/library.md \"Application\").",
+            "at": {
+              "path": "/defs/Again/body/0/value",
+              "span": [1, 8946, 1, 9020]
+            },
+            "docs": "mandate explain MDT-E1307",
+            "facts": {
+              "problem": "call",
+              "applies": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1307c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1307",
+            "severity": "error",
+            "message": "The slot work of BatchWithExceptions is given the pattern BatchWithExceptions: a pattern is applied only as the definition of a workflow.",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/1/value",
+              "span": [1, 7919, 1, 7960]
+            },
+            "docs": "mandate explain MDT-E1307",
+            "facts": {
+              "problem": "argument",
+              "slot": "work",
+              "applies": "BatchWithExceptions",
+              "pattern": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1307d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1307",
+            "severity": "error",
+            "message": "The pattern BatchWithExceptions is called here; a pattern is applied only as the definition of a workflow, `workflow W = BatchWithExceptions<\u2026>(\u2026)` (spec/library.md \"Application\").",
+            "at": {
+              "path": "/defs/Twice/value",
+              "span": [1, 8880, 1, 8954]
+            },
+            "docs": "mandate explain MDT-E1307",
+            "facts": {
+              "problem": "call",
+              "applies": "BatchWithExceptions"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1307e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1307",
+            "severity": "error",
+            "message": "Workflow MatchAll applies a pattern, which is the whole of its definition with its caps and its budget; it has a body too. Its parameters, result and body are the pattern's (spec/library.md \"Application\").",
+            "at": {
+              "path": "/defs/MatchAll/body",
+              "span": [1, 8849, 1, 8851]
+            },
+            "docs": "mandate explain MDT-E1307",
+            "facts": {
+              "workflow": "MatchAll",
+              "problem": "member",
+              "member": "body"
             }
           }
         ]
@@ -1776,6 +3722,94 @@
       }
     },
     {
+      "name": "E1505h",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1708",
+            "severity": "error",
+            "message": "The critical effect file_draft runs inside a map's body, and it cannot be undone. In a map's body a critical effect is a batch commit step only when it is not irreversible, no envelope or environment hands it to a person, its idempotent_by key reads the item, and the map runs its items one at a time and is in no other map; else run it after the map (spec/library.md \"The batch commit step\").",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/5/value",
+              "span": [1, 8195, 1, 8227]
+            },
+            "docs": "mandate explain MDT-E1708",
+            "facts": {
+              "map": "/defs/MatchAll/body/3/value",
+              "kind": "critical_effect",
+              "what": "file_draft",
+              "condition": "irreversible",
+              "slot": "commit",
+              "expanded_path": "/defs/MatchAll/body/3/value/body/0/value"
+            }
+          },
+          {
+            "code": "MDT-E1505",
+            "severity": "error",
+            "message": "This value rests on its verification against Matched, which a person may waive (waive by), so it never reaches the irreversible effect file_draft: a waiver does not clear what cannot be undone. Verify it against a contract without a waiver first (spec/library.md \"waive by\").",
+            "at": {
+              "path": "/defs/MatchAll/apply",
+              "span": [1, 7698, 1, 8453]
+            },
+            "docs": "mandate explain MDT-E1505",
+            "facts": {
+              "effect": "file_draft",
+              "contract": "Matched",
+              "pattern": "BatchWithExceptions",
+              "pattern_path": "/defs/BatchWithExceptions/body/3/value/body/0/value/args/0/value",
+              "expanded_path": "/defs/MatchAll/body/3/value/body/0/value/args/0/value"
+            }
+          },
+          {
+            "code": "MDT-E0405",
+            "severity": "error",
+            "message": "Irreversible effect file_draft runs without a prior human.approve or a value verified by a contract that requires one (\u00a76.3).",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/5/value",
+              "span": [1, 8195, 1, 8227]
+            },
+            "docs": "mandate explain MDT-E0405",
+            "facts": {
+              "slot": "commit",
+              "expanded_path": "/defs/MatchAll/body/3/value/body/0/value"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4224, 1, 4502]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 3938, 1, 4142]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
       "name": "E1506",
       "kind": "compile",
       "door": "check_patched",
@@ -2242,6 +4276,62 @@
             "at": {
               "path": "/defs/Matched/accept/vendor/by/static",
               "span": [1, 3855, 1, 4059]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1506i",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1506",
+            "severity": "error",
+            "message": "'items' is not bound to a map. human.review asks about the outcomes of one map: a name a let of the same workflow body binds to a map whose body ends with verify x against C(\u2026), with no on unmet (spec/library.md \"human.review\").",
+            "at": {
+              "path": "/defs/MatchAll/apply",
+              "span": [1, 7696, 1, 8484]
+            },
+            "docs": "mandate explain MDT-E1506",
+            "facts": {
+              "problem": "not_a_map",
+              "source": "items",
+              "pattern": "BatchWithExceptions",
+              "pattern_path": "/defs/BatchWithExceptions/body/2/value/args/0/value",
+              "expanded_path": "/defs/MatchAll/body/2/value/args/0/value"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4224, 1, 4502]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 3938, 1, 4142]
             },
             "docs": "mandate explain MDT-W0601"
           }
@@ -3048,6 +5138,78 @@
       }
     },
     {
+      "name": "E1602d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/batch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/library/acme.connectors/types.mdt",
+        "../../fixtures/library/acme.connectors/connectors.mdt",
+        "patterns.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1602",
+            "severity": "error",
+            "message": "'BatchWithExceptions' of batch.patterns is not pub: a module of mandate/0.6 lets another module name only its pub definitions.",
+            "at": {
+              "path": "/uses/2/names/0",
+              "span": [14, 1, 14, 41]
+            },
+            "docs": "mandate explain MDT-E1602",
+            "facts": {
+              "name": "BatchWithExceptions",
+              "module": "batch.patterns"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1602e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/batch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/library/acme.connectors/types.mdt",
+        "../../fixtures/library/acme.connectors/connectors.mdt",
+        "patterns.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1602",
+            "severity": "error",
+            "message": "BatchWithExceptions names Batch, which is not a pub definition of batch.patterns: its expansion names Batch in this program, which may name only what batch.patterns makes pub.",
+            "at": {
+              "path": "/defs/MatchInvoices/apply",
+              "span": [47, 26, 51, 49]
+            },
+            "docs": "mandate explain MDT-E1602",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "module": "batch.patterns",
+              "name": "Batch",
+              "pattern_path": "/defs/BatchWithExceptions/returns/ref"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1603",
       "kind": "compile",
       "door": "check_patched",
@@ -3749,6 +5911,120 @@
       }
     },
     {
+      "name": "E1708m",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1708",
+            "severity": "error",
+            "message": "'human step' waits for a person inside a map's body, once for each item. Ask once about the list, after the map (spec/envelope.md \"map\").",
+            "at": {
+              "path": "/defs/MatchAll/apply",
+              "span": [1, 7872, 1, 8660]
+            },
+            "docs": "mandate explain MDT-E1708",
+            "facts": {
+              "map": "/defs/MatchAll/body/1/value",
+              "kind": "person",
+              "what": "human step",
+              "pattern": "BatchWithExceptions",
+              "pattern_path": "/defs/BatchWithExceptions/body/1/value/body/1/value",
+              "expanded_path": "/defs/MatchAll/body/1/value/body/1/value"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4224, 1, 4502]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 3938, 1, 4142]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1708n",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1708",
+            "severity": "error",
+            "message": "The critical effect erp.post_draft runs inside a map's body, and the map runs par 6 items at once. In a map's body a critical effect is a batch commit step only when it is not irreversible, no envelope or environment hands it to a person, its idempotent_by key reads the item, and the map runs its items one at a time and is in no other map; else run it after the map (spec/library.md \"The batch commit step\").",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/5/value",
+              "span": [1, 8215, 1, 8280]
+            },
+            "docs": "mandate explain MDT-E1708",
+            "facts": {
+              "map": "/defs/MatchAll/body/3/value",
+              "kind": "critical_effect",
+              "what": "erp.post_draft",
+              "condition": "par",
+              "slot": "commit",
+              "expanded_path": "/defs/MatchAll/body/3/value/body/0/value"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4224, 1, 4502]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 3938, 1, 4142]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
       "name": "H06",
       "kind": "compile",
       "door": "check",
@@ -3972,6 +6248,438 @@
           }
         },
         "diagnostics": []
+      }
+    },
+    {
+      "name": "P02",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:6e4fe9b6e2137f98e3d8d52688bf842e97ba550cf167f5e70fb630c414992dcc",
+          "defs": {
+            "Batch": "sha256:7d1ef60067eed4188b6a6c6e5743e602224606488b529a144fbab8cac3d5e2c8",
+            "BatchWithExceptions": "sha256:20093f93df4a34d71e36d5baee4ed6d4266ed1db3ac947777ef3e33a77733418",
+            "DraftId": "sha256:3cba72eaf0c89ce28f4c08dcc96b48cb6be7994e0d02a1552bfc54c993920601",
+            "ErpDraft": "sha256:3c26a287543607f75127d1226b52168865168a8bb76ccf9dab74a38be2684ad9",
+            "ErpRead": "sha256:ab8bcd21322a0bc3e1721a1578b26108f67a0d7d2eadffd1a47d2db6c3084165",
+            "Inbox": "sha256:7ffb0e5de31f4a7bffd885ec1bef0f55a85c751129ee4dd41b5e218feab0db45",
+            "Invoice": "sha256:f33b2045a2af8ef0030c25923df26c887d5aca346970d9ff9fde5271e146c99d",
+            "Match": "sha256:8270104e9a27b27a36acf883da92df23fc85da8e7e4a9f193a6e22d4c2954077",
+            "MatchAll": "sha256:a02277471f473f67f424ea736c6db4fbbdc4f09818e98f7dc11ffdb3d4153074",
+            "Matched": "sha256:397cb2ba4e6434e741b802fb7dc54fba9fdb59107907f1477c86660293c9602e",
+            "Matcher": "sha256:f6533579488273206115ad039adf88f9ca28038ce2adc5250b0324ac16c7fe21",
+            "ModelStd": "sha256:3d1b9c3435bb5678e33db8e60c2299ed4f109ecb5cc2693d02df6f8d03cc3c3f",
+            "Order": "sha256:810e0d9655f01acd3d3e7a3a69167004fb18f892637c3fb8a6533d5d7c1d6815",
+            "accountant": "sha256:c723ad4bef6416c9aef9d0acb9b974c44449bc1ae759c31cd148b9e7dd57f197",
+            "erp": "sha256:15ab0244abcc63c3f99528c4c39c19ed0f648a7e1831109591fdd3295839b4f3",
+            "finance_lead": "sha256:7a2d35f89fff50f998d449eb454627f0a50b2dc7905e38ae3da3cc65fabe8de6",
+            "near": "sha256:b9911b873c62c7dfd8f37bbcdc7e9710f10e81b4e23deb7f34cbb906ee66105c"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [68, 15, 68, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [66, 15, 66, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "P02a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1507",
+            "severity": "error",
+            "message": "This review's deadline is not a constant Duration above zero. human.review takes its results, then role: r and deadline: d, and escalate_to: r2 when it escalates, each once: r and r2 name role definitions, r2 another than r, and d is a constant Duration above zero (spec/library.md \"human.review\").",
+            "at": {
+              "path": "/defs/MatchAll/apply/args/9/value",
+              "span": [1, 8452, 1, 8476]
+            },
+            "docs": "mandate explain MDT-E1507",
+            "facts": {
+              "problem": "deadline",
+              "argument": "deadline",
+              "slot": "deadline",
+              "expanded_path": "/defs/MatchAll/body/2/value/args/2/value"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4224, 1, 4502]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 3938, 1, 4142]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "P02b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:ccfcc73d36d422f86a7db2bb19fca38c410c52143d3f4bdf27820d74c5f57331",
+          "defs": {
+            "Docs": "sha256:a4df7ea1d6a4c1e1e0d777ae4084cf276c2876d37062f683702b232fab13e3a9",
+            "Draft": "sha256:8f10dbfbf78a8cb30eb1e6fd62f74b46ef72527c0c1b662f75ea6b9c650d7a98",
+            "ModelStd": "sha256:0c86667ebbdcf268d82fcb600cca36fe21ccb44e3b1f660e6f7e80b4e8e27a6e",
+            "Note": "sha256:627b3e4806469e1e67673e1891aa27c7779d66855d9964260a30ffbe62b4972f",
+            "One": "sha256:0b9d63a4cfc0832ab873146976ed56683505952cf817eace5dc85de5ddbf184b",
+            "Writer": "sha256:3ba76457eaf54c5f33dff6ce235b232b29cf23aaf3212d130357c97ba450ef3f"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "P03",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions declares caps: a pattern grants itself nothing; the workflow that applies it holds the caps and the budget (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/caps",
+              "span": [1, 7666, 1, 7695]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "declares": "caps"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "P03a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1302",
+            "severity": "error",
+            "message": "Pattern BatchWithExceptions names the capability ErpRead other than through a slot: a pattern brings no authority; give it a slot, and the applying program names the capability (spec/library.md \"What a pattern may not do\").",
+            "at": {
+              "path": "/defs/BatchWithExceptions/body/1/value/body/0/value/caps/0",
+              "span": [1, 6394, 1, 6423]
+            },
+            "docs": "mandate explain MDT-E1302",
+            "facts": {
+              "pattern": "BatchWithExceptions",
+              "names": "capability",
+              "name": "ErpRead"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "P04",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "Many holds Docs = fs.read(\"/work/docs\") but neither its body nor its delegates use it.",
+            "at": {
+              "path": "/defs/Many/caps/0",
+              "span": [19, 8, 19, 12]
+            },
+            "docs": "mandate explain MDT-W0310"
+          },
+          {
+            "code": "MDT-E0105",
+            "severity": "error",
+            "message": "Many expands to 1202 static nodes; the 0.1 limit is 1000.",
+            "at": {
+              "path": "/defs/Many/apply",
+              "span": [18, 17, 18, 29]
+            },
+            "docs": "mandate explain MDT-E0105",
+            "facts": {
+              "nodes": 1202,
+              "limit": 1000,
+              "pattern": "Repeat",
+              "pattern_path": "/defs/Repeat",
+              "expanded_path": "/defs/Many"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "P05",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/batch.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/library/acme.connectors/types.mdt",
+        "../../fixtures/library/acme.connectors/connectors.mdt",
+        "../../fixtures/library/batch.patterns.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:fd47fa66db73b75cdb35525acd170a9c0c5871386cab6b255e0f67f9b8ced8e6",
+          "defs": {
+            "ErpDraft": "sha256:91f4779de7c6cd75cafd362ea2a38edc91030ae222e19de9d7a34ba8c8235d84",
+            "ErpRead": "sha256:ea23f2faae2ed8a24ad065393490218cec83654e7a8109ba2b733902b32fcc06",
+            "Inbox": "sha256:6ac1491e2d922fa7ff8b3365859fc654a4947a71ed71721ac1aaa9cd2e9776aa",
+            "MatchInvoices": "sha256:ea5cd261a4f2f867395cd243b792e33094ce24ef0088ec78085c961ac4cef823",
+            "Matched": "sha256:89b17f9b9893ed16eec807fcdabd5fa04e43fa862659a5f63a7a91a38185c4cf",
+            "Matcher": "sha256:f6533579488273206115ad039adf88f9ca28038ce2adc5250b0324ac16c7fe21",
+            "ModelStd": "sha256:3d1b9c3435bb5678e33db8e60c2299ed4f109ecb5cc2693d02df6f8d03cc3c3f",
+            "accountant": "sha256:c723ad4bef6416c9aef9d0acb9b974c44449bc1ae759c31cd148b9e7dd57f197",
+            "finance_lead": "sha256:7a2d35f89fff50f998d449eb454627f0a50b2dc7905e38ae3da3cc65fabe8de6"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/same_invoice/by/static",
+              "span": [30, 15, 30, 45]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [34, 15, 34, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [32, 15, 32, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "P06",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.6",
+          "module": "example.lead.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.lead"
+            }
+          ],
+          "defs": {
+            "Look": {
+              "kind": "workflow",
+              "apply": {
+                "pattern": "Each",
+                "args": [
+                  {
+                    "name": "work",
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "Worker"
+                      },
+                      "name": "look"
+                    }
+                  },
+                  {
+                    "name": "width",
+                    "value": {
+                      "op": "int",
+                      "value": 2
+                    }
+                  }
+                ]
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "budget": {
+                "tokens": 2000,
+                "time": {
+                  "ms": 600000
+                },
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 10,
+                "agents": 2
+              }
+            }
+          }
+        },
+        "hash": "sha256:e0f27377ddcf1fad0c9ad04a7683a56efe0face62e3040a22d17a59cfb20e0ff",
+        "workflow": "Look"
+      }
+    },
+    {
+      "name": "P06a",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../P06/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1703",
+            "severity": "error",
+            "message": "par 6 runs more items at once than the envelope lets delegations be in flight (spawn.max_concurrent: 4) (spec/envelope.md \"map\").",
+            "at": {
+              "path": "/defs/Look/apply/args/1/value",
+              "span": [1, 395, 1, 417]
+            },
+            "docs": "mandate explain MDT-E1703",
+            "facts": {
+              "par": 6,
+              "max_concurrent": 4,
+              "slot": "width",
+              "expanded_path": "/defs/Look/body/1/value/par"
+            }
+          }
+        ]
       }
     },
     {

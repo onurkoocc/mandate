@@ -1,0 +1,39 @@
+// fixtures/library/batch.patterns.mdt with BatchWithExceptions not pub: a
+// program of another module may not name it in its use list (E1602d).
+
+mandate @ 0.6
+
+module batch.patterns @ 1.0
+
+use std.{human}
+
+pub type Batch<Out, R> = {
+  posted:   List<Outcome<Receipt<R>>>,
+  declined: List<Declined<Out>>,
+  failed:   List<Int>
+}
+
+pattern BatchWithExceptions<Item, Out, R>(
+  source:      tool() -> Untrusted<List<Item>>,
+  work:        skill(Untrusted<Item>) -> Inferred<Out>,
+  accepted:    contract(Item, Out),
+  reviewer:    role,
+  escalate_to: role,
+  commit:      effect(Verified<Out, accepted>) -> Receipt<R>,
+  key:         field(Out),
+  max_items:   const Int,
+  concurrency: const Int,
+  deadline:    const Duration
+) -> Batch<Out, R>
+{
+  let items    = source()
+  let checked  = map it in items max max_items par concurrency {
+    let out = delegate work(it)
+    verify out against accepted(it, out)
+  }
+  let reviewed = human.review(checked, role: reviewer, deadline: deadline, escalate_to: escalate_to)
+  let posted   = map v in reviewed.accepted max max_items {
+    effect commit(v) idempotent_by v.key
+  }
+  Batch { posted, declined: reviewed.declined, failed: reviewed.failed }
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1301b",
+  "kind": "compile",
+  "title": "A type parameter named twice (a mutation: a fourth type parameter Out).",
+  "spec": [
+    "spec/library.md#what-a-pattern-may-not-do",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/BatchWithExceptions/generics/3",
+      "value": "Out"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1301",
+        "path": "/defs/BatchWithExceptions/generics/3",
+        "facts": {
+          "problem": "type_parameter_twice",
+          "name": "Out"
+        }
+      }
+    ]
+  }
+}

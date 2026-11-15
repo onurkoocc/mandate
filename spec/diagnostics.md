@@ -16,7 +16,7 @@ implementation.
 | MDT-E0102 | Duplicate JSON key | S01 | assigned |
 | MDT-E0103 | Unsupported language version | S02 | assigned |
 | MDT-E0104 | IR schema violation | S02 | assigned; unknown fields are errors |
-| MDT-E0105 | Resource limit exceeded | — | assigned; limits from §3.4, including 1000 expanded nodes per workflow |
+| MDT-E0105 | Resource limit exceeded | P04 | assigned; limits from §3.4, including 1000 expanded nodes per workflow; in 0.6 the expansion of a pattern counts, and nests and copies no more than the reader allows (P04, "Patterns (0.6)" below) |
 | MDT-E0106 | Number not representable | S11 | assigned |
 | MDT-E0107 | Invalid Unicode | S11 | assigned |
 | MDT-E0108 | Malformed JSON | E0108 | assigned |
@@ -165,7 +165,7 @@ or E1604 (`load_verification_failed`).
 
 | Code | Title | Conformance case | Notes |
 |---|---|---|---|
-| MDT-E1602 | Definition not public | E1602; E1602b (allowed) | 0.6 only; a program or module of 0.6 names in a `use` list (path `/uses/<i>/names/<j>`) a definition of a module of 0.6 it is given that is not `pub`. A `use` list is the one place a program of 0.6 names a definition of a module that is not the standard library's: the module's path (`types.Order`, `acme.types.Order`) and its last segment (`types`) are no names, and are reported as the unknown name of their place, E0120 (E1602a, E1602c). A module names its own definitions, and a lead's sub-program its parent's, freely; every definition of a module of 0.1 to 0.5 may be named through the list. Facts: `name`, `module` |
+| MDT-E1602 | Definition not public | E1602, E1602d, E1602e; E1602b (allowed) | 0.6 only; a program or module of 0.6 names in a `use` list (path `/uses/<i>/names/<j>`) a definition of a module of 0.6 it is given that is not `pub`. A `use` list is the one place a program of 0.6 names a definition of a module that is not the standard library's: the module's path (`types.Order`, `acme.types.Order`) and its last segment (`types`) are no names, and are reported as the unknown name of their place, E0120 (E1602a, E1602c). A module names its own definitions, and a lead's sub-program its parent's, freely; every definition of a module of 0.1 to 0.5 may be named through the list. Facts: `name`, `module` |
 | MDT-E1603 | 0.6 module imported by an earlier program | E1603, E1603a | a program or module of 0.1 to 0.5 imports a module written in 0.6 that the check is given; reported at the `use`, and not E1602 besides. Facts: `module`, `module_language`, `language` |
 | MDT-E1604 | Import not closed | E1604, E1604a, E1604c, E1602c; E1604b (allowed) | 0.6 only; a `use` names a module that is not `std` itself, `std.decision`, or a module the check was given, or a module but the standard library's without a list of names (an import that lists no names brings none); reported at the `use`. The built-in `std.patterns` and the modules of a library the lock pins are not read yet, so a `use` of either that no given module satisfies is E1604 too. Facts: `module` |
 
@@ -238,3 +238,38 @@ an earlier program they name nothing, E0120), whose `C` is a contract as
 record of either, a model's answer, a skill's or host code's result that
 names one is E0213. A `human.review` is a `human.*` step, so E1708 in a
 map's body (E1708l).
+
+## Patterns (0.6)
+
+Specified in [`library.md`](library.md#patterns). E13xx is assigned there.
+As E14xx and E16xx, these codes are the Rust compiler's alone, in its table
+of codes, each with hand-written conformance cases of `mandate/0.6`, and
+`mandate check` reports them. A pattern the program defines is checked on its
+own for E1301, E1302, E1306 and E1307 (at paths into it); one a `use` list
+brings from a module is checked again where it is applied, each diagnostic at
+the application (`/defs/<W>/apply`) with `module` and `pattern_path` in its
+facts. Every check after these runs on the expansion; a diagnostic it finds
+is reported at the slot argument whose value its place is (with `slot` and
+`expanded_path` in its facts), or at the application (with `pattern`,
+`pattern_path` and `expanded_path`).
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E1301 | Malformed pattern | E1301 to E1301f | 0.6 only; a slot of a kind that is none of `type`, `skill`, `tool`, `effect`, `contract`, `role`, `capability`, `const`, `field` (`problem: "unknown_kind"`, at `/slots/<i>/kind`), two slots of one name (`slot_twice`), a type parameter named twice (`type_parameter_twice`), a signature its kind does not take (`signature`, with `missing` and `extra`), no body (`body`, at the pattern), a slot used other than its kind allows: a skill slot only delegated to, a tool slot only called, an effect slot only run with `effect`, a contract slot only verified against or named in `Verified<T, C>`, a type slot only as a type, a const slot only as a value or as a map's `max` or `par` (`slot_use`, at the use). Facts: `pattern`, `problem`, `slot`, `kind` |
+| MDT-E1302 | Pattern brings authority | P03, P03a, E1302 to E1302f | 0.6 only; the pattern declares `caps`, a `budget` or an `envelope` (`declares`, at the member), or names, other than through a slot, a capability (by name, or a constructor in a `with caps` or one that is no function of the standard library anywhere), an agent, a connector or its tool, an effect run with `effect`, a role (by name, or as text where a person is asked), a workflow or an `extern`, directly or through a function, constant, type or contract of its module that names one (`via`); at the place. Facts: `pattern`, `names`, `name`, `via` |
+| MDT-E1303 | Not a pattern | E1303, E1303a | 0.6 only; `workflow W = P<…>(…)` where `P` is no definition of the program and no name a `use` list brings from a module the check was given, or one of another kind (`kind`); at `/defs/<W>/apply/pattern`. A pattern of another module that is not `pub` is E1602 at the `use` (E1602d). Facts: `workflow`, `pattern`, `kind`, `module` |
+| MDT-E1304 | Slots and arguments do not match | E1304 to E1304l | 0.6 only; a slot without an argument (`missing`, at `/apply/args`), an argument for no slot (`no_slot`) or given twice (`twice`, at the name), another number of type arguments (`type_arguments`, with `expected` and `given`), an argument of another kind than its slot's (`kind`, at the argument: a type, `Agent.skill`, a read-only tool `c.t`, an effect or a write tool `c.t`, a contract, a role, a capability, a constant expression, a field's name). Facts: `pattern`, `problem`, `slot` |
+| MDT-E1305 | Argument does not fit its slot | E1305 to E1305h | 0.6 only; at the argument: another number of parameters (`arity`), a slot's parameter type its argument does not accept (`parameter`, with `index`, `slot_type`, `argument_type`), an argument's result the slot's does not accept (`result`), a constant of another type (`type`) or that is none (`not_constant`), a constant a map's `max` or `par` reads that is not a whole number of at least 1 (`count`), a field the record type does not have (`field`), a `read_only` skill slot given the skill of an agent that holds a write capability (`read_only`, with `agent` and `capability`). A tool's `Verified<T>` accepts a `Verified<T, C>`, and a write tool's `idempotency key` parameter is no part of its signature (P02). Facts: `pattern`, `problem`, `slot` |
+| MDT-E1306 | Name collision in a pattern | E1306 to E1306e | 0.6 only; a slot, type parameter or run parameter named like another of them (`twice`, with `kinds`), or like a definition the pattern's module defines or imports (`module_name`); a name the body binds (a `let`, a `par` branch, a map's item, `on unmet`, a case's names) that is a slot's, a type parameter's or a run parameter's (`local`, at the binding); at an application, an argument that names what the body binds around the slot's use (`captured`, at the argument), and a definition of an imported pattern's module or a module of the standard library that the expansion names and that the applying program defines or imports from elsewhere (`taken`, at the application). Facts: `pattern`, `problem`, `name` |
+| MDT-E1307 | Nested or misplaced application | E1307 to E1307e | 0.6 only; a workflow that applies a pattern and has an `envelope`, parameters, a result, a body, `ensures` or handlers of its own (`member`, at the member); a pattern called or named as a value in a body, a constant or a capability (`call`, `value`), in a pattern's body (`in_pattern`), or given as a slot's argument (`argument`); a workflow the static checks meet unexpanded (`unexpanded`, which a program that checked never has). Facts: `problem`, `applies` |
+
+Language 0.6 extends four codes for patterns. E0105: the expanded body of a
+workflow counts toward its 1000 static nodes (P04, at the application), and
+an expansion that nests an argument deeper than 64 levels, or copies more
+than 1 MiB of arguments, is refused at the argument or the application.
+E1602: an imported pattern whose expansion names a definition of its module
+that is not `pub`, or one its module imports, at the application (E1602e).
+E0120: `delegate s(…)` and a map's `max s` or `par s` stand only in a
+pattern's body, for one of its slots. And every rule holds inside an
+expansion as if its body were written out (E1708m, E1708n, E1505h, E1506i,
+E0301c, E0220c, E0210).

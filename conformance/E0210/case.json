@@ -1,0 +1,78 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0210",
+  "kind": "compile",
+  "title": "Model output reaching a critical effect in an expansion (a mutation: the commit map posts what the review declined).",
+  "spec": [
+    "spec/library.md#expansion",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../P02/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/3/value/over",
+      "value": {
+        "op": "field",
+        "of": {
+          "op": "var",
+          "name": "reviewed"
+        },
+        "name": "declined"
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/3/value/body/0/value/args/0/value",
+      "value": {
+        "op": "field",
+        "of": {
+          "op": "var",
+          "name": "v"
+        },
+        "name": "value"
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/BatchWithExceptions/body/3/value/body/0/value/idempotent_by",
+      "value": {
+        "op": "field",
+        "of": {
+          "op": "field",
+          "of": {
+            "op": "var",
+            "name": "v"
+          },
+          "name": "value"
+        },
+        "name": "key"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0210",
+        "path": "/defs/MatchAll/apply",
+        "facts": {
+          "pattern_path": "/defs/BatchWithExceptions/body/3/value/body/0/value/args/0/value"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      }
+    ]
+  }
+}

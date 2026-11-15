@@ -690,7 +690,11 @@ pub fn static_cost<'p>(
             .or_else(|| linked.and_then(|l| l.get(name)))
             .map(Definition::of)
     };
-    let wf = def(workflow).filter(|d| d.kind() == Some(mandate_ir::DefKind::Workflow))?;
+    // 0.6: a workflow that applies a pattern has no body of its own; its
+    // cost is its expansion's, which `crate::expand` writes.
+    let wf = def(workflow)
+        .filter(|d| d.kind() == Some(mandate_ir::DefKind::Workflow))
+        .filter(|d| d.value().get("apply").is_none())?;
     let enveloped = program
         .language()
         .is_some_and(|l| l.at_least(Language::V0_4))
