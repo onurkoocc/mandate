@@ -1,0 +1,78 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0320b",
+  "kind": "compile",
+  "title": "A tool.call that lists a write tool is a write capability: two branches of a par that call one write tool overlap (C5).",
+  "spec": [
+    "spec/library.md#toolcall"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Draft/body/2",
+      "value": {
+        "op": "par",
+        "branches": {
+          "a": {
+            "op": "effect",
+            "name": "erp.post_draft",
+            "args": [
+              {
+                "value": {
+                  "op": "var",
+                  "name": "order_no"
+                }
+              }
+            ],
+            "idempotent_by": {
+              "op": "var",
+              "name": "order_no"
+            }
+          },
+          "b": {
+            "op": "effect",
+            "name": "erp.post_draft",
+            "args": [
+              {
+                "value": {
+                  "op": "var",
+                  "name": "vendor_id"
+                }
+              }
+            ],
+            "idempotent_by": {
+              "op": "var",
+              "name": "vendor_id"
+            }
+          }
+        }
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/Draft/body/-",
+      "value": {
+        "op": "expr",
+        "value": {
+          "op": "var",
+          "name": "a"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0320",
+        "path": "/defs/Draft/body/2/branches/b"
+      }
+    ]
+  }
+}

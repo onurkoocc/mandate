@@ -209,6 +209,8 @@ model, E1706 with `dimension: "data_class"` when the class comes from what
 the lead received. E0301: in a program of 0.6 every capability of every
 `requires caps` of an effect is compared by coverage, scope included (B12,
 E0301a; E0301b holds a program of 0.5 to the first constructor alone), and a
-write tool's effect is covered only by a `tool.call` that names that tool of
-that connector (T01). E0140: a connector's `template` in a lock of 0.6 that
+write tool's effect, and a read-only tool's call, are covered only by a
+`tool.call` that names that tool of that connector (T01, T01b). E0320: a
+`tool.call` that lists a write tool is a write capability, so two branches of
+a `par` that call one write tool overlap (E0320b). E0140: a connector's `template` in a lock of 0.6 that
 does not hold `{secret}` exactly once (E0140c).

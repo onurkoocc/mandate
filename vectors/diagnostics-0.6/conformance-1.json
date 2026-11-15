@@ -596,6 +596,43 @@
       }
     },
     {
+      "name": "E0320b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0320",
+            "severity": "error",
+            "message": "par branches 'a' and 'b' can both write example.erp.erp.post_draft; write scopes in a par block must be disjoint (C5).",
+            "at": {
+              "path": "/defs/Draft/body/2/branches/b",
+              "span": [1, 2966, 1, 3104]
+            },
+            "docs": "mandate explain MDT-E0320",
+            "facts": {
+              "branches": [
+                "a",
+                "b"
+              ],
+              "left": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+              "right": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1401",
       "kind": "compile",
       "door": "check_patched",
@@ -1796,6 +1833,43 @@
           }
         },
         "diagnostics": []
+      }
+    },
+    {
+      "name": "T01b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0301",
+            "severity": "error",
+            "message": "Draft uses Tool(example.erp.erp.find_draft), but no capability in its caps authorizes it.",
+            "at": {
+              "path": "/defs/Draft/body/0/value",
+              "span": [1, 2514, 1, 2652]
+            },
+            "docs": "mandate explain MDT-E0301",
+            "facts": {
+              "required": "Tool",
+              "available": [
+                "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+                "ErpRead = tool.call(erp, list_orders) \u2192 tool.call(\"example.erp.erp.list_orders\")",
+                "ModelAll = model.infer"
+              ]
+            }
+          }
+        ]
       }
     },
     {

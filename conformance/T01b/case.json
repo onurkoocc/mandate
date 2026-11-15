@@ -1,0 +1,52 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "T01b",
+  "kind": "compile",
+  "title": "A tool.call covers exactly the tools it lists: tool.call(erp, list_orders) does not cover the read-only find_draft of the same connector.",
+  "spec": [
+    "spec/library.md#toolcall"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Draft/body/0/value",
+      "value": {
+        "op": "call",
+        "callee": {
+          "op": "field",
+          "of": {
+            "op": "var",
+            "name": "erp"
+          },
+          "name": "find_draft"
+        },
+        "args": [
+          {
+            "value": {
+              "op": "var",
+              "name": "order_no"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0301",
+        "path": "/defs/Draft/body/0/value",
+        "facts": {
+          "required": "Tool"
+        }
+      }
+    ]
+  }
+}

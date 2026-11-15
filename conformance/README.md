@@ -284,6 +284,8 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E0120b` | A listed type named as the contract of `Verified` (a mutation) | E0120 |
 | `T01a` | A program with a connector of its own checks, its lock binding the connector: a read in a workflow, read-only tools in an agent, a write as a critical effect | — |
 | `T01` | `tool.call(erp, list_orders)` does not cover the write `post_draft` (B12; a mutation: the workflow's caps) | E0301 |
+| `T01b` | A `tool.call` covers exactly the tools it lists: `tool.call(erp, list_orders)` does not cover the read-only `find_draft` (a mutation: the read) | E0301 |
+| `E0320b` | A `tool.call` that lists a write tool is a write capability: two branches of a `par` that call one write tool (a mutation) | E0320 |
 | `T02` | An agent that holds a write tool (a mutation: one capability added to its caps) | E1406, W0310 |
 | `T06` | A tool's argument of a class above its connector's (a mutation: the argument) | E0220 |
 | `T06a` | An agent that holds a tool and receives data of a class above its connector's (a mutation: the argument of the delegation) | E0220 |
@@ -317,7 +319,7 @@ nobody gave (E1604), do not load.
 spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
 (human steps), L (libraries) and N11 (shapes), and the code numbers of its
 families; the cases above use P01 (which spec/library.md names), the S02 claim,
-E0101, E0104, E0120, E0140 and E0301, which 0.6 extends, T01, T02 and T06
+E0101, E0104, E0120, E0140, E0301 and E0320, which 0.6 extends, T01, T02 and T06
 (which spec/library.md names), and the code numbers of E14xx and E16xx.
 
 ## What the Rust crates run
@@ -356,13 +358,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 180, passed 180, pending 0
+conformance cases: ran 182, passed 182, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 55 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 57 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(196 cases: 180 `compile`, 55 of them of language 0.6, and 16 `journal`; no case
+(198 cases: 182 `compile`, 57 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

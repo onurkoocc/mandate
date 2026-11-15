@@ -346,6 +346,12 @@ fn the_authority_doors_decide_a_tool_call_as_the_checks_do() {
         granted(vec![read.clone()], vec![draft.clone()]),
         GrantOutput::Refused(_)
     ));
+    // Nor another read-only tool of the same connector.
+    let find = one(&acme, "erp", &["find_draft_invoice"]);
+    assert!(matches!(
+        granted(vec![read.clone()], vec![find]),
+        GrantOutput::Refused(_)
+    ));
     // The same tool of another connector is not covered.
     assert!(matches!(
         granted(vec![read.clone()], vec![other_read.clone()]),
