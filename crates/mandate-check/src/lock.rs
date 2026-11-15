@@ -346,6 +346,8 @@ pub(crate) fn to_number(v: &JsValue) -> f64 {
         JsValue::String(s) => string_to_number(s),
         // `ToPrimitive` of an array is its `join(",")`.
         JsValue::Array(_) => string_to_number(&v.to_js_string()),
+        // A value written once reads as the value it stands for.
+        JsValue::Json(_) => string_to_number(&v.to_js_string()),
     }
 }
 

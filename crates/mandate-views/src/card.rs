@@ -1065,6 +1065,8 @@ fn js_truthy(v: &JsValue) -> bool {
         JsValue::Number(n) => truthy(*n),
         JsValue::String(s) => !s.is_empty(),
         JsValue::Array(_) | JsValue::Object(_) => true,
+        // A value written once: falsy when it is written as one that is.
+        JsValue::Json(text) => !matches!(&**text, "null" | "false" | "0" | "\"\""),
     }
 }
 

@@ -21,6 +21,8 @@
 //! [`JsObject::insert`] always adds one, so check how the TypeScript object
 //! was made before porting an assignment of a name that may be `__proto__`.
 
+use std::sync::Arc;
+
 use crate::jcs::write_json_string;
 use crate::members::Members;
 use crate::number::write_number;
@@ -43,9 +45,35 @@ pub enum JsValue {
     Array(Vec<JsValue>),
     /// An object.
     Object(JsObject),
+    /// A value already written, as the compact JSON text [`stringify`] gave
+    /// for it ([`JsValue::written`]), kept as that text and shared. An
+    /// output that repeats one large value in many places holds its text
+    /// once: the door `map_scopes` gives a map's capabilities again for
+    /// each of its items. It stands for the value its text reads as
+    /// (`JSON.parse(JSON.stringify(v))`): both writers write that value as
+    /// they would have written it, and so does `String`; [`JsValue::get`]
+    /// and the other readers of a value's insides see none of it. Only an
+    /// output holds one.
+    Json(Arc<str>),
 }
 
 impl JsValue {
+    /// `v` written once, as [`JsValue::Json`]; `undefined` stays
+    /// itself, since it has no text.
+    #[must_use]
+    pub fn written(v: &JsValue) -> JsValue {
+        stringify(v).map_or(JsValue::Undefined, |text| JsValue::Json(Arc::from(text)))
+    }
+
+    /// The value the text of a [`JsValue::Json`] stands for, read back by
+    /// the IR's reader; `None` should the reader refuse it (a text longer
+    /// than it reads, or a number it does not take).
+    fn read_back(text: &str) -> Option<JsValue> {
+        crate::reader::parse(text)
+            .ok()
+            .map(|p| JsValue::from(&p.value))
+    }
+
     /// `String(v)`, ECMAScript's `ToString`: `undefined`, `null`, `true`,
     /// [`crate::number_to_string`] for a number, the string itself, the
     /// elements joined with `,` for an array (`Array.prototype.join`, where
@@ -69,12 +97,21 @@ impl JsValue {
                     if i > 0 {
                         out.push(',');
                     }
-                    if !matches!(item, JsValue::Undefined | JsValue::Null) {
+                    let nullish = match item {
+                        JsValue::Undefined | JsValue::Null => true,
+                        JsValue::Json(text) => &**text == "null",
+                        _ => false,
+                    };
+                    if !nullish {
                         item.write_js_string(out);
                     }
                 }
             }
             JsValue::Object(_) => out.push_str("[object Object]"),
+            JsValue::Json(text) => match JsValue::read_back(text) {
+                Some(v) => v.write_js_string(out),
+                None => out.push_str(text),
+            },
         }
     }
 
@@ -418,6 +455,10 @@ fn write(out: &mut String, v: &JsValue, gap: Option<&str>, level: usize) -> bool
             }
             out.push(']');
         }
+        JsValue::Json(text) => match (gap, gap.and_then(|_| JsValue::read_back(text))) {
+            (Some(_), Some(v)) => return write(out, &v, gap, level),
+            _ => out.push_str(text),
+        },
         JsValue::Object(o) => {
             out.push('{');
             let mut any = false;
