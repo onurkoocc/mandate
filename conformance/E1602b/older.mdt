@@ -1,0 +1,11 @@
+// A module of language 0.5: nothing in it is `pub` (before 0.6 `pub` stands
+// before a `fn` only), and every definition may still be named, from a
+// program of any version.
+
+mandate @ 0.5
+
+module example.older.domain @ 0.1
+
+type Ticket = { id: Text, title: Text }
+
+let MAX_TICKETS: Int = 10

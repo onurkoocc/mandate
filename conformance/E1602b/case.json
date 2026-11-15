@@ -1,0 +1,22 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1602b",
+  "kind": "compile",
+  "title": "A 0.6 program may name every definition of a module of 0.5 through its use list: an older module has no pub.",
+  "spec": [
+    "spec/library.md#pub-and-visibility"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "older.mdt"
+  ],
+  "expect": {
+    "ok": true,
+    "diagnostics": []
+  }
+}

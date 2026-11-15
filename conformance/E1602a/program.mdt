@@ -1,0 +1,31 @@
+// A program of language 0.6 that names the `pub` type and constants of a
+// 0.6 module it is given through its `use` list. It checks. In 0.6 a name of
+// a module that is not the standard library's is named through that list
+// alone, and is the definition it names: E1602a writes one with the
+// module's path instead, E1604c imports the module without a list, and
+// E0120, E0120a and E0120b use a listed name as what its kind is not.
+
+mandate @ 0.6
+
+module example.library.qualified @ 0.1
+
+use std.{model}
+use example.library.types.{Invoice, LIMIT, most}
+
+capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+let MOST: Int = LIMIT
+
+agent Reader {
+  role   "Reads one invoice."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill read(i: Invoice) -> Inferred<Text> ! {Model}
+}
+
+workflow Read(i: Invoice) -> Inferred<Text>
+  caps   ModelStd
+  budget { time: 5m, steps: 4 }
+{
+  delegate Reader.read(i)
+}

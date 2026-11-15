@@ -1,0 +1,41 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "P01a",
+  "kind": "compile",
+  "title": "The IR the text of P01 reads to, given as JSON IR: the 0.6 schema takes pub and doc on every kind, and the hashes are P01's.",
+  "spec": [
+    "spec/library.md#pub-and-visibility",
+    "spec/library.md#doc-lines",
+    "spec/ir.md#reading-ir"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "module.ir.json",
+    "kind": "json"
+  },
+  "expect": {
+    "ok": true,
+    "diagnostics": [],
+    "hashes": {
+      "program": "sha256:6b8588d7f1b577344b30be8029dc6ebaf03b3900a2bf6e79a94139fcaff857b9",
+      "defs": {
+        "Invoice": "sha256:04177bc82c4d9aded4fe03b452cbf54add254116b041ed26c69256bd0dbd2876",
+        "LedgerApi": "sha256:075422f0328afe853afba0ff929bf11e5d16d5068d9d793b6ad96c6422a2ddf1",
+        "LedgerRead": "sha256:be48053cab91e327d8ec36842a94c26274891ce4ba695709ec14e9402c7197ce",
+        "MAX_TOTAL": "sha256:908ed2a576ecc07da1f30dd6f0c96d166a3c9914911f5dfecabca8d287fc2937",
+        "ModelStd": "sha256:abb12afdb3036c263a568579ebd49b3d428261a2613a74e80466d45bc31cabbc",
+        "Note": "sha256:7a6c97da1913a540eb0ea48bcab028b45818165dde22e65055164f95294e299e",
+        "Summarize": "sha256:0250a8fcea3bc91c45cadb9d9479c8deb00336175610a7c06626831d99aca90a",
+        "Summarized": "sha256:f114b596fa489be7dde9f5b6309f85224fc8a5df1e3744a2f0a864f2335bd33c",
+        "Summarizer": "sha256:045fd3b98d69b65ab36c04680d00cfc743182f462605dabfb45bb25b63662d32",
+        "finance_owner": "sha256:1e4bcb976f5edf1127b8d2e79fc02057c900b39176c759ed3ae9e420b3a7f42a",
+        "ledger": "sha256:feeafc47e5a000093f898bd43bcf581f05ec64f5291763cba5284b1598aebd72",
+        "parse_invoice": "sha256:0a07fc7d41a5dd1818182a7abb84b8884186c4e41102f6012e7934db5d4b2fe2",
+        "record_invoice": "sha256:a580b8c9e5191da0aac1fd090129976015b543997e9ea782451115ccc3f74799",
+        "staging": "sha256:3429625c5542f7e79c77e79c3b0ef8b8134cce8cf8f0f62bb98ccf6b0456fcca",
+        "within": "sha256:5fb249ac021f61add177a3e682fe55b915973da9f20e91979d62be9aadfa5b03"
+      }
+    }
+  }
+}

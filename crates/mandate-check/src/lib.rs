@@ -3,11 +3,14 @@
 //! diagnostics, codes, messages and `facts`, byte for byte.
 //!
 //! It also checks programs of language 0.6, which only the Rust compiler
-//! reads (spec/library.md). With none of 0.6's constructs implemented yet, a
-//! 0.6 program is checked as the same program of 0.5 is: every rule that
-//! holds "from 0.4" or "from 0.5" (`Language::at_least`) holds for it, and a
-//! lock of format `mandate/lock/0.6` is read by its own schema and is at
-//! least every earlier format.
+//! reads (spec/library.md). A 0.6 program is checked as the same program of
+//! 0.5 is, every rule that holds "from 0.4" or "from 0.5"
+//! (`Language::at_least`) included, and a lock of format `mandate/lock/0.6`
+//! is read by its own schema and is at least every earlier format; what 0.6
+//! adds so far is held by [`imports`]: closed imports (E1604) and the
+//! visibility of a module's `pub` definitions (E1602), and E1603 for a
+//! program of 0.1 to 0.5 that imports a module of 0.6. A definition's `doc`
+//! is not a governance change in the semantic diff ([`diff`]).
 //!
 //! It holds the front door, the stages before the static checks, the static
 //! checks, and the lock and the sandbox requirements that stand on them:
@@ -23,7 +26,11 @@
 //!   `compiler/src/modules.ts`: the definitions a program sees with its
 //!   imported modules ([`Linked`], [`Modules`]).
 //! - [`resolve`]: [`resolve_names`] and [`closest`] (the "did you mean" of
-//!   every diagnostic that has one), `compiler/src/resolve/resolve.ts`.
+//!   every diagnostic that has one), `compiler/src/resolve/resolve.ts`;
+//!   in a program of 0.6 a module that is not the standard library's is
+//!   named through a `use` list alone: its path is no name.
+//! - [`imports`]: what a `use` may name from 0.6 on ([`import_checks`],
+//!   [`KnownModules`]): E1602, E1603 and E1604. Rust only.
 //! - [`roles`]: [`role_checks`], [`role_sites`] and [`roles_named`],
 //!   `compiler/src/check/roles.ts`.
 //! - [`lock`]: the lock, `compiler/src/lock.ts`: [`Lock`], [`validate_lock`],
@@ -131,6 +138,7 @@ pub mod diff;
 pub mod doors;
 pub mod governance;
 pub mod grant;
+pub mod imports;
 pub mod js_number;
 pub mod json_doors;
 pub mod lock;
@@ -172,6 +180,7 @@ pub use grant::{
     InFlightOverlapOutput, InFlightProgram, ItemScopes, MapScopesInput, MapScopesOutput,
     NarrowInput, NarrowOutput, Refusal, grant, in_flight_overlap, map_scopes, narrow,
 };
+pub use imports::{KnownModules, STD_MODULES, import_checks};
 pub use js_number::js_to_number;
 pub use lock::{
     LOCK_FIELDS_0_5, LOCK_FORMAT, LOCK_FORMATS, Lock, ModelLock, PerCallBound, Tariff,

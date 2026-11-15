@@ -1,0 +1,24 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0101g",
+  "kind": "compile",
+  "title": "A /// comment at the end of a line of code is not a doc line, even on the line before a definition.",
+  "spec": [
+    "spec/library.md#doc-lines"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "text": "mandate @ 0.6\n\nmodule example.docs @ 0.1\n\ntype Note = Text /// At the end of a line.\ntype Greeting = Text\n",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0101",
+        "path": ""
+      }
+    ]
+  }
+}

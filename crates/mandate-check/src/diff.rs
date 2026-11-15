@@ -711,9 +711,26 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
     let mut names = unique_in_order(bdefs.keys().chain(adefs.keys()).map(str::to_owned));
     sort_utf16(&mut names);
     for name in &names {
-        let b = bdefs.get(name);
-        let a = adefs.get(name);
         let path = format!("/defs/{name}");
+        // 0.6: a definition's `doc` is a person's text about it. A changed
+        // doc is a new program (it is hashed), and a behavior change here,
+        // never a governance one; the rest of the definition is compared
+        // without it. Before 0.6 no definition has a `doc`.
+        let (b_value, a_value);
+        let (b, a) = match (bdefs.get(name), adefs.get(name)) {
+            (Some(b), Some(a)) if b.get("doc").is_some() || a.get("doc").is_some() => {
+                if b.get("doc") != a.get("doc") {
+                    out.beh(
+                        format!("{path}/doc"),
+                        format!("~ {} {name}: doc changed", kind_text(a)),
+                    );
+                }
+                b_value = without_doc(b);
+                a_value = without_doc(a);
+                (Some(&b_value), Some(&a_value))
+            }
+            other => other,
+        };
         if let (Some(b), Some(a)) = (b, a)
             && j(b) == j(a)
         {
@@ -898,6 +915,15 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
         }
     }
     out
+}
+
+/// A definition without its `doc` (language 0.6).
+fn without_doc(d: &Value) -> Value {
+    let mut d = d.clone();
+    if let Value::Object(m) = &mut d {
+        m.remove("doc");
+    }
+    d
 }
 
 /// The skills, the loop, the role and the remote binding of an agent that

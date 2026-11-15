@@ -4,6 +4,376 @@
   "parts": 1,
   "cases": [
     {
+      "name": "E0101",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0101",
+            "severity": "error",
+            "message": "A doc line ('///') stands only on the lines directly before a definition or its 'pub'; write '//' for a comment.",
+            "at": {
+              "span": [6, 3, 6, 21]
+            },
+            "docs": "mandate explain MDT-E0101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0101a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0101",
+            "severity": "error",
+            "message": "A doc line ('///') stands only on the lines directly before a definition or its 'pub'; write '//' for a comment.",
+            "at": {
+              "span": [5, 1, 5, 18]
+            },
+            "docs": "mandate explain MDT-E0101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0101b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0101",
+            "severity": "error",
+            "message": "A doc line ('///') stands only on the lines directly before a definition or its 'pub'; write '//' for a comment.",
+            "at": {
+              "span": [3, 1, 3, 23]
+            },
+            "docs": "mandate explain MDT-E0101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0101c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0101",
+            "severity": "error",
+            "message": "A doc line ('///') stands only on the lines directly before a definition or its 'pub'; write '//' for a comment.",
+            "at": {
+              "span": [6, 1, 6, 28]
+            },
+            "docs": "mandate explain MDT-E0101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0101d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0101",
+            "severity": "error",
+            "message": "A doc line ('///') stands only on the lines directly before a definition or its 'pub'; write '//' for a comment.",
+            "at": {
+              "span": [5, 1, 5, 30]
+            },
+            "docs": "mandate explain MDT-E0101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0101e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0101",
+            "severity": "error",
+            "message": "Expected 'fn' but found 'type'.",
+            "at": {
+              "span": [5, 5, 5, 9]
+            },
+            "docs": "mandate explain MDT-E0101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0101f",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:4ca72e8529dade1ab9da651d1bbbba1affe8aee12b41965e843e2e130027fc7a",
+          "defs": {
+            "ModelStd": "sha256:920cc23eac16b562bbe8e63ff8ef93b3baff8bedb989c74a5153e99b2286e978",
+            "Read": "sha256:730d0898a2e2a6e1ea1d2d34efe034f435185b990501263087c868b598fd8bad",
+            "Reader": "sha256:7d81e977ab916d579740cc561efae35670709b754fecb9c4056da0b54ad578b0"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "E0101g",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0101",
+            "severity": "error",
+            "message": "A doc line ('///') stands only on the lines directly before a definition or its 'pub'; write '//' for a comment.",
+            "at": {
+              "span": [5, 18, 5, 43]
+            },
+            "docs": "mandate explain MDT-E0101"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0104d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Unknown field \"doc\". The IR schema is closed; unknown fields are rejected, not ignored.",
+            "at": {
+              "path": "/defs/Greeting/doc",
+              "span": [1, 141, 1, 154]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "additionalProperties",
+              "schema_path": "#/oneOf/0/additionalProperties"
+            }
+          },
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Unknown field \"pub\". The IR schema is closed; unknown fields are rejected, not ignored.",
+            "at": {
+              "path": "/defs/Greeting/pub",
+              "span": [1, 130, 1, 134]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "additionalProperties",
+              "schema_path": "#/oneOf/0/additionalProperties"
+            }
+          },
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Unknown field \"doc\". The IR schema is closed; unknown fields are rejected, not ignored.",
+            "at": {
+              "path": "/defs/greet/doc",
+              "span": [1, 194, 1, 207]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "additionalProperties",
+              "schema_path": "#/oneOf/3/additionalProperties"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0120",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown type 'LIMIT'.",
+            "at": {
+              "path": "/defs/Read/params/0/type/ref",
+              "span": [1, 771, 1, 778]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "LIMIT",
+              "expected": "type"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0120a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown type 'most.Anything'.",
+            "at": {
+              "path": "/defs/Read/params/0/type/ref",
+              "span": [1, 771, 1, 786]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "most.Anything",
+              "expected": "type"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0120b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown contract 'Invoice' in Verified<\u2026>.",
+            "at": {
+              "path": "/defs/Read/params/0/type/args/1/ref",
+              "span": [1, 812, 1, 821]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Invoice",
+              "expected": "contract"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0140",
       "kind": "compile",
       "door": "check",
@@ -127,6 +497,475 @@
             }
           }
         ]
+      }
+    },
+    {
+      "name": "E1602",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1602",
+            "severity": "error",
+            "message": "'Note' of example.library.types is not pub: a module of mandate/0.6 lets another module name only its pub definitions.",
+            "at": {
+              "path": "/uses/0/names/1",
+              "span": [1, 1022, 1, 1028]
+            },
+            "docs": "mandate explain MDT-E1602",
+            "facts": {
+              "name": "Note",
+              "module": "example.library.types"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1602a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown type 'example.library.types.Invoice'.",
+            "at": {
+              "path": "/defs/Read/params/0/type/ref",
+              "span": [1, 771, 1, 802]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "example.library.types.Invoice",
+              "expected": "type"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1602b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "older.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:6c69457972b87feba57c19db94f6c0d5f8b8ae901e79a40067f5e833ea3e42aa",
+          "defs": {
+            "Batch": "sha256:1038993f1132cb11bf9183c754cdf3a4e96dea361432cd3fc53e99746b848052",
+            "MOST": "sha256:b5398de7722b0daa3b3fdcdc9dff839bf00660b776de99964dd2c94db7eb4528",
+            "ModelStd": "sha256:0c86667ebbdcf268d82fcb600cca36fe21ccb44e3b1f660e6f7e80b4e8e27a6e",
+            "Read": "sha256:a8bf6ce3514cd06aef9418b700d7021ee49026b2701ca31e4d8958f05bafcab5",
+            "Triage": "sha256:e48c5396e04418975e253b499ec89844089bef2153b36df32f5adc73304ec37f"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "E1602c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602b/older.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1604",
+            "severity": "error",
+            "message": "The use of example.older.domain lists no names: in a program of mandate/0.6 an import of a module that is not the standard library's brings only the names it lists. List them, as in use example.older.domain.{\u2026}.",
+            "at": {
+              "path": "/uses/0",
+              "span": [1, 290, 1, 323]
+            },
+            "docs": "mandate explain MDT-E1604",
+            "facts": {
+              "module": "example.older.domain"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown name 'domain'.",
+            "at": {
+              "path": "/defs/MOST/value/of",
+              "span": [1, 132, 1, 160]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "domain",
+              "expected": "value"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown type 'domain.Ticket'.",
+            "at": {
+              "path": "/defs/Batch/type/record/first/ref",
+              "span": [1, 261, 1, 276]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "domain.Ticket",
+              "expected": "type"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1603",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1603",
+            "severity": "error",
+            "message": "Module example.library.types is written in mandate/0.6, and this program is mandate/0.5, which would read its definitions without the rules of mandate/0.6. Write the program in mandate/0.6 or later.",
+            "at": {
+              "path": "/uses/0",
+              "span": [1, 969, 1, 1023]
+            },
+            "docs": "mandate explain MDT-E1603",
+            "facts": {
+              "module": "example.library.types",
+              "module_language": "mandate/0.6",
+              "language": "mandate/0.5"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1603a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "report.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1603",
+            "severity": "error",
+            "message": "Module example.library.types is written in mandate/0.6, and this program is mandate/0.5, which would read its definitions without the rules of mandate/0.6. Write the program in mandate/0.6 or later.",
+            "at": {
+              "path": "/uses/0",
+              "span": [8, 1, 8, 36]
+            },
+            "docs": "mandate explain MDT-E1603",
+            "facts": {
+              "module": "example.library.types",
+              "module_language": "mandate/0.6",
+              "language": "mandate/0.5"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1604",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1604",
+            "severity": "error",
+            "message": "Module example.library.missing is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
+            "at": {
+              "path": "/uses/2",
+              "span": [1, 1059, 1, 1113]
+            },
+            "docs": "mandate explain MDT-E1604",
+            "facts": {
+              "module": "example.library.missing"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1604a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1604",
+            "severity": "error",
+            "message": "Module std.patterns is not known to this check: a program of mandate/0.6 imports only std, std.decision and the modules the check was given. Give the module, or remove the use.",
+            "at": {
+              "path": "/uses/2",
+              "span": [1, 1059, 1, 1116]
+            },
+            "docs": "mandate explain MDT-E1604",
+            "facts": {
+              "module": "std.patterns"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1604b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:f8a623bc4230f28b58ecd17218aab2e7b1454b761b91e6c44c0611b9ff8e1331",
+          "defs": {
+            "MOST": "sha256:3e364cd73cb9edacbc1928ed5b23b432be8e750da464350bf5e99aad9889bb12",
+            "ModelStd": "sha256:0c86667ebbdcf268d82fcb600cca36fe21ccb44e3b1f660e6f7e80b4e8e27a6e",
+            "Read": "sha256:ed56e458fb11347dcda8d09658c6153dc7e733ebbea46b363d814a7c50e636ac",
+            "Reader": "sha256:c8bd6b13e227c326992d33bea9af2036a13e696860ea8167d0ab5a9ffc0f22da"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "E1604c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1604",
+            "severity": "error",
+            "message": "The use of example.library.types lists no names: in a program of mandate/0.6 an import of a module that is not the standard library's brings only the names it lists. List them, as in use example.library.types.{\u2026}.",
+            "at": {
+              "path": "/uses/2",
+              "span": [1, 1158, 1, 1192]
+            },
+            "docs": "mandate explain MDT-E1604",
+            "facts": {
+              "module": "example.library.types"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "P01",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "module.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:6b8588d7f1b577344b30be8029dc6ebaf03b3900a2bf6e79a94139fcaff857b9",
+          "defs": {
+            "Invoice": "sha256:04177bc82c4d9aded4fe03b452cbf54add254116b041ed26c69256bd0dbd2876",
+            "LedgerApi": "sha256:075422f0328afe853afba0ff929bf11e5d16d5068d9d793b6ad96c6422a2ddf1",
+            "LedgerRead": "sha256:be48053cab91e327d8ec36842a94c26274891ce4ba695709ec14e9402c7197ce",
+            "MAX_TOTAL": "sha256:908ed2a576ecc07da1f30dd6f0c96d166a3c9914911f5dfecabca8d287fc2937",
+            "ModelStd": "sha256:abb12afdb3036c263a568579ebd49b3d428261a2613a74e80466d45bc31cabbc",
+            "Note": "sha256:7a6c97da1913a540eb0ea48bcab028b45818165dde22e65055164f95294e299e",
+            "Summarize": "sha256:0250a8fcea3bc91c45cadb9d9479c8deb00336175610a7c06626831d99aca90a",
+            "Summarized": "sha256:f114b596fa489be7dde9f5b6309f85224fc8a5df1e3744a2f0a864f2335bd33c",
+            "Summarizer": "sha256:045fd3b98d69b65ab36c04680d00cfc743182f462605dabfb45bb25b63662d32",
+            "finance_owner": "sha256:1e4bcb976f5edf1127b8d2e79fc02057c900b39176c759ed3ae9e420b3a7f42a",
+            "ledger": "sha256:feeafc47e5a000093f898bd43bcf581f05ec64f5291763cba5284b1598aebd72",
+            "parse_invoice": "sha256:0a07fc7d41a5dd1818182a7abb84b8884186c4e41102f6012e7934db5d4b2fe2",
+            "record_invoice": "sha256:a580b8c9e5191da0aac1fd090129976015b543997e9ea782451115ccc3f74799",
+            "staging": "sha256:3429625c5542f7e79c77e79c3b0ef8b8134cce8cf8f0f62bb98ccf6b0456fcca",
+            "within": "sha256:5fb249ac021f61add177a3e682fe55b915973da9f20e91979d62be9aadfa5b03"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "P01a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "module.ir.json",
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:6b8588d7f1b577344b30be8029dc6ebaf03b3900a2bf6e79a94139fcaff857b9",
+          "defs": {
+            "Invoice": "sha256:04177bc82c4d9aded4fe03b452cbf54add254116b041ed26c69256bd0dbd2876",
+            "LedgerApi": "sha256:075422f0328afe853afba0ff929bf11e5d16d5068d9d793b6ad96c6422a2ddf1",
+            "LedgerRead": "sha256:be48053cab91e327d8ec36842a94c26274891ce4ba695709ec14e9402c7197ce",
+            "MAX_TOTAL": "sha256:908ed2a576ecc07da1f30dd6f0c96d166a3c9914911f5dfecabca8d287fc2937",
+            "ModelStd": "sha256:abb12afdb3036c263a568579ebd49b3d428261a2613a74e80466d45bc31cabbc",
+            "Note": "sha256:7a6c97da1913a540eb0ea48bcab028b45818165dde22e65055164f95294e299e",
+            "Summarize": "sha256:0250a8fcea3bc91c45cadb9d9479c8deb00336175610a7c06626831d99aca90a",
+            "Summarized": "sha256:f114b596fa489be7dde9f5b6309f85224fc8a5df1e3744a2f0a864f2335bd33c",
+            "Summarizer": "sha256:045fd3b98d69b65ab36c04680d00cfc743182f462605dabfb45bb25b63662d32",
+            "finance_owner": "sha256:1e4bcb976f5edf1127b8d2e79fc02057c900b39176c759ed3ae9e420b3a7f42a",
+            "ledger": "sha256:feeafc47e5a000093f898bd43bcf581f05ec64f5291763cba5284b1598aebd72",
+            "parse_invoice": "sha256:0a07fc7d41a5dd1818182a7abb84b8884186c4e41102f6012e7934db5d4b2fe2",
+            "record_invoice": "sha256:a580b8c9e5191da0aac1fd090129976015b543997e9ea782451115ccc3f74799",
+            "staging": "sha256:3429625c5542f7e79c77e79c3b0ef8b8134cce8cf8f0f62bb98ccf6b0456fcca",
+            "within": "sha256:5fb249ac021f61add177a3e682fe55b915973da9f20e91979d62be9aadfa5b03"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "P01b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P01a/module.ir.json",
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:5e3e37687cbc19397fdbaa5521b68a54900db6fbf707c5a70215982715c42574",
+          "defs": {
+            "Invoice": "sha256:8720086560eeac3a75ebf8a1b93fb00441d6fffffbcdc87cd84610bf2a2bb280",
+            "LedgerApi": "sha256:075422f0328afe853afba0ff929bf11e5d16d5068d9d793b6ad96c6422a2ddf1",
+            "LedgerRead": "sha256:be48053cab91e327d8ec36842a94c26274891ce4ba695709ec14e9402c7197ce",
+            "MAX_TOTAL": "sha256:908ed2a576ecc07da1f30dd6f0c96d166a3c9914911f5dfecabca8d287fc2937",
+            "ModelStd": "sha256:abb12afdb3036c263a568579ebd49b3d428261a2613a74e80466d45bc31cabbc",
+            "Note": "sha256:7a6c97da1913a540eb0ea48bcab028b45818165dde22e65055164f95294e299e",
+            "Summarize": "sha256:0250a8fcea3bc91c45cadb9d9479c8deb00336175610a7c06626831d99aca90a",
+            "Summarized": "sha256:f114b596fa489be7dde9f5b6309f85224fc8a5df1e3744a2f0a864f2335bd33c",
+            "Summarizer": "sha256:045fd3b98d69b65ab36c04680d00cfc743182f462605dabfb45bb25b63662d32",
+            "finance_owner": "sha256:1e4bcb976f5edf1127b8d2e79fc02057c900b39176c759ed3ae9e420b3a7f42a",
+            "ledger": "sha256:feeafc47e5a000093f898bd43bcf581f05ec64f5291763cba5284b1598aebd72",
+            "parse_invoice": "sha256:0a07fc7d41a5dd1818182a7abb84b8884186c4e41102f6012e7934db5d4b2fe2",
+            "record_invoice": "sha256:a580b8c9e5191da0aac1fd090129976015b543997e9ea782451115ccc3f74799",
+            "staging": "sha256:3429625c5542f7e79c77e79c3b0ef8b8134cce8cf8f0f62bb98ccf6b0456fcca",
+            "within": "sha256:5fb249ac021f61add177a3e682fe55b915973da9f20e91979d62be9aadfa5b03"
+          }
+        },
+        "diagnostics": []
       }
     },
     {

@@ -1,0 +1,54 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1602c",
+  "kind": "compile",
+  "title": "A program of 0.5 that imports a module without a list and names its constant and its type with the module's path checks; declared 0.6, the use is not closed and neither path is a name.",
+  "spec": [
+    "spec/library.md#pub-and-visibility",
+    "spec/library.md#closed-imports"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../E1602b/older.mdt"
+  ],
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/language",
+      "value": "mandate/0.6"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1604",
+        "path": "/uses/0",
+        "facts": {
+          "module": "example.older.domain"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/MOST/value/of",
+        "facts": {
+          "name": "domain",
+          "expected": "value"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/Batch/type/record/first/ref",
+        "facts": {
+          "name": "domain.Ticket",
+          "expected": "type"
+        }
+      }
+    ]
+  }
+}

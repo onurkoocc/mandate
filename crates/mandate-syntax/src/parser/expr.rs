@@ -1270,7 +1270,11 @@ impl<'a> Parser<'a> {
     /// parser's nesting count starts at zero, as in TypeScript; the count of
     /// [`Parser::enter_postfix`] goes on from this one's.
     fn interpolation(&mut self, src: &[u16], line: usize, col: usize) -> Res<O> {
-        let toks = Lexer::new(src, line, col).tokenize()?;
+        let (toks, docs) = Lexer::new(src, line, col).tokenize_with_docs()?;
+        // 0.6: a doc line inside an interpolation is inside a body.
+        if let Some(d) = docs.first().filter(|_| self.reads_0_6()) {
+            return Err(super::misplaced_doc(d));
+        }
         let mut sub = Parser::new(&toks);
         sub.postfix_depth = self.postfix_depth;
         let expr = sub.expr(false)?;

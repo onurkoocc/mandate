@@ -1,0 +1,83 @@
+// A module of language 0.6 with `pub` before every kind of definition 0.6
+// has so far, and doc lines before most of them (spec/library.md "The 0.6
+// surface"): before `pub`, before a definition that is not `pub`, written
+// with and without the space after `///`, over several lines, one of them
+// empty. A `//` comment such as this one is dropped, as before.
+
+mandate @ 0.6
+
+module example.library.every @ 1.0
+
+use std.{human, model, net}
+
+/// Who answers for the ledger.
+pub role finance_owner "Finance owner"
+
+/// What the ledger offers.
+pub interface LedgerApi {
+  protocol openapi
+  spec     "docs/openapi.json"
+}
+
+///The ledger, as one repository.
+pub component ledger {
+  repo     "example/ledger"
+  root     "/work/ledger"
+  lang     ts
+  owner    role "finance_owner"
+  provides LedgerApi
+}
+
+/// Where the ledger runs before production.
+pub environment staging {
+  class internal
+}
+
+/// What reading the ledger takes.
+pub capability LedgerRead = net.https(hosts: ["ledger.example.org"], methods: [GET])
+
+pub capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+/// An invoice.
+///
+/// Its total is in cents.
+pub type Invoice = { invoice_no: Text, total_cents: Int }
+
+/// A note no other module may name.
+type Note = { text: Text }
+
+/// The largest total, in cents.
+pub let MAX_TOTAL: Int = 1000000
+
+/// Records an invoice in the ledger.
+pub effect record_invoice(i: Invoice) -> Text
+
+/// Reads an invoice from its text.
+pub extern py "tools/invoice.py"::parse_invoice(text: Text) -> Invoice
+  ! {}
+
+/// Whether a total is within the limit.
+pub fn within(total: Int) -> Bool ! {} {
+  total <= MAX_TOTAL
+}
+
+/// What a summary of an invoice must be.
+pub contract Summarized(s: Text) {
+  accept owner "The finance owner accepts the summary" by human.approve(role: finance_owner)
+}
+
+/// Summarizes one invoice.
+pub agent Summarizer {
+  role   "Summarizes one invoice."
+  caps   ModelStd
+  budget { time: 2m, steps: 2 }
+  skill summarize(i: Invoice) -> Inferred<Text> ! {Model}
+}
+
+/// Asks for the summary of an invoice.
+pub workflow Summarize(i: Invoice) -> Inferred<Text>
+  caps   ModelStd
+  budget { time: 5m, steps: 4 }
+{
+  delegate Summarizer.summarize(i)
+}

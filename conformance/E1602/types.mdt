@@ -1,0 +1,21 @@
+// A module of language 0.6 with definitions that are `pub` and definitions
+// that are not: another module may name only the first (spec/library.md
+// "`pub` and visibility"). The import cases of 0.6 share it.
+
+mandate @ 0.6
+
+module example.library.types @ 1.0
+
+/// An invoice as the mailbox holds it.
+pub type Invoice = { invoice_no: Text, total_cents: Int }
+
+/// A note this module keeps to itself.
+type Note = { text: Text }
+
+/// The most invoices one run reads.
+pub let LIMIT: Int = 100
+
+let SECRET: Int = 7
+
+/// The most invoices one batch holds; a lower-case name.
+pub let most: Int = 50

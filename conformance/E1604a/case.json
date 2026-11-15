@@ -1,0 +1,43 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1604a",
+  "kind": "compile",
+  "title": "A 0.6 program that imports std.patterns, which this compiler does not build in yet, and is not given a module of that name, is refused at the use.",
+  "spec": [
+    "spec/library.md#closed-imports",
+    "spec/library.md#stdpatterns"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1602/program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../E1602/types.mdt"
+  ],
+  "patch": [
+    {
+      "op": "add",
+      "path": "/uses/-",
+      "value": {
+        "module": "std.patterns",
+        "names": [
+          "BatchWithExceptions"
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1604",
+        "path": "/uses/2",
+        "facts": {
+          "module": "std.patterns"
+        }
+      }
+    ]
+  }
+}

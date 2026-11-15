@@ -153,3 +153,29 @@ given the lock.
 | MDT-E1802 | Credential bound outside the sandbox | E1802, E1802a, E1802b, E1802c | assigned; needs the lock; an `egress` binding names something other than a local agent, a remote agent, an agent bound to an executor, or a host none of the agent's `net.https` capabilities holds. Facts: `agent`, `reason` (`not_an_agent`, `remote`, `executor`, `host_not_held`), and for a host `host`, `credential` and `held`. The path is into the lock |
 | MDT-E1803 | Lock field does not apply to the program's language | E1803 | assigned; needs the lock; `isolation` or `egress` in a lock packaged with a program of 0.1 to 0.4. Facts: `field`, `language`. The path is into the lock. Also refused at load (`load_verification_failed`) |
 | MDT-E1804 | Imported method limit read without it | E1804, E1804a | assigned; a program of 0.1 to 0.4 that reaches, through an import, a `net.https` capability written with `methods` in a module of 0.5 or later; reported at the import. Facts: `definition`, `module`, `module_language`, `language`. Also refused at load (`load_verification_failed`) |
+
+## Libraries (0.6)
+
+Specified in [`library.md`](library.md). E16xx is assigned there. Language
+0.6 is read by the Rust compiler alone, so these codes are in its table of
+codes (`crates/mandate-ir/src/codes.rs`) and not in the TypeScript's, and
+each has hand-written conformance cases of `mandate/0.6`. `mandate check`
+reports them; the runtime's check at load is to refuse a package with E1603
+or E1604 (`load_verification_failed`).
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E1602 | Definition not public | E1602; E1602b (allowed) | 0.6 only; a program or module of 0.6 names in a `use` list (path `/uses/<i>/names/<j>`) a definition of a module of 0.6 it is given that is not `pub`. A `use` list is the one place a program of 0.6 names a definition of a module that is not the standard library's: the module's path (`types.Order`, `acme.types.Order`) and its last segment (`types`) are no names, and are reported as the unknown name of their place, E0120 (E1602a, E1602c). A module names its own definitions, and a lead's sub-program its parent's, freely; every definition of a module of 0.1 to 0.5 may be named through the list. Facts: `name`, `module` |
+| MDT-E1603 | 0.6 module imported by an earlier program | E1603, E1603a | a program or module of 0.1 to 0.5 imports a module written in 0.6 that the check is given; reported at the `use`, and not E1602 besides. Facts: `module`, `module_language`, `language` |
+| MDT-E1604 | Import not closed | E1604, E1604a, E1604c, E1602c; E1604b (allowed) | 0.6 only; a `use` names a module that is not `std` itself, `std.decision`, or a module the check was given, or a module but the standard library's without a list of names (an import that lists no names brings none); reported at the `use`. The built-in `std.patterns` and the modules of a library the lock pins are not read yet, so a `use` of either that no given module satisfies is E1604 too. Facts: `module` |
+
+Language 0.6 extends two codes of the front end. `///` lines (doc lines) are
+E0101 wherever they document no definition (cases E0101 to E0101d, E0101g;
+E0101f: before 0.6 they are comments), and `pub` before any definition but a
+`fn` stays E0101 before 0.6 (E0101e). `pub` and `doc` in the IR of a program
+of 0.1 to 0.5 are unknown fields, E0104 (E0104d). And in 0.6 a name a `use`
+lists from a module that is not the standard
+library's is the definition it names: used as what its kind is not (a
+constant as a type, a type as the contract of `Verified`, a lower-case name
+as a module path), it is the E0120 the program's own definition gets there
+(cases E0120, E0120a, E0120b).

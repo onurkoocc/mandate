@@ -1,0 +1,15 @@
+// A program of language 0.5 that imports a 0.5 module whole, without a
+// list, and names its constant and its type with the module's path,
+// `domain.MAX_TICKETS` and `domain.Ticket`. Before 0.6 that checks: the
+// path is taken on trust. E1602c declares it 0.6, where neither the use nor
+// the path is a way to name a definition of another module.
+
+mandate @ 0.5
+
+module example.older.paths @ 0.1
+
+use example.older.domain
+
+let MOST: Int = domain.MAX_TICKETS
+
+type Batch = { first: domain.Ticket }
