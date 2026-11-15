@@ -133,7 +133,7 @@ fn times_refused_say_why() {
 /// The date after `(year, month, day)`, by the rules of the calendar written
 /// out here and not by the crate's arithmetic.
 fn next_day(year: u32, month: u32, day: u32) -> (u32, u32, u32) {
-    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let leap = (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400);
     let length = match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
