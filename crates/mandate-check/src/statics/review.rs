@@ -43,7 +43,7 @@ use mandate_ir::{
 
 use super::{Checker, Frame, LetMap, MapSite, ReviewSource, Usage, Val, Where, callee_is, sub_i};
 use crate::ty::{
-    Level, Ty, UNKNOWN, epistemic, from_type_expr, mentions, named, named0, text_ty, with_level,
+    Level, Ty, UNKNOWN, epistemic, from_type_expr, named, named0, text_ty, unalias, with_level,
 };
 use crate::walk::walk_exprs;
 
@@ -193,21 +193,78 @@ fn role_text(v: &Value) -> String {
 impl<'a> Checker<'a> {
     // ── the built-in types ──────────────────────────────────────────────
 
-    /// Whether `name` is the built-in `Review` or `Declined` of this program:
-    /// one of 0.6 that defines no type of that name itself.
+    /// Whether `name` is the built-in `Review` or `Declined` of this program,
+    /// one of 0.6. No definition takes either name there (E0121), and the
+    /// checker never reads one that would ([`Checker::def_of`]).
     pub(crate) fn review_type(&self, name: &str) -> bool {
-        self.at_least(Language::V0_6)
-            && (name == REVIEW || name == DECLINED)
-            && self.def_of(name, DefKind::Type).is_none()
+        self.at_least(Language::V0_6) && (name == REVIEW || name == DECLINED)
     }
 
-    /// The built-in `Review` or `Declined` that `ty` mentions, which only the
-    /// runtime makes (E0213): no model, skill or host code produces one.
+    /// The built-in `Review` or `Declined` that `ty` holds, which only the
+    /// runtime makes (E0213): no model, skill or host code produces one. It
+    /// is looked for in `ty`'s arguments, its record's fields, and the type
+    /// definitions it names (an alias, a record's fields, a union's variants,
+    /// a refinement), each once.
     pub(crate) fn review_type_in(&self, ty: &Ty) -> Option<&'static str> {
         if !self.at_least(Language::V0_6) {
             return None;
         }
-        mentions(ty, &[REVIEW, DECLINED]).filter(|n| self.review_type(n))
+        self.review_type_seen(ty, &mut HashSet::new())
+    }
+
+    /// [`Checker::review_type_in`], with the type definitions already read.
+    fn review_type_seen(&self, ty: &Ty, seen: &mut HashSet<String>) -> Option<&'static str> {
+        match ty {
+            Ty::Named(n) => {
+                if self.review_type(&n.name) {
+                    return [REVIEW, DECLINED].into_iter().find(|t| *t == n.name);
+                }
+                if let Some(found) = n.args.iter().find_map(|a| self.review_type_seen(a, seen)) {
+                    return Some(found);
+                }
+                let d = self.def_of(&n.name, DefKind::Type)?;
+                if !seen.insert(n.name.clone()) {
+                    return None;
+                }
+                self.review_type_in_expr(d.type_expr()?, seen)
+            }
+            Ty::Record { fields } => fields
+                .iter()
+                .find_map(|(_, f)| self.review_type_seen(f, seen)),
+            Ty::Unknown => None,
+        }
+    }
+
+    /// [`Checker::review_type_seen`] of a type definition's type.
+    fn review_type_in_expr(
+        &self,
+        t: TypeExpr<'a>,
+        seen: &mut HashSet<String>,
+    ) -> Option<&'static str> {
+        if t.has(TypeForm::Union) {
+            return t.union().iter().find_map(|v| {
+                v.get("fields")
+                    .and_then(Value::as_array)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|f| f.get("type").and_then(TypeExpr::of))
+                    .find_map(|f| self.review_type_in_expr(f, seen))
+            });
+        }
+        if t.has(TypeForm::Refine) {
+            return self.review_type_in_expr(t.refine()?, seen);
+        }
+        self.review_type_seen(&from_type_expr(t, &[]), seen)
+    }
+
+    /// Whether a record literal of the type `name` would make a `Review` or
+    /// a `Declined`: the type is one, or an alias of one.
+    pub(crate) fn makes_a_review(&self, name: &str) -> bool {
+        if !self.at_least(Language::V0_6) {
+            return false;
+        }
+        let ty = unalias(&named0(name), self);
+        ty.name().is_some_and(|n| self.review_type(n))
     }
 
     /// The fields of the built-in `Review<T, C>` or `Declined<T>` (0.6), and
@@ -290,14 +347,17 @@ impl<'a> Checker<'a> {
         for (group, criteria) in [("accept", accept), ("invariant", invariant)] {
             for (cn, c) in criteria {
                 let Some(cr) = Criterion::of(c) else { continue };
-                if cr.waive().is_empty() || !c.get("by").is_some_and(asks_approval) {
+                let asks = c
+                    .get("by")
+                    .is_some_and(|by| asks_approval(by) || self.calls_an_approval(by));
+                if cr.waive().is_empty() || !asks {
                     continue;
                 }
                 let roles: Vec<JsValue> = cr.waive().iter().map(JsValue::from).collect();
                 self.report(
                     "E1504",
                     format!(
-                        "{name}.{cn} is met by human.approve, so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\")."
+                        "{name}.{cn} asks a person (human.approve, in its method or in a function it calls), so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\")."
                     ),
                     &format!("{base}/{group}/{cn}/waive"),
                     Some(
@@ -309,6 +369,65 @@ impl<'a> Checker<'a> {
                 );
             }
         }
+    }
+
+    /// Whether the verifier `v` calls a function of the program whose body,
+    /// or a function it calls, through any number of calls (each once),
+    /// holds `human.approve`: a criterion so met asks a person as one that
+    /// calls `human.approve` itself does (E1504).
+    fn calls_an_approval(&self, v: &Value) -> bool {
+        let mut seen = HashSet::new();
+        let mut found = false;
+        self.fn_callees(v, &mut |name| {
+            found = found || self.fn_asks_approval(name, &mut seen);
+        });
+        found
+    }
+
+    /// Each function of the program that `v` calls by name, anywhere in it.
+    fn fn_callees(&self, v: &Value, each: &mut dyn FnMut(&str)) {
+        match v {
+            Value::Array(items) => {
+                for x in items {
+                    self.fn_callees(x, each);
+                }
+            }
+            Value::Object(o) => {
+                if let Some(e) = Expr::of(v).filter(|e| e.is(ExprOp::Call))
+                    && let Some(name) = e
+                        .callee()
+                        .filter(|c| c.is(ExprOp::Var))
+                        .and_then(Expr::name)
+                    && self.def_of(name, DefKind::Fn).is_some()
+                {
+                    each(name);
+                }
+                for (_, x) in o.iter() {
+                    self.fn_callees(x, each);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Whether the function `name`'s body, or a function it calls, holds a
+    /// call of `human.approve` (each function once).
+    fn fn_asks_approval(&self, name: &str, seen: &mut HashSet<String>) -> bool {
+        let Some(f) = self.def_of(name, DefKind::Fn) else {
+            return false;
+        };
+        if !seen.insert(name.to_owned()) {
+            return false;
+        }
+        let body = Value::Array(f.body().to_vec());
+        if asks_approval(&body) {
+            return true;
+        }
+        let mut found = false;
+        self.fn_callees(&body, &mut |callee| {
+            found = found || self.fn_asks_approval(callee, seen);
+        });
+        found
     }
 
     /// The first contract with a waiver that `ty` mentions as what a value
@@ -504,8 +623,12 @@ impl<'a> Checker<'a> {
         Self::use_effect(frame, Usage::new("Human", path));
         let source = self.review_source(e, frame, path);
         let roles = self.review_arguments(e, frame, path);
+        // A review refused (E1506) is that diagnostic's.
         let Some(src) = source else {
-            return Val::like(UNKNOWN, of);
+            return Val {
+                silent: false,
+                ..Val::like(UNKNOWN, of)
+            };
         };
         self.review_roles(&src, &roles, path);
         let item = if src.untrusted {
@@ -517,6 +640,7 @@ impl<'a> Checker<'a> {
             ty: named(REVIEW, vec![item, named0(&src.contract)]),
             cls: of.cls,
             waivable: self.waivable_contract(&src.contract),
+            silent: of.silent,
         }
     }
 
@@ -583,6 +707,12 @@ impl<'a> Checker<'a> {
             Some(LetMap::Returns) => (
                 "returns",
                 format!("'{name}' is bound to a map whose body holds a return."),
+            ),
+            Some(LetMap::OnError) => (
+                "on_error",
+                format!(
+                    "'{name}' is bound to a map that an on error handler after it replaces with a value of its own when the map fails."
+                ),
             ),
         };
         self.not_a_source(&at, problem, Some(name), &why);

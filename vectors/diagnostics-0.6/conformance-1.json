@@ -440,6 +440,502 @@
       }
     },
     {
+      "name": "E0120c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/library/acme.connectors/types.mdt",
+        "../../fixtures/library/acme.connectors/connectors.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "The tool erp.list_open_orders takes or gives the type Order, which is acme.connectors.types.Order; this program has no such definition: list it in a use, use acme.connectors.types.{Order}.",
+            "at": {
+              "path": "/defs/ErpRead/value",
+              "span": [12, 22, 12, 54]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Order",
+              "expected": "type",
+              "module": "acme.connectors.types",
+              "tool": "erp.list_open_orders"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "The tool erp.list_open_orders takes or gives the type Order, which is acme.connectors.types.Order; this program has no such definition: list it in a use, use acme.connectors.types.{Order}.",
+            "at": {
+              "path": "/defs/Orders/body/0/value",
+              "span": [18, 16, 18, 47]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Order",
+              "expected": "type",
+              "module": "acme.connectors.types",
+              "tool": "erp.list_open_orders"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0120d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../../fixtures/library/drafts.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../../fixtures/library/acme.connectors/types.mdt",
+        "../../fixtures/library/acme.connectors/connectors.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "The tool erp.post_draft_invoice takes or gives the type Match, which is acme.connectors.types.Match; this program has no such definition: list it in a use, use acme.connectors.types.{Match}.",
+            "at": {
+              "path": "/defs/ErpDraft/value",
+              "span": [1, 557, 1, 736]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Match",
+              "expected": "type",
+              "module": "acme.connectors.types",
+              "tool": "erp.post_draft_invoice"
+            }
+          },
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "The tool erp.post_draft_invoice takes or gives the type Match, which is acme.connectors.types.Match; this program has no such definition: list it in a use, use acme.connectors.types.{Match}.",
+            "at": {
+              "path": "/defs/DraftOne/body/4/value",
+              "span": [1, 2845, 1, 3023]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Match",
+              "expected": "type",
+              "module": "acme.connectors.types",
+              "tool": "erp.post_draft_invoice"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.same_invoice: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/same_invoice/by/static",
+              "span": [1, 1196, 1, 1367]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0120e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "'human.ask' is not the standard function here: 'human' is a variable of this body, so the call names nothing the program can call, though the runtime would call human.ask by its path and type nothing of what it gives. Give the variable another name.",
+            "at": {
+              "path": "/defs/Land/body/2/value/callee",
+              "span": [35, 16, 35, 25]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "human.ask",
+              "expected": "function"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [19, 15, 19, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [25, 15, 25, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0120f",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "'change.check' is nothing the program can call: a call is of a function of the program, a standard function under its module's name, a connector's tool, a decision policy, quote, len, peek or human.review (the runtime calls nothing else).",
+            "at": {
+              "path": "/defs/Land/body/1/value/callee",
+              "span": [34, 16, 34, 28]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "change.check",
+              "expected": "function"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [19, 15, 19, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [25, 15, 25, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0120g",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "'Probe' is a workflow and is nothing the program can call: a call is of a function of the program, a standard function under its module's name, a connector's tool, a decision policy, quote, len, peek or human.review (the runtime calls nothing else).",
+            "at": {
+              "path": "/defs/Land/body/0/value/callee",
+              "span": [40, 16, 40, 21]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Probe",
+              "expected": "function"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [17, 15, 17, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [23, 15, 23, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'Tool' is the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Tool",
+              "span": [1, 2967, 1, 3223]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "Tool",
+              "builtin": "effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'Tool' is the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Tool",
+              "span": [1, 2967, 1, 3223]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "Tool",
+              "builtin": "effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:0ae7e2272019778ea6ffafddfa8981cd9915eab330614e555709e8492c233e28",
+          "defs": {
+            "A": "sha256:b2559f575ab6a9385bc394be613afa1ee4a4000ac09a48b8ae1b3a2abfea178d",
+            "Files": "sha256:93b442ac03a41997be11f1d9a7735faca48e71e7dcb5b7e4ea66ef75fd85ce7e",
+            "Model": "sha256:bc0e394e7c9dcd9be8894182009c5283edf7b8c15ef0a114093dd68658eae3b5",
+            "W": "sha256:1fbcf648c06183395dbd353e105c57a1be9985e95483474a9ffbd6c6d82d6e90"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "E0121c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../H06/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'Declined' is a built-in type of 0.6, what a review gives; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a review's accepted and declined items are typed as the language types them (spec/library.md \"human.review\").",
+            "at": {
+              "path": "/defs/Declined",
+              "span": [1, 7017, 1, 7237]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "Declined",
+              "builtin": "type"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../H06/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "decl.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'Declined' is a built-in type of 0.6, what a review gives; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a review's accepted and declined items are typed as the language types them (spec/library.md \"human.review\").",
+            "at": {
+              "path": "/uses/1/names/0",
+              "span": [1, 7099, 1, 7109]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "Declined",
+              "builtin": "type"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../H06/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'human' is the root of a standard module; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a call written with it (human.review, human.approve \u2026) is the standard library's, as the runtime reads it (spec/library.md \"Closed imports\").",
+            "at": {
+              "path": "/defs/human",
+              "span": [1, 7014, 1, 7245]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "human",
+              "builtin": "module"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121f",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../H06/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "roots.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'tool' is the root of a standard module; in a program of 0.6 no definition takes it, and no use list brings one of that name, so that a call written with it (human.review, human.approve \u2026) is the standard library's, as the runtime reads it (spec/library.md \"Closed imports\").",
+            "at": {
+              "path": "/uses/1/names/0",
+              "span": [1, 7100, 1, 7106]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "tool",
+              "builtin": "module"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0140",
       "kind": "compile",
       "door": "check",
@@ -550,6 +1046,21 @@
           {
             "code": "MDT-E0140",
             "severity": "error",
+            "message": "The lock file does not match spec/lock-0.6.schema.json: /connectors/acme.connectors.erp must have required property 'url'",
+            "at": {
+              "path": "/connectors/acme.connectors.erp"
+            },
+            "docs": "mandate explain MDT-E0140",
+            "facts": {
+              "keyword": "required",
+              "params": {
+                "missingProperty": "url"
+              }
+            }
+          },
+          {
+            "code": "MDT-E0140",
+            "severity": "error",
             "message": "The lock file does not match spec/lock-0.6.schema.json: /connectors/acme.connectors.erp/credential must match pattern \"^[A-Za-z][A-Za-z0-9_-]{0,63}$\"",
             "at": {
               "path": "/connectors/acme.connectors.erp/credential"
@@ -590,6 +1101,251 @@
             "facts": {
               "connector": "example.erp.erp"
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0201a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0201",
+            "severity": "error",
+            "message": "Expected Verified<?> but got Change; verify the value first.",
+            "at": {
+              "path": "/defs/Land/body/2/value/args/0/value",
+              "span": [35, 22, 35, 27]
+            },
+            "docs": "mandate explain MDT-E0201"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [17, 15, 17, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [23, 15, 23, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0201b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0201",
+            "severity": "error",
+            "message": "Expected Verified<Change> but got Change; verify the value first.",
+            "at": {
+              "path": "/defs/pick/body/0",
+              "span": [28, 3, 32, 4]
+            },
+            "docs": "mandate explain MDT-E0201"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [17, 15, 17, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [23, 15, 23, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0201c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0201",
+            "severity": "error",
+            "message": "Expected Verified<Change> but got Change; verify the value first.",
+            "at": {
+              "path": "/defs/Land/body/1/value/fields/m",
+              "span": [35, 26, 35, 32]
+            },
+            "docs": "mandate explain MDT-E0201"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [20, 15, 20, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [26, 15, 26, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0201d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0207",
+            "severity": "warning",
+            "message": "peek(\u2026) reads model output as a plain value; use it only for read-only, effect-free inspection (R7).",
+            "at": {
+              "path": "/defs/Land/body/1/value/args/0/value",
+              "span": [34, 20, 34, 33]
+            },
+            "docs": "mandate explain MDT-W0207"
+          },
+          {
+            "code": "MDT-E0201",
+            "severity": "error",
+            "message": "Expected Verified<?> but got ?, a value of a form whose type the checker cannot tell, so it cannot tell that the value is verified. A value goes where a verified one is required only when it is known to be one: verify it first.",
+            "at": {
+              "path": "/defs/Land/body/1/value/args/0/value",
+              "span": [34, 20, 34, 33]
+            },
+            "docs": "mandate explain MDT-E0201"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [19, 15, 19, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [25, 15, 25, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0201e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0201",
+            "severity": "error",
+            "message": "Expected List<Verified<Change>> but got List<Change>.",
+            "at": {
+              "path": "/defs/Land/body/1/value/args/0/value",
+              "span": [41, 19, 41, 25]
+            },
+            "docs": "mandate explain MDT-E0201"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [18, 15, 18, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [24, 15, 24, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
           }
         ]
       }
@@ -649,7 +1405,702 @@
       }
     },
     {
+      "name": "E0210a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Write tool 'erp.post_draft' cannot take Untrusted<Text>; critical parameters take only T or Verified<T> (R4).",
+            "at": {
+              "path": "/defs/erp/tools/post_draft/params/0/type",
+              "span": [1, 826, 1, 869]
+            },
+            "docs": "mandate explain MDT-E0210"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0210b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Expected Verified<Match> but got Inferred<Match>; verify the value first.",
+            "at": {
+              "path": "/defs/MatchAll/body/4/value/body/1/value/args/0/value",
+              "span": [87, 27, 87, 28]
+            },
+            "docs": "mandate explain MDT-E0210"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [58, 15, 58, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [56, 15, 56, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0210c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Expected Verified<Match> but got Inferred<Match>; verify the value first.",
+            "at": {
+              "path": "/defs/MatchAll/body/4/value/body/2/value/args/0/value",
+              "span": [85, 27, 85, 28]
+            },
+            "docs": "mandate explain MDT-E0210"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [58, 15, 58, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [56, 15, 56, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0210d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Expected Verified<Match> but got Inferred<Match>; verify the value first.",
+            "at": {
+              "path": "/defs/MatchAll/body/4/value/body/1/value/args/0/value",
+              "span": [85, 27, 85, 28]
+            },
+            "docs": "mandate explain MDT-E0210"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [58, 15, 58, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [56, 15, 56, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0210e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0210",
+            "severity": "error",
+            "message": "Expected Verified<Match> but got Inferred<Match>; verify the value first.",
+            "at": {
+              "path": "/defs/MatchAll/body/4/value/body/1/value/args/0/value",
+              "span": [92, 27, 92, 28]
+            },
+            "docs": "mandate explain MDT-E0210"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [58, 15, 58, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [56, 15, 56, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0212",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0212",
+            "severity": "error",
+            "message": "Expected a value verified against Named, but this one was verified against Small.",
+            "at": {
+              "path": "/defs/Land/body/1/value/args/0/value",
+              "span": [37, 15, 37, 21]
+            },
+            "docs": "mandate explain MDT-E0212"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [17, 15, 17, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [23, 15, 23, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0213a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "Host code cannot produce Review; only the runtime does (\u00a712.3).",
+            "at": {
+              "path": "/defs/fake/returns",
+              "span": [63, 44, 63, 45]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Review"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0213b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "Host code cannot produce Review; only the runtime does (\u00a712.3).",
+            "at": {
+              "path": "/defs/fake/returns",
+              "span": [63, 44, 63, 50]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Review"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0213c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "Skill 'Matcher.forge' cannot return Review; a model cannot produce Review (\u00a75.2, S08).",
+            "at": {
+              "path": "/defs/Matcher/skills/forge/returns",
+              "span": [66, 43, 66, 65]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Review"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0213d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "R cannot be constructed by a program; only the runtime produces it (\u00a75.2, S08).",
+            "at": {
+              "path": "/defs/MatchAll/body/2/value/type",
+              "span": [81, 14, 81, 58]
+            },
+            "docs": "mandate explain MDT-E0213"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0213e",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "A model cannot produce Review; infer only yields Inferred values (\u00a75.2, S08).",
+            "at": {
+              "path": "/defs/MatchAll/body/2/value/type",
+              "span": [81, 20, 81, 21]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Review"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0213f",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E0213",
+            "severity": "error",
+            "message": "Effect 'fetch_declined' cannot return Declined; only the runtime produces it (\u00a75.2, S08).",
+            "at": {
+              "path": "/defs/fetch_declined/returns",
+              "span": [63, 35, 63, 41]
+            },
+            "docs": "mandate explain MDT-E0213",
+            "facts": {
+              "type": "Declined"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0220c",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "Reader holds read-only tools of the connector example.erp.erp, which return confidential data, and its model capability allows at most public: what the tools return reaches the model (spec/library.md \"Declaration\").",
+            "at": {
+              "path": "/defs/Reader/caps/0",
+              "span": [1, 1805, 1, 1834]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "public",
+              "connector": "example.erp.erp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0220d",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "Reader.orders holds read-only tools of the connector example.erp.erp, which return confidential data, and its model capability allows at most public: what the tools return reaches the model (spec/library.md \"Declaration\").",
+            "at": {
+              "path": "/defs/Draft/body/1/value",
+              "span": [1, 2693, 1, 2835]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "public",
+              "connector": "example.erp.erp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0220e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "The tool erp.list_orders takes or gives restricted data, and its connector's class is confidential (spec/library.md \"Declaration\").",
+            "at": {
+              "path": "/defs/erp/tools/list_orders",
+              "span": [1, 482, 1, 633]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "restricted",
+              "allowed": "confidential",
+              "connector": "erp",
+              "tool": "list_orders"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0220f",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "Summarizer.summarize receives restricted data, but its model capability allows at most internal (\u00a75.5).",
+            "at": {
+              "path": "/defs/Summarize/body/1/value",
+              "span": [32, 3, 32, 38]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "restricted",
+              "allowed": "internal"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0220g",
       "kind": "compile",
       "door": "check_patched",
       "input": {
@@ -699,6 +2150,21 @@
               "span": [1, 3934, 1, 4138]
             },
             "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E0220",
+            "severity": "error",
+            "message": "Matcher holds read-only tools of the connector example.patterns.erp, which return confidential data, and its model capability allows at most internal: what the tools return reaches the model (spec/library.md \"Declaration\").",
+            "at": {
+              "path": "/defs/Matcher/caps/0",
+              "span": [1, 4708, 1, 4737]
+            },
+            "docs": "mandate explain MDT-E0220",
+            "facts": {
+              "data_class": "confidential",
+              "allowed": "internal",
+              "connector": "example.patterns.erp"
+            }
           }
         ]
       }
@@ -772,6 +2238,49 @@
     },
     {
       "name": "E0301c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0301",
+            "severity": "error",
+            "message": "Publish uses publish, but no capability in its caps authorizes it.",
+            "at": {
+              "path": "/defs/Publish/body/0/value",
+              "span": [22, 3, 22, 42]
+            },
+            "docs": "mandate explain MDT-E0301",
+            "facts": {
+              "required": "publish",
+              "available": [
+                "Notes = fs.write(\"/srv/notes\")"
+              ]
+            }
+          },
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "Publish holds Notes = fs.write(\"/srv/notes\") but neither its body nor its delegates use it.",
+            "at": {
+              "path": "/defs/Publish/caps/0",
+              "span": [19, 10, 19, 15]
+            },
+            "docs": "mandate explain MDT-W0310"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0301d",
       "kind": "compile",
       "door": "check_patched",
       "input": {
@@ -862,6 +2371,165 @@
               "left": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
               "right": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")"
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0403a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0403",
+            "severity": "error",
+            "message": "Critical effect erp.post_draft needs 'idempotent_by' at the call site (\u00a78.4).",
+            "at": {
+              "path": "/defs/Draft/body/2/value",
+              "span": [1, 2818, 1, 2907]
+            },
+            "docs": "mandate explain MDT-E0403",
+            "facts": {
+              "repair_hint": "add `idempotent_by <business key>`"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0408a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0408",
+            "severity": "error",
+            "message": "Skill 'Reader.orders' declares the critical effect 'erp.post_draft'. External writes happen only in a workflow's commit step, never inside a delegated task.",
+            "at": {
+              "path": "/defs/Reader/skills/orders/effects/2",
+              "span": [1, 2046, 1, 2073]
+            },
+            "docs": "mandate explain MDT-E0408"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0408b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0408",
+            "severity": "error",
+            "message": "The effect git.close_pr runs in a workflow's ensures, which states what holds once the run is done and does nothing. Effects run in the workflow's body, through prepare \u2192 authorize \u2192 commit (\u00a78.8).",
+            "at": {
+              "path": "/defs/Land/ensures",
+              "span": [29, 11, 29, 66]
+            },
+            "docs": "mandate explain MDT-E0408",
+            "facts": {
+              "effect": "git.close_pr",
+              "place": "ensures"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [16, 15, 16, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [22, 15, 22, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0711",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0711",
+            "severity": "error",
+            "message": "There is no 'await': nothing is spawned to wait for. A workflow runs work with delegate, par or a bounded map, and an agent plans work while a run is going with 'plan Agent.skill(\u2026) within envelope' (spec/envelope.md \"plan\").",
+            "at": {
+              "path": "/defs/Land/body/0/value",
+              "span": [30, 16, 30, 28]
+            },
+            "docs": "mandate explain MDT-E0711"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [16, 15, 16, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [22, 15, 22, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
           }
         ]
       }
@@ -2598,7 +4266,7 @@
           {
             "code": "MDT-E1306",
             "severity": "error",
-            "message": "BatchWithExceptions's expansion names the module human of the standard library, and this program defines human already.",
+            "message": "BatchWithExceptions's expansion names the built-in Receipt, and this program defines Receipt.",
             "at": {
               "path": "/defs/MatchInvoices/apply",
               "span": [1, 2832, 1, 3632]
@@ -2607,8 +4275,8 @@
             "facts": {
               "pattern": "BatchWithExceptions",
               "module": "batch.patterns",
-              "name": "human",
-              "pattern_path": "/defs/BatchWithExceptions/body/2/value/callee/of",
+              "name": "Receipt",
+              "pattern_path": "/defs/BatchWithExceptions/slots/5/returns/ref",
               "problem": "taken"
             }
           }
@@ -3127,6 +4795,38 @@
       }
     },
     {
+      "name": "E1404a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "caps.mdt"
+      ],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1404",
+            "severity": "error",
+            "message": "'erp' is a connector that the program neither defines nor lists in a use (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Mine/value",
+              "span": [11, 19, 11, 46]
+            },
+            "docs": "mandate explain MDT-E1404",
+            "facts": {
+              "problem": "'erp' is a connector that the program neither defines nor lists in a use"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1405",
       "kind": "compile",
       "door": "check_patched",
@@ -3239,6 +4939,114 @@
       }
     },
     {
+      "name": "E1405c",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1405",
+            "severity": "error",
+            "message": "The tool erp.list_orders is called in a contract. A connector's tools are called only in a workflow's body: a read-only one as an expression, a write one as a critical effect (an agent's loop calls the read-only tools its delegation grants) (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/HasOrders/accept/some/by/static/left/args/0/value",
+              "span": [54, 19, 54, 37]
+            },
+            "docs": "mandate explain MDT-E1405",
+            "facts": {
+              "connector": "erp",
+              "tool": "list_orders",
+              "problem": "contract"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "HasOrders.some: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/HasOrders/accept/some/by/static",
+              "span": [54, 15, 54, 43]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1405d",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1405",
+            "severity": "error",
+            "message": "The tool erp.post_draft is called in a handler. A connector's tools are called only in a workflow's body: a read-only one as an expression, a write one as a critical effect (an agent's loop calls the read-only tools its delegation grants) (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/on/0/then",
+              "span": [51, 32, 51, 76]
+            },
+            "docs": "mandate explain MDT-E1405",
+            "facts": {
+              "connector": "erp",
+              "tool": "post_draft",
+              "problem": "handler"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1405e",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1405",
+            "severity": "error",
+            "message": "The tool erp.list_orders is called in a workflow's ensures. A connector's tools are called only in a workflow's body: a read-only one as an expression, a write one as a critical effect (an agent's loop calls the read-only tools its delegation grants) (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/ensures/left/args/0/value",
+              "span": [1, 3097, 1, 3237]
+            },
+            "docs": "mandate explain MDT-E1405",
+            "facts": {
+              "connector": "erp",
+              "tool": "list_orders",
+              "problem": "ensures"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1406",
       "kind": "compile",
       "door": "check_patched",
@@ -3307,6 +5115,100 @@
       }
     },
     {
+      "name": "E1406a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1406",
+            "severity": "error",
+            "message": "Reader would hold ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\"), a write tool. An agent holds only read-only tools; a write tool is called by a workflow's body, as a critical effect (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/body/1/value/caps/0",
+              "span": [1, 2795, 1, 2825]
+            },
+            "docs": "mandate explain MDT-E1406",
+            "facts": {
+              "agent": "Reader",
+              "capability": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+              "through": "map with caps"
+            }
+          },
+          {
+            "code": "MDT-W0310",
+            "severity": "warning",
+            "message": "Draft holds ModelAll = model.infer but neither its body nor its delegates use it.",
+            "at": {
+              "path": "/defs/Draft/caps/2",
+              "span": [1, 2438, 1, 2468]
+            },
+            "docs": "mandate explain MDT-W0310"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1406b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0301",
+            "severity": "error",
+            "message": "Reader.orders uses Tool, but this delegation grants no capability for it (Draft lacks it or 'with caps' left it out).",
+            "at": {
+              "path": "/defs/Draft/body/1/value/body/0/value",
+              "span": [1, 2856, 1, 2950]
+            },
+            "docs": "mandate explain MDT-E0301",
+            "facts": {
+              "required": "Tool",
+              "granted": [
+                "ModelAll = model.infer"
+              ]
+            }
+          },
+          {
+            "code": "MDT-E1406",
+            "severity": "error",
+            "message": "Reader would hold ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\"), a write tool. An agent holds only read-only tools; a write tool is called by a workflow's body, as a critical effect (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Draft/body/1/value/caps/0",
+              "span": [1, 2795, 1, 2825]
+            },
+            "docs": "mandate explain MDT-E1406",
+            "facts": {
+              "agent": "Reader",
+              "capability": "ErpDraft = tool.call(erp, post_draft) \u2192 tool.call(\"example.erp.erp.post_draft\")",
+              "through": "map with caps"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1407",
       "kind": "compile",
       "door": "check",
@@ -3368,6 +5270,38 @@
       }
     },
     {
+      "name": "E1407b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1407",
+            "severity": "error",
+            "message": "The lock binds the connector example.erp.erp at https://erp.example.org/mcp, and it declares https://erp.example.com/mcp: the credential goes to the URL the lock names.",
+            "at": {
+              "path": "/connectors/example.erp.erp/url"
+            },
+            "docs": "mandate explain MDT-E1407",
+            "facts": {
+              "connector": "example.erp.erp",
+              "problem": "url",
+              "url": "https://erp.example.org/mcp",
+              "declared": "https://erp.example.com/mcp"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E1408",
       "kind": "compile",
       "door": "check",
@@ -3423,6 +5357,38 @@
               "connector": "example.erp.erp",
               "tool": "delete_draft",
               "problem": "no_tool"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1408b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "crm.mdt"
+      ],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1408",
+            "severity": "error",
+            "message": "The lock binds connectors.example.crm.crm, and no module of the package defines a connector crm in example.crm.",
+            "at": {
+              "path": "/connectors/example.crm.crm"
+            },
+            "docs": "mandate explain MDT-E1408",
+            "facts": {
+              "connector": "example.crm.crm",
+              "problem": "no_connector"
             }
           }
         ]
@@ -3507,7 +5473,7 @@
           {
             "code": "MDT-E1504",
             "severity": "error",
-            "message": "Signed.signed is met by human.approve, so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\").",
+            "message": "Signed.signed asks a person (human.approve, in its method or in a function it calls), so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\").",
             "at": {
               "path": "/defs/Signed/accept/signed/waive",
               "span": [1, 7318, 1, 7332]
@@ -3563,7 +5529,7 @@
           {
             "code": "MDT-E1504",
             "severity": "error",
-            "message": "Signed.signed is met by human.approve, so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\").",
+            "message": "Signed.signed asks a person (human.approve, in its method or in a function it calls), so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\").",
             "at": {
               "path": "/defs/Signed/accept/signed/waive",
               "span": [1, 7366, 1, 7380]
@@ -3576,6 +5542,72 @@
                 "accountant"
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1504b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../H06/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4141, 1, 4419]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 3855, 1, 4059]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E1504",
+            "severity": "error",
+            "message": "Signed.signed asks a person (human.approve, in its method or in a function it calls), so no one waives it: the person who would waive it is the one it asks. Remove the waiver, or the approval (spec/library.md \"waive by\").",
+            "at": {
+              "path": "/defs/Signed/accept/signed/waive",
+              "span": [1, 7879, 1, 7893]
+            },
+            "docs": "mandate explain MDT-E1504",
+            "facts": {
+              "contract": "Signed",
+              "criterion": "signed",
+              "waive": [
+                "accountant"
+              ]
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Signed.signed: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Signed/accept/signed/by/static",
+              "span": [1, 7775, 1, 7869]
+            },
+            "docs": "mandate explain MDT-W0601"
           }
         ]
       }
@@ -4038,6 +6070,256 @@
     },
     {
       "name": "E1505h",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [28, 15, 28, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E1505",
+            "severity": "error",
+            "message": "This value rests on a verification, which a person may waive (waive by), so it never reaches the irreversible effect git.merge: a waiver does not clear what cannot be undone. Verify it against a contract without a waiver first (spec/library.md \"waive by\").",
+            "at": {
+              "path": "/defs/Ship/body/4/value/args/0/value",
+              "span": [54, 20, 54, 30]
+            },
+            "docs": "mandate explain MDT-E1505",
+            "facts": {
+              "effect": "git.merge"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [21, 15, 21, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1505i",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [28, 15, 28, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E1505",
+            "severity": "error",
+            "message": "This value rests on a verification, which a person may waive (waive by), so it never reaches the irreversible effect git.merge: a waiver does not clear what cannot be undone. Verify it against a contract without a waiver first (spec/library.md \"waive by\").",
+            "at": {
+              "path": "/defs/Ship/body/4/value/args/0/value",
+              "span": [51, 20, 51, 30]
+            },
+            "docs": "mandate explain MDT-E1505",
+            "facts": {
+              "effect": "git.merge"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [21, 15, 21, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1505j",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [28, 15, 28, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E1505",
+            "severity": "error",
+            "message": "This value rests on a verification, which a person may waive (waive by), so it never reaches the irreversible effect git.merge: a waiver does not clear what cannot be undone. Verify it against a contract without a waiver first (spec/library.md \"waive by\").",
+            "at": {
+              "path": "/defs/Ship/body/4/value/args/0/value",
+              "span": [55, 20, 55, 30]
+            },
+            "docs": "mandate explain MDT-E1505",
+            "facts": {
+              "effect": "git.merge"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [21, 15, 21, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1505k",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [28, 15, 28, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E1505",
+            "severity": "error",
+            "message": "This value rests on a verification, which a person may waive (waive by), so it never reaches the irreversible effect git.merge: a waiver does not clear what cannot be undone. Verify it against a contract without a waiver first (spec/library.md \"waive by\").",
+            "at": {
+              "path": "/defs/Ship/body/4/value/args/0/value",
+              "span": [59, 20, 59, 30]
+            },
+            "docs": "mandate explain MDT-E1505",
+            "facts": {
+              "effect": "git.merge"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [21, 15, 21, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1505l",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [28, 15, 28, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-E1505",
+            "severity": "error",
+            "message": "This value rests on a verification, which a person may waive (waive by), so it never reaches the irreversible effect git.merge: a waiver does not clear what cannot be undone. Verify it against a contract without a waiver first (spec/library.md \"waive by\").",
+            "at": {
+              "path": "/defs/Ship/body/4/value/args/0/value",
+              "span": [57, 20, 57, 30]
+            },
+            "docs": "mandate explain MDT-E1505",
+            "facts": {
+              "effect": "git.merge"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [21, 15, 21, 25]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1505m",
       "kind": "compile",
       "door": "check_patched",
       "input": {
@@ -4599,6 +6881,57 @@
     },
     {
       "name": "E1506i",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1506",
+            "severity": "error",
+            "message": "'checked' is bound to a map that an on error handler after it replaces with a value of its own when the map fails. human.review asks about the outcomes of one map: a name a let of the same workflow body binds to a map whose body ends with verify x against C(\u2026), with no on unmet (spec/library.md \"human.review\").",
+            "at": {
+              "path": "/defs/MatchAll/body/3/value/args/0/value",
+              "span": [80, 31, 80, 38]
+            },
+            "docs": "mandate explain MDT-E1506",
+            "facts": {
+              "problem": "on_error",
+              "source": "checked"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [57, 15, 57, 60]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [55, 15, 55, 49]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1506j",
       "kind": "compile",
       "door": "check_patched",
       "input": {
@@ -6230,7 +8563,7 @@
       "kind": "compile",
       "door": "check_patched",
       "input": {
-        "file": "../P02/program.mdt",
+        "file": "../T01/program.mdt",
         "kind": "mdt"
       },
       "modules": [],
@@ -6244,40 +8577,18 @@
           {
             "code": "MDT-E1708",
             "severity": "error",
-            "message": "'human step' waits for a person inside a map's body, once for each item. Ask once about the list, after the map (spec/envelope.md \"map\").",
+            "message": "The critical effect erp.post_draft runs inside a map's body, and its idempotent_by key does not read the map's item 'x', so it would be the same for every item. In a map's body a critical effect is a batch commit step only when it is not irreversible, no envelope or environment hands it to a person, its idempotent_by key reads the item, and the map runs its items one at a time and is in no other map; else run it after the map (spec/library.md \"The batch commit step\").",
             "at": {
-              "path": "/defs/MatchAll/apply",
-              "span": [1, 7872, 1, 8660]
+              "path": "/defs/Draft/body/2/value/body/0/value",
+              "span": [1, 2955, 1, 3084]
             },
             "docs": "mandate explain MDT-E1708",
             "facts": {
-              "map": "/defs/MatchAll/body/1/value",
-              "kind": "person",
-              "what": "human step",
-              "pattern": "BatchWithExceptions",
-              "pattern_path": "/defs/BatchWithExceptions/body/1/value/body/1/value",
-              "expanded_path": "/defs/MatchAll/body/1/value/body/1/value"
+              "map": "/defs/Draft/body/2/value",
+              "kind": "critical_effect",
+              "what": "erp.post_draft",
+              "condition": "key"
             }
-          },
-          {
-            "code": "MDT-W0601",
-            "severity": "warning",
-            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
-            "at": {
-              "path": "/defs/Matched/accept/totals/by/static",
-              "span": [1, 4224, 1, 4502]
-            },
-            "docs": "mandate explain MDT-W0601"
-          },
-          {
-            "code": "MDT-W0601",
-            "severity": "warning",
-            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
-            "at": {
-              "path": "/defs/Matched/accept/vendor/by/static",
-              "span": [1, 3938, 1, 4142]
-            },
-            "docs": "mandate explain MDT-W0601"
           }
         ]
       }
@@ -6314,6 +8625,63 @@
               "condition": "par",
               "slot": "commit",
               "expanded_path": "/defs/MatchAll/body/3/value/body/0/value"
+            }
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.totals: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/totals/by/static",
+              "span": [1, 4224, 1, 4502]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Matched.vendor: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Matched/accept/vendor/by/static",
+              "span": [1, 3938, 1, 4142]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1708o",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../P02/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1708",
+            "severity": "error",
+            "message": "'human step' waits for a person inside a map's body, once for each item. Ask once about the list, after the map (spec/envelope.md \"map\").",
+            "at": {
+              "path": "/defs/MatchAll/apply",
+              "span": [1, 7872, 1, 8660]
+            },
+            "docs": "mandate explain MDT-E1708",
+            "facts": {
+              "map": "/defs/MatchAll/body/1/value",
+              "kind": "person",
+              "what": "human step",
+              "pattern": "BatchWithExceptions",
+              "pattern_path": "/defs/BatchWithExceptions/body/1/value/body/1/value",
+              "expanded_path": "/defs/MatchAll/body/1/value/body/1/value"
             }
           },
           {
@@ -6449,6 +8817,53 @@
             "at": {
               "path": "/defs/Matched/accept/vendor/by/static",
               "span": [1, 3855, 1, 4059]
+            },
+            "docs": "mandate explain MDT-W0601"
+          }
+        ]
+      }
+    },
+    {
+      "name": "H08",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:a37b91f59ef9fb998a3cb29e871e0cd51417656ff607d7bb1a0743f67ec059ef",
+          "defs": {
+            "Change": "sha256:c85b96567a56888c02c85ce491a769ba553b76f58884f48a185d67bded9a83e3",
+            "Land": "sha256:9e27b5ae17fc415a76006ac31833e2d11ae5bc4e103d91f82e83368694c186b1",
+            "Named": "sha256:f836c820c91eaf052a37be47514e0af071a697b0e860e934169d90f41cde02b0",
+            "PR": "sha256:bbc5a5965850033704639ea5ef2cb44682df3bab020f192f4cba08e654de0963",
+            "Small": "sha256:dfbcf8a6dfdf4f780d51309532639be7d4f992aa0fc9a8adfbc84f87efc56764"
+          }
+        },
+        "diagnostics": [
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Named.named: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Named/accept/named/by/static",
+              "span": [18, 15, 18, 33]
+            },
+            "docs": "mandate explain MDT-W0601"
+          },
+          {
+            "code": "MDT-W0601",
+            "severity": "warning",
+            "message": "Small.small: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+            "at": {
+              "path": "/defs/Small/accept/small/by/static",
+              "span": [24, 15, 24, 25]
             },
             "docs": "mandate explain MDT-W0601"
           }
@@ -6835,7 +9250,7 @@
       "result": {
         "ok": true,
         "hashes": {
-          "program": "sha256:fd47fa66db73b75cdb35525acd170a9c0c5871386cab6b255e0f67f9b8ced8e6",
+          "program": "sha256:442671e1af2720fd835fd0a496c2757078a8f4ef5129f6b6aa47cb5de405bc92",
           "defs": {
             "ErpDraft": "sha256:91f4779de7c6cd75cafd362ea2a38edc91030ae222e19de9d7a34ba8c8235d84",
             "ErpRead": "sha256:ea23f2faae2ed8a24ad065393490218cec83654e7a8109ba2b733902b32fcc06",

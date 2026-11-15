@@ -1,0 +1,41 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0120c",
+  "kind": "compile",
+  "title": "A program that uses a tool whose types it does not have is refused at each use: the type names of a tool's signature are the definitions its connector's module means.",
+  "spec": [
+    "spec/library.md#toolcall",
+    "spec/library.md#closed-imports"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../../fixtures/library/acme.connectors/types.mdt",
+    "../../fixtures/library/acme.connectors/connectors.mdt"
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/ErpRead/value",
+        "facts": {
+          "name": "Order",
+          "module": "acme.connectors.types"
+        }
+      },
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/Orders/body/0/value",
+        "facts": {
+          "name": "Order",
+          "module": "acme.connectors.types"
+        }
+      }
+    ]
+  }
+}

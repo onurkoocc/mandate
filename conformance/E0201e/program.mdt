@@ -1,0 +1,43 @@
+// Changes opened all at once, a switch picking either the change as it was
+// given or no change: the switch is a list of unverified changes.
+
+mandate @ 0.6
+
+module example.small @ 0.1
+
+use std.{git}
+
+type Change = { branch: Text, risk: Int }
+type Mode   = Strict | Loose
+
+capability PR = git.pr("example/app")
+
+/// A change names the branch it merges.
+contract Named(c: Change) {
+  accept named "The change names its branch"
+    by static len(c.branch) >= 1
+}
+
+/// A change is small.
+contract Small(c: Change) {
+  accept small "The change is small"
+    by static c.risk < 3
+}
+
+effect open_all(cs: List<Verified<Change>>) -> Receipt<Text>
+  requires caps git.pr("example/app")
+  critical
+  idempotency required
+
+/// Opens or lands a change.
+workflow Land(change: Change, mode: Mode) -> Bool
+  caps   PR
+  budget { time: 1h }
+{
+  let picked = switch mode {
+    Strict => [change]
+    Loose  => []
+  }
+  effect open_all(picked) idempotent_by change.branch
+  true
+}

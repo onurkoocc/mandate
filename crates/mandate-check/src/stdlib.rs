@@ -199,6 +199,29 @@ pub const CAP_CTORS: [(&str, CapCtor); 10] = [
 pub const CAP_CTORS_0_6: [(&str, CapCtor); 1] =
     [("tool.call", ctor("Tool", false, ScopeKind::None))];
 
+/// The roots of the standard library's modules a program of 0.6 knows: what
+/// `use std.{…}` lists (`fs`, `human`, `tool` …) and `std.decision`'s.
+/// In a program of 0.6 no definition, and no name a `use` lists from
+/// another module, takes one (E0121), so that a call written `human.review`
+/// or `human.approve` is the standard library's, and the runtime, which
+/// reads a call by its path, takes it for what the checker took it.
+pub const STD_MODULE_ROOTS: [&str; 14] = [
+    "component",
+    "data",
+    "decision",
+    "env",
+    "exec",
+    "fs",
+    "git",
+    "human",
+    "model",
+    "money",
+    "net",
+    "test",
+    "time",
+    "tool",
+];
+
 /// `CAP_CTORS[name]`.
 #[must_use]
 pub fn cap_ctor(name: &str) -> Option<&'static CapCtor> {

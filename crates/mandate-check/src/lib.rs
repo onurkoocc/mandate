@@ -209,7 +209,9 @@ pub use resolve::{
     BUILTIN_FUNCTIONS, BUILTIN_TYPES, BUILTIN_TYPES_0_4, SUPERVISION_STRATEGIES, closest,
     resolve_names,
 };
-pub use roles::{RoleSite, RoleValue, role_checks, role_sites, roles_named};
+pub use roles::{
+    RoleSite, RoleValue, role_checks, role_sites, role_sites_of, roles_named, waiver_role_sites,
+};
 pub use sandbox::{
     CoTenancy, Egress, ExecGrant, Filesystem, ISOLATION_LEVELS, Isolation, IsolationLevel,
     ModelGrant, Network, RequirementOptions, SANDBOX_DENIALS_FORMAT, SANDBOX_REQUIREMENT_FORMAT,

@@ -13,7 +13,7 @@ module acme.finance.batch @ 1.0
 use std.{model, tool}
 use batch.patterns.{BatchWithExceptions}
 use acme.connectors.{erp, mailbox}
-use acme.connectors.types.{Invoice, Match, DraftId, near}
+use acme.connectors.types.{Invoice, Order, Match, DraftId, near}
 
 role accountant   "Accountant"
 role finance_lead "Finance lead"

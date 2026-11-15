@@ -1,0 +1,30 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0403a",
+  "kind": "compile",
+  "title": "A write tool's effect without idempotent_by is refused: the runtime sends its operation key in the tool's idempotency key.",
+  "spec": [
+    "spec/library.md#toolcall"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "remove",
+      "path": "/defs/Draft/body/2/value/idempotent_by"
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0403",
+        "path": "/defs/Draft/body/2/value"
+      }
+    ]
+  }
+}

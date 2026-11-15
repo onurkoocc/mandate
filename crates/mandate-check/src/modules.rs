@@ -157,12 +157,121 @@ pub fn link(program: Program<'_>, modules: Option<&Modules>) -> Linked {
     // 0.6: a connector is named by its module and its name, so each one in
     // the table says its module, the program's own ones too.
     if let Some(own) = program.module() {
-        mark_connectors(&mut defs, own);
+        let names: Vec<&str> = program
+            .defs()
+            .map(|d| d.keys().collect())
+            .unwrap_or_default();
+        mark_own_connectors(&mut defs, &names, own);
+    }
+    if let Some(modules) = modules {
+        mark_unbound(&mut defs, program, &origin, modules);
     }
     Linked {
         defs,
         origin,
         diagnostics,
+    }
+}
+
+/// The type names a value of a tool's signature refers to (`ref`), each
+/// once, in the order found, the built-in types left out.
+fn type_names(v: &Value, out: &mut Vec<String>) {
+    match v {
+        Value::Array(items) => items.iter().for_each(|x| type_names(x, out)),
+        Value::Object(o) => {
+            if let Some(r) = o.get("ref").and_then(Value::as_str)
+                && !crate::resolve::BUILTIN_TYPES.contains(&r)
+                && !crate::resolve::BUILTIN_TYPES_0_4.contains(&r)
+                && !out.iter().any(|n| n == r)
+            {
+                out.push(r.to_owned());
+            }
+            o.iter().for_each(|(_, x)| type_names(x, out));
+        }
+        _ => {}
+    }
+}
+
+/// 0.6: for each connector linked from a module, the type names of each of
+/// its tools' signatures that the program does not have as the very
+/// definition that module means by them, written into the linked connector
+/// as `unbound`, `{ <tool>: { <name>: <the module that defines it there> } }`
+/// (an empty module when that module has no such name). That module means by
+/// a name its own definition, or the definition a `use` of it lists; the
+/// program has it when its own definition or a linked one of that name comes
+/// from the same module. A use of such a tool refuses the name (E0120,
+/// `crate::statics`): a program calls a tool only with the types it means.
+/// Only a table of linked definitions holds `unbound`; the schema refuses it
+/// in a program.
+fn mark_unbound(
+    defs: &mut Map,
+    program: Program<'_>,
+    origin: &[(String, String)],
+    modules: &Modules,
+) {
+    let own = program.module().unwrap_or_default();
+    let mine = program.defs();
+    let has = |name: &str| -> Option<String> {
+        if mine.is_some_and(|d| d.contains_key(name)) {
+            return Some(own.to_owned());
+        }
+        origin
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, m)| m.clone())
+    };
+    let mut marks: Vec<(String, Map)> = Vec::new();
+    for (name, d) in defs.iter() {
+        let Some(c) = ConnectorDef::of(d) else {
+            continue;
+        };
+        if mine.is_some_and(|m| m.contains_key(name)) {
+            continue;
+        }
+        let Some(module) = origin
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, m)| m.as_str())
+        else {
+            continue;
+        };
+        let Some(m) = modules.get(module).and_then(Program::of) else {
+            continue;
+        };
+        let means = |n: &str| -> String {
+            if m.defs().is_some_and(|d| d.contains_key(n)) {
+                return module.to_owned();
+            }
+            m.imports()
+                .find(|u| u.names().any(|x| x == n))
+                .and_then(|u| u.module())
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let mut unbound = Map::new();
+        for (tool, t) in c.tools() {
+            let mut names = Vec::new();
+            type_names(&Value::Object(t.members().clone()), &mut names);
+            let mut missing = Map::new();
+            for n in names {
+                let meant = means(&n);
+                if meant.is_empty() || has(&n).as_deref() != Some(meant.as_str()) {
+                    missing.insert(n, meant);
+                }
+            }
+            if !missing.is_empty() {
+                unbound.insert(tool, Value::Object(missing));
+            }
+        }
+        marks.push((name.to_owned(), unbound));
+    }
+    for (name, unbound) in marks {
+        if let Some(Value::Object(d)) = defs.get_mut(&name) {
+            d.remove("unbound");
+            if !unbound.is_empty() {
+                d.insert("unbound", Value::Object(unbound));
+            }
+        }
     }
 }
 
@@ -186,15 +295,34 @@ pub fn with_module(d: Value, module: &str) -> Value {
 
 /// Every connector of `defs` that says no module, marked as one of
 /// `module` ([`with_module`]): the program's own, in a table of linked
-/// definitions.
+/// definitions. [`mark_own_connectors`] marks the program's own whatever
+/// they say.
 pub fn mark_connectors(defs: &mut Map, module: &str) {
     let unmarked: Vec<String> = defs
         .iter()
         .filter(|(_, d)| ConnectorDef::of(d).is_some_and(|c| c.module().is_none()))
         .map(|(n, _)| n.to_owned())
         .collect();
+    mark_named(defs, &unmarked, module);
+}
+
+/// The connectors of `defs` named in `own`, the program's own definitions,
+/// marked as of the program's `module`, whatever `module` they say: a value
+/// that was not read by the schema (which refuses `module` in a connector)
+/// cannot pass for another module's connector.
+pub fn mark_own_connectors<S: AsRef<str>>(defs: &mut Map, own: &[S], module: &str) {
+    let named: Vec<String> = own
+        .iter()
+        .map(AsRef::as_ref)
+        .filter(|n| defs.get(n).is_some_and(|d| ConnectorDef::of(d).is_some()))
+        .map(str::to_owned)
+        .collect();
+    mark_named(defs, &named, module);
+}
+
+fn mark_named(defs: &mut Map, unmarked: &[String], module: &str) {
     for name in unmarked {
-        if let Some(d) = defs.get_mut(&name)
+        if let Some(d) = defs.get_mut(name)
             && let Value::Object(m) = d
         {
             m.insert("module", module);

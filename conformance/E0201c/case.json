@@ -1,0 +1,32 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0201c",
+  "kind": "compile",
+  "title": "A record's field declared Verified takes only a verified value: the record holds the value it is given, and its field is that value, not a verified one.",
+  "spec": [
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0201",
+        "path": "/defs/Land/body/1/value/fields/m"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Named/accept/named/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Small/accept/small/by/static"
+      }
+    ]
+  }
+}

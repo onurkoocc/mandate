@@ -66,20 +66,30 @@ export const MODEL_ENV: readonly string[] = [
   "NODE_EXTRA_CA_CERTS",
 ];
 
+/**
+ * What decides which compiler a process that loads the bridge answers with, and where it finds the module: the
+ * operator's MANDATE_COMPILER and MANDATE_WASM (bridge/src/mode.ts, bridge/src/wasm/module.ts). Neither is a secret.
+ * A process the runtime starts that loads the bridge (the verifier process) gets them, so that it runs in the mode
+ * the runtime runs in and takes the module the runtime takes: an unset MANDATE_COMPILER is the same default in both,
+ * and without these a child would run the default whatever its parent was told to run.
+ */
+export const COMPILER_ENV: readonly string[] = ["MANDATE_COMPILER", "MANDATE_WASM"];
+
 /** The Docker client's settings: which engine, its context, configuration and TLS, and a rootless engine's socket. */
 export const DOCKER_ENV: readonly string[] = ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY", "XDG_RUNTIME_DIR"];
 
 /**
  * The verifier process's environment (verifier-main.ts): what a program needs, the sandbox SDK's settings, and,
  * when the configuration has a model and so the verifier runs model-backed checks (a review), what those need.
- * Never the GitHub token or the read broker's database logins: the verifier reads neither.
+ * Never the GitHub token or the read broker's database logins: the verifier reads neither. It also gets the
+ * compiler's mode and module (`COMPILER_ENV`), as the runtime that started it has them.
  */
 export function verifierEnv(o: { model: boolean; gateway?: { url: string; placeholder: string } }, from: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const model = o.model;
   // With the model gateway on (gateway.ts), what a model-backed check needs is the address and placeholder of a
   // gateway session opened for this process, and the workspace, which is no secret: never a key, nor a proxy of the way out.
-  if (model && o.gateway) return childEnv({ pass: [...SANDBOX_ENV, ...GATEWAY_MODEL_ENV], set: { [GATEWAY_ENV.url]: o.gateway.url, [GATEWAY_ENV.placeholder]: o.gateway.placeholder } }, from);
-  return childEnv({ pass: [...SANDBOX_ENV, ...(model ? MODEL_ENV : [])] }, from);
+  if (model && o.gateway) return childEnv({ pass: [...SANDBOX_ENV, ...COMPILER_ENV, ...GATEWAY_MODEL_ENV], set: { [GATEWAY_ENV.url]: o.gateway.url, [GATEWAY_ENV.placeholder]: o.gateway.placeholder } }, from);
+  return childEnv({ pass: [...SANDBOX_ENV, ...COMPILER_ENV, ...(model ? MODEL_ENV : [])] }, from);
 }
 
 /** What a model-backed check takes from the runtime's environment when the model gateway is on: the workspace only. */

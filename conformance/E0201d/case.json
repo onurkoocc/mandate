@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0201d",
+  "kind": "compile",
+  "title": "peek of a value of a type the checker cannot tell gives a value of a type it cannot tell, which goes where a verified value is required no more.",
+  "spec": [
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0207",
+        "path": "/defs/Land/body/1/value/args/0/value"
+      },
+      {
+        "code": "MDT-E0201",
+        "path": "/defs/Land/body/1/value/args/0/value"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Named/accept/named/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Small/accept/small/by/static"
+      }
+    ]
+  }
+}

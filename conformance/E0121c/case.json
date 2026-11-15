@@ -1,0 +1,72 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0121c",
+  "kind": "compile",
+  "title": "In a program of 0.6 no definition takes the name of a built-in type of a review: a type Declined of its own would type what a review declined (a mutation: the type added).",
+  "spec": [
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Declined",
+      "value": {
+        "kind": "type",
+        "type": {
+          "record": {
+            "index": {
+              "ref": "Int"
+            },
+            "value": {
+              "ref": "Verified",
+              "args": [
+                {
+                  "ref": "Match"
+                },
+                {
+                  "ref": "Matched"
+                }
+              ]
+            },
+            "unmet": {
+              "ref": "List",
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ]
+            },
+            "by": {
+              "ref": "Option",
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0121",
+        "path": "/defs/Declined",
+        "facts": {
+          "name": "Declined",
+          "builtin": "type"
+        }
+      }
+    ]
+  }
+}

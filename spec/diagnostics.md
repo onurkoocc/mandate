@@ -193,17 +193,31 @@ reported by `mandate check`; E1407 and E1408 by `mandate check` with the lock.
 | MDT-E1402 | Malformed connector | E1402, E1402a, E1402b | 0.6 only; the server (`/defs/<c>/mcp`) is not one absolute `https://` URL of printable ASCII with a host name (spec/egress.md "Host names") and no user, password, port, query or fragment; no `version`; no `class`, or one that is not a data class (`/defs/<c>/class`); no tool (`/defs/<c>/tools`); a tool declared twice, refused by the parser at the second name, as a text that does not read. Facts: `connector`, `problem` (`url` with `reason`, `version`, `class`, `no_tool`, `duplicate_tool` with `tool`) |
 | MDT-E1403 | Tool result of the wrong kind | E1403 | 0.6 only; a `read_only` tool that does not return `Untrusted<T>`, a write tool that does not return `Receipt<T>`; path `/defs/<c>/tools/<t>/returns`. Facts: `connector`, `tool`, `expected`, `found` |
 | MDT-E1404 | Malformed `tool.call` | E1404 | 0.6 only; reported where the capability expression is evaluated: a first argument that is no connector the program defines or lists in a `use`, a tool the connector does not declare, an argument that is not a bare name or that has a name, no tool, or `.narrow(…)` of a `tool.call`. Such a `tool.call` stands for no capability. Facts: `problem` |
-| MDT-E1405 | Tool called where it cannot be | E1405, E1405a, E1405b | 0.6 only; a read-only tool through `effect`, a write tool as an expression, any tool in a `fn`, a contract, a skill's body, a constant or a handler; at the call. Facts: `connector`, `tool`, `problem` (`read_through_effect`, `write_as_expression`, or the kind of body: `fn`, `contract`, `skill`, `const`, `handler`) |
-| MDT-E1406 | Agent holds a write tool | T02, E1406 | 0.6 only; a `tool.call` that names a write tool in an agent's `caps` (at the capability), in a delegation's `with caps` (at it), or in what a map's `with caps` hands a delegation of its body (at the delegation). Facts: `agent`, `capability`, `through` (`caps`, `with caps`, `map with caps`) |
-| MDT-E1407 | Connector not bound in the lock | E1407, E1407a | 0.6 only; needs the lock; a connector a `tool.call` capability of the program's workflows (their caps or their envelope's) or agents names has no `connectors.<module>.<connector>` entry (path `/connectors`), or its entry has no digest for one of the tools it declares (path `/connectors/<id>/tools`). Facts: `connector`, `problem` (`no_entry`, `no_digest` with `tool`). The path is into the lock |
-| MDT-E1408 | Lock binds no connector of the package | E1408, E1408a | 0.6 only; needs the lock; an entry names a connector that neither the program's module nor a module the check is given defines (path `/connectors/<id>`), or a tool the connector does not declare (`/connectors/<id>/tools/<tool>`). Facts: `connector`, `problem` (`no_connector`, `no_tool` with `tool`). The path is into the lock |
+| MDT-E1405 | Tool called where it cannot be | E1405, E1405a, E1405b, E1405c, E1405d, E1405e | 0.6 only; a read-only tool through `effect`, a write tool as an expression, any tool in a `fn`, a contract, a skill's body, a constant, a handler or a workflow's `ensures` (the places typed in a workflow's frame without being its body are its `ensures` and its handlers); at the call. Facts: `connector`, `tool`, `problem` (`read_through_effect`, `write_as_expression`, or the kind of body: `fn`, `contract`, `skill`, `const`, `handler`, `ensures`) |
+| MDT-E1406 | Agent holds a write tool | T02, E1406, E1406a, E1406b | 0.6 only; a `tool.call` that names a write tool in an agent's `caps` (at the capability), in a delegation's `with caps` (at it), or in a map's `with caps` when the map's body delegates, directly or through a function however deep (at the map's capability); the run-time `grant` door grants no write part of a `tool.call` either. Facts: `agent`, `capability`, `through` (`caps`, `with caps`, `map with caps`) |
+| MDT-E1407 | Connector not bound in the lock | E1407, E1407a, E1407b | 0.6 only; needs the lock; a connector a `tool.call` capability of the program's workflows (their caps or their envelope's) or agents names has no `connectors.<module>.<connector>` entry (path `/connectors`), or its entry has no digest for one of the tools it declares (path `/connectors/<id>/tools`), or its `url`, where the credential goes, is not the URL the connector declares (path `/connectors/<id>/url`; `url` is required in the entry by `spec/lock-0.6.schema.json`, E0140 when missing). Facts: `connector`, `problem` (`no_entry`, `no_digest` with `tool`, `url` with `url` and `declared`). The path is into the lock |
+| MDT-E1408 | Lock binds no connector of the package | E1408, E1408a, E1408b | 0.6 only; needs the lock; an entry names a connector that neither the program's module nor a module the program imports defines (path `/connectors/<id>`; a module the check is given that the program does not import is not of the package, E1408b), or a tool the connector does not declare (`/connectors/<id>/tools/<tool>`). Facts: `connector`, `problem` (`no_connector`, `no_tool` with `tool`). The path is into the lock |
 
-Language 0.6 extends four codes for connectors. E0120: a tool a connector
+Language 0.6 extends these codes for connectors. E0121: a definition named like a
+built-in effect (`Tool`, `Model`, `Fs.Read` …, and `Tool.Write`), which would
+decide what covers that effect (E0121, E0121a; E0121b: a program of 0.5 is read
+as before); in 0.6 a `Tool` or `Tool.Write` use is covered by a `tool.call` part
+alone. E0120: a tool a connector
 does not declare, in a call (`/…/callee/name`) or as an effect's name, a
-connector used as a value, and a tool named without a call. E0220: an
+connector used as a value, and a tool named without a call; and a type name of a
+tool's signature that the program does not have as the definition the
+connector's module means by it (not imported, or a definition of the program's
+own of that name), at each use: a call, a write's effect, a `tool.call`, an
+agent's capability that holds the tool (E0120c, E0120d). Facts: `name`,
+`expected: "type"`, `module`, `tool`. E0220: a tool
+whose parameter or result types are classed above its connector's `class`, at
+the tool in the module that declares it (E0220e), and at each use of an imported
+one, since a module given to `check` is not checked with the program; an
 argument of a tool's call of a class above its connector's `class` (at the
 argument, T06), and a delegation whose agent holds tools of a connector and
-receives data of a class above that connector's (at the delegation, T06a);
+receives data of a class above that connector's (at the delegation, T06a); an agent that holds a connector's read-only tools above the class its
+model capability may receive (at the capability, E0220c), or a delegation whose
+grant does so where the agent's own caps do not (at the delegation, E0220d);
 the facts `data_class`, `allowed` and `connector`; in a sub-program, as for a
 model, E1706 with `dimension: "data_class"` when the class comes from what
 the lead received. E0301: in a program of 0.6 every capability of every
@@ -224,9 +238,9 @@ cases of `mandate/0.6`, and `mandate check` reports them.
 
 | Code | Title | Conformance case | Notes |
 |---|---|---|---|
-| MDT-E1504 | Waiver of a criterion a person approves | E1504, E1504a | 0.6 only; a criterion with `waive by` whose method is, or includes through `and`, a call of `human.approve`; at `/defs/<C>/accept/<k>/waive` (or `invariant`). Facts: `contract`, `criterion`, `waive` |
-| MDT-E1505 | Waivable value reaches an irreversible effect | E1505 to E1505g | 0.6 only; an argument of an irreversible effect (declared `irreversible`, or `git.merge`, `deploy`, `migrate`) that may rest on a waiver: a value verified against a contract with a `waive by` criterion, or a value made of one (a `let` of any declared type, a field, what a function gives back of it or verifies itself, a map's item, an element of a review's `accepted`), or one whose type names such a contract (`Verified<T, C>`, `Review<T, C>`, in its arguments or fields); at the argument. Such a value does not stand for the approval E0405 asks for either (E1505f: E1505 and E0405). The same for an argument of an irreversible member of a change set, and for the plan of a change set that has one. Facts: `effect`, and `contract` when the value's type names it |
-| MDT-E1506 | Review of a list that is not a verifying map's | E1506 to E1506h | 0.6 only; the first argument of `human.review` is not a name that a `let` of the same workflow body binds, as the last binding of it, to a `map` whose body ends with `verify x against C(…)` with no `on unmet`; at the argument, or at the call when it has none or stands outside a workflow's body. Facts: `problem` (`missing`, `outside_workflow`, `not_a_name`, `not_let`, `not_a_map`, `not_verifying`, `on_unmet`, `returns`), `source` (the name, when there is one) |
+| MDT-E1504 | Waiver of a criterion a person approves | E1504, E1504a, E1504b | 0.6 only; a criterion with `waive by` whose method is, or includes through `and`, a call of `human.approve`, or calls a function of the program whose body holds one, itself or through the functions it calls (E1504b); at `/defs/<C>/accept/<k>/waive` (or `invariant`). Facts: `contract`, `criterion`, `waive` |
+| MDT-E1505 | Waivable value reaches an irreversible effect | E1505 to E1505l | 0.6 only; an argument of an irreversible effect (declared `irreversible`, or `git.merge`, `deploy`, `migrate`) that may rest on a waiver: a value verified against a contract with a `waive by` criterion, or a value made of one (a `let` of any declared type, a field, what a function gives back of it or verifies itself, a map's item, an element of a review's `accepted`, and each value a form of 0.6 may be: a later arm of a `switch`, `pause and x`, a block that ends with a `let`, an `if` or a `loop`, E1505h to E1505l), or one whose type names such a contract (`Verified<T, C>`, `Review<T, C>`, in its arguments or fields); at the argument. Such a value does not stand for the approval E0405 asks for either (E1505f: E1505 and E0405). The same for an argument of an irreversible member of a change set, and for the plan of a change set that has one. Facts: `effect`, and `contract` when the value's type names it |
+| MDT-E1506 | Review of a list that is not a verifying map's | E1506 to E1506i | 0.6 only; the first argument of `human.review` is not a name that a `let` of the same workflow body binds, as the last binding of it, to a `map` whose body ends with `verify x against C(…)` with no `on unmet`, and after which no `on error` handler gives a value of its own (E1506i); at the argument, or at the call when it has none or stands outside a workflow's body. Facts: `problem` (`missing`, `outside_workflow`, `not_a_name`, `not_let`, `not_a_map`, `not_verifying`, `on_unmet`, `returns`, `on_error`), `source` (the name, when there is one) |
 | MDT-E1507 | Malformed review | E1507 to E1507i | 0.6 only; an argument of `human.review` after its results: a second one without a name, one it does not take, one given twice, `role` or `escalate_to` that names no role definition, `escalate_to` that names `role`'s role, a `deadline` that is not a duration literal above zero or a constant whose value is one; at the argument, or at the call for `role` or `deadline` missing. Facts: `problem` (`positional`, `unknown_argument`, `repeated`, `missing`, `not_a_role`, `same_role`, `deadline`), `argument` |
 | MDT-E1508 | Review role cannot waive | H07, E1508, E1508a | 0.6 only; the review's `role`, or its `escalate_to`, is not among the `waive by` roles of a criterion of the contract its source verifies against (at the argument; facts `problem: "cannot_waive"`, `role`, `contract`, `criteria`), or that contract has no criterion with `waive by` (at the call; `problem: "no_waiver"`, `contract`) |
 
@@ -235,9 +249,57 @@ names a role, and with the lock it is held by a member, E1502.
 `Review<T, C>` and `Declined<T>` are built-in types of a program of 0.6 (in
 an earlier program they name nothing, E0120), whose `C` is a contract as
 `Verified`'s is (E0120 otherwise), and which only the runtime makes: a
-record of either, a model's answer, a skill's or host code's result that
-names one is E0213. A `human.review` is a `human.*` step, so E1708 in a
-map's body (E1708l).
+record literal of either (or of an alias of one), a model's answer, a
+skill's, host code's or a declared effect's result that holds one, in its
+arguments, its fields or the type definitions it names (an alias, a record,
+a union's variants), is E0213 (E0213a to E0213f). No definition of a program, a module or a sub-program
+of 0.6 takes either name, and no `use` list brings one of that name from
+another module: E0121, at the definition or the listed name, with the facts
+`name` and `builtin: "type"` (E0121c, E0121d), so that what types a review
+is the language's alone. Nor does one take the root of a standard module
+(`component`, `data`, `decision`, `env`, `exec`, `fs`, `git`, `human`,
+`model`, `money`, `net`, `test`, `time`, `tool`), whether the program imports
+it or not: E0121 with `builtin: "module"` (E0121e, a connector named `human`;
+E0121f, a listed name), so that a call written `human.review(…)` is the
+standard library's, as the runtime reads a call by its path. A `human.review` is a `human.*` step, so E1708 in
+a map's body (E1708l).
+
+In a program of 0.6 each form is typed as the runtime evaluates it, and the
+codes of the front end hold what that gives. Where the runtime gives one of
+several values the type is their join (the weaker level, a contract only when
+both name it, the higher class, resting on a waiver when either does, and of
+two types one of which holds an unknown the other's, as `[]` joins any list,
+E0201e, or none when that unknown is silent): the
+arms of a `switch` (E1505h, E0210b, E0220f), a statement and the `on error`
+handler after it (E0210c; a supervision strategy there gives no value), a
+`verify` and its `on unmet` handler (E0210d, E0201a), the branches of an `if`
+(E0210e), and a block has the value of its last statement, a `let`, an `if`
+or a `loop` included (E1505j to E1505l), which a function's declared return
+type holds as it holds an expression (E0201b, at the statement). The one
+exception: a `verify` whose `on unmet` handler is nothing but `escalate …` or
+`pause` keeps the verified value's type, as in 0.5 (H08), for the runtime
+refuses the person's answer at a `Verified` parameter. `pause and x` is `x`
+(E1505i); `x?` of what is not a `Result` is `x`, its contract kept (E0212); a
+person's answer (`escalate`, `pause` alone) and what an `on error` pattern
+binds are `Untrusted`, of the highest class. A call is of a function of the
+program, a standard function under its module's name, a connector's tool, a
+decision policy, `quote`, `len`, `peek` or `human.review`, as the runtime
+calls nothing else: any other is E0120 at its callee, with the facts `name`
+and `expected: "function"`, a member of a value (`x.m()`, E0120f), a
+standard function whose module's name a variable takes (`let human = …;
+human.ask(…)`, E0120e), a workflow or an extern (E0120g); not a criterion's
+own method, a constant's call or a supervision strategy. `await` is E0711
+(E0711). An effect in a workflow's `ensures`, which states what holds once
+the run is done and does nothing, is E0408 at the effect, with the facts
+`effect` and `place: "ensures"` (E0408b; a tool there is E1405). A value of a form the checker still cannot type, of which no
+diagnostic already stands for the unknown (a field of a type it sees no
+fields of, a range, the result of a standard effect the table does not
+type, a constant on a cycle, a name the runtime gives as itself, what
+`peek` gives of such a value, E0201d), is never accepted where a verified
+value is required: E0201, at that place. A record's field declared
+`Verified` takes only a verified value, as the record holds what it is
+given: E0201 (or E0210, E0211, E0212) at the field (E0201c). A program
+of 0.1 to 0.5 is typed as before.
 
 ## Patterns (0.6)
 
@@ -282,5 +344,5 @@ expansion names a definition of its module that is not `pub`, or one its
 module imports, at the application (E1602e). E0120: `delegate s(…)` and a
 map's `max s` or `par s` stand only in a pattern's body, for one of its
 slots; and a name an imported pattern's module does not know (above). And
-every rule holds inside an expansion as if its body were written out (E1708m,
-E1708n, E1505h, E1506i, E1501a, E0301c, E0220c, E0210).
+every rule holds inside an expansion as if its body were written out (E1708n,
+E1708o, E1505m, E1506j, E1501a, E0301d, E0220g, E0210).

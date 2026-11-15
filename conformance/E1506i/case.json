@@ -3,37 +3,25 @@
   "format": "mandate/conformance-case/0.1",
   "id": "E1506i",
   "kind": "compile",
-  "title": "A review in an expansion of a list that is not a verifying map's.",
+  "title": "A review of a name that an on error handler after its map gives a value of its own is refused: the name is the map's outcomes or the handler's value.",
   "spec": [
-    "spec/library.md#expansion",
     "spec/library.md#humanreview",
     "spec/library.md#diagnostics-and-conformance-cases"
   ],
   "language": "mandate/0.6",
   "input": {
-    "file": "../P02/program.mdt",
+    "file": "program.mdt",
     "kind": "mdt"
   },
-  "patch": [
-    {
-      "op": "replace",
-      "path": "/defs/BatchWithExceptions/body/2/value/args/0/value",
-      "value": {
-        "op": "var",
-        "name": "items"
-      }
-    }
-  ],
   "expect": {
     "ok": false,
     "diagnostics": [
       {
         "code": "MDT-E1506",
-        "path": "/defs/MatchAll/apply",
+        "path": "/defs/MatchAll/body/3/value/args/0/value",
         "facts": {
-          "problem": "not_a_map",
-          "source": "items",
-          "pattern_path": "/defs/BatchWithExceptions/body/2/value/args/0/value"
+          "problem": "on_error",
+          "source": "checked"
         }
       },
       {

@@ -1,0 +1,182 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1504b",
+  "kind": "compile",
+  "title": "A criterion met by a function that asks a person (human.approve in its body, or in a function it calls) cannot be waived either (a mutation: a function and a contract added).",
+  "spec": [
+    "spec/library.md#waive-by",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/asks",
+      "value": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "m",
+            "type": {
+              "ref": "Match"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Bool"
+        },
+        "effects": [
+          {
+            "effect": "Human"
+          }
+        ],
+        "body": [
+          {
+            "op": "let",
+            "name": "a",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "field",
+                "of": {
+                  "op": "var",
+                  "name": "human"
+                },
+                "name": "approve"
+              },
+              "args": [
+                {
+                  "name": "role",
+                  "value": {
+                    "op": "var",
+                    "name": "controller"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "expr",
+            "value": {
+              "op": "bool",
+              "value": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/signed",
+      "value": {
+        "kind": "fn",
+        "params": [
+          {
+            "name": "m",
+            "type": {
+              "ref": "Match"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Bool"
+        },
+        "effects": [
+          {
+            "effect": "Human"
+          }
+        ],
+        "body": [
+          {
+            "op": "expr",
+            "value": {
+              "op": "call",
+              "callee": {
+                "op": "var",
+                "name": "asks"
+              },
+              "args": [
+                {
+                  "value": {
+                    "op": "var",
+                    "name": "m"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "op": "add",
+      "path": "/defs/Signed",
+      "value": {
+        "kind": "contract",
+        "params": [
+          {
+            "name": "m",
+            "type": {
+              "ref": "Match"
+            }
+          }
+        ],
+        "accept": {
+          "signed": {
+            "description": "The controller signed it",
+            "by": {
+              "static": {
+                "op": "call",
+                "callee": {
+                  "op": "var",
+                  "name": "signed"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "var",
+                      "name": "m"
+                    }
+                  }
+                ]
+              }
+            },
+            "waive": [
+              "accountant"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      },
+      {
+        "code": "MDT-E1504",
+        "path": "/defs/Signed/accept/signed/waive",
+        "facts": {
+          "contract": "Signed",
+          "criterion": "signed"
+        }
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Signed/accept/signed/by/static"
+      }
+    ]
+  }
+}

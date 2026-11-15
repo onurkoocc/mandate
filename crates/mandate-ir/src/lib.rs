@@ -153,7 +153,7 @@ pub use hash::{
     hash_program, package_hash,
 };
 pub use jcs::{canonicalize, compare_utf16, write_json_string};
-pub use js_value::{JsObject, JsValue, stringify, stringify_pretty};
+pub use js_value::{JsObject, JsValue, JsonText, stringify, stringify_pretty};
 pub use lock::{
     LOCK_FIELDS_0_5, LOCK_FIELDS_0_6, LOCK_FORMAT, LOCK_FORMAT_0_6, LOCK_FORMATS, lock_at_least,
     lock_schema_diagnostics, validate_lock,

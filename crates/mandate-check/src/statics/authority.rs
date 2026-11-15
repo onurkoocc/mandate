@@ -496,9 +496,11 @@ impl<'a> Checker<'a> {
     pub(crate) fn effect_names(&mut self, effects: &'a [Value], base: &str) {
         for (i, e) in effects.iter().enumerate() {
             let effect = e.get("effect").and_then(Value::as_str).unwrap_or_default();
+            // 0.6: a connector's tool, `c.t`, is an effect of the program too.
             if is_builtin_effect(effect)
                 || std_effect(effect).is_some()
                 || self.def_of(effect, DefKind::Effect).is_some()
+                || self.connector_tool(effect).is_some()
             {
                 continue;
             }
@@ -549,6 +551,9 @@ impl<'a> Checker<'a> {
     /// that authorize a usage. A usage with a scope needs a capability
     /// whose scope covers it.
     fn caps_for(&self, effect: &str, scope: Option<&[String]>, caps: &[CapVal]) -> Vec<usize> {
+        if let Some(by) = self.tool_effect_caps(effect, scope, caps) {
+            return by;
+        }
         if let Some(reqs) = self.requirements(effect) {
             return Self::covering(&reqs, scope, caps);
         }
@@ -603,6 +608,9 @@ impl<'a> Checker<'a> {
     fn authorizing(&self, x: &Value, caps: &[CapVal]) -> Vec<usize> {
         let effect = x.get("effect").and_then(Value::as_str).unwrap_or_default();
         let scope = Self::effect_scope(x);
+        if let Some(by) = self.tool_effect_caps(effect, scope.as_deref(), caps) {
+            return by;
+        }
         if let Some(reqs) = self.requirements(effect) {
             return Self::covering(&reqs, scope.as_deref(), caps);
         }
@@ -660,6 +668,10 @@ impl<'a> Checker<'a> {
         let caps = self.cap_list(d.caps(), &format!("{base}/caps"));
         // 0.6: no agent holds a write tool (E1406).
         self.agent_write_tools(name, d.caps(), base);
+        // 0.6: what its loop reads reaches its model (E0220).
+        self.agent_read_classes(name, d.caps(), base);
+        // 0.6: the types of the tools it holds are the program's (E0120).
+        self.agent_unbound(d.caps(), base);
         // `used` is a Set of the capabilities by identity: here, by index.
         let mut used = vec![false; caps.len()];
         let skills: Vec<(&'a str, &'a Value)> = d.skills().collect();
@@ -824,11 +836,16 @@ impl<'a> Checker<'a> {
         if let Some(ensures) = d.ensures() {
             let at = format!("{base}/ensures");
             let mut vars = HashMap::new();
-            vars.insert(
-                "result".to_owned(),
-                Val::public(frame.returns.clone().unwrap_or(UNKNOWN)),
-            );
+            // 0.6: the result of a workflow that declares none is of
+            // nothing the checker knows.
+            let result = match frame.returns.clone() {
+                Some(t) => Val::public(t),
+                None if self.at_least(Language::V0_6) => self.opaque(UNKNOWN),
+                None => Val::public(UNKNOWN),
+            };
+            vars.insert("result".to_owned(), result);
             let mut inner = Self::child(&frame, vars);
+            inner.beside_body = true;
             let v = self.expr(ensures, &mut inner, &at);
             self.expect_bool(&v, &at);
         }
@@ -1450,6 +1467,7 @@ impl<'a> Checker<'a> {
             ty: named("List", vec![named("Outcome", vec![body.ty])]),
             cls: over.cls.max(body.cls),
             waivable: over.waivable || body.waivable,
+            silent: over.silent || body.silent,
         }
     }
 
@@ -1612,6 +1630,9 @@ impl<'a> Checker<'a> {
     ) {
         let usages = frame.usages_from(usages_before);
         self.map_bound(e, frame, path, &usages);
+        // 0.6: what a map hands the delegations of its body, through a
+        // function however deep, holds no write tool (E1406).
+        self.map_hands_write_tools(e, path, &usages);
         // A person is asked once about the list, after the map (E1708). A
         // step in a map inside this one was reported there, for that map.
         for u in &usages {
@@ -1893,10 +1914,6 @@ impl<'a> Checker<'a> {
             if !own.contains(k.ctor())
                 && (remote.is_some() || agent_caps.iter().any(|a| cap_covers(a, k)))
             {
-                // 0.6: nor does a map's `with caps` (E1406).
-                if k.ctor() == crate::caps::TOOL_CALL && k.write() {
-                    self.holds_write_tool(agent_name, k, path, "map with caps");
-                }
                 given.push(k.clone());
             }
         }
@@ -1970,7 +1987,7 @@ impl<'a> Checker<'a> {
         for (i, param) in params.iter().enumerate() {
             if let Some(a) = args.get(i) {
                 let t = self.param_type(param);
-                self.expect(&a.ty, &t, &format!("{path}/args/{i}/value"));
+                self.expect_val(a, &t, &format!("{path}/args/{i}/value"));
             }
         }
     }
@@ -2065,6 +2082,14 @@ impl<'a> Checker<'a> {
         // 0.6: what the agent receives, against the classes of the
         // connectors whose tools it is granted.
         self.grant_classes(g.who, g.effective, g.cls, path);
+        let held: Vec<CapVal> = g
+            .agent
+            .caps()
+            .iter()
+            .filter_map(Expr::of)
+            .flat_map(|c| caps_of(self.defs, c, self.cap_opts()))
+            .collect();
+        self.grant_read_classes(g.who, g.effective, &held, path);
         let effects = g
             .skill
             .get("effects")
@@ -2162,6 +2187,18 @@ impl<'a> Checker<'a> {
         }
         let cls = max_class(args.iter().map(|a| a.cls));
         let name = e.name().unwrap_or_default();
+        // 0.6: a workflow's `ensures` states what holds once the run is done,
+        // and does nothing; no effect runs there (a tool there is E1405).
+        if frame.beside_body && self.at_least(Language::V0_6) {
+            self.report(
+                "E0408",
+                format!(
+                    "The effect {name} runs in a workflow's ensures, which states what holds once the run is done and does nothing. Effects run in the workflow's body, through prepare → authorize → commit (§8.8)."
+                ),
+                path,
+                Some(JsObject::new().with("effect", name).with("place", "ensures")),
+            );
+        }
         let decl = self.def_of(name, DefKind::Effect);
         let std = if decl.is_some() {
             None
@@ -2236,6 +2273,20 @@ impl<'a> Checker<'a> {
             (None, Some(s)) => super::expr::std_ty(&s.returns),
             (None, None) => UNKNOWN,
         };
+        // 0.6: what a standard effect gives back whose type the table does
+        // not say (git.open_pr's, a Receipt<?>) is an adapter's answer the
+        // checker knows nothing of. An effect that names nothing is the
+        // name resolution's E0120.
+        if self.at_least(Language::V0_6)
+            && decl.is_none()
+            && std.is_some()
+            && super::expr::has_unknown(&ret)
+        {
+            return Val {
+                ty: ret,
+                ..self.opaque(UNKNOWN)
+            };
+        }
         Val::new(ret, cls)
     }
 
@@ -2269,7 +2320,7 @@ impl<'a> Checker<'a> {
         }
         for (i, t) in params.iter().enumerate() {
             if let Some(a) = args.get(i) {
-                self.expect(&a.ty, t, &format!("{path}/args/{i}/value"));
+                self.expect_val(a, t, &format!("{path}/args/{i}/value"));
             }
         }
     }

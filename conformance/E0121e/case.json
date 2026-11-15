@@ -1,0 +1,63 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0121e",
+  "kind": "compile",
+  "title": "In a program of 0.6 no definition takes the root of a standard module: a connector named human with a tool review would make human.review(…) that tool, which no review rule holds (a mutation: the connector added).",
+  "spec": [
+    "spec/library.md#humanreview",
+    "spec/library.md#closed-imports",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/human",
+      "value": {
+        "kind": "connector",
+        "mcp": "https://h.example.com/mcp",
+        "version": "1.0",
+        "class": "confidential",
+        "tools": {
+          "review": {
+            "params": [
+              {
+                "name": "x",
+                "type": {
+                  "ref": "Text"
+                }
+              }
+            ],
+            "returns": {
+              "ref": "Untrusted",
+              "args": [
+                {
+                  "ref": "Text"
+                }
+              ]
+            },
+            "read_only": true
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0121",
+        "path": "/defs/human",
+        "facts": {
+          "name": "human",
+          "builtin": "module"
+        }
+      }
+    ]
+  }
+}

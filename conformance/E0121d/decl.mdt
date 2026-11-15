@@ -1,0 +1,9 @@
+// A module of 0.5 with a type of its own named Declined, which 0.5 may
+// name as it likes: the case E0121d lists it in a program of 0.6, where
+// Declined is a built-in type of a review.
+
+mandate @ 0.5
+
+module example.decl @ 0.1
+
+type Declined = { index: Int }

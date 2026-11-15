@@ -1,0 +1,33 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0408a",
+  "kind": "compile",
+  "title": "A skill that declares a write tool's effect is refused: a write tool is a critical effect, run by a workflow's body.",
+  "spec": [
+    "spec/library.md#tool-classes"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Reader/skills/orders/effects/-",
+      "value": {
+        "effect": "erp.post_draft"
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0408",
+        "path": "/defs/Reader/skills/orders/effects/2"
+      }
+    ]
+  }
+}

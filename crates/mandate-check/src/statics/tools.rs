@@ -20,13 +20,14 @@
 //! (E0220), as what a model receives is held to its capability's.
 
 use mandate_ir::{
-    ConnectorDef, DefKind, Definition, Expr, JsObject, JsValue, Language, Tool, Value, canonicalize,
+    ConnectorDef, DefKind, Definition, Expr, JsObject, JsValue, Language, Map, Tool, Value,
+    canonicalize,
 };
 
 use super::{Checker, Frame, Usage, Val, Where, sub, sub_i};
 use crate::caps::{
-    CapVal, TOOL_CALL, TOOL_READ_EFFECT, caps_of, show_cap, tool_call_caps, tool_connector,
-    tool_item,
+    CapVal, TOOL_CALL, TOOL_READ_EFFECT, TOOL_WRITE_EFFECT, cap_authorizes, caps_of, show_cap,
+    tool_call_caps, tool_connector, tool_item,
 };
 use crate::stdlib::{DataClass, class_rank};
 use crate::ty::{Level, epistemic, named, show};
@@ -211,6 +212,148 @@ impl<'a> Checker<'a> {
         tool_call_caps(self.defs, &r.connector, &[r.name.as_str()]).caps
     }
 
+    /// What a use of tool `tool` of the linked connector `def` stands on
+    /// that the program does not have (`unbound`, which linking writes,
+    /// `crate::modules`): each type name of its signature the program does
+    /// not hold as the definition the connector's module means, with that
+    /// definition's module.
+    fn unbound(def: ConnectorDef<'a>, tool: &str) -> Vec<(&'a str, &'a str)> {
+        def.members()
+            .get("unbound")
+            .and_then(|u| u.get(tool))
+            .and_then(Value::as_object)
+            .into_iter()
+            .flat_map(Map::iter)
+            .map(|(n, m)| (n, m.as_str().unwrap_or_default()))
+            .collect()
+    }
+
+    /// E0120 at `path` for each type name of tool `tool`'s signature that the
+    /// program does not have as the definition the connector's module means
+    /// (F5): a program uses a tool only with the types it means, never with
+    /// a definition of its own of the same name, and never with an unknown
+    /// type. `seen` holds the names reported at `path` already.
+    fn unbound_names(
+        &mut self,
+        connector: &str,
+        def: ConnectorDef<'a>,
+        tool: &str,
+        path: &str,
+        seen: &mut Vec<&'a str>,
+    ) {
+        for (name, module) in Self::unbound(def, tool) {
+            if seen.contains(&name) {
+                continue;
+            }
+            seen.push(name);
+            let place = if module.is_empty() {
+                "a name its connector's module does not define".to_owned()
+            } else {
+                format!("{module}.{name}")
+            };
+            let how = if module.is_empty() {
+                String::new()
+            } else {
+                format!(": list it in a use, use {module}.{{{name}}}")
+            };
+            self.report(
+                "E0120",
+                format!(
+                    "The tool {connector}.{tool} takes or gives the type {name}, which is {place}; this program has no such definition{how}."
+                ),
+                path,
+                Some(
+                    JsObject::new()
+                        .with("name", name)
+                        .with("expected", "type")
+                        .with("module", module)
+                        .with("tool", format!("{connector}.{tool}").as_str()),
+                ),
+            );
+        }
+    }
+
+    /// What a use of a tool holds its signature to, at the use: its type
+    /// names are the definitions its connector's module means (E0120), and
+    /// none of them is classed above the connector's class (E0220), as its
+    /// declaration is held in its module; a program may be given a module
+    /// that was not checked.
+    fn tool_signature(&mut self, r: &ToolRef<'a>, path: &str) {
+        self.unbound_names(&r.connector, r.def, &r.name, path, &mut Vec::new());
+        // The program's own connector is held at its declaration.
+        if !self
+            .program
+            .defs()
+            .is_some_and(|d| d.contains_key(&r.connector))
+        {
+            self.signature_class(&r.connector, r.def, &r.name, r.tool, path);
+        }
+    }
+
+    /// E0220 at `path` when a type of tool `tool`'s signature is classed
+    /// above its connector's class: a read-only tool would give data of a
+    /// class its connector does not say, a write tool take it.
+    fn signature_class(
+        &mut self,
+        connector: &str,
+        c: ConnectorDef<'a>,
+        tool: &str,
+        t: Tool<'a>,
+        path: &str,
+    ) {
+        let Some(allowed) = c.class().and_then(DataClass::from_name) else {
+            return;
+        };
+        let mut types: Vec<crate::ty::Ty> = t.params().iter().map(|p| self.param_type(p)).collect();
+        types.push(self.ty(t.returns()));
+        let Some(cls) = types.iter().map(|ty| self.type_class(ty)).max() else {
+            return;
+        };
+        if cls > allowed {
+            self.report(
+                "E0220",
+                format!(
+                    "The tool {connector}.{tool} takes or gives {} data, and its connector's class is {} (spec/library.md \"Declaration\").",
+                    cls.as_str(),
+                    allowed.as_str()
+                ),
+                path,
+                Some(
+                    JsObject::new()
+                        .with("data_class", cls.as_str())
+                        .with("allowed", allowed.as_str())
+                        .with("connector", connector)
+                        .with("tool", tool),
+                ),
+            );
+        }
+    }
+
+    /// In a program of 0.6, what covers a use of `Tool` (a read-only tool's
+    /// call, or a skill that declares it) or of `Tool.Write`: the `tool.call`
+    /// parts of that kind whose scope holds the use's ([`cap_authorizes`]),
+    /// by index among `caps`, and nothing else; no definition of the program
+    /// takes part. `None` for any other effect, or before 0.6.
+    pub(crate) fn tool_effect_caps(
+        &self,
+        effect: &str,
+        scope: Option<&[String]>,
+        caps: &[CapVal],
+    ) -> Option<Vec<usize>> {
+        if !self.at_least(Language::V0_6)
+            || (effect != TOOL_READ_EFFECT && effect != TOOL_WRITE_EFFECT)
+        {
+            return None;
+        }
+        Some(
+            caps.iter()
+                .enumerate()
+                .filter(|(_, c)| c.ctor() == TOOL_CALL && cap_authorizes(c, effect, scope))
+                .map(|(i, _)| i)
+                .collect(),
+        )
+    }
+
     /// What must cover a use of `effect`, each requirement a list of
     /// capabilities that must all be covered (B12), when it is read so:
     /// a write tool's effect (its `tool.call`), and in a program of 0.6
@@ -253,14 +396,18 @@ impl<'a> Checker<'a> {
 
     /// Where a tool is called, when that is not a workflow's body.
     fn outside_workflow(&mut self, r: &ToolRef<'a>, frame: &Frame<'a>, path: &str) -> bool {
-        if frame.where_ == Where::Workflow {
+        if frame.where_ == Where::Workflow && !frame.beside_body {
             return false;
         }
-        let where_ = frame.where_.as_str();
+        let (problem, where_) = if frame.beside_body {
+            ("ensures", "workflow's ensures")
+        } else {
+            (frame.where_.as_str(), frame.where_.as_str())
+        };
         self.misplaced(
             r,
             path,
-            where_,
+            problem,
             format!(
                 "The tool {} is called in a {where_}. A connector's tools are called only in a workflow's body: a read-only one as an expression, a write one as a critical effect (an agent's loop calls the read-only tools its delegation grants) (spec/library.md \"tool.call\").",
                 r.shown()
@@ -295,6 +442,7 @@ impl<'a> Checker<'a> {
         r: &ToolRef<'a>,
         args: &[Val],
     ) -> Val {
+        self.tool_signature(r, path);
         if r.tool.is_write() {
             let shown = r.shown();
             self.misplaced(
@@ -327,6 +475,7 @@ impl<'a> Checker<'a> {
         r: &ToolRef<'a>,
         args: &[Val],
     ) -> Val {
+        self.tool_signature(r, path);
         let shown = r.shown();
         let write = r.tool.is_write();
         let placed = if !write {
@@ -421,7 +570,7 @@ impl<'a> Checker<'a> {
         for (i, p) in params.iter().enumerate() {
             if let Some(a) = args.get(i) {
                 let t = self.param_type(p);
-                self.expect(&a.ty, &t, &sub_i(path, "args", i, "/value"));
+                self.expect_val(a, &t, &sub_i(path, "args", i, "/value"));
             }
         }
         let allowed = r.class().unwrap_or(DataClass::Public);
@@ -454,6 +603,165 @@ impl<'a> Checker<'a> {
             for v in caps_of(self.defs, c, self.cap_opts()) {
                 if v.ctor() == TOOL_CALL && v.write() {
                     self.holds_write_tool(agent, &v, &format!("{base}/caps/{i}"), "caps");
+                }
+            }
+        }
+    }
+
+    /// The connectors whose read-only tools `caps` holds above the class the
+    /// best model capability among them may receive, with the class each
+    /// returns and that bound, by connector (`<module>.<connector>`), each
+    /// once; none when `caps` hold no model capability (no model reads what
+    /// the tools give). A connector whose class is no data class returns the
+    /// most sensitive.
+    fn reads_above_model(caps: &[CapVal]) -> Vec<(String, DataClass, DataClass)> {
+        let Some(best) = caps
+            .iter()
+            .filter(|c| c.ctor() == "model.infer")
+            .map(|c| c.max_class().unwrap_or(DataClass::Internal))
+            .max()
+        else {
+            return Vec::new();
+        };
+        let mut out: Vec<(String, DataClass, DataClass)> = Vec::new();
+        for c in caps.iter().filter(|c| c.ctor() == TOOL_CALL && !c.write()) {
+            let Some(id) = tool_connector(c) else {
+                continue;
+            };
+            let class = c.max_class().unwrap_or(DataClass::Restricted);
+            if class > best && !out.iter().any(|(i, _, _)| i == id) {
+                out.push((id.to_owned(), class, best));
+            }
+        }
+        out
+    }
+
+    /// The message and the facts of E0220 for `who`, whose loop reads tools of
+    /// `id` of class `class` and whose model may receive at most `allowed`.
+    fn read_above_model(
+        who: &str,
+        id: &str,
+        class: DataClass,
+        allowed: DataClass,
+    ) -> (String, JsObject) {
+        (
+            format!(
+                "{who} holds read-only tools of the connector {id}, which return {} data, and its model capability allows at most {}: what the tools return reaches the model (spec/library.md \"Declaration\").",
+                class.as_str(),
+                allowed.as_str()
+            ),
+            JsObject::new()
+                .with("data_class", class.as_str())
+                .with("allowed", allowed.as_str())
+                .with("connector", id),
+        )
+    }
+
+    /// E0120 for an agent whose `caps` hold, through a capability of any
+    /// module, read-only tools whose signatures name types the program does
+    /// not have as their connector's module means them: the agent's loop
+    /// calls those tools with the program's types. At the capability.
+    pub(crate) fn agent_unbound(&mut self, caps: &'a [Value], base: &str) {
+        for (i, c) in caps.iter().enumerate() {
+            let Some(e) = Expr::of(c) else { continue };
+            let at = format!("{base}/caps/{i}");
+            let mut seen = Vec::new();
+            for v in caps_of(self.defs, e, self.cap_opts()) {
+                if v.ctor() != TOOL_CALL {
+                    continue;
+                }
+                for item in v.scope().unwrap_or_default() {
+                    let Some((rest, tool)) = item.rsplit_once('.') else {
+                        continue;
+                    };
+                    let connector = rest.rsplit_once('.').map_or(rest, |(_, n)| n);
+                    let defs: &'a Map = self.defs;
+                    let Some((name, def)) = defs
+                        .iter()
+                        .find(|(n, _)| *n == connector)
+                        .and_then(|(n, d)| ConnectorDef::of(d).map(|c| (n, c)))
+                    else {
+                        continue;
+                    };
+                    let Some(tool) = def.tools().map(|(n, _)| n).find(|n| *n == tool) else {
+                        continue;
+                    };
+                    self.unbound_names(name, def, tool, &at, &mut seen);
+                }
+            }
+        }
+    }
+
+    /// E0220 for an agent whose declared `caps` hold read-only tools of a
+    /// connector above the class its model may receive: what its loop reads
+    /// reaches its model. At the capability that holds them.
+    pub(crate) fn agent_read_classes(&mut self, agent: &str, caps: &'a [Value], base: &str) {
+        let held: Vec<(usize, Vec<CapVal>)> = caps
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| Expr::of(c).map(|e| (i, caps_of(self.defs, e, self.cap_opts()))))
+            .collect();
+        let all: Vec<CapVal> = held.iter().flat_map(|(_, cs)| cs.iter().cloned()).collect();
+        for (id, class, allowed) in Self::reads_above_model(&all) {
+            let at = held
+                .iter()
+                .find(|(_, cs)| {
+                    cs.iter()
+                        .any(|c| tool_connector(c) == Some(id.as_str()) && !c.write())
+                })
+                .map_or(0, |(i, _)| *i);
+            let (message, facts) = Self::read_above_model(agent, &id, class, allowed);
+            self.report("E0220", message, &format!("{base}/caps/{at}"), Some(facts));
+        }
+    }
+
+    /// E0220 for a delegation whose grant (`granted`) holds read-only tools
+    /// of a connector above the class its model may receive, where the
+    /// agent's own `caps` (`held`) do not already (that is reported at the
+    /// agent): its `with caps`, or a map's, narrowed the model. At the
+    /// delegation; in a sub-program, as for a model, E1706 when the lead's
+    /// class is above the bound.
+    pub(crate) fn grant_read_classes(
+        &mut self,
+        who: &str,
+        granted: &[CapVal],
+        held: &[CapVal],
+        path: &str,
+    ) {
+        let already: Vec<String> = Self::reads_above_model(held)
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        for (id, class, allowed) in Self::reads_above_model(granted) {
+            if already.contains(&id) {
+                continue;
+            }
+            let (message, facts) = Self::read_above_model(who, &id, class, allowed);
+            self.over_model(message, path, class_rank(allowed), facts);
+        }
+    }
+
+    /// E1406 for a map whose `with caps` hands a write tool and whose body
+    /// delegates, in the body or in a function it calls however deep
+    /// (`usages`, what the body used, a function's delegations included): a
+    /// map hands its `with caps` to each delegation of its body, so the write
+    /// tool would reach an agent. At each such capability of the `with caps`.
+    /// A map whose body delegates nothing may hand a write tool to its body's
+    /// own effects.
+    pub(crate) fn map_hands_write_tools(&mut self, e: Expr<'a>, path: &str, usages: &[Usage]) {
+        let Some(delegation) = usages.iter().find(|u| u.effect == "Delegate") else {
+            return;
+        };
+        let agent = delegation
+            .to
+            .as_deref()
+            .map_or("an agent", |to| to.split('.').next().unwrap_or(to))
+            .to_owned();
+        for (i, c) in e.caps().unwrap_or_default().iter().enumerate() {
+            let Some(c) = Expr::of(c) else { continue };
+            for v in caps_of(self.defs, c, self.cap_opts()) {
+                if v.ctor() == TOOL_CALL && v.write() {
+                    self.holds_write_tool(&agent, &v, &format!("{path}/caps/{i}"), "map with caps");
                 }
             }
         }
@@ -540,6 +848,20 @@ impl<'a> Checker<'a> {
                 format!("'{c}' is a connector that the program neither defines nor lists in a use")
             })
         });
+        if problem.is_none()
+            && let Some(c) = e.args().next().and_then(|a| a.value()).and_then(Expr::name)
+            && let Some(def) = self.connector_def(c)
+        {
+            let mut seen = Vec::new();
+            for t in e
+                .args()
+                .skip(1)
+                .filter_map(|a| a.value())
+                .filter_map(Expr::name)
+            {
+                self.unbound_names(c, def, t, path, &mut seen);
+            }
+        }
         if let Some(problem) = problem {
             self.report(
                 "E1404",
@@ -697,6 +1019,7 @@ impl<'a> Checker<'a> {
             );
             return;
         }
+        self.signature_class(cn, c, tn, t, tb);
         if t.read_only() {
             if wrapped(t.members().get("returns"), "Untrusted").is_none() {
                 self.wrong_result(cn, tn, tb, t, "Untrusted<T>");

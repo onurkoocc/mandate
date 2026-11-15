@@ -5,7 +5,8 @@
     "outDir": "dist",
     // Sources, so no build is needed first. The pattern, not two names, because the bridge's own import of the
     // compiler is resolved with this file's paths too, and this package must not name the compiler (seam.test.ts).
-    "paths": { "@mandate/*": ["../*/src/index.ts"] }
+    // The bridge's second entry point (`@mandate/bridge/mode`) is its src/mode.ts.
+    "paths": { "@mandate/bridge/mode": ["../bridge/src/mode.ts"], "@mandate/*": ["../*/src/index.ts"] }
   },
   "include": ["src", "test"]
 }

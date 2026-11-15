@@ -2,13 +2,17 @@
   "name": "@mandate/bridge",
   "version": "0.1.0",
   "private": true,
-  "description": "The one place the runtime reaches the Mandate compiler (today a re-export of the reference compiler, plus the run-time authority decisions), and the mandate command line and MCP server written over it",
+  "description": "The one place the runtime reaches the Mandate compiler (the reference compiler of TypeScript, the Rust compiler's WebAssembly module, or both compared, by MANDATE_COMPILER; plus the run-time authority decisions), and the mandate command line and MCP server written over it",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./mode": {
+      "types": "./dist/mode.d.ts",
+      "default": "./dist/mode.js"
     }
   },
   "main": "dist/index.js",

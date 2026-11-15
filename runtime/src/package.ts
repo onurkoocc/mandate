@@ -4,6 +4,7 @@
 // amended package (spec/envelope.md "Amendments") passes it like any other.
 
 import { atLeast, bindingChecks, canonicalize, check, checkAmendment, envelopeChanges, hashProgram, link, linkedProgram, LOCK_FIELDS_0_5, LOCK_FORMAT, modelTiers, packageHash, roleLockChecks, sandboxLockChecks, semanticDiff, validateLock, type AmendmentCheck, type AmendmentInput, type Change, type DiffView, type Json, type LanguageVersion, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { CompilerFailure } from "@mandate/bridge/mode";
 import { Violation } from "./signals.js";
 
 /** An amendment as the runtime checks it: with the lock of the run's package, which the amended package keeps. */
@@ -108,8 +109,21 @@ export function buildPackage(program: Program, lock: Lock = { modules: {} }, mod
  * Load-time verification (§3.5, S09). The runtime does not trust whoever
  * built the package: it recomputes the hashes, requires every imported
  * module to be locked, and re-runs the compiler's checks.
+ *
+ * A compiler that fails while it is asked (a CompilerFailure of the bridge: its module missing, trapping, out of
+ * memory, answering what is not an answer) has verified nothing: the package is refused, `load_verification_failed`.
  */
 export function verifyPackage(pkg: Package): void {
+  try {
+    verified(pkg);
+  } catch (e) {
+    // As a model may be shown it: an amendment's refusal is a diagnostic to the lead that asked for it.
+    if (e instanceof CompilerFailure) throw new Violation("load_verification_failed", `The compiler failed while it verified the package, so it is not run: ${e.shown}`);
+    throw e;
+  }
+}
+
+function verified(pkg: Package): void {
   // The program and every module it was packaged with: a module's definitions run as the program's do.
   for (const p of [pkg.program, ...Object.values(pkg.modules ?? {})]) {
     if (!RUNTIME_LANGUAGES.includes(p?.language)) throw new Violation("unsupported_language", `Package language ${String(p?.language)} is not one of ${RUNTIME_LANGUAGES.join(", ")}.`);

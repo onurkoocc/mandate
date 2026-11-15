@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +37,12 @@ export function buildTree(): Tree {
     writeFileSync(file, readFileSync(file, "utf8").replaceAll('"@mandate/compiler"', JSON.stringify(specifier.startsWith(".") ? specifier : "./" + specifier)));
   }
   for (const pkg of ["bridge", "compiler"]) copyFileSync(join(repoRoot, pkg, "package.json"), join(dir, pkg, "package.json"));
+  // The Rust compiler's module and its digest, in the bridge's own place, when build:wasm has put them there.
+  for (const f of ["mandate-wasm.wasm", "mandate-wasm.digest.json"]) {
+    if (!existsSync(join(repoRoot, "bridge", "wasm", f))) continue;
+    mkdirSync(join(dir, "bridge", "wasm"), { recursive: true });
+    copyFileSync(join(repoRoot, "bridge", "wasm", f), join(dir, "bridge", "wasm", f));
+  }
   mkdirSync(join(dir, "spec"));
   for (const f of ["ir.schema.json", "lock.schema.json", "core.md"]) copyFileSync(join(repoRoot, "spec", f), join(dir, "spec", f));
   symlinkSync(join(repoRoot, "node_modules"), join(dir, "node_modules"), "junction");

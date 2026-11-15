@@ -1,0 +1,84 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0121",
+  "kind": "compile",
+  "title": "In a program of 0.6 no definition takes the name of a built-in effect: an effect named Tool would decide what covers every read-only tool's call.",
+  "spec": [
+    "spec/library.md#toolcall",
+    "spec/core.md"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../T01/program.mdt",
+    "kind": "mdt"
+  },
+  "patch": [
+    {
+      "op": "add",
+      "path": "/defs/Tool",
+      "value": {
+        "kind": "effect",
+        "params": [
+          {
+            "name": "x",
+            "type": {
+              "ref": "Text"
+            }
+          }
+        ],
+        "returns": {
+          "ref": "Text"
+        },
+        "requires_caps": [
+          {
+            "op": "call",
+            "callee": {
+              "op": "field",
+              "of": {
+                "op": "var",
+                "name": "model"
+              },
+              "name": "infer"
+            },
+            "args": [
+              {
+                "name": "tier",
+                "value": {
+                  "op": "var",
+                  "name": "standard"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "op": "replace",
+      "path": "/defs/Draft/caps",
+      "value": [
+        {
+          "op": "var",
+          "name": "ErpDraft"
+        },
+        {
+          "op": "var",
+          "name": "ModelAll"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0121",
+        "path": "/defs/Tool",
+        "facts": {
+          "name": "Tool"
+        }
+      }
+    ]
+  }
+}

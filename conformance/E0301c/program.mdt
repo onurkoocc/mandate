@@ -1,0 +1,23 @@
+// An effect whose second requirement is no capability constructor, so it
+// stands for no capability: in a program of 0.6 nothing covers it (B12).
+
+mandate @ 0.6
+
+module example.publish @ 0.1
+
+use std.{fs}
+
+capability Notes = fs.write("/srv/notes")
+
+effect publish(note: Text) -> Text
+  requires caps fs.write("/srv/notes")
+  requires caps fs.read_text("/srv/notes")
+  critical
+  idempotency required
+
+workflow Publish(note: Text) -> Text
+  caps   Notes
+  budget { time: 1m }
+{
+  effect publish(note) idempotent_by note
+}

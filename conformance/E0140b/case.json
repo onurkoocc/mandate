@@ -3,7 +3,7 @@
   "format": "mandate/conformance-case/0.1",
   "id": "E0140b",
   "kind": "compile",
-  "title": "A 0.6 lock that binds a connector with no tool schemas, and a credential that is not a name, is refused at each: a lock names a credential, never holds a secret.",
+  "title": "A 0.6 lock that binds a connector with no tool schemas, no URL, and a credential that is not a name, is refused at each: a lock names a credential, never holds a secret.",
   "spec": [
     "spec/library.md#lock-06",
     "spec/lock.md"
@@ -24,6 +24,16 @@
           "keyword": "required",
           "params": {
             "missingProperty": "tools"
+          }
+        }
+      },
+      {
+        "code": "MDT-E0140",
+        "path": "/connectors/acme.connectors.erp",
+        "facts": {
+          "keyword": "required",
+          "params": {
+            "missingProperty": "url"
           }
         }
       },

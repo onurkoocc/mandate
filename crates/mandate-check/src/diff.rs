@@ -775,6 +775,7 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
         };
         let a_kind = kind_text(a);
         let Some(b) = b else {
+            verify_waivers(&mut out, (lb, la), name, &path, None, a);
             if a_kind == "capability" {
                 let text = format!("+ capability {}", shown_caps(la, &var_expr(name)));
                 out.gov(GovernanceChangeKind::CapabilityAdded, path, text);
@@ -807,6 +808,9 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
                 );
             } else {
                 out.beh(path.clone(), format!("+ {a_kind} {name}"));
+                if a_kind == "contract" {
+                    new_contract_waivers(&mut out, name, &path, a);
+                }
                 // A workflow is where authority starts: every capability a new one holds is authority added (G11).
                 if a_kind == "workflow" {
                     let bounds = workflow_bounds(a);
@@ -845,6 +849,7 @@ pub fn classify(before: &Value, after: &Value, modules: Option<&Modules>) -> Cla
             );
             continue;
         }
+        verify_waivers(&mut out, (lb, la), name, &path, Some(b), a);
         match a_kind.as_str() {
             "capability" => {
                 let var = var_expr(name);
@@ -1076,12 +1081,13 @@ fn resolution_changes(
 }
 
 /// What changed in a connector (0.6), as its authority signature reads it
-/// (spec/library.md "The authority signature"): another server, a higher
-/// class, a tool it did not have, a read-only tool that writes, and a write
-/// tool's class, retry class, `reconcile by` or `compensation` changed, and
-/// any tool's parameters or result, are governance changes (authority
-/// widened); a lower class, a tool taken away, a write tool that became
-/// read-only and another `version` are behavior changes.
+/// (spec/library.md "The authority signature"): another server, another
+/// class (a higher one lets more be sent to it, a lower one declassifies
+/// everything its tools return), a tool it did not have, a read-only tool
+/// that writes, and a write tool's class, retry class, `reconcile by` or
+/// `compensation` changed, and any tool's parameters or result, are
+/// governance changes (authority widened); a tool taken away, a write tool
+/// that became read-only and another `version` are behavior changes.
 fn connector_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a: &Value) {
     let gov = |out: &mut Classified, at: String, text: String| {
         out.gov(GovernanceChangeKind::CapabilityAdded, at, text);
@@ -1097,11 +1103,6 @@ fn connector_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a:
             ),
         );
     }
-    let rank = |v: Option<&Value>| {
-        v.and_then(Value::as_str)
-            .and_then(crate::stdlib::DataClass::from_name)
-            .map(crate::stdlib::class_rank)
-    };
     let (bc, ac) = (b.get("class"), a.get("class"));
     if j_or_null(bc) != j_or_null(ac) {
         let text = format!(
@@ -1109,17 +1110,7 @@ fn connector_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a:
             js_text(bc),
             js_text(ac)
         );
-        // A class that is no data class, or none, is read as the highest.
-        let higher = match (rank(bc), rank(ac)) {
-            (Some(x), Some(y)) => y > x,
-            (_, None) => true,
-            (None, Some(_)) => false,
-        };
-        if higher {
-            gov(out, format!("{path}/class"), text);
-        } else {
-            out.beh(format!("{path}/class"), text);
-        }
+        gov(out, format!("{path}/class"), text);
     }
     if j_or_null(b.get("version")) != j_or_null(a.get("version")) {
         out.beh(
@@ -1489,11 +1480,22 @@ fn contract_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a: 
         }
         for k in sorted_keys(now) {
             if !was.is_some_and(|m| m.contains_key(k)) {
-                let by_now = now.and_then(|m| m.get(k)).and_then(|c| c.get("by"));
+                let c = now.and_then(|m| m.get(k));
                 out.beh(
                     format!("{path}/{group}/{k}"),
-                    format!("+ {name}.{k} by {}", method_of(by_now)),
+                    format!("+ {name}.{k} by {}", method_of(c.and_then(|c| c.get("by")))),
                 );
+                // 0.6: a new criterion that carries a waiver lets a person
+                // accept what fails it.
+                if let Some(c) = c {
+                    waiver_changes(
+                        out,
+                        &format!("{name}.{k}"),
+                        &format!("{path}/{group}/{k}"),
+                        None,
+                        c,
+                    );
+                }
             }
         }
     }
@@ -1503,6 +1505,127 @@ fn contract_changes(out: &mut Classified, name: &str, path: &str, b: &Value, a: 
             format!("{path}/require"),
             format!("~ {name}: require changed"),
         );
+    }
+}
+
+/// 0.6: the waivers of a contract the program did not have, each a
+/// governance change, `waiver_added`: a person may accept what fails the
+/// criterion. A contract without one gives nothing.
+fn new_contract_waivers(out: &mut Classified, name: &str, path: &str, a: &Value) {
+    for group in ["accept", "invariant"] {
+        let now = a.get(group).and_then(Value::as_object);
+        for k in sorted_keys(now) {
+            if let Some(c) = now.and_then(|m| m.get(k)) {
+                waiver_changes(
+                    out,
+                    &format!("{name}.{k}"),
+                    &format!("{path}/{group}/{k}"),
+                    None,
+                    c,
+                );
+            }
+        }
+    }
+}
+
+/// 0.6: the criteria of the contract `contract` in `defs` that a person may
+/// waive, each with a role that may waive it.
+fn waivable_criteria<'a>(defs: &'a Map, contract: &str) -> Vec<(&'a str, &'a str)> {
+    let Some(c) = defs.get(contract).filter(|c| kind_text(c) == "contract") else {
+        return Vec::new();
+    };
+    ["accept", "invariant"]
+        .into_iter()
+        .filter_map(|g| c.get(g).and_then(Value::as_object))
+        .flat_map(Map::iter)
+        .flat_map(|(k, crit)| waive_roles(Some(crit)).into_iter().map(move |r| (k, r)))
+        .collect()
+}
+
+/// Every `verify` in `v`, each as the JSON Pointer under `at` where it
+/// stands and the name of its contract.
+fn verifies_in<'a>(v: &'a Value, at: &str, out: &mut Vec<(String, &'a str)>) {
+    match v {
+        Value::Object(m) => {
+            if m.get("op").and_then(Value::as_str) == Some("verify")
+                && let Some(c) = m.get("contract").and_then(Value::as_str)
+            {
+                out.push((at.to_owned(), c));
+            }
+            for (k, x) in m.iter() {
+                verifies_in(x, &format!("{at}/{}", ptr_token(k)), out);
+            }
+        }
+        Value::Array(xs) => {
+            for (i, x) in xs.iter().enumerate() {
+                verifies_in(x, &format!("{at}/{i}"), out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// 0.6: each `verify` of the definition `name` (at `path`, `b` before and
+/// `a` after) that checks against another contract than before, under which
+/// a person may accept what they could not: a criterion a role may waive
+/// that the contract checked against before did not have under that name
+/// with that role. Each such criterion is a governance change,
+/// `waiver_added`, at the `verify`. Before is the `verify` that stood where
+/// this one stands; when none did (a `verify` new, or moved by a step put
+/// before it), every `verify` of the definition before, and of none when the
+/// definition is new. A `verify` against a contract of the same name as
+/// before is that contract's change, if any, and none of its own.
+fn verify_waivers(
+    out: &mut Classified,
+    (lb, la): (Program<'_>, Program<'_>),
+    name: &str,
+    path: &str,
+    b: Option<&Value>,
+    a: &Value,
+) {
+    let (bdefs, adefs) = (defs_of(lb), defs_of(la));
+    let mut was = Vec::new();
+    if let Some(b) = b {
+        verifies_in(b, path, &mut was);
+    }
+    let mut now = Vec::new();
+    verifies_in(a, path, &mut now);
+    for (at, contract) in &now {
+        let here = was.iter().find(|(p, _)| p == at).map(|(_, c)| *c);
+        let before: Vec<(&str, &str)> = match here {
+            Some(c) if c == *contract => continue,
+            Some(c) => waivable_criteria(bdefs, c),
+            None if was.iter().any(|(_, c)| c == contract) => continue,
+            None => was
+                .iter()
+                .flat_map(|(_, c)| waivable_criteria(bdefs, c))
+                .collect(),
+        };
+        let added: Vec<(&str, &str)> = waivable_criteria(adefs, contract)
+            .into_iter()
+            .filter(|x| !before.contains(x))
+            .collect();
+        let mut criteria: Vec<&str> = Vec::new();
+        for &(k, _) in &added {
+            if !criteria.contains(&k) {
+                criteria.push(k);
+            }
+        }
+        for k in criteria {
+            let roles: Vec<&str> = added
+                .iter()
+                .filter(|(c, _)| *c == k)
+                .map(|(_, r)| *r)
+                .collect();
+            out.gov(
+                GovernanceChangeKind::WaiverAdded,
+                at.clone(),
+                format!(
+                    "+ {name}: verifies against {contract}, whose {k} may be waived by {}",
+                    roles.join(", ")
+                ),
+            );
+        }
     }
 }
 

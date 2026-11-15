@@ -12,7 +12,7 @@ module acme.finance.drafts @ 0.1
 
 use std.{model, tool}
 use acme.connectors.{erp, mailbox}
-use acme.connectors.types.{Invoice, Match, DraftId}
+use acme.connectors.types.{Invoice, Order, Match, DraftId}
 
 capability Inbox    = tool.call(mailbox, list_invoices)
 capability ErpRead  = tool.call(erp, list_open_orders)

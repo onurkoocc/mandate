@@ -1,0 +1,33 @@
+// A change landed by a workflow whose ensures closes a pull request.
+
+mandate @ 0.6
+
+module example.small @ 0.1
+
+use std.{git}
+
+type Change = { branch: Text, risk: Int }
+
+capability PR = git.pr("example/app")
+
+/// A change names the branch it merges.
+contract Named(c: Change) {
+  accept named "The change names its branch"
+    by static len(c.branch) >= 1
+}
+
+/// A change is small.
+contract Small(c: Change) {
+  accept small "The change is small"
+    by static c.risk < 3
+}
+
+/// Opens or lands a change.
+workflow Land(change: Change) -> Bool
+  caps   PR
+  budget { time: 1h }
+  ensures effect git.close_pr(change) idempotent_by change.branch
+{
+  let named = verify change against Named(change)
+  true
+}

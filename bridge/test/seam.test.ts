@@ -12,8 +12,12 @@ import { describe, expect, it } from "vitest";
 const src = join(dirname(dirname(fileURLToPath(import.meta.url))), "src");
 const FILES = ["cli.ts", "mcp.ts", "util.ts"];
 const BUILTINS = new Set([...builtinModules, ...builtinModules.map((m) => `node:${m}`)]);
-/** What a file may name: Node's built-ins, each other, and the bridge's entry point. */
-const SIBLINGS = new Set(["./index.js", "./cli.js", "./mcp.js", "./util.js"]);
+/**
+ * What a file may name: Node's built-ins, each other, the bridge's entry point, and the class of the compiler's
+ * failures (wasm/errors.ts, which imports nothing: held below), by which the command line exits 2 when the compiler
+ * fails.
+ */
+const SIBLINGS = new Set(["./index.js", "./cli.js", "./mcp.js", "./util.js", "./wasm/errors.js"]);
 /** The one hand-off that is not an import of the compiler: the runtime's command line, loaded when a control command is run. */
 const RUNTIME = "@mandate/runtime/cli";
 
@@ -66,6 +70,10 @@ describe("the seam between the command line, the MCP server and the compiler", (
   it("is the bridge's entry point: cli.ts, mcp.ts and util.ts import only Node built-ins, each other and ./index.js", () => {
     const breached = FILES.flatMap((f) => breaches(f, importsOf(f, readFileSync(join(src, f), "utf8"))));
     expect(breached, `reach the compiler through ./index.js:\n${breached.join("\n")}`).toEqual([]);
+  });
+
+  it("lets them name the class of the compiler's failures, from a file that imports nothing", () => {
+    expect(importsOf("wasm/errors.ts", readFileSync(join(src, "wasm", "errors.ts"), "utf8"))).toEqual([]);
   });
 
   it("takes the compiler only from ./index.js: cli.ts and mcp.ts do import it", () => {

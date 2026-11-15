@@ -1,0 +1,39 @@
+// A change opened by an effect that takes a change verified against Named,
+// given one verified against Small through x?.
+
+mandate @ 0.6
+
+module example.small @ 0.1
+
+use std.{git}
+
+type Change = { branch: Text, risk: Int }
+
+capability PR = git.pr("example/app")
+
+/// A change names the branch it merges.
+contract Named(c: Change) {
+  accept named "The change names its branch"
+    by static len(c.branch) >= 1
+}
+
+/// A change is small.
+contract Small(c: Change) {
+  accept small "The change is small"
+    by static c.risk < 3
+}
+
+effect open(c: Verified<Change, Named>) -> Receipt<Text>
+  requires caps git.pr("example/app")
+  critical
+  idempotency required
+
+/// Opens or lands a change.
+workflow Land(change: Change) -> Bool
+  caps   PR
+  budget { time: 1h }
+{
+  let small = verify change against Small(change)
+  effect open(small?) idempotent_by change.branch
+  true
+}

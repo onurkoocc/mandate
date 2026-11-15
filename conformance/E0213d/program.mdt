@@ -1,0 +1,87 @@
+// The review program of H06 (spec/library.md "human.review"), with a record literal of an alias of Review.
+// Only the runtime makes a Review or a Declined (E0213).
+
+mandate @ 0.6
+
+module example.review @ 0.1
+
+use std.{human, model, tool}
+
+role accountant   "Accountant"
+role finance_lead "Finance lead"
+role controller   "Controller"
+
+type Invoice = { invoice_no: Text, vendor_id: Text, total_cents: Int }
+type Order   = { order_no: Text, vendor_id: Text, total_cents: Int }
+type Match   = { invoice_no: Text, order: Order }
+type DraftId = { draft_id: Text }
+type Batch   = { posted: List<Outcome<Receipt<DraftId>>>, declined: List<Declined<Match>>, failed: List<Int> }
+
+/// The ERP: lists the invoices and the open orders, posts draft invoices.
+connector erp = mcp("https://erp.example.com/mcp")
+  version "1.0"
+  class   confidential
+{
+  tool list_invoices() -> Untrusted<List<Invoice>>
+    read_only
+
+  tool list_orders(vendor_id: Text) -> Untrusted<List<Order>>
+    read_only
+
+  tool find_draft(key: Text) -> Untrusted<Option<DraftId>>
+    read_only
+
+  tool post_draft(m: Verified<Match>, key: Text) -> Receipt<DraftId>
+    critical
+    idempotency key key
+    retry_class reconcilable
+    reconcile by find_draft
+}
+
+capability Inbox    = tool.call(erp, list_invoices)
+capability ErpRead  = tool.call(erp, list_orders)
+capability ErpDraft = tool.call(erp, post_draft)
+capability ModelStd = model.infer(tier: standard, max_class: confidential)
+
+/// Whether `a` is within `pct` percent of `b`.
+fn near(a: Int, b: Int, pct: Int) -> Bool ! {} {
+  a * 100 <= b * (100 + pct) and a * 100 >= b * (100 - pct)
+}
+
+/// A match names its invoice's vendor; its total may be off by more than 2%
+/// when the accountant or the finance lead waives it.
+contract Matched(inv: Invoice, m: Match) {
+  accept vendor "The invoice's vendor is the order's vendor"
+    by static inv.vendor_id == m.order.vendor_id
+  accept totals "The total is within 2% of the order's"
+    by static near(inv.total_cents, m.order.total_cents, 2)
+    waive by accountant, finance_lead
+}
+
+type R = Review<Match, Matched>
+
+agent Matcher {
+  role   "Matches one invoice to an open order of its vendor. Writes nothing."
+  caps   ErpRead, ModelStd
+  budget { tokens: 60k, spend: 0.30 USD, steps: 4 }
+  skill match(inv: Untrusted<Invoice>) -> Inferred<Match> ! {Tool, Model}
+}
+
+/// Matches every invoice, asks the accountant once about those that failed
+/// only what may be waived, and posts each accepted match as a draft.
+workflow MatchAll() -> Batch
+  caps   Inbox, ErpRead, ErpDraft, ModelStd
+  budget { spend: 20 USD, time: 2h }
+{
+  let items = erp.list_invoices()
+  let checked = map it in items max 60 par 6 {
+    let out = delegate Matcher.match(it)
+    verify out against Matched(it, out)
+  }
+  let made = R { accepted: [], declined: [], failed: [] }
+  let reviewed = human.review(checked, role: accountant, deadline: 1d, escalate_to: finance_lead)
+  let posted = map v in reviewed.accepted max 60 {
+    effect erp.post_draft(v) idempotent_by v.invoice_no
+  }
+  Batch { posted: posted, declined: reviewed.declined, failed: reviewed.failed }
+}

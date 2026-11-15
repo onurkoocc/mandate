@@ -127,7 +127,7 @@ fn the_acceptance_program_checks_on_its_expansion() {
     assert_eq!(
         expanded.get("uses").map(canonicalize).as_deref(),
         Some(
-            r#"[{"module":"acme.connectors","names":["erp","mailbox"]},{"module":"acme.connectors.types","names":["DraftId","Invoice","Match","near"]},{"module":"batch.patterns","names":["BatchWithExceptions","Batch"]},{"module":"std","names":["model","tool","human"]}]"#
+            r#"[{"module":"acme.connectors","names":["erp","mailbox"]},{"module":"acme.connectors.types","names":["DraftId","Invoice","Match","Order","near"]},{"module":"batch.patterns","names":["BatchWithExceptions","Batch"]},{"module":"std","names":["model","tool","human"]}]"#
         )
     );
 }

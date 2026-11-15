@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0213f",
+  "kind": "compile",
+  "title": "A declared effect whose result is a union with a Declined in a variant is refused: an adapter makes no declined item.",
+  "spec": [
+    "spec/library.md#humanreview",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "program.mdt",
+    "kind": "mdt"
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/totals/by/static"
+      },
+      {
+        "code": "MDT-W0601",
+        "path": "/defs/Matched/accept/vendor/by/static"
+      },
+      {
+        "code": "MDT-E0213",
+        "path": "/defs/fetch_declined/returns",
+        "facts": {
+          "type": "Declined"
+        }
+      }
+    ]
+  }
+}

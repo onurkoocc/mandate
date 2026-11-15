@@ -1,0 +1,44 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0121f",
+  "kind": "compile",
+  "title": "Nor does a use list bring a name that is the root of a standard module from another module, imported or not (a mutation: one use added).",
+  "spec": [
+    "spec/library.md#closed-imports",
+    "spec/library.md#diagnostics-and-conformance-cases"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../H06/program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "roots.mdt"
+  ],
+  "patch": [
+    {
+      "op": "add",
+      "path": "/uses/-",
+      "value": {
+        "module": "example.roots",
+        "names": [
+          "tool"
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0121",
+        "path": "/uses/1/names/0",
+        "facts": {
+          "name": "tool",
+          "builtin": "module"
+        }
+      }
+    ]
+  }
+}

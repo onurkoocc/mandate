@@ -308,6 +308,27 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E0140c` | A connector's `template` in the lock with `{secret}` twice | E0140 |
 | `E0301a` | An effect with two `requires caps`, the second covered by no capability of the workflow (B12) | E0301, W0310 |
 | `E0301b` | The program of `E0301a` as 0.5: only the first `requires caps` is compared, as before | — |
+| `E0121` | An effect named `Tool` in a program of 0.6, which would decide what covers every read-only tool (a mutation: the effect added, the workflow without `ErpRead`) | E0121 |
+| `E0121a` | The same effect, with the agent that declares `Tool` holding only its model capability | E0121 |
+| `E0121b` | A program of 0.5 with an effect named `Model` is read as before | — |
+| `E1406a` | A map's `with caps` that hands a write tool, its body delegating through a function | E1406 |
+| `E1406b` | A map's `with caps` that hands a write tool, its body delegating directly | E1406 |
+| `E0220c` | An agent that holds a connector's read-only tools whose class is above what its model capability may receive | E0220 |
+| `E0220d` | A delegation whose `with caps` narrows the agent's model below its connector's class | E0220 |
+| `E0220e` | A tool whose result type is classed above its connector's class, in the module that declares it | E0220 |
+| `E0120c` | A program that calls a tool whose types it does not import: the type names of the signature are not the connector module's definitions in it | E0120 |
+| `E0120d` | A program whose own `Match` stands where the tool means the types module's `Match` | E0120 |
+| `E1408b` | A lock entry of a connector of a module the program does not import, though the check is given it | E1408 |
+| `E1405e` | A tool called in a workflow's `ensures` | E1405 |
+| `E1407b` | A lock entry whose `url` is not the connector's declared URL | E1407 |
+| `E1405c` | A tool called in a contract's static criterion | E1405 |
+| `E1405d` | A tool called in a workflow's handler | E1405 |
+| `E1708m` | A write tool's effect in a map's body, its key not read from the item | E1708 |
+| `E0403a` | A write tool's effect without `idempotent_by` | E0403 |
+| `E0301c` | An effect whose second `requires caps` stands for no capability: nothing covers it (B12) | E0301, W0310 |
+| `E0408a` | A skill that declares a write tool's effect: a write tool is a critical effect | E0408 |
+| `E0210a` | A write tool whose parameter is `Untrusted`, in its declaration | E0210 |
+| `E1404a` | A `tool.call` of a connector the program reaches through an imported capability and does not list | E1404 |
 | `H06` | A review over a verifying map checks: one wait for the list, its accepted items committed by a batch commit step through a connector's write tool | — |
 | `H07` | A review whose role is not among the waive by roles of the waived criterion (a mutation: the role) | E1508 |
 | `E1508` | A review whose `escalate_to` may not waive the waived criterion | E1508 |
@@ -352,6 +373,40 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E1708j` | An effect in a map with `par 2` | E1708 |
 | `E1708k` | An effect in a map in the body of another map | E1708 |
 | `E1708l` | A review in a map's body | E1708 |
+| `E0121c` | A type named `Declined` in a program of 0.6, which would type what a review declined (a mutation: the type added) | E0121 |
+| `E0121d` | A use list that brings a type named `Declined` from a module of 0.5 | E0121 |
+| `E0121e` | A connector named `human` with a tool `review`, which would make `human.review(…)` that tool | E0121 |
+| `E0121f` | A use list that brings the name `tool`, the root of a standard module, from another module | E0121 |
+| `E1504b` | A criterion met by a function that calls a function that asks a person, with a waiver | E1504 |
+| `E0213a` | An extern whose result is an alias of `Review` | E0213 |
+| `E0213b` | An extern whose result is a record with a `Review` in a field | E0213 |
+| `E0213c` | A skill whose result is a `Review` | E0213 |
+| `E0213d` | A record literal of an alias of `Review` | E0213 |
+| `E0213e` | An `infer` whose target is an alias of `Review` | E0213 |
+| `E0213f` | A declared effect whose result is a union with a `Declined` in a variant | E0213 |
+| `E1505h` | A value a waiver may rest on, given by a later arm of a `switch`, as an argument of `git.merge` | E1505 |
+| `E1505i` | The same through `pause and x` | E1505 |
+| `E1505j` | The same through a block that ends with a `let` | E1505 |
+| `E1505k` | The same through a block that ends with an `if` | E1505 |
+| `E1505l` | The same through a block that ends with a `loop` | E1505 |
+| `E0210b` | A declined item, given by a later arm of a `switch`, posted by a batch commit step | E0210 |
+| `E0210c` | A declined item that an `on error` handler gives in place of a failed `verify`, posted | E0210 |
+| `E0210d` | A declined item that an `on unmet` handler gives, posted | E0210 |
+| `E0210e` | A declined item that an `if`'s `else` gives, posted | E0210 |
+| `E0220f` | Restricted data given by a later arm of a `switch`, sent to a model that may receive internal data | E0220 |
+| `E0120e` | A call of `human.ask` after a variable of the body took the name `human` | E0120 |
+| `E0120f` | A call of a member of a value, `x.m()` | E0120 |
+| `E0120g` | A call of a workflow | E0120 |
+| `E0711` | An `await` in a program of 0.6 | E0711 |
+| `E0212` | `x?` of a value that is not a `Result`, which keeps its contract, where another contract is required | E0212 |
+| `E0201b` | A function whose body ends with an `if` whose `else` gives less than its declared type | E0201 |
+| `H08` | A `verify` whose `on unmet` handler is an escalation, and one whose handler is a pause, each keeping the verified value's type: the one exception to the joins | — |
+| `E0201a` | The program of `H08`, the first handler giving another value: the `verify` is that value or the verified one | E0201 |
+| `E1506i` | A review of a map's name after an `on error` handler that gives a value of its own | E1506 |
+| `E0408b` | An effect in a workflow's `ensures` | E0408 |
+| `E0201c` | A record's field declared `Verified` given a value that is not verified | E0201 |
+| `E0201d` | `peek` of a name nothing defines, where a verified value is required | W0207, E0201 |
+| `E0201e` | A `switch` between a list of unverified changes and an empty list, where a list of verified ones is required | E0201 |
 
 The cases of patterns (spec/library.md "Patterns") are mutations of
 `P02/program.mdt`, a program that defines `BatchWithExceptions` and applies
@@ -381,12 +436,12 @@ on `fixtures/library/batch.mdt` and its modules) and those of a sub-program
 | `E1306` to `E1306e` | A run parameter like a slot, a type parameter like a definition, a body binding a slot's name, an argument the body captures, a name the expansion adds that the program defines, a run parameter like a binding of the body | E1306 |
 | `E1307` to `E1307e` | An application with an envelope, in a pattern's body, in a workflow's body, as a slot's argument, as a capability, with a body | E1307 |
 | `E1602d`, `E1602e` | A pattern of another module that is not `pub`; one whose expansion names a definition that is not | E1602 |
-| `E1708m`, `E1708n` | A person in a map of the expansion; a commit map of the expansion run side by side | E1708 |
-| `E1505h` | An irreversible effect given to the commit slot | E1708, E1505, E0405 |
-| `E1506i` | A review in the expansion of a list that is no verifying map's | E1506 |
+| `E1708o`, `E1708n` | A person in a map of the expansion; a commit map of the expansion run side by side | E1708 |
+| `E1505m` | An irreversible effect given to the commit slot | E1708, E1505, E0405 |
+| `E1506j` | A review in the expansion of a list that is no verifying map's | E1506 |
 | `E1501a` | A person asked by a role that is a constant of the program, in the expansion | E1501 |
-| `E0301c` | The commit's capability taken from the applying workflow | E0301 |
-| `E0220c` | The model's class below the connector's | E0220 |
+| `E0301d` | The commit's capability taken from the applying workflow | E0301 |
+| `E0220g` | The model's class below the connector's | E0220 |
 | `E0210` | Model output posted by the commit map | E0210 |
 
 The import cases share the 0.6 module `E1602/types.mdt` and the program
@@ -395,7 +450,15 @@ with a connector of its own, and `E0301b` is `E0301a/program.mdt` as 0.5. The
 review cases share `H06/program.mdt` (a verifying map, its review and a commit
 map), the cases of what may not reach an irreversible effect `E1505/program.mdt`
 (and `E1505g` and `E1708l` the review program), and those of the batch commit
-step `E1708b/program.mdt`; `E1708i` is a program of its own. What a case cannot say, because its modules must load, is in
+step `E1708b/program.mdt`; `E1708i` is a program of its own. `E0121c` to
+`E0121f` and `E1504b` are mutations of the review program (`E0121d` and
+`E0121f` with a module of their own beside them), and `E0213a` to `E0213f` are
+each the review program with what the case adds, a program of its own. The
+cases of the typing of 0.6 (each form typed as the runtime evaluates it) are
+programs of their own too: `E1505h` to `E1505l` the release program of
+`E1505` with what the case adds, `E0210b` to `E0210e` and `E1506i` the review
+program, `E0220f` a program of classes, and the others (and `E0408b`) a small
+program that opens or lands a change. What a case cannot say, because its modules must load, is in
 `crates/mandate-check/tests/language_0_6.rs`: a module of 0.5 among the modules given
 to a check that imports one of 0.6 (E1603), and one of 0.6 that imports a module
 nobody gave (E1604), do not load. What the cases of reviews and waivers cannot
@@ -414,10 +477,11 @@ such a module does not.
 spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
 (human steps), L (libraries) and N11 (shapes), and the code numbers of its
 families; the cases above use P01 to P05 (which spec/library.md names) and P06, the S02 claim,
-E0101, E0104, E0105, E0120, E0140, E0210, E0220, E0301 and E0320, which 0.6 extends, T01, T02 and T06
-(which spec/library.md names), H06 and H07 (which it names), the letters of
-E1708 from b on (E1708b and E1708c, which it names, and one letter for each
-further refused condition), and the code numbers of E13xx, E14xx, E1504 to E1508 and
+E0101, E0104, E0105, E0120, E0121, E0140, E0201, E0210, E0212, E0213, E0220, E0301, E0320,
+E0403, E0408, E0711, E1501 and E1708, which 0.6 extends, T01, T02 and T06 (which spec/library.md names), H06 and
+H07 (which it names), the letters of E1708 from b on (E1708b and E1708c, which it
+names, one letter for each further refused condition of the batch commit step, and
+E1708m, the connectors' own), and the code numbers of E13xx, E14xx, E1504 to E1508 and
 E16xx.
 
 ## What the Rust crates run
@@ -456,13 +520,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 304, passed 304, pending 0
+conformance cases: ran 359, passed 359, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 179 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 234 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(320 cases: 304 `compile`, 179 of them of language 0.6, and 16 `journal`; no case
+(375 cases: 359 `compile`, 234 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

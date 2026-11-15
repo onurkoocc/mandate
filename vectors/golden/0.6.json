@@ -1,15 +1,15 @@
 {
   "fixtures/library/batch.mdt": {
-    "check": "sha256:eefa0a394ec6b929aa4fed789bbde02cf3237c95650f8d32cea516f638f78eda",
-    "check --module": "sha256:6a082ab8e6257a4bbec7844f2db7df1619b988dd9c9ba42429bdb4608c51bed3",
+    "check": "sha256:585a8e288c9d1fc2098291ed9cc67e5a3169623a4b904164ca08ed24df406a7a",
+    "check --module": "sha256:37f5d2e8d8cd8c1def8ce986b0f5cca1f822f5478dccc394974d112cf5cc92d7",
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
-    "ir --canonical": "sha256:49c485d79e56087581e519702cf5c102b0266875fea2f959f770bcb3026bc7a9",
-    "fmt": "sha256:07799eb225b77423c05931e20d249e8d95189eb6a17fb8b400cdd30ae46b53bc",
-    "view --format json": "sha256:fc1f92ab01f354c4772bd8508866b7de8c8e7a14f4e3cccdd7169cc15de7481b",
-    "view --format md": "sha256:8c4b8296e90a54f617a09b466c5d169e30ad9190ba8c66c0838ee1e1224d0eec",
-    "view --format html": "sha256:f9609ca0f4e64318425da9e5a13a9c02b8432f3082d0389f1820e1ddb7b2932d",
-    "view --against itself": "sha256:e8e96606fb8a36e5a2fdbb603293d50b002e5a622881b1b8dcbaf405a7371f26",
-    "sandbox": "sha256:37508fb9b2e39606626cde902d9af2959a7cc4df20bf8901963e29dbc70d1fd5"
+    "ir --canonical": "sha256:18196b383a9580a60da1b9e149ab6c714896c61f4b86f61ce016a7b7856457b7",
+    "fmt": "sha256:fee44e9f58274ed439875552348e077e8b8e742062f0af80537d92f832d57998",
+    "view --format json": "sha256:9efd95710076c96d1990b232b771084c2f87a9292cb13884b286022a07256b1f",
+    "view --format md": "sha256:bed2db76d153face0c603bcc541c34b3f12fd37d8639739bb86fa0fa63f352d2",
+    "view --format html": "sha256:259611eaaee5896a7903d4c86c51c16a17b3adcf9b2bfa6fac8c19bd539b456b",
+    "view --against itself": "sha256:f8af67fee3648d97ab18985c0815223c75e5ab7bc3f240f8bd77f3b8234932af",
+    "sandbox": "sha256:3fd497cef6826a3e683f9c9ceed0e0d38a2718f55e19219a38d7685217136997"
   },
   "fixtures/library/batch.patterns.mdt": {
     "check": "sha256:24fe7e3add24ded4ce44038367f791da16bdc40704bc0098b5f32d5424bdf130",
@@ -25,16 +25,16 @@
     "sandbox": "sha256:ea4260b91ca2d9da1ece517052a356376e30087cb17f4dd40f957100caa7aedf"
   },
   "fixtures/library/drafts.mdt": {
-    "check": "sha256:71f6d9dd972fad51b8a44f567221bf92db7340d4df6bb045e0cd81fcc4664db9",
-    "check --module": "sha256:620c3f5942ebca94aebb15f934486ff10bccb1c5290d1d53ee50d99573668aad",
+    "check": "sha256:0b00eafe6f8296c0ca0fb9343b5cb1fd9bff4dcf8973f07b66944776fa31b3bc",
+    "check --module": "sha256:e9c6c05bec4d7258001c7d92c6003adb27bfd70e646f75e63637e25024206a92",
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
-    "ir --canonical": "sha256:276ae5a7f65bb7d7314a0144e5b55178692617f40ccbc5f3ec5ad8deca536110",
-    "fmt": "sha256:89834bad836c62b0d33fa0fb77db4b4e35c031d23a3e93da2709a7f150dde0ae",
-    "view --format json": "sha256:730551fcf6d1af0eadafa35963646150d1903e897844efa44bd34b3313413c57",
-    "view --format md": "sha256:c0a20a4cb9f4b4b9f626536756b3ccfc2ffddf45e0591515a8f756c0c321e30e",
-    "view --format html": "sha256:36607650c6782995d1399b44950273c15f7a48cc562b53752cc841922f5f6c67",
-    "view --against itself": "sha256:40cdbe6ba0d2dea3b487c6dc628b56d306fffbcb4d68cecde32af5295b33ace9",
-    "sandbox": "sha256:f0e90f3474f4d6677c235cae2af50ec86b7b5e71cd9717f2869f7a3cdda04010"
+    "ir --canonical": "sha256:a285fc3e80d4d97e294c24817882ca823d6721c37a35da8cb5ed0320099dcec0",
+    "fmt": "sha256:24f9e4af4e59aacbe4edc334ebf65f233e3c46e1745dd873f45ef2066c8e30cc",
+    "view --format json": "sha256:5d7c8a5a47bab7a76527f690a7f008fb87dab3b5f9bdd306b439906c1279bcc4",
+    "view --format md": "sha256:a1381651e1a6e9379f3d010ef9c0f1acb72125cb1f1cf254a5fa2ec2b51c8a77",
+    "view --format html": "sha256:6727023a5ea1a86d8541ce48fdb8c5d0bedcbce75466e8e3fb2a4ce6b38c3b15",
+    "view --against itself": "sha256:851bfcefde70e305dce165510f4326ac5550aec7ec9623bbe1cccfa34289eb38",
+    "sandbox": "sha256:0e0d38a3bdd3c86629af11f395e0e3868155bc362e44e733b351d08c91bebdbf"
   },
   "fixtures/library/fetch.mdt": {
     "check": "sha256:aeb69f06731dc36edb01af03e0e53eedb45a879273216d23792d036385e1726d",
@@ -64,16 +64,16 @@
     "sandbox": "sha256:c8a2943b96fb4e1dcdbb42c2cc2d8bc7ead2675dd163089373f2f2e43940645e"
   },
   "fixtures/library/review.mdt": {
-    "check": "sha256:0b15092a879c80d71ee0d830f42753d77b5f0f2c333c92157463ac2739a8651d",
-    "check --module": "sha256:31e1b2c8c086933ee79655b22c9fb771777b5018bc303a15d7099ef259b8dbde",
+    "check": "sha256:ad1672b635b277a87a3d9688043d30a2cb5745e2ff18b3c8c09749ffbe522a84",
+    "check --module": "sha256:5dca3e9063f6ea317a2d236b8207215ed6d73017dd0bd51d20504c32a2664d0e",
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
-    "ir --canonical": "sha256:678c58d40896a205c50d21b39d120c8ff385042470a85097279e4556f8786cc3",
-    "fmt": "sha256:feb3300e7da683acdf322776674f127d6fb470242939ca68e2c667169bf52aa5",
-    "view --format json": "sha256:a1330a0724d2cb9a048d5a95c425aeae0350ecfd9fe0f581f1282eec9934b0fd",
-    "view --format md": "sha256:417376f4e00c6cee1a9e254de7e58ec18321339270d36bb0c1747c19ce4c9b81",
-    "view --format html": "sha256:378ae0c5cdb0603971b2aeadf5ab5dec15b9c65d0159091e189eea91472c0abc",
-    "view --against itself": "sha256:c6675bc48a318d60b4d1e004d604df06bca7c3eee151a4eac7b06d0502804a06",
-    "sandbox": "sha256:5a3972412e2d204780528a08f5630b48d8cb51141882e3e69cdfa27ba7aad79a"
+    "ir --canonical": "sha256:90469fae99560aaed76eb33e224bbcaaf3f243d417a09ad43eddf727d6264b18",
+    "fmt": "sha256:6d85a5198584a451cce77fb01f414f20b3d7b476694c1302e865eddd08e7699e",
+    "view --format json": "sha256:6489e42af774b9c7132b34d046b99dc883e363dd45f07c1d6cb9b883dbb57bc0",
+    "view --format md": "sha256:a7118dadd255ebae0883f94fda65193ffceafe6113e15c2fd3be00233005a1b4",
+    "view --format html": "sha256:c04e16492560515961a2b8da2ae69444e16441d2ae5e40492d8d13f11eafd108",
+    "view --against itself": "sha256:449fe4ed032f4b8538b99940ccdc9cd0635a707c4c1d66a3a6659752de88a949",
+    "sandbox": "sha256:7029d570826f45d9ab69ecf89ec41c2c19e2b313b94dbbe1264a346b3607b716"
   },
   "fixtures/library/shared.mdt": {
     "check": "sha256:2eda72389f6229bf1bc847f45b8c71ab873d9c59e67b3ccb84a1eba527f53737",

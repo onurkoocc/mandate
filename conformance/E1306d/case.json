@@ -3,7 +3,7 @@
   "format": "mandate/conformance-case/0.1",
   "id": "E1306d",
   "kind": "compile",
-  "title": "An applying program that names otherwise what the expansion of an imported pattern names: a constant human, where the body asks human.review.",
+  "title": "An applying program that names otherwise what the expansion of an imported pattern names: a type Receipt of its own, where the pattern's result is a list of Receipt<R>. (A constant human, the case before RL6, is E0121 now: no definition of 0.6 takes the root of a standard module.)",
   "spec": [
     "spec/library.md#what-a-pattern-may-not-do",
     "spec/library.md#diagnostics-and-conformance-cases"
@@ -21,12 +21,11 @@
   "patch": [
     {
       "op": "add",
-      "path": "/defs/human",
+      "path": "/defs/Receipt",
       "value": {
-        "kind": "const",
-        "value": {
-          "op": "int",
-          "value": 1
+        "kind": "type",
+        "type": {
+          "ref": "Int"
         }
       }
     }
@@ -39,7 +38,7 @@
         "path": "/defs/MatchInvoices/apply",
         "facts": {
           "problem": "taken",
-          "name": "human",
+          "name": "Receipt",
           "module": "batch.patterns"
         }
       }

@@ -3,23 +3,23 @@
   "format": "mandate/conformance-case/0.1",
   "id": "E0220c",
   "kind": "compile",
-  "title": "The expansion sends a model data of a class above its capability's (a mutation: the model capability's max_class internal).",
+  "title": "An agent that holds a connector's read-only tools above the class its model capability may receive is refused at the capability: what its loop reads reaches its model.",
   "spec": [
-    "spec/library.md#expansion",
-    "spec/library.md#diagnostics-and-conformance-cases"
+    "spec/library.md#declaration",
+    "spec/library.md#what-reaches-a-model"
   ],
   "language": "mandate/0.6",
   "input": {
-    "file": "../P02/program.mdt",
+    "file": "../T01/program.mdt",
     "kind": "mdt"
   },
   "patch": [
     {
       "op": "replace",
-      "path": "/defs/ModelStd/value/args/1/value",
+      "path": "/defs/ModelAll/value/args/1/value",
       "value": {
         "op": "var",
-        "name": "internal"
+        "name": "public"
       }
     }
   ],
@@ -28,20 +28,12 @@
     "diagnostics": [
       {
         "code": "MDT-E0220",
-        "path": "/defs/MatchAll/apply/args/1/value",
+        "path": "/defs/Reader/caps/0",
         "facts": {
           "data_class": "confidential",
-          "allowed": "internal",
-          "slot": "work"
+          "allowed": "public",
+          "connector": "example.erp.erp"
         }
-      },
-      {
-        "code": "MDT-W0601",
-        "path": "/defs/Matched/accept/totals/by/static"
-      },
-      {
-        "code": "MDT-W0601",
-        "path": "/defs/Matched/accept/vendor/by/static"
       }
     ]
   }

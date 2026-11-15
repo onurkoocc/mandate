@@ -1193,20 +1193,25 @@ held by what a person writes and by what the Rust writes:
   `diagnostic-vectors.test.ts`, `diff-vectors.test.ts`) skip them, and each checks
   that what it skipped is exactly the directories whose `case.json` names 0.6, read
   as plain JSON, and that there are `RUST_ONLY_CASES` of them
-  (`compiler/test/cases-runner.ts`, 179 today): a case of 0.6 added or taken away
+  (`compiler/test/cases-runner.ts`, 234 today): a case of 0.6 added or taken away
   changes that number in the same commit. The cases today: `S02f` (a 0.6 program
   checks), `S02g` (an unknown field of a 0.6 program, E0104), `S02h` (an unknown
   version, E0103, whose list has 0.6), `E0140` (a 0.5 lock that carries `libraries`),
   `E0140a` and `E0140b` (a 0.6 lock with a malformed library and connector), and the
   25 of the 0.6 surface (`pub`, doc lines, closed imports: `P01`, `P01a`, `P01b`,
   `E0101` to `E0101g`, `E0104d`, `E1602` to `E1602c`, `E1603`, `E1603a`, `E1604` to
-  `E1604c`, `E0120`, `E0120a`, `E0120b`), and the 26 of the connectors (`T01`, `T01a`,
-  `T01b`, `T02`, `T06`, `T06a`, `E1401` to `E1408` with their variants, `E0140c`, `E0301a`,
-  `E0301b`, `E0320b`), and the 44 of reviews, waivers and the batch commit step (`H06`,
-  `H07`, `E1504` to `E1508` with their variants, `E1708b` to `E1708l`), and the 78 of
+  `E1604c`, `E0120`, `E0120a`, `E0120b`), the 47 of the connectors (`T01`, `T01a`,
+  `T01b`, `T02`, `T06`, `T06a`, `E1401` to `E1408` with their variants, `E0121` to
+  `E0121b`, `E0120c`, `E0120d`, `E0140c`, `E0210a`, `E0220c` to `E0220e`, `E0301a` to
+  `E0301c`, `E0320b`, `E0403a`, `E0408a`, `E1708m`), and the 55 of reviews, waivers and
+  the batch commit step (`H06`, `H07`, `E1504` to `E1508` with their variants, `E1708b`
+  to `E1708l`, `E0121c` to `E0121f`, `E0213a` to `E0213f`), and the 22 of the typing of
+  0.6, each form as the runtime evaluates it (`E1505h` to `E1505l`, `E0210b` to
+  `E0210e`, `E0220f`, `E0120e` to `E0120g`, `E0711`, `E0212`, `E0201a` to `E0201e`,
+  `H08`, `E1506i`), `E0408b` (an effect in a workflow's `ensures`), and the 78 of
   patterns (`P02` to `P06b`, `E1301` to `E1307` with their variants, `E1602d`, `E1602e`,
-  `E0104e`, `E0104f`, and the rules of earlier slices held in an expansion: `E1708m`,
-  `E1708n`, `E1505h`, `E1506i`, `E1501a`, `E0301c`, `E0220c`, `E0210`), listed in
+  `E0104e`, `E0104f`, and the rules of earlier slices held in an expansion: `E1708n`,
+  `E1708o`, `E1505m`, `E1506j`, `E1501a`, `E0301d`, `E0220g`, `E0210`), listed in
   `conformance/README.md`.
 - **`golden/0.6.json`**: for every 0.6 program of the repository (each `.mdt` and
   `.ir.json` file of `fixtures/library/`, 8 today, 85 outputs), the digest of each
@@ -1255,11 +1260,11 @@ the compiler's order. The gates that do this:
 | diagnostic vectors | the whole result of every compile case of `conformance/` and of the checks of every golden program | 193 | `crates/mandate-testkit/tests/diagnostics.rs` |
 | diff vectors | the results of the comparing functions and the documents of 183 pairs | 183 | `crates/mandate-testkit/tests/diff_vectors.rs` |
 | corpus | every call the TypeScript's own tests make to a front door, input and whole result | 1226 | `crates/mandate-testkit/tests/corpus.rs` |
-| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 304: the TypeScript's 125, and 179 of language 0.6 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
+| conformance cases | `ok`, the diagnostics one to one by `code` and `path`, `facts` as a subset, `hashes` (the rule of `conformance/README.md`; messages and spans are held by the diagnostic vectors) | 359: the TypeScript's 125, and 234 of language 0.6 written by hand | `crates/mandate-testkit/tests/conformance.rs` |
 | syntax and spans | the IR, its span table, every diagnostic and the text `fmt` prints, for every input of `syntax.json` and `spans/` | 1056, 541, 480 and 21 | `crates/mandate-syntax/tests/` |
 | written inputs | what the TypeScript gives for inputs written to reach what no stored result does (`crates/mandate-check/tests/*/inputs.json`, `crates/mandate-views/tests/data/inputs.json`), written by `scripts/caps-vectors.mjs`, `front-vectors.mjs`, `lock-vectors.mjs`, `static-vectors.mjs`, `doors-vectors.mjs` and `views-vectors.mjs` | | `crates/mandate-check/tests/`, `crates/mandate-views/tests/vectors.rs` |
 | JSON doors | the output text of every call of `crates/*/tests/json_doors/inputs.json`, each through a door of `doors.json` beside it and through the TypeScript function it stands for, serialised by the door contract (`scripts/json-doors-vectors.mjs`, its function `doorJson`); every door has a call | 159 calls over 46 doors (`mandate-check`) and 68 over 13 (`mandate-views`), each also through the dispatcher of `mandate-doors` | `crates/mandate-check/tests/json_doors.rs`, `crates/mandate-views/tests/json_doors.rs`, `crates/mandate-doors/tests/doors.rs` |
-| run-time authority decisions | the output of every recorded case of `bridge/test/authority-cases.json` and every generated case of `authority/cases.json` (see its section), through the JSON door of its function, twice, as a value and as text | 167 and 1227 | `crates/mandate-check/tests/authority.rs` |
+| run-time authority decisions | the output of every recorded case of `bridge/test/authority-cases.json` and every generated case of `authority/cases.json` (see its section), through the JSON door of its function, twice, as a value and as text | 169 and 1227 | `crates/mandate-check/tests/authority.rs` |
 
 Each gate prints `ran N, passed M, pending K`. A pending item is held to failing by
 omission only (the Rust gives the stored diagnostics with some left out, in order, and
@@ -1386,3 +1391,41 @@ fails when an entry of a list passes or names nothing.
   the strict reader refuses (`left_out` in `vectors/corpus/summary.json`). The same
   `summary.json` says that a call is also left out when it gave two results or holds a
   credential-shaped string; none does.
+- **`LAXER` in `crates/mandate-views/tests/json_doors.rs`: 12 documents and views the
+  views' doors refuse where the TypeScript answers.** Each is outside the TypeScript's
+  types (a string where an array is, which the TypeScript iterates as its characters; a
+  mark or a language that is not of its type, read by its truthiness or written as text;
+  a member of a view that is not of its type, written as it is), and the typed reader of
+  the Rust's doors answers `bad_input` (`to_markdown`, `to_html`, `architecture_blocks`,
+  `authority_blocks`). The test holds each to that refusal and names what the TypeScript
+  gives. No document or view the compiler makes has such a member, and the bridge's
+  `both` mode excuses none: a call with one is a divergence.
+- **A lone UTF-16 surrogate in a document given to `toMarkdown` or `toHtml`, through
+  the bridge.** A request to the module cannot carry one (its reader refuses it, as the
+  IR's does), and a document can hold text a model wrote. So the bridge sends each lone
+  surrogate of the document as U+FFFD (`bridge/src/rust.ts`, `wellFormed`), and the Rust
+  writes U+FFFD where the TypeScript writes the surrogate through. The bridge's `both`
+  mode compares the two with the TypeScript's lone surrogates as U+FFFD (the rule
+  `rendering-lone-surrogate` of `bridge/src/compare.ts`). Every other value a request
+  cannot carry is the next entry's.
+- **A value a request cannot carry, through the bridge in `rust` mode (the default
+  of the bridge, `MANDATE_COMPILER` unset): answered by the
+  TypeScript, refused by the bridge.** The module's strict reader takes integers within
+  ±(2^53−1) only, no −0, no lone UTF-16 surrogate, at most 128 levels of nesting; JSON
+  has no hole in an array and no `undefined` in one, which `JSON.stringify` would write as
+  `null` where the TypeScript reads them otherwise. A value of these (a fraction, −0, a lone
+  surrogate anywhere but a document given to `toMarkdown` or `toHtml`, a hole, an
+  `undefined` item, nesting past 128, or what is not JSON at all) is never changed to fit:
+  the bridge refuses the call (`CompilerFailure`, kind `unrepresentable`, naming where by a
+  JSON Pointer and what kind of value, never a string's text). The TypeScript answers it
+  (an E0106 or E0107 for a program or a lock, a refusal or an answer elsewhere). What each
+  caller then gives: a package loaded with such a program or lock is refused
+  (`load_verification_failed`, where the TypeScript gives the diagnostic and also refuses
+  it); a lead's sub-program or amendment that holds one is `check_failed`, with the pointer,
+  where the TypeScript gives the E0106 or E0107; a run whose narrowing, map or delegation
+  meets one at run time stops for a person (`compiler_failed`), where the TypeScript
+  answers (`notText`, a `bad_scope` violation, for a narrowing whose value is a number); the
+  command line exits 2, where the TypeScript's prints the diagnostic and exits 1; the MCP
+  server answers with an error, where the TypeScript's answers the tool; a journal whose
+  exported package holds one does not hold (`package_mismatch`), as in the TypeScript.
+  `both` compares no such call: the Rust's refusal is thrown as it is.
