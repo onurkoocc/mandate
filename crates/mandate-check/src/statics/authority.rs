@@ -51,6 +51,23 @@ pub(crate) enum Site<'s> {
     },
 }
 
+/// What a map's body is typed with, and what its checks after the body
+/// compare with ([`Checker::map`]).
+struct MapBefore<'a> {
+    /// The list the map runs over.
+    over: Val,
+    /// The frame its body is typed in.
+    inner: Box<Frame<'a>>,
+    /// The kinds whose scope the element chooses.
+    by_item: Vec<String>,
+    /// How many delegations the frame had before the body.
+    delegated_before: usize,
+    /// How many usages the frame had before the body.
+    usages_before: usize,
+    /// The body's path.
+    at: String,
+}
+
 /// What a delegation's grant is, for `delegateRest`: the agent and the
 /// skill delegated to, `who` (`Agent.skill`), the capabilities it is
 /// granted (`effective`), what `with caps` hands over (`given`), and the
@@ -1447,22 +1464,52 @@ impl<'a> Checker<'a> {
     /// once with `x` an element of `xs`, the result `List<Outcome<T>>`
     /// (E0201, E0701, E0714, E1702, E1703, E1708, E0320, E0501).
     pub(crate) fn map(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
+        // What comes before the body and after it, apart and boxed: a map
+        // nested in a map's body nests this frame, which holds no more than
+        // the body's call.
+        let before = self.map_before(e, frame, path);
+        let body = self.body(e.body(), &before.inner, &before.at, false);
+        self.map_value(e, frame, path, before, body)
+    }
+
+    /// What a map's body is typed with: its list, its frame and the kinds
+    /// it chooses the scope of, and the counts of the usages and the
+    /// delegations before it.
+    #[inline(never)]
+    fn map_before(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Box<MapBefore<'a>> {
         let over = self.operand(e.over(), frame, path, "over");
         let (inner, by_item) = self.map_frame(e, frame, path, &over);
         self.map_supervise(e, path);
-        let delegated_before = frame.delegated.borrow().len();
-        let usages_before = frame.usage_count();
-        let at = super::sub(path, "body");
-        let body = self.body(e.body(), &inner, &at, false);
+        Box::new(MapBefore {
+            delegated_before: frame.delegated.borrow().len(),
+            usages_before: frame.usage_count(),
+            at: super::sub(path, "body"),
+            over,
+            inner,
+            by_item,
+        })
+    }
+
+    /// A map's checks once its body is typed, and its value.
+    #[inline(never)]
+    fn map_value(
+        &mut self,
+        e: Expr<'a>,
+        frame: &mut Frame<'a>,
+        path: &str,
+        before: Box<MapBefore<'a>>,
+        body: Val,
+    ) -> Val {
         self.map_after(
             e,
             frame,
             path,
-            &inner,
-            &by_item,
-            usages_before,
-            delegated_before,
+            &before.inner,
+            &before.by_item,
+            before.usages_before,
+            before.delegated_before,
         );
+        let over = &before.over;
         Val {
             ty: named("List", vec![named("Outcome", vec![body.ty])]),
             cls: over.cls.max(body.cls),

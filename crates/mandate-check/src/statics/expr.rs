@@ -331,10 +331,30 @@ impl<'a> Checker<'a> {
 
     /// A `unary`: `not` is a Bool known as its operand is (a verified one
     /// becomes plain); any other operator gives its operand.
+    ///
+    /// A chain of them (`not not not x`) is walked down here, on a list of
+    /// its own, rather than through `expr` once per level: what each level
+    /// gives is what `expr` would give for it (the operand typed, then
+    /// raised), and nothing is reported in between, so the result and the
+    /// diagnostics are the same, and a chain costs the stack no frame per
+    /// level.
     fn unary(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let at = sub(path, "of");
-        let v = self.expr_or_unknown(e.operand(), frame, &at);
-        Self::unary_of(e, v)
+        let mut chain: Vec<Expr<'a>> = vec![e];
+        let mut at = sub(path, "of");
+        let mut cur = e.operand();
+        while let Some(x) = cur.filter(|x| x.is(ExprOp::Unary)) {
+            chain.push(x);
+            at = sub(&at, "of");
+            cur = x.operand();
+        }
+        let mut v = self.expr_or_unknown(cur, frame, &at);
+        while let Some(u) = chain.pop() {
+            v = Self::unary_of(u, v);
+            if !chain.is_empty() {
+                v = self.raised(v);
+            }
+        }
+        v
     }
 
     fn unary_of(e: Expr<'a>, v: Val) -> Val {
@@ -347,14 +367,36 @@ impl<'a> Checker<'a> {
 
     /// A `binary`: an arithmetic one has its left operand's inner type, any
     /// other is a Bool, known as the weaker operand is.
+    ///
+    /// A chain of them nested on the right (`1 + (1 + (1 + x))`) is walked
+    /// down here, each left operand typed in turn, rather than through
+    /// `expr` once per level; each level's value is what `expr` would give
+    /// for it (raised), so the result and the order of the diagnostics are
+    /// the same, and a chain costs the stack no frame per level.
     fn binary(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
-        let l = self.operand(e.left(), frame, path, "left");
-        let at = sub(path, "right");
-        let r = match e.right() {
-            Some(x) => self.expr(x, frame, &at),
-            None => Val::unknown(),
+        let mut spine: Vec<(Expr<'a>, Val)> = Vec::new();
+        let mut cur = e;
+        let mut at = path.to_owned();
+        let mut r = loop {
+            let l = self.operand(cur.left(), frame, &at, "left");
+            let right_at = sub(&at, "right");
+            spine.push((cur, l));
+            match cur.right() {
+                Some(x) if x.is(ExprOp::Binary) => {
+                    cur = x;
+                    at = right_at;
+                }
+                Some(x) => break self.expr(x, frame, &right_at),
+                None => break Val::unknown(),
+            }
         };
-        Self::binary_of(e, &l, &r)
+        while let Some((b, l)) = spine.pop() {
+            r = Self::binary_of(b, &l, &r);
+            if !spine.is_empty() {
+                r = self.raised(r);
+            }
+        }
+        r
     }
 
     /// `expr(e, frame, path/tail)`, an operand typed in a frame of its own.
@@ -555,15 +597,43 @@ impl<'a> Checker<'a> {
     /// `field(e, frame, path)`: a member of a value (E0202), or nothing for
     /// a module's member such as `fs.read`.
     #[inline(never)]
+    ///
+    /// A chain of them (`c.a.a.a`) is walked down here, on a list of its
+    /// own, rather than through `expr` once per level: each level's value is
+    /// what `expr` would give for it (raised), and a level is a module's
+    /// member, or not, as it would be found there, outer first, so the
+    /// result and the order of the diagnostics are the same, and a chain
+    /// costs the stack no frame per level.
     fn field(&mut self, e: Expr<'a>, frame: &mut Frame<'a>, path: &str) -> Val {
         // Module members (fs.read, human.ask) are not values with fields;
         // in 0.6 such a member read as a value is silent.
         if self.is_module_member(e, frame) {
             return self.null_val();
         }
-        let at = sub(path, "of");
-        let base = self.expr_or_unknown(e.operand(), frame, &at);
-        self.field_of(e, base, path)
+        let mut chain: Vec<(Expr<'a>, String)> = vec![(e, path.to_owned())];
+        let mut at = sub(path, "of");
+        let mut next = e.operand();
+        let mut base = loop {
+            match next {
+                Some(x) if x.is(ExprOp::Field) => {
+                    if self.is_module_member(x, frame) {
+                        let member = self.null_val();
+                        break self.raised(member);
+                    }
+                    chain.push((x, at.clone()));
+                    at = sub(&at, "of");
+                    next = x.operand();
+                }
+                other => break self.expr_or_unknown(other, frame, &at),
+            }
+        };
+        while let Some((f, p)) = chain.pop() {
+            base = self.field_of(f, base, &p);
+            if !chain.is_empty() {
+                base = self.raised(base);
+            }
+        }
+        base
     }
 
     /// `calleePath(e) && isModuleRoot(e, frame)`.
