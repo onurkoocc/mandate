@@ -2,12 +2,13 @@
 // in vitest's own process, with its teardown) and `compilerSetup` (in each test file's worker). The runtime's
 // vitest configuration uses them too (runtime/test/global-setup.ts, runtime/test/setup.ts).
 //
-// - In `rust` and `both` mode (MANDATE_COMPILER) the run needs the Rust compiler's module, in the bridge's own place
-//   with its digest (`npm run build:wasm`), or where MANDATE_WASM names it: when it is not there or is refused, the
-//   run stops before any test, saying why and how to build one. Nothing is put in the environment: a child process a
-//   test starts finds the module where the bridge it runs finds it (test/tree.ts copies it into a tree it builds, and
-//   the runtime's bundles keep the bridge's own address). In `ts` mode, the default, nothing is looked for: a run
-//   needs neither the module nor any dist/.
+// - In `rust` (the default: MANDATE_COMPILER unset) and `both` mode the run needs the Rust compiler's module, in the
+//   bridge's own place with its digest (`npm run build:wasm`), or where MANDATE_WASM names it: when it is not there
+//   or is refused, the run stops before any test, saying why, how to build one, and that MANDATE_COMPILER=ts runs the
+//   reference compiler without it. Nothing is put in the environment: a child process a test starts inherits the
+//   mode and MANDATE_WASM from the test's own environment, and finds the module where the bridge it runs finds it
+//   (test/tree.ts copies it into a tree it builds, and the runtime's bundles keep the bridge's own address). In `ts`
+//   mode nothing is looked for: a run needs neither the module nor any dist/.
 // - A CompilerDivergence (compare.ts) fails the test that made it, also when the code under test caught it: each
 //   test's are taken after it, and those a file's own last hooks made after its last test, after the file.
 // - Each worker's counts of `both` (how many calls each named exemption excused, how many of language 0.6 skipped
@@ -22,6 +23,9 @@ import { BUILD_HINT, compileModuleAt, modulePlace } from "../src/wasm/module.js"
 
 const KEY = "mandateReport";
 
+/** The mode the run is in, as the message that stops it names it: said to be the default when nothing chose it. */
+const whichMode = (): string => (process.env["MANDATE_COMPILER"] ? `MANDATE_COMPILER=${PROCESS_MODE}` : `The compiler is ${PROCESS_MODE} (the default: MANDATE_COMPILER is not set) and`);
+
 /** vitest's globalSetup: checks for the module the mode needs, and opens the directory the workers report to. */
 export function compilerGlobalSetup(project: { provide(key: string, value: unknown): void }): () => void {
   let path = "(none)";
@@ -31,7 +35,8 @@ export function compilerGlobalSetup(project: { provide(key: string, value: unkno
       path = place.path;
       compileModuleAt(place);
     } catch (e) {
-      throw new Error(`MANDATE_COMPILER=${PROCESS_MODE} needs the Rust compiler's WebAssembly module, and has none it takes: ${e instanceof Error ? e.message : String(e)}. ${BUILD_HINT}.`);
+      const why = e instanceof Error ? e.message : String(e);
+      throw new Error(`${whichMode()} needs the Rust compiler's WebAssembly module, and has none it takes: ${why}${why.includes(BUILD_HINT) ? "" : `. ${BUILD_HINT}`}.`);
     }
   }
   const dir = mkdtempSync(join(tmpdir(), "mandate-report-"));

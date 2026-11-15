@@ -2,10 +2,12 @@
 // with, in place of verifier-main.ts:
 //
 //   env-verifier-process --config <file>     serve checks, signed with the configuration's verifier.process key;
-//                                            each passes, and its detail lists the variables this process has
+//                                            each passes, and its detail lists the variables this process has and
+//                                            says which compiler mode the bridge in it answers in
 //   env-verifier-process --init-key <file>   create the key and <file>.pub, and write <file>.env.json, the same list
 
 import { writeFileSync } from "node:fs";
+import { compilerMode } from "@mandate/bridge/mode";
 import { readConfig } from "../../src/control.js";
 import { EvidenceSigner } from "../../src/evidence.js";
 import { serveVerifier } from "../../src/verifier-service.js";
@@ -24,5 +26,5 @@ if (init) {
   writeFileSync(`${init}.env.json`, JSON.stringify(seen()));
 } else {
   const config = readConfig(at("--config")!);
-  await serveVerifier(() => ({ check: async () => ({ passed: true, detail: { env: seen() } }) }), EvidenceSigner.loadOrCreate(config.verifier!.process!.key), process.stdin, process.stdout);
+  await serveVerifier(() => ({ check: async () => ({ passed: true, detail: { env: seen(), mode: compilerMode() } }) }), EvidenceSigner.loadOrCreate(config.verifier!.process!.key), process.stdin, process.stdout);
 }

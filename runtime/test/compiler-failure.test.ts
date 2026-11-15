@@ -5,7 +5,7 @@
 //
 // The failing compiler is a module that traps, loops or runs out of memory (bridge/test/wasm-bytes.ts), for the
 // whole of a block or for one door, the Rust compiler's own module answering the others (those tests need it,
-// `npm run build:wasm`, and are skipped without it in the default mode).
+// `npm run build:wasm`, and are skipped without it in `ts` mode, the only mode a run can start in without it).
 
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

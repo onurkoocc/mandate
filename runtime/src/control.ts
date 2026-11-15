@@ -52,7 +52,7 @@ import { managedAgentsExecutor, sdkApi } from "./managed-agents.js";
 import { AnthropicModel } from "./anthropic.js";
 import { ArtifactStore, DirBlobs } from "./artifacts.js";
 import { decisionKeysIn } from "./decisions.js";
-import { childEnv, verifierEnv } from "./env.js";
+import { childEnv, COMPILER_ENV, verifierEnv } from "./env.js";
 import { EvidenceSigner, TrustedKeys } from "./evidence.js";
 import type { BucketConfig } from "./ratelimit.js";
 import { refusingAdapters, type RuntimeOptions } from "./runtime.js";
@@ -299,7 +299,7 @@ export function verifierKeys(config: RuntimeConfig, main: string[] = [process.ex
   if (!vp) return new TrustedKeys();
   const files = vp.trusted ?? [`${vp.key}.pub`];
   // Creating a key needs nothing of the runtime's environment (env.ts).
-  if (!vp.trusted && !existsSync(files[0]!)) execFileSync(main[0]!, [...main.slice(1), "--init-key", vp.key], { stdio: ["ignore", "ignore", "inherit"], env: childEnv() });
+  if (!vp.trusted && !existsSync(files[0]!)) execFileSync(main[0]!, [...main.slice(1), "--init-key", vp.key], { stdio: ["ignore", "ignore", "inherit"], env: childEnv({ pass: COMPILER_ENV }) });
   return new TrustedKeys(files.map((f) => readFileSync(f, "utf8")));
 }
 
