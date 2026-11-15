@@ -792,3 +792,215 @@ fn a_change_that_lets_a_person_accept_more_is_a_governance_change() {
         assert!(kinds(&text, &changed(&text, review, to)).is_empty(), "{to}");
     }
 }
+
+/// The release program of E1505 with two irreversible effects over lists,
+/// and a function that verifies through another, `lines` in place of what
+/// `git.merge` is given (body 3 on).
+fn release_with(lines: &str) -> String {
+    let text = read_text(RELEASE).unwrap();
+    let text = changed(
+        &text,
+        "/// Merges a change",
+        "effect publish_all(cs: List<Verified<Change>>) -> Receipt<Text>
+  requires caps git.pr(\"example/app\")
+  critical
+  irreversible
+  idempotency required
+
+effect publish_outcomes(cs: List<Outcome<Verified<Change>>>) -> Receipt<Text>
+  requires caps git.pr(\"example/app\")
+  critical
+  irreversible
+  idempotency required
+
+/// The change verified against Small.
+fn checked(c: Change) -> Verified<Change> ! {} {
+  verify c against Small(c)
+}
+
+/// The change as checked gives it.
+fn outer(c: Change) -> Verified<Change> ! {} {
+  checked(c)
+}
+
+/// Merges a change",
+    );
+    changed(
+        &text,
+        "  effect git.merge(same(named)) idempotent_by change.branch\n",
+        lines,
+    )
+}
+
+/// What a value is made of rests on what its parts rest on, through every
+/// form: a list, a template, a binary, a map, a switch's binding, and a
+/// function that calls one that verifies. Each value here is first bound
+/// with a declared type that names no contract, so that only what it rests
+/// on, and not its type, can say a waiver may be what it rests on (E1505).
+#[test]
+fn a_waiver_flows_through_every_form_a_value_is_made_by() {
+    let held = "  let s: Verified<Change> = small\n";
+    for (what, lines, at) in [
+        (
+            "a list",
+            format!("{held}  effect publish_all([s]) idempotent_by change.branch\n"),
+            4,
+        ),
+        (
+            "a template",
+            format!("{held}  effect tag_release(\"v-{{s}}\") idempotent_by change.branch\n"),
+            4,
+        ),
+        (
+            "a binary",
+            format!("{held}  effect tag_release(s.branch + \"-v1\") idempotent_by change.branch\n"),
+            4,
+        ),
+        (
+            "a map",
+            "  let all = map x in [change] max 1 {\n    let v: Verified<Change> = verify x against Small(x)\n    v\n  }\n  effect publish_outcomes(all) idempotent_by change.branch\n".to_owned(),
+            4,
+        ),
+        (
+            "a switch's binding",
+            format!("{held}  let t = switch s {{\n    x => x\n  }}\n  effect git.merge(t) idempotent_by change.branch\n"),
+            5,
+        ),
+        (
+            "a function that calls one that verifies",
+            "  effect git.merge(outer(change)) idempotent_by change.branch\n".to_owned(),
+            3,
+        ),
+    ] {
+        let got = checked(&release_with(&lines));
+        let want = format!("MDT-E1505 at /defs/Ship/body/{at}/value/args/0/value");
+        assert!(got.contains(&want), "{what}: {got:?}");
+        // The same value from a contract without a waiver rests on nothing
+        // (the functions verify against `Small` whatever the lines are).
+        if !lines.contains("small") && !lines.contains("Small(") {
+            continue;
+        }
+        let plain = lines.replace("small", "named").replace("Small(", "Named(");
+        let got = checked(&release_with(&plain));
+        assert!(
+            !got.iter().any(|d| d.starts_with("MDT-E1505")),
+            "{what}, without a waiver: {got:?}"
+        );
+    }
+}
+
+/// The diagnostics of `text` checked as a sub-program under `claim`, but
+/// W0601.
+fn checked_under(text: &str, claim: &Value) -> Vec<mandate_ir::Diagnostic> {
+    let r = check(
+        text,
+        SourceKind::Mdt,
+        &CheckOptions {
+            claim: Some(claim),
+            ..CheckOptions::default()
+        },
+    );
+    r.diagnostics
+        .into_iter()
+        .filter(|d| d.code != "MDT-W0601")
+        .collect()
+}
+
+/// A sub-program's batch commit step is held to its parent's envelope as to
+/// its own: an effect the parent's envelope asks a person to approve is no
+/// batch commit step (E1708, `envelope_approve`).
+#[test]
+fn a_sub_programs_commit_step_is_held_to_its_parents_envelope() {
+    let text = read_text(COMMIT).unwrap();
+    let parent = load(&text, SourceKind::Mdt).program.unwrap();
+    let mut envelope = parent
+        .get("defs")
+        .and_then(|d| d.get("FileAll"))
+        .and_then(|w| w.get("envelope"))
+        .cloned()
+        .unwrap();
+    if let Value::Object(m) = &mut envelope {
+        let mut approve = mandate_ir::Map::new();
+        approve.insert("file_draft", Value::from("clerk"));
+        m.insert("approve", Value::Object(approve));
+    }
+    let mut claim = mandate_ir::Map::new();
+    claim.insert("envelope", envelope);
+    let claim = Value::Object(claim);
+    let sub = changed(
+        &text,
+        "  envelope {\n    owner  owner\n    caps   ErpDraft, Files\n    budget { time: 1h, agents: 1 }\n  }\n",
+        "  caps   ErpDraft, Files\n  budget { time: 1h }\n",
+    );
+    let refused = |ds: &[mandate_ir::Diagnostic]| {
+        ds.iter()
+            .filter(|d| d.code == "MDT-E1708")
+            .map(|d| {
+                format!(
+                    "{} {}",
+                    d.at.path.as_deref().unwrap_or(""),
+                    fact(d, "condition").unwrap_or_default()
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let got = checked_under(&sub, &claim);
+    assert_eq!(
+        refused(&got),
+        ["/defs/FileAll/body/1/value/body/1/value envelope_approve"],
+        "{got:?}"
+    );
+    assert!(refused(&diagnostics(&sub, None)).is_empty());
+}
+
+/// A key that reads the map's item only in a `verify`'s `on unmet`, which
+/// runs only when the contract is not met, does not read it: the key is the
+/// same for every item that meets it (E1708, `key`).
+#[test]
+fn a_key_that_reads_the_item_only_on_unmet_does_not_read_it() {
+    let text = read_text(COMMIT).unwrap();
+    let text = changed(
+        &text,
+        "/// Posts each draft",
+        "/// A text is not empty.\ncontract Nonempty(t: Text) {\n  accept some \"The text is not empty\"\n    by static len(t) >= 1\n}\n\n/// Posts each draft",
+    );
+    let text = changed(
+        &text,
+        "    effect file_draft(checked) idempotent_by d.invoice_no\n",
+        "    effect file_draft(checked) idempotent_by verify \"made-up\" against Nonempty(\"made-up\") on unmet(c) => d.invoice_no\n",
+    );
+    let got = diagnostics(&text, None);
+    let e1708: Vec<String> = got
+        .iter()
+        .filter(|d| d.code == "MDT-E1708")
+        .map(|d| fact(d, "condition").unwrap_or_default())
+        .collect();
+    assert_eq!(e1708, ["key"], "{got:?}");
+}
+
+/// A critical effect in a map in a workflow's handler is no batch commit
+/// step: a handler is not the workflow's body (E1708, `workflow`).
+#[test]
+fn a_commit_step_stands_in_a_workflows_body_alone() {
+    let text = read_text(COMMIT).unwrap();
+    let text = format!(
+        "{text}\non budget_exceeded in FileAll => map d in drafts max 20 {{\n  let checked = verify d against Drafted(d)\n  effect file_draft(checked) idempotent_by d.invoice_no\n}}\n"
+    );
+    let got = diagnostics(&text, None);
+    let e1708: Vec<String> = got
+        .iter()
+        .filter(|d| d.code == "MDT-E1708")
+        .map(|d| {
+            format!(
+                "{} {}",
+                d.at.path.as_deref().unwrap_or(""),
+                fact(d, "condition").unwrap_or_default()
+            )
+        })
+        .collect();
+    assert_eq!(
+        e1708,
+        ["/defs/FileAll/on/0/then/body/1/value workflow"],
+        "{got:?}"
+    );
+}
