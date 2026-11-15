@@ -25,6 +25,7 @@ use crate::caps::{CapOptions, caps_of};
 use crate::check::{CheckOptions, check};
 use crate::modules::{Modules, link, link_reaching, reach_of_modules};
 use crate::patch::{GovernanceChange, PatchOp, apply_ops, apply_patch};
+use crate::shapes::{Shape, shapes_of, subprogram_shape_of};
 use crate::stdlib::DataClass;
 use crate::subprogram::{
     Room, containment, language_of, opened, skeleton, subprogram_shape, subprogram_workflow,
@@ -151,7 +152,7 @@ pub struct SubprogramInput<'a> {
 }
 
 /// What [`check_subprogram`] gives: `SubprogramCheck`, `{ ok, diagnostics,
-/// program?, hash?, workflow? }`.
+/// program?, hash?, workflow?, shape? }`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SubprogramCheck {
     /// The sub-program passed every check and fits what is left of the
@@ -165,11 +166,16 @@ pub struct SubprogramCheck {
     pub hash: Option<String>,
     /// When `ok`: the name of its one workflow.
     pub workflow: Option<String>,
+    /// 0.6, when `ok` and the envelope has `shapes`: the shape its workflow
+    /// applies (spec/library.md "`shapes`"), which the runtime journals.
+    /// Rust only; none for every other parent, so the result of a parent
+    /// without `shapes` is what it was.
+    pub shape: Option<Shape>,
 }
 
 impl SubprogramCheck {
     /// The result as the TypeScript writes it: `{ ok, diagnostics, program?,
-    /// hash?, workflow? }`.
+    /// hash?, workflow? }`, and `shape` after them when there is one (0.6).
     #[must_use]
     pub fn to_js(&self) -> JsValue {
         JsObject::new()
@@ -184,6 +190,7 @@ impl SubprogramCheck {
             .with_some("program", self.program.as_ref().map(JsValue::from))
             .with_some("hash", self.hash.as_deref())
             .with_some("workflow", self.workflow.as_deref())
+            .with_some("shape", self.shape.as_ref().map(Shape::to_js))
             .into()
     }
 
@@ -194,6 +201,7 @@ impl SubprogramCheck {
             program: None,
             hash: None,
             workflow: None,
+            shape: None,
         }
     }
 }
@@ -213,8 +221,9 @@ fn workflow_with_envelope<'a>(parent: &'a Value, name: &str) -> Option<&'a Value
 /// Checks a lead's sub-program and whether it fits what is left of the
 /// envelope (spec/envelope.md "The sub-program", INV-15):
 /// `checkSubprogram(i)`. In order: the patch applies to the skeleton of its
-/// number; it defines only what a sub-program may (E1705); all of `check`
-/// passes, with every definition of the parent in sight and its workflow
+/// number; it defines only what a sub-program may (E1705); in 0.6, when the
+/// envelope has `shapes`, its workflow applies one of them (E1710,
+/// `crate::shapes`); all of `check` passes, with every definition of the parent in sight and its workflow
 /// under the parent's envelope; its claim fits `room` (E1706). Nothing is
 /// saved and nothing runs.
 ///
@@ -255,9 +264,29 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
         return Ok(SubprogramCheck::refused(diagnostics));
     }
     let view = opened(&sub, i.parent);
+    // 0.6: with `shapes`, its one workflow applies one of them, the very
+    // pattern the parent lists (E1710), before anything else of it is
+    // checked.
+    let mut shape: Option<Shape> = None;
+    if reads_0_6(i.parent)
+        && let Some(shapes) = shapes_of(&envelope)
+        && let (Some(parent), Some(view)) = (Program::of(i.parent), Program::of(&view))
+    {
+        let workflow = subprogram_workflow(&sub).unwrap_or_default();
+        match subprogram_shape_of(parent, &shapes, view, &workflow) {
+            Ok(s) => shape = Some(s),
+            Err(d) => {
+                diagnostics.push(*d);
+                return Ok(SubprogramCheck::refused(diagnostics));
+            }
+        }
+    }
     // `{ ...(i.modules ?? {}), [i.parent.module]: i.parent }`.
     let mut modules = i.modules.cloned().unwrap_or_default();
     modules.insert(parent_module, i.parent.clone());
+    // 0.6: the built-in std.patterns, when the parent imports it and the
+    // modules do not hold it: a shape of it is applied from there.
+    let modules = with_std_patterns(i.parent, modules);
     // 0.6: the sub-program sees what its parent sees, the modules of its
     // parent's libraries linked through what they reach (a connector's
     // types among them), which the check is handed as modules.
@@ -384,6 +413,7 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
         program: Some(sub),
         hash: Some(hash),
         workflow: Some(workflow),
+        shape,
     })
 }
 
@@ -501,15 +531,21 @@ pub fn check_amendment(i: &AmendmentInput<'_>) -> Result<AmendmentCheck, String>
     };
     // 0.6: the program's library modules, handed as modules, linked through
     // what they reach, as its own check links them.
-    let reach = i
+    // The built-in std.patterns among them, when the program imports it and
+    // they do not hold it.
+    let with_builtin = i
         .modules
+        .filter(|_| reads_0_6(i.parent))
+        .map(|m| with_std_patterns(i.parent, m.clone()));
+    let modules = with_builtin.as_ref().or(i.modules);
+    let reach = modules
         .filter(|_| reads_0_6(i.parent))
         .map(reach_of_modules);
     let checked = check(
         &json_text(&amended),
         SourceKind::Json,
         &CheckOptions {
-            modules: i.modules,
+            modules,
             reach: reach.as_ref(),
             ..CheckOptions::default()
         },
@@ -529,7 +565,7 @@ pub fn check_amendment(i: &AmendmentInput<'_>) -> Result<AmendmentCheck, String>
             (checked.program.as_ref(), now, wf.get("envelope"))
         && let Some(view) = Program::of(program)
     {
-        let defs = link(view, i.modules).defs;
+        let defs = link(view, modules).defs;
         diagnostics.extend(narrowings(
             &defs,
             i.workflow,
@@ -548,6 +584,15 @@ pub fn check_amendment(i: &AmendmentInput<'_>) -> Result<AmendmentCheck, String>
             hash: Some(hashes.program),
         }),
         _ => Ok(AmendmentCheck::refused(diagnostics)),
+    }
+}
+
+/// `modules` with the modules of the built-in std.patterns, when `program`
+/// is of 0.6, imports it, and `modules` do not hold it (0.6).
+fn with_std_patterns(program: &Value, modules: Modules) -> Modules {
+    match Program::of(program).and_then(|p| crate::library::with_builtin(p, Some(&modules))) {
+        Some(all) => all,
+        None => modules,
     }
 }
 
@@ -571,6 +616,7 @@ pub fn subprogram_linked(sub: &Value, parent: &Value, modules: Option<&Modules>)
             .unwrap_or("undefined"),
         parent.clone(),
     );
+    let all = with_std_patterns(parent, all);
     // 0.6: what the parent's library modules reach is linked too, as the
     // sub-program's check links it.
     let reach = reads_0_6(parent).then(|| reach_of_modules(&all));

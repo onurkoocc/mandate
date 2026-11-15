@@ -139,7 +139,7 @@ to the lead, and the Notes column says so.
 | MDT-E1706 | Sub-program does not fit the envelope | N01, N01a, N01b, E1706, E1706a, E1706b | assigned; facts name the dimension (`capability`, `write_scope`, a budget dimension, `time`, `data_class`) with what was asked and what is left; returned to the lead, never to the run |
 | MDT-E1707 | `plan` outside an envelope | E1707 | assigned; a `plan` anywhere but the body of a workflow with an envelope |
 | MDT-E1708 | Person or critical effect in a map body | E1708, E1708a; 0.6: E1708b (allowed), E1708c to E1708l | assigned; a wait for a person in a map body or in a function it calls, a critical effect, a change set. In a program of 0.6 a critical effect there is a batch commit step, and allowed, when it is not irreversible, the workflow's envelope does not name it under `approve`, no environment asks a person to authorize it, its `idempotent_by` key reads the map's item, the map has no `par` above 1 and is in no other map's body, and it stands in a workflow's body; a change set there never is. Otherwise E1708 at the effect, its facts `condition` (`irreversible`, `envelope_approve` with `role`, `environment_authorize` with `environment` and `role`, `key`, `par`, `nested_map`, `change_set`, `workflow`) besides `map`, `kind` and `what`. A wait for a person, `human.review` included, is E1708 in a program of 0.6 as before (E1708l). A program of 0.1 to 0.5 keeps the rule and its message exactly |
-| MDT-E1709 | Amendment narrows the envelope | N04, E1709, E1709a, E1709b, E1709c | assigned; a capability left out, a budget dimension lowered, dropped or added, fewer delegations at once or a lower data class; facts name the dimension (`capability`, a budget dimension, `max_concurrent`, `max_class`) with what the envelope gave and what was asked; returned to the lead, never to the run |
+| MDT-E1709 | Amendment narrows the envelope | N04, E1709, E1709a, E1709b, E1709c; 0.6: N11b, E1709d | assigned; a capability left out, a budget dimension lowered, dropped or added, fewer delegations at once or a lower data class; facts name the dimension (`capability`, a budget dimension, `max_concurrent`, `max_class`) with what the envelope gave and what was asked; returned to the lead, never to the run. In 0.6 also a shape the envelope lists left out (one diagnostic a shape, with `shape`, at `/defs/<W>/envelope/shapes`), or `shapes` added to an envelope that had none (`was: null`): `dimension: "shapes"`, `was` and `asked` the lists. Adding a shape, or taking the list away, widens and is allowed (N11d, N11e) |
 
 ## The boundary (0.5)
 
@@ -351,3 +351,19 @@ map's `max s` or `par s` stand only in a pattern's body, for one of its
 slots; and a name an imported pattern's module does not know (above). And
 every rule holds inside an expansion as if its body were written out (E1708n,
 E1708o, E1505m, E1506j, E1501a, E0301d, E0220g, E0210).
+
+## Shapes (0.6)
+
+Specified in [`library.md`](library.md#shapes). E1710 and E1711 extend E17xx
+(envelopes). As E13xx, they are the Rust compiler's alone, in its table of
+codes, each with hand-written conformance cases of `mandate/0.6`. `mandate
+check` reports E1711; E1710 is about what a lead sends while a run is going,
+and the runtime's checker reports it to the lead, as E1705.
+
+| Code | Title | Conformance case | Notes |
+|---|---|---|---|
+| MDT-E1710 | Sub-program is not one of the envelope's shapes | N11, E1710, E1710a; N11c (admitted) | 0.6 only; the envelope has `shapes` and the sub-program's one workflow is written out (`not_an_application`, at `/defs/<W>`), applies a pattern the list does not name (`not_listed`), or applies under a listed name a definition other than the pattern the parent lists, such as one of its own (`other_definition`, with `module` and `shape_module`), each at `/defs/<W>/apply/pattern`. Checked after E1705 and before the rest of the sub-program; an admitted sub-program's result names its `shape` (`{ pattern, module }`). Its containment in the envelope (E1706) is proven over the expansion. Facts: `workflow`, `problem`, `pattern`, `shapes`; returned to the lead, never to the run |
+| MDT-E1711 | Shape is not a pattern | N11a, E1711, E1711a | 0.6 only; a name an envelope's `shapes` lists is no definition of the program and no name a `use` list brings (`kind: null`), or one of another kind (`kind`, and `module` when imported); at `/defs/<W>/envelope/shapes/<i>`. A list that is empty or names one pattern twice is refused when it is read: E0104 in IR (a set of names, as `waive`), E0101 for `shapes []` and E0121 at the second name in the text. Facts: `workflow`, `shape`, `kind`, `module` |
+
+A program of 0.1 to 0.5 has no `shapes`: in its text the word is no field of an
+envelope (E0101), and in its IR an unknown member (E0104, case E0104g).

@@ -1,0 +1,38 @@
+{
+  "lock": "mandate/lock/0.6",
+  "modules": {},
+  "libraries": {
+    "std.patterns": {
+      "version": "1.0.0",
+      "digest": "sha256:b1a7161ad2ea1dcdca950c189403b90cd65770f7e8143441a6836cacdace3548",
+      "modules": {
+        "std.patterns": "sha256:b594c34bcfa423cd50b593542ed49c324a2b5f1b09086c2f98aca49334801cfa"
+      }
+    }
+  },
+  "connectors": {},
+  "models": {
+    "standard": {
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "max_input_tokens": 128000,
+      "max_output_tokens": 12000
+    }
+  },
+  "members": {
+    "ana": { "keys": ["sha256:6666666666666666666666666666666666666666666666666666666666666666"] },
+    "ben": { "keys": ["sha256:7777777777777777777777777777777777777777777777777777777777777777"] }
+  },
+  "roles": {
+    "platform_lead": ["ana"],
+    "release_manager": ["ben"]
+  },
+  "tariffs": {
+    "claude-opus-5-5": {
+      "currency": "USD",
+      "as_of": "2026-10-09",
+      "micros_per_mtok": { "input": 4000000, "output": 20000000, "cache_read": 200000, "cache_write": 5000000 }
+    }
+  }
+}

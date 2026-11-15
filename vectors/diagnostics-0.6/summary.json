@@ -1,18 +1,19 @@
 {
   "format": "mandate/vectors/diagnostics/summary/0.1",
-  "conformance_cases": 247,
+  "conformance_cases": 259,
   "conformance_by_door": {
     "check": 80,
-    "check_patched": 157,
-    "check_subprogram": 5,
+    "check_amendment": 4,
+    "check_patched": 161,
+    "check_subprogram": 9,
     "library": 5
   },
-  "golden_results": 29,
-  "diagnostics": 437,
+  "golden_results": 33,
+  "diagnostics": 454,
   "by_code": {
     "MDT-E0101": 7,
     "MDT-E0103": 1,
-    "MDT-E0104": 6,
+    "MDT-E0104": 7,
     "MDT-E0105": 1,
     "MDT-E0120": 16,
     "MDT-E0121": 6,
@@ -61,8 +62,12 @@
     "MDT-E1703": 1,
     "MDT-E1705": 1,
     "MDT-E1708": 15,
+    "MDT-E1709": 2,
+    "MDT-E1710": 3,
+    "MDT-E1711": 3,
     "MDT-W0207": 1,
     "MDT-W0310": 6,
-    "MDT-W0601": 174
+    "MDT-W0504": 2,
+    "MDT-W0601": 180
   }
 }

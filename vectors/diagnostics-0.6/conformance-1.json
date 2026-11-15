@@ -335,6 +335,41 @@
       }
     },
     {
+      "name": "E0104g",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../N01/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../N01/domain.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Unknown field \"shapes\". The IR schema is closed; unknown fields are rejected, not ignored.",
+            "at": {
+              "path": "/defs/Run/envelope/shapes",
+              "span": [1, 3410, 1, 3417]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "additionalProperties",
+              "schema_path": "#/additionalProperties"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0120",
       "kind": "compile",
       "door": "check_patched",
@@ -8845,6 +8880,187 @@
       }
     },
     {
+      "name": "E1709d",
+      "kind": "compile",
+      "door": "check_amendment",
+      "input": {
+        "file": "../P06/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "amendment"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1709",
+            "severity": "error",
+            "message": "The amendment limits the lead's sub-programs to shapes, and the envelope admits any workflow. An amendment adds no limit.",
+            "at": {
+              "path": "/defs/Run/envelope/shapes"
+            },
+            "docs": "mandate explain MDT-E1709",
+            "facts": {
+              "dimension": "shapes",
+              "was": null,
+              "asked": [
+                "Each"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1710",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../N11/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1710",
+            "severity": "error",
+            "message": "Look applies Spare, which is not one of the envelope's shapes: Each, FanOutMerge (spec/library.md \"shapes\").",
+            "at": {
+              "path": "/defs/Look/apply/pattern"
+            },
+            "docs": "mandate explain MDT-E1710",
+            "facts": {
+              "workflow": "Look",
+              "pattern": "Spare",
+              "problem": "not_listed",
+              "module": "example.shaped",
+              "shapes": [
+                "Each",
+                "FanOutMerge"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1710a",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../N11/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1710",
+            "severity": "error",
+            "message": "Look applies Each of example.shaped.plan_1, and the envelope's shape Each is the pattern of example.shaped: a sub-program applies the very pattern the envelope lists (spec/library.md \"shapes\").",
+            "at": {
+              "path": "/defs/Look/apply/pattern"
+            },
+            "docs": "mandate explain MDT-E1710",
+            "facts": {
+              "workflow": "Look",
+              "pattern": "Each",
+              "problem": "other_definition",
+              "module": "example.shaped.plan_1",
+              "shape_module": "example.shaped",
+              "shapes": [
+                "Each",
+                "FanOutMerge"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1711",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../N11/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1711",
+            "severity": "error",
+            "message": "Run's envelope lists Nothing among its shapes, which names no definition of this program and no name a use list brings. A shape is a pattern the program defines or imports (spec/library.md \"shapes\").",
+            "at": {
+              "path": "/defs/Run/envelope/shapes/1",
+              "span": [1, 3375, 1, 3384]
+            },
+            "docs": "mandate explain MDT-E1711",
+            "facts": {
+              "workflow": "Run",
+              "shape": "Nothing",
+              "kind": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E1711a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../N11/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1711",
+            "severity": "error",
+            "message": "Run's envelope lists Batch among its shapes, which module std.patterns defines as a type, not a pattern. A shape is a pattern a lead's sub-program may apply (spec/library.md \"shapes\").",
+            "at": {
+              "path": "/defs/Run/envelope/shapes/0",
+              "span": [1, 3368, 1, 3375]
+            },
+            "docs": "mandate explain MDT-E1711",
+            "facts": {
+              "workflow": "Run",
+              "shape": "Batch",
+              "kind": "type",
+              "module": "std.patterns"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "H06",
       "kind": "compile",
       "door": "check",
@@ -9720,6 +9936,1178 @@
         },
         "hash": "sha256:1e722ae9fca8d2fe45942bba07be0c0a2321d3d4cbebc39c8b6d4939804fbd1c",
         "workflow": "Read"
+      }
+    },
+    {
+      "name": "N11",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1710",
+            "severity": "error",
+            "message": "Look is written out, and the envelope's shapes say a sub-program applies one of Each, FanOutMerge: its workflow is `workflow Look = P<\u2026>(\u2026)` with its caps and budget (spec/library.md \"shapes\").",
+            "at": {
+              "path": "/defs/Look"
+            },
+            "docs": "mandate explain MDT-E1710",
+            "facts": {
+              "workflow": "Look",
+              "problem": "not_an_application",
+              "shapes": [
+                "Each",
+                "FanOutMerge"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "N11a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../N11/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1711",
+            "severity": "error",
+            "message": "Run's envelope lists Worker among its shapes, which is an agent, not a pattern. A shape is a pattern a lead's sub-program may apply (spec/library.md \"shapes\").",
+            "at": {
+              "path": "/defs/Run/envelope/shapes/0",
+              "span": [1, 3368, 1, 3376]
+            },
+            "docs": "mandate explain MDT-E1711",
+            "facts": {
+              "workflow": "Run",
+              "shape": "Worker",
+              "kind": "agent"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "N11b",
+      "kind": "compile",
+      "door": "check_amendment",
+      "input": {
+        "file": "../N11/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "amendment"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E1709",
+            "severity": "error",
+            "message": "The amendment leaves out the shape FanOutMerge, which the envelope lists. An amendment only widens: a sub-program the envelope admitted must still be admitted.",
+            "at": {
+              "path": "/defs/Run/envelope/shapes"
+            },
+            "docs": "mandate explain MDT-E1709",
+            "facts": {
+              "dimension": "shapes",
+              "shape": "FanOutMerge",
+              "was": [
+                "Each",
+                "FanOutMerge"
+              ],
+              "asked": [
+                "Each"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "N11c",
+      "kind": "compile",
+      "door": "check_subprogram",
+      "input": {
+        "file": "../N11/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "subprogram"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.6",
+          "module": "example.shaped.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.shaped"
+            }
+          ],
+          "defs": {
+            "Look": {
+              "kind": "workflow",
+              "apply": {
+                "pattern": "Each",
+                "args": [
+                  {
+                    "name": "work",
+                    "value": {
+                      "op": "field",
+                      "of": {
+                        "op": "var",
+                        "name": "Worker"
+                      },
+                      "name": "look"
+                    }
+                  },
+                  {
+                    "name": "width",
+                    "value": {
+                      "op": "int",
+                      "value": 2
+                    }
+                  }
+                ]
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "budget": {
+                "tokens": 2000,
+                "time": {
+                  "ms": 600000
+                },
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 10,
+                "agents": 2
+              }
+            }
+          }
+        },
+        "hash": "sha256:ffc5a888f33463441914fad2bbf938cfdadd7e13b94b6f51dadd83fd2dfdd53d",
+        "workflow": "Look",
+        "shape": {
+          "pattern": "Each",
+          "module": "example.shaped"
+        }
+      }
+    },
+    {
+      "name": "N11d",
+      "kind": "compile",
+      "door": "check_amendment",
+      "input": {
+        "file": "../N11/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "amendment"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.6",
+          "module": "example.shaped",
+          "version": "0.1",
+          "defs": {
+            "owner_role": {
+              "kind": "role",
+              "description": "Owner"
+            },
+            "Item": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "name": {
+                    "ref": "Text"
+                  }
+                }
+              }
+            },
+            "M": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "model"
+                  },
+                  "name": "infer"
+                },
+                "args": [
+                  {
+                    "name": "tier",
+                    "value": {
+                      "op": "var",
+                      "name": "standard"
+                    }
+                  }
+                ]
+              }
+            },
+            "R": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "read"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work"
+                    }
+                  }
+                ]
+              }
+            },
+            "Worker": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "skills": {
+                "look": {
+                  "params": [
+                    {
+                      "name": "i",
+                      "type": {
+                        "ref": "Item"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Looks at one item.",
+              "budget": {
+                "tokens": 1000,
+                "spend": {
+                  "micros": 1000000,
+                  "currency": "USD"
+                },
+                "steps": 5
+              }
+            },
+            "Lead": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "skills": {
+                "finish": {
+                  "params": [
+                    {
+                      "name": "items",
+                      "type": {
+                        "ref": "List",
+                        "args": [
+                          {
+                            "ref": "Item"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Plans what is left.",
+              "budget": {
+                "tokens": 5000,
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 20
+              }
+            },
+            "Each": {
+              "kind": "pattern",
+              "slots": [
+                {
+                  "name": "work",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "Item"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "width",
+                  "kind": "const",
+                  "type": {
+                    "ref": "Int"
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Outcome",
+                    "args": [
+                      {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Text"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "items",
+                  "value": {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "a"
+                          }
+                        }
+                      },
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "b"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "map",
+                    "bind": "i",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "slot": "work",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "i"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2,
+                    "par": "width"
+                  }
+                }
+              ],
+              "doc": "The two items, each looked at by `work`, `width` at a time."
+            },
+            "Spare": {
+              "kind": "pattern",
+              "slots": [
+                {
+                  "name": "work",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "Item"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Outcome",
+                    "args": [
+                      {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Text"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "items",
+                  "value": {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "a"
+                          }
+                        }
+                      },
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "b"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "map",
+                    "bind": "i",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "slot": "work",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "i"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2
+                  }
+                }
+              ],
+              "doc": "The same two items, one at a time: a pattern the envelope does not list."
+            },
+            "Run": {
+              "kind": "workflow",
+              "params": [
+                {
+                  "name": "items",
+                  "type": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Item"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "Text"
+                  }
+                ]
+              },
+              "caps": [],
+              "body": [
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "plan",
+                    "agent": "Lead",
+                    "skill": "finish",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "items"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "envelope": {
+                "owner": "owner_role",
+                "caps": [
+                  {
+                    "op": "var",
+                    "name": "M"
+                  },
+                  {
+                    "op": "var",
+                    "name": "R"
+                  }
+                ],
+                "budget": {
+                  "tokens": 100000,
+                  "time": {
+                    "ms": 3600000
+                  },
+                  "spend": {
+                    "micros": 20000000,
+                    "currency": "USD"
+                  },
+                  "steps": 200,
+                  "agents": 20
+                },
+                "spawn": {
+                  "max_concurrent": 4
+                },
+                "shapes": [
+                  "Each",
+                  "FanOutMerge",
+                  "Spare"
+                ]
+              }
+            }
+          },
+          "uses": [
+            {
+              "module": "std",
+              "names": [
+                "fs",
+                "model"
+              ]
+            },
+            {
+              "module": "std.patterns",
+              "names": [
+                "Batch",
+                "FanOutMerge"
+              ]
+            }
+          ]
+        },
+        "hash": "sha256:a329e6fb1b5da65b14e5aaff817b6b6821df6acaefb83f0ba5bb4bcca5fe6443"
+      }
+    },
+    {
+      "name": "N11e",
+      "kind": "compile",
+      "door": "check_amendment",
+      "input": {
+        "file": "../N11/parent.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "amendment"
+      ],
+      "result": {
+        "ok": true,
+        "diagnostics": [],
+        "program": {
+          "language": "mandate/0.6",
+          "module": "example.shaped",
+          "version": "0.1",
+          "defs": {
+            "owner_role": {
+              "kind": "role",
+              "description": "Owner"
+            },
+            "Item": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "name": {
+                    "ref": "Text"
+                  }
+                }
+              }
+            },
+            "M": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "model"
+                  },
+                  "name": "infer"
+                },
+                "args": [
+                  {
+                    "name": "tier",
+                    "value": {
+                      "op": "var",
+                      "name": "standard"
+                    }
+                  }
+                ]
+              }
+            },
+            "R": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "read"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work"
+                    }
+                  }
+                ]
+              }
+            },
+            "Worker": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "skills": {
+                "look": {
+                  "params": [
+                    {
+                      "name": "i",
+                      "type": {
+                        "ref": "Item"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Looks at one item.",
+              "budget": {
+                "tokens": 1000,
+                "spend": {
+                  "micros": 1000000,
+                  "currency": "USD"
+                },
+                "steps": 5
+              }
+            },
+            "Lead": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "skills": {
+                "finish": {
+                  "params": [
+                    {
+                      "name": "items",
+                      "type": {
+                        "ref": "List",
+                        "args": [
+                          {
+                            "ref": "Item"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Plans what is left.",
+              "budget": {
+                "tokens": 5000,
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 20
+              }
+            },
+            "Each": {
+              "kind": "pattern",
+              "slots": [
+                {
+                  "name": "work",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "Item"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "width",
+                  "kind": "const",
+                  "type": {
+                    "ref": "Int"
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Outcome",
+                    "args": [
+                      {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Text"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "items",
+                  "value": {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "a"
+                          }
+                        }
+                      },
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "b"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "map",
+                    "bind": "i",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "slot": "work",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "i"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2,
+                    "par": "width"
+                  }
+                }
+              ],
+              "doc": "The two items, each looked at by `work`, `width` at a time."
+            },
+            "Spare": {
+              "kind": "pattern",
+              "slots": [
+                {
+                  "name": "work",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "Item"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Outcome",
+                    "args": [
+                      {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Text"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "items",
+                  "value": {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "a"
+                          }
+                        }
+                      },
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "b"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "map",
+                    "bind": "i",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "slot": "work",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "i"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2
+                  }
+                }
+              ],
+              "doc": "The same two items, one at a time: a pattern the envelope does not list."
+            },
+            "Run": {
+              "kind": "workflow",
+              "params": [
+                {
+                  "name": "items",
+                  "type": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Item"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "Text"
+                  }
+                ]
+              },
+              "caps": [],
+              "body": [
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "plan",
+                    "agent": "Lead",
+                    "skill": "finish",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "items"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "envelope": {
+                "owner": "owner_role",
+                "caps": [
+                  {
+                    "op": "var",
+                    "name": "M"
+                  },
+                  {
+                    "op": "var",
+                    "name": "R"
+                  }
+                ],
+                "budget": {
+                  "tokens": 100000,
+                  "time": {
+                    "ms": 3600000
+                  },
+                  "spend": {
+                    "micros": 20000000,
+                    "currency": "USD"
+                  },
+                  "steps": 200,
+                  "agents": 20
+                },
+                "spawn": {
+                  "max_concurrent": 4
+                }
+              }
+            }
+          },
+          "uses": [
+            {
+              "module": "std",
+              "names": [
+                "fs",
+                "model"
+              ]
+            },
+            {
+              "module": "std.patterns",
+              "names": [
+                "Batch",
+                "FanOutMerge"
+              ]
+            }
+          ]
+        },
+        "hash": "sha256:2199cffec2e49c47d5527f5d6f83df6b8add108e97cb906be4cd169ca51e1ef0"
       }
     },
     {

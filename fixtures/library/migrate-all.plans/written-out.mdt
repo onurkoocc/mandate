@@ -1,0 +1,19 @@
+// A sub-program the lead of migrate-all.mdt might write (spec/library.md
+// "shapes"): what is left, finished by the lead in a workflow written
+// out. Under an envelope without shapes it would be admitted; this
+// envelope lists FanOutMerge and MakerChecker, so a sub-program's workflow
+// is an application of one of them, and this one is refused, E1710 at the
+// workflow. Only its definitions are the lead's patch.
+
+mandate @ 0.6
+
+module company.migrations.plan_2 @ 0.1
+
+use company.migrations
+
+workflow Rest() -> Inferred<Summary>
+  caps   RepoRead, ModelStd
+  budget { tokens: 2000k, time: 30m, spend: 10 USD, steps: 40, agents: 1 }
+{
+  delegate Lead.finish([], [])
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "N11e",
+  "kind": "compile",
+  "title": "An amendment that takes the list of shapes away lets a sub-program be any workflow, which widens, and checks.",
+  "spec": ["spec/library.md#shapes", "spec/envelope.md#amendments-n04", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../N11/parent.mdt", "kind": "mdt" },
+  "amendment": {
+    "workflow": "Run",
+    "patch": [{ "op": "remove", "path": "/shapes" }]
+  },
+  "expect": { "ok": true, "diagnostics": [] }
+}

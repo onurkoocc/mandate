@@ -1,0 +1,28 @@
+// A sub-program the lead of migrate-all.mdt might write (spec/library.md
+// "shapes"): the repositories left, migrated side by side and merged, as an
+// application of FanOutMerge, a shape the envelope lists. Only its
+// definitions are the lead's patch; the header is the skeleton's.
+//
+// FanOutMerge takes the items as a run parameter, `(items: List<Item>)`, so
+// a workflow that applies it takes one, and a sub-program's workflow takes
+// none: the sub-program is a listed shape (no E1710) and is still refused,
+// E1705 at the application, as P06b is.
+
+mandate @ 0.6
+
+module company.migrations.plan_1 @ 0.1
+
+use company.migrations
+
+agent Merger {
+  role   "Merges the summaries of the repositories migrated into one."
+  caps   ModelStd
+  budget { tokens: 100k, spend: 0.5 USD, steps: 4 }
+  skill merge(done: List<Outcome<Inferred<Summary>>>) -> Inferred<Summary> ! {Model}
+}
+
+workflow Rest = FanOutMerge<Repo, Summary, Summary>(
+    work: Migrator.migrate, scope: SrcWrite, part: root,
+    merge: Merger.merge, max_items: 20, concurrency: 4)
+  caps   RepoRead, SrcWrite, Build, ModelStd
+  budget { tokens: 9000k, time: 3h, spend: 12 USD, steps: 300, agents: 21 }
