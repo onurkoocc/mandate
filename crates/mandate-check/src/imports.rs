@@ -17,7 +17,9 @@
 //! or is E1604 too, and the resolver reads neither the last segment of such
 //! a module nor a name written with its path as a name (it reports each as
 //! the unknown name of its place). So in 0.6 a module's definitions are
-//! named through a `use` list alone, and E1602 is a `use` list's. Every
+//! named through a `use` list alone, and E1602 is a `use` list's; and a name
+//! a list brings is the definition it names, held to its kind as the
+//! program's own definition is (`crate::resolve`). Every
 //! definition of a module of 0.1 to 0.5 may still be named, from any
 //! program. For a program of 0.1 to 0.5 this module adds one thing only,
 //! E1603, for a module of 0.6 given to its check, which no stored result of

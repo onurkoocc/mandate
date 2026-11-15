@@ -1,0 +1,48 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0120b",
+  "kind": "compile",
+  "title": "In a 0.6 program a listed type named as the contract of Verified is an unknown contract, as the program's own type would be.",
+  "spec": [
+    "spec/library.md#closed-imports"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../E1602a/program.mdt",
+    "kind": "mdt"
+  },
+  "modules": [
+    "../E1602/types.mdt"
+  ],
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/Read/params/0/type",
+      "value": {
+        "ref": "Verified",
+        "args": [
+          {
+            "ref": "Text"
+          },
+          {
+            "ref": "Invoice"
+          }
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0120",
+        "path": "/defs/Read/params/0/type/args/1/ref",
+        "facts": {
+          "name": "Invoice",
+          "expected": "contract"
+        }
+      }
+    ]
+  }
+}

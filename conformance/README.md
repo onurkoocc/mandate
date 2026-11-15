@@ -279,6 +279,9 @@ their whole results in `vectors/diagnostics-0.6/`.
 | `E1604a` | A `use` of `std.patterns`, which this compiler does not build in yet | E1604 |
 | `E1604b` | Imports of `std`, `std.decision` and a module the check is given | — |
 | `E1604c` | A `use` of a module the check is given, without a list of names (a mutation: one `use` added) | E1604 |
+| `E0120` | A listed constant used as a type: a listed name is the definition it names, held to its kind as the program's own (a mutation) | E0120 |
+| `E0120a` | A lower-case listed name of a module that is not the standard library's used as a module path, `most.Anything` (a mutation) | E0120 |
+| `E0120b` | A listed type named as the contract of `Verified` (a mutation) | E0120 |
 
 The import cases share the 0.6 module `E1602/types.mdt` and the program
 `E1602/program.mdt`. What a case cannot say, because its modules must load, is in
@@ -289,7 +292,7 @@ nobody gave (E1604), do not load.
 spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
 (human steps), L (libraries) and N11 (shapes), and the code numbers of its
 families; the cases above use P01 (which spec/library.md names), the S02 claim,
-E0101, E0104 and E0140, which 0.6 extends, and the code numbers of E16xx.
+E0101, E0104, E0120 and E0140, which 0.6 extends, and the code numbers of E16xx.
 
 ## What the Rust crates run
 
@@ -327,13 +330,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 152, passed 152, pending 0
+conformance cases: ran 156, passed 156, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 27 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 31 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(168 cases: 152 `compile`, 27 of them of language 0.6, and 16 `journal`; no case
+(172 cases: 156 `compile`, 31 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the
@@ -353,8 +356,8 @@ it runs natively (CI's `rust` job), not under WebAssembly.
 
 **`mandate-ir`.** `crates/mandate-ir/tests/conformance.rs` runs, with the Rust
 crate alone, the cases that need only the strict JSON reader and the hashes, and
-counts the rest as skipped, with the reason (it prints `ran 7, skipped 161 (of
-168)`). It runs a `compile` case with a JSON input and none of `patch`,
+counts the rest as skipped, with the reason (it prints `ran 7, skipped 165 (of
+172)`). It runs a `compile` case with a JSON input and none of `patch`,
 `modules`, `lock`, `subprogram`, `amendment` and `base`, when it expects `ok`
 with `hashes` and no diagnostics (E0104c, P01a, S10a, S10b, S11a, S11b, S11m): the
 reader must accept the input with no diagnostic and the hashes must be the

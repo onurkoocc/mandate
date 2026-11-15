@@ -204,6 +204,30 @@ fn a_sub_program_names_every_definition_of_its_parent() {
         json(&parent),
         json(&domain)
     );
+    // The sub-program names definitions of several kinds: capabilities and
+    // an agent of its parent, and types its parent lists from a module that
+    // is not the standard library's, each read by its kind.
+    let kind = |defs: &Value, name: &str| {
+        defs.get("defs")
+            .and_then(|d| d.get(name))
+            .and_then(|d| d.get("kind"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    };
+    for (name, want) in [
+        ("Build", "capability"),
+        ("ModelStd", "capability"),
+        ("RepoRead", "capability"),
+        ("SrcWrite", "capability"),
+        ("Migrator", "agent"),
+    ] {
+        assert_eq!(kind(&parent, name).as_deref(), Some(want), "{name}");
+        assert!(ops.contains(&format!("\"{name}\"")), "{name} is named");
+    }
+    for name in ["Repo", "Summary"] {
+        assert_eq!(kind(&domain, name).as_deref(), Some("type"), "{name}");
+        assert!(ops.contains(&format!("\"{name}\"")), "{name} is named");
+    }
     let out = door("check_subprogram", &input);
     assert_eq!(
         out.get("ok").and_then(JsValue::as_bool),
@@ -304,13 +328,15 @@ fn the_codes_of_0_6_are_explained_and_come_last_in_the_table() {
 fn order_module(language: &str) -> String {
     let p = if language == "0.6" { "pub " } else { "" };
     format!(
-        "mandate @ {language}
+        "mandate @ {language}\n\nmodule example.library.order @ 1.0\n\nuse std.{{model}}\n\n{}",
+        order_defs(p)
+    )
+}
 
-module example.library.order @ 1.0
-
-use std.{{model}}
-
-{p}type Order = {{ order_no: Text, total_cents: Int }}
+/// The definitions of the module, each after `p` (`pub ` or nothing).
+fn order_defs(p: &str) -> String {
+    format!(
+        "{p}type Order = {{ order_no: Text, total_cents: Int }}
 
 {p}type Draft = {{ issue: Text, text: Inferred<Text> }}
 
@@ -319,6 +345,17 @@ use std.{{model}}
 {p}let limits: Int = 3
 
 {p}capability ModelStd = model.infer(tier: standard, max_class: internal)
+
+{p}contract Checked(t: Text) {{
+  accept said \"It says something\" by static len(t) >= 1
+}}
+
+{p}agent Reader {{
+  role   \"Reads.\"
+  caps   ModelStd
+  budget {{ time: 2m, steps: 2 }}
+  skill read(t: Text) -> Inferred<Text> ! {{Model}}
+}}
 "
     )
 }
@@ -465,55 +502,123 @@ fn a_name_written_with_its_module_path_is_no_name_in_0_6() {
     }
 }
 
-/// Documents today's behaviour, not a rule: other roads by which a program
-/// of 0.6 gets a name of a module it was given with no type the checks can
-/// see, which this slice leaves as they are (none is a module path). Each is
-/// accepted with no diagnostic, where the same with a definition of the
-/// program's own is refused. When one is closed, its line here changes.
+/// `code at path` of every error of `check` of `text` with `modules` (the
+/// warnings of the static checks left out: a definition of the program's
+/// own may have one its imported twin does not).
+fn errors(text: &str, modules: &Modules) -> Vec<String> {
+    checked(text, modules)
+        .into_iter()
+        .filter(|d| d.starts_with("MDT-E"))
+        .collect()
+}
+
+/// The name each road lists, and the definition that uses it.
+const ROADS: &[(&str, &str)] = &[
+    // A listed constant as a type, and as a parameter's type.
+    ("LIMIT", "type P = { x: LIMIT }"),
+    ("LIMIT", "fn f(x: LIMIT) -> Int ! {} {\n  x.anything\n}"),
+    // A listed constant as the type of a record literal.
+    // (In 0.5 the static checks refuse this one: the literal is of a type
+    // named LIMIT, not an Int.)
+    ("LIMIT", "let X: Int = LIMIT { a: 1 }"),
+    // A listed capability and a listed contract as types.
+    (
+        "ModelStd",
+        "fn f(x: ModelStd) -> Int ! {} {\n  x.anything\n}",
+    ),
+    ("Checked", "type P = { x: Checked }"),
+    // A listed type as the contract of `Verified`.
+    (
+        "Order",
+        "fn f(x: Verified<Text, Order>) -> Int ! {} {\n  1\n}",
+    ),
+    // A listed lower-case name as a module path.
+    ("limits", "type P = { x: limits.Anything }"),
+];
+
+/// A name a `use` lists from a module that is not the standard library's
+/// is, in a program of 0.6, the definition it names: held to its kind in
+/// every place, and never a module path, so that each road above (accepted
+/// before this slice, the name read as anything a place asks for) is refused
+/// with the diagnostic the program's own definition of that name gets
+/// there. A program of 0.5 keeps every acceptance.
 #[test]
-fn other_roads_to_an_unknown_type_documented_as_they_are() {
+fn a_listed_name_is_held_to_its_kind_as_an_own_definition_is() {
+    for language in ["0.5", "0.6"] {
+        let module = order_module(language);
+        let (modules, problems) = loaded(&[("order.mdt", &module)]);
+        assert!(problems.is_empty(), "{problems:?}");
+        for (name, defs) in ROADS {
+            let uses = format!("use std.{{model}}\nuse example.library.order.{{{name}}}");
+            let imported = errors(&order_program(language, &uses, defs), &modules);
+            if language == "0.5" {
+                // Before 0.6 the name is anything a place asks for: no
+                // diagnostic of the name resolution.
+                assert!(
+                    !imported.iter().any(|d| d.starts_with("MDT-E0120")),
+                    "0.5: {defs}: {imported:?}"
+                );
+                let static_only = defs.contains("LIMIT {");
+                assert_eq!(
+                    imported.is_empty(),
+                    !static_only,
+                    "0.5: {defs}: {imported:?}"
+                );
+                continue;
+            }
+            let own_defs = format!("{}\n{defs}", order_defs(""));
+            let own = errors(
+                &order_program("0.6", "use std.{model}", &own_defs),
+                &modules,
+            );
+            assert!(!own.is_empty(), "the own twin of {defs} is refused");
+            assert_eq!(imported, own, "0.6: {defs}, as the program's own {name}");
+        }
+    }
+}
+
+/// Documents today's behaviour, not a rule: what a program of 0.6 still
+/// gets with no type the checks can see through a name it imports. None is
+/// a road of the import: each is accepted for a definition of the program's
+/// own too, which the listed name now is exactly; and the standard
+/// library's names are left as they were. When one is closed, its line
+/// here changes.
+#[test]
+fn what_still_has_an_unknown_type_documented_as_it_is() {
     let module = order_module("0.6");
     let (modules, problems) = loaded(&[("order.mdt", &module)]);
     assert!(problems.is_empty(), "{problems:?}");
-    for (uses, defs) in [
-        // A listed constant used as a type, and as a parameter's type whose
-        // field is anything.
-        ("use example.library.order.{LIMIT}", "type P = { x: LIMIT }"),
-        (
-            "use example.library.order.{LIMIT}",
-            "fn f(x: LIMIT) -> Int ! {} {\n  x.anything\n}",
-        ),
-        // A listed capability as a parameter's type.
-        (
-            "use example.library.order.{ModelStd}",
-            "fn f(x: ModelStd) -> Int ! {} {\n  x.anything\n}",
-        ),
-        // A listed type used as a value.
-        ("use example.library.order.{Order}", "let X: Int = Order"),
-        // A listed lower-case name, read as a module, used as a path.
-        (
-            "use example.library.order.{limits}",
-            "type P = { x: limits.Anything }",
-        ),
-        (
-            "use example.library.order.{limits}",
-            "let X: Int = limits.anything",
-        ),
+    for (name, defs) in [
+        // A definition that is not a constant or a capability, as a value:
+        // the static checks give it no type (`var`).
+        ("Order", "let X: Text = Order"),
+        ("Reader", "let X: Bool = Reader"),
+        // A field of a value whose type has no fields: no type
+        // (`field_of`).
+        ("limits", "let X: Text = limits.anything"),
     ] {
+        let uses = format!("use std.{{model}}\nuse example.library.order.{{{name}}}");
         assert_eq!(
-            checked(&order_program("0.6", uses, defs), &modules),
+            errors(&order_program("0.6", &uses, defs), &modules),
             Vec::<String>::new(),
-            "{uses} / {defs}"
+            "{defs}, imported"
+        );
+        let own_defs = format!("{}\n{defs}", order_defs(""));
+        assert_eq!(
+            errors(
+                &order_program("0.6", "use std.{model}", &own_defs),
+                &modules
+            ),
+            Vec::<String>::new(),
+            "{defs}, the program's own"
         );
     }
-    // The program's own constant as a type is refused.
-    let own = order_program(
-        "0.6",
-        "use std.{model}",
-        "let LIMIT: Int = 3\n\ntype P = { x: LIMIT }",
-    );
-    assert_eq!(
-        checked(&own, &modules),
-        vec!["MDT-E0120 at /defs/P/type/record/x/ref"]
-    );
+    // A name of the standard library on its own, as a type and as a value.
+    for defs in ["type P = { x: fs }", "let X: Int = fs"] {
+        assert_eq!(
+            errors(&order_program("0.6", "use std.{fs}", defs), &modules),
+            Vec::<String>::new(),
+            "{defs}"
+        );
+    }
 }

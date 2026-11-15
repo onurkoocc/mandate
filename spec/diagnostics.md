@@ -173,4 +173,9 @@ Language 0.6 extends two codes of the front end. `///` lines (doc lines) are
 E0101 wherever they document no definition (cases E0101 to E0101d, E0101g;
 E0101f: before 0.6 they are comments), and `pub` before any definition but a
 `fn` stays E0101 before 0.6 (E0101e). `pub` and `doc` in the IR of a program
-of 0.1 to 0.5 are unknown fields, E0104 (E0104d).
+of 0.1 to 0.5 are unknown fields, E0104 (E0104d). And in 0.6 a name a `use`
+lists from a module that is not the standard
+library's is the definition it names: used as what its kind is not (a
+constant as a type, a type as the contract of `Verified`, a lower-case name
+as a module path), it is the E0120 the program's own definition gets there
+(cases E0120, E0120a, E0120b).

@@ -16,3 +16,6 @@ type Note = { text: Text }
 pub let LIMIT: Int = 100
 
 let SECRET: Int = 7
+
+/// The most invoices one batch holds; a lower-case name.
+pub let most: Int = 50

@@ -269,6 +269,111 @@
       }
     },
     {
+      "name": "E0120",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown type 'LIMIT'.",
+            "at": {
+              "path": "/defs/Read/params/0/type/ref",
+              "span": [1, 771, 1, 778]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "LIMIT",
+              "expected": "type"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0120a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown type 'most.Anything'.",
+            "at": {
+              "path": "/defs/Read/params/0/type/ref",
+              "span": [1, 771, 1, 786]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "most.Anything",
+              "expected": "type"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0120b",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../E1602a/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [
+        "../E1602/types.mdt"
+      ],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0120",
+            "severity": "error",
+            "message": "Unknown contract 'Invoice' in Verified<\u2026>.",
+            "at": {
+              "path": "/defs/Read/params/0/type/args/1/ref",
+              "span": [1, 812, 1, 821]
+            },
+            "docs": "mandate explain MDT-E0120",
+            "facts": {
+              "name": "Invoice",
+              "expected": "contract"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "E0140",
       "kind": "compile",
       "door": "check",
@@ -743,7 +848,7 @@
             "message": "The use of example.library.types lists no names: in a program of mandate/0.6 an import of a module that is not the standard library's brings only the names it lists. List them, as in use example.library.types.{\u2026}.",
             "at": {
               "path": "/uses/2",
-              "span": [1, 1151, 1, 1185]
+              "span": [1, 1158, 1, 1192]
             },
             "docs": "mandate explain MDT-E1604",
             "facts": {
