@@ -36,7 +36,8 @@ describe("docker's environment", () => {
   };
   const made: string[] = [];
   afterEach(() => {
-    for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
+    // On Windows the stand-in's image can stay locked for a moment after it exits: the removal is tried again.
+    for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     for (const [k, v] of Object.entries(saved)) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
