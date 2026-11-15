@@ -198,7 +198,11 @@ reported by `mandate check`; E1407 and E1408 by `mandate check` with the lock.
 | MDT-E1407 | Connector not bound in the lock | E1407, E1407a | 0.6 only; needs the lock; a connector a `tool.call` capability of the program's workflows (their caps or their envelope's) or agents names has no `connectors.<module>.<connector>` entry (path `/connectors`), or its entry has no digest for one of the tools it declares (path `/connectors/<id>/tools`). Facts: `connector`, `problem` (`no_entry`, `no_digest` with `tool`). The path is into the lock |
 | MDT-E1408 | Lock binds no connector of the package | E1408, E1408a | 0.6 only; needs the lock; an entry names a connector that neither the program's module nor a module the check is given defines (path `/connectors/<id>`), or a tool the connector does not declare (`/connectors/<id>/tools/<tool>`). Facts: `connector`, `problem` (`no_connector`, `no_tool` with `tool`). The path is into the lock |
 
-Language 0.6 extends four codes for connectors. E0120: a tool a connector
+Language 0.6 extends these codes for connectors. E0121: a definition named like a
+built-in effect (`Tool`, `Model`, `Fs.Read` …, and `Tool.Write`), which would
+decide what covers that effect (E0121, E0121a; E0121b: a program of 0.5 is read
+as before); in 0.6 a `Tool` or `Tool.Write` use is covered by a `tool.call` part
+alone. E0120: a tool a connector
 does not declare, in a call (`/…/callee/name`) or as an effect's name, a
 connector used as a value, and a tool named without a call. E0220: an
 argument of a tool's call of a class above its connector's `class` (at the

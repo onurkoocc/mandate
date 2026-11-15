@@ -25,8 +25,8 @@ use mandate_ir::{
 
 use super::{Checker, Frame, Usage, Val, Where, sub, sub_i};
 use crate::caps::{
-    CapVal, TOOL_CALL, TOOL_READ_EFFECT, caps_of, show_cap, tool_call_caps, tool_connector,
-    tool_item,
+    CapVal, TOOL_CALL, TOOL_READ_EFFECT, TOOL_WRITE_EFFECT, cap_authorizes, caps_of, show_cap,
+    tool_call_caps, tool_connector, tool_item,
 };
 use crate::stdlib::{DataClass, class_rank};
 use crate::ty::{Level, epistemic, named, show};
@@ -209,6 +209,31 @@ impl<'a> Checker<'a> {
     /// `tool.call(c, t)` stands for, its write part.
     pub(crate) fn tool_requirement(&self, r: &ToolRef<'a>) -> Vec<CapVal> {
         tool_call_caps(self.defs, &r.connector, &[r.name.as_str()]).caps
+    }
+
+    /// In a program of 0.6, what covers a use of `Tool` (a read-only tool's
+    /// call, or a skill that declares it) or of `Tool.Write`: the `tool.call`
+    /// parts of that kind whose scope holds the use's ([`cap_authorizes`]),
+    /// by index among `caps`, and nothing else; no definition of the program
+    /// takes part. `None` for any other effect, or before 0.6.
+    pub(crate) fn tool_effect_caps(
+        &self,
+        effect: &str,
+        scope: Option<&[String]>,
+        caps: &[CapVal],
+    ) -> Option<Vec<usize>> {
+        if !self.at_least(Language::V0_6)
+            || (effect != TOOL_READ_EFFECT && effect != TOOL_WRITE_EFFECT)
+        {
+            return None;
+        }
+        Some(
+            caps.iter()
+                .enumerate()
+                .filter(|(_, c)| c.ctor() == TOOL_CALL && cap_authorizes(c, effect, scope))
+                .map(|(i, _)| i)
+                .collect(),
+        )
     }
 
     /// What must cover a use of `effect`, each requirement a list of

@@ -521,3 +521,52 @@ fn a_connectors_changes_are_classified_by_what_they_widen() {
         Vec::<String>::new()
     );
 }
+
+/// `code at path` of the static checks alone of `text`, its names not
+/// resolved first: what the static checks decide on their own.
+fn statics_of(text: &str) -> Vec<String> {
+    let p = load(text, SourceKind::Mdt).program.unwrap();
+    let program = Program::of(&p).unwrap();
+    let linked = link(program, None).defs;
+    mandate_check::static_check(program, None, Some(&linked), None)
+        .iter()
+        .map(|d| format!("{} at {}", d.code, d.at.path.as_deref().unwrap_or("")))
+        .collect()
+}
+
+/// F1: in a program of 0.6 only a `tool.call` part covers a tool's use of
+/// `Tool` or `Tool.Write`, whatever the program defines: an effect named
+/// `Tool` (which name resolution refuses, E0121) covers neither a workflow's
+/// read nor an agent's skill that declares `Tool`, even when the static
+/// checks are run without it.
+#[test]
+fn only_a_tool_call_covers_a_tools_use_of_tool() {
+    let own = read_text(OWN).unwrap();
+    let effect = "effect Tool(x: Text) -> Text\n  requires caps model.infer(tier: standard)\n\ncapability ErpRead";
+    let with_effect = changed(&own, "capability ErpRead", effect);
+    assert_eq!(
+        checked(&with_effect, None),
+        ["MDT-E0121 at /defs/Tool"],
+        "name resolution refuses the name"
+    );
+    let workflow = changed(
+        &with_effect,
+        "  caps   ErpRead, ErpDraft, ModelAll\n  budget { time: 10m }",
+        "  caps   ErpDraft, ModelAll\n  budget { time: 10m }",
+    );
+    let got = statics_of(&workflow);
+    assert!(
+        got.contains(&"MDT-E0301 at /defs/Draft/body/0/value".to_owned()),
+        "{got:?}"
+    );
+    let agent = changed(
+        &with_effect,
+        "  caps   ErpRead, ModelAll\n",
+        "  caps   ModelAll\n",
+    );
+    let got = statics_of(&agent);
+    assert!(
+        got.contains(&"MDT-E0301 at /defs/Reader/skills/orders/effects/1".to_owned()),
+        "{got:?}"
+    );
+}

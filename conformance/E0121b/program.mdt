@@ -1,0 +1,28 @@
+// A program of 0.5 with an effect named Model, read as 0.5 reads it: the
+// definition is not refused, and it decides what authorizes the effect
+// Model, as before 0.6. A program of 0.6 refuses the name (E0121).
+
+mandate @ 0.5
+
+module example.m @ 0.1
+
+use std.{fs, model}
+
+effect Model(x: Text) -> Text
+  requires caps fs.read("/tmp")
+
+capability Files = fs.read("/tmp")
+
+agent A {
+  role   "Answers."
+  caps   Files
+  budget { tokens: 1k, steps: 2 }
+  skill s(n: Text) -> Inferred<Text> ! {Model}
+}
+
+workflow W(n: Text) -> Inferred<Text>
+  caps   Files
+  budget { time: 1m }
+{
+  delegate A.s(n)
+}

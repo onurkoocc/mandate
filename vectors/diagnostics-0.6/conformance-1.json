@@ -374,6 +374,97 @@
       }
     },
     {
+      "name": "E0121",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'Tool' is the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Tool",
+              "span": [1, 2967, 1, 3223]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "Tool",
+              "builtin": "effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121a",
+      "kind": "compile",
+      "door": "check_patched",
+      "input": {
+        "file": "../T01/program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [
+        "patch"
+      ],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0121",
+            "severity": "error",
+            "message": "'Tool' is the name of a built-in effect; in a program of 0.6 no definition takes it, so that what covers the effect is the language's (spec/library.md \"tool.call\").",
+            "at": {
+              "path": "/defs/Tool",
+              "span": [1, 2967, 1, 3223]
+            },
+            "docs": "mandate explain MDT-E0121",
+            "facts": {
+              "name": "Tool",
+              "builtin": "effect"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0121b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "program.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:0ae7e2272019778ea6ffafddfa8981cd9915eab330614e555709e8492c233e28",
+          "defs": {
+            "A": "sha256:b2559f575ab6a9385bc394be613afa1ee4a4000ac09a48b8ae1b3a2abfea178d",
+            "Files": "sha256:93b442ac03a41997be11f1d9a7735faca48e71e7dcb5b7e4ea66ef75fd85ce7e",
+            "Model": "sha256:bc0e394e7c9dcd9be8894182009c5283edf7b8c15ef0a114093dd68658eae3b5",
+            "W": "sha256:1fbcf648c06183395dbd353e105c57a1be9985e95483474a9ffbd6c6d82d6e90"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
       "name": "E0140",
       "kind": "compile",
       "door": "check",

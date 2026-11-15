@@ -536,6 +536,9 @@ impl<'a> Checker<'a> {
     /// that authorize a usage. A usage with a scope needs a capability
     /// whose scope covers it.
     fn caps_for(&self, effect: &str, scope: Option<&[String]>, caps: &[CapVal]) -> Vec<usize> {
+        if let Some(by) = self.tool_effect_caps(effect, scope, caps) {
+            return by;
+        }
         if let Some(reqs) = self.requirements(effect) {
             return Self::covering(&reqs, scope, caps);
         }
@@ -590,6 +593,9 @@ impl<'a> Checker<'a> {
     fn authorizing(&self, x: &Value, caps: &[CapVal]) -> Vec<usize> {
         let effect = x.get("effect").and_then(Value::as_str).unwrap_or_default();
         let scope = Self::effect_scope(x);
+        if let Some(by) = self.tool_effect_caps(effect, scope.as_deref(), caps) {
+            return by;
+        }
         if let Some(reqs) = self.requirements(effect) {
             return Self::covering(&reqs, scope.as_deref(), caps);
         }
