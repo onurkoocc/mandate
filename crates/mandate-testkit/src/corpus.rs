@@ -35,7 +35,7 @@ use mandate_ir::{
     stringify_pretty,
 };
 
-use crate::{files, first_difference, read_json, sha256};
+use crate::{files, first_difference, read_json, rust_only, sha256};
 
 /// The corpus directory, relative to the repository root.
 pub const DIR: &str = "vectors/corpus";
@@ -615,6 +615,20 @@ impl Corpus {
         }
 
         corpus.check_summary(summary, &summary_rel, &mut problems);
+        // The stored results that hold an E0103, which [`compare`] compares
+        // without the versions only the Rust reads.
+        let listing = corpus
+            .entries
+            .iter()
+            .filter(|e| match &e.outcome {
+                Outcome::Result(v) => rust_only::holds_unknown_language(&JsValue::from(v)),
+                Outcome::ResultText(text) => text.contains("\"MDT-E0103\""),
+                Outcome::Throws(_) => false,
+            })
+            .count();
+        if let Err(e) = rust_only::check_count("corpus", listing) {
+            problems.push(e);
+        }
         if problems.is_empty() {
             Ok(corpus)
         } else {
@@ -1265,11 +1279,24 @@ fn head(text: &str, max: usize) -> String {
 /// `Ok` when what a call gave in Rust is what it gave in TypeScript, byte
 /// for byte as `JSON.stringify` writes it; else a message that names the
 /// entry and the test files it came from and shows the first difference.
+/// An E0103 in what Rust gave is compared without the versions only the Rust
+/// reads ([`crate::rust_only`]); [`Corpus::load`] counts the stored results
+/// that holds for.
 ///
 /// # Errors
 ///
 /// The message.
 pub fn compare(entry: &Entry, actual: &Actual) -> Result<(), String> {
+    let as_typescript;
+    let actual = match actual {
+        Actual::Result(rendered) => {
+            let mut rendered = rendered.clone();
+            rust_only::js_as_typescript(&mut rendered.value);
+            as_typescript = Actual::Result(rendered);
+            &as_typescript
+        }
+        Actual::Throws(_) => actual,
+    };
     let wrong = |why: String| {
         Err(format!(
             "{} (from {})\n{why}",

@@ -1,0 +1,226 @@
+{
+  "format": "mandate/vectors/diagnostics/conformance/0.1",
+  "part": 1,
+  "parts": 1,
+  "cases": [
+    {
+      "name": "E0140",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0140",
+            "severity": "error",
+            "message": "The lock file does not match spec/lock.schema.json: / must NOT have additional properties",
+            "at": {
+              "path": ""
+            },
+            "docs": "mandate explain MDT-E0140",
+            "facts": {
+              "keyword": "additionalProperties",
+              "params": {
+                "additionalProperty": "libraries"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0140a",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0140",
+            "severity": "error",
+            "message": "The lock file does not match spec/lock-0.6.schema.json: /libraries/acme.connectors/version must match pattern \"^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$\"",
+            "at": {
+              "path": "/libraries/acme.connectors/version"
+            },
+            "docs": "mandate explain MDT-E0140",
+            "facts": {
+              "keyword": "pattern",
+              "params": {
+                "pattern": "^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$"
+              }
+            }
+          },
+          {
+            "code": "MDT-E0140",
+            "severity": "error",
+            "message": "The lock file does not match spec/lock-0.6.schema.json: /libraries/acme.connectors/modules/acme.connectors must match pattern \"^sha256:[0-9a-f]{64}$\"",
+            "at": {
+              "path": "/libraries/acme.connectors/modules/acme.connectors"
+            },
+            "docs": "mandate explain MDT-E0140",
+            "facts": {
+              "keyword": "pattern",
+              "params": {
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "E0140b",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": "mandate.lock.json",
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0140",
+            "severity": "error",
+            "message": "The lock file does not match spec/lock-0.6.schema.json: /connectors/acme.connectors.erp must have required property 'tools'",
+            "at": {
+              "path": "/connectors/acme.connectors.erp"
+            },
+            "docs": "mandate explain MDT-E0140",
+            "facts": {
+              "keyword": "required",
+              "params": {
+                "missingProperty": "tools"
+              }
+            }
+          },
+          {
+            "code": "MDT-E0140",
+            "severity": "error",
+            "message": "The lock file does not match spec/lock-0.6.schema.json: /connectors/acme.connectors.erp/credential must match pattern \"^[A-Za-z][A-Za-z0-9_-]{0,63}$\"",
+            "at": {
+              "path": "/connectors/acme.connectors.erp/credential"
+            },
+            "docs": "mandate explain MDT-E0140",
+            "facts": {
+              "keyword": "pattern",
+              "params": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S02f",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "file": "../../fixtures/library/minimal.mdt",
+        "kind": "mdt"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": true,
+        "hashes": {
+          "program": "sha256:52a197b40206d33702e11c07058846a833061e4636e713195e968357dce0be2b",
+          "defs": {
+            "Greet": "sha256:9f0fb23f0a8e295699245f2dbdcdbf5389246880807d77ac7a6093188c354657",
+            "Greeter": "sha256:8d8db58bcc82fb4fb457a5deb888e2038d3d77b2719e4e5c52d0ac4d359a533d",
+            "ModelStd": "sha256:0c86667ebbdcf268d82fcb600cca36fe21ccb44e3b1f660e6f7e80b4e8e27a6e"
+          }
+        },
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "S02g",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0104",
+            "severity": "error",
+            "message": "Unknown field \"extensions\". The IR schema is closed; unknown fields are rejected, not ignored.",
+            "at": {
+              "path": "/extensions",
+              "span": [1, 141, 1, 143]
+            },
+            "docs": "mandate explain MDT-E0104",
+            "facts": {
+              "keyword": "additionalProperties",
+              "schema_path": "#/additionalProperties"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "S02h",
+      "kind": "compile",
+      "door": "check",
+      "input": {
+        "inline": true,
+        "kind": "json"
+      },
+      "modules": [],
+      "lock": null,
+      "uses": [],
+      "result": {
+        "ok": false,
+        "diagnostics": [
+          {
+            "code": "MDT-E0103",
+            "severity": "error",
+            "message": "Unsupported language version \"mandate/0.7\"; this compiler reads \"mandate/0.1\" or \"mandate/0.2\" or \"mandate/0.3\" or \"mandate/0.4\" or \"mandate/0.5\" or \"mandate/0.6\". Use an explicit migration instead of loading it as-is.",
+            "at": {
+              "path": "/language",
+              "span": [1, 13, 1, 26]
+            },
+            "docs": "mandate explain MDT-E0103",
+            "facts": {
+              "expected": [
+                "mandate/0.1",
+                "mandate/0.2",
+                "mandate/0.3",
+                "mandate/0.4",
+                "mandate/0.5",
+                "mandate/0.6"
+              ],
+              "found": "mandate/0.7"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -2,6 +2,13 @@
 //! reference compiler, which remains the specification: the same
 //! diagnostics, codes, messages and `facts`, byte for byte.
 //!
+//! It also checks programs of language 0.6, which only the Rust compiler
+//! reads (spec/library.md). With none of 0.6's constructs implemented yet, a
+//! 0.6 program is checked as the same program of 0.5 is: every rule that
+//! holds "from 0.4" or "from 0.5" (`Language::at_least`) holds for it, and a
+//! lock of format `mandate/lock/0.6` is read by its own schema and is at
+//! least every earlier format.
+//!
 //! It holds the front door, the stages before the static checks, the static
 //! checks, and the lock and the sandbox requirements that stand on them:
 //!

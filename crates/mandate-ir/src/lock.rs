@@ -7,6 +7,12 @@
 //! rules the schema cannot say ([`validate_lock`]): the lock format a field
 //! needs, a key under two members, a role's members, a tier's tariff. A lock
 //! gives no spans, so `at` is `{ path }`.
+//!
+//! A lock of format 0.6 ([`LOCK_FORMAT_0_6`]), which only the Rust compiler
+//! reads, is read by `spec/lock-0.6.schema.json` and then by the same rules:
+//! it is at least every earlier format. Its two fields of its own
+//! ([`LOCK_FIELDS_0_6`]) are held to their shape alone in this release's
+//! first slice.
 
 use crate::diag::{Diagnostic, Location};
 use crate::js_value::{JsObject, JsValue};
@@ -30,10 +36,30 @@ pub const LOCK_FORMATS: [&str; 4] = [
 /// `LOCK_FIELDS_0_5`.
 pub const LOCK_FIELDS_0_5: [&str; 3] = ["host", "isolation", "egress"];
 
+/// The lock format of language 0.6 (spec/library.md "Lock 0.6"), which
+/// only the Rust compiler reads. It is not in [`LOCK_FORMATS`], which stays
+/// the TypeScript's table: it comes after every format there, and a lock of
+/// it is read by its own schema, `spec/lock-0.6.schema.json`. Nothing writes
+/// it yet ([`LOCK_FORMAT`] is still what a lock is written in).
+pub const LOCK_FORMAT_0_6: &str = "mandate/lock/0.6";
+
+/// The lock fields of format 0.6: `libraries` and `connectors`. Their shape
+/// is the 0.6 schema's; what they mean (E1605 to E1608, E1407, E1408) is
+/// checked by later slices of 0.6. In an older lock each is refused by the
+/// older schema, as any field it does not have is (E0140).
+pub const LOCK_FIELDS_0_6: [&str; 2] = ["libraries", "connectors"];
+
 /// `LOCK_FORMATS.indexOf(format)`: the place of a format, `-1` for any
-/// other value (a number, a format this compiler does not read).
+/// other value (a number, a format this compiler does not read); format 0.6
+/// is after the last of them.
 fn format_index(format: Option<&str>) -> i64 {
-    let at = format.and_then(|f| LOCK_FORMATS.iter().position(|x| *x == f));
+    let at = format.and_then(|f| {
+        if f == LOCK_FORMAT_0_6 {
+            Some(LOCK_FORMATS.len())
+        } else {
+            LOCK_FORMATS.iter().position(|x| *x == f)
+        }
+    });
     at.and_then(|i| i64::try_from(i).ok()).unwrap_or(-1)
 }
 
@@ -69,6 +95,11 @@ pub fn lock_schema_diagnostics(value: &Value) -> Vec<Diagnostic> {
             )];
         }
     };
+    let file = if value.get("lock").and_then(Value::as_str) == Some(LOCK_FORMAT_0_6) {
+        "spec/lock-0.6.schema.json"
+    } else {
+        "spec/lock.schema.json"
+    };
     errors
         .into_iter()
         .map(|e| {
@@ -77,10 +108,7 @@ pub fn lock_schema_diagnostics(value: &Value) -> Vec<Diagnostic> {
             } else {
                 e.instance_path.as_str()
             };
-            let message = format!(
-                "The lock file does not match spec/lock.schema.json: {shown} {}",
-                e.message
-            );
+            let message = format!("The lock file does not match {file}: {shown} {}", e.message);
             let facts = JsObject::new()
                 .with("keyword", e.keyword)
                 .with("params", e.params);
@@ -103,8 +131,9 @@ fn format_text_and_fact(lock: &Value) -> (String, JsValue) {
     )
 }
 
-/// Validates a parsed lock file against `spec/lock.schema.json` and the
-/// rules the schema cannot say; E0140 for each problem: `validateLock(value)`.
+/// Validates a parsed lock file against `spec/lock.schema.json` (or, for a
+/// lock of format 0.6, `spec/lock-0.6.schema.json`) and the rules the schema
+/// cannot say; E0140 for each problem: `validateLock(value)`.
 ///
 /// For a lock the schema accepts, in this order: bindings need format 0.3;
 /// `members` and `roles` need 0.4 (in that order); `host`, `isolation` and

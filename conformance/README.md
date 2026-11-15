@@ -28,7 +28,11 @@ own input files (`program.mdt` or `program.ir.json`, module files,
 - `title`: one sentence.
 - `spec`: a non-empty list of references, such as `"spec/ir.md#reading-ir"`.
 - `language`: optional, such as `"mandate/0.1"`. When given, the program the
-  case checks (after the patch) must declare that language.
+  case checks (after the patch) must declare that language. A case that
+  expects E0103 for a version no compiler reads may name instead the version
+  of the compiler it is written for, when that is one only the Rust compiler
+  reads (`S02h`: a program of `mandate/0.7`, a case of `mandate/0.6`). A case
+  of `mandate/0.6` is a case of the Rust compiler alone (see "Cases of 0.6").
 - `input`: required except in a journal case. `{ "file": "<path>", "kind": "mdt" | "json" }` or
   `{ "text": "<source>", "kind": ... }`. Exactly one of `file` and `text`.
 - `modules`: optional list of module files, loaded the way `--module` loads them.
@@ -227,13 +231,38 @@ there: a diagnostic's message (V01, V20), its source position (S01, S02, S03),
 the `repair` patch it offers (S03), and that applying a patch leaves the program
 it was given as it was (S12).
 
+## Cases of 0.6
+
+Language 0.6 (spec/library.md) is implemented in the Rust compiler alone. A case
+of it says `"language": "mandate/0.6"`, and its expectation is written by a person:
+codes, paths and facts, never generated from a compiler's output. The Rust
+conformance gate runs it and compares it whole. The TypeScript runner
+(`compiler/test/cases.test.ts`) skips it, and so do the TypeScript's vectors, and
+each checks that it skipped exactly the directories whose `case.json` names 0.6 and
+that there are `RUST_ONLY_CASES` of them (`compiler/test/cases-runner.ts`); a case
+of 0.6 added or taken away changes that number in the same commit. The Rust writes
+their whole results in `vectors/diagnostics-0.6/`.
+
+| Case | Claim | Code |
+|---|---|---|
+| `S02f` | A 0.6 program with none of what 0.6 adds checks | — |
+| `S02g` | An unknown field of a 0.6 program is refused: its IR is closed by `spec/ir-0.6.schema.json` | E0104 |
+| `S02h` | An unknown version is refused, and the versions a 0.6 compiler reads are 0.1 to 0.6 | E0103 |
+| `E0140` | A 0.5 lock that carries `libraries`, a field of format 0.6 | E0140 |
+| `E0140a` | A 0.6 lock whose library has a version that is not `MAJOR.MINOR.PATCH` and a module with no program hash | E0140 |
+| `E0140b` | A 0.6 lock whose connector has no `tools` and a credential that is not a name | E0140 |
+
+spec/library.md reserves for 0.6 the letters P (patterns), T (tools), H from H06
+(human steps), L (libraries) and N11 (shapes), and the code numbers of its
+families; the cases above use the S02 claim and E0140, which 0.6 extends.
+
 ## What the Rust crates run
 
 | Implementation | Runs | Where |
 |---|---|---|
-| TypeScript compiler | every `compile` case | `compiler/test/cases.test.ts` |
+| TypeScript compiler | every `compile` case but those of 0.6, which it counts | `compiler/test/cases.test.ts` |
 | TypeScript runtime | every `journal` case | `runtime/test/journal-cases.test.ts` |
-| Rust compiler | every `compile` case, through the front door its kind names | `crates/mandate-testkit/tests/conformance.rs` |
+| Rust compiler | every `compile` case, those of 0.6 included, through the front door its kind names | `crates/mandate-testkit/tests/conformance.rs` |
 | Rust `mandate-ir` | the six `compile` cases whose hashes need only the reader (below) | `crates/mandate-ir/tests/conformance.rs` |
 | Rust `verify-journal` | every `journal` case, through its library and its binary | `crates/verify-journal/tests/conformance.rs` |
 

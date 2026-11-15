@@ -11,6 +11,12 @@
 //! every golden program (`check`, `check --module`, `check --lock`, `load`
 //! `@ <program> [codes]`), named by the codes the stored result holds (see
 //! `mandate_testkit::codes`), so that what is pending is listed by family.
+//!
+//! The one difference of the Rust compiler is taken out first: an E0103 is
+//! compared without the versions only the Rust reads, and the items that
+//! needs are counted (`mandate_testkit::rust_only`). The cases of language
+//! 0.6, which no TypeScript result holds, are the gate of
+//! `diagnostics_0_6.rs`.
 
 #![allow(
     clippy::unwrap_used,
@@ -34,7 +40,7 @@ use mandate_ir::{Diagnostic, JsValue, Value, stringify, stringify_pretty};
 use mandate_syntax::{SourceKind, kind_of, load};
 use mandate_testkit::{
     Miss, check_pending, compare_text, item_name, omission, read_json, repo_path, result_codes,
-    run_held_gate, stored_cases, stored_programs,
+    run_held_gate, rust_only, stored_cases, stored_programs,
 };
 
 /// The items the Rust compiler does not give yet: none. What the list is for
@@ -178,7 +184,9 @@ impl ModuleCache {
     }
 }
 
-fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), Miss> {
+/// One item; `changed` counts the items whose result is compared without the
+/// versions only the Rust reads (`mandate_testkit::rust_only`).
+fn run(item: &Item, cache: &mut ModuleCache, changed: &mut usize) -> Result<(), Miss> {
     match item {
         Item::Case {
             door,
@@ -257,7 +265,10 @@ fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), Miss> {
                 ),
                 _ => (text, kind_named(kind)),
             };
-            let r = check_with(&text, kind, mods, lock.as_deref()).map_err(Miss::Differs)?;
+            let mut r = check_with(&text, kind, mods, lock.as_deref()).map_err(Miss::Differs)?;
+            if rust_only::diagnostics_as_typescript(&mut r.diagnostics) {
+                *changed += 1;
+            }
             compare_held(expected, &check_text(&r), &r.diagnostics)
         }
         Item::Program {
@@ -269,12 +280,19 @@ fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), Miss> {
         } => {
             let text = read_source(program).map_err(Miss::Differs)?;
             let kind = kind_of(program);
-            let checked = |mods: Option<&Modules>, lock: Option<&str>| {
-                check_with(&text, kind, mods, lock).map_err(Miss::Differs)
+            let mut checked = |mods: Option<&Modules>, lock: Option<&str>| {
+                let mut r = check_with(&text, kind, mods, lock).map_err(Miss::Differs)?;
+                if rust_only::diagnostics_as_typescript(&mut r.diagnostics) {
+                    *changed += 1;
+                }
+                Ok::<_, Miss>(r)
             };
             let (actual, diagnostics) = match slot.as_str() {
                 "load" => {
-                    let diagnostics = load(&text, kind).diagnostics;
+                    let mut diagnostics = load(&text, kind).diagnostics;
+                    if rust_only::diagnostics_as_typescript(&mut diagnostics) {
+                        *changed += 1;
+                    }
                     let mut t = stringify_pretty(&JsValue::Array(
                         diagnostics.iter().map(Diagnostic::to_js).collect(),
                     ))
@@ -307,10 +325,15 @@ fn run(item: &Item, cache: &mut ModuleCache) -> Result<(), Miss> {
 fn diagnostics_gate() {
     check_pending(PENDING).expect("the pending list");
     let mut cache = ModuleCache(BTreeMap::new());
+    let mut changed: usize = 0;
     let gate = run_held_gate("diagnostic vectors", PENDING, items(), |item| {
-        run(item, &mut cache)
+        run(item, &mut cache, &mut changed)
     });
+    let count = rust_only::check_count("diagnostic vectors", changed);
     if let Err(report) = gate {
+        panic!("{report}");
+    }
+    if let Err(report) = count {
         panic!("{report}");
     }
 }

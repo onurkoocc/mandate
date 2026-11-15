@@ -1,0 +1,36 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0140a",
+  "kind": "compile",
+  "title": "A 0.6 lock whose library is pinned at a version that is not MAJOR.MINOR.PATCH, with a module that has no program hash, is refused at each.",
+  "spec": [
+    "spec/library.md#lock-06",
+    "spec/lock.md"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/minimal.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0140",
+        "path": "/libraries/acme.connectors/version",
+        "facts": {
+          "keyword": "pattern"
+        }
+      },
+      {
+        "code": "MDT-E0140",
+        "path": "/libraries/acme.connectors/modules/acme.connectors",
+        "facts": {
+          "keyword": "pattern"
+        }
+      }
+    ]
+  }
+}

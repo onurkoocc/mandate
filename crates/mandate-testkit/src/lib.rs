@@ -12,6 +12,15 @@
 //! ([`json_doors`]: the references of its inputs to files, the comparison
 //! with the TypeScript's answers, the malformed inputs).
 //!
+//! Language 0.6 is read by the Rust compiler alone. Two modules are about
+//! that: [`rust_only`], the one rule by which a result of the Rust is
+//! compared with a stored result of the TypeScript because the Rust knows
+//! 0.6 (an E0103's list of versions, and the tables of versions), with the
+//! number of stored results each gate needs it for; and [`rust_vectors`],
+//! the files the Rust writes about 0.6 itself (its golden file and its
+//! diagnostic vectors), compared on every run and written again only with
+//! `MANDATE_UPDATE_0_6=1`.
+//!
 //! It is a dev-dependency only, and it may read files and the environment;
 //! the library crates may not. Every function returns its failures as text
 //! instead of panicking: under `scripts/wasi-test.mjs` a panic aborts the
@@ -30,6 +39,8 @@ mod diagnostic_vectors;
 mod gate;
 mod golden;
 pub mod json_doors;
+pub mod rust_only;
+pub mod rust_vectors;
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};

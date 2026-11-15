@@ -1,0 +1,39 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0140b",
+  "kind": "compile",
+  "title": "A 0.6 lock that binds a connector with no tool schemas, and a credential that is not a name, is refused at each: a lock names a credential, never holds a secret.",
+  "spec": [
+    "spec/library.md#lock-06",
+    "spec/lock.md"
+  ],
+  "language": "mandate/0.6",
+  "input": {
+    "file": "../../fixtures/library/minimal.mdt",
+    "kind": "mdt"
+  },
+  "lock": "mandate.lock.json",
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E0140",
+        "path": "/connectors/acme.connectors.erp",
+        "facts": {
+          "keyword": "required",
+          "params": {
+            "missingProperty": "tools"
+          }
+        }
+      },
+      {
+        "code": "MDT-E0140",
+        "path": "/connectors/acme.connectors.erp/credential",
+        "facts": {
+          "keyword": "pattern"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "fixtures/library/fetch.mdt": {
+    "check": "sha256:aeb69f06731dc36edb01af03e0e53eedb45a879273216d23792d036385e1726d",
+    "check --module": "sha256:aeb69f06731dc36edb01af03e0e53eedb45a879273216d23792d036385e1726d",
+    "check --lock": "sha256:aeb69f06731dc36edb01af03e0e53eedb45a879273216d23792d036385e1726d",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:01044baa3d9af44ae342214cd784dad5fb82130ad2ede2b5041470f06b782ae2",
+    "fmt": "sha256:2e1a219b9eff5c5e6323db4470e746f6f297fd18fe31de7681d573ff19eebeba",
+    "hash": "sha256:d13ed90b83b925e5ef23e65272e8c018e5ffefcd0cd35a40e84fa64fc3947103",
+    "view --format json": "sha256:110c243d1ca0b49e4c4bef45f51615c16b81268a3e498bb6e38dd590f442e412",
+    "view --format md": "sha256:ba92b2c56b0f7a32ea780efad8aadda22983d42239995d8359c42f356a4d8220",
+    "view --format html": "sha256:d978369a5a21103b3e7449bf231dce2d3c1fb6681f38124a12b6f00098b893f2",
+    "view --against itself": "sha256:1ccf406710d7fc90cbb633cc70763dbe1817dbe677147a8635cf78ddd37682c6",
+    "sandbox": "sha256:4ef8296bf71952f69a72c8d6441e71819134046a666e26219df6aa4c00fdf223"
+  },
+  "fixtures/library/minimal.mdt": {
+    "check": "sha256:32a94dc9ae9be1d764f908f122d77530f69ca951b9bf4f8c121759b3e3726175",
+    "check --module": "sha256:32a94dc9ae9be1d764f908f122d77530f69ca951b9bf4f8c121759b3e3726175",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:62f6b1e7a872c96cf5b85245a883f59af974ec8178dce6cbc93626d04c5941a4",
+    "fmt": "sha256:368373c25b28013307bd2dcccbf9bfc118c991714421cffef9750636521963cc",
+    "hash": "sha256:0fdb2b018a3ebe4ed5a1ea8541d7cdd06ad12842e0faa421425f3fc151d550a8",
+    "view --format json": "sha256:2b92b1b5320f640042b01dbdea02993c53f913f84958684489c9135884280f40",
+    "view --format md": "sha256:7c2a80678ab715f7481884e102081f39bc5afc79643907e2d5acf1a9660d332b",
+    "view --format html": "sha256:94ffeb553474cf188c46505913ca36f230ff67b6c7b8d22ad2f3ced0a4acdad8",
+    "view --against itself": "sha256:8f62105d74178033594f03c0e5e6c03fd7cfdfd13b6c10248f9dde279822f0eb",
+    "sandbox": "sha256:c8a2943b96fb4e1dcdbb42c2cc2d8bc7ead2675dd163089373f2f2e43940645e"
+  }
+}

@@ -20,6 +20,13 @@
 //! compile cases: they are counted as skipped, with the reason (the Rust
 //! verifier runs them in `crates/verify-journal/tests/conformance.rs`).
 //!
+//! A case of language 0.6 (`"language": "mandate/0.6"`), which the
+//! TypeScript runner skips, is run here like the others: its expectation is
+//! written by hand, and the result is compared with it as it is. Every other
+//! case is written for the TypeScript too, and an E0103 in the Rust's result
+//! is compared without the versions only the Rust reads, the cases that
+//! needs counted (`mandate_testkit::rust_only`).
+//!
 //! This supersedes the part of `crates/mandate-ir/tests/conformance.rs` that
 //! ran the cases a JSON reader alone decides; that test keeps the cases
 //! whose pinned hashes `mandate-ir` alone gives.
@@ -44,7 +51,8 @@ use common::{
 use mandate_ir::{JsValue, Value, canonicalize, parse, stringify};
 use mandate_syntax::SourceKind;
 use mandate_testkit::{
-    Miss, check_pending, item_name, omission, read_json, repo_path, run_held_gate, subdirectories,
+    Miss, check_pending, item_name, omission, read_json, repo_path, run_held_gate, rust_only,
+    subdirectories,
 };
 
 /// The items the Rust compiler does not give yet: none. What the list is for
@@ -204,13 +212,38 @@ fn verdict(expect: &Value, result: &Observed) -> Result<(), Miss> {
     }
 }
 
+/// Whether the case expects a diagnostic of `code`.
+fn expects(case: &Value, code: &str) -> bool {
+    case.get("expect")
+        .and_then(|e| e.get("diagnostics"))
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .any(|d| d.get("code").and_then(Value::as_str) == Some(code))
+}
+
+/// Whether the case is of a language only the Rust reads: its expectation
+/// is written by hand, and is compared with what the Rust gives whole.
+fn of_rust_only_language(case: &Value) -> bool {
+    case.get("language")
+        .and_then(Value::as_str)
+        .is_some_and(|l| rust_only::RUST_ONLY_LANGUAGES.contains(&l))
+}
+
 /// Runs a `check` case as `runCompileCase` does: the modules loaded
 /// together (they must load), the lock read, then `check`; and the case's
-/// `language`, when it gives one, is the one the program declares.
-fn run(c: &Case) -> Result<(), Miss> {
-    prepare(c)
-        .map_err(Miss::Differs)
-        .and_then(|(expect, result)| verdict(&expect, &result))
+/// `language`, when it gives one, is the one the program declares. A case
+/// the TypeScript runs is held to the Rust's result without the versions
+/// only the Rust reads (`mandate_testkit::rust_only`); `changed` counts the
+/// cases that needs.
+fn run(c: &Case, changed: &mut usize) -> Result<(), Miss> {
+    let (expect, mut result) = prepare(c).map_err(Miss::Differs)?;
+    if !of_rust_only_language(&c.value)
+        && rust_only::diagnostics_as_typescript(&mut result.diagnostics)
+    {
+        *changed += 1;
+    }
+    verdict(&expect, &result)
 }
 
 /// The case's `expect` and what `check` gives for it, or what keeps the
@@ -318,7 +351,16 @@ fn prepare(c: &Case) -> Result<(Value, Observed), String> {
             },
             None => None,
         };
-        if declared.as_deref() != Some(language) {
+        // A case about a version no compiler reads (it expects E0103) may
+        // name instead the version of the compiler it is written for: one of
+        // the versions only the Rust reads (`conformance/README.md`).
+        let unread = declared
+            .as_deref()
+            .is_none_or(|d| mandate_ir::Language::from_tag(d).is_none());
+        let for_rust = rust_only::RUST_ONLY_LANGUAGES.contains(&language)
+            && unread
+            && expects(case, "MDT-E0103");
+        if declared.as_deref() != Some(language) && !for_rust {
             return Err(format!(
                 "the case says language {language}, the program declares {declared:?}"
             ));
@@ -382,13 +424,32 @@ fn conformance_gate() {
             },
         ));
     }
-    let gate = run_held_gate("conformance cases", PENDING, items, run);
+    let rust_only_cases = items
+        .iter()
+        .filter(|(_, c)| of_rust_only_language(&c.value))
+        .count();
+    let mut changed: usize = 0;
+    let gate = run_held_gate("conformance cases", PENDING, items, |c| {
+        run(c, &mut changed)
+    });
     for (reason, n) in &skipped {
         println!("  skipped {n}: {reason}");
     }
+    println!(
+        "  of them {rust_only_cases} of language {}, which only the Rust reads, each expectation written by hand",
+        rust_only::RUST_ONLY_LANGUAGES.join(", ")
+    );
+    let count = rust_only::check_count("conformance cases", changed);
     if let Err(report) = gate {
         panic!("{report}");
     }
+    if let Err(report) = count {
+        panic!("{report}");
+    }
+    assert!(
+        rust_only_cases > 0,
+        "no case of a language only the Rust reads"
+    );
 }
 
 /// `apply_json_patch` does what `applyJsonPatch` of

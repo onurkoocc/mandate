@@ -19,7 +19,7 @@ import type { Modules } from "../src/modules.js";
 import { CAP_CTORS, DATA_CLASSES } from "../src/std/std.js";
 import { toHtml, toMarkdown } from "../src/views/doc.js";
 import { diffDoc, envelopeChanges, governanceChanges, lockDiff, lockLimitsDiff, semanticDiff, type Change } from "../src/views/views.js";
-import { amendmentInput, caseDirs, caseFile, readCase, runCompileCase, type Case } from "./cases-runner.js";
+import { amendmentInput, caseDirs, caseFile, readCase, runCompileCase, RUST_ONLY_CASES, rustOnly, rustOnlyCaseDirs, type Case } from "./cases-runner.js";
 import { WRITTEN_PAIRS } from "./diff-pairs.js";
 import { MODULE_FILES, MODULE_FILES_OF, PROGRAMS } from "./golden-outputs.js";
 import { lockFileOf, readRepo, repoRoot } from "./helpers.js";
@@ -122,14 +122,22 @@ function build(p: Omit<Pair, "programs" | "modulesOf" | "locks"> & { programs?: 
 const fileSide = (file: string): Side => ({ file, kind: kindOf(file) });
 const noLocks = { before: null, after: null };
 
-/** Conformance cases that patch a program (the patched program checks) and that amend an envelope. */
-function conformancePairs(): { patches: Pair[]; amendments: Pair[]; left: string[] } {
+/**
+ * Conformance cases that patch a program (the patched program checks) and that amend an envelope. A case of a language
+ * only the Rust compiler reads (0.6) gives no pair: this compiler does not read its program. Those are in `skipped`.
+ */
+function conformancePairs(): { patches: Pair[]; amendments: Pair[]; left: string[]; skipped: string[] } {
   const patches: Pair[] = [];
   const amendments: Pair[] = [];
   const left: string[] = [];
+  const skipped: string[] = [];
   for (const name of caseDirs()) {
     const c: Case = readCase(name);
     if (c.kind !== "compile") continue;
+    if (rustOnly(c)) {
+      skipped.push(name);
+      continue;
+    }
     const dir = `${repoRoot}conformance/${name}`;
     const repoPath = (file: string): string => slash(relative(repoRoot, caseFile(dir, file)));
     const mods = (c.modules ?? []).map(repoPath);
@@ -157,7 +165,7 @@ function conformancePairs(): { patches: Pair[]; amendments: Pair[]; left: string
     }
     patches.push(build({ name, source: "conformance_patch", note: `conformance/${name}/case.json patches the program of its input${c.base !== undefined ? " against a base hash (front door apply_ops)" : " (front door check_patched)"}; the patched program is the after.`, before: { ...input }, after: { ...("file" in input ? { file: input.file } : { text: input.text }), kind: input.kind, patch_of: name } as Side, modules: mods, lockRefs: noLocks, programs: { before: base.program, after: r.program }, modulesOf }));
   }
-  return { patches, amendments, left };
+  return { patches, amendments, left, skipped };
 }
 
 /** Pairs of programs of the repository that are versions of one another, or variants. */
@@ -195,7 +203,8 @@ function lockPairs(): Pair[] {
   }
   for (const name of caseDirs()) {
     const c = readCase(name);
-    if (c.kind !== "compile" || typeof c.lock !== "string" || !("file" in c.input)) continue;
+    // A case of a language only the Rust compiler reads gives no pair (conformancePairs counts them).
+    if (c.kind !== "compile" || rustOnly(c) || typeof c.lock !== "string" || !("file" in c.input)) continue;
     const dir = `${repoRoot}conformance/${name}`;
     const repoPath = (file: string): string => slash(relative(repoRoot, caseFile(dir, file)));
     add(repoPath(c.input.file), (c.modules ?? []).map(repoPath), repoPath(c.lock));
@@ -637,6 +646,11 @@ describe("diff vectors for other implementations", () => {
       expect(conf.patches.length + conf.left.length).toBe(40);
       expect(conf.patches.map((p) => p.name)).toEqual(["E1801d", "E1801e", "E1804a", "S12b", "V02b", "V03c", "V04b"]);
       expect(conf.amendments.map((p) => p.name)).toEqual(["E1709", "E1709a", "E1709b", "E1709c", "N04"]);
+    });
+
+    it("leaves out the cases of a language only the Rust compiler reads, and exactly as many as RUST_ONLY_CASES says", () => {
+      expect(conf.skipped).toEqual(rustOnlyCaseDirs());
+      expect(conf.skipped.length).toBe(RUST_ONLY_CASES);
     });
 
     it("takes the pairs of conformance cases by name, and their inputs exist", () => {

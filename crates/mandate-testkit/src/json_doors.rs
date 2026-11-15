@@ -25,7 +25,7 @@ use std::collections::BTreeMap;
 
 use mandate_ir::{Int, JsObject, JsValue, Map, Value, parse, stringify};
 
-use crate::{read_json, read_text, sha256};
+use crate::{read_json, read_text, rust_only, sha256};
 
 /// The format of `doors.json`.
 pub const DOORS_FORMAT: &str = "mandate/doors/0.1";
@@ -375,7 +375,11 @@ fn find<'d, 'a>(doors: &'d [JsonDoor<'a>], name: &str) -> Option<&'d JsonDoor<'a
 /// Every call of `dir/inputs.json` through its door, twice, against
 /// `dir/expected.json`: the same output text (its digest, and the text
 /// itself where the file keeps it), or `bad_input` where the TypeScript
-/// throws; the same answer both times; and a call for every door.
+/// throws; the same answer both times; and a call for every door. An output
+/// is compared without the language versions only the Rust reads
+/// ([`rust_only`]: an E0103's list of versions, and the `tables` door's
+/// `LANGUAGE_VERSIONS` and `LANGUAGE_VERSION`), and the calls that needs
+/// are counted against [`rust_only::PINNED`].
 ///
 /// # Errors
 ///
@@ -394,6 +398,8 @@ pub fn check_calls(dir: &str, doors: &[JsonDoor<'_>]) -> Result<String, String> 
     }
     let mut wrong: Vec<String> = Vec::new();
     let mut by_door: BTreeMap<&str, usize> = BTreeMap::new();
+    // The calls compared by a rule of `rust_only`.
+    let mut changed: usize = 0;
     for (call, answer) in calls.iter().zip(answers) {
         let name = call.name;
         if answer.get("name").and_then(Value::as_str) != Some(name) {
@@ -424,7 +430,17 @@ pub fn check_calls(dir: &str, doors: &[JsonDoor<'_>]) -> Result<String, String> 
                 wrong.push(format!("{name}: the door gives {}", first.text()));
             }
             (false, Answer::Output(v)) => {
-                let got = output_text(v);
+                // Compared without the versions only the Rust reads: in an
+                // E0103 of any door's output, and in the tables.
+                let mut v = v.clone();
+                let mut as_typescript = rust_only::js_as_typescript(&mut v);
+                if d.name == "tables" {
+                    as_typescript |= rust_only::tables_as_typescript(&mut v);
+                }
+                if as_typescript {
+                    changed = changed.saturating_add(1);
+                }
+                let got = output_text(&v);
                 let digest = answer.get("sha256").and_then(Value::as_str).unwrap_or("");
                 if let Some(want) = answer.get("output").and_then(Value::as_str) {
                     if want != got {
@@ -444,6 +460,9 @@ pub fn check_calls(dir: &str, doors: &[JsonDoor<'_>]) -> Result<String, String> 
         if !by_door.contains_key(d.name) {
             wrong.push(format!("the door {} has no call", d.name));
         }
+    }
+    if let Err(e) = rust_only::check_count(&format!("json doors of {dir}"), changed) {
+        wrong.push(e);
     }
     if !wrong.is_empty() {
         return Err(format!(

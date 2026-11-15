@@ -229,6 +229,40 @@ export function caseDirs(): string[] {
     .sort();
 }
 
+// ---------------------------------------------------------------- languages only the Rust compiler reads
+
+/**
+ * The language versions only the Rust compiler reads (spec/library.md). This compiler stays at 0.5: a case of one of
+ * them is written by hand, and the Rust conformance gate runs it (crates/mandate-testkit/tests/conformance.rs). Here it
+ * is skipped, and counted, so that no case is left out by both compilers without a commit that says so.
+ */
+export const RUST_ONLY_LANGUAGES: readonly string[] = ["mandate/0.6"];
+
+/** How many case directories are of a language only the Rust compiler reads. A commit that adds or takes away one changes it. */
+export const RUST_ONLY_CASES = 6;
+
+/** Whether this compiler skips the case: its `language` is one only the Rust compiler reads. */
+export function rustOnly(c: Pick<Case, "language">): boolean {
+  return c.language !== undefined && RUST_ONLY_LANGUAGES.includes(c.language);
+}
+
+/**
+ * The case directories whose case.json names a language only the Rust compiler reads, found by reading each file as
+ * plain JSON rather than through readCase, so that what is counted does not rest on the reader that skips.
+ */
+export function rustOnlyCaseDirs(): string[] {
+  return caseDirs().filter((name) => {
+    const file = join(CASES_DIR, name, "case.json");
+    if (!existsSync(file)) return false;
+    try {
+      const language = (JSON.parse(readFileSync(file, "utf8")) as { language?: unknown }).language;
+      return typeof language === "string" && RUST_ONLY_LANGUAGES.includes(language);
+    } catch {
+      return false;
+    }
+  });
+}
+
 /** Resolves a path named in a case against the case directory; it must stay inside the repository. */
 export function caseFile(dir: string, file: string): string {
   if (isAbsolute(file)) throw new Error(`path "${file}" is absolute; paths are relative to the case directory`);

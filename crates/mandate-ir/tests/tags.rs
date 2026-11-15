@@ -12,8 +12,9 @@
 )]
 
 use mandate_ir::{
-    DefKind, ExprOp, IR_SCHEMA_TEXT, Language, PatternKind, Program, ReadSource, StmtOp,
-    TemplatePart, TierBy, TypeForm, Value, VerifierForm, load_json, parse, ptr_token,
+    DefKind, ExprOp, IR_0_6_SCHEMA_TEXT, IR_SCHEMA_TEXT, Language, PatternKind, Program,
+    ReadSource, StmtOp, TemplatePart, TierBy, TypeForm, Value, VerifierForm, load_json, parse,
+    ptr_token,
 };
 
 fn schema() -> Value {
@@ -94,11 +95,19 @@ fn one_of_pointers(v: &Value, pointer: &str, out: &mut Vec<String>) {
 #[test]
 fn every_closed_set_of_the_schema_is_an_enum_with_the_same_values() {
     let schema = schema();
-    let language: Vec<String> = at(&schema, "/properties/language/enum")
-        .as_array()
-        .unwrap()
+    // The versions of 0.1 to 0.5, then those of the 0.6 schema.
+    let schema_0_6 = parse(IR_0_6_SCHEMA_TEXT)
+        .expect("the embedded 0.6 schema")
+        .value;
+    let language: Vec<String> = [&schema, &schema_0_6]
         .iter()
-        .map(|v| v.as_str().unwrap().to_owned())
+        .flat_map(|s| {
+            at(s, "/properties/language/enum")
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_owned())
+        })
         .collect();
     assert_eq!(
         texts(Language::ALL, Language::as_str),
@@ -182,10 +191,21 @@ fn tags_convert_both_ways_and_versions_are_ordered() {
     assert!(Language::V0_5.at_least(Language::V0_4));
     assert!(Language::V0_4.at_least(Language::V0_4));
     assert!(!Language::V0_3.at_least(Language::V0_4));
+    // 0.6 reads everything 0.5 does: every "from 0.4" and "from 0.5" holds
+    // for it.
+    assert!(Language::V0_6.at_least(Language::V0_5));
+    assert!(Language::V0_6.at_least(Language::V0_4));
+    assert!(!Language::V0_5.at_least(Language::V0_6));
+    assert_eq!(
+        Language::from_tag("mandate/0.6"),
+        Some(Language::V0_6),
+        "the tag of 0.6"
+    );
+    assert_eq!(Language::from_tag("mandate/0.7"), None);
     assert_eq!(DefKind::Role.since(), Language::V0_4);
     assert_eq!(ExprOp::Changeset.since(), Language::V0_3);
     assert_eq!(ExprOp::Int.since(), Language::V0_1);
-    assert_eq!(Language::NEWEST.to_string(), "mandate/0.5");
+    assert_eq!(Language::NEWEST.to_string(), "mandate/0.6");
     let refine = parse(r#"{"refine": {"ref": "Int"}, "where": {"op": "bool", "value": true}}"#)
         .unwrap()
         .value;
