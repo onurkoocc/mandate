@@ -4,9 +4,9 @@
   "libraries": {
     "std.patterns": {
       "version": "1.0.0",
-      "digest": "sha256:b1a7161ad2ea1dcdca950c189403b90cd65770f7e8143441a6836cacdace3548",
+      "digest": "sha256:cea6319dba99a4e2790b07038eba90a87a4cb9b036f3c7d87e4b26d68fbacd26",
       "modules": {
-        "std.patterns": "sha256:b594c34bcfa423cd50b593542ed49c324a2b5f1b09086c2f98aca49334801cfa"
+        "std.patterns": "sha256:092932757be73f0b172d1638d5ab62cdf400cc5273682714633c95dc3864c941"
       }
     }
   },
@@ -21,18 +21,35 @@
     }
   },
   "members": {
-    "ana": { "keys": ["sha256:6666666666666666666666666666666666666666666666666666666666666666"] },
-    "ben": { "keys": ["sha256:7777777777777777777777777777777777777777777777777777777777777777"] }
+    "ana": {
+      "keys": [
+        "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+      ]
+    },
+    "ben": {
+      "keys": [
+        "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+      ]
+    }
   },
   "roles": {
-    "platform_lead": ["ana"],
-    "release_manager": ["ben"]
+    "platform_lead": [
+      "ana"
+    ],
+    "release_manager": [
+      "ben"
+    ]
   },
   "tariffs": {
     "claude-opus-5-5": {
       "currency": "USD",
       "as_of": "2026-10-09",
-      "micros_per_mtok": { "input": 4000000, "output": 20000000, "cache_read": 200000, "cache_write": 5000000 }
+      "micros_per_mtok": {
+        "input": 4000000,
+        "output": 20000000,
+        "cache_read": 200000,
+        "cache_write": 5000000
+      }
     }
   }
 }

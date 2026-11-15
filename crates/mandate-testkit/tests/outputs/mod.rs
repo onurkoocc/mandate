@@ -265,6 +265,7 @@ fn subprograms_of(program: &str) -> Vec<(&'static str, &'static str, u32)> {
         vec![
             ("migrate-all.plans/fan-out.mdt", "MigrateAll", 1),
             ("migrate-all.plans/written-out.mdt", "MigrateAll", 2),
+            ("migrate-all.plans/maker-checker.mdt", "MigrateAll", 3),
         ]
     } else {
         Vec::new()

@@ -77,60 +77,95 @@ pub fn children(e: Expr<'_>) -> Vec<Expr<'_>> {
     }
 }
 
+/// What is left to visit, on the walk's own stack (on the heap): the walk
+/// does not recurse, so that a walk inside the static checks, which recurse
+/// themselves, adds no frame per level of nesting to theirs.
+enum Work<'a> {
+    /// An expression: it, then its block or body, then its children.
+    Expr(Expr<'a>),
+    /// A statement list, its statements walked deep.
+    Stmts(&'a [Value]),
+    /// A statement, its blocks only when deep.
+    Stmt(Stmt<'a>, bool),
+}
+
+/// Visits what `start` holds, in the order the recursive walk of the
+/// TypeScript does: each item is pushed in reverse, so that the first is
+/// visited first, and an expression's block or body before its children.
+fn walk<'a>(start: Work<'a>, f: &mut dyn FnMut(Expr<'a>)) {
+    let mut todo: Vec<Work<'a>> = vec![start];
+    while let Some(w) = todo.pop() {
+        match w {
+            Work::Expr(e) => {
+                f(e);
+                todo.extend(children(e).into_iter().rev().map(Work::Expr));
+                if e.is(ExprOp::Block) || e.is(ExprOp::Map) {
+                    todo.push(Work::Stmts(e.body()));
+                }
+            }
+            Work::Stmts(stmts) => {
+                let list: Vec<Stmt<'a>> = stmts.iter().filter_map(Stmt::of).collect();
+                todo.extend(list.into_iter().rev().map(|s| Work::Stmt(s, true)));
+            }
+            Work::Stmt(s, deep) => stmt_work(s, deep, &mut todo),
+        }
+    }
+}
+
+/// What a statement holds, pushed in reverse onto `todo`: the expressions
+/// of `walkStmtExprs(s, f, deep)` in its order.
+fn stmt_work<'a>(s: Stmt<'a>, deep: bool, todo: &mut Vec<Work<'a>>) {
+    let mut out: Vec<Work<'a>> = Vec::new();
+    let ex = |e: Option<Expr<'a>>, out: &mut Vec<Work<'a>>| {
+        if let Some(e) = e {
+            out.push(Work::Expr(e));
+        }
+    };
+    match s.op() {
+        Some(StmtOp::Let | StmtOp::Expr | StmtOp::Return) => ex(s.value(), &mut out),
+        Some(StmtOp::Par) => {
+            for (_, b) in s.branches() {
+                ex(Expr::of(b), &mut out);
+            }
+        }
+        Some(StmtOp::If) => {
+            ex(s.cond(), &mut out);
+            if deep {
+                out.push(Work::Stmts(s.then_block()));
+                if let Some(e) = s.else_block() {
+                    out.push(Work::Stmts(e));
+                }
+            }
+        }
+        Some(StmtOp::Loop) => {
+            ex(s.until(), &mut out);
+            if deep {
+                out.push(Work::Stmts(s.body()));
+            }
+        }
+        Some(StmtOp::OnError) => ex(s.then_expr(), &mut out),
+        Some(StmtOp::Run) => ex(s.target(), &mut out),
+        None => {}
+    }
+    todo.extend(out.into_iter().rev());
+}
+
 /// Visits every expression in a statement list, nested blocks included:
 /// `walkExprs(stmts, f)`.
 pub fn walk_exprs<'a>(stmts: &'a [Value], f: &mut dyn FnMut(Expr<'a>)) {
-    for s in stmts.iter().filter_map(Stmt::of) {
-        walk_stmt_exprs(s, f, true);
-    }
+    walk(Work::Stmts(stmts), f);
 }
 
 /// Visits the expressions of one statement: `walkStmtExprs(s, f, deep)`.
 /// The blocks of an `if` and the body of a `loop` only when `deep`; the
 /// blocks inside its expressions always.
 pub fn walk_stmt_exprs<'a>(s: Stmt<'a>, f: &mut dyn FnMut(Expr<'a>), deep: bool) {
-    let ex = |e: Option<Expr<'a>>, f: &mut dyn FnMut(Expr<'a>)| {
-        if let Some(e) = e {
-            walk_expr(e, f);
-        }
-    };
-    match s.op() {
-        Some(StmtOp::Let | StmtOp::Expr | StmtOp::Return) => ex(s.value(), f),
-        Some(StmtOp::Par) => {
-            for (_, b) in s.branches() {
-                ex(Expr::of(b), f);
-            }
-        }
-        Some(StmtOp::If) => {
-            ex(s.cond(), f);
-            if deep {
-                walk_exprs(s.then_block(), f);
-                if let Some(e) = s.else_block() {
-                    walk_exprs(e, f);
-                }
-            }
-        }
-        Some(StmtOp::Loop) => {
-            ex(s.until(), f);
-            if deep {
-                walk_exprs(s.body(), f);
-            }
-        }
-        Some(StmtOp::OnError) => ex(s.then_expr(), f),
-        Some(StmtOp::Run) => ex(s.target(), f),
-        None => {}
-    }
+    walk(Work::Stmt(s, deep), f);
 }
 
 /// Visits `e` and every expression inside it: `walkExpr(e, f)`.
 pub fn walk_expr<'a>(e: Expr<'a>, f: &mut dyn FnMut(Expr<'a>)) {
-    f(e);
-    if e.is(ExprOp::Block) || e.is(ExprOp::Map) {
-        walk_exprs(e.body(), f);
-    }
-    for k in children(e) {
-        walk_expr(k, f);
-    }
+    walk(Work::Expr(e), f);
 }
 
 /// Whether `v` reads the variable `name` anywhere inside it: an object

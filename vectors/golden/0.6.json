@@ -76,11 +76,12 @@
     "view --format html": "sha256:8029c5d585e7412b51ea0bf55a82cd1de6e8634e525e041559732bb5f157ba36",
     "view --against itself": "sha256:c7fd12a7026e4c45f515e24cc4aad581d6838cb8923de512000fd81712ac4f92",
     "sandbox": "sha256:2f783097c76c2f9311f94c93a912d38791c2174578f8139f13884eb0221c5d2c",
-    "view --card --format json": "sha256:85b66007e2cf701c399e21cb109c08a851261d6db2084d56ef0de3efadc3ada0",
-    "view --card --format md": "sha256:709b070544371d81f37d83e3985c3ea21025f4f4e567850a64aa6fb0346ac71b",
-    "view --card --format html": "sha256:67f1d25b96a8daa7edd8127645c9c0eda1689b45ee4aa9a72fac03532687f3c7",
-    "check_subprogram migrate-all.plans/fan-out.mdt": "sha256:175869b0f0be62b39f87d794519b40b9a355ba8cd5cca5cc7105798affd792cf",
-    "check_subprogram migrate-all.plans/written-out.mdt": "sha256:ec0834a65c7fdb8786a1afc1c5a59a70cbabd6f5a460a20cf78158dc39d70513"
+    "view --card --format json": "sha256:875665879da4e6816a3080c9fdb5971b9dfe98b529ddcca98511a6be57875939",
+    "view --card --format md": "sha256:d811f982e819ea6f71b1a40b28c66bbbab32ec006bb75e20f26471e370869d2b",
+    "view --card --format html": "sha256:2778bb917ff5482f1859c81ab290a3d98ee784e136e6f8cfb1effca43a1fc521",
+    "check_subprogram migrate-all.plans/fan-out.mdt": "sha256:5b8fa20e83f7839970008d1e8c0f0c92a6e82459effe904f53cb62ae174c11ef",
+    "check_subprogram migrate-all.plans/written-out.mdt": "sha256:ec0834a65c7fdb8786a1afc1c5a59a70cbabd6f5a460a20cf78158dc39d70513",
+    "check_subprogram migrate-all.plans/maker-checker.mdt": "sha256:f340b1729d04e884474079341ae1140f5a9489bb80b56e0dd0b334f36bf33de4"
   },
   "fixtures/library/minimal.mdt": {
     "check": "sha256:32a94dc9ae9be1d764f908f122d77530f69ca951b9bf4f8c121759b3e3726175",

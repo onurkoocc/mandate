@@ -27,6 +27,7 @@ use mandate_testkit::{read_json, read_text};
 const MIGRATE: &str = "fixtures/library/migrate-all.mdt";
 const MIGRATE_LOCK: &str = "fixtures/library/migrate-all.lock.json";
 const FAN_OUT: &str = "fixtures/library/migrate-all.plans/fan-out.mdt";
+const MAKER_CHECKER: &str = "fixtures/library/migrate-all.plans/maker-checker.mdt";
 const WRITTEN_OUT: &str = "fixtures/library/migrate-all.plans/written-out.mdt";
 const SHAPED: &str = "conformance/N11/parent.mdt";
 const UNSHAPED: &str = "conformance/P06/parent.mdt";
@@ -128,6 +129,28 @@ fn without_shapes(text: &str) -> String {
 
 const EACH: &str = "workflow Look = Each(work: Worker.look, width: 2)\n  caps   M, R\n  budget { tokens: 2000, time: 10m, spend: 2 USD, steps: 10, agents: 2 }\n";
 
+/// The lock of the shaped migration pins std.patterns as the compiler
+/// computes it: a normal run compares, `MANDATE_UPDATE_0_6=1` writes it
+/// again (after std.patterns changes, its digest does).
+#[test]
+fn the_lock_of_the_shaped_migration_pins_std_patterns() {
+    let mut lock = read_json(MIGRATE_LOCK).unwrap();
+    let l = mandate_check::library::std_patterns().unwrap();
+    let pin = mandate_ir::stringify(&JsValue::Object(l.pin().to_js())).unwrap();
+    let pin = mandate_ir::parse(&pin).unwrap().value;
+    if let Value::Object(m) = &mut lock
+        && let Some(Value::Object(libs)) = m.get_mut("libraries")
+    {
+        libs.insert(l.name(), pin);
+    }
+    let mut text = mandate_ir::stringify_pretty(&JsValue::from(&lock)).unwrap();
+    text.push('\n');
+    match mandate_testkit::rust_vectors::pin(MIGRATE_LOCK, &text) {
+        Ok(line) => println!("{line}"),
+        Err(e) => panic!("{e}"),
+    }
+}
+
 #[test]
 fn the_shaped_migration_checks_alone_and_with_its_lock() {
     let text = read_text(MIGRATE).unwrap();
@@ -162,12 +185,46 @@ fn the_shaped_migration_checks_alone_and_with_its_lock() {
     );
 }
 
+/// Each of the two shapes of std.patterns the migration lists, applied by
+/// a sub-program to what it writes at the application, is admitted and
+/// named in the result.
 #[test]
-fn a_listed_shape_with_a_run_parameter_is_refused_as_a_workflow_with_parameters() {
+fn a_sub_program_that_applies_a_listed_shape_of_std_patterns_is_admitted() {
     let parent = program_of(&read_text(MIGRATE).unwrap());
-    let r = sub_check(&parent, "MigrateAll", 1.0, &read_text(FAN_OUT).unwrap());
-    assert_eq!(shown(&r.diagnostics), ["MDT-E1705 at /defs/Rest/apply"]);
-    assert!(!r.ok && r.shape.is_none());
+    for (file, number, workflow, pattern) in [
+        (FAN_OUT, 1.0, "Rest", "FanOutMerge"),
+        (MAKER_CHECKER, 3.0, "Billing", "MakerChecker"),
+    ] {
+        let r = sub_check(&parent, "MigrateAll", number, &read_text(file).unwrap());
+        assert!(r.ok, "{file}: {:#?}", shown(&r.diagnostics));
+        assert_eq!(r.workflow.as_deref(), Some(workflow));
+        assert_eq!(
+            r.shape,
+            Some(Shape {
+                pattern: pattern.to_owned(),
+                module: "std.patterns".to_owned(),
+            }),
+            "{file}"
+        );
+    }
+    // A pattern of std.patterns the list does not name is no shape, though
+    // the parent imports it.
+    let text = read_text(MIGRATE).unwrap();
+    let one = program_of(&text.replace("[FanOutMerge, MakerChecker]", "[FanOutMerge]"));
+    let r = sub_check(&one, "MigrateAll", 3.0, &read_text(MAKER_CHECKER).unwrap());
+    assert_eq!(
+        shown(&r.diagnostics),
+        ["MDT-E1710 at /defs/Billing/apply/pattern"]
+    );
+    let facts = r.diagnostics[0].facts.as_ref().unwrap();
+    assert_eq!(
+        facts.get("problem").and_then(JsValue::as_str),
+        Some("not_listed")
+    );
+    assert_eq!(
+        facts.get("module").and_then(JsValue::as_str),
+        Some("std.patterns")
+    );
 }
 
 #[test]
@@ -379,9 +436,9 @@ fn a_shape_is_a_pattern_of_the_program_or_one_it_imports() {
     );
     // A pattern of std.patterns the program does not import is no name.
     assert_eq!(
-        with("[MakerChecker]"),
+        with("[BatchWithExceptions]"),
         [
-            r#"MDT-E1711 at /defs/Run/envelope/shapes/0 {"workflow":"Run","shape":"MakerChecker","kind":null}"#
+            r#"MDT-E1711 at /defs/Run/envelope/shapes/0 {"workflow":"Run","shape":"BatchWithExceptions","kind":null}"#
         ]
     );
 }

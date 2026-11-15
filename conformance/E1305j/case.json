@@ -1,0 +1,27 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1305j",
+  "kind": "compile",
+  "title": "A const List<Item> slot given a list that names a capability (a mutation: the argument) is refused at the argument: a value slot brings no authority, and a name that is no constant is no value of it.",
+  "spec": ["spec/library.md#slots", "spec/library.md#what-a-pattern-may-not-do", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../L09/program.mdt", "kind": "mdt" },
+  "patch": [
+    {
+      "op": "replace",
+      "path": "/defs/MigrateAll/apply/args/0/value",
+      "value": { "op": "list", "items": [{ "op": "var", "name": "SrcWrite" }] }
+    }
+  ],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      {
+        "code": "MDT-E1305",
+        "path": "/defs/MigrateAll/apply/args/0/value",
+        "facts": { "problem": "type", "slot": "items", "why": "item 0: SrcWrite is no constant" }
+      }
+    ]
+  }
+}

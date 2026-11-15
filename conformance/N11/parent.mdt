@@ -2,15 +2,16 @@
 // (spec/library.md "shapes"), the parent of the cases of shapes: the lead's
 // sub-programs may apply Each, which the program defines, or FanOutMerge of
 // std.patterns, and nothing else. Spare is a pattern of the program the
-// envelope does not list; Batch is a type of std.patterns, which no shape
-// may name (E1711a).
+// envelope does not list, and so is MakerChecker of std.patterns, which it
+// imports (E1710b); Batch is a type of std.patterns, which no shape may
+// name (E1711a).
 
 mandate @ 0.6
 
 module example.shaped @ 0.1
 
 use std.{fs, model}
-use std.patterns.{Batch, FanOutMerge}
+use std.patterns.{Batch, FanOutMerge, MakerChecker}
 
 role owner_role "Owner"
 

@@ -449,58 +449,93 @@ pub fn block_cost(
     base: &str,
     in_fns: &[String],
 ) -> StaticCost {
+    // Each statement's cost apart (`stmt_cost`): a block nested in a
+    // statement of a block nests this frame, which holds no more than the
+    // total and the loop.
     let mut total = StaticCost::default();
-    let at = |p: String| {
-        if in_fns.is_empty() {
-            p
-        } else {
-            base.to_owned()
-        }
-    };
     for (i, s) in stmts.iter().enumerate() {
         let Some(s) = Stmt::of(s) else { continue };
-        let path = format!("{base}/{i}");
-        let ec = |e: Option<Expr<'_>>, p: String| -> StaticCost {
-            e.map(|e| expr_cost(env, e, &at(p), in_fns))
-                .unwrap_or_default()
-        };
-        match s.op() {
-            Some(StmtOp::Let | StmtOp::Expr) => {
-                add_seq(&mut total, ec(s.value(), format!("{path}/value")));
-            }
-            Some(StmtOp::Return) => {
-                if let Some(v) = s.value() {
-                    add_seq(&mut total, ec(Some(v), format!("{path}/value")));
-                }
-            }
-            Some(StmtOp::Par) => {
-                let branches: Vec<StaticCost> = s
-                    .branches()
-                    .map(|(bn, e)| ec(Expr::of(e), format!("{path}/branches/{bn}")))
-                    .collect();
-                add_seq(&mut total, parallel(branches));
-            }
-            Some(StmtOp::If) => {
-                let then = block_cost(env, s.then_block(), &at(format!("{path}/then")), in_fns);
-                let other = block_cost(
-                    env,
-                    s.else_block().unwrap_or_default(),
-                    &at(format!("{path}/else")),
-                    in_fns,
-                );
-                add_seq(&mut total, alternative(vec![then, other]));
-            }
-            Some(StmtOp::Loop) => {
-                let once = block_cost(env, s.body(), &at(format!("{path}/body")), in_fns);
-                match s.max_iter() {
-                    Some(n) => add_seq(&mut total, scale(&once, n as f64)),
-                    None => add_seq(&mut total, once),
-                }
-            }
-            _ => {}
+        if let Some(c) = stmt_cost(env, s, base, i, in_fns) {
+            add_seq(&mut total, c);
         }
     }
     total
+}
+
+/// The path a cost is reported at: `p`, or inside a called function (with
+/// `in_fns`) the call site `base`.
+fn cost_at(base: &str, in_fns: &[String], p: String) -> String {
+    if in_fns.is_empty() {
+        p
+    } else {
+        base.to_owned()
+    }
+}
+
+/// The cost of the statement `s`, the `i`-th of the block at `base`, as
+/// [`block_cost`] adds it; `None` for one that adds nothing.
+#[inline(never)]
+fn stmt_cost(
+    env: &CostEnv<'_, '_>,
+    s: Stmt<'_>,
+    base: &str,
+    i: usize,
+    in_fns: &[String],
+) -> Option<StaticCost> {
+    let path = format!("{base}/{i}");
+    let ec = |e: Option<Expr<'_>>, p: String| -> StaticCost {
+        e.map(|e| expr_cost(env, e, &cost_at(base, in_fns, p), in_fns))
+            .unwrap_or_default()
+    };
+    match s.op() {
+        Some(StmtOp::Let | StmtOp::Expr) => Some(ec(s.value(), format!("{path}/value"))),
+        Some(StmtOp::Return) => s.value().map(|v| ec(Some(v), format!("{path}/value"))),
+        Some(StmtOp::Par) => {
+            let branches: Vec<StaticCost> = s
+                .branches()
+                .map(|(bn, e)| ec(Expr::of(e), format!("{path}/branches/{bn}")))
+                .collect();
+            Some(parallel(branches))
+        }
+        Some(StmtOp::If) => Some(if_cost(env, s, base, &path, in_fns)),
+        Some(StmtOp::Loop) => {
+            let once = block_cost(
+                env,
+                s.body(),
+                &cost_at(base, in_fns, format!("{path}/body")),
+                in_fns,
+            );
+            Some(match s.max_iter() {
+                Some(n) => scale(&once, n as f64),
+                None => once,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// The cost of an `if`: the dearer of its two blocks.
+#[inline(never)]
+fn if_cost(
+    env: &CostEnv<'_, '_>,
+    s: Stmt<'_>,
+    base: &str,
+    path: &str,
+    in_fns: &[String],
+) -> StaticCost {
+    let then = block_cost(
+        env,
+        s.then_block(),
+        &cost_at(base, in_fns, format!("{path}/then")),
+        in_fns,
+    );
+    let other = block_cost(
+        env,
+        s.else_block().unwrap_or_default(),
+        &cost_at(base, in_fns, format!("{path}/else")),
+        in_fns,
+    );
+    alternative(vec![then, other])
 }
 
 /// The value of the argument named `name` of a supervision.
@@ -520,40 +555,113 @@ fn skill_of<'d>(agent: Definition<'d>, skill: &str) -> Option<&'d Value> {
 /// functions it runs: `exprCost(env, e, path, inFns)`.
 #[must_use]
 pub fn expr_cost(env: &CostEnv<'_, '_>, e: Expr<'_>, path: &str, in_fns: &[String]) -> StaticCost {
-    let mut c = StaticCost::default();
-    let sub = |x: Expr<'_>| expr_cost(env, x, path, in_fns);
-    let within = |p: String| {
-        if in_fns.is_empty() {
-            p
-        } else {
-            path.to_owned()
+    // An expression nested in an expression nests no frame: the children
+    // are counted on a stack of their own, each one's cost the sum of its
+    // children's in their order, then what its kind adds
+    // (`expr_cost_rest`), exactly as a recursion would add them. A `switch`
+    // or a block is counted apart (`nested_cost`), which may recurse.
+    struct Pending<'a> {
+        e: Expr<'a>,
+        acc: StaticCost,
+        kids: std::vec::IntoIter<Expr<'a>>,
+    }
+    fn open(e: Expr<'_>) -> Pending<'_> {
+        Pending {
+            e,
+            acc: StaticCost::default(),
+            kids: children(e).into_iter(),
         }
-    };
-    if e.is(ExprOp::Switch) {
-        // Only one arm runs.
-        if let Some(on) = e.on() {
-            add_seq(&mut c, sub(on));
-        }
-        let arms: Vec<StaticCost> = e
-            .cases()
-            .enumerate()
-            .map(|(i, k)| {
-                k.then()
-                    .map(|t| expr_cost(env, t, &within(format!("{path}/cases/{i}/then")), in_fns))
-                    .unwrap_or_default()
-            })
-            .collect();
-        add_seq(&mut c, alternative(arms));
+    }
+    if let Some(c) = nested_cost(env, e, path, in_fns) {
         return c;
     }
+    let mut stack = vec![open(e)];
+    loop {
+        let Some(top) = stack.last_mut() else {
+            return StaticCost::default();
+        };
+        if let Some(k) = top.kids.next() {
+            match nested_cost(env, k, path, in_fns) {
+                Some(c) => add_seq(&mut top.acc, c),
+                None => stack.push(open(k)),
+            }
+            continue;
+        }
+        let Some(done) = stack.pop() else {
+            return StaticCost::default();
+        };
+        let c = expr_cost_rest(env, done.e, path, in_fns, done.acc);
+        match stack.last_mut() {
+            Some(parent) => add_seq(&mut parent.acc, c),
+            None => return c,
+        }
+    }
+}
+
+/// The cost of a `switch` or a block, which is not the sum of its children;
+/// `None` for any other expression.
+#[inline(never)]
+fn nested_cost(
+    env: &CostEnv<'_, '_>,
+    e: Expr<'_>,
+    path: &str,
+    in_fns: &[String],
+) -> Option<StaticCost> {
+    if e.is(ExprOp::Switch) {
+        return Some(switch_cost(env, e, path, in_fns));
+    }
     if e.is(ExprOp::Block) {
-        return block_cost(env, e.body(), &within(format!("{path}/body")), in_fns);
+        return Some(block_cost(
+            env,
+            e.body(),
+            &cost_at(path, in_fns, format!("{path}/body")),
+            in_fns,
+        ));
     }
-    for k in children(e) {
-        add_seq(&mut c, sub(k));
+    None
+}
+
+/// The cost of a `switch`: its subject, then the dearest of its arms, as
+/// only one of them runs.
+#[inline(never)]
+fn switch_cost(env: &CostEnv<'_, '_>, e: Expr<'_>, path: &str, in_fns: &[String]) -> StaticCost {
+    let mut c = StaticCost::default();
+    if let Some(on) = e.on() {
+        add_seq(&mut c, expr_cost(env, on, path, in_fns));
     }
+    let arms: Vec<StaticCost> = e
+        .cases()
+        .enumerate()
+        .map(|(i, k)| {
+            k.then()
+                .map(|t| {
+                    expr_cost(
+                        env,
+                        t,
+                        &cost_at(path, in_fns, format!("{path}/cases/{i}/then")),
+                        in_fns,
+                    )
+                })
+                .unwrap_or_default()
+        })
+        .collect();
+    add_seq(&mut c, alternative(arms));
+    c
+}
+
+/// What the expression `e` adds to `c`, the cost of its children: a
+/// `map`'s body, a plan's or a delegation's attempts, and a called
+/// function's body.
+#[inline(never)]
+fn expr_cost_rest(
+    env: &CostEnv<'_, '_>,
+    e: Expr<'_>,
+    path: &str,
+    in_fns: &[String],
+    mut c: StaticCost,
+) -> StaticCost {
     if e.is(ExprOp::Map) {
-        let body_at = within(format!("{path}/body"));
+        let body_at = cost_at(path, in_fns, format!("{path}/body"));
         let body = || block_cost(env, e.body(), &body_at, in_fns);
         let once = match budget_of(e.get("budget")) {
             Some(b) => stand_in(env, b, "map", path, &body, true),
