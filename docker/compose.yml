@@ -1,8 +1,9 @@
 # The job runner of scripts/docker-ci.sh and the services the jobs of .github/workflows/ci.yml use (a PostgreSQL server
 # and an OpenTelemetry Collector, by the same digests as ci.yml). Always run through the script, which passes
-# `--project-directory docker --env-file docker/empty.env`, so that no `.env` file is read (docker/README.md, "The
-# secret boundary"). docker/check.mjs fails on an env_file, a mount of the Docker socket or of a `.env`, a published
-# port, `privileged`, or a bind mount other than the read-only git directory.
+# --project-directory docker and --env-file docker/empty.env, so that no dotenv file is read (docker/README.md, "The
+# secret boundary"). This file has no bind mount, no environment entry without a value, no variable interpolation (no
+# dollar sign at all), no published port and nothing privileged; docker/check.mjs checks the file and its resolved
+# model against an allowlist and fails on anything else.
 name: mandate-ci
 
 x-runner: &runner
@@ -10,17 +11,11 @@ x-runner: &runner
   image: mandate-ci-runner:local
   pull_policy: never
   init: true
-  # No `environment`, no env_file: no variable of the host is passed through. The script gives each run the few values
-  # it needs with `-e NAME=value` on the command line, every one of them written in the script itself.
+  # No environment and no env_file: no variable of the host is passed through. The script gives each run the few values
+  # it needs with -e NAME=value on the command line, every one of them written in the script itself. The commit under
+  # test arrives on the standard input of the container as an archive; no host directory is mounted.
   volumes:
-    # The repository's git directory (the common one: a worktree's .git is a file), read-only. The runner clones a
-    # commit from it; the Windows working tree is never mounted.
-    - type: bind
-      source: ${MANDATE_CI_GIT_DIR:?set by scripts/docker-ci.sh}
-      target: /git
-      read_only: true
     - cargo-home:/cache/cargo
-    - cargo-target:/ci/repo/target
     - npm-cache:/cache/npm
     - otel-config:/otel/config
     - otel-out:/otel/out
@@ -35,14 +30,13 @@ services:
     security_opt: ["no-new-privileges:true"]
     profiles: [run]
 
-  # The sandbox job only: Bubblewrap needs user namespaces, which the default seccomp and AppArmor profiles of a
-  # container refuse. Not privileged, no Docker socket, no host network.
+  # The sandbox job only: Bubblewrap needs user namespaces, which the default seccomp profile of a container refuses,
+  # and slirp4netns (the proxy-only egress of the sandbox) opens /dev/net/tun. Nothing else is granted: no capability
+  # is added, the container is not privileged, has no Docker socket and is not on the host network.
   runner-sandbox:
     <<: *runner
     cap_drop: [ALL]
-    cap_add: [SYS_ADMIN, NET_ADMIN]
-    security_opt: ["seccomp=unconfined", "apparmor=unconfined"]
-    # slirp4netns (the proxy-only egress of the sandbox) opens /dev/net/tun, which a container does not have by default.
+    security_opt: ["seccomp=unconfined", "no-new-privileges:true"]
     devices: ["/dev/net/tun:/dev/net/tun"]
     profiles: [run]
 
@@ -78,10 +72,8 @@ services:
     profiles: [services]
 
 volumes:
-  # The cargo registry and git caches (CARGO_HOME).
+  # The cargo registry and git caches (CARGO_HOME), shared by the jobs: downloads only, never build output.
   cargo-home:
-  # The cargo target directory, mounted at <clone>/target (scripts/build-wasm.mjs reads target/, not CARGO_TARGET_DIR).
-  cargo-target:
   # The npm download cache.
   npm-cache:
   otel-config:

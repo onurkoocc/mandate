@@ -49,13 +49,13 @@ RUN curl -fsSL --retry 3 -o /tmp/opa "https://github.com/open-policy-agent/opa/r
 
 # The user the jobs run as. Ubuntu 24.04 ships a user `ubuntu` with uid 1000; it is replaced, so that the uid is
 # the one the OpenTelemetry Collector of compose.yml runs as and the one that owns the volumes. /ci/repo is where a
-# commit is checked out (not /work: the Gate 3 rehearsal of the sandbox job writes /work/repo itself), /ci/repo/target
-# is where the cargo target volume is mounted (scripts/build-wasm.mjs reads target/ and not CARGO_TARGET_DIR).
+# commit is extracted (not /work: the Gate 3 rehearsal of the sandbox job writes /work/repo itself). Its target/ is in
+# the container's own file system: a job never builds on another job's artifacts.
 # /run/systemd/resolve and /run/user/1000 are places the sandbox job's tests of the host's sockets use, as they are on
 # the GitHub runner (docker/README.md).
 RUN userdel -r ubuntu 2>/dev/null || true; \
     useradd --uid 1000 --create-home --shell /bin/bash ci \
- && mkdir -p /opt/rustup /opt/cargo /cache/cargo /cache/npm /ci/repo/target /work /otel/config /otel/out /run/systemd/resolve /run/user/1000 \
+ && mkdir -p /opt/rustup /opt/cargo /cache/cargo /cache/npm /ci/repo /work /otel/config /otel/out /run/systemd/resolve /run/user/1000 \
  && chown -R ci:ci /opt/rustup /opt/cargo /cache /ci /work /otel /run/systemd /run/user && chmod 700 /run/user/1000
 
 USER ci
@@ -91,7 +91,16 @@ ENV NODE22_HOME=/opt/node-${NODE22_VERSION} \
     CI=true \
     HOME=/home/ci
 
-# The job steps: the steps of the jobs of .github/workflows/ci.yml, in the same order.
+# The entry of the container and the job steps for a commit that has none of its own (docker/README.md): boot.sh extracts
+# the commit that arrives on the standard input and runs the commit's own docker/run-job.sh, or this copy of it.
 USER root
-COPY --chmod=0755 run-job.sh /usr/local/bin/mandate-ci-job
+COPY --chmod=0755 boot.sh run-job.sh /usr/local/lib/mandate-ci/
+
+# No setuid or setgid binary is left in the image: with no-new-privileges they would do nothing, and without them
+# there is nothing for a process of a job to gain.
+RUN n="$(find / -xdev \( -perm -4000 -o -perm -2000 \) -type f | wc -l)" \
+ && find / -xdev \( -perm -4000 -o -perm -2000 \) -type f -exec chmod a-s {} + \
+ && echo "setuid or setgid bits removed from $n files" \
+ && test -z "$(find / -xdev \( -perm -4000 -o -perm -2000 \) -type f)"
+
 USER ci

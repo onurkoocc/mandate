@@ -1,32 +1,26 @@
 #!/bin/bash
-# Runs inside the job container (installed as /usr/local/bin/mandate-ci-job); started by scripts/docker-ci.sh:
+# The steps of the jobs of .github/workflows/ci.yml, run in the job container on the clone of the commit under test:
 #
-#   mandate-ci-job <job> <full commit sha> [command...]
+#   run-job.sh <job> <full commit sha> [command...]
 #
-# It clones the commit from the read-only git directory mounted at /git into /ci/repo and runs, for the job of that name,
-# the steps of the job of the same name in .github/workflows/ci.yml, in the same order. What differs from CI is said
-# where it differs: $RUNNER_TEMP is a temporary directory, the tools that CI installs are in the image (Node, OPA, the
-# Rust toolchain), PostgreSQL and the OpenTelemetry Collector are compose services (the script starts them), and what
-# needs a real Docker engine or Windows is not run (docker/README.md).
+# docker/boot.sh (fixed, in the image) has made the clone in /ci/repo from the archive of the commit and runs this file
+# from it: the steps travel with the commit they test. A commit from before docker/ existed has none, and boot.sh then
+# runs the copy that is baked into the image. For the job of the given name the steps are those of the job of the same
+# name in ci.yml, in the same order; docker/check.mjs fails when a step of ci.yml is neither here nor in its list of
+# known differences. What differs from CI is said where it differs: $RUNNER_TEMP is a temporary directory, the tools
+# that CI installs are in the image (Node, OPA, the Rust toolchain), PostgreSQL and the OpenTelemetry Collector are
+# compose services (the script starts them), and what needs a real Docker engine or Windows is not run
+# (docker/README.md).
 #
 # Bash without -o pipefail, as GitHub runs a `run:` block by default (bash -e).
 set -eu
 
-job="${1:?usage: mandate-ci-job <job> <sha> [command...]}"
-sha="${2:?usage: mandate-ci-job <job> <sha> [command...]}"
+job="${1:?usage: run-job.sh <job> <sha> [command...]}"
+sha="${2:?usage: run-job.sh <job> <sha> [command...]}"
 shift 2
 
 started="$(date +%s)"
 step() { echo; echo "=== [+$(($(date +%s) - started)) s] $*"; }
-
-checkout() {
-  git config --global safe.directory '*'
-  cd /ci/repo
-  git init -q .
-  git fetch -q --no-tags /git "$sha"
-  git checkout -q --detach FETCH_HEAD
-  echo "checked out $(git rev-parse HEAD) in /ci/repo"
-}
 
 use_node() { # 22 or 24
   case "$1" in
@@ -40,7 +34,7 @@ use_node() { # 22 or 24
 export RUNNER_TEMP
 RUNNER_TEMP="$(mktemp -d)"
 
-checkout
+cd /ci/repo
 
 job_rust() {
   use_node 24
@@ -250,7 +244,7 @@ job_sandbox() {
   # a stand-in listens at that path (it answers a request with an error and closes), and the tests show that the sandbox's masks
   # hide a real socket there. It is a stand-in for the runner's resolver, not the resolver (docker/README.md).
   step "A stand-in for systemd-resolved's socket, the control of three tests of mxc.test.ts"
-  python3 - >/dev/null 2>&1 <<'PY'
+  python3 - >"$RUNNER_TEMP/resolver-standin.log" 2>&1 <<'PY'
 import os, socket
 p = "/run/systemd/resolve/io.systemd.Resolve"
 if os.path.exists(p):
@@ -270,6 +264,15 @@ if os.fork() == 0:
             pass
         c.close()
 PY
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    [ -S /run/systemd/resolve/io.systemd.Resolve ] && break
+    sleep 0.3
+  done
+  if [ ! -S /run/systemd/resolve/io.systemd.Resolve ]; then
+    echo "::error::the stand-in for systemd-resolved's socket did not start; its output:"
+    cat "$RUNNER_TEMP/resolver-standin.log"
+    exit 1
+  fi
   ls -l /run/systemd/resolve/
   step "Sandbox enforcement on Bubblewrap (G05, G07), sandbox egress through the proxy (G15, G16), the acceptance of 0.5 in a real sandbox, the Gate 3 rehearsal, and two components in two sandboxes (B3)"
   (
@@ -309,21 +312,22 @@ job_selfcheck() {
   ok() { echo "ok:   $*"; }
   bad() { echo "FAIL: $*"; fail=1; }
 
-  found="$(find /ci /git /cache /otel /work /home/ci -name .env 2>/dev/null || true)"
-  if [ -z "$found" ]; then ok "no file named .env in the clone (/ci), the git mount (/git), the caches (/cache), /otel, /work or the home directory"; else bad "a .env exists: $found"; fi
+  found="$(find /ci /cache /otel /work /home/ci -name .env 2>/dev/null || true)"
+  if [ -z "$found" ]; then ok "no file named .env in the clone (/ci), the caches (/cache), /otel, /work or the home directory"; else bad "a .env exists: $found"; fi
 
   for name in CLAUDE_API_KEY CLAUDE_WORKSPACE_ID MANDATE_GITHUB_TOKEN GITHUB_TOKEN GH_TOKEN ANTHROPIC_API_KEY; do
     if env | cut -d= -f1 | grep -qx "$name"; then bad "the variable $name is set"; else ok "the variable $name is not set"; fi
   done
 
-  if touch /git/selfcheck-write 2>/dev/null; then rm -f /git/selfcheck-write; bad "/git is writable"; else ok "writing to /git fails (read-only mount)"; fi
-  if [ -w /git ]; then bad "/git is writable for this user"; fi
-  if [ "$(git -C /ci/repo rev-parse HEAD)" = "$sha" ]; then ok "the clone is at the commit $sha"; else bad "the clone is not at $sha"; fi
+  if [ -e /git ]; then bad "/git exists: a git directory of the host is mounted"; else ok "no /git: the host's git directory is not mounted"; fi
+  if [ "$(git -C /ci/repo rev-list --count HEAD)" = 1 ]; then ok "the clone has one commit, made from the archive of $sha"; else bad "the clone does not have exactly one commit"; fi
   if [ -z "$(git -C /ci/repo status --porcelain)" ]; then ok "the clone has no change and no untracked file"; else bad "the clone is not clean"; fi
+  setuid="$(find / -xdev \( -perm -4000 -o -perm -2000 \) -type f 2>/dev/null | head -n 5 || true)"
+  if [ -z "$setuid" ]; then ok "no setuid or setgid file in the image"; else bad "setuid or setgid files: $setuid"; fi
 
   if [ -e /var/run/docker.sock ] || [ -e /run/docker.sock ]; then bad "a Docker socket is present"; else ok "no Docker socket"; fi
   if [ "$(id -u)" = 1000 ]; then ok "runs as uid 1000, not root"; else bad "runs as uid $(id -u)"; fi
-  # The effective capabilities: none for the runner service (cap_drop: ALL); the sandbox service adds two.
+  # The effective capabilities of the process: none for the runner (cap_drop: ALL, and no cap_add anywhere).
   echo "info: effective capabilities $(grep '^CapEff' /proc/self/status | cut -f2)"
   if [ -d /mnt/c ] || [ -d /c/Users ]; then bad "a Windows drive is visible"; else ok "no Windows drive visible"; fi
   [ "$fail" = 0 ]
