@@ -314,6 +314,110 @@ function isObj(v: unknown): v is Obj {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+// The two servers again, answering as the runtime carries a declared result (src/connectors.ts): a result type that
+// is a record is the `structuredContent` itself, and any other is `{ "result": <value> }`. They are what the tests of
+// a run with connectors call (connectors.test.ts); the two above answer in shapes of their own, for the client's tests.
+
+/** What a test may add to a result, to see it refused: members a declared type does not name. */
+export interface Extras {
+  /** Members added to each row of a list a read tool answers with. */
+  row?: Obj;
+  /** The whole `structuredContent` of the next read, in place of the tool's own. */
+  whole?: Obj;
+}
+
+/** The mailbox, as `acme.connectors` declares it: `list_invoices() -> Untrusted<List<Invoice>>`. */
+export function declaredMailbox(host = "mail.acme.example"): FakeMcp & { extras: Extras } {
+  const m = Object.assign(new FakeMcp(host), { extras: {} as Extras });
+  m.tool({
+    name: "list_invoices",
+    title: INJECTION,
+    description: `Lists the invoices in the mailbox. ${INJECTION}`,
+    inputSchema: obj({}, []),
+    outputSchema: obj({ result: { type: "array", items: invoiceSchema } }, ["result"]),
+    annotations: { readOnlyHint: true, title: INJECTION },
+    write: false,
+    run: () => ({ structured: m.extras.whole ?? { result: m.invoices.map((i) => ({ ...i, ...(m.extras.row ?? {}) })) }, text: `${m.invoices.length} invoices` }),
+  });
+  return m;
+}
+
+/**
+ * The ERP, as `acme.connectors` declares it: `list_open_orders` and `find_draft_invoice`, reads;
+ * `post_draft_invoice` and `delete_draft_invoice`, writes, each applied once for a key, however often it is sent.
+ * `postings` counts the drafts made: one for each key that was applied.
+ */
+export function declaredErp(host = "erp.acme.example"): FakeMcp & { extras: Extras; postings: number; byKey: Map<string, Draft>; refuse?: string } {
+  const e = Object.assign(new FakeMcp(host), { extras: {} as Extras, postings: 0, byKey: new Map<string, Draft>(), refuse: undefined as string | undefined });
+  e.tool({
+    name: "list_open_orders",
+    title: "List open orders",
+    description: `Lists a vendor's open orders. ${INJECTION}`,
+    inputSchema: obj({ vendor_id: { type: "string" } }, ["vendor_id"]),
+    outputSchema: obj({ result: { type: "array", items: orderSchema } }, ["result"]),
+    annotations: { readOnlyHint: true },
+    write: false,
+    run: (args) => {
+      if (typeof args["vendor_id"] !== "string") return { error: `vendor_id is required. ${INJECTION}` };
+      return { structured: e.extras.whole ?? { result: e.orders.filter((o) => o.vendor_id === args["vendor_id"]).map((o) => ({ ...o, ...(e.extras.row ?? {}) })) }, text: "orders" };
+    },
+  });
+  e.tool({
+    name: "find_draft_invoice",
+    title: "Find a draft invoice",
+    description: `Finds the draft an operation key posted. ${INJECTION}`,
+    inputSchema: obj({ key: { type: "string" } }, ["key"]),
+    outputSchema: obj({ result: { anyOf: [obj({ draft_id: { type: "string" } }, ["draft_id"]), { type: "null" }] } }, ["result"]),
+    annotations: { readOnlyHint: true },
+    write: false,
+    run: (args) => {
+      const d = typeof args["key"] === "string" ? e.byKey.get(args["key"]) : undefined;
+      return { structured: { result: d ? { draft_id: d.draft_id } : null }, text: d ? "found" : "none" };
+    },
+  });
+  e.tool({
+    name: "post_draft_invoice",
+    title: "Post a draft invoice",
+    description: `Posts a draft invoice for a match. ${INJECTION}`,
+    inputSchema: obj({ m: matchSchema, key: { type: "string" } }, ["m", "key"]),
+    outputSchema: obj({ draft_id: { type: "string" } }, ["draft_id"]),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    write: true,
+    run: (args) => {
+      const m = args["m"];
+      const order = isObj(m) ? m["order"] : undefined;
+      const key = args["key"];
+      if (!isObj(m) || typeof m["invoice_no"] !== "string" || !isObj(order) || typeof order["order_no"] !== "string" || typeof key !== "string") return { error: `a match and a key are required. ${INJECTION}` };
+      if (e.refuse !== undefined && m["invoice_no"] === e.refuse) return { error: `this invoice is not accepted. ${INJECTION}` };
+      // Applied once for a key: the same key again gives the draft it made.
+      const had = e.byKey.get(key);
+      const d = had ?? { draft_id: `D-${m["invoice_no"]}`, invoice_no: m["invoice_no"], order_no: order["order_no"], key };
+      if (!had) {
+        e.byKey.set(key, d);
+        e.drafts.set(d.invoice_no, d);
+        e.postings++;
+      }
+      return { structured: { draft_id: d.draft_id }, text: had ? "already posted" : "posted" };
+    },
+  });
+  e.tool({
+    name: "delete_draft_invoice",
+    title: "Delete a draft invoice",
+    description: `Deletes a draft invoice. ${INJECTION}`,
+    inputSchema: obj({ id: obj({ draft_id: { type: "string" } }, ["draft_id"]), key: { type: "string" } }, ["id", "key"]),
+    outputSchema: obj({ draft_id: { type: "string" } }, ["draft_id"]),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    write: true,
+    run: (args) => {
+      const id = args["id"];
+      if (!isObj(id) || typeof id["draft_id"] !== "string") return { error: `a draft is required. ${INJECTION}` };
+      for (const [k, d] of e.drafts) if (d.draft_id === id["draft_id"]) e.drafts.delete(k);
+      return { structured: { draft_id: id["draft_id"] }, text: "deleted" };
+    },
+  });
+  return e;
+}
+
 /** The mailbox of the acceptance program: `list_invoices`, a read. */
 export function fakeMailbox(host = "mail.acme.example"): FakeMcp {
   const m = new FakeMcp(host);

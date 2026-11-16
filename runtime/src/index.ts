@@ -28,6 +28,7 @@ export { runTests, type TestOptions, type TestResult } from "./testing.js";
 export { auditDoc, freshness, programRoles, roleDoc, runDoc, runView, shadowDiff, type AsOf, type AuditView, type CommandView, type Exceptions, type Freshness, type RoleView, type RunView, type ShadowRow } from "./views.js";
 export { CLASS_HOLDS, CLASSES, commandClass, EVENT_CLASSES, eventClass, SECTION_CLASSES, sectionClass, shows, stepClass, TRACE_KINDS, WAIT_KINDS, type Audience, type ViewClass } from "./classes.js";
 export { bind, BROKER_ID, DeclaredReads, evaluate, SampleReads, type ReadSourceConfig, type SqlRunner } from "./broker.js";
+export { CONNECTOR_ADAPTER, Connectors, ConnectorWrite, RESULT_MEMBER, type BoundTool, type ConnectorsOptions, type ConnectorTransport, type ToolSamples } from "./connectors.js";
 export * from "./sim.js";
 export * from "./values.js";
 export { EgressClient, type EgressClientOptions, type ForwardSession, type GatewaySession, type Hello } from "./egress/client.js";

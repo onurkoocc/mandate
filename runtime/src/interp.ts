@@ -25,6 +25,7 @@ import {
   grant,
   hashProgram,
   inFlightOverlap,
+  isProgram06,
   leadClasses,
   mapScopes,
   modelTiers,
@@ -59,15 +60,18 @@ import {
   type Verifier,
   type WorkflowDef,
 } from "@mandate/bridge";
-import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter } from "./adapters.js";
+import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter, ToolSpec } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationsRequired, recordProblem, type AttestationRule } from "./attestation.js";
+import { failureFacts, failureOf, forbidden, type BoundTool, type Connectors } from "./connectors.js";
 import { criterionMethods, evidenceIdOf, needsPerson, partMethod, uncovered } from "./criteria.js";
 import { approvalProblem, type StoredDecision } from "./decisions.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
 import type { RateLimiter } from "./ratelimit.js";
 import type { Faults } from "./faults.js";
 import { runAgentLoop, type LoopTask } from "./loop.js";
+import { McpDenied, McpError } from "./mcp-client.js";
+import { MAX_TOOL_OUTPUT } from "./tools.js";
 import { PLAN_TOOLS, planBrief, Planner, programsInFlight, Shared, type PlanHost, type ProgramChecker } from "./plan.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import type { ActionRow, Admission, CommandRow, Journal, ViolationKind } from "./journal.js";
@@ -75,6 +79,7 @@ import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
 import {
   canonical,
   digest,
+  escapeAngles,
   evidenceOf,
   isObj,
   money,
@@ -167,6 +172,11 @@ interface Ctx {
    * maps hand each delegation of the body.
    */
   item?: { given: CapVal[][]; handed: CapVal[] };
+  /**
+   * Inside a map's body: the map's node, as the run stands at it. A critical effect of a 0.6 program there is a
+   * batch commit step (spec/library.md "The batch commit step"), whose actions the map names, not the item.
+   */
+  map?: string;
 }
 
 /**
@@ -262,7 +272,21 @@ export interface InterpOptions {
    * nothing stops the run for them.
    */
   violationLimit?: number;
+  /**
+   * The connectors of a 0.6 package, bound by its lock (spec/library.md "Connectors"): a read-only tool is a read at
+   * its node or a tool of an agent's loop, a write tool an external action's adapter. Absent for a package of 0.1 to
+   * 0.5, which has none, and nothing of it is read then.
+   */
+  connectors?: Connectors;
 }
+
+/** Whether a program is of 0.6: what 0.6 adds at run time (the batch commit step, the escaping of a task's data) is read only then. */
+function is06(program: Program): boolean {
+  return isProgram06(program);
+}
+
+/** The turns of the actions of one operation (`Interpreter.alone`), by what the interpreters of one run share. */
+const TURNS = new WeakMap<Shared, Map<string, Promise<void>>>();
 
 const RESTARTABLE = new Set(["Timeout", "SkillFailed"]);
 
@@ -642,7 +666,7 @@ export class Interpreter {
     const scopes = mapScopes({ map: path, par, context, items: caps, complete: true });
     if ("refused" in scopes) throw refusal(scopes.refused);
     if ("partial" in scopes) throw new Error(`map ${path}: the bridge did not decide its items`);
-    const items = evaluated.map((item, i): Ctx => (scopes.items[i] ? { ...item, item: scopes.items[i] } : item));
+    const items = evaluated.map((item, i): Ctx => ({ ...item, map: path, ...(scopes.items[i] ? { item: scopes.items[i] } : {}) }));
     const writes = scopes.writes;
     const holder = (i: number): string => `${path}[${i}]`;
     const start = async (): Promise<void> => {
@@ -886,6 +910,10 @@ export class Interpreter {
         throw r;
       }
     }
+    // 0.6: `<connector>.<tool>(…)`, a read-only tool of a connector the program holds, unless a variable has the name.
+    if (this.o.connectors && e.callee.op === "field" && e.callee.of.op === "var" && this.o.connectors.has(e.callee.of.name) && !this.isLocal(e.callee.of.name, ctx)) {
+      return this.toolRead(e.callee.of.name, e.callee.name, e, ctx, path);
+    }
     if (p === "quote" || p === "peek") return this.expr(e.args[0]!.value, ctx, `${path}/args/0/value`);
     if (p === "len") {
       const v = unwrap(await this.expr(e.args[0]!.value, ctx, `${path}/args/0/value`));
@@ -935,6 +963,63 @@ export class Interpreter {
       return broker.query(req);
     }, { siblings: ctx.siblings, label: `read ${envName}.${first.name}` });
     return isObj(r) && Array.isArray(r["rows"]) ? r["rows"] : [];
+  }
+
+  private isLocal(name: string, ctx: Ctx): boolean {
+    for (let s: Scope | undefined = ctx.scope; s; s = s.parent) if (s.vars.has(name)) return true;
+    return false;
+  }
+
+  /**
+   * `<connector>.<tool>(args)` in a workflow's body (spec/library.md "Three uses", 1): a read-only tool, called
+   * through the connector's gateway as the command at its node, its request and its checked result journaled; a
+   * replay reads the journal. The call is held to what the context grants at run time. A `design` run answers from a
+   * sample and reaches no server. A failure is `Rejected(connector_protocol)` or `Rejected(tool_result_mismatch)`,
+   * with classified facts and none of the server's words; a request the proxy denied is a violation, and stops the run.
+   */
+  private async toolRead(connector: string, name: string, e: Extract<Expr, { op: "call" }>, ctx: Ctx, path: string): Promise<Value> {
+    const c = this.o.connectors!;
+    const tool = c.tool(connector, name);
+    if (!tool.read) throw new Violation("bad_connector", `${connector}.${name} at ${path} is a write tool: it is called only as an effect, through prepare, authorize and commit (MDT-E1405).`);
+    if (ctx.where !== "workflow") throw new Violation("bad_connector", `${connector}.${name} at ${path} is called in a contract: a tool is called in a workflow's body or by an agent's loop (MDT-E1405).`);
+    const { pos, named } = await this.args(e.args, ctx, path);
+    const args = Object.keys(named).length ? undefined : c.args(tool, plain(pos) as Value[]);
+    if (!args) throw new Violation("bad_connector", `${connector}.${name} at ${path} is not called with the parameters it declares.`);
+    if (!c.grantsRead(this.available(ctx), tool)) throw new Violation("authority_denied", `${connector}.${name} at ${path}: no capability of ${ctx.workflow} gives a call of ${tool.scope}.`);
+    const mode = this.o.mode ?? "live";
+    return this.command(path, "read", { tool: tool.scope, args, mode }, undefined, () => this.callRead(tool, args, mode, path, tool.full), { siblings: ctx.siblings, label: `tool ${connector}.${name}` });
+  }
+
+  /**
+   * One call of a read-only tool, as an outcome: its checked value; in a `design` run its sample, or
+   * `PolicyDenied(no_samples)`; a failure by kind and rule. The proxy's denial is recorded as the violation of `step`
+   * and stops the run (`connectorDenied`).
+   */
+  private async callRead(tool: BoundTool, args: Record<string, Value>, mode: RunMode, step: string, agent: string, delegate = step, signal?: AbortSignal): Promise<Outcome> {
+    const c = this.o.connectors!;
+    if (mode === "design") {
+      const s = c.sample(tool);
+      if ("none" in s) return { error: { tag: "PolicyDenied", args: [{ reason: "no_samples", tool: tool.scope }] }, cost: {} };
+      if ("mismatch" in s) return { error: { tag: "Rejected", args: ["tool_result_mismatch", { connector: tool.full, tool: tool.name, rule: "validator", sample: true }] }, cost: {} };
+      return { ok: s.value, cost: {} };
+    }
+    try {
+      return { ok: await c.call(tool, args, signal), cost: {} };
+    } catch (x) {
+      if (x instanceof McpDenied) await this.connectorDenied(tool, x.reason, step, agent, delegate);
+      if (!(x instanceof McpError)) throw x;
+      return { error: { tag: "Rejected", args: [x.kind, failureFacts(tool, failureOf(x))] }, cost: {} };
+    }
+  }
+
+  /**
+   * A connector's request the egress proxy denied (spec/library.md "Egress"): nothing of it was sent upstream. It is
+   * a violation, `egress_denied`, recorded once for its step and counted as every violation, and the run stops for a
+   * person.
+   */
+  private async connectorDenied(tool: BoundTool, reason: string, step: string, agent: string, delegate = step): Promise<never> {
+    await this.violation({ kind: "egress_denied", delegate, agent, step, detail: { connector: tool.full, tool: tool.name, reason } });
+    throw new Violation("egress_denied", `The egress proxy denied a request of connector ${tool.full} (${reason}) at ${step}; it was not sent upstream.`);
   }
 
   /** The data class of each field of a row type (§5.5): its named type's class, the highest along the way. */
@@ -1070,7 +1155,8 @@ export class Interpreter {
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
     // The tier is read from the envelope the run has now. An `infer` records its request, which names no tier.
     const tier = this.tierFor(e.using, ctx);
-    const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
+    // 0.6 (B28): the adapter escapes `<` and `>` in the input it quotes for the model; an earlier package's request is the bytes it was.
+    const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}), ...(is06(this.o.program) ? { escape: true } : {}) };
     return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.checkedInfer(req), { siblings: ctx.siblings, label: "infer", ...this.limits("infer", tier) });
   }
 
@@ -1306,6 +1392,10 @@ export class Interpreter {
       // A bodiless skill runs as an agent loop in this process (§8.2, K7). The delegation reserves the
       // agent's budget less what its finished steps already spent, so a resumed loop is not charged twice.
       const tiers = [...new Set(granted.filter((c) => c.ctor === "model.infer" && c.tier).map((c) => c.tier!))];
+      // 0.6: the read-only tools of connectors this delegation's grant names are offered to the loop beside its
+      // other tools, and answered here, in the control plane (spec/library.md "Three uses", 2). A write tool never is.
+      const offered = this.o.connectors?.any ? this.o.connectors.offered(granted) : undefined;
+      const extra: ToolSpec[] = [...(lead ? PLAN_TOOLS : []), ...(offered?.specs ?? [])];
       const task: LoopTask = {
         id,
         agent: agentName,
@@ -1322,8 +1412,13 @@ export class Interpreter {
         ...(budget?.spend ? { spend: budget.spend } : {}),
         sandbox,
         program: this.o.program,
-        ...(lead ? { extra: PLAN_TOOLS, brief: planBrief(this.o.plan!.parent, under.envelope!) } : {}),
+        ...(extra.length ? { extra } : {}),
+        ...(lead ? { brief: planBrief(this.o.plan!.parent, under.envelope!) } : {}),
+        ...(offered?.refused.length ? { refused: offered.refused } : {}),
+        // 0.6 (B28): `<` and `>` are escaped in the data the task hands the model; an earlier package sends the bytes it sent.
+        ...(is06(this.o.program) ? { escape: true } : {}),
       };
+      const toolOf = (name: string): BoundTool | undefined => offered?.byName.get(name);
       const planner = lead?.planner(
         (cid, req, call, stepLabel) => this.command(cid, "tool", req, undefined, call, { siblings: ctx.siblings, label: stepLabel, within: id, ...(overdue ? { guard: overdue } : {}), ...this.limits("tool", task.tier) }),
         lead.aside,
@@ -1354,7 +1449,16 @@ export class Interpreter {
                 await this.o.journal.lock(tx, this.o.runId);
                 await this.o.journal.event(tx, this.o.runId, "sandbox_stopped", { delegate: id, agent: agentName, handle, result });
               }),
-            ...(planner && lead ? { extra: (cid, name, input, stepLabel) => planner.call(cid, name, input, stepLabel) } : {}),
+            ...((planner && lead) || offered?.specs.length
+              ? {
+                  extra: (cid, name, input, stepLabel) => {
+                    const tool = toolOf(name);
+                    if (tool) return this.agentTool(tool, granted, input, { step: cid, label: stepLabel, delegate: id, agent: agentName, siblings: ctx.siblings, guard: overdue, tier: task.tier, deadline });
+                    if (!planner) throw new Violation("no_tool", `The runtime answers no tool ${name} for ${label}.`);
+                    return planner.call(cid, name, input, stepLabel);
+                  },
+                }
+              : {}),
             violation: (kind, step, detail) => this.violation({ kind, delegate: id, agent: agentName, step, detail }),
             // A sandbox that reaches hosts has an egress session for this run and tenant, which a cancel or a halt revokes.
             owner: { run: this.o.runId, tenant: this.o.policy.tenant },
@@ -1390,6 +1494,49 @@ export class Interpreter {
       },
       { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}), ...(atMostOnce ? { atMostOnce } : {}) },
     );
+  }
+
+  /**
+   * One call of a connector's read-only tool by an agent's loop (spec/library.md "Three uses", 2): the command
+   * `<delegate>/step/<n>/tool/<k>`, charged to the delegation, sent from the control plane through the connector's
+   * gateway. It is held to the agent's own grant when it is made, and a write tool is never an agent's: a call the
+   * grant does not give is a violation, and nothing is sent. The model is shown the checked result as data, its `<`
+   * and `>` escaped, or the call's failure by its code; never a word of the server's.
+   */
+  private async agentTool(
+    tool: BoundTool,
+    granted: CapVal[],
+    input: Record<string, unknown>,
+    o: { step: string; label: string; delegate: string; agent: string; siblings: Siblings | undefined; guard: (() => void) | undefined; tier: string; deadline?: number | undefined },
+  ): Promise<{ content: string; is_error?: boolean }> {
+    const c = this.o.connectors!;
+    const args = c.args(tool, tool.def.params.map((p) => (Object.hasOwn(input, p.name) ? (input[p.name] as Value) : null)));
+    if (!c.grantsRead(granted, tool) || !args) {
+      await this.violation({ kind: "authority_denied", delegate: o.delegate, agent: o.agent, step: o.step, detail: `${tool.connector}.${tool.name}: the delegation's grant gives no call of it` });
+      return { content: "Refused: this tool is not in your grant.", is_error: true };
+    }
+    // What a model passes is held as a server's answer is: no number or text the journal would keep as another, and none of the runtime's own members.
+    if (forbidden(args)) return { content: "Refused: an argument holds a value that cannot be sent (a number that is not finite, a text that is not well-formed, or a reserved member).", is_error: true };
+    const mode = this.o.mode ?? "live";
+    // The call ends with the delegation's time, when it has one; each request has its own limit besides (connectors.ts).
+    const left = o.deadline === undefined ? undefined : o.deadline - this.o.adapters.clock.now();
+    const signal = left === undefined || this.o.replay ? undefined : AbortSignal.timeout(Math.max(1, Math.min(left, 0x7fffffff)));
+    try {
+      const v = await this.command(o.step, "tool", { tool: tool.scope, input: args, mode }, undefined, () => this.callRead(tool, args, mode, o.step, o.agent, o.delegate, signal), {
+        siblings: o.siblings,
+        label: o.label,
+        within: o.delegate,
+        ...(o.guard ? { guard: o.guard } : {}),
+        ...this.limits("tool", o.tier),
+      });
+      const text = escapeAngles(canonical(v));
+      return { content: text.length > MAX_TOOL_OUTPUT ? `${text.slice(0, MAX_TOOL_OUTPUT)}\n[… ${text.length - MAX_TOOL_OUTPUT} more characters cut]` : text };
+    } catch (f) {
+      // The call's own failure reaches the model by its code. Anything else (a budget, a deadline, a stop) is not the tool's.
+      const code = f instanceof Fault ? (f.tag === "Rejected" ? f.args[0] : f.tag === "PolicyDenied" && isObj(f.args[0] ?? null) ? (f.args[0] as Obj)["reason"] : undefined) : undefined;
+      if (code !== "connector_protocol" && code !== "tool_result_mismatch" && code !== "no_samples") throw f;
+      return { content: `The call failed: ${code}.`, is_error: true };
+    }
   }
 
   /**
@@ -1525,7 +1672,8 @@ export class Interpreter {
       const symbolic = call.op === "call" ? call.args.map((a) => (a.value.op === "var" && this.isModulePath(a.value, ctx) ? { ...a, value: { op: "text" as const, value: a.value.name } } : a)) : [];
       const { pos, named } = call.op === "call" ? await this.args(symbolic, ctx, `${path}/call`) : { pos: [], named: {} };
       const system = this.systemFacts();
-      const req = { method, args: pos, named, contract, criterion: name, ...(system ? { system } : {}) };
+      // 0.6 (B28): the verifier is told to escape what it quotes for a model; an earlier package's request is the bytes it was.
+      const req = { method, args: pos, named, contract, criterion: name, ...(system ? { system } : {}), ...(is06(this.o.program) ? { escape: true as const } : {}) };
       const verifier = this.o.adapters.verifier;
       const r = await this.command(
         `${path}/call`,
@@ -1637,6 +1785,13 @@ export class Interpreter {
   // ── external effects: prepare → authorize → commit (§8.8) ─────────────
 
   private effectInfo(name: string): { critical: boolean; irreversible: boolean; params: TypeExpr[]; retryClass?: string } {
+    // 0.6: a connector's write tool is the critical effect `<connector>.<tool>`, never irreversible; the program
+    // does not pass its idempotency key, so that parameter is none of the effect's.
+    const tool = this.connectorWrite(name);
+    if (tool) {
+      const key = tool.def.idempotency_key;
+      return { critical: true, irreversible: false, params: tool.def.params.filter((p) => p.name !== key).map((p) => p.type), ...(tool.def.retry_class ? { retryClass: tool.def.retry_class } : {}) };
+    }
     const d = this.def(name);
     if (d?.kind === "effect") {
       const ed = d as EffectDef;
@@ -1647,28 +1802,81 @@ export class Interpreter {
     throw new Violation("unknown_effect", `No effect '${name}'.`);
   }
 
+  /** The write tool `name` names, `<connector>.<tool>`, when the package has connectors and it is one's (0.6). */
+  private connectorWrite(name: string): BoundTool | undefined {
+    const c = this.o.connectors;
+    const at = c?.splits(name);
+    if (!c || !at) return undefined;
+    const tool = c.tool(at.connector, at.tool);
+    if (tool.read) throw new Violation("bad_connector", `${name} is a read-only tool: it is called as an expression, never as an effect (MDT-E1405).`);
+    return tool;
+  }
+
+  /**
+   * Runs `fn` alone among the actions of one operation: two items of a batch commit step with one key are one
+   * action, and the second waits here until the first has settled it, so the action is never sent by both. One
+   * worker drives a run (R06), so the turn is kept in memory, by the run's interpreters together.
+   */
+  private async alone<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+    let turns = TURNS.get(this.shared);
+    if (!turns) TURNS.set(this.shared, (turns = new Map()));
+    const before = turns.get(operation) ?? Promise.resolve();
+    let done!: () => void;
+    const mine = new Promise<void>((r) => (done = r));
+    const next = before.then(() => mine);
+    turns.set(operation, next);
+    await before;
+    try {
+      return await fn();
+    } finally {
+      done();
+      if (turns.get(operation) === next) turns.delete(operation);
+    }
+  }
+
   private async effect(e: Extract<Expr, { op: "effect" }>, ctx: Ctx, path: string): Promise<Value> {
     const info = this.effectInfo(e.name);
     const { pos } = await this.args(e.args, ctx, path);
     const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
     const mode = this.o.mode ?? "live";
+    // 0.6: a write tool is held to what the context grants at run time, as a read is.
+    const write = this.connectorWrite(e.name);
+    if (write) {
+      if (ctx.where !== "workflow") throw new Violation("bad_connector", `${e.name} at ${path} is called in a contract: a write tool is an effect of a workflow's body (MDT-E1405).`);
+      if (!this.o.connectors!.grantsWrite(this.available(ctx), write)) throw new Violation("authority_denied", `${e.name} at ${path}: no capability of ${ctx.workflow} gives a call of ${write.scope}.`);
+    }
+    // 0.6: a critical effect in a map's body is a batch commit step (spec/library.md "The batch commit step").
+    const batch = ctx.map !== undefined && info.critical && is06(this.o.program) ? ctx.map : undefined;
     // A design run touches nothing: the effect is recorded as what it would have been (doc 9 §5.2).
     if (mode === "design") return this.simulated(e.name, plain(pos), path);
-    const p = await this.prepareAction(e.name, info, pos, plain(pos), key, ctx, path);
+    // An item of a batch commit step that was refused a person (`authorization`) is read as it was recorded.
+    if (batch !== undefined && this.o.replay) {
+      const refused = await this.o.journal.command(this.o.runId, `${path}/refused`);
+      if (refused) return replayed(refused, `${path}/refused`);
+    }
+    const p = await this.prepareAction(e.name, info, pos, plain(pos), key, ctx, path, {}, undefined, batch);
     if (!p.action) return p.receipt;
     // A read_only run goes as far as prepare: the action is frozen and recorded as what would apply, never committed.
     if (mode === "read_only") return this.wouldApply(p.action);
-    let action = p.action;
-    const { journal, runId, fence } = this.o;
-    let justCommitted = false;
-    if (action.state === "prepared") {
-      const authId = await this.authorization(e.name, info, action, path, undefined, this.environmentTier(e.name, e.args), this.governanceOf(action));
-      action = await journal.commit(runId, fence, action.operation_key, authId);
-      justCommitted = true;
-      this.o.faults.check("after_commit", { id: path, kind: "effect" });
-    }
-    if (action.state === "dispatched") return this.dispatchAction(p.tool, action, justCommitted);
-    return this.settledAction(action);
+    const settle = async (found: ActionRow): Promise<Value> => {
+      let action = found;
+      const { journal, runId, fence } = this.o;
+      let justCommitted = false;
+      if (action.state === "prepared") {
+        const authId = await this.authorization(e.name, info, action, path, undefined, this.environmentTier(e.name, e.args), this.governanceOf(action), batch);
+        const before = action.state;
+        action = await journal.commit(runId, fence, action.operation_key, authId);
+        // A commit that found the action already committed by another (never in one worker's turn) did not commit it.
+        justCommitted = batch === undefined || (before === "prepared" && action.state === "dispatched");
+        this.o.faults.check("after_commit", { id: path, kind: "effect" });
+      }
+      if (action.state === "dispatched") return this.dispatchAction(p.tool, action, justCommitted, write, path);
+      return this.settledAction(action);
+    };
+    // The items of a batch commit step that share a key share an action: each takes its turn, and reads it as it is then.
+    if (batch === undefined) return settle(p.action);
+    const operation = p.action.operation_key;
+    return this.alone(operation, async () => settle((await this.o.journal.action(operation)) ?? p.action!));
   }
 
   /**
@@ -1689,6 +1897,8 @@ export class Interpreter {
     extra: Obj = {},
     /** A change set member's component: its files are checked against evidence keyed `<component>/<path>`. */
     component?: string,
+    /** The map whose batch commit step this is (0.6): the map names the action, with the effect and the key. */
+    batch?: string,
   ): Promise<{ tool: ToolAdapter; action: ActionRow; receipt?: undefined } | { tool: ToolAdapter; action?: undefined; receipt: Value }> {
     // INV-13: a parameter declared Verified<T, C> must carry evidence for C at run time too.
     for (const [i, t] of info.params.entries()) {
@@ -1700,7 +1910,8 @@ export class Interpreter {
       }
       if (!this.o.replay) await this.checkVerified(name, v);
     }
-    const tool = this.o.adapters.tools[name];
+    // 0.6: a connector's write tool has the connector's adapter, and no other; the configuration's tools cannot stand in for it.
+    const tool = this.o.connectors?.write(name) ?? this.o.adapters.tools[name];
     if (!tool) throw new Violation("no_adapter", `No adapter for effect ${name}.`);
     const contract = tool.describe();
     // Prepare (§8.8): the adapter checks the parameters and reads the files the action will apply. They are frozen
@@ -1741,9 +1952,12 @@ export class Interpreter {
     // operation is named by the run, the plan, the effect and the key, and not by where the sub-program stands. A
     // second sub-program with the same effect and key finds the first one's action.
     const sub = this.o.sub;
-    const shared = sub !== undefined && key !== null && !component;
+    // A batch commit step (0.6) names an item's action by the map, the effect and the key, not by the item: two
+    // items with one key are one action. In a sub-program the rule of `plan` holds instead.
+    const named = sub !== undefined ? sub.plan : batch;
+    const shared = named !== undefined && key !== null && !component;
     const operationKey = shared
-      ? digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: sub.plan, effect: name, key })
+      ? digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: named, effect: name, key })
       : digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: path, action: actionDigest });
     const { journal, runId, fence } = this.o;
 
@@ -1978,9 +2192,14 @@ export class Interpreter {
    * (§8.9): idempotent adapters get the same operation key again, reconcilable
    * ones are asked first, non-retryable ones become unknown_outcome.
    */
-  private async dispatchAction(tool: ToolAdapter, action: ActionRow, fresh: boolean): Promise<Value> {
+  private async dispatchAction(tool: ToolAdapter, action: ActionRow, fresh: boolean, connector?: BoundTool, at?: string): Promise<Value> {
     const { journal, runId, fence, faults } = this.o;
     const op = action.operation_key;
+    // A connector's request the proxy denied (0.6) leaves the action `unknown_outcome`, never `rejected`, since a
+    // request the same operation sent before may have reached the server; it is a violation, and the run stops.
+    const denied = async (reason: string | undefined): Promise<void> => {
+      if (connector && reason !== undefined) await this.connectorDenied(connector, reason, at ?? action.command_id, connector.full);
+    };
     if (!fresh) {
       if (action.retry_class === "non_retryable") {
         await journal.finishAction(runId, fence, op, "unknown_outcome", { detail: "dispatched before a crash; not retryable" });
@@ -1994,13 +2213,17 @@ export class Interpreter {
         }
         if ("unknown" in r) {
           await journal.finishAction(runId, fence, op, "unknown_outcome", { detail: r.unknown });
+          await denied(r.denied);
           return this.settledAction({ ...action, state: "unknown_outcome" });
         }
       }
     }
     const auth = await this.authRow(action);
     const artifacts = await this.actionArtifacts(action);
-    const res = await tool.execute({ effect: action.effect, params: action.params, actionDigest: action.action_digest, operationKey: op, ...(artifacts.length ? { artifacts } : {}) }, auth, op);
+    const prepared = { effect: action.effect, params: action.params, actionDigest: action.action_digest, operationKey: op, ...(artifacts.length ? { artifacts } : {}) };
+    // A connector's adapter is told whether the operation was sent before: by a worker that died, or before a
+    // reconciliation that found it not applied. Only a first request's refusal proves the operation did nothing.
+    const res = connector ? await tool.execute(prepared, auth, op, { before: !fresh || (await this.sentBefore(op)) }) : await tool.execute(prepared, auth, op);
     faults.check("after_execute", { id: action.command_id, kind: "effect" });
     if ("confirmed" in res) {
       await journal.finishAction(runId, fence, op, "confirmed", { receipt: res.confirmed });
@@ -2011,7 +2234,14 @@ export class Interpreter {
       throw new Fault("Rejected", [res.rejected]);
     }
     await journal.finishAction(runId, fence, op, "unknown_outcome", { detail: res.unknown });
+    await denied(res.denied);
     return this.settledAction({ ...action, state: "unknown_outcome" });
+  }
+
+  /** Whether an operation's action was sent and answered for before: its outbox record counts each answer recorded. */
+  private async sentBefore(operationKey: string): Promise<boolean> {
+    const [row] = await this.o.journal.db.query("select attempts from outbox where operation_key = $1", [operationKey]);
+    return Number(row?.["attempts"] ?? 0) > 0;
   }
 
   /**
@@ -2143,6 +2373,8 @@ export class Interpreter {
     member?: { role: string; changeset: string; component: string },
     env?: { environment: string; tier: Tier },
     gov?: { files: Array<{ file: string; kind: string }>; owner: string },
+    /** The map whose batch commit step the action is of (0.6): it is authorized by policy, and never asks a person. */
+    batch?: string,
   ): Promise<string> {
     const configured = this.o.policy.authorize?.[effect];
     // `approve E by r` in the run's envelope (spec/envelope.md): E is authorized only by a decision of role r, never by
@@ -2171,6 +2403,16 @@ export class Interpreter {
     // A governance-class file needs its owner (K70), and is never lowered: a policy becomes the owner's decision, and
     // another person's decision comes after the owner's own, both bound to the same action digest.
     const governance = gov ? (gov.files as unknown as Value) : undefined;
+    // Nothing in a map's body waits for a person: an item whose action would need one (the envelope's `approve`, an
+    // environment's tier, the runtime's policy for the effect, a governance-class file) is not asked about. It fails,
+    // and the other items go on (spec/library.md "The batch commit step").
+    // The refusal is recorded, as the failed command `<effect>/refused`, so that a resumed run and a replay read it
+    // there, whatever the runtime's policy is by then.
+    if (batch !== undefined && (pol.by === "human" || gov)) {
+      const f = new Fault("PolicyDenied", [{ reason: "person_in_map", effect, map: staticPath(batch), role: pol.by === "human" ? pol.role : gov!.owner }]);
+      await this.command(`${path}/refused`, "refusal", { refused: f.tag }, undefined, async () => ({ error: { tag: f.tag, args: f.args }, cost: {} }));
+      throw f;
+    }
     if (gov && pol.by === "policy") pol = { by: "human", role: gov.owner };
     else if (gov && pol.by === "human" && pol.role !== gov.owner) {
       const gate = await this.wait(`${path}/governance`, "decision", {

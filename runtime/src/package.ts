@@ -160,8 +160,8 @@ function storesRunning(pkg: Pick<Package, "program" | "lock">): boolean {
 /**
  * The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes, `map` and `plan`; of
  * 0.5 the program and every field of its lock; of 0.6 what 0.5 has, `pub`, doc lines, closed imports, libraries
- * (a module of one may import another it reaches), `std.patterns`, and patterns whose expansion holds only what it
- * runs; see `notRunYet` and NOT_RUN_YET_06.
+ * (a module of one may import another it reaches), `std.patterns`, patterns whose expansion holds only what it
+ * runs, connectors with the lock that binds them, and the batch commit step; see `notRunYet` and NOT_RUN_YET_06.
  */
 export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4", "mandate/0.5", LANGUAGE_06];
 
@@ -239,21 +239,6 @@ const named = (o: Record<string, unknown>, name: string, member: string): boolea
  * implements a construct takes its line out, and nothing else.
  */
 export const NOT_RUN_YET_06: readonly NotRunYet06[] = [
-  // Connectors at run time: the MCP client, connector gateways, schema digests, samples (spec/library.md "Connectors").
-  { name: "connector", slice: "B9", node: (o, at) => at.key !== "" && o["kind"] === "connector" && typeof o["mcp"] === "string" },
-  { name: "tool.call", slice: "B9", node: (o) => named(o, "tool", "call") },
-  { name: "lock.connectors", slice: "B9", pkg: (p) => isObj(p.lock.connectors) && Object.keys(p.lock.connectors).length > 0 },
-  // The batch commit step (spec/library.md "The batch commit step"): a critical effect in a map body, which 0.6
-  // allows. An effect there that is not a definition this runtime knows not to be critical is taken as one.
-  {
-    name: "batch commit step",
-    slice: "B9",
-    node: (o, at) => {
-      if (!at.inMap || o["op"] !== "effect" || typeof o["name"] !== "string") return false;
-      const d = Object.hasOwn(at.defs, o["name"]) ? at.defs[o["name"]] : undefined;
-      return !isObj(d) || d["kind"] !== "effect" || d["critical"] === true;
-    },
-  },
   // `human.review` and waivers (spec/library.md "`human.review` and waivers").
   { name: "human.review", slice: "B10", node: (o) => named(o, "human", "review") },
   { name: "waive by", slice: "B10", node: (o, at) => at.key !== "" && Array.isArray(o["waive"]) && o["by"] !== undefined },
