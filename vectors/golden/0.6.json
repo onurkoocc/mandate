@@ -63,6 +63,26 @@
     "view --against itself": "sha256:7389a7bfa1bc02fcfb68381527b366d89e799a9a9a478bc2951664cec6dfdec5",
     "sandbox": "sha256:351dd346b0f35143970a851bf60131ba67b92c6c79c22c4387e3db87f91d9e20"
   },
+  "fixtures/library/migrate-all.mdt": {
+    "check": "sha256:74b85a57d86438521924a5df734e1b4851746505fed4561b18aed74aacf4ac79",
+    "check --module": "sha256:74b85a57d86438521924a5df734e1b4851746505fed4561b18aed74aacf4ac79",
+    "check --lock": "sha256:2b903378ad87cde5e380bbc4341b6409e94131829648d812459a5edff1f72aa7",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:b2462e76d443a42e749e2f77f75a8474728039f46164c8345ce841b180579725",
+    "fmt": "sha256:5168bddcaf78763f9bae146a6746154cf5a7042a81a0e0c77e9841377a6bd12d",
+    "hash": "sha256:a2ab148394b1b6bb41e1ebdcd05e1431404781f9c1ce8b46f8acb287ec775162",
+    "view --format json": "sha256:81dc4a6ae044207bb41d26fc6c9c64c88dda38c78b9c16da897756611c86aadf",
+    "view --format md": "sha256:4fd3034c5cea58fb55a7bfba7b8db8407f2d79013664667a927bebbea905edc7",
+    "view --format html": "sha256:8029c5d585e7412b51ea0bf55a82cd1de6e8634e525e041559732bb5f157ba36",
+    "view --against itself": "sha256:c7fd12a7026e4c45f515e24cc4aad581d6838cb8923de512000fd81712ac4f92",
+    "sandbox": "sha256:2f783097c76c2f9311f94c93a912d38791c2174578f8139f13884eb0221c5d2c",
+    "view --card --format json": "sha256:875665879da4e6816a3080c9fdb5971b9dfe98b529ddcca98511a6be57875939",
+    "view --card --format md": "sha256:d811f982e819ea6f71b1a40b28c66bbbab32ec006bb75e20f26471e370869d2b",
+    "view --card --format html": "sha256:2778bb917ff5482f1859c81ab290a3d98ee784e136e6f8cfb1effca43a1fc521",
+    "check_subprogram migrate-all.plans/fan-out.mdt": "sha256:5b8fa20e83f7839970008d1e8c0f0c92a6e82459effe904f53cb62ae174c11ef",
+    "check_subprogram migrate-all.plans/written-out.mdt": "sha256:ec0834a65c7fdb8786a1afc1c5a59a70cbabd6f5a460a20cf78158dc39d70513",
+    "check_subprogram migrate-all.plans/maker-checker.mdt": "sha256:f340b1729d04e884474079341ae1140f5a9489bb80b56e0dd0b334f36bf33de4"
+  },
   "fixtures/library/minimal.mdt": {
     "check": "sha256:32a94dc9ae9be1d764f908f122d77530f69ca951b9bf4f8c121759b3e3726175",
     "check --module": "sha256:32a94dc9ae9be1d764f908f122d77530f69ca951b9bf4f8c121759b3e3726175",

@@ -651,6 +651,19 @@ impl<'a> Parser<'a> {
                     env.set("spawn", spawn);
                 }
                 "approve" => self.approval(&mut env)?,
+                // 0.6: `shapes [P, …]`, contextual, read only in a program of 0.6.
+                "shapes" if self.reads_0_6() => {
+                    let shapes = self.shapes()?;
+                    env.set("shapes", shapes);
+                }
+                _ if self.reads_0_6() => {
+                    return Err(fail_at(
+                        format!(
+                            "Expected owner, caps, budget, spawn, approve or shapes in an envelope but found '{field}'."
+                        ),
+                        t,
+                    ));
+                }
                 _ => {
                     return Err(fail_at(
                         format!(
@@ -713,6 +726,29 @@ impl<'a> Parser<'a> {
             ));
         }
         Ok(spawn)
+    }
+
+    /// An envelope's `shapes [P, …]` (0.6; spec/library.md "`shapes`"): the
+    /// patterns a lead's sub-programs may apply, at least one, each once, as
+    /// a sorted set. A name given twice is E0121 at the second; whether each
+    /// is a pattern is the check's (E1711).
+    fn shapes(&mut self) -> Res<Vec<Node>> {
+        self.bump();
+        self.expect_p("[")?;
+        let mut names: Vec<String> = Vec::new();
+        loop {
+            let nt = self.t();
+            let name = self.ident("a pattern name")?;
+            if names.contains(&name) {
+                self.dup("shape", &name, nt);
+            }
+            names.push(name);
+            if !self.eat_p(",") {
+                break;
+            }
+        }
+        self.expect_p("]")?;
+        Ok(sorted_set(names))
     }
 
     /// An envelope's `approve effect by role`.

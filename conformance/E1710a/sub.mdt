@@ -1,0 +1,16 @@
+// The definitions of a lead's sub-program of N11/parent.mdt (E1710a): a
+// type of its own named Each, the name of a shape, and an application of
+// Each, which then means the sub-program's definition, not the parent's
+// pattern. Only its definitions are read.
+
+mandate @ 0.6
+
+module example.shaped.plan_1 @ 0.1
+
+use example.shaped
+
+type Each = { name: Text }
+
+workflow Look = Each(work: Worker.look, width: 2)
+  caps   M, R
+  budget { tokens: 2000, time: 10m, spend: 2 USD, steps: 10, agents: 2 }

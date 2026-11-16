@@ -1,0 +1,17 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1711a",
+  "kind": "compile",
+  "title": "A shape that names Batch, a type the program imports from std.patterns (a mutation: the first shape), is not a pattern.",
+  "spec": ["spec/library.md#shapes", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../N11/parent.mdt", "kind": "mdt" },
+  "patch": [{ "op": "replace", "path": "/defs/Run/envelope/shapes/0", "value": "Batch" }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E1711", "path": "/defs/Run/envelope/shapes/0", "facts": { "workflow": "Run", "shape": "Batch", "kind": "type", "module": "std.patterns" } }
+    ]
+  }
+}
