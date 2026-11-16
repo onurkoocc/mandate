@@ -232,7 +232,7 @@ needs06("a review's wait", () => {
     const result = r.result as Obj;
     expect([(result["posted"] as Value[]).length, result["declined"], result["failed"]]).toEqual([3, [], []]);
     // Each item's verify journaled its verdict: what a review reads, and nothing else.
-    expect((await w.db.query<{ n: number }>("select count(*) as n from commands where run_id = 'w1' and kind = 'verdict'"))[0]!.n).toBe(3);
+    expect(Number((await w.db.query<{ n: number | string }>("select count(*) as n from commands where run_id = 'w1' and kind = 'verdict'"))[0]!.n)).toBe(3);
   });
 
   it("with a mixed batch, opens one wait for the accountant that lists only the items that failed what may be waived", async () => {
