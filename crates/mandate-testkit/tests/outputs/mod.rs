@@ -16,8 +16,8 @@ use mandate_ir::{Diagnostic, JsObject, JsValue, canonicalize, stringify_pretty};
 use mandate_syntax::{kind_of, load};
 use mandate_testkit::read_json;
 use mandate_views::{
-    architecture_with, authority_with, card, card_doc, cost_with, envelope_workflows, program_doc,
-    to_html, to_markdown,
+    architecture_with_lock, authority_with, card, card_doc, cost_with, envelope_workflows,
+    program_doc, to_html, to_markdown,
 };
 
 use crate::common::{
@@ -207,7 +207,10 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
         // is shown as its expansion (the same as without them for a program
         // that applies none).
         let views = JsObject::new()
-            .with("architecture", architecture_with(p, Some(&modules)).to_js())
+            .with(
+                "architecture",
+                architecture_with_lock(p, lock.as_ref(), Some(&modules)).to_js(),
+            )
             .with("authority", authority_with(p, Some(&modules)).to_js())
             .with("cost", cost_with(p, lock.as_ref(), Some(&modules)).to_js());
         out.push((
