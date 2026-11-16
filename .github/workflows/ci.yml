@@ -2,17 +2,14 @@ name: ci
 
 on:
   push:
-    branches: [main, "claude/library-r*"]
+    branches: [main, "feature/07-attention"]
   pull_request:
 
-# What runs when. A pull request and a push to main run every job. A push to a
-# claude/library-r* branch, the slices of a release, runs only the rust and
-# parity jobs, without a pull request: a slice is brought to green on its
-# branch before its pull request is opened, and the jobs that are slow and need
-# PostgreSQL or a real sandbox (test, sandbox, sandbox-windows) are left to the
-# pull request.
-# A branch with an open pull request is pushed to twice over, as a push and as
-# a pull request, so those two jobs run twice.
+# What runs when. Every job runs on a pull request, on a push to main and on a push to feature/07-attention, the branch
+# of release 0.7: its slices are verified before their pull requests are opened, by running these jobs on the commit in
+# Docker (scripts/docker-ci.sh, docker/README.md), and the pull request of a slice into the branch runs them again here.
+# A branch with an open pull request is pushed to twice over, as a push (if it is main or feature/07-attention) and as a
+# pull request, so every job runs twice then.
 #
 # Every job reads the repository and nothing else. Actions are pinned to full
 # commit SHAs (the tag is in the comment) so a moved tag cannot change what
@@ -24,7 +21,6 @@ permissions:
 
 jobs:
   test:
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -184,7 +180,6 @@ jobs:
   # On two Ubuntu releases, so that what is enforced (the sandbox, and its egress through the proxy alone) is shown on a
   # second kernel and a second Bubblewrap and slirp4netns. A failure of one release does not stop the other.
   sandbox:
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       matrix:
@@ -262,7 +257,6 @@ jobs:
           grep -A1 '"code": "chain_broken",' "$ACCEPTANCE/rust-tampered.json" | grep -q "\"seq\": $seq\$"
 
   sandbox-windows:
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -312,6 +306,10 @@ jobs:
         with:
           node-version: 24.22.1
           cache: npm
+      # The Docker environment in which a developer runs these jobs locally (docker/README.md) holds the versions this
+      # file pins and no path for a secret into a container: it cannot drift from this file without failing here.
+      - name: The Docker environment is what this workflow pins
+        run: node docker/check.mjs
       - run: npm ci --ignore-scripts
       - run: npm run build
       # The Rust verifier against the TypeScript runtime on a run made now: a

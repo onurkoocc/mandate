@@ -1,0 +1,88 @@
+# The job runner of scripts/docker-ci.sh and the services the jobs of .github/workflows/ci.yml use (a PostgreSQL server
+# and an OpenTelemetry Collector, by the same digests as ci.yml). Always run through the script, which passes
+# `--project-directory docker --env-file docker/empty.env`, so that no `.env` file is read (docker/README.md, "The
+# secret boundary"). docker/check.mjs fails on an env_file, a mount of the Docker socket or of a `.env`, a published
+# port, `privileged`, or a bind mount other than the read-only git directory.
+name: mandate-ci
+
+x-runner: &runner
+  # The build context is this directory (docker/): nothing else of the host reaches the image.
+  image: mandate-ci-runner:local
+  pull_policy: never
+  init: true
+  # No `environment`, no env_file: no variable of the host is passed through. The script gives each run the few values
+  # it needs with `-e NAME=value` on the command line, every one of them written in the script itself.
+  volumes:
+    # The repository's git directory (the common one: a worktree's .git is a file), read-only. The runner clones a
+    # commit from it; the Windows working tree is never mounted.
+    - type: bind
+      source: ${MANDATE_CI_GIT_DIR:?set by scripts/docker-ci.sh}
+      target: /git
+      read_only: true
+    - cargo-home:/cache/cargo
+    - cargo-target:/ci/repo/target
+    - npm-cache:/cache/npm
+    - otel-config:/otel/config
+    - otel-out:/otel/out
+
+services:
+  runner:
+    <<: *runner
+    build:
+      context: .
+      dockerfile: Dockerfile
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    profiles: [run]
+
+  # The sandbox job only: Bubblewrap needs user namespaces, which the default seccomp and AppArmor profiles of a
+  # container refuse. Not privileged, no Docker socket, no host network.
+  runner-sandbox:
+    <<: *runner
+    cap_drop: [ALL]
+    cap_add: [SYS_ADMIN, NET_ADMIN]
+    security_opt: ["seccomp=unconfined", "apparmor=unconfined"]
+    # slirp4netns (the proxy-only egress of the sandbox) opens /dev/net/tun, which a container does not have by default.
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    profiles: [run]
+
+  # As in ci.yml's test job; the server is reached on the private network of the project, with trust authentication
+  # (no password anywhere), and its port is not published. Its data is in memory: every run starts from nothing.
+  postgres:
+    image: postgres:16.15@sha256:f9a7b9ebf6f56201f949db745e47bc423c0f0f8294bafe991cc10bf74b029657
+    environment:
+      POSTGRES_USER: mandate
+      POSTGRES_DB: mandate_test
+      POSTGRES_HOST_AUTH_METHOD: trust
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mandate -d mandate_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles: [services]
+
+  # As in ci.yml's test job: the core distribution of the collector. Its configuration is the one of the commit under
+  # test (runtime/test/otel-collector.yaml), put in the otel-config volume by the script before the collector starts;
+  # what it writes is in the otel-out volume, which the runner mounts too. It runs as the runner's uid (1000), so that
+  # the file it writes is one the test can read, as in ci.yml.
+  otel-collector:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector:0.165.0@sha256:34b24b740c3c88d3467740e8642a397c13898ef76d7295c5425164c482ed1b73
+    user: "1000:1000"
+    volumes:
+      - otel-config:/etc/otelcol:ro
+      - otel-out:/out
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    profiles: [services]
+
+volumes:
+  # The cargo registry and git caches (CARGO_HOME).
+  cargo-home:
+  # The cargo target directory, mounted at <clone>/target (scripts/build-wasm.mjs reads target/, not CARGO_TARGET_DIR).
+  cargo-target:
+  # The npm download cache.
+  npm-cache:
+  otel-config:
+  otel-out:
