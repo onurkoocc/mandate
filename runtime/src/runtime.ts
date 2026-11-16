@@ -304,6 +304,8 @@ export class Runtime {
     // 0.6: the connectors the package can call, bound by its lock. A run that reaches their servers (`read_only`,
     // `live`) starts only where their requests have a way out, and the proxy is asked for their credentials too.
     const connectors = isPackage06(o.pkg) ? this.connectorsFor(linked, o.pkg.lock, this.adapters) : undefined;
+    // Every declared tool is bound now, in every mode: one that cannot be (`bad_connector`) starts nothing.
+    connectors?.bindAll();
     const reaches = connectors !== undefined && (o.mode ?? "live") !== "design" ? connectors : undefined;
     if (reaches) {
       if (!this.adapters.connectors) {
@@ -744,6 +746,8 @@ export class Runtime {
   private async connectorsAtResume(run: RunRow, loaded: Loaded, fence: number): Promise<Connectors | undefined> {
     const connectors = this.connectorsFor(loaded.program, loaded.lock, this.adapters);
     const mode = isObj(run.manifest) && typeof run.manifest["mode"] === "string" ? run.manifest["mode"] : "live";
+    // As at the start: every declared tool is bound before the run goes on, in every mode.
+    connectors?.bindAll();
     if (!connectors || mode === "design") return connectors;
     if (!this.adapters.connectors) throw new Violation("no_egress_for_connector", `Run ${run.run_id} can call ${connectors.names().join(", ")}; a connector's requests leave only through the egress proxy, and this runtime's configuration names none (egress.admin).`);
     try {
@@ -770,13 +774,24 @@ export class Runtime {
     return { tool: this.adapters.tools[effect] };
   }
 
-  /** Whether `effect` is `<connector>.<tool>` of a connector the run's 0.6 program holds; nothing is bound, and no server reached. */
+  /**
+   * Whether `effect` is `<connector>.<tool>` of a connector the run's 0.6 program holds; nothing is bound, and no
+   * server reached. When the package of 0.6 cannot be loaded, its connectors are not known (a library's are in the
+   * running program only): an effect of the form `<name>.<tool>` could be one's, and is taken for one, so that no
+   * configured adapter is asked about an operation a connector's server holds.
+   */
   private async namesConnector(runId: string, effect: string): Promise<boolean> {
     const run = await this.journal.run(runId);
     if (!isPackage06(await this.packaged(run.package_hash))) return false;
-    const loaded = await this.loaded(run.package_hash, run);
     const dot = effect.indexOf(".");
-    return dot > 0 && connectorsOf(loaded.program).some(([name]) => name === effect.slice(0, dot));
+    if (dot <= 0) return false;
+    let program: Program;
+    try {
+      program = (await this.loaded(run.package_hash, run)).program;
+    } catch {
+      return true;
+    }
+    return connectorsOf(program).some(([name]) => name === effect.slice(0, dot));
   }
 
   private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[], bound?: Connectors): Interpreter {

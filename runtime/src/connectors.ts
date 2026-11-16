@@ -200,7 +200,7 @@ export class Connectors {
     if (!result || !isClosed(this.o.program, result)) throw new Violation("bad_connector", `connector ${b.full}: the result type of ${name} names a type the running program does not define, so nothing could be held to it.`);
     const wrapped = !isRecord(this.o.program, result);
     const resultSchema = heldSchema(this.o.program, wrapped ? { record: { [RESULT_MEMBER]: result } } : result);
-    if (!resultSchema) throw new Violation("bad_connector", `connector ${b.full}: the result type of ${name} has a refinement the runtime cannot hold a server's answer to (it holds a bound of an Int, or of the len of a List or a Text, by a whole number, and such bounds joined by and).`);
+    if (!resultSchema) throw new Violation("bad_connector", `connector ${b.full}: the result type of ${name} has a refinement or a Map's key type the runtime cannot hold a server's answer to (it holds a bound of an Int, or of the len of a List or a Text, by a whole number, and such bounds joined by and; and a Map whose keys are texts or an enum's).`);
     if (!read) {
       const keyParam = def.idempotency_key;
       if (typeof keyParam !== "string" || !def.params.some((p) => p.name === keyParam)) throw new Violation("bad_connector", `connector ${b.full}: ${name} names no parameter for its idempotency key (MDT-E1401).`);
@@ -208,6 +208,17 @@ export class Connectors {
     const tool: BoundTool = { connector, full: b.full, name, scope: `${b.full}.${name}`, def, read, resultSchema, wrapped, digest: pinned };
     this.tools.set(key, tool);
     return tool;
+  }
+
+  /**
+   * Binds every tool every connector declares, as `tool` does: a start and a resume call it, so that a tool that
+   * cannot be bound (a result type nothing could be held to, no pinned digest) refuses the run before anything is
+   * called or committed, and not at the tool's first call in the middle of it. It reaches no server.
+   */
+  bindAll(): void {
+    for (const b of [...this.bound.values()].sort((x, y) => (x.full < y.full ? -1 : x.full > y.full ? 1 : 0))) {
+      for (const name of Object.keys(b.def.tools).sort()) this.tool(b.name, name);
+    }
   }
 
   /** The `fetch` a connector's requests leave by: its gateway's, held to the bound endpoint, following no redirect. */
@@ -506,7 +517,7 @@ function storable(s: string): boolean {
 /**
  * Whether a value holds, at any depth, what no result may hold, whatever its declared type admits: a member of
  * `FORBIDDEN_MEMBERS`; a number that is not finite, or `-0` (JSON writes the first as `null` and the second as `0`,
- * so the journal would hold another value than the run saw); a text or a member's name the journal cannot store
+ * so the journal would hold another value than the run saw), or a whole number that is not a safe integer; a text or a member's name the journal cannot store
  * (`storable`). The same holds of a sample, and of the arguments an agent gives a tool. Walked without recursion;
  * the client bounds the depth.
  */
@@ -515,7 +526,8 @@ export function forbidden(v: Value): boolean {
   while (stack.length) {
     const x = stack.pop()!;
     if (typeof x === "number") {
-      if (!Number.isFinite(x) || Object.is(x, -0)) return true;
+      // A whole number past 2^53 was rounded when it was read: it names another record than the server meant.
+      if (!Number.isFinite(x) || Object.is(x, -0) || (Number.isInteger(x) && !Number.isSafeInteger(x))) return true;
     } else if (typeof x === "string") {
       if (!storable(x)) return true;
     } else if (Array.isArray(x)) for (const y of x) stack.push(y);

@@ -1672,7 +1672,8 @@ export class Interpreter {
       const symbolic = call.op === "call" ? call.args.map((a) => (a.value.op === "var" && this.isModulePath(a.value, ctx) ? { ...a, value: { op: "text" as const, value: a.value.name } } : a)) : [];
       const { pos, named } = call.op === "call" ? await this.args(symbolic, ctx, `${path}/call`) : { pos: [], named: {} };
       const system = this.systemFacts();
-      const req = { method, args: pos, named, contract, criterion: name, ...(system ? { system } : {}) };
+      // 0.6 (B28): the verifier is told to escape what it quotes for a model; an earlier package's request is the bytes it was.
+      const req = { method, args: pos, named, contract, criterion: name, ...(system ? { system } : {}), ...(is06(this.o.program) ? { escape: true as const } : {}) };
       const verifier = this.o.adapters.verifier;
       const r = await this.command(
         `${path}/call`,
