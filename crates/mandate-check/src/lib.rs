@@ -42,6 +42,9 @@
 //!   [`check()`] (E1605, E1606, E1608), the authority signature
 //!   ([`library::signature`]) and `add`, `upgrade` and `publish` as pure
 //!   functions ([`library::ops`], E1607). Rust only.
+//! - [`shapes`]: an envelope's `shapes` from 0.6 on ([`shapes::shape_checks`],
+//!   [`shapes::subprogram_shape_of`], [`shapes::Shape`]): E1711 and E1710.
+//!   Rust only.
 //! - [`expand`]: patterns and their expansion from 0.6 on
 //!   ([`expand::expand`], [`expand::Expansion`], [`expand::for_views`]):
 //!   E1301 to E1307. Rust only.
@@ -169,6 +172,7 @@ pub mod posix;
 pub mod resolve;
 pub mod roles;
 pub mod sandbox;
+pub mod shapes;
 pub mod statics;
 pub mod stdlib;
 pub mod subprogram;

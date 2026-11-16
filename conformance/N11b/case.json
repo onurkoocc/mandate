@@ -1,0 +1,20 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "N11b",
+  "kind": "compile",
+  "title": "An amendment that drops a shape the envelope lists narrows what the lead may submit: E1709 with the dimension shapes.",
+  "spec": ["spec/library.md#shapes", "spec/envelope.md#amendments-n04", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../N11/parent.mdt", "kind": "mdt" },
+  "amendment": {
+    "workflow": "Run",
+    "patch": [{ "op": "remove", "path": "/shapes/1" }]
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E1709", "path": "/defs/Run/envelope/shapes", "facts": { "dimension": "shapes", "shape": "FanOutMerge", "was": ["Each", "FanOutMerge"], "asked": ["Each"] } }
+    ]
+  }
+}

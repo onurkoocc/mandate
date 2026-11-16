@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { libraryCommand, Stop, type LibraryArgs } from "../src/cli-library.js";
 import { authoritySignature, canonicalize, librariesConfigProblems, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, NoReference, type Json, type LibrarySource } from "../src/index.js";
 import { beside, Files, isLibraryName, isModulePath, joinPath, libraryIn, lockPins, parseVersion, pinnedIn, rangeHolds, readManifest, versionsIn } from "../src/libraries.js";
@@ -22,6 +22,9 @@ import { modulePath } from "../src/wasm/module.js";
 import { buildTree, repoRoot, type Tree } from "./tree.js";
 
 const rust = compilerMode() !== "ts" && existsSync(modulePath());
+
+// The tests here start the executable many times each: the default five seconds is too little on a busy machine.
+vi.setConfig({ testTimeout: 60_000 });
 /** The tests that need the Rust compiler, which alone reads 0.6: skipped by name in `ts` mode. */
 const needs06 = rust ? describe : describe.skip;
 
@@ -690,9 +693,13 @@ needs06("the mandate executable with libraries", () => {
   it("shows the views, the card, the diff, the sandbox requirements and the ACS target with the modules of the libraries", async () => {
     const lib = ["--lock", INVOICES_LOCK, "--libraries", "libs"];
     for (const format of ["md", "html", "json"]) {
-      // The program is checked with its libraries before its card is asked for: it has no envelope, and that is what is said.
+      // The program is checked with its libraries before its card is asked for. In 0.6 a workflow without an envelope
+      // has a card too (its caps and budget stand in for the envelope's), given the modules of the libraries.
       const card = await mandate("view", INVOICES, ...lib, "--card", "--format", format);
-      expect(card, format).toEqual({ code: 1, out: "", err: `mandate: ${INVOICES} has no workflow with an envelope, so it has no card\n` });
+      expect(card.code, `${format}: ${card.err}`).toBe(0);
+      expect(card.err).toBe("");
+      expect(card.out, format).toContain("MatchInvoices");
+      if (format === "md") expect(card.out).toContain("Spend bound of map it: 60 × 0.30 USD = 18 USD ≤ 20 USD.");
       const view = await mandate("view", INVOICES, ...lib, "--format", format);
       expect(view.code, `${format}: ${view.err}`).toBe(0);
       expect(view.out, format).toContain("MatchInvoices");
@@ -776,6 +783,8 @@ needs06("the mandate executable with libraries", () => {
       "fixtures/library/drafts.mdt": connectors,
       "fixtures/library/review.mdt": connectors,
       "fixtures/library/invoices.mdt": [],
+      // The shaped migration imports nothing but std and std.patterns (crates/mandate-testkit/tests/outputs).
+      "fixtures/library/migrate-all.mdt": [],
       "fixtures/library/batch.mdt": [...connectors, "fixtures/library/batch.patterns.mdt"],
     };
     const commands: Array<[name: string, locked: boolean, withModules: boolean, args: string[]]> = [

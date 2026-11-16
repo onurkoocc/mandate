@@ -204,7 +204,13 @@ fn every_0_5_fixture_under_the_0_6_header_gives_what_it_gives_as_0_5() {
             return Ok(());
         }
         let as_0_5 = outputs::outputs_of(p)?;
-        let as_0_6 = outputs::outputs_of_text(p, rewritten)?;
+        let mut as_0_6 = outputs::outputs_of_text(p, rewritten)?;
+        // 0.6 makes a card for a workflow without an envelope too (spec/library.md
+        // "Views"), so a program of 0.5 that has none gains one under the 0.6
+        // header: that is what 0.6 adds here, and the rest is what it was.
+        if !as_0_5.iter().any(|(n, _)| n.starts_with("view --card")) {
+            as_0_6.retain(|(n, _)| !n.starts_with("view --card"));
+        }
         let names = |o: &[(String, String)]| o.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
         if names(&as_0_5) != names(&as_0_6) {
             return Err(format!(

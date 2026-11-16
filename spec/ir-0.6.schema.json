@@ -188,6 +188,9 @@
             "$ref": "#/$defs/QName"
           },
           "minProperties": 1
+        },
+        "shapes": {
+          "$ref": "#/$defs/NameSet"
         }
       },
       "additionalProperties": false

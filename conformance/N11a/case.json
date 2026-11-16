@@ -1,0 +1,17 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "N11a",
+  "kind": "compile",
+  "title": "A shape that is not a pattern, an agent of the program (a mutation: the first shape), is refused at the name.",
+  "spec": ["spec/library.md#shapes", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../N11/parent.mdt", "kind": "mdt" },
+  "patch": [{ "op": "replace", "path": "/defs/Run/envelope/shapes/0", "value": "Worker" }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E1711", "path": "/defs/Run/envelope/shapes/0", "facts": { "workflow": "Run", "shape": "Worker", "kind": "agent" } }
+    ]
+  }
+}

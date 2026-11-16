@@ -25,6 +25,7 @@ use crate::caps::{CapOptions, caps_of};
 use crate::check::{CheckOptions, check};
 use crate::modules::{Modules, link, link_reaching, reach_of_modules};
 use crate::patch::{GovernanceChange, PatchOp, apply_ops, apply_patch};
+use crate::shapes::{Shape, shapes_of, subprogram_shape_of};
 use crate::stdlib::DataClass;
 use crate::subprogram::{
     Room, containment, language_of, opened, skeleton, subprogram_shape, subprogram_workflow,
@@ -152,7 +153,8 @@ pub struct SubprogramInput<'a> {
 
 /// What [`check_subprogram`] gives: `SubprogramCheck`, `{ ok, diagnostics,
 /// program?, hash?, workflow? }`, and, 0.6, `{ running?, running_hash? }`
-/// for a sub-program that applies a pattern.
+/// for a sub-program that applies a pattern and `shape?` for one whose
+/// parent has `shapes`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SubprogramCheck {
     /// The sub-program passed every check and fits what is left of the
@@ -178,11 +180,17 @@ pub struct SubprogramCheck {
     /// The hash of `running` ([`hash_program`]), when there is one: what a
     /// run names the stored running program by.
     pub running_hash: Option<String>,
+    /// 0.6, when `ok` and the envelope has `shapes`: the shape its workflow
+    /// applies (spec/library.md "`shapes`"), which the runtime journals.
+    /// Rust only; none for every other parent, so the result of a parent
+    /// without `shapes` is what it was.
+    pub shape: Option<Shape>,
 }
 
 impl SubprogramCheck {
     /// The result as the TypeScript writes it: `{ ok, diagnostics, program?,
-    /// hash?, workflow? }`, then, 0.6, `{ running?, running_hash? }`.
+    /// hash?, workflow? }`, then, 0.6, `shape` and `{ running?, running_hash? }`,
+    /// each when there is one.
     #[must_use]
     pub fn to_js(&self) -> JsValue {
         JsObject::new()
@@ -197,6 +205,7 @@ impl SubprogramCheck {
             .with_some("program", self.program.as_ref().map(JsValue::from))
             .with_some("hash", self.hash.as_deref())
             .with_some("workflow", self.workflow.as_deref())
+            .with_some("shape", self.shape.as_ref().map(Shape::to_js))
             .with_some("running", self.running.as_ref().map(JsValue::from))
             .with_some("running_hash", self.running_hash.as_deref())
             .into()
@@ -211,6 +220,7 @@ impl SubprogramCheck {
             workflow: None,
             running: None,
             running_hash: None,
+            shape: None,
         }
     }
 }
@@ -239,7 +249,9 @@ fn applies_a_pattern(program: &Value) -> bool {
 /// Checks a lead's sub-program and whether it fits what is left of the
 /// envelope (spec/envelope.md "The sub-program", INV-15):
 /// `checkSubprogram(i)`. In order: the patch applies to the skeleton of its
-/// number; it defines only what a sub-program may (E1705); all of `check`
+/// number; it defines only what a sub-program may (E1705); in 0.6, when the
+/// envelope has `shapes`, its workflow applies one of them (E1710,
+/// `crate::shapes`); all of `check`
 /// passes, with every definition of the parent in sight and its workflow
 /// under the parent's envelope; its claim fits `room` (E1706). Nothing is
 /// saved and nothing runs.
@@ -281,6 +293,23 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
         return Ok(SubprogramCheck::refused(diagnostics));
     }
     let view = opened(&sub, i.parent);
+    // 0.6: with `shapes`, its one workflow applies one of them, the very
+    // pattern the parent lists (E1710), before anything else of it is
+    // checked.
+    let mut shape: Option<Shape> = None;
+    if reads_0_6(i.parent)
+        && let Some(shapes) = shapes_of(&envelope)
+        && let (Some(parent), Some(view)) = (Program::of(i.parent), Program::of(&view))
+    {
+        let workflow = subprogram_workflow(&sub).unwrap_or_default();
+        match subprogram_shape_of(parent, &shapes, view, &workflow) {
+            Ok(s) => shape = Some(s),
+            Err(d) => {
+                diagnostics.push(*d);
+                return Ok(SubprogramCheck::refused(diagnostics));
+            }
+        }
+    }
     // `{ ...(i.modules ?? {}), [i.parent.module]: i.parent }`.
     let mut modules = i.modules.cloned().unwrap_or_default();
     modules.insert(parent_module, i.parent.clone());
@@ -436,6 +465,7 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
         workflow: Some(workflow),
         running,
         running_hash,
+        shape,
     })
 }
 

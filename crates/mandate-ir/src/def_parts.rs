@@ -80,7 +80,8 @@ impl<'a> Remote<'a> {
     }
 }
 
-/// A workflow's envelope (0.4): `{ owner?, caps?, budget?, spawn?, approve? }`.
+/// A workflow's envelope (0.4): `{ owner?, caps?, budget?, spawn?, approve?
+/// }`, and from 0.6 `shapes?`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Envelope<'a> {
     map: &'a Map,
@@ -114,6 +115,13 @@ impl<'a> Envelope<'a> {
     /// `approve`: by effect, the role that approves it.
     pub fn approve(self) -> impl Iterator<Item = (&'a str, &'a Value)> {
         entries(self.map, "approve")
+    }
+
+    /// `shapes` (0.6; spec/library.md "`shapes`"), when there: the names of
+    /// the patterns a lead's sub-programs may apply, every element included.
+    #[must_use]
+    pub fn shapes(self) -> Option<&'a [Value]> {
+        list_given(self.map, "shapes")
     }
 }
 
