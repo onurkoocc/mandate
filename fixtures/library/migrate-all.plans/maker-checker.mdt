@@ -1,0 +1,26 @@
+// A sub-program the lead of migrate-all.mdt might write (spec/library.md
+// "shapes"): one repository migrated by the migrator and looked over by an
+// auditor that writes nothing, as an application of MakerChecker, a shape
+// the envelope lists. What the auditor finds is held to Moved, whose last
+// criterion the release manager decides. The repository is a constant
+// written at the application. It is admitted, its result naming the shape
+// (MakerChecker of std.patterns). Only its definitions are the lead's patch.
+
+mandate @ 0.6
+
+module company.migrations.plan_3 @ 0.1
+
+use company.migrations
+
+agent Auditor {
+  role   "Looks for what the migration of one repository left out. Writes nothing."
+  caps   RepoRead, ModelStd
+  budget { tokens: 100k, spend: 0.5 USD, steps: 6 }
+  skill audit(repo: Repo, s: Inferred<Summary>) -> Inferred<Summary> ! {Fs.Read, Model}
+}
+
+workflow Billing = MakerChecker<Repo, Summary>(
+    input: Repo { name: "billing", root: "billing" },
+    make: Migrator.migrate, check: Auditor.audit, accepted: Moved, owner: platform_lead)
+  caps   RepoRead, SrcWrite, Build, ModelStd
+  budget { tokens: 1000k, time: 1h, spend: 2 USD, steps: 40, agents: 2 }

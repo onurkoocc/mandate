@@ -5,10 +5,12 @@
 //! [`mandate_check::Graph`], which the semantic diff also stands on.
 
 use mandate_check::{
-    ArchEdge, ArchKind, ArchNode, Graph, Modules, ProgramRef, VIEW_FORMAT, is_kind, program_ref,
+    ArchEdge, ArchKind, ArchNode, Graph, Modules, ProgramRef, VIEW_FORMAT, defs_of, is_kind,
+    program_ref,
 };
 use mandate_ir::{Definition, JsObject, JsValue, Program, Value, workflow_bounds};
 
+use crate::card_library::pattern_of;
 use crate::doc::{Block, Cell};
 use crate::shown::{list, mermaid_text, show, sorted_defs};
 
@@ -19,6 +21,10 @@ pub struct WorkflowArchitecture {
     pub workflow: String,
     /// Its budget as one line.
     pub budget: String,
+    /// 0.6: the pattern it applies and the library's version,
+    /// `BatchWithExceptions (std.patterns 1.0.0)`; `None` for a workflow that
+    /// applies none (and not written).
+    pub pattern: Option<String>,
     /// Its steps.
     pub nodes: Vec<ArchNode>,
     /// What follows what.
@@ -28,12 +34,13 @@ pub struct WorkflowArchitecture {
 }
 
 impl WorkflowArchitecture {
-    /// `{ workflow, budget, nodes, edges, mermaid }`.
+    /// `{ workflow, budget, pattern?, nodes, edges, mermaid }`.
     #[must_use]
     pub fn to_js(&self) -> JsValue {
         JsObject::new()
             .with("workflow", self.workflow.as_str())
             .with("budget", self.budget.as_str())
+            .with_some("pattern", self.pattern.as_deref())
             .with(
                 "nodes",
                 JsValue::Array(self.nodes.iter().map(ArchNode::to_js).collect()),
@@ -131,14 +138,32 @@ pub fn architecture(program: &Value) -> ArchitectureView {
 /// applies no pattern is shown as [`architecture`] shows it.
 #[must_use]
 pub fn architecture_with(program: &Value, modules: Option<&Modules>) -> ArchitectureView {
+    architecture_with_lock(program, None, modules)
+}
+
+/// [`architecture_with`] with the lock (0.6): a workflow that applies a
+/// pattern names it with its library and the version the lock pins
+/// (`BatchWithExceptions (std.patterns 1.0.0)`); without the lock the library
+/// is the built-in `std.patterns`, and any other is named by its module.
+#[must_use]
+pub fn architecture_with_lock(
+    program: &Value,
+    lock: Option<&Value>,
+    modules: Option<&Modules>,
+) -> ArchitectureView {
     let mut workflows: Vec<WorkflowArchitecture> = Vec::new();
     // 0.6: a workflow that applies a pattern is shown as its expansion.
     let expanded = mandate_check::expand::for_views(program, modules);
+    let written = Program::of(program);
     if let Some(p) = Program::of(expanded.as_ref().unwrap_or(program)) {
         for (name, d) in sorted_defs(p) {
             if !is_kind(d, "workflow") {
                 continue;
             }
+            let pattern = written
+                .and_then(|w| defs_of(w).get(name).map(|orig| (w, orig)))
+                .and_then(|(w, orig)| pattern_of(w, orig, lock, modules))
+                .map(|p| p.text);
             let mut g = Graph::new(p, d);
             g.block(Definition::of(d).body(), Vec::new());
             let budget = show(workflow_bounds(d).budget);
@@ -146,6 +171,7 @@ pub fn architecture_with(program: &Value, modules: Option<&Modules>) -> Architec
             workflows.push(WorkflowArchitecture {
                 workflow: name.to_owned(),
                 budget,
+                pattern,
                 nodes: g.nodes,
                 edges: g.edges,
                 mermaid,
@@ -163,10 +189,13 @@ pub fn architecture_with(program: &Value, modules: Option<&Modules>) -> Architec
 pub fn architecture_blocks(v: &ArchitectureView) -> Vec<Block> {
     let mut out = vec![Block::H("Architecture".to_owned())];
     for w in &v.workflows {
-        out.push(Block::P(format!(
-            "Workflow {}, budget {}.",
-            w.workflow, w.budget
-        )));
+        out.push(Block::P(match &w.pattern {
+            Some(p) => format!(
+                "Workflow {}, budget {}. It applies the pattern {p}.",
+                w.workflow, w.budget
+            ),
+            None => format!("Workflow {}, budget {}.", w.workflow, w.budget),
+        }));
         out.push(Block::Code {
             code: w.mermaid.clone(),
             lang: Some("mermaid".to_owned()),

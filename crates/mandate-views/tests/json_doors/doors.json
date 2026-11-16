@@ -1,7 +1,7 @@
 {
   "format": "mandate/doors/0.1",
   "doors": [
-    {"name":"architecture","ts":"architecture","params":["program","modules"],"note":"modules (optional) is the Rust's alone: the modules a workflow's pattern comes from (language 0.6), so that a workflow that applies one is read as its expansion. The TypeScript function is not given it; a program that applies no pattern gives the same with or without it."},
+    {"name":"architecture","ts":"architecture","params":["program","modules","lock"],"note":"modules (optional) is the Rust's alone: the modules a workflow's pattern comes from (language 0.6), so that a workflow that applies one is read as its expansion. lock (optional) is the Rust's alone too: with it a workflow that applies a pattern names its library and the version the lock pins. The TypeScript function is given neither; a program that applies no pattern gives the same with or without them."},
     {"name":"architecture_blocks","ts":"architectureBlocks","params":["v"]},
     {"name":"authority","ts":"authority","params":["program","modules"],"note":"modules (optional) is the Rust's alone: the modules a workflow's pattern comes from (language 0.6), so that a workflow that applies one is read as its expansion. The TypeScript function is not given it; a program that applies no pattern gives the same with or without it."},
     {"name":"authority_blocks","ts":"authorityBlocks","params":["v"]},

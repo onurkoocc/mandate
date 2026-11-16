@@ -5,11 +5,14 @@
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
     "ir --canonical": "sha256:18196b383a9580a60da1b9e149ab6c714896c61f4b86f61ce016a7b7856457b7",
     "fmt": "sha256:fee44e9f58274ed439875552348e077e8b8e742062f0af80537d92f832d57998",
-    "view --format json": "sha256:9efd95710076c96d1990b232b771084c2f87a9292cb13884b286022a07256b1f",
-    "view --format md": "sha256:bed2db76d153face0c603bcc541c34b3f12fd37d8639739bb86fa0fa63f352d2",
-    "view --format html": "sha256:259611eaaee5896a7903d4c86c51c16a17b3adcf9b2bfa6fac8c19bd539b456b",
+    "view --format json": "sha256:840b9bd6ad5df9ab967b2e1e99517219c406eca54fa9da1a71db8313300560b1",
+    "view --format md": "sha256:7c90a8af04c63a459ba7ec2c404ae099c1daff1847bfb1aeac0982a82e41ff40",
+    "view --format html": "sha256:92ad4e1e17a03d02b189103479246cd24b20dd04f8f2c477cc52617c23f72550",
     "view --against itself": "sha256:f8af67fee3648d97ab18985c0815223c75e5ab7bc3f240f8bd77f3b8234932af",
-    "sandbox": "sha256:3fd497cef6826a3e683f9c9ceed0e0d38a2718f55e19219a38d7685217136997"
+    "sandbox": "sha256:3fd497cef6826a3e683f9c9ceed0e0d38a2718f55e19219a38d7685217136997",
+    "view --card --format json": "sha256:b8e5651ec4979c578caf93f26c9b24f14c47dcd2d881fb0ca0ac7a20d21322ad",
+    "view --card --format md": "sha256:19c1fed857618a141102f880a19be65b71e08ef0d0e4dc311243fdeb0e8c6938",
+    "view --card --format html": "sha256:1bc1eb1270740806f8a17a8137ab010ba0319e684b2d307040bcb85597791a81"
   },
   "fixtures/library/batch.patterns.mdt": {
     "check": "sha256:24fe7e3add24ded4ce44038367f791da16bdc40704bc0098b5f32d5424bdf130",
@@ -30,11 +33,14 @@
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
     "ir --canonical": "sha256:a285fc3e80d4d97e294c24817882ca823d6721c37a35da8cb5ed0320099dcec0",
     "fmt": "sha256:24f9e4af4e59aacbe4edc334ebf65f233e3c46e1745dd873f45ef2066c8e30cc",
-    "view --format json": "sha256:5d7c8a5a47bab7a76527f690a7f008fb87dab3b5f9bdd306b439906c1279bcc4",
-    "view --format md": "sha256:a1381651e1a6e9379f3d010ef9c0f1acb72125cb1f1cf254a5fa2ec2b51c8a77",
-    "view --format html": "sha256:6727023a5ea1a86d8541ce48fdb8c5d0bedcbce75466e8e3fb2a4ce6b38c3b15",
+    "view --format json": "sha256:f8823c928580ed311402e4db423c2000a1e1167c4199f602a344db989212e344",
+    "view --format md": "sha256:d501cb23e1be4d12501fd5abc35c1e1271c68ddbc1da71323f080faf08b6650c",
+    "view --format html": "sha256:b503e1ecf1ef651983ae1a84d59b554acefaa1127aec0ca976d58ec31b4cb257",
     "view --against itself": "sha256:851bfcefde70e305dce165510f4326ac5550aec7ec9623bbe1cccfa34289eb38",
-    "sandbox": "sha256:0e0d38a3bdd3c86629af11f395e0e3868155bc362e44e733b351d08c91bebdbf"
+    "sandbox": "sha256:0e0d38a3bdd3c86629af11f395e0e3868155bc362e44e733b351d08c91bebdbf",
+    "view --card --format json": "sha256:269cc84abfe3b2e0654d71feb465bec31949e471286ee5225d8a470dc2f72575",
+    "view --card --format md": "sha256:dcf0ad90a6b575fd0c0621a5406401347d1294cb850884ec20cf5967c4768659",
+    "view --card --format html": "sha256:1051d8aadd615ccfd127e031105b6e96ab16e0dff5fe3b884eab7e1395fd2429"
   },
   "fixtures/library/fetch.mdt": {
     "check": "sha256:aeb69f06731dc36edb01af03e0e53eedb45a879273216d23792d036385e1726d",
@@ -48,7 +54,10 @@
     "view --format md": "sha256:ba92b2c56b0f7a32ea780efad8aadda22983d42239995d8359c42f356a4d8220",
     "view --format html": "sha256:d978369a5a21103b3e7449bf231dce2d3c1fb6681f38124a12b6f00098b893f2",
     "view --against itself": "sha256:1ccf406710d7fc90cbb633cc70763dbe1817dbe677147a8635cf78ddd37682c6",
-    "sandbox": "sha256:4ef8296bf71952f69a72c8d6441e71819134046a666e26219df6aa4c00fdf223"
+    "sandbox": "sha256:4ef8296bf71952f69a72c8d6441e71819134046a666e26219df6aa4c00fdf223",
+    "view --card --format json": "sha256:d104cfad28f6fe920646b213d0c93a871313336ea6241858cf9a9c87483ad75d",
+    "view --card --format md": "sha256:b5a604adc6948c04e754503d29cd56a36b5a1b64744f6d8935a7b1d0a3e133c5",
+    "view --card --format html": "sha256:4f717f525d7044efa652b23e780d9df577b1f8fbac3506854dcfeab9af399a8b"
   },
   "fixtures/library/invoices.mdt": {
     "check": "sha256:cf79a3d21965992ef51ad635030ab5c79a583f1c9460f0dafa368b57a5976788",
@@ -57,11 +66,34 @@
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
     "ir --canonical": "sha256:8112b3878ebdb6d0879fbc1a50f8b6fe3f08c5876492854d660f5c67fe21d160",
     "fmt": "sha256:36b3dbd7c1c86c00fecdb7152469a0011a9d39162db87e9e8e0f2911c8955189",
-    "view --format json": "sha256:37ce4f16eb1036d2a931c103ee2b53549ab61378f82bb568755740fcce406c75",
-    "view --format md": "sha256:927c1d4e70e09ba907ce64988b8413f3eb4607b454b51022fb388bf77f99ac64",
-    "view --format html": "sha256:e6ca015a91d3910aac8f5309b796b3637c052331fae2c9a163dbed7a1673d874",
+    "view --format json": "sha256:d915aac1630e665d55ce23a78a34fab1f10c1c4a3946093332d56c1a9bc33339",
+    "view --format md": "sha256:57d595bcdc696a562736fbfa6c531abb14de32e7097b7f439fbfcf1bb6a1bea7",
+    "view --format html": "sha256:9a5fd6effc6850cc6848b28f59d67f83b9475ac11715ca80191381a082e47b0f",
     "view --against itself": "sha256:7389a7bfa1bc02fcfb68381527b366d89e799a9a9a478bc2951664cec6dfdec5",
-    "sandbox": "sha256:351dd346b0f35143970a851bf60131ba67b92c6c79c22c4387e3db87f91d9e20"
+    "sandbox": "sha256:351dd346b0f35143970a851bf60131ba67b92c6c79c22c4387e3db87f91d9e20",
+    "view --card --format json": "sha256:cc82e4c57602744b9ccc596d44076561bea2dd571d46b4586004fb0a3f391c06",
+    "view --card --format md": "sha256:8b559f427ad059f9032dc60b7508f0c8e94952cc9171c293875ade2edffb2cf3",
+    "view --card --format html": "sha256:7b36e3c1e34526c2ecbab05894683d0622c6d10932698d4d7d0f4b79d99c2066"
+  },
+  "fixtures/library/migrate-all.mdt": {
+    "check": "sha256:74b85a57d86438521924a5df734e1b4851746505fed4561b18aed74aacf4ac79",
+    "check --module": "sha256:74b85a57d86438521924a5df734e1b4851746505fed4561b18aed74aacf4ac79",
+    "check --lock": "sha256:2b903378ad87cde5e380bbc4341b6409e94131829648d812459a5edff1f72aa7",
+    "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "ir --canonical": "sha256:b2462e76d443a42e749e2f77f75a8474728039f46164c8345ce841b180579725",
+    "fmt": "sha256:5168bddcaf78763f9bae146a6746154cf5a7042a81a0e0c77e9841377a6bd12d",
+    "hash": "sha256:a2ab148394b1b6bb41e1ebdcd05e1431404781f9c1ce8b46f8acb287ec775162",
+    "view --format json": "sha256:81dc4a6ae044207bb41d26fc6c9c64c88dda38c78b9c16da897756611c86aadf",
+    "view --format md": "sha256:4fd3034c5cea58fb55a7bfba7b8db8407f2d79013664667a927bebbea905edc7",
+    "view --format html": "sha256:8029c5d585e7412b51ea0bf55a82cd1de6e8634e525e041559732bb5f157ba36",
+    "view --against itself": "sha256:c7fd12a7026e4c45f515e24cc4aad581d6838cb8923de512000fd81712ac4f92",
+    "sandbox": "sha256:2f783097c76c2f9311f94c93a912d38791c2174578f8139f13884eb0221c5d2c",
+    "view --card --format json": "sha256:39ee82b5b24d38d4e05017572058f76b53af02c67c7130f9b4fffe979a2eece1",
+    "view --card --format md": "sha256:2ad0ca2f1ee76c615906434ad796efc747b28dc23fa1355b308a0abac491bab0",
+    "view --card --format html": "sha256:993461878f8e5c2681d6abf7774466ceda6b8269885bd173581e9c3024e534d1",
+    "check_subprogram migrate-all.plans/fan-out.mdt": "sha256:ecedddbeebdc163fed207bce43951c5631e7a9d210ae95f1d1182a6ae73a6d70",
+    "check_subprogram migrate-all.plans/written-out.mdt": "sha256:ec0834a65c7fdb8786a1afc1c5a59a70cbabd6f5a460a20cf78158dc39d70513",
+    "check_subprogram migrate-all.plans/maker-checker.mdt": "sha256:ca3667ff13a23a005714bdb3539400dff12ce8fecd681249fb369e0e2c0f47d6"
   },
   "fixtures/library/minimal.mdt": {
     "check": "sha256:32a94dc9ae9be1d764f908f122d77530f69ca951b9bf4f8c121759b3e3726175",
@@ -74,7 +106,10 @@
     "view --format md": "sha256:7c2a80678ab715f7481884e102081f39bc5afc79643907e2d5acf1a9660d332b",
     "view --format html": "sha256:94ffeb553474cf188c46505913ca36f230ff67b6c7b8d22ad2f3ced0a4acdad8",
     "view --against itself": "sha256:8f62105d74178033594f03c0e5e6c03fd7cfdfd13b6c10248f9dde279822f0eb",
-    "sandbox": "sha256:c8a2943b96fb4e1dcdbb42c2cc2d8bc7ead2675dd163089373f2f2e43940645e"
+    "sandbox": "sha256:c8a2943b96fb4e1dcdbb42c2cc2d8bc7ead2675dd163089373f2f2e43940645e",
+    "view --card --format json": "sha256:b1d3256b79e74c23de5bd085fba70b9309e1d91b1387fd666ac0644a806d16ab",
+    "view --card --format md": "sha256:d9dbfbc5730b1f38f04cb9aaef3a4716a8093f473141f795154e52f632a6a5e5",
+    "view --card --format html": "sha256:8fa4ee7a7a424f923719e9275ed89bbed5611a822280ce4adf8fe49e3a05d5ef"
   },
   "fixtures/library/review.mdt": {
     "check": "sha256:2d02218a0dee15d3c2b53c62f6ac71f1bbea1c79bc5e1e265868527987c14ea4",
@@ -82,11 +117,14 @@
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
     "ir --canonical": "sha256:90469fae99560aaed76eb33e224bbcaaf3f243d417a09ad43eddf727d6264b18",
     "fmt": "sha256:6d85a5198584a451cce77fb01f414f20b3d7b476694c1302e865eddd08e7699e",
-    "view --format json": "sha256:6489e42af774b9c7132b34d046b99dc883e363dd45f07c1d6cb9b883dbb57bc0",
-    "view --format md": "sha256:a7118dadd255ebae0883f94fda65193ffceafe6113e15c2fd3be00233005a1b4",
-    "view --format html": "sha256:c04e16492560515961a2b8da2ae69444e16441d2ae5e40492d8d13f11eafd108",
+    "view --format json": "sha256:d7bf1dc41a716a7b5fed7224afb404d839830cb17283b111dc75b1324477e115",
+    "view --format md": "sha256:9da345e4a0be7a22d69bc5dec761b93a4b627c24f7a6ece94a44d194f965a432",
+    "view --format html": "sha256:480d11c5df50572d02fb1f8d0e2dfeb1fdef1ad23a020f2ff7a421d88b76b936",
     "view --against itself": "sha256:449fe4ed032f4b8538b99940ccdc9cd0635a707c4c1d66a3a6659752de88a949",
-    "sandbox": "sha256:7029d570826f45d9ab69ecf89ec41c2c19e2b313b94dbbe1264a346b3607b716"
+    "sandbox": "sha256:7029d570826f45d9ab69ecf89ec41c2c19e2b313b94dbbe1264a346b3607b716",
+    "view --card --format json": "sha256:a856180b032e626d517eff9cf6dfb18184616ca9a953a7ae03cd6541c447eca1",
+    "view --card --format md": "sha256:c2fbef6ccb8aa27908ab069285a8ea591b7076e56f0f0c4de7370bd1049353ad",
+    "view --card --format html": "sha256:581cfd8a5d704b592e54f3286bd9fa2662bf5fbc9168c0086f76d1e96fb115f0"
   },
   "fixtures/library/shared.mdt": {
     "check": "sha256:2eda72389f6229bf1bc847f45b8c71ab873d9c59e67b3ccb84a1eba527f53737",
@@ -107,10 +145,13 @@
     "load": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
     "ir --canonical": "sha256:eac8f836616309f1b1704d5f90ceb634ce211e2981254f819ee2e373cc02788a",
     "fmt": "sha256:f393bb85964203b0af8601768c6cd8ce0be1bffa5fb91461c60e784ac72c959e",
-    "view --format json": "sha256:32e21778a50ba6366128945ad0ce3df5d390cd5c235c5240895a1c9f15e5a7ef",
+    "view --format json": "sha256:75fe46b8981f4fa4dd4121d4faf12b16fdfa1819eb7f6647ff1c390f7b94143d",
     "view --format md": "sha256:7783016e89a34f06aabe234cba82889de33ab3ffe662783a86dd2dc9be847f1c",
     "view --format html": "sha256:27e9abb449da7560707293bfcd14bdfb082e3a8bc2a1ac2c9b637760b988ab6b",
     "view --against itself": "sha256:3882f91017a298d09c43127cd5ad38c793f7d60749a4eaaf78cf62902c679df0",
-    "sandbox": "sha256:6bfcdd65aabd38f75ecba94a73b11c947746cace7f862d60658719d13d1e299b"
+    "sandbox": "sha256:6bfcdd65aabd38f75ecba94a73b11c947746cace7f862d60658719d13d1e299b",
+    "view --card --format json": "sha256:671b1b8cc35334f46f17c9a2368b9ac6c57e827426b6d7c56e575dc89c7e8f2a",
+    "view --card --format md": "sha256:dfbc120e11da77dc8afe4246e1ce3f88c29de7ede4fbed7314525b254fd589e0",
+    "view --card --format html": "sha256:2c732c4075d7fcb8913e69da1afe9a1678fd809c3448cb1fde06dbfdc6faeb87"
   }
 }

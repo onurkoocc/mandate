@@ -153,6 +153,14 @@ fn texts(m: &Map, at: &str, key: &str) -> Result<Vec<String>, DoorError> {
         .collect()
 }
 
+/// The member `key` of `m`, an array of strings; left out is none.
+fn opt_texts(m: &Map, at: &str, key: &str) -> Result<Vec<String>, DoorError> {
+    match m.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(_) => texts(m, at, key),
+    }
+}
+
 /// A cell: a string, or `{ text, untrusted?, mono? }`.
 fn cell_of(v: &Value, at: &str) -> Result<Cell, DoorError> {
     match v {
@@ -302,6 +310,7 @@ fn architecture_view_of(v: &Value) -> Result<ArchitectureView, DoorError> {
         Ok(WorkflowArchitecture {
             workflow: text(w, at, "workflow")?,
             budget: text(w, at, "budget")?,
+            pattern: opt_text(w, at, "pattern")?,
             nodes: items(w, at, "nodes", |n, at| {
                 Ok(ArchNode {
                     id: text(n, at, "id")?,
@@ -354,6 +363,7 @@ fn authority_view_of(v: &Value) -> Result<AuthorityView, DoorError> {
                 money: texts(r, at, "money")?,
                 unbounded: texts(r, at, "unbounded")?,
             },
+            tools: opt_texts(r, at, "tools")?,
         })
     })?;
     Ok(AuthorityView {

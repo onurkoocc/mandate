@@ -460,8 +460,19 @@ pub fn effect_info(program: Program<'_>, name: &str) -> EffectInfo {
         };
     }
     let s = std_effect(name);
+    // 0.6: a write tool of a connector the program names (`c.t`, which only a
+    // program of 0.6 has defined) is its own critical effect, never
+    // irreversible (spec/library.md "Tool classes").
+    let write_tool = s.is_none()
+        && name.split_once('.').is_some_and(|(c, t)| {
+            defs_of(program)
+                .get(c)
+                .and_then(ConnectorDef::of)
+                .and_then(|conn| conn.tool(t))
+                .is_some_and(|tool| tool.is_write())
+        });
     EffectInfo {
-        critical: s.is_some_and(|s| s.critical),
+        critical: write_tool || s.is_some_and(|s| s.critical),
         irreversible: s.is_some_and(|s| s.irreversible),
     }
 }
