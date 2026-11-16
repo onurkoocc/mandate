@@ -210,7 +210,17 @@ export type Check06 = (text: string, kind: SourceKind, opts?: CheckOptions06) =>
  * through what the parent's libraries reach), and `running_hash`, the hash of that. `program` and `hash` stay the
  * sub-program as the lead wrote it. A sub-program that applies none is given neither.
  */
-export type SubprogramCheck06 = SubprogramCheck & { running?: Program06; running_hash?: string };
+export type SubprogramCheck06 = SubprogramCheck & { running?: Program06; running_hash?: string; shape?: Shape06 };
+
+/**
+ * The shape a lead's sub-program applies (spec/library.md "`shapes`"): the pattern's name and the module that defines
+ * it. `check_subprogram` gives it, beside `running` and `running_hash`, for an admitted sub-program whose parent's
+ * envelope has `shapes`; the result for a parent without `shapes` has no such member.
+ */
+export interface Shape06 {
+  pattern: string;
+  module: string;
+}
 
 /** `checkSubprogram` as the bridge exports it: the reference's, which a parent of 0.6 reaches only in the Rust. */
 export type CheckSubprogram06 = (i: SubprogramInput) => SubprogramCheck06;

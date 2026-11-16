@@ -180,7 +180,10 @@ export function costDims(c: Cost | Budget | undefined): Record<string, number> {
  * sub-program that applies a pattern (0.6), also `running`: the hash of its
  * running program (expanded, with all its parent sees linked in) as its check
  * gave it, and where that is in the artifact store. Its run, its resumes and
- * its replays run that stored one, and never expand again.
+ * its replays run that stored one, and never expand again. Under a parent whose
+ * envelope has `shapes` (0.6), also `shape`: the pattern it applies and the
+ * module that defines it, as its check named them. A parent without `shapes`
+ * has none, and the event has no such member.
  */
 export interface Admission {
   plan: string;
@@ -192,6 +195,7 @@ export interface Admission {
   artifact: string;
   workflow: string;
   running?: { hash: string; artifact: string };
+  shape?: { pattern: string; module: string };
   reservation?: Record<string, number>;
 }
 
