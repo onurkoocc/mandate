@@ -1,0 +1,18 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E0104g",
+  "kind": "compile",
+  "title": "shapes in the envelope of a program of 0.4 is refused: it is no member of the IR of 0.1 to 0.5.",
+  "spec": ["spec/library.md#shapes", "spec/ir.md#reading-ir"],
+  "language": "mandate/0.6",
+  "input": { "file": "../N01/parent.mdt", "kind": "mdt" },
+  "modules": ["../N01/domain.mdt"],
+  "patch": [{ "op": "add", "path": "/defs/Run/envelope/shapes", "value": ["Fix"] }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E0104", "path": "/defs/Run/envelope/shapes", "facts": { "keyword": "additionalProperties" } }
+    ]
+  }
+}

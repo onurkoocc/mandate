@@ -129,12 +129,20 @@ export interface RuntimeConfig {
    * proxy's configuration names it.
    */
   egress?: { admin?: string; gateways?: Partial<Record<GatewayName, string>> };
+  /**
+   * Libraries (spec/library.md "The local directory", "Waiting period and revocation"): `dir`, the operator's
+   * directory of libraries (relative to the file); `wait_days`, the days a published version waits before it is
+   * resolved; `revoked`, the digests that are never resolved or loaded: a package that carries one does not start,
+   * and a run of one stops at its next resume (`library_revoked`).
+   */
+  libraries?: { dir?: string; wait_days?: number; revoked?: string[] };
   /** The configuration file itself, so a verifier process can read it too. */
   file?: string;
 }
 
 const KEYS: Record<string, string[]> = {
-  "": ["database", "artifacts", "evidence", "rateLimits", "decisions", "plan", "violations", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard", "egress"],
+  "": ["database", "artifacts", "evidence", "rateLimits", "decisions", "plan", "violations", "model", "executor", "sandbox", "github", "verifier", "workspace", "boundary", "broker", "samples", "onboard", "egress", "libraries"],
+  libraries: ["dir", "wait_days", "revoked"],
   egress: ["admin", "gateways"],
   "egress.gateways": ["model", "github"],
   plan: ["checkMs"],
@@ -229,6 +237,16 @@ export function readConfig(file: string): RuntimeConfig {
     }
     if (typeof eg.admin === "string" && !isPipe(eg.admin)) config.egress!.admin = at(eg.admin);
   }
+  if (c["libraries"] !== undefined) {
+    const lb = c["libraries"] as { dir?: unknown; wait_days?: unknown; revoked?: unknown };
+    if (!lb || typeof lb !== "object" || Array.isArray(lb)) throw new Violation("bad_config", `${file}: "libraries" is { "dir", "wait_days", "revoked" }`);
+    if (lb.dir !== undefined && (typeof lb.dir !== "string" || lb.dir === "")) throw new Violation("bad_config", `${file}: "libraries.dir" is a directory`);
+    if (lb.wait_days !== undefined && (!Number.isInteger(lb.wait_days) || (lb.wait_days as number) < 0)) throw new Violation("bad_config", `${file}: "libraries.wait_days" is a whole number of days, at least 0`);
+    if (lb.revoked !== undefined && (!Array.isArray(lb.revoked) || !lb.revoked.every((d) => typeof d === "string" && /^sha256:[0-9a-f]{64}$/.test(d)))) {
+      throw new Violation("bad_config", `${file}: "libraries.revoked" is a list of library digests, sha256:<64 hex>`);
+    }
+    if (typeof lb.dir === "string") config.libraries!.dir = at(lb.dir);
+  }
   config.file = resolve(file);
   return config;
 }
@@ -264,6 +282,7 @@ export function runtimeOptions(config: RuntimeConfig, db: Db): RuntimeOptions {
     decisions: { mode: config.decisions.mode, keys: decisionKeysIn(config.decisions.keys) },
     ...(config.plan?.checkMs !== undefined ? { plan: { checkMs: config.plan.checkMs } } : {}),
     ...(config.violations?.limit !== undefined ? { violations: { limit: config.violations.limit } } : {}),
+    ...(config.libraries ? { libraries: config.libraries } : {}),
   };
 }
 

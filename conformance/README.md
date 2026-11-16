@@ -477,6 +477,33 @@ on `fixtures/library/batch.mdt` and its modules) and those of a sub-program
 | `E0220g` | The model's class below the connector's | E0220 |
 | `E0210` | Model output posted by the commit map | E0210 |
 
+The cases of shapes (spec/library.md "`shapes`") share `N11/parent.mdt`, a program
+of 0.6 whose envelope lists `Each`, a pattern it defines, and `FanOutMerge` of
+`std.patterns` (and defines `Spare` and imports `MakerChecker`, which it does not list); the sub-programs
+reuse `P06/sub.mdt`, an application of `Each`, and `E1709d` amends `P06/parent.mdt`,
+whose envelope has no shapes:
+
+| Case | Claim | Code |
+|---|---|---|
+| `N11` | A sub-program whose workflow is written out | E1710 |
+| `N11a` | A shape that names an agent (a mutation) | E1711 |
+| `N11b` | An amendment that drops a shape | E1709 |
+| `N11c` | A sub-program that applies a listed shape, admitted | — |
+| `N11d` | An amendment that adds a shape | — |
+| `N11e` | An amendment that takes the list of shapes away | — |
+| `E1710` | A sub-program that applies a pattern of its parent the list does not name | E1710 |
+| `E1710a` | A sub-program that defines a type under a listed name and applies that name | E1710 |
+| `E1710b` | A sub-program that applies `MakerChecker`, a pattern of `std.patterns` the parent imports and does not list | E1710 |
+| `E1711` | A shape that names nothing (a mutation) | E1711 |
+| `E1711a` | A shape that names a type of `std.patterns` (a mutation) | E1711 |
+| `E1709d` | An amendment that gives shapes to an envelope that had none | E1709 |
+| `E0104g` | `shapes` in the IR of a program of 0.4 | E0104 |
+
+What the cases of shapes cannot say (the `shape` an admitted sub-program's result
+names, the hash, the semantic diff and a patch's governance of a change to them, the
+fixture `fixtures/library/migrate-all.mdt` and its sub-programs) is in
+`crates/mandate-check/tests/shapes_0_6.rs`.
+
 The import cases share the 0.6 module `E1602/types.mdt` and the program
 `E1602/program.mdt`; the connector cases share `T01/program.mdt`, a program
 with a connector of its own, and `E0301b` is `E0301a/program.mdt` as 0.5. The
@@ -514,8 +541,8 @@ E0101, E0104, E0105, E0120, E0121, E0140, E0201, E0210, E0212, E0213, E0220, E03
 E0403, E0408, E0711, E1501 and E1708, which 0.6 extends, T01, T02 and T06 (which spec/library.md names), H06 and
 H07 (which it names), the letters of E1708 from b on (E1708b and E1708c, which it
 names, one letter for each further refused condition of the batch commit step, and
-E1708m, the connectors' own), and the code numbers of E13xx, E14xx, E1504 to E1508 and
-E16xx.
+E1708m, the connectors' own), N11 to N11e and E1710 to E1710b (shapes), E0104g and E1709d (0.6 extends
+them), and the code numbers of E13xx, E14xx, E1504 to E1508, E16xx, E1710 and E1711.
 
 ## What the Rust crates run
 
@@ -553,13 +580,13 @@ The gate prints what it ran, and the `journal` cases, which are not compile
 cases, as skipped:
 
 ```
-conformance cases: ran 377, passed 377, pending 0
+conformance cases: ran 390, passed 390, pending 0
 conformance cases: of the 0 pending, 0 give only what the TypeScript gives, in its order, and 0 are excluded by rule
   skipped 16: journal cases: a run's journal, which crates/verify-journal checks
-  of them 252 of language mandate/0.6, which only the Rust reads, each expectation written by hand
+  of them 265 of language mandate/0.6, which only the Rust reads, each expectation written by hand
 ```
 
-(393 cases: 377 `compile`, 252 of them of language 0.6, and 16 `journal`; no case
+(406 cases: 390 `compile`, 265 of them of language 0.6, and 16 `journal`; no case
 has the kind `run` yet.) A case
 that fails is named as `<door> @ conformance/<id> [codes]` with every
 difference. `pending` is the number of cases a list in the test holds back; the

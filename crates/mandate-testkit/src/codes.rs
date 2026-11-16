@@ -622,9 +622,23 @@ pub const FAMILIES: &[Family] = &[
     Family {
         glob: "*MDT-E1709*",
         codes: "E1709",
-        stage: "checkAmendment: an amendment narrows nothing (narrowings in check/amendment.ts)",
+        stage: "checkAmendment: an amendment narrows nothing (narrowings in check/amendment.ts); 0.6, Rust only: the envelope's shapes, dimension shapes (crates/mandate-check/src/amendment.rs)",
         ported: true,
         reference: Reference::TypeScript,
+    },
+    Family {
+        glob: "*MDT-E1710*",
+        codes: "E1710",
+        stage: "Rust only: check_subprogram, a sub-program under an envelope with shapes applies one of them (subprogram_shape_of, crates/mandate-check/src/shapes.rs)",
+        ported: true,
+        reference: Reference::Rust,
+    },
+    Family {
+        glob: "*MDT-E1711*",
+        codes: "E1711",
+        stage: "Rust only: an envelope's shapes in a 0.6 program, each a pattern (shape_checks, crates/mandate-check/src/shapes.rs), after the role checks",
+        ported: true,
+        reference: Reference::Rust,
     },
     Family {
         glob: "*MDT-E1801*",

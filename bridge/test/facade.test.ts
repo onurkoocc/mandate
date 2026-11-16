@@ -10,7 +10,7 @@ import * as compiler from "../../compiler/src/index.js";
 import * as bridge from "../src/index.js";
 import * as reference from "../src/ts.js";
 import { compareOutcomes, CompilerDivergence, EXEMPTIONS, exemptionCounts, LANGUAGE_06, takeDivergences, type Outcome } from "../src/compare.js";
-import { DOOR_BACKED, KEPT, type DoorBacked } from "../src/doors.js";
+import { DOOR_BACKED, KEPT, RUST_ONLY, type DoorBacked } from "../src/doors.js";
 import { compilerMode, withCompiler } from "../src/mode.js";
 import { rustCall } from "../src/wasm/call.js";
 import { CompilerFailure } from "../src/wasm/errors.js";
@@ -26,11 +26,14 @@ const exported = bridge as unknown as Record<string, unknown>;
 describe("what the Rust compiler answers and what stays in TypeScript", () => {
   const functions = Object.keys(bridge).filter((n) => typeof exported[n] === "function");
 
-  it("every function the bridge exports is door-backed or kept in TypeScript with a reason, never both", () => {
-    const neither = functions.filter((n) => !Object.hasOwn(DOOR_BACKED, n) && !Object.hasOwn(KEPT, n));
+  it("every function the bridge exports is door-backed, Rust-only (0.6) or kept in TypeScript with a reason, in one list alone", () => {
+    const lists = [Object.keys(DOOR_BACKED), Object.keys(RUST_ONLY), Object.keys(KEPT)];
+    // An error class is a function too: NoReference is what a Rust-only function throws in `ts` mode, not a door.
+    const neither = functions.filter((n) => n !== "NoReference" && !lists.some((l) => l.includes(n)));
     expect(neither, "a function with no door and no reason to stay in TypeScript").toEqual([]);
-    expect(Object.keys(DOOR_BACKED).filter((n) => Object.hasOwn(KEPT, n))).toEqual([]);
-    for (const n of [...Object.keys(DOOR_BACKED), ...Object.keys(KEPT)]) expect(functions, n).toContain(n);
+    const all = lists.flat();
+    expect(all.filter((n, i) => all.indexOf(n) !== i)).toEqual([]);
+    for (const n of all) expect(functions, n).toContain(n);
     for (const [n, k] of Object.entries(KEPT)) expect(Object.values(k)[0]!.length, n).toBeGreaterThan(10);
   });
 
@@ -117,6 +120,8 @@ needs("the facade on the Rust compiler", () => {
   it("checks the module's table of doors when it loads it: every door the facade calls, with the parameters it sends", () => {
     const table = rustCall("doors", {}) as { doors: Array<{ name: string; ts: string | null; params: string[] }> };
     for (const [n, d] of Object.entries(DOOR_BACKED)) expect(table.doors.find((r) => r.name === d.door), n).toEqual(expect.objectContaining({ ts: n, params: d.params }));
+    // A Rust-only door stands for no TypeScript function.
+    for (const [n, d] of Object.entries(RUST_ONLY)) expect(table.doors.find((r) => r.name === d.door), n).toEqual(expect.objectContaining({ ts: null, params: d.params }));
     // A module whose table lacks them answers no call.
     const bare = MODULES.answering('{"ok":true,"output":{"format":"mandate/doors/0.1","doors":[]}}');
     const e = (() => {

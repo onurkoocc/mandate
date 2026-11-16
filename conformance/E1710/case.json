@@ -1,0 +1,31 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1710",
+  "kind": "compile",
+  "title": "A lead's sub-program that applies Spare, a pattern of its parent the envelope does not list (a mutation: the application of N11c), is not one of the shapes.",
+  "spec": ["spec/library.md#shapes", "spec/envelope.md#the-sub-program", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../N11/parent.mdt", "kind": "mdt" },
+  "subprogram": {
+    "workflow": "Run",
+    "defs": { "file": "../P06/sub.mdt", "kind": "mdt" },
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/defs/Look/apply",
+        "value": {
+          "pattern": "Spare",
+          "args": [{ "name": "work", "value": { "op": "field", "of": { "op": "var", "name": "Worker" }, "name": "look" } }]
+        }
+      }
+    ],
+    "room": { "left": { "tokens": 50000, "steps": 100, "agents": 10, "spend:USD": 10000000 }, "time_left_ms": 1800000 }
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E1710", "path": "/defs/Look/apply/pattern", "facts": { "workflow": "Look", "pattern": "Spare", "problem": "not_listed", "module": "example.shaped", "shapes": ["Each", "FanOutMerge"] } }
+    ]
+  }
+}
