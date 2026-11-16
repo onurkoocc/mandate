@@ -119,7 +119,9 @@ fn module_files_of(program: &str) -> Vec<&'static str> {
             "fixtures/library/acme.connectors/types.mdt",
             "fixtures/library/acme.connectors/connectors.mdt",
         ],
-        "fixtures/library/invoices.mdt" => Vec::new(),
+        // Their modules are their libraries': the acceptance program's from
+        // its lock, the shaped migration's the built-in std.patterns alone.
+        "fixtures/library/invoices.mdt" | "fixtures/library/migrate-all.mdt" => Vec::new(),
         "fixtures/library/batch.mdt" => vec![
             "fixtures/library/acme.connectors/types.mdt",
             "fixtures/library/acme.connectors/connectors.mdt",
