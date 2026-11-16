@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { check, type Modules } from "@mandate/bridge";
+import { check, type LibrarySource, type Modules } from "@mandate/bridge";
 import { build, type Plugin } from "esbuild";
 import { expect } from "vitest";
 import { ISSUE } from "./programs.js";
@@ -79,9 +79,10 @@ let shared: Promise<Db> | undefined;
  */
 export async function world(
   src: string,
-  o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; clock?: Clock; lock?: Lock; realModel?: ModelAdapter; modules?: Modules; decisions?: RuntimeOptions["decisions"]; plan?: RuntimeOptions["plan"]; hostProbe?: RuntimeOptions["hostProbe"] } = {},
+  o: { tools?: SimTool[]; agents?: SimAgents; model?: SimModel; verifier?: SimVerifier; reads?: SimReads; clock?: Clock; lock?: Lock; realModel?: ModelAdapter; modules?: Modules; decisions?: RuntimeOptions["decisions"]; plan?: RuntimeOptions["plan"]; hostProbe?: RuntimeOptions["hostProbe"]; libraries?: LibrarySource[]; config?: RuntimeOptions["libraries"] } = {},
 ): Promise<World> {
-  const r = check(src, "mdt", o.modules ? { modules: o.modules } : {});
+  // 0.6: the libraries the program imports are given to its check, and carried by its package.
+  const r = check(src, "mdt", { ...(o.modules ? { modules: o.modules } : {}), ...(o.libraries ? { libraries: o.libraries } : {}) });
   expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
   const url = process.env["MANDATE_TEST_DATABASE_URL"];
   shared ??= openDb(url, url ? `t_${randomUUID().replaceAll("-", "")}` : undefined);
@@ -90,7 +91,7 @@ export async function world(
   const sim = simulate(o);
   if (o.realModel) sim.adapters.model = o.realModel;
   const faults = new Faults();
-  return { ...sim, rt: new Runtime(db, sim.adapters, faults, undefined, { decisions: o.decisions ?? UNSIGNED.decisions, ...(o.plan ? { plan: o.plan } : {}), ...(o.hostProbe ? { hostProbe: o.hostProbe } : {}) }), db, pkg: buildPackage(r.program!, o.lock ?? LOCK, o.modules), faults };
+  return { ...sim, rt: new Runtime(db, sim.adapters, faults, undefined, { decisions: o.decisions ?? UNSIGNED.decisions, ...(o.plan ? { plan: o.plan } : {}), ...(o.hostProbe ? { hostProbe: o.hostProbe } : {}), ...(o.config ? { libraries: o.config } : {}) }), db, pkg: buildPackage(r.program!, o.lock ?? LOCK, o.modules, o.libraries), faults };
 }
 
 const TABLES = ["otel_cursors", "halts", "journal_anchors", "decisions", "changesets", "workspace_claims", "rate_buckets", "artifacts", "outbox", "inbox", "evidence", "authorizations", "actions", "reservations", "budgets", "commands", "events", "runs", "packages"];

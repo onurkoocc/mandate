@@ -21,10 +21,15 @@ import { CODES as TS_CODES } from "@mandate/compiler";
 import { facade, onCompilerMode, rustCodes } from "./mode.js";
 import * as ts from "./ts.js";
 import type { Modules } from "@mandate/compiler";
+import type { Check06 } from "./library.js";
 
 // The names below are exported here and so are not taken from the reference compiler's `export *`.
 export * from "@mandate/compiler";
 export type { AuthorityContext, GrantDelegation, GrantInput, GrantOutput, InFlightOverlapInput, InFlightOverlapOutput, ItemScopes, MapScopesInput, MapScopesOutput, NarrowInput, NarrowOutput, Refusal } from "./authority.js";
+// Language 0.6 (library.ts): its versions, `atLeast` over them, its shapes, its lock, and the Rust-only doors. The
+// reference compiler's LanguageVersion and Lock, which know nothing of 0.6, are these in the bridge.
+export { atLeast, BRIDGE_LANGUAGE_VERSIONS, isProgram06, LANGUAGE_06, LIBRARY_FORMAT, libraryVerify, LOCK_FORMAT_06, NoReference } from "./library.js";
+export type { Apply, Check06, CheckOptions06, CheckResult06, ConnectorBinding, ConnectorDef, ConnectorTool, Criterion06, Def06, Documented, Envelope06, LanguageVersion, LibrariesConfig, LibraryPin, LibrarySource, LibraryVerified, Lock, PatternDef, Program06, Slot, SlotArg, WorkflowDef06 } from "./library.js";
 
 /**
  * A view or a diff of a program that takes the modules besides, last (doors.ts): the Rust's alone, for a program of
@@ -34,7 +39,8 @@ export type { AuthorityContext, GrantDelegation, GrantInput, GrantOutput, InFlig
 export type WithModules<F> = F extends (...args: infer A) => infer R ? (...args: [...A, modules?: Modules]) => R : never;
 
 export let load = ts.load;
-export let check = ts.check;
+/** `check`: with the libraries and the configuration of a program of 0.6, and its expanded program, the Rust's alone. */
+export let check: Check06 = ts.check;
 export let loadModules = ts.loadModules;
 export let parseStrictJson = ts.parseStrictJson;
 export let canonicalize = ts.canonicalize;

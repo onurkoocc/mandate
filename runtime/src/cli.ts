@@ -316,14 +316,14 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         if (typeof role === "string" && a.flags["--audit"] !== undefined) throw new Usage("show takes --role R or --audit, not both");
         const print = (view: object, doc: () => Doc): void => out(format === "json" ? JSON.stringify(view, null, 2) + "\n" : format === "html" ? toHtml(doc()) : toMarkdown(doc()));
         if (typeof role === "string") {
-          const { view, program } = await runView(rt, runId, { role });
-          print(view, () => roleDoc(view, program));
+          const { view, program, modules } = await runView(rt, runId, { role });
+          print(view, () => roleDoc(view, program, modules));
         } else if (a.flags["--audit"] !== undefined) {
-          const { view, program } = await runView(rt, runId, { audit: true });
-          print(view, () => auditDoc(view, program));
+          const { view, program, modules } = await runView(rt, runId, { audit: true });
+          print(view, () => auditDoc(view, program, modules));
         } else {
-          const { view, program } = await runView(rt, runId);
-          print(view, () => runDoc(view, program));
+          const { view, program, modules } = await runView(rt, runId);
+          print(view, () => runDoc(view, program, modules));
         }
         return 0;
       }

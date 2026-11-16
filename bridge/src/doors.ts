@@ -1,5 +1,6 @@
 // Which of the bridge's functions the Rust compiler answers, through which door, and which stay in TypeScript and
-// why. Every function bridge/src/index.ts exports is in exactly one of the two lists (test/facade.test.ts).
+// why. Every function bridge/src/index.ts exports is in exactly one of the three lists (test/facade.test.ts): the
+// door-backed functions, the Rust-only ones of language 0.6, and those kept in TypeScript.
 //
 // A door-backed function is answered by the door of its name in `rust` mode, and by both compilers, compared, in
 // `both` (index.ts). Its door takes the function's parameters as the members of its input, by these names, which
@@ -78,6 +79,16 @@ export const DOOR_BACKED = {
 export type DoorBacked = keyof typeof DOOR_BACKED;
 
 /**
+ * The functions of language 0.6 that only the Rust compiler answers (library.ts): the door each calls, and the
+ * members of its input, the function's parameters in order. No TypeScript function stands for one: the reference
+ * compiler is frozen at 0.5, so in `ts` mode each throws NoReference, by name, and in `both` it is the Rust's alone
+ * (counted under `language-0.6`). Their doors stand for no TypeScript function in the module's table either.
+ */
+export const RUST_ONLY = {
+  libraryVerify: { door: "library_verify", params: ["library", "libraries"] },
+} as const satisfies Record<string, { door: string; params: readonly string[] }>;
+
+/**
  * The doors the bridge calls that stand for no function of its own: `codes`, whose table is CODES in `rust` and
  * `both` (index.ts), with its parameters.
  */
@@ -96,7 +107,7 @@ export const KEPT: Record<string, Kept> = {
   // version changes it, so there is nothing for another compiler to decide.
   kindOf: { helper: "a file's kind from its name: .json is IR, anything else .mdt text" },
   calleePath: { helper: "the dotted name of a call's callee, read off the expression" },
-  atLeast: { helper: "whether a language version is at least another, by their order in LANGUAGE_VERSIONS" },
+  atLeast: { helper: "whether a language version is at least another, by their order in LANGUAGE_VERSIONS and then mandate/0.6 (library.ts): the reference compiler's answer for 0.1 to 0.5, and the bridge's own for 0.6, which the reference does not know" },
   classRank: { helper: "a data class's place in public < internal < confidential < restricted" },
   budgetAmount: { helper: "the number a budget gives one dimension" },
   formatDiagnostic: { helper: "a diagnostic as one line of text for a person" },
@@ -104,6 +115,7 @@ export const KEPT: Record<string, Kept> = {
   diag: { helper: "builds a diagnostic object from its parts" },
   htmlEscape: { helper: "a text escaped for HTML" },
   mdEscape: { helper: "a text escaped for Markdown" },
+  isProgram06: { helper: "whether a value is a program whose language is mandate/0.6 (library.ts), read off its `language` member alone" },
   isLanguageVersion: { helper: "whether a value is one of LANGUAGE_VERSIONS, the TypeScript's list (the constants stay the TypeScript's, see index.ts)" },
   isPath: { helper: "whether a text is a relative, normalized, portable path (PATH_PATTERN)" },
   pathProblem: { helper: "what makes a text not a path, for a message" },
