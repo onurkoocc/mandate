@@ -79,8 +79,11 @@ pub(super) const CHECK_SUBPROGRAM: &[&str] = &["i"];
 /// data class, room: { left: { <dimension>: number }, time_left_ms?: number,
 /// writes: [CapVal] } } }`.
 /// Output: `SubprogramCheck`, `{ ok, diagnostics, program?, hash?,
-/// workflow? }`; `bad_input` with the TypeScript's message when `workflow`
-/// is not a workflow with an envelope.
+/// workflow? }`, and, for a sub-program of 0.6 that applies a pattern and
+/// is admitted (the Rust's alone), `running`, the sub-program as a run runs
+/// it (expanded, with the linked definitions as its `defs`), and
+/// `running_hash`, its hash; `bad_input` with the TypeScript's message when
+/// `workflow` is not a workflow with an envelope.
 pub(super) fn check_subprogram(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, CHECK_SUBPROGRAM)?;
     let i = a.members("i", "i.")?;

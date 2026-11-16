@@ -151,7 +151,8 @@ pub struct SubprogramInput<'a> {
 }
 
 /// What [`check_subprogram`] gives: `SubprogramCheck`, `{ ok, diagnostics,
-/// program?, hash?, workflow? }`.
+/// program?, hash?, workflow? }`, and, 0.6, `{ running?, running_hash? }`
+/// for a sub-program that applies a pattern.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SubprogramCheck {
     /// The sub-program passed every check and fits what is left of the
@@ -165,11 +166,23 @@ pub struct SubprogramCheck {
     pub hash: Option<String>,
     /// When `ok`: the name of its one workflow.
     pub workflow: Option<String>,
+    /// 0.6, when `ok` and the sub-program applies a pattern: the
+    /// sub-program as a run runs it, `{ ...sub, defs }` with the linked
+    /// definitions of its expansion as its `defs`: its own, expanded, and
+    /// all its parent sees, linked through what the parent's libraries
+    /// reach: the very definitions its check read. `program` stays the
+    /// sub-program as the lead wrote it, with `apply`, and `hash` its hash.
+    /// `None` for a sub-program that applies none, which runs as
+    /// [`subprogram_linked`] links it.
+    pub running: Option<Value>,
+    /// The hash of `running` ([`hash_program`]), when there is one: what a
+    /// run names the stored running program by.
+    pub running_hash: Option<String>,
 }
 
 impl SubprogramCheck {
     /// The result as the TypeScript writes it: `{ ok, diagnostics, program?,
-    /// hash?, workflow? }`.
+    /// hash?, workflow? }`, then, 0.6, `{ running?, running_hash? }`.
     #[must_use]
     pub fn to_js(&self) -> JsValue {
         JsObject::new()
@@ -184,6 +197,8 @@ impl SubprogramCheck {
             .with_some("program", self.program.as_ref().map(JsValue::from))
             .with_some("hash", self.hash.as_deref())
             .with_some("workflow", self.workflow.as_deref())
+            .with_some("running", self.running.as_ref().map(JsValue::from))
+            .with_some("running_hash", self.running_hash.as_deref())
             .into()
     }
 
@@ -194,6 +209,8 @@ impl SubprogramCheck {
             program: None,
             hash: None,
             workflow: None,
+            running: None,
+            running_hash: None,
         }
     }
 }
@@ -283,6 +300,9 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
             modules: Some(&modules),
             claim: Some(&claim),
             reach: reach.as_ref(),
+            // 0.6: the running program, for a sub-program that applies a
+            // pattern.
+            linked: reach.is_some(),
             ..CheckOptions::default()
         },
     );
@@ -385,12 +405,28 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
         return Ok(SubprogramCheck::refused(diagnostics));
     }
     let hash = hash_program(&sub).program;
+    // 0.6: a sub-program that applies a pattern runs as its expansion, with
+    // the definitions its check read; any other as it is written.
+    let running = checked
+        .expanded
+        .as_ref()
+        .and(checked.linked.as_ref())
+        .map(|linked| {
+            let mut out = sub.as_object().cloned().unwrap_or_default();
+            if let Some(defs) = linked.get("defs") {
+                out.insert("defs", defs.clone());
+            }
+            Value::Object(out)
+        });
+    let running_hash = running.as_ref().map(|r| hash_program(r).program);
     Ok(SubprogramCheck {
         ok: true,
         diagnostics,
         program: Some(sub),
         hash: Some(hash),
         workflow: Some(workflow),
+        running,
+        running_hash,
     })
 }
 
