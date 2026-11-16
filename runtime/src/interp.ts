@@ -1650,8 +1650,8 @@ export class Interpreter {
     }
     // 0.6: against a contract a person may waive part of, the outcome is journaled, with the value it was given and
     // the failed records of each criterion it did not meet: a review of the map this verify ends reads it there
-    // (review.ts), and never a value anyone else carries. The journal's verdict decides, so that a resumed run and a
-    // replay decide as the first run did.
+    // (review.ts), and never a value anyone else carries. A resumed run and a replay check again, and the verdict the
+    // journal holds must be the one its criteria give now: one that is not decides nothing, and stops the run.
     if (bound && waiversOf(c).size) {
       const verdict: Verdict = {
         contract: e.contract,
@@ -1663,7 +1663,7 @@ export class Interpreter {
         evidence: [...evidence].sort(),
       };
       const recorded = asVerdict(await this.command(`${path}/verdict`, VERDICT, { contract: e.contract, value: bound.value }, undefined, async () => ({ ok: verdict as unknown as Value, cost: {} }), { label: `verdict ${e.contract}` }), e.contract);
-      if (!recorded || recorded.value_digest !== bound.value) throw new Violation("nondeterministic_replay", `The verdict journaled at ${path} is not one of the value this verify is given.`);
+      if (!recorded || canonical(recorded as unknown as Value) !== canonical(verdict as unknown as Value)) throw new Violation("nondeterministic_replay", `The verdict journaled at ${path} is not the one its criteria give for the value this verify is given.`);
       unmet = recorded.unmet;
       evidence = recorded.evidence;
     }

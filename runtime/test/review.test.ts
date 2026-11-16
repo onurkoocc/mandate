@@ -607,13 +607,22 @@ needs06("what a Verified value is accepted on (H09)", () => {
   it("a waived value without the passing records of what it met is not accepted: a waiver covers its own criterion and no other", async () => {
     const w = await rworld();
     await start(w, "v10", [inv("I1")]);
-    w.faults.arm("after_dispatch", (i) => i.kind === "prepare");
-    await expect(decide(w, "v10", w.who.ana, { waive: [0], decline: [] })).rejects.toBeInstanceOf(Crash);
-    // The verdict the review reads loses the passing records of the criteria the item met.
+    // Once the map has ended, the verdict the review reads has lost the passing records of the criteria the item met
+    // (the verify itself reads the one the journal holds, and finds it whole).
+    const journal = w.rt.journal;
+    const mapEnded = journal.mapEnded.bind(journal);
+    const command = journal.command.bind(journal);
+    let ended = false;
+    journal.mapEnded = async (...a: Parameters<typeof mapEnded>) => {
+      await mapEnded(...a);
+      ended = true;
+    };
     const id = `${MAP_AT}[0]/body/1/value/verdict`;
-    const [row] = await w.db.query<{ result: Obj }>("select result from commands where run_id = 'v10' and command_id = $1", [id]);
-    await w.db.query("update commands set result = $3 where run_id = $1 and command_id = $2", ["v10", id, JSON.stringify({ ...row!.result, evidence: [] })]);
-    const run = await w.rt.resume("v10");
+    journal.command = async (runId: string, commandId: string) => {
+      const row = await command(runId, commandId);
+      return ended && row && commandId === id ? { ...row, result: { ...(row.result as Obj), evidence: [] } } : row;
+    };
+    const run = await decide(w, "v10", w.who.ana, { waive: [0], decline: [] });
     expect(run.state, state(run)).toBe("attention_required");
     expect(run.attention).toMatchObject({ violation: "forged_evidence" });
     expect(String((run.attention as Obj)["message"])).toMatch(/no evidence for Matched\.same_invoice; no evidence for Matched\.vendor/);
@@ -711,7 +720,43 @@ needs06("a review whose journal was changed under it", () => {
     expect(await snapshot(w, "j2")).toEqual(before);
   });
 
-  it("a verdict that says an item passed which the map failed: the resumed run stops for a person, and asks nobody", async () => {
+  it("a verdict the review reads that is not what its map gave: the run stops for a person, and asks nobody", async () => {
+    const w = await rworld();
+    // Once the map has ended, what the journal gives for item 1's verdict says it passed, which the map failed.
+    const journal = w.rt.journal;
+    const mapEnded = journal.mapEnded.bind(journal);
+    const command = journal.command.bind(journal);
+    let ended = false;
+    journal.mapEnded = async (...a: Parameters<typeof mapEnded>) => {
+      await mapEnded(...a);
+      ended = true;
+    };
+    const id = `${MAP_AT}[1]/body/1/value/verdict`;
+    journal.command = async (runId: string, commandId: string) => {
+      const row = await command(runId, commandId);
+      return ended && row && commandId === id ? { ...row, result: { ...(row.result as Obj), met: true, unmet: [], failed: {} } } : row;
+    };
+    const r = await start(w, "j4");
+    expect(r.state, state(r)).toBe("attention_required");
+    expect(r.attention).toMatchObject({ violation: "nondeterministic_replay" });
+    expect(String((r.attention as Obj)["message"])).toContain("Item 1 of the map");
+    expect(await events(w, "j4", "review_requested")).toEqual([]);
+  });
+
+  it("a verdict of a passing item changed while it waits, with what it asks left as it was: the resumed run's verify stops for a person", async () => {
+    const w = await rworld();
+    await start(w, "j5");
+    // Item 0 passed: what the review asks of it is its index alone, so only its verify can tell that its records went.
+    const id = `${MAP_AT}[0]/body/1/value/verdict`;
+    const [row] = await w.db.query<{ result: Obj }>("select result from commands where run_id = 'j5' and command_id = $1", [id]);
+    await w.db.query("update commands set result = $3 where run_id = $1 and command_id = $2", ["j5", id, JSON.stringify({ ...row!.result, evidence: [] })]);
+    const resumed = await w.rt.resume("j5");
+    expect(resumed.state, state(resumed)).toBe("attention_required");
+    expect(resumed.attention).toMatchObject({ violation: "nondeterministic_replay" });
+    expect(String((resumed.attention as Obj)["message"])).toContain("is not the one its criteria give");
+  });
+
+  it("a verdict that says an item passed which its criteria failed: the resumed run's verify stops for a person, and asks nobody", async () => {
     const w = await rworld();
     await start(w, "j3");
     const id = `${MAP_AT}[1]/body/1/value/verdict`;
