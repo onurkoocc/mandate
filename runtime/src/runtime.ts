@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { atLeast, capsOf, check, domainHash, hashProgram, isProgram06, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
 import type { Adapters, Cost, EgressNeed, RunComponents, RunMode, ToolAdapter } from "./adapters.js";
-import { Connectors, connectorsOf } from "./connectors.js";
+import { Connectors, ConnectorWrite, connectorsOf } from "./connectors.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { recordProblem, type AttestationRule } from "./attestation.js";
@@ -770,6 +770,15 @@ export class Runtime {
     return { tool: this.adapters.tools[effect] };
   }
 
+  /** Whether `effect` is `<connector>.<tool>` of a connector the run's 0.6 program holds; nothing is bound, and no server reached. */
+  private async namesConnector(runId: string, effect: string): Promise<boolean> {
+    const run = await this.journal.run(runId);
+    if (!isPackage06(await this.packaged(run.package_hash))) return false;
+    const loaded = await this.loaded(run.package_hash, run);
+    const dot = effect.indexOf(".");
+    return dot > 0 && connectorsOf(loaded.program).some(([name]) => name === effect.slice(0, dot));
+  }
+
   private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[], bound?: Connectors): Interpreter {
     const wf = Object.hasOwn(loaded.program.defs, run.workflow) ? loaded.program.defs[run.workflow] : undefined;
     const connectors = bound ?? this.connectorsFor(loaded.program, loaded.lock, adapters);
@@ -1377,8 +1386,9 @@ export class Runtime {
   async cancelAction(runId: string, operationKey: string): Promise<RunRow> {
     const action = await this.journal.action(operationKey);
     if (!action || action.run_id !== runId) throw new Violation("unknown_action", `No action ${operationKey} in run ${runId}.`);
-    // A connector's adapter (0.6) cannot cancel; whatever keeps it from being read keeps nothing from being cancelled.
-    const { tool } = await this.toolOf(runId, action.effect).catch(() => ({ tool: undefined }));
+    // A connector's adapter (0.6) cannot cancel. When the adapter cannot be read (the package, its connectors), the
+    // effect is still the configuration's to cancel unless it names a tool of a connector the program holds.
+    const { tool } = await this.toolOf(runId, action.effect).catch(async () => ({ tool: (await this.namesConnector(runId, action.effect).catch(() => false)) ? undefined : this.adapters.tools[action.effect] }));
     if (tool?.cancel && (action.state === "unknown_outcome" || action.state === "prepared")) {
       const r = await tool.cancel(operationKey);
       if ("cancelled" in r) await this.journal.finishAction(runId, undefined, operationKey, "cancelled", { detail: { cancelled: r.cancelled } });
@@ -1543,7 +1553,22 @@ export class Runtime {
         await this.journal.event(tx, runId, "reconcile_requested", { operation: operationKey, ...who.signed });
       }));
     }
+    // A connector's tool (0.6): its server is asked only once its schemas are the ones the lock pins, as at a resume;
+    // and a request of either that the proxy denied is a violation of the run, recorded once for the action.
+    const denied = async (detail: string): Promise<void> => {
+      const run = await this.journal.run(runId);
+      await this.journal.violation(runId, run.fence, { kind: "egress_denied", delegate: action.command_id, agent: action.effect, step: `${action.command_id}#reconcile`, detail });
+    };
+    if (tool instanceof ConnectorWrite) {
+      try {
+        await tool.verifyBeforeAsking();
+      } catch (e) {
+        if (e instanceof Violation && e.code === "egress_denied") await denied(e.message);
+        throw e;
+      }
+    }
     const r = await tool.reconcile(operationKey);
+    if (tool instanceof ConnectorWrite && "unknown" in r && typeof (r as { denied?: unknown }).denied === "string") await denied(`The egress proxy denied the reconciliation of ${action.effect} (${(r as { denied: string }).denied}); it was not sent upstream.`);
     if ("applied" in r) await this.journal.finishAction(runId, undefined, operationKey, "confirmed", { receipt: r.applied });
     else if ("notApplied" in r) await this.journal.finishAction(runId, undefined, operationKey, "prepared", { detail: { not_applied: r.notApplied } });
     else return this.journal.run(runId);

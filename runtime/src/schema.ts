@@ -12,7 +12,7 @@
 
 import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js";
 import { PATH_PATTERN, type Def, type Expr, type Program, type TypeExpr } from "@mandate/bridge";
-import type { Value } from "./values.js";
+import { canonical, type Value } from "./values.js";
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -47,12 +47,37 @@ export function typeSchema(program: Program, type: TypeExpr): JsonSchema {
   return Object.keys(defs).length ? { ...root, $defs: defs } : root;
 }
 
-function convert(program: Program, t: TypeExpr, defs: Record<string, JsonSchema>, seen: Set<string>): JsonSchema {
+/**
+ * The schema of `type` that a value from outside the run is held to (a connector's result, spec/library.md
+ * "Connectors"), for `heldTo`. It differs from `typeSchema`, which a model is sent, in three ways. A refinement is
+ * stated in full, or the schema is refused: undefined when the type has a refinement no keyword here states. A `Set`
+ * is checked in one pass over its items, where `uniqueItems` compares every two of them. A `Map`, the one place a
+ * type leaves a member's name open, takes no key that begins with `$`: those are the runtime's own (a variant's
+ * `$tag`, money's `$money`), read only where a type declares them.
+ */
+export function heldSchema(program: Program, type: TypeExpr): JsonSchema | undefined {
+  const defs: Record<string, JsonSchema> = {};
+  const held: Held = { unenforced: false };
+  const root = convert(program, type, defs, new Set(), held);
+  if (held.unenforced) return undefined;
+  return Object.keys(defs).length ? { ...root, $defs: defs } : root;
+}
+
+/** Set while a schema is made for `heldSchema`; `unenforced` once a refinement could not be stated. */
+interface Held {
+  unenforced: boolean;
+}
+
+/** `heldSchema`'s keywords: a set's items are distinct; the length of a list or a text, in UTF-16 units as `len` counts, is within `[lo, hi]`. */
+const DISTINCT = "mandateDistinct";
+const LEN = "mandateLen";
+
+function convert(program: Program, t: TypeExpr, defs: Record<string, JsonSchema>, seen: Set<string>, held?: Held): JsonSchema {
   if ("record" in t) {
     const names = Object.keys(t.record).sort();
     return {
       type: "object",
-      properties: Object.fromEntries(names.map((n) => [n, convert(program, t.record[n]!, defs, seen)])),
+      properties: Object.fromEntries(names.map((n) => [n, convert(program, t.record[n]!, defs, seen, held)])),
       required: names,
       additionalProperties: false,
     };
@@ -64,32 +89,40 @@ function convert(program: Program, t: TypeExpr, defs: Record<string, JsonSchema>
         type: "object",
         properties: {
           $tag: { const: v.tag },
-          ...(v.fields?.length ? { $args: { type: "array", prefixItems: v.fields.map((f) => convert(program, f.type, defs, seen)), minItems: v.fields.length, maxItems: v.fields.length } } : {}),
+          ...(v.fields?.length ? { $args: { type: "array", prefixItems: v.fields.map((f) => convert(program, f.type, defs, seen, held)), minItems: v.fields.length, maxItems: v.fields.length } } : {}),
         },
         required: v.fields?.length ? ["$tag", "$args"] : ["$tag"],
         additionalProperties: false,
       })),
     };
   }
-  if ("refine" in t) return { ...convert(program, t.refine, defs, seen), ...refinement(t.where) };
+  if ("refine" in t) {
+    const base = convert(program, t.refine, defs, seen, held);
+    if (!held) return { ...base, ...refinement(t.where) };
+    // Held: the refinement in full, on the kind of value the refined type is, or the schema is refused.
+    const of = typeof base["$ref"] === "string" ? defs[base["$ref"].slice("#/$defs/".length)] : base;
+    const stated = heldRefinement(t.where, of?.["type"]);
+    if (!stated) held.unenforced = true;
+    return { allOf: [base, stated ?? {}] };
+  }
   const args = t.args ?? [];
-  if (WRAPPERS.has(t.ref) && args[0]) return convert(program, args[0], defs, seen);
+  if (WRAPPERS.has(t.ref) && args[0]) return convert(program, args[0], defs, seen, held);
   if (BASE[t.ref]) return BASE[t.ref]!;
   switch (t.ref) {
     case "List":
-      return { type: "array", items: args[0] ? convert(program, args[0], defs, seen) : {} };
+      return { type: "array", items: args[0] ? convert(program, args[0], defs, seen, held) : {} };
     case "Set":
-      return { type: "array", items: args[0] ? convert(program, args[0], defs, seen) : {}, uniqueItems: true };
+      return { type: "array", items: args[0] ? convert(program, args[0], defs, seen, held) : {}, ...(held ? { [DISTINCT]: true } : { uniqueItems: true }) };
     case "Map":
-      return { type: "object", additionalProperties: args[1] ? convert(program, args[1], defs, seen) : {} };
+      return { type: "object", additionalProperties: args[1] ? convert(program, args[1], defs, seen, held) : {}, ...(held ? { propertyNames: { pattern: "^(?!\\$)" } } : {}) };
     case "Option":
-      return { anyOf: [args[0] ? convert(program, args[0], defs, seen) : {}, { type: "null" }] };
+      return { anyOf: [args[0] ? convert(program, args[0], defs, seen, held) : {}, { type: "null" }] };
   }
   const def: Def | undefined = program.defs[t.ref];
   if (def?.kind === "type") {
     if (!seen.has(t.ref)) {
       seen.add(t.ref);
-      defs[t.ref] = convert(program, def.type, defs, seen);
+      defs[t.ref] = convert(program, def.type, defs, seen, held);
     }
     return { $ref: `#/$defs/${t.ref}` };
   }
@@ -156,6 +189,37 @@ function refinement(e: Expr): JsonSchema {
   return {};
 }
 
+/**
+ * A refinement as `heldSchema` states it, for a value of JSON type `kind`; undefined when it cannot be stated. On an
+ * integer: `x >= n`, `x <= n`, `x > n`, `x < n`, `x in a..b`. On a list or a text: the same of `len(x)`. And two of
+ * these joined by `and`. A bound means nothing on another kind of value (`minimum` on a `Dec`, which is a string),
+ * so it is not stated there.
+ */
+function heldRefinement(e: Expr, kind: unknown): JsonSchema | undefined {
+  if (e.op !== "binary") return undefined;
+  if (e.bop === "and") {
+    const l = heldRefinement(e.left, kind);
+    const r = heldRefinement(e.right, kind);
+    return l && r ? { allOf: [l, r] } : undefined;
+  }
+  const int = (x: Expr): number | undefined => (x.op === "int" && Number.isSafeInteger(x.value) ? x.value : undefined);
+  let lo: number | null | undefined;
+  let hi: number | null | undefined;
+  const n = int(e.right);
+  if (e.bop === "in" && e.right.op === "range") {
+    lo = int(e.right.from);
+    hi = int(e.right.to);
+  } else if (n !== undefined && e.bop === ">=") [lo, hi] = [n, null];
+  else if (n !== undefined && e.bop === ">") [lo, hi] = [n + 1, null];
+  else if (n !== undefined && e.bop === "<=") [lo, hi] = [null, n];
+  else if (n !== undefined && e.bop === "<") [lo, hi] = [null, n - 1];
+  if (lo === undefined || hi === undefined) return undefined;
+  if (e.left.op === "var" && kind === "integer") return { ...(lo !== null ? { minimum: lo } : {}), ...(hi !== null ? { maximum: hi } : {}) };
+  const isLen = e.left.op === "call" && e.left.callee.op === "var" && e.left.callee.name === "len" && e.left.args.length === 1 && e.left.args[0]!.value.op === "var";
+  if (isLen && (kind === "array" || kind === "string")) return { [LEN]: [lo, hi] };
+  return undefined;
+}
+
 const compiled = new WeakMap<JsonSchema, ValidateFunction>();
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 
@@ -168,4 +232,28 @@ export function schemaErrors(schema: JsonSchema, value: Value): string[] {
   }
   if (validate(value)) return [];
   return (validate.errors ?? []).slice(0, 10).map((e) => `${e.instancePath || "/"} ${e.keyword === "pattern" && e.params["pattern"] === PATH_PATTERN ? `is not a Path: ${PATH_RULE}` : (e.message ?? "is invalid")}`);
+}
+
+// What comes from outside the run is checked by a validator of its own: it stops at the first thing that does not
+// fit, so a long answer of bad elements builds no list of errors, and it knows `heldSchema`'s keywords.
+const heldCompiled = new WeakMap<JsonSchema, ValidateFunction>();
+const heldAjv = new Ajv2020({ allErrors: false, strict: false });
+heldAjv.addKeyword({ keyword: DISTINCT, schemaType: "boolean", validate: (_on: boolean, data: unknown) => !Array.isArray(data) || new Set(data.map((x) => canonical(x as Value))).size === data.length });
+heldAjv.addKeyword({
+  keyword: LEN,
+  schemaType: "array",
+  validate: (bounds: [number | null, number | null], data: unknown) => {
+    if (!Array.isArray(data) && typeof data !== "string") return true;
+    return (bounds[0] === null || data.length >= bounds[0]) && (bounds[1] === null || data.length <= bounds[1]);
+  },
+});
+
+/** Whether `value` fits `schema`, a schema of `heldSchema`. */
+export function heldTo(schema: JsonSchema, value: Value): boolean {
+  let validate = heldCompiled.get(schema);
+  if (!validate) {
+    validate = heldAjv.compile(schema);
+    heldCompiled.set(schema, validate);
+  }
+  return validate(value) === true;
 }

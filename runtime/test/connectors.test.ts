@@ -14,12 +14,12 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { main } from "../src/cli.js";
-import { Connectors } from "../src/connectors.js";
+import { Connectors, forbidden } from "../src/connectors.js";
 import { payloadOf, shownPackage, signDecision } from "../src/decisions.js";
 import { EvidenceSigner, TrustedKeys } from "../src/evidence.js";
 import { EgressLink, Gateway } from "../src/gateway.js";
 import type { RunRow } from "../src/journal.js";
-import { McpClient, type McpFetch } from "../src/mcp-client.js";
+import { McpClient, McpError, type McpFetch } from "../src/mcp-client.js";
 import { notRunYet06 } from "../src/package.js";
 import { buildPackage, verifyPackage } from "../src/runtime.js";
 import { MxcAdapter } from "../src/sandbox.js";
@@ -946,7 +946,7 @@ needs06("a batch commit step", () => {
     expect(await w.rt.replayRun("m6")).toEqual({ status: "complete", value: true });
   });
 
-  it("an item whose write the server refuses fails alone, with its outcome unknown left for a person", async () => {
+  it("an item whose write the server answers with isError stops the whole run: its outcome is unknown, left for a person, and the items after it are not sent", async () => {
     const w = await cworld();
     w.s.erp.refuse = "INV-2";
     const r = await postAll(w, "m7", [match("INV-1"), match("INV-2"), match("INV-3")]);
@@ -954,6 +954,7 @@ needs06("a batch commit step", () => {
     expect(r.state, state(r)).toBe("attention_required");
     expect(r.attention).toMatchObject({ effect: POST, state: "unknown_outcome" });
     expect(w.s.erp.postings).toBe(1);
+    expect(calls(w.s.erp)).toEqual(["post_draft_invoice", "post_draft_invoice"]);
   });
 
   it("in a read-only run each item's action would apply, and in a design run it is simulated: no write is sent", async () => {
@@ -1053,6 +1054,19 @@ needs06("mandate connector pin", () => {
     } finally {
       await p.close();
     }
+    // A write tool whose listed schema does not require the key parameter the declaration names: its server would ignore the key.
+    const k = await pinning();
+    try {
+      k.s.erp.changeSchema("post_draft_invoice", (schema) => ({ ...schema, required: ["m"] }));
+      const before = readFileSync(k.lockPath, "utf8");
+      const r = await k.run();
+      expect(r.status).not.toBe(0);
+      expect(r.out).toContain("tool_schema_mismatch");
+      expect(r.out).toContain("does not require the idempotency key key");
+      expect(readFileSync(k.lockPath, "utf8")).toBe(before);
+    } finally {
+      await k.close();
+    }
     const q = await pinning();
     try {
       q.s.erp.dropTool("delete_draft_invoice");
@@ -1064,5 +1078,239 @@ needs06("mandate connector pin", () => {
     } finally {
       await q.close();
     }
+  });
+});
+
+// ── what a result may hold, and how long a server may take (the review of B9) ──
+
+needs06("a server's answer is held to what the journal keeps and the type says", () => {
+  const text = `mandate @ 0.6
+
+module example.kv @ 0.1
+
+use std.{tool}
+
+type Pair = { a: Text, b: Text }
+type Stat = { pct: Int where pct in 0..100, name: Text where len(name) in 1..4, tags: Set<Text>, pairs: Set<Pair> }
+type Odd  = { n: Int where n != 3 }
+
+/// A store of words.
+connector kv = mcp("https://kv.example.com/mcp")
+  version "1.0"
+  class   internal
+{
+  tool all() -> Untrusted<Map<Text, Text>>
+    read_only
+  tool total() -> Untrusted<Int>
+    read_only
+  tool stat() -> Untrusted<Stat>
+    read_only
+  tool odd() -> Untrusted<Odd>
+    read_only
+}
+
+capability Kv = tool.call(kv, all)
+
+/// Reads the store.
+workflow Read() -> Untrusted<Map<Text, Text>>
+  caps   Kv
+  budget { time: 10m }
+{
+  kv.all()
+}
+`;
+  const kv = (): Connectors => {
+    const r = check(text, "mdt", { linked: true });
+    expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`)).toEqual([]);
+    const zero = `sha256:${"0".repeat(64)}`;
+    const lock = { modules: {}, connectors: { "example.kv.kv": { credential: "kv", url: "https://kv.example.com/mcp", tools: { all: zero, total: zero, stat: zero, odd: zero } } } } as unknown as Lock;
+    return new Connectors({ program: r.linked as unknown as Program, lock });
+  };
+  const json = (s: string): Value => JSON.parse(s) as Value;
+  const STAT: Obj = { pct: 50, name: "ab", tags: ["x", "y"], pairs: [{ a: "1", b: "2" }] };
+
+  it("refuses a number that is not finite, and -0: JSON would write another value into the journal than the run saw", () => {
+    const c = kv();
+    const total = c.tool("kv", "total");
+    expect(c.fits(total, json('{"result":5}'))).toBe(true);
+    expect(json('{"result":1e400}')).toEqual({ result: Infinity });
+    expect(c.fits(total, json('{"result":1e400}'))).toBe(false);
+    expect(c.fits(total, json('{"result":-1e400}'))).toBe(false);
+    expect(c.fits(total, json('{"result":-0}'))).toBe(false);
+    expect(c.fits(total, json('{"result":-0.0}'))).toBe(false);
+    expect(c.fits(c.tool("kv", "stat"), { ...STAT, pct: json("1e400") })).toBe(false);
+    // The same rule, as it is applied to the arguments an agent gives a tool.
+    expect(forbidden({ limit: 10, names: ["a"] })).toBe(false);
+    expect(forbidden({ limit: Infinity })).toBe(true);
+    expect(forbidden({ names: ["a", "b\u0000"] })).toBe(true);
+  });
+
+  it("refuses a text or a member's name the journal cannot store: U+0000, a lone surrogate", () => {
+    const c = kv();
+    const all = c.tool("kv", "all");
+    expect(c.fits(all, json('{"result":{"a":"x"}}'))).toBe(true);
+    expect(c.fits(all, json('{"result":{"a":"x\\u0000"}}'))).toBe(false);
+    expect(c.fits(all, json('{"result":{"a":"x\\ud800"}}'))).toBe(false);
+    expect(c.fits(all, json('{"result":{"a\\u0000":"x"}}'))).toBe(false);
+    expect(c.fits(all, json('{"result":{"\\udc00":"x"}}'))).toBe(false);
+    // A pair of surrogates is a character.
+    expect(c.fits(all, json('{"result":{"a":"\\ud83d\\ude00"}}'))).toBe(true);
+  });
+
+  it("refuses every key that begins with $ where the type leaves the key open: a server cannot hand over a variant or money as a map", () => {
+    const c = kv();
+    const all = c.tool("kv", "all");
+    for (const key of ["$tag", "$args", "$money", "$currency", "$anything", "$"]) expect(c.fits(all, { result: { a: "x", [key]: "y" } }), key).toBe(false);
+    expect(c.fits(all, { result: { "a$": "x", US$: "y" } })).toBe(true);
+  });
+
+  it("holds a result to the refinements of its type, and refuses a tool whose result type has one it cannot hold", () => {
+    const c = kv();
+    const stat = c.tool("kv", "stat");
+    expect(c.fits(stat, STAT)).toBe(true);
+    expect(c.fits(stat, { ...STAT, pct: 100, name: "abcd" })).toBe(true);
+    expect(c.fits(stat, { ...STAT, pct: 5000 })).toBe(false);
+    expect(c.fits(stat, { ...STAT, pct: -1 })).toBe(false);
+    expect(c.fits(stat, { ...STAT, name: "abcde" })).toBe(false);
+    expect(c.fits(stat, { ...STAT, name: "" })).toBe(false);
+    let thrown: unknown;
+    try {
+      c.tool("kv", "odd");
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toMatchObject({ code: "bad_connector" });
+    expect((thrown as Violation).message).toContain("a refinement the runtime cannot hold");
+  });
+
+  it("checks a set in one pass: the same item twice is refused, and forty thousand records take no time to speak of", () => {
+    const c = kv();
+    const stat = c.tool("kv", "stat");
+    expect(c.fits(stat, { ...STAT, tags: ["x", "x"] })).toBe(false);
+    expect(c.fits(stat, { ...STAT, pairs: [{ a: "1", b: "2" }, { b: "2", a: "1" }] })).toBe(false);
+    expect(JSON.stringify(stat.resultSchema)).not.toContain("uniqueItems");
+    const many = Array.from({ length: 40_000 }, (_, i) => ({ a: `a${i}`, b: "b" }));
+    const started = performance.now();
+    expect(c.fits(stat, { ...STAT, pairs: many })).toBe(true);
+    expect(c.fits(stat, { ...STAT, pairs: [...many, many[0]!] })).toBe(false);
+    // Every element wrong: the check stops at the first, and builds no error for each.
+    expect(c.fits(stat, { ...STAT, pairs: many.map((x) => ({ ...x, c: 1 })) as never })).toBe(false);
+    expect(performance.now() - started).toBeLessThan(5_000);
+  }, 60_000);
+
+  it("sends a parameter named __proto__ as a member of its own: the arguments' prototype is not set", () => {
+    const c = kv();
+    const all = c.tool("kv", "all");
+    const tool = { ...all, def: { ...all.def, params: [{ name: "__proto__", type: { ref: "Text" } }, { name: "b", type: { ref: "Text" } }] } } as never;
+    const args = c.args(tool, ["v", "w"])!;
+    expect(Object.getPrototypeOf(args)).toBe(Object.prototype);
+    expect(Object.hasOwn(args, "__proto__")).toBe(true);
+    expect(JSON.stringify(args)).toBe('{"__proto__":"v","b":"w"}');
+    expect(canonical(args)).toBe('{"__proto__":"v","b":"w"}');
+  });
+});
+
+needs06("the idempotency key and the declared parameters are in the schema the server lists", () => {
+  it("a write tool whose listed schema does not require its key parameter starts nothing (tool_schema_mismatch), though its digest is the pinned one", async () => {
+    const s = servers();
+    s.erp.changeSchema("post_draft_invoice", (schema) => ({ ...schema, required: ["m"] }));
+    const w = await cworld({ s });
+    const e = await violationOf(draft(w, "k1"));
+    expect(e.code).toBe("tool_schema_mismatch");
+    expect(e.message).toContain("post_draft_invoice (the schema its server lists does not require the idempotency key key)");
+    expect(calls(w.s.erp)).toEqual([]);
+    expect(await w.db.query("select 1 from runs where run_id = 'k1'")).toEqual([]);
+  });
+
+  it("a tool whose listed schema has no property for a declared parameter starts nothing either", async () => {
+    const s = servers();
+    s.erp.changeSchema("post_draft_invoice", () => ({ type: "object", properties: { m: { type: "object" } }, required: ["m"] }));
+    const w = await cworld({ s });
+    const e = await violationOf(draft(w, "k2"));
+    expect(e.code).toBe("tool_schema_mismatch");
+    expect(e.message).toContain("has no property for the declared parameter key");
+    const s2 = servers();
+    s2.erp.changeSchema("list_open_orders", () => ({ type: "object" }));
+    const e2 = await violationOf(draft(await cworld({ s: s2 }), "k3"));
+    expect(e2.message).toContain("list_open_orders (the schema its server lists has no property for the declared parameter vendor_id)");
+  });
+});
+
+needs06("a person's reconciliation of a connector's action", () => {
+  /** A run stopped with the draft's outcome unknown, and its action. */
+  async function stopped(runId: string): Promise<{ w: CWorld; operation: string }> {
+    const w = await cworld();
+    w.s.erp.writeFaults.push("lose_response");
+    const r = await draft(w, runId);
+    expect(r.state, state(r)).toBe("attention_required");
+    return { w, operation: (await w.rt.journal.actions(runId))[0]!.operation_key };
+  }
+
+  it("asks a server whose schemas changed nothing: it stops with tool_schema_mismatch, and the action stays unknown", async () => {
+    const { w, operation } = await stopped("r1");
+    w.s.erp.changeSchema("find_draft_invoice", (schema) => ({ ...schema, properties: { ...(schema["properties"] as Obj), note: { type: "string" } } }));
+    const e = await violationOf(reconcile(w, "r1", operation));
+    expect(e.code).toBe("tool_schema_mismatch");
+    expect(calls(w.s.erp)).toEqual(["list_open_orders", "post_draft_invoice"]);
+    expect((await w.rt.journal.actions("r1"))[0]!.state).toBe("unknown_outcome");
+  });
+
+  it("records the proxy's denial of its question as a violation of the run (egress_denied), once", async () => {
+    const { w, operation } = await stopped("r2");
+    w.s.before = (tool, server) => void (tool === "find_draft_invoice" && server.faults.push("denied"));
+    const r = await reconcile(w, "r2", operation);
+    expect(r.state, state(r)).toBe("attention_required");
+    const [action] = await w.rt.journal.actions("r2");
+    expect(action!.state).toBe("unknown_outcome");
+    expect((await w.rt.journal.violations("r2")).map((v) => [v.kind, v.agent, v.step])).toEqual([["egress_denied", POST, `${action!.command_id}#reconcile`]]);
+    await reconcile(w, "r2", operation);
+    expect(await w.rt.journal.violations("r2")).toHaveLength(1);
+    // And the denial of the schema check before it.
+    const again = await stopped("r3");
+    again.w.s.erp.faults.push("denied");
+    expect((await violationOf(reconcile(again.w, "r3", again.operation))).code).toBe("egress_denied");
+    expect((await again.w.rt.journal.violations("r3")).map((v) => v.kind)).toEqual(["egress_denied"]);
+    expect(await journalText(again.w, "r3")).not.toContain(INJECTION);
+  });
+});
+
+needs06("a server that does not answer", () => {
+  it("is cut off after the request's limit: a read fails by its code, a list is connector_protocol, and a write is an unknown outcome", async () => {
+    const w = await cworld();
+    const c = new Connectors({ program: verifyPackage(w.pkg).running, lock: w.pkg.lock, transport: w.s.transport as never, requestMs: 40 });
+    w.s.erp.faults.push("stall");
+    let thrown: unknown;
+    try {
+      await c.call(c.tool("erp", "list_open_orders"), { vendor_id: "V1" });
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(McpError);
+    expect(thrown).toMatchObject({ kind: "connector_protocol", rule: "aborted", definite: false });
+    w.s.erp.faults.push("stall");
+    expect(await violationOf(c.verifySchemas("erp"))).toMatchObject({ code: "connector_protocol" });
+    w.s.erp.faults.push("stall");
+    const out = await c.write(POST)!.execute({ params: [match("INV-1")] } as never, {} as never, "op-key", { before: false } as never);
+    expect(out).toMatchObject({ unknown: expect.stringContaining("aborted") });
+    expect(w.s.erp.postings).toBe(0);
+  }, 10_000);
+});
+
+needs06("cancelling an action whose adapter cannot be read", () => {
+  it("does nothing for a connector's tool, even where the configuration has an adapter of the same name", async () => {
+    const w = await cworld();
+    w.s.erp.writeFaults.push("lose_response");
+    expect((await draft(w, "x1")).state).toBe("attention_required");
+    const [action] = await w.rt.journal.actions("x1");
+    let asked = 0;
+    w.adapters.tools[POST] = { cancel: async () => (asked++, { cancelled: "never posted" }) } as never;
+    const spy = vi.spyOn(w.rt as unknown as { toolOf(): Promise<unknown> }, "toolOf").mockRejectedValue(new Violation("bad_connector", "the lock has no entry"));
+    try {
+      await w.rt.cancelAction("x1", action!.operation_key);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(asked).toBe(0);
+    expect((await w.rt.journal.actions("x1"))[0]!.state).toBe("unknown_outcome");
   });
 });
