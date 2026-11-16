@@ -69,9 +69,10 @@ export interface SignedDecision {
 /**
  * Why a decision is refused (spec/envelope.md, event `decision_refused`). Of a review (0.6, review.ts):
  * `incomplete_review`, a decision that does not decide every open item exactly once; `past_deadline`, one that comes
- * once its wait's deadline has passed, which only escalates or expires the wait.
+ * once its wait's deadline has passed, which only escalates or expires the wait. Of an answer in a run of 0.6:
+ * `reserved_value`, one that holds a member of the runtime's own values (`$verified`, `$evidence`, …) at any depth.
  */
-export type RefusalReason = "invalid_signature" | "unknown_key" | "not_in_role" | "same_member" | "stale_revision" | "subject_mismatch" | "incomplete_review" | "past_deadline";
+export type RefusalReason = "invalid_signature" | "unknown_key" | "not_in_role" | "same_member" | "stale_revision" | "subject_mismatch" | "incomplete_review" | "past_deadline" | "reserved_value";
 
 /**
  * What a run shows to whoever decides on it now. A decision record repeats

@@ -61,7 +61,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { check, kindOf, libraryVerify, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, pinnedLibraries, printProgram, toHtml, toMarkdown, type Doc, type LibrarySource, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { check, isProgram06, kindOf, libraryVerify, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, pinnedLibraries, printProgram, toHtml, toMarkdown, type Doc, type LibrarySource, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure, compilerMode } from "@mandate/bridge/mode";
 import type { Adapters } from "./adapters.js";
 import { Connectors } from "./connectors.js";
@@ -1103,6 +1103,17 @@ function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {
 }
 
 /**
+ * Untrusted text as a terminal shows it (0.6 output): every code point that is not printed as itself is written as
+ * JSON writes an escape, `\uXXXX` (each UTF-16 unit of it): controls (C0, DEL, C1), format characters (bidirectional
+ * overrides and isolates, zero-width characters, the byte order mark), line and paragraph separators, private-use,
+ * unassigned and lone surrogate code points. So no text a model or a person wrote can move the cursor, reorder or
+ * hide the lines a reviewer reads. Within a JSON text the result is still the same JSON value.
+ */
+export function terminalText(s: string): string {
+  return s.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Cs}]/gu, (ch) => Array.from({ length: ch.length }, (_, k) => `\\u${ch.charCodeAt(k).toString(16).toUpperCase().padStart(4, "0")}`).join(""));
+}
+
+/**
  * What a review's wait asks (0.6), as `status` shows it: the role asked, its deadline and who it escalates to, each
  * open item by its index with what it failed and who may waive that, and its value, which a model wrote; then the
  * command that decides it.
@@ -1115,8 +1126,8 @@ function reviewLines(run: RunRow, req: Obj, as: string): string[] {
   const lines = [`waiting for: ${String(req["role"] ?? "a person")} to review ${items.length} item${items.length === 1 ? "" : "s"} that failed ${String(q["contract"] ?? "its contract")} only where a person may waive it (deadline ${until}${then})`];
   for (const i of items) {
     const unmet = (Array.isArray(i["unmet"]) ? i["unmet"] : []).filter(isObj) as Obj[];
-    lines.push(`  item ${String(i["index"])}: unmet ${unmet.map((u) => `${String(u["criterion"])} ("${String(u["description"] ?? "")}"; waivable by ${(Array.isArray(u["waive"]) ? u["waive"] : []).join(", ")})`).join(", ")}`);
-    lines.push(`    value (model output): ${canonical((i["value"] ?? null) as Value)}`);
+    lines.push(`  item ${String(i["index"])}: unmet ${unmet.map((u) => `${String(u["criterion"])} ("${terminalText(String(u["description"] ?? ""))}"; waivable by ${(Array.isArray(u["waive"]) ? u["waive"] : []).join(", ")})`).join(", ")}`);
+    lines.push(`    value (model output): ${terminalText(canonical((i["value"] ?? null) as Value))}`);
   }
   const declined = Array.isArray(q["declined"]) ? q["declined"].filter(isObj).map((d) => String((d as Obj)["index"])) : [];
   if (declined.length) lines.push(`  declined without asking (they failed what no one may waive): ${declined.join(", ")}`);
@@ -1154,7 +1165,9 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
       const changes = Array.isArray(req["changes"]) ? req["changes"] : [];
       for (const c of changes) if (isObj(c)) lines.push(`  ${String(c["text"])}`);
       if (!changes.length) lines.push("  the envelope's amounts and capabilities are as they were");
-      lines.push(`  the lead's reason (model output): ${JSON.stringify(String(req["reason"] ?? ""))}`);
+      // In a run of 0.6 every code point a terminal does not print as itself is escaped too; an earlier run's lines are as they were.
+      const reason = JSON.stringify(String(req["reason"] ?? ""));
+      lines.push(`  the lead's reason (model output): ${isProgram06((await rt.runProgram(run.run_id)).source) ? terminalText(reason) : reason}`);
       lines.push(`  approve: mandate amend ${run.run_id} --revision ${run.revision} ${as} approve`, `  decline: mandate amend ${run.run_id} --revision ${run.revision} ${as} decline`);
     } else if (w["kind"] === "timer") {
       lines.push(`waiting for: a timer until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "")}); the scheduler resumes the run then`);

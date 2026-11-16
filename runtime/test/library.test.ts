@@ -603,12 +603,19 @@ needs06("a run of a program that imports a library of two modules and applies a 
     expect(run.state, JSON.stringify(run.attention ?? run.error)).toBe("succeeded");
     expect(run.result).toMatchObject({ $verified: "hello, Ada", $contract: "Said" });
     const evidence = await w.rt.verifyEvidence("t9");
-    expect(evidence.map((e) => [e.criterion, e.valid])).toEqual([["said", true]]);
+    // The criterion's record, and (0.6) the record of the verify as a whole, of the contract `*`.
+    expect(evidence.map((e) => [e.criterion, e.valid])).toEqual([
+      ["*", true],
+      ["said", true],
+    ]);
     // With a verifier of its own configured, a record holds only as a check of a criterion the program declares: the
     // program read is the run's running program, which has the contract.
     const signer = (w.rt as unknown as { signer: EvidenceSigner }).signer;
     const strict = new Runtime(w.db, w.adapters, undefined, undefined, { decisions: { mode: "signed" }, artifacts: w.rt.artifacts, trustedKeys: [signer.publicKeyPem()],trustedVerifiers: new TrustedKeys([EvidenceSigner.generate().publicKey]) });
-    expect((await strict.verifyEvidence("t9")).map((e) => [e.criterion, e.valid])).toEqual([["said", true]]);
+    expect((await strict.verifyEvidence("t9")).map((e) => [e.criterion, e.valid])).toEqual([
+      ["*", true],
+      ["said", true],
+    ]);
   });
 
   it("reads the components and the remote agents of the running program at a start: those a library brings", async () => {

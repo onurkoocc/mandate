@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compilerMode } from "@mandate/bridge/mode";
 import { afterAll, describe, expect, it } from "vitest";
-import { main } from "../src/cli.js";
+import { main, terminalText } from "../src/cli.js";
 
 const needs06 = compilerMode() !== "ts" ? describe : describe.skip;
 
@@ -85,6 +85,18 @@ async function person(name: string): Promise<{ key: string; id: string; pem: str
   return { key, id, pem: join(home, `${id.slice("sha256:".length)}.pem`) };
 }
 
+describe("untrusted text in a terminal", () => {
+  it("writes every code point a terminal does not print as itself as a JSON escape, and nothing else", () => {
+    const shown = terminalText("a‮b\u0085c​d e⁦f\u007Fg\u0007h﻿i\u{E0001}j\uD800k");
+    expect(shown).toBe("a\\u202Eb\\u0085c\\u200Bd\\u2028e\\u2066f\\u007Fg\\u0007h\\uFEFFi\\uDB40\\uDC01j\\uD800k");
+    // What a terminal prints as itself stays: accents, other scripts, symbols, a space, an emoji.
+    expect(terminalText("é ü 日本 → ✓ 😀")).toBe("é ü 日本 → ✓ 😀");
+    // Within a JSON text, the result reads back as the same value.
+    const text = JSON.stringify({ key: "x‮y " });
+    expect(JSON.parse(terminalText(text))).toEqual({ key: "x‮y " });
+  });
+});
+
 needs06("mandate review", () => {
   it("lists the open items, refuses a decision that breaks a rule, takes one that keeps them, and verifies what it took", async () => {
     const ana = await person("ana");
@@ -94,36 +106,39 @@ needs06("mandate review", () => {
     const lock = { lock: "mandate/lock/0.6", modules: {}, members: { ana: { keys: [ana.id] }, ben: { keys: [ben.id] } }, roles: { accountant: ["ana"], finance_lead: ["ben"] } };
     writeFileSync(join(dir, "mandate.lock.json"), JSON.stringify(lock));
 
-    const items = JSON.stringify({ items: [{ key: "a", n: 1 }, { key: "b", n: 20 }, { key: "", n: 30 }, { key: "d", n: 40 }] });
+    // Item 4's key holds what would move, reorder or hide the lines a reviewer reads in a terminal.
+    const items = JSON.stringify({ items: [{ key: "a", n: 1 }, { key: "b", n: 20 }, { key: "", n: 30 }, { key: "d", n: 40 }, { key: "e‮x\u0085​ ⁦", n: 50 }] });
     const started = await mandate("run", join(dir, "check.mdt"), "--workflow", "Check", "--input", items, "--run-id", "r1");
     expect(started.code, started.err).toBe(0);
     expect(started.out).toContain("run r1  Check  waiting");
-    expect(started.out).toContain("waiting for: accountant to review 2 items that failed Small only where a person may waive it");
+    expect(started.out).toContain("waiting for: accountant to review 3 items that failed Small only where a person may waive it");
+    expect(started.out).toContain('value (model output): {"key":"e\\u202Ex\\u0085\\u200B\\u2028\\u2066","n":50}');
+    for (const raw of ["‮", "\u0085", "​", " ", "⁦"]) expect(started.out).not.toContain(raw);
     expect(started.out).toContain("then finance_lead is asked");
     expect(started.out).toContain('item 1: unmet small ("The item is small"; waivable by accountant, finance_lead)');
     expect(started.out).toContain('value (model output): {"key":"b","n":20}');
     expect(started.out).toContain("declined without asking (they failed what no one may waive): 2");
     const r = revisionOf(started.out);
-    expect(started.out).toContain(`decide: mandate review r1 --revision ${r} --key <your key file> --waive <indices> --decline <indices> (every open item once: 1,3)`);
+    expect(started.out).toContain(`decide: mandate review r1 --revision ${r} --key <your key file> --waive <indices> --decline <indices> (every open item once: 1,3,4)`);
 
     // Refused by name, each, and the run stays at its revision.
-    const notInRole = await mandate("review", "r1", "--revision", r, "--key", ben.key, "--waive", "1,3");
+    const notInRole = await mandate("review", "r1", "--revision", r, "--key", ben.key, "--waive", "1,3,4");
     expect([notInRole.code, notInRole.err]).toEqual([1, expect.stringContaining("invalid_decision: not_in_role")]);
-    const leftOut = await mandate("review", "r1", "--revision", r, "--key", ana.key, "--waive", "1");
+    const leftOut = await mandate("review", "r1", "--revision", r, "--key", ana.key, "--waive", "1,4");
     expect([leftOut.code, leftOut.err]).toEqual([1, expect.stringContaining("incomplete_review: It leaves open item 3 undecided")]);
-    const declinedAlready = await mandate("review", "r1", "--revision", r, "--key", ana.key, "--waive", "1,2,3");
+    const declinedAlready = await mandate("review", "r1", "--revision", r, "--key", ana.key, "--waive", "1,2,3,4");
     expect([declinedAlready.code, declinedAlready.err]).toEqual([1, expect.stringContaining("incomplete_review: It names item 2")]);
-    const stale = await mandate("review", "r1", "--revision", String(Number(r) - 1), "--key", ana.key, "--waive", "1,3");
+    const stale = await mandate("review", "r1", "--revision", String(Number(r) - 1), "--key", ana.key, "--waive", "1,3,4");
     expect([stale.code, stale.err]).toEqual([1, expect.stringContaining("stale_revision")]);
     const notIndex = await mandate("review", "r1", "--revision", r, "--key", ana.key, "--waive", "one");
     expect([notIndex.code, notIndex.err]).toEqual([2, expect.stringContaining("--waive takes item indices")]);
-    const unsigned = await mandate("review", "r1", "--revision", r, "--waive", "1,3");
+    const unsigned = await mandate("review", "r1", "--revision", r, "--waive", "1,3,4");
     expect([unsigned.code, unsigned.err]).toEqual([2, expect.stringContaining("--key FILE is required")]);
     const status = await mandate("status", "r1");
     expect(revisionOf(status.out)).toBe(r);
 
     // Taken: the waived item is accepted on its waiver, which the status shows as such.
-    const done = await mandate("review", "r1", "--revision", r, "--key", ana.key, "--waive", "3", "--decline", "1");
+    const done = await mandate("review", "r1", "--revision", r, "--key", ana.key, "--waive", "3", "--decline", "1,4");
     expect(done.code, done.err).toBe(0);
     expect(done.out).toContain("run r1  Check  succeeded");
     expect(done.out).toContain("result: 2");
@@ -137,10 +152,10 @@ needs06("mandate review", () => {
     expect(record.code, record.err).toBe(0);
     const file = join(dir, "review-decision.json");
     writeFileSync(file, record.out);
-    const verified = await mandate("verify-decision", file, "--key", ana.pem, "--waive", "3", "--decline", "1", "--lock", join(dir, "mandate.lock.json"));
+    const verified = await mandate("verify-decision", file, "--key", ana.pem, "--waive", "3", "--decline", "1,4", "--lock", join(dir, "mandate.lock.json"));
     expect(verified.code, verified.out).toBe(0);
     expect(verified.out).toContain("review by ana as accountant");
-    expect(verified.out).toContain("it waived 3 and declined 1");
+    expect(verified.out).toContain("it waived 3 and declined 1,4");
     const other = await mandate("verify-decision", file, "--key", ana.pem, "--waive", "1,3");
     expect(other.code).toBe(1);
     expect(other.out).toContain("invalid: the review's decision did not waive 1,3 and decline nothing");

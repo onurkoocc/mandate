@@ -73,7 +73,7 @@ import { runAgentLoop, type LoopTask } from "./loop.js";
 import { McpDenied, McpError } from "./mcp-client.js";
 import { MAX_TOOL_OUTPUT } from "./tools.js";
 import { PLAN_TOOLS, planBrief, Planner, programsInFlight, Shared, type PlanHost, type ProgramChecker } from "./plan.js";
-import { asVerdict, classify, decisionProblem, outcomeProblem, questionDigest, questionOf, REVIEW, reviewValue, subjectValue, valueDigest, VERDICT, WAIVER, waiverFacts, waiverProblem, waiversOf, type Outcome as ReviewOutcome, type Question, type Split, type Verdict } from "./review.js";
+import { asVerdict, classify, decisionProblem, outcomeProblem, questionDigest, questionOf, REVIEW, reviewValue, subjectValue, valueDigest, VERDICT, VERIFY, verifyRecord, WAIVER, waiverFacts, waiverProblem, waiversOf, WHOLE, type Outcome as ReviewOutcome, type Question, type Split, type Verdict, type WaiverFacts } from "./review.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import type { ActionRow, Admission, CommandRow, Journal, ViolationKind } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
@@ -312,6 +312,13 @@ export class Interpreter {
    * not one of these is no review's source, whatever it holds.
    */
   private readonly mapOutcomes = new WeakMap<Value[], { path: string; map: MapExpr }>();
+  /**
+   * What a waiver is held to (0.6, review.ts `waiverFacts`), read once for this interpreter's drive of the run and kept:
+   * a decision, its waivers and the failed records they waive are all written before a drive that reads them starts
+   * (a review is decided while the run waits, and the drive after it is a new interpreter), so what is read once is
+   * what the journal holds of them throughout the drive. A commit map over many waived items reads them once.
+   */
+  private waivers?: Promise<WaiverFacts>;
 
   constructor(private readonly o: InterpOptions) {
     this.defs = o.program.defs;
@@ -1140,7 +1147,12 @@ export class Interpreter {
       // The request as first recorded: a resumed worker must not move its deadline.
       throw new Suspend({ kind, command: id, request: row?.result ?? request });
     }
-    return replayed(row, id);
+    const answer = replayed(row, id);
+    // 0.6: a person's answer is a value of their own, never one of the runtime's: it holds none of the members the
+    // runtime's own values are known by (a Verified value and its evidence among them), at any depth. The control API
+    // refuses one when it is given (`reserved_value`); one the journal holds anyway stops the run here.
+    if (kind === "input" && is06(this.o.program) && forbidden(answer)) throw new Violation("reserved_value", `The answer at ${id} holds a member of the runtime's own values ($verified, $evidence, …): a person's answer is never one of those.`);
+    return answer;
   }
 
   /**
@@ -1634,8 +1646,11 @@ export class Interpreter {
     let evidence: string[] = [];
     // 0.6 (B25): every record of this verify names, by its digest, the value it was given (`subject.value`).
     const bound = is06(this.o.program) ? { value: valueDigest(subject), failed: {} as Record<string, string[]> } : undefined;
+    const requires: boolean[] = [];
     for (let i = 0; i < (c.require ?? []).length; i++) {
-      if (!truthy(unwrap(await this.expr(c.require![i]!, cctx, `${path}/contract/require/${i}`)))) unmet.push(`require/${i}`);
+      const held = truthy(unwrap(await this.expr(c.require![i]!, cctx, `${path}/contract/require/${i}`)));
+      requires.push(held);
+      if (!held) unmet.push(`require/${i}`);
     }
     // Criteria run in order of their method (§10.4): static, then tests,
     // then evals and reviews, then people; by name within each. A person is
@@ -1652,22 +1667,35 @@ export class Interpreter {
     // the failed records of each criterion it did not meet: a review of the map this verify ends reads it there
     // (review.ts), and never a value anyone else carries. A resumed run and a replay check again, and the verdict the
     // journal holds must be the one its criteria give now: one that is not decides nothing, and stops the run.
-    if (bound && waiversOf(c).size) {
-      const verdict: Verdict = {
-        contract: e.contract,
-        value: subject,
-        value_digest: bound.value,
-        met: !unmet.length,
-        unmet,
-        failed: Object.fromEntries(unmet.filter((u) => !u.startsWith("require/")).map((u) => [u, [...(bound.failed[u] ?? [])].sort()])),
-        evidence: [...evidence].sort(),
-      };
+    // 0.6: the verify as a whole is a record of its own (review.ts `verifyRecord`), and a Verified value rests on it.
+    const whole = bound ? evidenceIdOf(this.o.runId, path, VERIFY, !unmet.length) : undefined;
+    const failed = bound ? Object.fromEntries(unmet.filter((u) => !u.startsWith("require/")).map((u) => [u, [...(bound.failed[u] ?? [])].sort()])) : {};
+    if (bound && whole && waiversOf(c).size) {
+      const verdict: Verdict = { contract: e.contract, value: subject, value_digest: bound.value, met: !unmet.length, unmet, failed, evidence: [...evidence].sort(), verify: whole };
       const recorded = asVerdict(await this.command(`${path}/verdict`, VERDICT, { contract: e.contract, value: bound.value }, undefined, async () => ({ ok: verdict as unknown as Value, cost: {} }), { label: `verdict ${e.contract}` }), e.contract);
       if (!recorded || canonical(recorded as unknown as Value) !== canonical(verdict as unknown as Value)) throw new Violation("nondeterministic_replay", `The verdict journaled at ${path} is not the one its criteria give for the value this verify is given.`);
       unmet = recorded.unmet;
       evidence = recorded.evidence;
     }
-    if (!unmet.length) return verified(subject, e.contract, [...evidence].sort());
+    // What the verify came to, signed: the value and the contract's arguments, which `require` held, what it did not
+    // meet, and the records of its criteria. A value whose `require` failed is never accepted, whatever it arrives as.
+    if (bound && whole && !this.o.replay) {
+      const record = verifyRecord({
+        id: whole,
+        run: this.o.runId,
+        package: this.o.packageHash,
+        contract: e.contract,
+        contract_hash: this.defHash(e.contract),
+        contract_args: this.subjectDigest(e.contract, cctx),
+        value: bound.value,
+        detail: { requires, unmet, evidence: [...evidence].sort(), failed },
+        producer: { kind: "runtime", handler: RUNTIME_HANDLER },
+        at: this.o.adapters.clock.now(),
+        ...(this.o.mode && this.o.mode !== "live" ? { mode: this.o.mode } : {}),
+      });
+      await this.o.journal.recordEvidence(this.o.runId, { record, ...this.o.signer.sign(record) });
+    }
+    if (!unmet.length) return verified(subject, e.contract, [...evidence, ...(whole ? [whole] : [])].sort());
     if (e.on_unmet) {
       return this.expr(e.on_unmet.then, { ...ctx, scope: { vars: new Map([[e.on_unmet.bind, unmet]]), parent: ctx.scope } }, `${path}/on_unmet/then`);
     }
@@ -2431,7 +2459,7 @@ export class Interpreter {
     // A person's approval holds only while the decision it names is the one they signed (H04); so does a waiver (0.6).
     const approved = this.o.decisions;
     const decisions = approved && rows.some((r) => r.method === "human.approve") ? new Map((await this.o.journal.decisions(this.o.runId)).map((d) => [d.decision_id, d])) : new Map<string, StoredDecision>();
-    const facts = v06 && waived && approved ? await waiverFacts(this.o.journal, this.o.runId, { contract: (n) => this.def(n), keys: approved.keys, lock: approved.lock, trusted: this.o.trusted }) : undefined;
+    const facts = v06 && waived && approved ? await (this.waivers ??= waiverFacts(this.o.journal, this.o.runId, { contract: (n) => this.def(n), keys: approved.keys, lock: approved.lock, trusted: this.o.trusted })) : undefined;
     // 0.6 (B25): every record the value rests on names, in its subject, the digest of the value the effect is given.
     const value = v06 ? valueDigest(v["$verified"] ?? null) : undefined;
     const problems: string[] = [];
@@ -2442,7 +2470,8 @@ export class Interpreter {
     const rule: AttestationRule = { keys: this.o.verifiers, inProcess: this.o.inProcess ?? new Set() };
     for (const r of rows) {
       const record = r.record as unknown as EvidenceRecord | null;
-      if (!r.passed) problems.push(`${r.evidence_id} did not pass`);
+      // A verify's own record (0.6) says what it did not meet: one that met less rests on waivers, held below.
+      if (!r.passed && !(v06 && r.method === VERIFY)) problems.push(`${r.evidence_id} did not pass`);
       if (r.contract !== contract) problems.push(`${r.evidence_id} is evidence for ${r.contract}`);
       if (!record || !r.key_id || !r.signature || !this.o.trusted.verify(record, { key_id: r.key_id, signature: r.signature })) problems.push(`${r.evidence_id} is not signed by a trusted key`);
       else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion || (v06 && record.method !== r.method)) problems.push(`${r.evidence_id} does not match its signed record`);
@@ -2455,7 +2484,11 @@ export class Interpreter {
               : facts
                 ? waiverProblem(record, facts)
                 : "a waiver rests on a signed review decision, and this run checks none"
-            : (recordProblem(record, { ...r, run: this.o.runId }, criterionMethods(c, record.criterion), rule) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined));
+            : v06 && record.method === VERIFY
+              ? record.criterion === WHOLE
+                ? undefined
+                : "a verify's record is of the contract whole"
+              : (recordProblem(record, { ...r, run: this.o.runId }, criterionMethods(c, record.criterion), rule) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined));
         if (why) problems.push(`${r.evidence_id}: ${why}`);
         if (v06 && subjectValue(record) !== value) problems.push(`${r.evidence_id} is evidence for another value than the one ${effect} is given`);
       }
@@ -2463,12 +2496,40 @@ export class Interpreter {
     const criteria = c?.kind === "contract" ? [...Object.keys(c.accept), ...Object.keys(c.invariant ?? {})] : [];
     if (c?.kind !== "contract") problems.push(`${contract} is not a contract of this program`);
     if (v06) {
-      // 0.6: a criterion is covered by passing records of every part it declares, or, when its `waive by` lets a
-      // person waive it, by a waiver that holds; a criterion nobody may waive is never covered by a waiver, so no
-      // value is accepted while one of those still fails.
+      // 0.6: the value rests on one verify of it, whose own record says what that verify came to: every `require`
+      // held, what it did not meet, and the records of its criteria. Every other record is one of that verify's, for
+      // the same contract arguments: passing records it lists, and waivers of failed records it lists. A criterion
+      // the verify met is covered by its passing records of every part the criterion declares; one it did not meet,
+      // by a waiver that holds alone (so never one nobody may waive); and a value whose `require` failed, never.
+      const whole = rows.filter((r) => r.method === VERIFY);
+      const own = whole.length === 1 ? (whole[0]!.record as unknown as EvidenceRecord | null) : null;
+      if (!own) problems.push(whole.length ? `it rests on ${whole.length} verifies of ${contract}, not on one` : `it rests on no verify of ${contract}`);
+      const vd = own && isObj(own.detail) ? own.detail : {};
+      const strings = (x: Value | undefined): string[] => (Array.isArray(x) ? x.filter((s): s is string => typeof s === "string") : []);
+      const unmet = strings(vd["unmet"]);
+      const listed = new Set(strings(vd["evidence"]));
+      const failedBy = isObj(vd["failed"] ?? null) ? (vd["failed"] as Obj) : {};
+      const args = own && isObj(own.subject) ? own.subject["contract_args"] : undefined;
+      if (own) {
+        const held = vd["requires"];
+        if (!Array.isArray(held) || held.some((x) => x !== true) || unmet.some((u) => u.startsWith("require/"))) problems.push(`${contract} was not met by it: ${unmet.filter((u) => u.startsWith("require/")).join(", ") || "a require"} failed`);
+        if (own.passed !== (unmet.length === 0)) problems.push(`${own.evidence_id} says it passed otherwise than what it did not meet`);
+      }
+      for (const r of rows) {
+        const record = r.record as unknown as EvidenceRecord | null;
+        if (r.method === VERIFY || !record) continue;
+        if (typeof args !== "string" || !isObj(record.subject) || record.subject["contract_args"] !== args) problems.push(`${r.evidence_id} is evidence of another verify than the one it rests on`);
+        if (r.method === WAIVER) {
+          const waives = isObj(record.detail) ? record.detail["waives"] : undefined;
+          if (!unmet.includes(r.criterion) || typeof waives !== "string" || !strings(failedBy[r.criterion]).includes(waives)) problems.push(`${r.evidence_id} waives what the verify it rests on did not fail`);
+        } else if (!listed.has(r.evidence_id)) problems.push(`${r.evidence_id} is not a record of the verify it rests on`);
+      }
       for (const k of criteria) {
-        if (rows.some((r) => r.method === WAIVER && r.criterion === k)) continue;
-        const passed = rows.filter((r) => r.passed && r.criterion === k).map((r) => r.method);
+        if (unmet.includes(k)) {
+          if (!rows.some((r) => r.method === WAIVER && r.criterion === k)) problems.push(`${contract}.${k} was not met, and no waiver covers it`);
+          continue;
+        }
+        const passed = rows.filter((r) => r.passed && r.criterion === k && r.method !== WAIVER && r.method !== VERIFY).map((r) => r.method);
         if (!passed.length) problems.push(`no evidence for ${contract}.${k}`);
         else for (const m of uncovered(criterionMethods(c, k) ?? [], passed)) problems.push(`no evidence by ${m} for ${contract}.${k}`);
       }
@@ -2490,8 +2551,9 @@ export class Interpreter {
   /**
    * Each value `v` holds where its type `t` says `Verified<T, C>` (0.6), with the contract `C` it names, if any, at its
    * place in `v` (`at`, a JSON pointer): through `Inferred`, `Untrusted` and `Option`, the items of a `List`, a `Set` or
-   * a `Map`, the fields of a record, the fields of a variant, an `Outcome`'s value, a `Review`'s accepted items, and
-   * the program's named types, generic ones with their arguments. A Verified value's own value is read on as `T`.
+   * a `Map`, the fields of a record, the fields of a variant, an `Outcome`'s value, a `Result`'s either side, a
+   * `Review`'s accepted items, and the program's named types, generic ones with their arguments; any other type whose
+   * arguments say Verified is held as a Verified place itself. A Verified value's own value is read on as `T`.
    * `generic` gives the type arguments of the named type being read. Nothing is taken from the value but its shape.
    */
   private verifiedIn(t: TypeExpr, v: Value, at: string, out: Array<{ at: string; value: Value; contract: string | undefined }>, generic: ReadonlyMap<string, TypeExpr>, depth: number): void {
@@ -2539,6 +2601,13 @@ export class Interpreter {
         if (args[0] && tv?.tag === "Ok") this.verifiedIn(args[0], tv.args[0] ?? null, `${at}/$args/0`, out, generic, next);
         return;
       }
+      case "Result": {
+        // `Ok(T)` or `Err(E)`: either may hold a Verified value.
+        const tv = tagOf(v);
+        const held = tv?.tag === "Ok" ? args[0] : tv?.tag === "Err" ? args[1] : undefined;
+        if (held) this.verifiedIn(held, tv!.args[0] ?? null, `${at}/$args/0`, out, generic, next);
+        return;
+      }
       case "Review":
         if (args[0] && isObj(v) && Array.isArray(v["accepted"])) {
           v["accepted"].forEach((x, j) => this.verifiedIn({ ref: "Verified", args: args.slice(0, 2) }, x, `${at}/accepted/${j}`, out, generic, next));
@@ -2546,10 +2615,30 @@ export class Interpreter {
         return;
     }
     const d = this.def(t.ref);
-    if (d?.kind !== "type") return;
+    // Any other type with arguments that is not the program's (`Receipt`, `Declined`, `DecisionOutcome`, one of a later
+    // release) is not read here: when an argument says Verified anywhere, the place is held as one, and what is there
+    // must be a Verified value of its own, or the effect is refused. What is not read is never taken for checked.
+    if (d?.kind !== "type") {
+      if (args.some((a) => this.mentionsVerified(a, new Set()))) out.push({ at, value: v, contract: undefined });
+      return;
+    }
     const names = (d as { generics?: unknown }).generics;
     const own = new Map<string, TypeExpr>(Array.isArray(names) ? names.flatMap((n, j) => (typeof n === "string" && args[j] ? [[n, args[j]!] as const] : [])) : []);
     this.verifiedIn(d.type, v, at, out, own, next);
+  }
+
+  /** Whether a type says `Verified` anywhere, through its arguments, fields and variants and the program's named types. */
+  private mentionsVerified(t: TypeExpr, seen: Set<string>): boolean {
+    if ("record" in t) return Object.values(t.record).some((f) => this.mentionsVerified(f, seen));
+    if ("refine" in t) return this.mentionsVerified(t.refine, seen);
+    if ("union" in t) return t.union.some((x) => (x.fields ?? []).some((f) => this.mentionsVerified(f.type, seen)));
+    if (!("ref" in t)) return false;
+    if (t.ref === "Verified") return true;
+    if ((t.args ?? []).some((a) => this.mentionsVerified(a, seen))) return true;
+    const d = this.def(t.ref);
+    if (d?.kind !== "type" || seen.has(t.ref)) return false;
+    seen.add(t.ref);
+    return this.mentionsVerified(d.type, seen);
   }
 
   /** The files frozen at prepare, read back from the artifact store (which checks their digests). */
