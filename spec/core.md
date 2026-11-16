@@ -18,7 +18,7 @@ rules:
 - [`diagnostics.md`](diagnostics.md): diagnostic codes;
 - [`envelope.md`](envelope.md): 0.4: roles, signed decisions, envelopes, `map` and `plan`;
 - [`boundary.md`](boundary.md): 0.5: `methods`, egress, isolation, the chained journal;
-- [`library.md`](library.md): 0.6, specified and not implemented: patterns, libraries, connectors and `tool.call(…)`, `human.review`, `waive by`.
+- [`library.md`](library.md): 0.6: patterns, libraries, connectors and `tool.call(…)`, `human.review`, `waive by`.
 
 *Must* marks a rule every conforming implementation follows.
 
@@ -36,8 +36,9 @@ A program is one module: a canonical JSON IR document, closed by
   lowers into IR, IR prints back as text, and both keep the hash.
 - `language` is `mandate/0.1` to `0.5`; 0.2 adds an agent's `loop` and
   `progress` (§5), 0.3 the system model and change sets (§10), 0.4 roles and
-  envelopes, 0.5 `methods` of `net.https`. In text, a file names its version
-  first: `mandate @ 0.5`.
+  envelopes, 0.5 `methods` of `net.https`, 0.6 (`library.md`) patterns,
+  libraries and connectors. In text, a file names its version first:
+  `mandate @ 0.5`.
 - A reader must reject, not repair, any of these: another `language`, an
   unknown field, a duplicate key, a non-integer or out-of-range number, a
   lone surrogate, or input over the limits (1 MiB of source, nesting 64,

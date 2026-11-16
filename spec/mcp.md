@@ -86,8 +86,8 @@ compiler's own 1 MiB source limit.
 
 ## 0.6
 
-*Specified in [`library.md`](library.md); not implemented yet. Everything
-above holds as it is today.*
+*Specified in [`library.md`](library.md); implemented. Everything above
+holds as it was.*
 
 - **The server stays this one.** In 0.6 the server is still the
   TypeScript program, a thin shell over the compiler's doors: its tools

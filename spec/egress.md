@@ -32,7 +32,7 @@ runtime and the sandboxes do with it) is
 | What the proxy does not protect against | [Limits](#limits) |
 
 **Connectors (0.6).** *Specified in
-[`library.md`](library.md#egress); not implemented yet.* A 0.6 package's
+[`library.md`](library.md#egress); implemented.* A 0.6 package's
 connectors reach their MCP servers through the proxy as the control
 plane's other gateways do: a `gateway` session per connector, its one
 destination the server's host with the method `POST` and the credential

@@ -5,8 +5,10 @@ TypeScript and the Rust implementations are held to the same rules and
 cases. Everything the release includes is implemented in the TypeScript
 implementation, and the table says where each part is shown; what it
 leaves out by decision is under [Not in 0.5](#not-in-05). The Rust compiler
-gives every fixture the same hashes and diagnostics as the TypeScript one;
-it is a library, and the runtime and the CLI use the TypeScript compiler.
+gives every fixture the same hashes and diagnostics as the TypeScript one.
+That was 0.5's state; from 0.6 the runtime and the CLI call the Rust
+compiler through the bridge ([`library.md`](library.md#the-bridge)), and
+the TypeScript compiler stays as the reference for 0.1 to 0.5.
 
 **A note on the name.** Release 0.5 is called Boundary. In the code and in
 the earlier specs, "boundary" already means *boundary evidence*: the
@@ -1112,7 +1114,7 @@ fails on a type without a class, and on a class of a type nothing writes.
 
 | Class | Event types |
 |---|---|
-| S0 | `wait_opened`, `wait_expired`, `decision_received`, `input_received`, `decision_refused`, `criterion_approved`, `criterion_denied`, `governance_approved`, `governance_denied`, `action_authorized`, `envelope_approved`, `amendment_requested`, `package_amended`, `limits_raised`, `reconcile_requested` |
+| S0 | `wait_opened`, `wait_expired`, `decision_received`, `input_received`, `decision_refused`, `criterion_approved`, `criterion_denied`, `governance_approved`, `governance_denied`, `action_authorized`, `envelope_approved`, `amendment_requested`, `package_amended`, `limits_raised`, `reconcile_requested`; 0.6: `review_requested`, `review_decided`, `review_escalated`, `review_expired`, `criterion_waived` |
 | S1 | `run_succeeded`, `run_failed`, `run_cancelled`, `run_cancelling`, `run_attention_required`, `cancel_requested`, `lease_revoked`, `violation`, `budget_exceeded`, `guarantee_lowered` |
 | S2 | `run_accepted`, `run_running`, `run_waiting`, `lease_acquired`, `command_dispatched`, `command_completed`, `command_throttled`, `charge_pending`, `charge_settled`, `map_started`, `map_ended` |
 | S3 | `action_prepared`, `action_committed`, `action_confirmed`, `action_rejected`, `action_unknown_outcome`, `action_cancelled`, `action_would_apply`, `changeset_prepared`, `changeset_would_apply`, `changeset_simulated`, `changeset_committed`, `changeset_partial`, `changeset_failed` |
@@ -1134,6 +1136,7 @@ what a role sees of them is in a section of its own, `exceptions`.
 | `run` | S1 | The run's id, workflow, tenant and state |
 | `waiting` | S0 | The wait the run is in, whole, with its request |
 | `decisions` | S0 | Each decision a person made on the run |
+| `reviews` | S0 | 0.6: each review of a batch: its items by index, open, waived or declined, who decided, the escalation and the expiry, and each waiver beside the failed record it waives ([`library.md`](library.md#views)) |
 | `exceptions` | S1 | How the run ended and what stopped it (below) |
 | `exceptions.violations.detail` | S4 | What the agent asked for that was refused |
 | `budget` | S2 | The dimensions; each command's row in its step's class |
@@ -1145,9 +1148,11 @@ what a role sees of them is in a section of its own, `exceptions`.
 | `halts`, `chain` | S1 | The audit view's own: the halts over the run's tenant; the journal's status |
 
 **Commands.** A command of kind `session`, `turn` or `tool` is a step of an
-agent loop: its trace, S4. One of kind `input`, `decision` or `amendment`
-waits for a person: S0, asked of the role its `wait_opened` names. Any
-other is a step: its row in the budget (id, kind, label, state, reservation
+agent loop: its trace, S4. One of kind `input`, `decision`, `amendment` or,
+from 0.6, `review` waits for a person: S0, asked of the role its
+`wait_opened` names (a `review`'s wait is asked of its escalated role after
+an escalation). Any other is a step, one of kind `verdict` (0.6: what a
+`verify` against a contract with a `waive by` criterion found) included: its row in the budget (id, kind, label, state, reservation
 and cost) is S2, its request and result S3.
 
 ### A role's view
@@ -1374,9 +1379,9 @@ the journal as it is, a journal tests change on purpose included.
 | INV-28 | A violation is counted once: a replay or a resume never counts it again | One `violation` event per step |
 | INV-29 | A floor, a least version and a credential binding come from the lock alone, inside the package hash: changing one is a new package | Lock 0.5; no built-in floor |
 
-INV-18, INV-21 and INV-22 are specified for 0.6 in
-[`library.md`](library.md#invariants), not implemented yet; INV-19 and
-INV-20 are kept for a later release.
+INV-18, INV-21 and INV-22 are kept for 0.6 by what
+[`library.md`](library.md#invariants) says; INV-19 and INV-20 are kept for
+a later release.
 
 ## Diagnostics and conformance cases
 
@@ -1462,17 +1467,19 @@ shared with `verify-journal`:
 | J16 | A run whose data nests deeper than a verifier reads | `export_over_limit` (`unreadable`) |
 
 The letters P, T and L are 0.6's, with H06 onward and N11
-([`library.md`](library.md#diagnostics-and-conformance-cases)): planned
-cases of a release that is specified and not implemented yet.
+([`library.md`](library.md#diagnostics-and-conformance-cases)): the cases
+of release 0.6, which is implemented.
 
 ## Not in 0.5
 
-- **Parts of the Rust compiler.** It is a library with no command line;
-  the runtime and the `mandate` CLI use the TypeScript compiler. The
-  envelope card (`mandate view --card`), the ACS/Rego target and the MCP
-  server are not ported. These start the plan for 0.6, whose bridge
-  ([`library.md`](library.md#the-bridge)) is specified and not implemented
-  yet. A few written
+- **Parts of the Rust compiler (until 0.6).** In 0.5 the Rust compiler is
+  a library with no command line; the runtime and the `mandate` CLI use the
+  TypeScript compiler, and the envelope card (`mandate view --card`), the
+  ACS/Rego target and the MCP server are not ported. Release 0.6 ported
+  them: the card and the ACS/Rego target are in the Rust compiler, the
+  native `mandate` command exists, and the runtime, the Node command and
+  the MCP server call the Rust compiler through the bridge
+  ([`library.md`](library.md#the-bridge)). A few written
   inputs are known to differ; they are listed in `vectors/README.md`
   ("Where the Rust compiler is not held to the TypeScript").
 - **New isolation backends.** 0.5 adds the level and the refusal, not a
