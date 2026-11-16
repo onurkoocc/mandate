@@ -18,7 +18,8 @@ rules:
 - [`diagnostics.md`](diagnostics.md): diagnostic codes;
 - [`envelope.md`](envelope.md): 0.4: roles, signed decisions, envelopes, `map` and `plan`;
 - [`boundary.md`](boundary.md): 0.5: `methods`, egress, isolation, the chained journal;
-- [`library.md`](library.md): 0.6: patterns, libraries, connectors and `tool.call(…)`, `human.review`, `waive by`.
+- [`library.md`](library.md): 0.6: patterns, libraries, connectors and `tool.call(…)`, `human.review`, `waive by`;
+- [`attention.md`](attention.md): 0.7, not implemented yet: `stage`, `report`, `owner`, `asks`, the attention view.
 
 *Must* marks a rule every conforming implementation follows.
 
