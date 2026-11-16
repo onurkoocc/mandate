@@ -718,6 +718,11 @@ fn print_envelope(env: &Value) -> Printed {
     for (effect, role) in entries(env, "approve") {
         lines.push(format!("    approve {effect} by {}", js_string(Some(role))));
     }
+    // 0.6: the patterns a lead's sub-programs may apply; no earlier IR has
+    // them.
+    if let Some(shapes) = env.get("shapes").and_then(Value::as_array) {
+        lines.push(format!("    shapes  [{}]", join(shapes, ", ")));
+    }
     lines.push("  }".to_owned());
     Ok(lines.join("\n"))
 }

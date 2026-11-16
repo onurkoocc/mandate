@@ -403,6 +403,204 @@
       "texts": {}
     },
     {
+      "program": "fixtures/library/migrate-all.mdt",
+      "modules": [],
+      "lock": "fixtures/library/migrate-all.lock.json",
+      "results": {
+        "check": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:1262e97f493e9dc682c9b6ffd88aaec1003f9bc0dc40bd84fa9272b6921bb207",
+            "defs": {
+              "Build": "sha256:2d5f858676bb96b3558ce39b6f44c95869bf082ad07aba5d86d5317f559daa81",
+              "Lead": "sha256:2a49247edb055ff7be9b09e1a94a6c6849358a865e7629494ead7a9adc23571b",
+              "Merge": "sha256:ad5a68aacafa46c1ca65bbccb777b987529deea6abcc4996f8656b23dc0658bb",
+              "MigrateAll": "sha256:9448a1982db93c6d7e9df392dee0f509c01a115f35e9ecd5dbd55d6e72a01c27",
+              "Migrator": "sha256:ca2d7ecaa9f8d4ca0e426a3d88d0e09562989e292caae877133f21c4dae1a430",
+              "ModelStd": "sha256:b70f22435c1e9ee9c17c9f654331b55d0a375c93637c25ef00f5b06414cf24c5",
+              "Moved": "sha256:1067ff58bafb63815b551a360a9c3cd9ec40c720df3fc5dfdafea952614643cb",
+              "Repo": "sha256:21fe3c8a0a95d7ff86b5df5991b4eb2f268c0ac5e21034d0bcfcf1600844e29f",
+              "RepoRead": "sha256:5fa5d8559f4c6c02344894b6dc100af21e3b5c1d2bfc7d12618984779efa3f08",
+              "SrcWrite": "sha256:0073ab4ff134a9439e32bcef2d055e49ac42a0d04e6d8bec04cc45ecd81bb487",
+              "Summary": "sha256:65f6177638770cc7a66539c58f4cdebfabbb85305fc16165f58f44b35635dcd8",
+              "platform_lead": "sha256:27b44372873d1f0f198bedcb10d17b0a87a9f3d7f7b5d19cdfc826aa467d14be",
+              "release_manager": "sha256:a5ca9c23e1a9a752ab8e633fcaf0f12f2e5b7e15ca7957149bd9578cf88193b3"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Moved/accept/moved/by/static",
+                "span": [31, 15, 31, 35]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Moved/accept/nothing_left/by/static",
+                "span": [33, 15, 33, 31]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "check_module": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:1262e97f493e9dc682c9b6ffd88aaec1003f9bc0dc40bd84fa9272b6921bb207",
+            "defs": {
+              "Build": "sha256:2d5f858676bb96b3558ce39b6f44c95869bf082ad07aba5d86d5317f559daa81",
+              "Lead": "sha256:2a49247edb055ff7be9b09e1a94a6c6849358a865e7629494ead7a9adc23571b",
+              "Merge": "sha256:ad5a68aacafa46c1ca65bbccb777b987529deea6abcc4996f8656b23dc0658bb",
+              "MigrateAll": "sha256:9448a1982db93c6d7e9df392dee0f509c01a115f35e9ecd5dbd55d6e72a01c27",
+              "Migrator": "sha256:ca2d7ecaa9f8d4ca0e426a3d88d0e09562989e292caae877133f21c4dae1a430",
+              "ModelStd": "sha256:b70f22435c1e9ee9c17c9f654331b55d0a375c93637c25ef00f5b06414cf24c5",
+              "Moved": "sha256:1067ff58bafb63815b551a360a9c3cd9ec40c720df3fc5dfdafea952614643cb",
+              "Repo": "sha256:21fe3c8a0a95d7ff86b5df5991b4eb2f268c0ac5e21034d0bcfcf1600844e29f",
+              "RepoRead": "sha256:5fa5d8559f4c6c02344894b6dc100af21e3b5c1d2bfc7d12618984779efa3f08",
+              "SrcWrite": "sha256:0073ab4ff134a9439e32bcef2d055e49ac42a0d04e6d8bec04cc45ecd81bb487",
+              "Summary": "sha256:65f6177638770cc7a66539c58f4cdebfabbb85305fc16165f58f44b35635dcd8",
+              "platform_lead": "sha256:27b44372873d1f0f198bedcb10d17b0a87a9f3d7f7b5d19cdfc826aa467d14be",
+              "release_manager": "sha256:a5ca9c23e1a9a752ab8e633fcaf0f12f2e5b7e15ca7957149bd9578cf88193b3"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Moved/accept/moved/by/static",
+                "span": [31, 15, 31, 35]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Moved/accept/nothing_left/by/static",
+                "span": [33, 15, 33, 31]
+              },
+              "docs": "mandate explain MDT-W0601"
+            }
+          ]
+        },
+        "check_lock": {
+          "ok": true,
+          "hashes": {
+            "program": "sha256:1262e97f493e9dc682c9b6ffd88aaec1003f9bc0dc40bd84fa9272b6921bb207",
+            "defs": {
+              "Build": "sha256:2d5f858676bb96b3558ce39b6f44c95869bf082ad07aba5d86d5317f559daa81",
+              "Lead": "sha256:2a49247edb055ff7be9b09e1a94a6c6849358a865e7629494ead7a9adc23571b",
+              "Merge": "sha256:ad5a68aacafa46c1ca65bbccb777b987529deea6abcc4996f8656b23dc0658bb",
+              "MigrateAll": "sha256:9448a1982db93c6d7e9df392dee0f509c01a115f35e9ecd5dbd55d6e72a01c27",
+              "Migrator": "sha256:ca2d7ecaa9f8d4ca0e426a3d88d0e09562989e292caae877133f21c4dae1a430",
+              "ModelStd": "sha256:b70f22435c1e9ee9c17c9f654331b55d0a375c93637c25ef00f5b06414cf24c5",
+              "Moved": "sha256:1067ff58bafb63815b551a360a9c3cd9ec40c720df3fc5dfdafea952614643cb",
+              "Repo": "sha256:21fe3c8a0a95d7ff86b5df5991b4eb2f268c0ac5e21034d0bcfcf1600844e29f",
+              "RepoRead": "sha256:5fa5d8559f4c6c02344894b6dc100af21e3b5c1d2bfc7d12618984779efa3f08",
+              "SrcWrite": "sha256:0073ab4ff134a9439e32bcef2d055e49ac42a0d04e6d8bec04cc45ecd81bb487",
+              "Summary": "sha256:65f6177638770cc7a66539c58f4cdebfabbb85305fc16165f58f44b35635dcd8",
+              "platform_lead": "sha256:27b44372873d1f0f198bedcb10d17b0a87a9f3d7f7b5d19cdfc826aa467d14be",
+              "release_manager": "sha256:a5ca9c23e1a9a752ab8e633fcaf0f12f2e5b7e15ca7957149bd9578cf88193b3"
+            }
+          },
+          "diagnostics": [
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Moved.moved: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Moved/accept/moved/by/static",
+                "span": [31, 15, 31, 35]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0601",
+              "severity": "warning",
+              "message": "Moved.nothing_left: this static criterion cannot be proved at compile time; it becomes a run-time check (\u00a710.2).",
+              "at": {
+                "path": "/defs/Moved/accept/nothing_left/by/static",
+                "span": [33, 15, 33, 31]
+              },
+              "docs": "mandate explain MDT-W0601"
+            },
+            {
+              "code": "MDT-W0504",
+              "severity": "warning",
+              "message": "Lead.finish declares less than its loop can use: tokens 2000000 < 5600000, spend:USD 10000000 < 35200000 (40 steps \u00d7 the per-call bound of tier standard). The skill may not be able to finish.",
+              "at": {
+                "path": "/defs/Lead/budget",
+                "span": [48, 3, 48, 53]
+              },
+              "docs": "mandate explain MDT-W0504",
+              "facts": {
+                "agent": "Lead",
+                "skill": "finish",
+                "steps": 40,
+                "per_call": {
+                  "tokens": 140000,
+                  "spend_micros": 880000,
+                  "currency": "USD"
+                },
+                "short": {
+                  "tokens": {
+                    "declared": 2000000,
+                    "bound": 5600000
+                  },
+                  "spend:USD": {
+                    "declared": 10000000,
+                    "bound": 35200000
+                  }
+                }
+              }
+            },
+            {
+              "code": "MDT-W0504",
+              "severity": "warning",
+              "message": "Migrator.migrate declares less than its loop can use: tokens 400000 < 1680000, spend:USD 500000 < 10560000 (12 steps \u00d7 the per-call bound of tier standard). The skill may not be able to finish.",
+              "at": {
+                "path": "/defs/Migrator/budget",
+                "span": [41, 3, 41, 64]
+              },
+              "docs": "mandate explain MDT-W0504",
+              "facts": {
+                "agent": "Migrator",
+                "skill": "migrate",
+                "steps": 12,
+                "per_call": {
+                  "tokens": 140000,
+                  "spend_micros": 880000,
+                  "currency": "USD"
+                },
+                "short": {
+                  "tokens": {
+                    "declared": 400000,
+                    "bound": 1680000
+                  },
+                  "spend:USD": {
+                    "declared": 500000,
+                    "bound": 10560000
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "load": []
+      },
+      "texts": {}
+    },
+    {
       "program": "fixtures/library/minimal.mdt",
       "modules": [
         "fixtures/system/acme.system.mdt",

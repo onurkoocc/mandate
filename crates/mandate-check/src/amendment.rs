@@ -7,7 +7,8 @@
 //! own, E1709 ([`narrowings`]): an amendment only widens. The new envelope
 //! holds every capability the old one held, gives each budget dimension at
 //! least what it gave and names no other, and bounds the run's delegations
-//! no more tightly.
+//! no more tightly. In 0.6 it keeps every shape (spec/library.md
+//! "`shapes`") and adds none where the envelope had none.
 //!
 //! JavaScript imitated: the budget's dimensions in a `Map`, in insertion
 //! order; numbers written as JavaScript writes them; a member that is
@@ -225,6 +226,50 @@ pub fn narrowings(
                 .with("was", c0)
                 .with("asked", c1),
         );
+    }
+
+    // 0.6: the patterns a lead's sub-programs may apply (spec/library.md
+    // "`shapes`"). An envelope without `shapes` lets a sub-program be any
+    // workflow, so the list may be taken away or grow; a shape left out, or
+    // a list where there was none, would refuse a sub-program the envelope
+    // admitted. No envelope before 0.6 has one.
+    let names = |e: &Value| {
+        e.get("shapes").and_then(Value::as_array).map(|xs| {
+            xs.iter()
+                .filter_map(Value::as_str)
+                .map(JsValue::from)
+                .collect::<Vec<_>>()
+        })
+    };
+    match (names(before), names(after)) {
+        (Some(was), Some(asked)) => {
+            for s in &was {
+                if asked.contains(s) {
+                    continue;
+                }
+                let shape = s.as_str().unwrap_or_default();
+                no(
+                    format!(
+                        "The amendment leaves out the shape {shape}, which the envelope lists. An amendment only widens: a sub-program the envelope admitted must still be admitted."
+                    ),
+                    &format!("{at}/shapes"),
+                    JsObject::new()
+                        .with("dimension", "shapes")
+                        .with("shape", shape)
+                        .with("was", was.clone())
+                        .with("asked", asked.clone()),
+                );
+            }
+        }
+        (None, Some(asked)) => no(
+            "The amendment limits the lead's sub-programs to shapes, and the envelope admits any workflow. An amendment adds no limit.".to_owned(),
+            &format!("{at}/shapes"),
+            JsObject::new()
+                .with("dimension", "shapes")
+                .with("was", JsValue::Null)
+                .with("asked", asked),
+        ),
+        _ => {}
     }
     out
 }

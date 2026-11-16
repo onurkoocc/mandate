@@ -3,10 +3,11 @@
 //!
 //! ```text
 //! load → (stop if no program or an error) → link → (Rust: the import checks
-//!      of `crate::imports`) → resolveNames → roleChecks
-//!      → importedMethods → (Rust, 0.6: the patterns and applications of
-//!      `crate::expand`, and the expanded program, which every stage after
-//!      this one reads) → staticCheck (only if no error so far)
+//!      of `crate::imports`) → resolveNames → roleChecks → (Rust, 0.6: the
+//!      shapes of an envelope, `crate::shapes`) → importedMethods → (Rust,
+//!      0.6: the patterns and applications of `crate::expand`, and the
+//!      expanded program, which every stage after this one reads)
+//!      → staticCheck (only if no error so far)
 //!      → the lock checks (only with a lock and no error so far) → ok, hashes
 //! ```
 //!
@@ -318,6 +319,12 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
         program,
         Some(&loaded.spans),
         Some(&linked.defs),
+    ));
+    // 0.6: every shape an envelope lists is a pattern (E1711). Rust only.
+    diagnostics.extend(crate::shapes::shape_checks(
+        program,
+        &linked.defs,
+        Some(&loaded.spans),
     ));
     // Before 0.5, a method limit an imported 0.5 capability writes would be
     // read as none (E1804).

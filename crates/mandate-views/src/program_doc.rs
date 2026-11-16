@@ -4,7 +4,7 @@
 use mandate_check::{Modules, VIEW_FORMAT, linked_program, program_ref};
 use mandate_ir::{Program, Value};
 
-use crate::architecture::{architecture, architecture_blocks};
+use crate::architecture::{architecture_blocks, architecture_with_lock};
 use crate::authority::{authority, authority_blocks};
 use crate::cost::{cost, cost_blocks};
 use crate::doc::{Block, Doc};
@@ -34,7 +34,9 @@ pub fn program_doc(program: &Value, lock: Option<&Value>, modules: Option<&Modul
     });
     let mut blocks: Vec<Block> = Vec::new();
     if runs {
-        blocks.extend(architecture_blocks(&architecture(linked)));
+        blocks.extend(architecture_blocks(&architecture_with_lock(
+            linked, lock, None,
+        )));
         blocks.extend(authority_blocks(&authority(linked)));
         blocks.extend(cost_blocks(&cost(linked, lock)));
     }
