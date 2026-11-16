@@ -119,6 +119,10 @@ describe("infer through the Anthropic adapter", () => {
     expect(JSON.parse(content.slice("<data>\n".length, -"\n</data>".length))).toBe(CLOSING);
     // The count that reserved the call was of the same request.
     expect(client.counted[0]!.messages).toEqual(client.created[0]!.messages);
+    // A verified value is shown as the value it is, as it was before 0.6: without the runtime's wrappers.
+    const model = new AnthropicModel({ lock: LOCK, program: checked.program!, client });
+    await model.infer({ type: { ref: "Answer" }, input: { $verified: { capital: "a<b" }, $contract: "Known", $evidence: ["ev-1"] }, tier: "standard", commandId: "c", escape: true });
+    expect(client.created[1]!.messages).toEqual([{ role: "user", content: '<data>\n{"capital":"a\\u003cb"}\n</data>' }]);
   });
 
   it("sends no schema keyword the API refuses, and still refuses an answer out of the type's bounds", async () => {

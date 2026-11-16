@@ -168,6 +168,12 @@ export interface VerifyRequest {
    * (test.suite_each, test.contract, test.integration, test.ci) read it.
    */
   system?: SystemFacts;
+  /**
+   * 0.6 (spec/library.md "What reaches a model", B28): what the check quotes for a model (a review's diff) is quoted
+   * with `<` and `>` escaped, so that no file's text closes the region it is quoted in. Absent for a package of 0.1
+   * to 0.5, whose request, to a verifier in this process or another, is the bytes it was.
+   */
+  escape?: true;
 }
 
 export interface SystemFacts {

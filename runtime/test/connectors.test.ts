@@ -22,6 +22,7 @@ import type { RunRow } from "../src/journal.js";
 import { McpClient, McpError, type McpFetch } from "../src/mcp-client.js";
 import { notRunYet06 } from "../src/package.js";
 import { buildPackage, verifyPackage } from "../src/runtime.js";
+import { heldSchema, heldTo } from "../src/schema.js";
 import { MxcAdapter } from "../src/sandbox.js";
 import { Crash, Violation } from "../src/signals.js";
 import { SimAgents, SimChat, SimSandboxHost, toolUse, type SimTurn } from "../src/sim.js";
@@ -1131,6 +1132,13 @@ workflow Read() -> Untrusted<Map<Text, Text>>
     expect(c.fits(total, json('{"result":-0}'))).toBe(false);
     expect(c.fits(total, json('{"result":-0.0}'))).toBe(false);
     expect(c.fits(c.tool("kv", "stat"), { ...STAT, pct: json("1e400") })).toBe(false);
+    // A whole number past 2^53 is not the one the server wrote: it was rounded when it was read.
+    expect(json('{"result":9007199254740993}')).toEqual({ result: 9007199254740992 });
+    expect(c.fits(total, json('{"result":9007199254740993}'))).toBe(false);
+    expect(c.fits(total, json('{"result":-9007199254740993}'))).toBe(false);
+    expect(c.fits(total, json('{"result":1e300}'))).toBe(false);
+    expect(c.fits(total, json('{"result":9007199254740991}'))).toBe(true);
+    expect(c.fits(total, json('{"result":-9007199254740991}'))).toBe(true);
     // The same rule, as it is applied to the arguments an agent gives a tool.
     expect(forbidden({ limit: 10, names: ["a"] })).toBe(false);
     expect(forbidden({ limit: Infinity })).toBe(true);
@@ -1172,7 +1180,7 @@ workflow Read() -> Untrusted<Map<Text, Text>>
       thrown = e;
     }
     expect(thrown).toMatchObject({ code: "bad_connector" });
-    expect((thrown as Violation).message).toContain("a refinement the runtime cannot hold");
+    expect((thrown as Violation).message).toContain("the result type of odd has a refinement or a Map's key type the runtime cannot hold a server's answer to");
   });
 
   it("checks a set in one pass: the same item twice is refused, and forty thousand records take no time to speak of", () => {
@@ -1189,6 +1197,52 @@ workflow Read() -> Untrusted<Map<Text, Text>>
     expect(c.fits(stat, { ...STAT, pairs: many.map((x) => ({ ...x, c: 1 })) as never })).toBe(false);
     expect(performance.now() - started).toBeLessThan(5_000);
   }, 60_000);
+
+  it("stops at the first item that does not fit: four mebibytes of bad items are refused at once, with no error built for each", () => {
+    const schema = heldSchema({ language: "mandate/0.6", module: "m", version: "0.1", defs: {} } as unknown as Program, { record: { result: { ref: "List", args: [{ record: { a: { ref: "Text" }, b: { ref: "Text" } } }] } } } as never)!;
+    // As many empty records as 4 MiB of JSON holds, each lacking both members of the record.
+    const bad = { result: Array.from({ length: Math.floor((4 * 1024 * 1024) / 3) }, () => ({})) } as unknown as Value;
+    let fastest = Infinity;
+    for (let i = 0; i < 3; i++) {
+      const started = performance.now();
+      expect(heldTo(schema, bad)).toBe(false);
+      fastest = Math.min(fastest, performance.now() - started);
+    }
+    // A validator that collects every error takes some hundreds of milliseconds here; this one, none to speak of.
+    expect(fastest).toBeLessThan(100);
+  }, 60_000);
+
+  it("holds a map's keys to its key type: an enum's names and no other, and refuses a key type it cannot state", () => {
+    const none = { language: "mandate/0.6", module: "m", version: "0.1", defs: { Status: { kind: "type", type: { enum: ["open", "closed"] } } } } as unknown as Program;
+    const map = (key: unknown): ReturnType<typeof heldSchema> => heldSchema(none, { ref: "Map", args: [key, { ref: "Int" }] } as never);
+    for (const key of [{ enum: ["open", "closed"] }, { ref: "Status" }]) {
+      const schema = map(key)!;
+      expect(heldTo(schema, { open: 1, closed: 2 })).toBe(true);
+      expect(heldTo(schema, {})).toBe(true);
+      expect(heldTo(schema, { weird: 1 })).toBe(false);
+      expect(heldTo(schema, { open: 1, $tag: 2 })).toBe(false);
+    }
+    expect(heldTo(map({ ref: "Text" })!, { weird: 1 })).toBe(true);
+    for (const key of [{ ref: "Int" }, { ref: "Path" }, { refine: { ref: "Text" }, where: { op: "bool", value: true } }, { ref: "Nowhere" }, { record: {} }]) expect(map(key), JSON.stringify(key)).toBeUndefined();
+  });
+
+  it("binds every declared tool before a run starts, in every mode: a tool whose result type cannot be held starts nothing", async () => {
+    const zero = `sha256:${"0".repeat(64)}`;
+    const lock = { modules: {}, connectors: { "example.kv.kv": { credential: "kv", url: "https://kv.example.com/mcp", tools: { all: zero, total: zero, stat: zero, odd: zero } } } } as unknown as Lock;
+    const w = await world(text, { lock, decisions: { mode: "signed" } });
+    w.adapters.samples = { tool: () => ({ result: { a: "x" } }) } as never;
+    // The workflow calls only `all`; `odd`, which it never calls, has the refinement that cannot be held.
+    const e = await violationOf(w.rt.startRun({ pkg: w.pkg, workflow: "Read", input: {}, runId: "bind1", mode: "design" }));
+    expect(e.code).toBe("bad_connector");
+    expect(e.message).toContain("the result type of odd");
+    expect(await w.db.query("select 1 as x from runs where run_id = 'bind1'")).toEqual([]);
+    // Without that tool the same program runs.
+    const without = { modules: {}, connectors: { "example.kv.kv": { credential: "kv", url: "https://kv.example.com/mcp", tools: { all: zero, total: zero, stat: zero } } } } as unknown as Lock;
+    const fine = await world(text.replace("  tool odd() -> Untrusted<Odd>\n    read_only\n", ""), { lock: without, decisions: { mode: "signed" } });
+    fine.adapters.samples = { tool: () => ({ result: { a: "x" } }) } as never;
+    const r = await fine.rt.startRun({ pkg: fine.pkg, workflow: "Read", input: {}, runId: "bind2", mode: "design" });
+    expect(r.state, state(r)).toBe("succeeded");
+  });
 
   it("sends a parameter named __proto__ as a member of its own: the arguments' prototype is not set", () => {
     const c = kv();
@@ -1304,5 +1358,22 @@ needs06("cancelling an action whose adapter cannot be read", () => {
     }
     expect(asked).toBe(0);
     expect((await w.rt.journal.actions("x1"))[0]!.state).toBe("unknown_outcome");
+    // Nor when the package itself cannot be loaded, so that its connectors are not known: the effect could be one's.
+    const unread = vi.spyOn(w.rt as unknown as { loaded(): Promise<unknown> }, "loaded").mockRejectedValue(new Violation("expansion_mismatch", "the stored running program is another"));
+    try {
+      await w.rt.cancelAction("x1", action!.operation_key);
+    } finally {
+      unread.mockRestore();
+    }
+    expect(asked).toBe(0);
+    expect((await w.rt.journal.actions("x1"))[0]!.state).toBe("unknown_outcome");
+  });
+
+  it("tells a verifier of a 0.6 package's run to escape what it quotes for a model", async () => {
+    const src = program().replace("use std.{model, tool}", "use std.{model, tool, test}").replace('by static m.invoice_no != ""', 'by test.suite(["unit"])');
+    const w = await cworld({ src });
+    const r = await postAll(w, "esc1", [match("INV-1")]);
+    expect(r.state, state(r)).toBe("succeeded");
+    expect(w.verifier.calls.map((c) => [c.method, c.escape])).toEqual([["test.suite", true]]);
   });
 });

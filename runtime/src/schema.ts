@@ -53,7 +53,8 @@ export function typeSchema(program: Program, type: TypeExpr): JsonSchema {
  * stated in full, or the schema is refused: undefined when the type has a refinement no keyword here states. A `Set`
  * is checked in one pass over its items, where `uniqueItems` compares every two of them. A `Map`, the one place a
  * type leaves a member's name open, takes no key that begins with `$`: those are the runtime's own (a variant's
- * `$tag`, money's `$money`), read only where a type declares them.
+ * `$tag`, money's `$money`), read only where a type declares them. Its keys are held to its key type, a text or an
+ * enum; with any other key type the schema is refused, as with a refinement that cannot be stated.
  */
 export function heldSchema(program: Program, type: TypeExpr): JsonSchema | undefined {
   const defs: Record<string, JsonSchema> = {};
@@ -114,7 +115,13 @@ function convert(program: Program, t: TypeExpr, defs: Record<string, JsonSchema>
     case "Set":
       return { type: "array", items: args[0] ? convert(program, args[0], defs, seen, held) : {}, ...(held ? { [DISTINCT]: true } : { uniqueItems: true }) };
     case "Map":
-      return { type: "object", additionalProperties: args[1] ? convert(program, args[1], defs, seen, held) : {}, ...(held ? { propertyNames: { pattern: "^(?!\\$)" } } : {}) };
+      if (held) {
+        // Held: the keys are of the key type too, or the schema is refused.
+        const keys = args[0] ? heldKeys(program, args[0]) : undefined;
+        if (!keys) held.unenforced = true;
+        return { type: "object", additionalProperties: args[1] ? convert(program, args[1], defs, seen, held) : {}, propertyNames: keys ?? {} };
+      }
+      return { type: "object", additionalProperties: args[1] ? convert(program, args[1], defs, seen) : {} };
     case "Option":
       return { anyOf: [args[0] ? convert(program, args[0], defs, seen, held) : {}, { type: "null" }] };
   }
@@ -187,6 +194,22 @@ function refinement(e: Expr): JsonSchema {
     if (isLen && lo !== undefined && hi !== undefined) return { minItems: lo, maxItems: hi };
   }
   return {};
+}
+
+/**
+ * What `heldSchema` holds the keys of a `Map` to, by its key type; undefined when it cannot be stated. No key begins
+ * with `$`. A `Text` key is any other text; an enum's is one of its names. Any other key type (a number, a path, a
+ * refined text) is not stated here.
+ */
+function heldKeys(program: Program, key: TypeExpr, seen: Set<string> = new Set()): JsonSchema | undefined {
+  const notOwn = { pattern: "^(?!\\$)" };
+  if ("enum" in key) return { allOf: [notOwn, { enum: [...key.enum] }] };
+  if (!("ref" in key)) return undefined;
+  if (key.ref === "Text") return notOwn;
+  const def: Def | undefined = Object.hasOwn(program.defs, key.ref) ? program.defs[key.ref] : undefined;
+  if (def?.kind !== "type" || seen.has(key.ref)) return undefined;
+  seen.add(key.ref);
+  return heldKeys(program, def.type, seen);
 }
 
 /**
