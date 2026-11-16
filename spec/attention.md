@@ -19,7 +19,7 @@ best-effort basis.
 | `report`: grammar, IR, typing, purity, class and level of each field; E1903 to E1905; E1705 for `stage`, `report` and `owner` | RL3 | not implemented yet |
 | `asks`: the budget field, the attention bound, what each question site records; E1906 to E1908; `asks` in E1706 and E1709 | RL4 | not implemented yet |
 | The facts (`attention_facts`) | RL3, RL4 | not implemented yet |
-| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909, E1910 | RL5 | not implemented yet |
+| `owner`; lock format 0.7 (`role_classes`, `promotion`); E1909 to E1911 | RL5 | not implemented yet |
 | `std.patterns` 2.0.0 beside 1.0.0, version resolution, E1609; reports in a library's authority signature and in the semantic diff; the acceptance fixture | RL6 | not implemented yet |
 | E1509; the doors `callable_connectors` and `tool_schema_digest` | RL7, B8 | not implemented yet |
 | The attention view: the door `attention`, `mandate view --attention`, part of a 0.7 program's document | RP1, B9 | not implemented yet |
@@ -297,6 +297,7 @@ release ("Attention").
 | E1908 | `asks` out of place | `asks` in any budget but a workflow's or an envelope's |
 | E1909 | Role shown data above its class | With a lock: a question asked of a role, the role a review escalates to, or a report to a role shows data above that role's class in `role_classes` |
 | E1910 | Owner misplaced or missing | `owner` on a workflow with an envelope; or a lock with `promotion: "required"` and a workflow with neither an `owner` nor an envelope |
+| E1911 | Lock field of a newer language | A lock's `role_classes` or `promotion` checked with a program older than 0.7 |
 | E1609 | Module of a newer language | A program of 0.6 or later imports a module, or pins a library, whose language is newer than its own (a 0.6 program's lock that pins `std.patterns` 2.0.0); a program of 0.1 to 0.5 stays E1603 |
 | E1509 | Criterion method name reserved | In 0.7: a criterion's verifier whose callee path is `verify` or `waiver` |
 
@@ -584,7 +585,7 @@ reported at the lock's root, since the older schemas close their objects.
   `role_classes` or a `promotion` in that lock would not apply. The precedent
   is E1803, which refuses a lock's `isolation` and `egress` for a program
   before 0.5 rather than drop them silently (INV-11); the check refuses
-  these two fields for a 0.6 program the same way.
+  these two fields for a program older than 0.7 the same way, with E1911.
 
 ## `std.patterns` 2.0.0
 
