@@ -1,0 +1,17 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1711",
+  "kind": "compile",
+  "title": "A shape that names no definition and no name a use list brings (a mutation: the second shape) is refused at the name.",
+  "spec": ["spec/library.md#shapes", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../N11/parent.mdt", "kind": "mdt" },
+  "patch": [{ "op": "replace", "path": "/defs/Run/envelope/shapes/1", "value": "Nothing" }],
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E1711", "path": "/defs/Run/envelope/shapes/1", "facts": { "workflow": "Run", "shape": "Nothing", "kind": null } }
+    ]
+  }
+}

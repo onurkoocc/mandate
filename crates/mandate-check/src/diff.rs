@@ -576,6 +576,41 @@ pub fn envelope_changes(
             text,
         ));
     }
+    // 0.6: the patterns a lead's sub-programs may apply. No envelope before
+    // 0.6 has `shapes`, so an earlier program's lines are what they were.
+    let shapes = |e: &Value| -> Option<Vec<String>> {
+        e.get("shapes").and_then(Value::as_array).map(|xs| {
+            xs.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+    };
+    match (shapes(b), shapes(a)) {
+        (None, None) => {}
+        (Some(was), None) => out.push(Change::new(
+            format!("{at}/shapes"),
+            format!("~ {name}.shapes: {} → any workflow", was.join(", ")),
+        )),
+        (None, Some(now)) => out.push(Change::new(
+            format!("{at}/shapes"),
+            format!("~ {name}.shapes: any workflow → {}", now.join(", ")),
+        )),
+        (Some(was), Some(now)) => {
+            for s in now.iter().filter(|s| !was.contains(s)) {
+                out.push(Change::new(
+                    format!("{at}/shapes"),
+                    format!("+ {name}.shapes: {s}"),
+                ));
+            }
+            for s in was.iter().filter(|s| !now.contains(s)) {
+                out.push(Change::new(
+                    format!("{at}/shapes"),
+                    format!("- {name}.shapes: {s}"),
+                ));
+            }
+        }
+    }
     out
 }
 

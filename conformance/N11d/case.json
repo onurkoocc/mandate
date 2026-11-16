@@ -1,0 +1,15 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "N11d",
+  "kind": "compile",
+  "title": "An amendment that adds a shape widens what the lead may submit, and checks.",
+  "spec": ["spec/library.md#shapes", "spec/envelope.md#amendments-n04", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../N11/parent.mdt", "kind": "mdt" },
+  "amendment": {
+    "workflow": "Run",
+    "patch": [{ "op": "add", "path": "/shapes/2", "value": "Spare" }]
+  },
+  "expect": { "ok": true, "diagnostics": [] }
+}

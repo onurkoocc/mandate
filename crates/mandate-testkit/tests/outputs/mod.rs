@@ -16,11 +16,13 @@ use mandate_ir::{Diagnostic, JsObject, JsValue, canonicalize, stringify_pretty};
 use mandate_syntax::{kind_of, load};
 use mandate_testkit::read_json;
 use mandate_views::{
-    architecture_with, authority_with, card, card_doc, cost_with, envelope_workflows, program_doc,
-    to_html, to_markdown,
+    architecture_with_lock, authority_with, card, card_doc, cost_with, envelope_workflows,
+    program_doc, to_html, to_markdown,
 };
 
-use crate::common::{check_text, check_with_libraries, modules_of, read_source};
+use crate::common::{
+    check_text, check_with_libraries, modules_of, read_source, run_subprogram, subprogram_case,
+};
 
 /// `MODULE_FILES` in `compiler/test/golden-outputs.ts`, and `MODULE_FILES_OF`
 /// where it names others: the module files a program is given. A program of
@@ -36,8 +38,11 @@ pub fn module_files_of(program: &str) -> Vec<String> {
             "fixtures/library/acme.connectors/types.mdt",
             "fixtures/library/acme.connectors/connectors.mdt",
         ]
-    } else if program == "fixtures/library/invoices.mdt" {
-        // The acceptance program: its modules come from its libraries.
+    } else if program == "fixtures/library/invoices.mdt"
+        || program == "fixtures/library/migrate-all.mdt"
+    {
+        // The acceptance program: its modules come from its libraries. The
+        // shaped migration imports nothing but std and std.patterns.
         &[]
     } else if program == "fixtures/library/batch.mdt" {
         // The acceptance program's flow, its pattern in a module of its own.
@@ -202,7 +207,10 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
         // is shown as its expansion (the same as without them for a program
         // that applies none).
         let views = JsObject::new()
-            .with("architecture", architecture_with(p, Some(&modules)).to_js())
+            .with(
+                "architecture",
+                architecture_with_lock(p, lock.as_ref(), Some(&modules)).to_js(),
+            )
             .with("authority", authority_with(p, Some(&modules)).to_js())
             .with("cost", cost_with(p, lock.as_ref(), Some(&modules)).to_js());
         out.push((
@@ -238,6 +246,31 @@ pub fn outputs_of_text(program: &str, text: &str) -> Result<Vec<(String, String)
             out.push(("view --card --format md".to_owned(), to_markdown(&doc)));
             out.push(("view --card --format html".to_owned(), to_html(&doc)));
         }
+        // 0.6: the sub-programs a lead of the program might write, each
+        // checked as `check_subprogram` gives it (spec/library.md "shapes").
+        for (file, workflow, number) in subprograms_of(program) {
+            let s = mandate_testkit::parse_json(format!(
+                r#"{{"workflow":"{workflow}","number":{number},"defs":{{"file":"{file}","kind":"mdt"}},"room":{{"left":{{"tokens":50000000,"steps":1000,"agents":100,"spend:USD":100000000}},"time_left_ms":18000000}}}}"#
+            ).as_bytes())?;
+            let case = subprogram_case("fixtures/library", &s, p)?;
+            let r = run_subprogram(&case, p, &modules)?;
+            out.push((format!("check_subprogram {file}"), r.text));
+        }
     }
     Ok(out)
+}
+
+/// The sub-programs of a program of 0.6 whose outputs are pinned with it:
+/// each file (relative to `fixtures/library/`), the workflow whose envelope
+/// bounds it and its number.
+fn subprograms_of(program: &str) -> Vec<(&'static str, &'static str, u32)> {
+    if program == "fixtures/library/migrate-all.mdt" {
+        vec![
+            ("migrate-all.plans/fan-out.mdt", "MigrateAll", 1),
+            ("migrate-all.plans/written-out.mdt", "MigrateAll", 2),
+            ("migrate-all.plans/maker-checker.mdt", "MigrateAll", 3),
+        ]
+    } else {
+        Vec::new()
+    }
 }

@@ -85,9 +85,9 @@ fn the_embedded_schemas_are_the_files_in_spec_and_prepare() {
 
 /// The 0.6 IR schema is the schema of 0.1 to 0.5 under the new version, with
 /// the constructs of 0.6 so far: `pub` and `doc` on every kind of definition
-/// (spec/library.md "The 0.6 surface"), connectors, and a criterion's
-/// `waive` (spec/library.md "waive by"). Each slice that adds one lists its
-/// pointers here.
+/// (spec/library.md "The 0.6 surface"), connectors, a criterion's `waive`
+/// (spec/library.md "waive by") and an envelope's `shapes` (spec/library.md
+/// "`shapes`"). Each slice that adds one lists its pointers here.
 #[test]
 fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
     assert_eq!(
@@ -97,6 +97,7 @@ fn the_0_6_ir_schema_differs_from_the_earlier_one_only_where_listed() {
             "/$defs/Count",
             "/$defs/Criterion/properties/waive",
             "/$defs/Def/oneOf",
+            "/$defs/Envelope/properties/shapes",
             "/$defs/Expr/oneOf",
             "/$defs/Slot",
             "/$defs/SlotArg",
@@ -251,6 +252,58 @@ fn a_criterions_waive_is_a_set_of_names_in_0_6_alone() {
     assert_eq!(
         loaded(&with("mandate/0.5", r#","waive":["accountant"]"#)),
         ["MDT-E0104 at /defs/C/accept/small/waive"]
+    );
+}
+
+/// An envelope's `shapes` (0.6) is a set of pattern names: at least one,
+/// each once; and a program of 0.5 that has one is refused as before
+/// (E0104). That a name is a pattern is the check's (E1711).
+#[test]
+fn an_envelopes_shapes_is_a_set_of_names_in_0_6_alone() {
+    let v = json(IR_0_6_SCHEMA_TEXT);
+    let shapes = v
+        .get("$defs")
+        .and_then(|d| d.get("Envelope"))
+        .and_then(|c| c.get("properties"))
+        .and_then(|p| p.get("shapes"))
+        .map(canonicalize);
+    assert_eq!(shapes.as_deref(), Some(r##"{"$ref":"#/$defs/NameSet"}"##));
+    let with = |language: &str, shapes: &str| {
+        format!(
+            r#"{{"language":"{language}","module":"example.shapes","version":"0.1","defs":{{"Run":{{"kind":"workflow","params":[],"returns":{{"ref":"Text"}},"caps":[],"envelope":{{"owner":"o"{shapes}}},"body":[{{"op":"return","value":{{"op":"text","value":"done"}}}}]}}}}}}"#
+        )
+    };
+    assert_eq!(
+        loaded(&with(
+            "mandate/0.6",
+            r#","shapes":["FanOutMerge","MakerChecker"]"#
+        )),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        loaded(&with("mandate/0.6", "")),
+        Vec::<String>::new(),
+        "an envelope without shapes, as before"
+    );
+    assert_eq!(
+        loaded(&with("mandate/0.6", r#","shapes":[]"#)),
+        ["MDT-E0104 at /defs/Run/envelope/shapes"]
+    );
+    assert_eq!(
+        loaded(&with("mandate/0.6", r#","shapes":["Each","Each"]"#)),
+        ["MDT-E0104 at /defs/Run/envelope/shapes"]
+    );
+    assert_eq!(
+        loaded(&with("mandate/0.6", r#","shapes":["no such"]"#)),
+        ["MDT-E0104 at /defs/Run/envelope/shapes/0"]
+    );
+    assert_eq!(
+        loaded(&with("mandate/0.5", r#","shapes":["Each"]"#)),
+        ["MDT-E0104 at /defs/Run/envelope/shapes"]
+    );
+    assert_eq!(
+        loaded(&with("mandate/0.4", r#","shapes":["Each"]"#)),
+        ["MDT-E0104 at /defs/Run/envelope/shapes"]
     );
 }
 

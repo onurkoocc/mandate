@@ -192,15 +192,30 @@ fn the_views_of_an_imported_pattern_show_its_commit_its_review_and_its_cost() {
 }
 
 /// A program that applies no pattern is shown the same with the modules and
-/// without them, so a door given them answers what the TypeScript does.
+/// without them, so a door given them answers what the TypeScript does. The
+/// authority of a program of 0.6 is the one thing the modules add to: they
+/// bring the connectors, so that its tools are what they declare, and a write
+/// tool is the critical effect it declares; without them the tools and the
+/// effect are said not to be known (RP4).
 #[test]
 fn the_views_of_a_program_that_applies_no_pattern_do_not_depend_on_the_modules() {
     let p = program("fixtures/library/review.mdt");
     let m = modules();
-    assert_eq!(
-        text(&authority(&p).to_js()),
-        text(&mandate_views::authority_with(&p, Some(&m)).to_js())
+    let with = text(&mandate_views::authority_with(&p, Some(&m)).to_js());
+    assert!(
+        with.contains("erp.post_draft_invoice (critical; policy authorizes)"),
+        "{with}"
     );
+    assert!(
+        with.contains("erp.post_draft_invoice (write, critical, retry reconcilable)"),
+        "{with}"
+    );
+    let without = text(&authority(&p).to_js());
+    assert!(
+        without.contains("erp.post_draft_invoice (class not known: its connector is not given)"),
+        "{without}"
+    );
+    assert!(!without.contains("not critical"), "{without}");
     assert_eq!(
         text(&architecture(&p).to_js()),
         text(&mandate_views::architecture_with(&p, Some(&m)).to_js())

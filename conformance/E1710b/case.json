@@ -1,0 +1,21 @@
+{
+  "$schema": "../case.schema.json",
+  "format": "mandate/conformance-case/0.1",
+  "id": "E1710b",
+  "kind": "compile",
+  "title": "A lead's sub-program that applies MakerChecker, a pattern of std.patterns its parent imports and the envelope does not list, is not one of the shapes: E1710 before anything else of it is checked.",
+  "spec": ["spec/library.md#shapes", "spec/envelope.md#the-sub-program", "spec/library.md#diagnostics-and-conformance-cases"],
+  "language": "mandate/0.6",
+  "input": { "file": "../N11/parent.mdt", "kind": "mdt" },
+  "subprogram": {
+    "workflow": "Run",
+    "defs": { "file": "sub.mdt", "kind": "mdt" },
+    "room": { "left": { "tokens": 50000, "steps": 100, "agents": 10, "spend:USD": 10000000 }, "time_left_ms": 1800000 }
+  },
+  "expect": {
+    "ok": false,
+    "diagnostics": [
+      { "code": "MDT-E1710", "path": "/defs/Look/apply/pattern", "facts": { "workflow": "Look", "pattern": "MakerChecker", "problem": "not_listed", "module": "std.patterns", "shapes": ["Each", "FanOutMerge"] } }
+    ]
+  }
+}

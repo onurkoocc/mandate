@@ -423,7 +423,7 @@ function main(argv: string[]): void {
       } else if (format === "json") {
         // 0.6: a workflow that applies a pattern of a module is shown as its expansion.
         const m = viewModules(linked, program);
-        const views = { architecture: architecture(program, m), authority: authority(program, m), cost: cost(program, lock, m) };
+        const views = { architecture: architecture(program, m, m ? lock : undefined), authority: authority(program, m), cost: cost(program, lock, m) };
         process.stdout.write(JSON.stringify(views, null, 2) + "\n");
       } else {
         // 0.6: the document of a program is given the modules too, as its views are; before 0.6, the program alone.
