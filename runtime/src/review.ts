@@ -14,9 +14,17 @@
 //                     (`incomplete_review`)
 //   waiveRoleRefusal  the decision's role is named by the `waive by` of every failed criterion of each item it waives
 //                     (`not_in_role`)
+//   verifyRecord      the record a 0.6 verify writes of itself as a whole: the value and the contract's arguments by
+//                     their digests, which `require` held, what it did not meet and on which records; every Verified
+//                     value of a 0.6 run rests on exactly one, and on records of that verify alone (interp.ts
+//                     `checkVerified`), so a value whose `require` failed is never accepted
 //   waiverRecord      the evidence record of one waiver, beside the failed record it waives
 //   waiverProblem     whether a waiver record holds, which is what a `Verified` value resting on it is accepted on
 //                     (`forged_evidence` otherwise)
+//
+// A person's answer, and what a run is started with, never hold the members the runtime's own values are known by
+// (`$verified`, `$evidence`, …): `Runtime.submitInput` refuses one (`reserved_value`), and the interpreter stops on
+// one the journal holds anyway.
 //
 // An item's value is the one its verify journaled, read from the journal, never a value a decision carries: a
 // decision names input indices and nothing else.
@@ -35,6 +43,14 @@ export const REVIEW = "review";
 export const VERDICT = "verdict";
 /** The method of a waiver's evidence record: never a check's, so "passed" and "waived" stay apart. */
 export const WAIVER = "waiver";
+/**
+ * The method of the record a 0.6 verify writes of itself as a whole (`verifyRecord`): the value, the contract's
+ * arguments, which `require` held, what it did not meet, and the records of its criteria. A Verified value of a 0.6
+ * run is accepted only on one of these (interp.ts `checkVerified`).
+ */
+export const VERIFY = "verify";
+/** The criterion a verify's own record names: the contract whole, a name no criterion can have. */
+export const WHOLE = "*";
 
 /** What a 0.6 verify against a contract with a waiver journals of its outcome, as the command `<verify>/verdict`. */
 export interface Verdict {
@@ -50,6 +66,45 @@ export interface Verdict {
   failed: Record<string, string[]>;
   /** The passing records, by id, in order. */
   evidence: string[];
+  /** The id of the verify's own record (`VERIFY`). */
+  verify: string;
+}
+
+/** What the record of a verify as a whole holds in its `detail` (`VERIFY`). */
+export interface VerifyDetail {
+  /** Each `require` of the contract, in order: whether it held. */
+  requires: boolean[];
+  /** What the verify did not meet: a criterion's name, or `require/<i>`. */
+  unmet: string[];
+  /** The passing records of its criteria, by id, in order. */
+  evidence: string[];
+  /** Each unmet criterion's failed records, by id. */
+  failed: Record<string, string[]>;
+}
+
+/**
+ * The record of a 0.6 verify as a whole (evidence format `mandate/evidence/0.1`, method `verify`, criterion `*`):
+ * `passed` when it met everything, `require`s included; its subject the contract's arguments and the value, by their
+ * digests; its detail what it met and on which records. Signed by the runtime like every record.
+ */
+export function verifyRecord(o: { id: string; run: string; package: string; contract: string; contract_hash: string; contract_args: string; value: string; detail: VerifyDetail; producer: Value; at: number; mode?: "design" | "read_only" }): EvidenceRecord {
+  return {
+    format: EVIDENCE_FORMAT,
+    evidence_id: o.id,
+    run: o.run,
+    package: o.package,
+    contract: o.contract,
+    contract_hash: o.contract_hash,
+    criterion: WHOLE,
+    method: VERIFY,
+    passed: o.detail.unmet.length === 0,
+    subject: { contract_args: o.contract_args, value: o.value },
+    producer: o.producer,
+    artifacts: [],
+    detail: o.detail as unknown as Value,
+    at: o.at,
+    ...(o.mode ? { mode: o.mode } : {}),
+  };
 }
 
 /** An item a review asks about: its index, its value as the map recorded it, and each criterion it failed. */
@@ -152,7 +207,7 @@ export function subjectValue(record: EvidenceRecord | null | undefined): string 
  * digest of the value it holds. Undefined when it is none.
  */
 export function asVerdict(v: Value, contract: string): Verdict | undefined {
-  if (!isObj(v) || v["contract"] !== contract || typeof v["value_digest"] !== "string" || typeof v["met"] !== "boolean" || !Object.hasOwn(v, "value")) return undefined;
+  if (!isObj(v) || v["contract"] !== contract || typeof v["value_digest"] !== "string" || typeof v["met"] !== "boolean" || !Object.hasOwn(v, "value") || typeof v["verify"] !== "string") return undefined;
   const unmet = v["unmet"];
   const evidence = v["evidence"];
   const failed = v["failed"];
@@ -164,7 +219,7 @@ export function asVerdict(v: Value, contract: string): Verdict | undefined {
   }
   if (v["met"] !== (unmet.length === 0)) return undefined;
   if (valueDigest(v["value"]!) !== v["value_digest"]) return undefined;
-  return { contract, value: v["value"]!, value_digest: v["value_digest"], met: v["met"], unmet: unmet as string[], failed: byCriterion, evidence: evidence as string[] };
+  return { contract, value: v["value"]!, value_digest: v["value_digest"], met: v["met"], unmet: unmet as string[], failed: byCriterion, evidence: evidence as string[], verify: v["verify"] };
 }
 
 /**
@@ -284,10 +339,11 @@ export function waiverIdOf(run: string, failed: string, decision: string): strin
 /**
  * The evidence record of one waiver (spec/library.md "Waiver evidence"): `method: "waiver"`, `passed: true`, for the
  * same contract, criterion and subject as the failed record it waives, which `detail.waives` names; its producer is
- * the member, role and key of the review's decision and its digest; its detail names the review, the item and the
- * two lists the decision's payload is the digest of. The runtime signs it like every record.
+ * the member, role and key of the review's decision and its digest; its detail names the review and the item, and
+ * nothing more: the lists the decision's payload is the digest of are the review's outcome's (`WaiverFacts.outcomes`),
+ * read once, so a record stays small however many items a review decides. The runtime signs it like every record.
  */
-export function waiverRecord(o: { run: string; package: string; failed: EvidenceRecord; decision: { id: string; member: string; role: string; key: string }; review: string; index: number; waive: readonly number[]; decline: readonly number[]; at: number }): EvidenceRecord {
+export function waiverRecord(o: { run: string; package: string; failed: EvidenceRecord; decision: { id: string; member: string; role: string; key: string }; review: string; index: number; at: number }): EvidenceRecord {
   const f = o.failed;
   return {
     format: EVIDENCE_FORMAT,
@@ -302,7 +358,7 @@ export function waiverRecord(o: { run: string; package: string; failed: Evidence
     subject: f.subject,
     producer: { kind: "person", by: o.decision.member, role: o.decision.role, via: "Review", member: o.decision.member, key: o.decision.key, decision: o.decision.id },
     artifacts: [],
-    detail: { waives: f.evidence_id, review: o.review, index: o.index, waive: ascending(o.waive), decline: ascending(o.decline) },
+    detail: { waives: f.evidence_id, review: o.review, index: o.index },
     at: o.at,
     ...(f.mode ? { mode: f.mode } : {}),
   };
@@ -323,6 +379,8 @@ export interface WaiverFacts {
   trusted: TrustedKeys;
   /** What each review's wait asked, by its command, as its `wait_opened` recorded it. */
   questions: ReadonlyMap<string, Value>;
+  /** What each decided review's wait ended with, by its command: the lists its decision waived and declined. */
+  outcomes: ReadonlyMap<string, Value>;
 }
 
 /**
@@ -332,7 +390,8 @@ export interface WaiverFacts {
  * 1. its criterion has `waive by`, and the decision's role is one of its roles;
  * 2. it names a stored `review` decision of this run that still hashes to its digest, signed by a key the lock binds
  *    to its member and that role, which decided the review the record names, on what that review asked (its
- *    subject is the question's digest), and whose payload is the digest of lists that waive the record's item;
+ *    subject is the question's digest), and whose payload is the digest of the lists the review's outcome holds,
+ *    which waive the record's item;
  * 3. `detail.waives` names a failed record of this run, signed by a trusted key, for the same contract, criterion and
  *    subject, and the review asked about that record for that item;
  * 4. its subject names the value the review asked about for that item, by its digest;
@@ -363,8 +422,9 @@ export function waiverProblem(record: EvidenceRecord, f: WaiverFacts): string | 
   if (r.member !== p["member"] || r.key !== p["key"] || (r.role ?? null) !== role) return `decision ${id} was not made by the member, key and role the waiver names`;
   const review = d["review"];
   if (typeof review !== "string" || r.command !== review) return `decision ${id} did not decide the review the waiver names`;
-  const waive = indices(d["waive"]);
-  const decline = indices(d["decline"]);
+  const outcome = f.outcomes.get(review);
+  const waive = isObj(outcome ?? null) ? indices((outcome as Obj)["waive"]) : undefined;
+  const decline = isObj(outcome ?? null) ? indices((outcome as Obj)["decline"]) : undefined;
   if (!waive || !decline || r.payload !== payloadOf.review({ waive, decline })) return `decision ${id} did not decide the items the waiver names`;
   const index = d["index"];
   if (typeof index !== "number" || !waive.includes(index)) return `decision ${id} does not waive item ${String(index)}`;
@@ -401,6 +461,7 @@ export async function waiverFacts(journal: Journal, runId: string, o: { contract
       const q = isObj(request ?? null) ? (request as Obj)["question"] : undefined;
       return q === undefined ? [] : [[command, q] as const];
     })),
+    outcomes: new Map((await (tx ?? journal.db).query<{ command_id: string; result: Value }>("select command_id, result from commands where run_id = $1 and kind = $2 and state = 'succeeded'", [runId, REVIEW])).map((r) => [r.command_id, r.result ?? null])),
   };
 }
 
@@ -446,7 +507,8 @@ export function decisionProblem(d: StoredDecision | undefined, o: { run: string;
  * outcome of its wait (none when no item was open):
  *
  * - `accepted`: what passed, and what was waived, by input index, each a `Verified<T, C>` of the value its verify
- *   journaled; a waived one rests on its passing records and on the waivers its decision made;
+ *   journaled, resting on its verify's own record and its passing records, and a waived one on the waivers its
+ *   decision made too;
  * - `declined`: what was declined, without being asked (`by` absent) or by the decision (`by` its member) or at the
  *   expiry (`by` absent), by input index, each with its value and what it did not meet;
  * - `failed`: the indices of the items whose work failed.
@@ -459,7 +521,7 @@ export function reviewValue(o: { run: string; contract: string; verdicts: Readon
     const v = o.verdicts[i]!;
     const decision = o.outcome?.decision;
     const waivers = waived.has(i) && decision !== undefined ? Object.values(v.failed).flat().map((f) => waiverIdOf(o.run, f, decision)) : [];
-    return verified(v.value, o.contract, [...new Set([...v.evidence, ...waivers])].sort());
+    return verified(v.value, o.contract, [...new Set([...v.evidence, v.verify, ...waivers])].sort());
   });
   const declined = ascending([...declinedBy.keys()]).map((i): Value => ({ index: i, value: o.verdicts[i]!.value, unmet: o.verdicts[i]!.unmet, by: declinedBy.get(i) ?? null }));
   return { accepted, declined, failed: o.split.failed };

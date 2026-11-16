@@ -311,7 +311,7 @@ needs06("a review's wait", () => {
       expect(failed).toMatchObject({ method: "static", passed: false, criterion: "totals" });
       expect(record).toMatchObject({ method: "waiver", passed: true, contract: "Matched", criterion: "totals", subject: failed.subject, producer: { kind: "person", via: "Review", member: "ana", role: "accountant", decision: decided!["decision"] } });
       expect((record.subject as Obj)["value"]).toBe(valueOf(m!));
-      expect(record.detail).toEqual({ waives: failed.evidence_id, review: REVIEW_AT, index: i, waive: [1, 4], decline: [] });
+      expect(record.detail).toEqual({ waives: failed.evidence_id, review: REVIEW_AT, index: i });
     }
     // Both kinds of record hold, each by its own rule.
     expect((await w.rt.verifyEvidence("w4")).every((e) => e.valid)).toBe(true);
@@ -440,7 +440,7 @@ needs06("the rules of a review's decision, each refused by name with nothing cha
     const approved = { kind: "contract", params: [], accept: { ok: { description: "", by: { call: { op: "call", callee: { op: "field", of: { op: "var", name: "human" }, name: "approve" }, args: [] } }, waive: ["accountant"] } } } as unknown as Def;
     expect([...waiversOf(approved)]).toEqual([]);
     // An item that failed a criterion the review's role may not waive is not open, and no list may name it.
-    const v = (unmet: string[]): Verdict => ({ contract: "C", value: 1, value_digest: "d", met: unmet.length === 0, unmet, failed: {}, evidence: [] });
+    const v = (unmet: string[]): Verdict => ({ contract: "C", value: 1, value_digest: "d", met: unmet.length === 0, unmet, failed: {}, evidence: [], verify: "v" });
     const split = classify([v([]), v(["totals"]), v(["vendor"]), undefined, v(["require/0"])], c, "accountant");
     expect(split).toEqual({ accepted: [0], open: [2], declined: [1, 4], failed: [3] });
     const asked = askOf({ review: "/r", contract: "C", map: "/m", role: "accountant", escalate_to: null, deadline_ms: 1, c, verdicts: [v([]), v(["totals"]), v(["vendor"]), undefined, v(["require/0"])], split });
@@ -507,13 +507,43 @@ needs06("escalation and expiry (H08)", () => {
     expect((await runView(w.rt, "e2", { role: "accountant" })).view.reviews?.length).toBe(1);
   });
 
-  it("a late tick past both deadlines escalates and expires at once: the wait never outlasts twice its deadline", async () => {
+  it("a late tick escalates and nothing more: the role escalated to has a whole deadline from when it is asked", async () => {
     const w = await rworld();
     await start(w, "e3");
     w.clock.advance(3 * DAY);
+    const asked = w.adapters.clock.now();
     const r = await w.rt.tick("e3");
-    expect(state(r)).toBe("succeeded null");
+    expect(r.state, state(r)).toBe("waiting");
+    expect(requestOf(r)).toMatchObject({ role: "finance_lead", deadline: asked + DAY, escalated: { from: "accountant", at: asked } });
+    expect(await events(w, "e3", "review_escalated")).toEqual([{ command: REVIEW_AT, from: "accountant", to: "finance_lead", deadline: asked + DAY }]);
+    // Within its deadline the finance lead may still decide; past it, every open item is declined.
+    w.clock.advance(DAY - 1);
+    expect((await w.rt.tick("e3")).state).toBe("waiting");
+    w.clock.advance(1);
+    expect(state(await w.rt.tick("e3"))).toBe("succeeded null");
     expect((await w.rt.journal.events("e3")).map((e) => e.type).filter((t) => t.startsWith("review_"))).toEqual(["review_requested", "review_escalated", "review_expired"]);
+  });
+
+  it("a review decided while the drive after it did not run is driven by the next tick, before any deadline", async () => {
+    const w = await rworld();
+    await start(w, "e5");
+    // The drive after the decision fails before it takes the run (a compiler or host that is not there, a crash).
+    const resume = w.rt.resume.bind(w.rt);
+    let failing = true;
+    w.rt.resume = async (runId: string) => {
+      if (failing) {
+        failing = false;
+        throw new Error("the drive did not run");
+      }
+      return resume(runId);
+    };
+    await expect(decide(w, "e5", w.who.ana, { waive: [1], decline: [4] })).rejects.toThrow("the drive did not run");
+    const stuck = await w.rt.getRun("e5");
+    expect(stuck.state).toBe("waiting");
+    expect(await w.db.query("select state from commands where run_id = 'e5' and kind = 'review'")).toEqual([{ state: "succeeded" }]);
+    const done = await w.rt.tick("e5");
+    expect(state(done)).toBe("succeeded null");
+    expect(posted(w.tool)).toEqual(["I0", "I1"]);
   });
 
   it("without escalate_to, expires at its first deadline", async () => {
@@ -655,7 +685,7 @@ needs06("what a Verified value is accepted on (H09)", () => {
     expect(why((r) => void (at("producer")(r)["member"] = "dee"))).toMatch(/was not made by the member, key and role the waiver names/);
     expect(why((r) => void (r["package"] = "sha256:another"))).toMatch(/is not a review's decision of this run/);
     expect(why((r) => void (at("detail")(r)["review"] = "/another/review"))).toMatch(/did not decide the review the waiver names/);
-    expect(why((r) => void (at("detail")(r)["waive"] = [1]))).toMatch(/did not decide the items the waiver names/);
+    expect(why(() => undefined, (f) => ({ ...f, outcomes: new Map([[REVIEW_AT, { ...(f.outcomes.get(REVIEW_AT) as Obj), waive: [1] }]]) }))).toMatch(/did not decide the items the waiver names/);
     expect(why((r) => void (at("detail")(r)["index"] = 2))).toMatch(/does not waive item 2/);
     expect(why(() => undefined, (f) => ({ ...f, questions: new Map([[REVIEW_AT, { ...(f.questions.get(REVIEW_AT) as Obj), deadline_ms: 1 }]]) }))).toMatch(/was not made on what review .* asked/);
     // 3. The failed record: one the review asked about for this item, signed, failed, of this contract, criterion and subject.
@@ -878,24 +908,182 @@ async function answer(w: World, runId: string, who: Person, value: Value): Promi
   return w.rt.submitInput(runId, msg(), { value, signed: s });
 }
 
+/** The checks a drive of the run makes of a Verified value, as the run's own interpreter makes them, called alone. */
+interface Checks {
+  checkVerified(effect: string, v: Obj, irreversible?: boolean): Promise<void>;
+  verifiedIn(t: Value, v: Value, at: string, out: Array<{ at: string; value: Value; contract: string | undefined }>, generic: Map<string, Value>, depth: number): void;
+}
+async function checksOf(w: World, runId: string): Promise<Checks> {
+  const rt = w.rt as unknown as { loaded(hash: string, run: RunRow): Promise<unknown>; interpreter(run: RunRow, loaded: unknown, fence: number, replay: boolean, adapters: unknown, startedAt: number, earlier: unknown[]): Checks };
+  const run = await w.rt.getRun(runId);
+  return rt.interpreter(run, await rt.loaded(run.package_hash, run), run.fence, false, w.adapters, await w.rt.journal.startedAt(runId), []);
+}
+
+/** What `make` throws, as a violation's code and message. */
+async function violationOf(make: () => Promise<unknown>): Promise<{ code: string; message: string } | undefined> {
+  try {
+    await make();
+    return undefined;
+  } catch (e) {
+    return { code: (e as { code?: string }).code ?? "none", message: (e as Error).message };
+  }
+}
+
+const PAIR = `mandate @ 0.6
+
+module test.pair @ 0.1
+
+use std.{fs}
+
+type Item = { key: Text, n: Int }
+
+capability Notes = fs.read("/work/notes")
+
+/// An item is not negative, is under the limit, is within ten of it, and has a key.
+contract Pair(x: Item, limit: Int) {
+  require x.n >= 0
+  accept small "It is under the limit"
+    by static x.n < limit
+  accept wide "It is within ten of the limit"
+    by static x.n > limit - 10
+  accept named "It has a key"
+    by static len(x.key) >= 1
+}
+
+/// Verifies an item once and another twice, against two limits, and goes on whatever they meet.
+workflow Probe(a: Item, b: Item) -> Bool
+  caps   Notes
+  budget { time: 1h }
+{
+  let one = verify a against Pair(a, 3) on unmet(u) => false
+  let two = verify b against Pair(b, 3) on unmet(u) => false
+  let three = verify b against Pair(b, 20) on unmet(u) => false
+  true
+}
+`;
+
 needs06("a value that rests on a waiver, or on a person's answer", () => {
-  it("never reaches an effect that cannot be undone, at run time too (E1505): waived_irreversible, nothing prepared", async () => {
+  it("a person's answer that holds the runtime's own members is refused by name, and the wait stays open (1a)", async () => {
     const who = people();
     const tool = new SimTool("tag_release");
     const w = await world(UNDONE, { tools: [tool], lock: { modules: {}, members: who.members, roles: { owner: ["ana"], reviewer: ["ben"] } }, decisions: { keys: who.keys } });
     const risky = { branch: "b1", risk: 5 };
     let r = await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { changes: [risky], c: { branch: "", risk: 0 } }, runId: "u1" });
-    expect(r.waiting).toMatchObject({ kind: "review" });
     r = await decide(w, "u1", who.ana, { waive: [0], decline: [] });
-    // The change that is not named is escalated: its owner answers with the waived value, as a model or a person could.
     expect(r.waiting).toMatchObject({ kind: "input" });
     const [waiver] = await w.db.query<{ evidence_id: string }>("select evidence_id from evidence where run_id = 'u1' and method = 'waiver'");
+    // As the waived value, wrapped as the review gave it; and nested, deep in a value of the person's own.
     const waived = { $verified: risky, $contract: "Small", $evidence: [waiver!.evidence_id] };
-    r = await answer(w, "u1", who.ana, waived);
-    expect(r.state, state(r)).toBe("attention_required");
-    expect(r.attention).toMatchObject({ violation: "waived_irreversible" });
+    for (const value of [waived as unknown as Value, { note: [{ deep: { $evidence: ["x"] } }] }, { $capability: "Tags" }]) {
+      await refusedAs(w, "u1", () => answer(w, "u1", who.ana, value), "invalid_decision", "reserved_value");
+    }
     expect(tool.prepares).toEqual([]);
-    expect(await w.rt.journal.actions("u1")).toEqual([]);
+    // A run is never started with one either.
+    expect(await violationOf(() => w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { changes: [waived as unknown as Value], c: risky }, runId: "u1b" }))).toMatchObject({ code: "reserved_value" });
+    expect(await w.db.query("select 1 from runs where run_id = 'u1b'")).toEqual([]);
+  });
+
+  it("a waived value never reaches an effect that cannot be undone, at run time too (E1505): waived_irreversible", async () => {
+    const who = people();
+    const w = await world(UNDONE, { tools: [new SimTool("tag_release")], lock: { modules: {}, members: who.members, roles: { owner: ["ana"], reviewer: ["ben"] } }, decisions: { keys: who.keys } });
+    const risky = { branch: "b1", risk: 5 };
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Ship", input: { changes: [risky], c: { branch: "", risk: 0 } }, runId: "u2" });
+    await decide(w, "u2", who.ana, { waive: [0], decline: [] });
+    // The value as the review accepted it: its verify's record and the waiver.
+    const rows = await w.db.query<{ evidence_id: string }>("select evidence_id from evidence where run_id = 'u2' and contract = 'Small' and (method = 'waiver' or method = 'verify')");
+    const waived = { $verified: risky, $contract: "Small", $evidence: rows.map((r) => r.evidence_id).sort() };
+    const checks = await checksOf(w, "u2");
+    expect(await violationOf(() => checks.checkVerified("tag_release", waived, true))).toMatchObject({ code: "waived_irreversible" });
+    // It holds at an effect that can be undone: the waiver is the review's, for this very value.
+    expect(await violationOf(() => checks.checkVerified("note", waived, false))).toBeUndefined();
+  });
+
+  it("a value whose require failed is never accepted, whatever it arrives in; nor one without its verify's record (1c)", async () => {
+    const w = await world(PAIR, { lock: { modules: {} }, decisions: { keys: new TrustedKeys() } });
+    const a = { key: "a", n: -1 };
+    const b = { key: "b", n: 5 };
+    expect(state(await w.rt.startRun({ pkg: w.pkg, workflow: "Probe", input: { a, b }, runId: "p1" }))).toBe("succeeded null");
+    const rows = await w.rt.evidence("p1");
+    const of = (value: Value) => rows.filter((r) => isObj(r.subject) && r.subject["value"] === digest("request", value));
+    // Every criterion of a's verify passed, and its require did not.
+    const forA = of(a);
+    expect(forA.map((r) => [r.criterion, r.passed]).sort()).toEqual([["*", false], ["named", true], ["small", true], ["wide", true]]);
+    expect((forA.find((r) => r.criterion === "*")!.detail as Obj)).toMatchObject({ requires: [false], unmet: ["require/0"] });
+    const checks = await checksOf(w, "p1");
+    const whole = forA.map((r) => r.evidence_id).sort();
+    expect((await violationOf(() => checks.checkVerified("post", { $verified: a, $contract: "Pair", $evidence: whole })))?.message).toMatch(/Pair was not met by it: require\/0 failed/);
+    const criteria = forA.filter((r) => r.criterion !== "*").map((r) => r.evidence_id).sort();
+    expect((await violationOf(() => checks.checkVerified("post", { $verified: a, $contract: "Pair", $evidence: criteria })))?.message).toMatch(/it rests on no verify of Pair/);
+  });
+
+  it("records of two verifies of one value, against other arguments, are not one verify's (1b)", async () => {
+    const w = await world(PAIR, { lock: { modules: {} }, decisions: { keys: new TrustedKeys() } });
+    const b = { key: "b", n: 5 };
+    await w.rt.startRun({ pkg: w.pkg, workflow: "Probe", input: { a: { key: "a", n: 1 }, b }, runId: "p2" });
+    const forB = (await w.rt.evidence("p2")).filter((r) => isObj(r.subject) && r.subject["value"] === digest("request", b));
+    const wholes = forB.filter((r) => r.criterion === "*");
+    // Against 3, b fails small; against 20, it fails wide: neither verify met everything.
+    expect(wholes.map((r) => (r.detail as Obj)["unmet"]).sort()).toEqual([["small"], ["wide"]]);
+    const [three, twenty] = [wholes.find((r) => ((r.detail as Obj)["unmet"] as string[])[0] === "small")!, wholes.find((r) => ((r.detail as Obj)["unmet"] as string[])[0] === "wide")!];
+    const ownOf = (v: (typeof forB)[number]) => new Set((v.detail as Obj)["evidence"] as string[]);
+    // Each criterion's passing record, from whichever verify passed it, under the first verify's own record.
+    const small = forB.find((r) => r.criterion === "small" && r.passed && ownOf(twenty).has(r.evidence_id))!;
+    const wide = forB.find((r) => r.criterion === "wide" && r.passed && ownOf(three).has(r.evidence_id))!;
+    const named = forB.find((r) => r.criterion === "named" && ownOf(three).has(r.evidence_id))!;
+    expect(isObj(small.subject) && isObj(wide.subject) && small.subject["contract_args"] !== wide.subject["contract_args"]).toBe(true);
+    const checks = await checksOf(w, "p2");
+    const message = (await violationOf(() => checks.checkVerified("post", { $verified: b, $contract: "Pair", $evidence: [three.evidence_id, small.evidence_id, wide.evidence_id, named.evidence_id].sort() })))?.message;
+    expect(message).toMatch(new RegExp(`${small.evidence_id} is not a record of the verify it rests on`));
+    expect(message).toMatch(new RegExp(`${small.evidence_id} is evidence of another verify than the one it rests on`));
+    expect(message).toMatch(/Pair\.small was not met, and no waiver covers it/);
+  });
+
+  it("holds the place of any other type with arguments that say Verified, and reads a Result's either side (2)", async () => {
+    const who = people();
+    const w = await world(NESTED, { tools: [new SimTool("note_all"), new SimTool("note_one")], lock: { modules: {}, members: who.members, roles: {} }, decisions: { keys: who.keys } });
+    await w.rt.startRun({ pkg: w.pkg, workflow: "NoteAll", input: { a: { branch: "b1", risk: 0 }, b: { branch: "", risk: 0 } }, runId: "r2" });
+    const checks = await checksOf(w, "r2");
+    const verifiedChange = { ref: "Verified", args: [{ ref: "Change" }, { ref: "Named" }] };
+    const places = (t: Value, v: Value) => {
+      const out: Array<{ at: string; value: Value; contract: string | undefined }> = [];
+      checks.verifiedIn(t, v, "", out, new Map(), 0);
+      return out.map((o) => [o.at, o.contract ?? null, o.value]);
+    };
+    const result = { ref: "Result", args: [verifiedChange, { ref: "Text" }] };
+    expect(places(result, { $tag: "Ok", $args: ["yes"] })).toEqual([["/$args/0", "Named", "yes"]]);
+    expect(places({ ref: "Result", args: [{ ref: "Text" }, verifiedChange] }, { $tag: "Err", $args: ["no"] })).toEqual([["/$args/0", "Named", "no"]]);
+    expect(places(result, { $tag: "Err", $args: ["no"] })).toEqual([]);
+    // A type this runtime does not read whose arguments say Verified is held as a Verified place itself.
+    for (const ref of ["Receipt", "Declined", "DecisionOutcome", "Later"]) expect(places({ ref, args: [verifiedChange] }, { anything: 1 }), ref).toEqual([["", null, { anything: 1 }]]);
+    expect(places({ ref: "Receipt", args: [{ ref: "Text" }] }, { anything: 1 })).toEqual([]);
+  });
+
+  it("reads what a waiver is held to once for a drive, however many waived items it posts; a waiver's detail is small (6)", async () => {
+    const w = await rworld();
+    await start(w, "m1");
+    const journal = w.rt.journal;
+    const decisions = journal.decisions.bind(journal);
+    let reads = 0;
+    journal.decisions = async (...a: Parameters<typeof decisions>) => {
+      reads++;
+      return decisions(...a);
+    };
+    const done = await decide(w, "m1", w.who.ana, { waive: [1, 4], decline: [] });
+    expect(state(done)).toBe("succeeded null");
+    expect(posted(w.tool)).toEqual(["I0", "I1", "I4"]);
+    expect(reads).toBe(1);
+    const details = await w.db.query<{ detail: Obj }>("select detail from evidence where run_id = 'm1' and method = 'waiver'");
+    for (const d of details) expect(Object.keys(d.detail).sort()).toEqual(["index", "review", "waives"]);
+  });
+
+  it("a decision whose lists are not lists is refused after who signed it, and recorded, like every refusal (7)", async () => {
+    const w = await rworld();
+    await start(w, "m2");
+    const none = { waive: [] as number[], decline: [] as number[] };
+    const s = await signed(w, "m2", w.who.ana, none);
+    await refusedAs(w, "m2", () => w.rt.decideReview("m2", msg(), { signed: s, waive: "1,4", decline: [] } as never), "incomplete_review", "incomplete_review");
+    await refusedAs(w, "m2", () => w.rt.decideReview("m2", msg(), { signed: undefined, waive: 1, decline: null } as never), "invalid_decision", "invalid_signature");
+    await refusedAs(w, "m2", () => w.rt.decideReview("m2", msg(), { signed: { record: null, signature: 7 }, waive: [1, 4], decline: [] } as never), "invalid_decision", "invalid_signature");
   });
 
   it("an answer nested in a list is no Verified value: refused at the effect, where 0.5 never looked (unverified_parameter)", async () => {
@@ -919,25 +1107,18 @@ needs06("a value that rests on a waiver, or on a person's answer", () => {
 
   it("evidence names the value it was given for (B25): another value carrying it is not accepted", async () => {
     const who = people();
-    const all = new SimTool("note_all");
-    const w = await world(NESTED, { tools: [all, new SimTool("note_one")], lock: { modules: {}, members: who.members, roles: {} }, decisions: { keys: who.keys } });
+    const w = await world(NESTED, { tools: [new SimTool("note_all"), new SimTool("note_one")], lock: { modules: {}, members: who.members, roles: {} }, decisions: { keys: who.keys } });
     const a = { branch: "b1", risk: 0 };
     const r = await w.rt.startRun({ pkg: w.pkg, workflow: "NoteAll", input: { a, b: { branch: "", risk: 0 } }, runId: "n3" });
     expect(r.waiting).toMatchObject({ kind: "input" });
-    const [passed] = await w.db.query<{ evidence_id: string; subject: Obj }>("select evidence_id, subject from evidence where run_id = 'n3' and passed");
-    expect(passed!.subject["value"]).toBe(digest("request", a));
-    // The answer is a Verified value of another change, carrying the evidence of the one that passed.
-    const done = await answer(w, "n3", who.ana, { $verified: { branch: "forged", risk: 0 }, $contract: "Named", $evidence: [passed!.evidence_id] });
-    expect(done.state, state(done)).toBe("attention_required");
-    expect(done.attention).toMatchObject({ violation: "forged_evidence" });
-    expect(String((done.attention as Obj)["message"])).toContain("is evidence for another value than the one note_all is given");
-    expect(all.prepares).toEqual([]);
+    const passed = await w.db.query<{ evidence_id: string; subject: Obj }>("select evidence_id, subject from evidence where run_id = 'n3' and (passed or method = 'verify') and subject->>'value' = $1", [digest("request", a)]);
+    expect(passed.length).toBe(2);
+    const ids = passed.map((p) => p.evidence_id).sort();
+    const checks = await checksOf(w, "n3");
+    // A Verified value of another change, carrying the evidence of the one that passed.
+    expect((await violationOf(() => checks.checkVerified("note_all", { $verified: { branch: "forged", risk: 0 }, $contract: "Named", $evidence: ids })))?.message).toContain("is evidence for another value than the one note_all is given");
     // The very value it was given for is accepted.
-    const w2 = await world(NESTED, { tools: [new SimTool("note_all"), new SimTool("note_one")], lock: { modules: {}, members: who.members, roles: {} }, decisions: { keys: who.keys } });
-    await w2.rt.startRun({ pkg: w2.pkg, workflow: "NoteAll", input: { a, b: { branch: "", risk: 0 } }, runId: "n4" });
-    const [same] = await w2.db.query<{ evidence_id: string }>("select evidence_id from evidence where run_id = 'n4' and passed");
-    const ok = await answer(w2, "n4", who.ana, { $verified: a, $contract: "Named", $evidence: [same!.evidence_id] });
-    expect(state(ok)).toBe("succeeded null");
+    expect(await violationOf(() => checks.checkVerified("note_all", { $verified: a, $contract: "Named", $evidence: ids }))).toBeUndefined();
   });
 });
 
