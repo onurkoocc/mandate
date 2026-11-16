@@ -434,13 +434,12 @@ fn a_card_with_an_envelope_is_the_card_it_was() {
     let domain = read_text("fixtures/envelope/domain.mdt").unwrap();
     let load_modules = |header: &str| {
         let domain = domain.replacen("mandate @ 0.4", header, 1);
-        let m = mandate_check::load_modules(&[mandate_check::ModuleSource {
+        mandate_check::load_modules(&[mandate_check::ModuleSource {
             text: &domain,
             kind: SourceKind::Mdt,
             file: "domain.mdt",
         }])
-        .modules;
-        m
+        .modules
     };
     let old = load(&text, SourceKind::Mdt).program.unwrap();
     let old_card = card(
