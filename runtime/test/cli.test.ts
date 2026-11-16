@@ -121,13 +121,13 @@ describe("the control CLI (K19)", () => {
   it("is reached through the mandate binary: its command line hands it every command it has, and no other", () => {
     // The binary cannot depend on the runtime, which depends on the bridge it lives in, so its command line keeps the
     // names. A command missing there is one nobody can call. The binary is the bridge's; the compiler's own (`mandate-ts`) keeps the same list.
-    const ONLY_06 = ["connector"];
+    const ONLY_06 = ["connector", "review"];
     for (const file of ["../../bridge/src/cli.ts", "../../compiler/src/cli.ts"]) {
       const binary = readFileSync(new URL(file, import.meta.url), "utf8");
       const handed = binary.match(/^const CONTROL = new Set\((\[[^\]]*\])\);$/m);
       expect(handed, file).not.toBeNull();
       // The reference compiler is frozen at 0.5 and reads no program of 0.6: its binary hands on no command that is
-      // only of 0.6 (`connector pin`, whose program holds connectors).
+      // only of 0.6 (`connector pin`, whose program holds connectors; `review`, whose wait only a program of 0.6 opens).
       const expected = [...CONTROL_COMMANDS].filter((c) => file.includes("bridge") || !ONLY_06.includes(c));
       expect((JSON.parse(handed![1]!) as string[]).sort(), file).toEqual(expected.sort());
     }

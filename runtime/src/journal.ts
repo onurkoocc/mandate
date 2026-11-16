@@ -622,6 +622,31 @@ export class Journal {
     });
   }
 
+  /**
+   * Opens a review's wait (0.6; spec/library.md "The wait and the decision"): `review_requested` is written with it,
+   * in one transaction. Once for a wait: a resumed run that comes to it again gets the row as it is.
+   */
+  async openReview(runId: string, fence: number, cmd: { id: string; digest: string }, request: Value, requested: Value): Promise<CommandRow> {
+    return this.openWait(runId, fence, { ...cmd, kind: "review" }, request, async (tx) => {
+      await this.event(tx, runId, "review_requested", requested);
+    });
+  }
+
+  /**
+   * The request each wait of `kind` was opened with, by its command, as its `wait_opened` recorded it: the first, for
+   * a wait opens once. With `tx`, read inside that transaction.
+   */
+  async waitsOpened(runId: string, kind: string, tx?: Tx): Promise<Map<string, Value>> {
+    const rows = await (tx ?? this.db).query<Row>("select data from events where run_id = $1 and type = 'wait_opened' and data->>'kind' = $2 order by seq", [runId, kind]);
+    const out = new Map<string, Value>();
+    for (const r of rows) {
+      const data = (r["data"] ?? null) as Value;
+      if (data === null || typeof data !== "object" || Array.isArray(data) || typeof data["command"] !== "string") continue;
+      if (!out.has(data["command"])) out.set(data["command"], data["request"] ?? null);
+    }
+    return out;
+  }
+
   // ── amendments (spec/envelope.md "Amendments") ────────────────────────
 
   /**
@@ -1007,18 +1032,19 @@ export class Journal {
     }));
   }
 
-  async evidence(runId: string, ids?: string[]): Promise<EvidenceRow[]> {
-    const rows = await this.db.query<Row>(
+  /** The run's evidence rows, or those of `ids`; with `tx`, read inside that transaction. */
+  async evidence(runId: string, ids?: string[], tx?: Tx): Promise<EvidenceRow[]> {
+    const rows = await (tx ?? this.db).query<Row>(
       `select * from evidence where run_id = $1${ids ? " and evidence_id = any($2)" : ""} order by criterion, method, evidence_id`,
       ids ? [runId, ids] : [runId],
     );
     return rows.map(toEvidence);
   }
 
-  /** Records a signed evidence record once; a record for the same check is never replaced. */
-  async recordEvidence(runId: string, e: { record: EvidenceRecord; key_id: string; signature: string }): Promise<void> {
+  /** Records a signed evidence record once; a record for the same check is never replaced. With `tx`, inside that transaction. */
+  async recordEvidence(runId: string, e: { record: EvidenceRecord; key_id: string; signature: string }, tx?: Tx): Promise<void> {
     const r = e.record;
-    await this.db.query(
+    await (tx ?? this.db).query(
       `insert into evidence (evidence_id, run_id, contract, criterion, method, passed, detail, subject, record, key_id, signature)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (evidence_id) do nothing`,
       [r.evidence_id, runId, r.contract, r.criterion, r.method, r.passed, json(r.detail), json(r.subject), json(r as unknown as Value), e.key_id, e.signature],

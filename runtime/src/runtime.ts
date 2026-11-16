@@ -25,6 +25,7 @@ import { exportJournal, verifyExport, type JournalExport, type JournalReport } f
 import { buildPackage, isPackage06, isSigned04, libraryModules, refuseReference06, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
+import { givenValueProblem, listsRefusal, questionDigest, questionIn, REVIEW, subjectValue, VERIFY, WAIVER, waiverFacts, waiverProblem, waiverRecord, waiveRoleRefusal, WHOLE } from "./review.js";
 import { canonical, digest, isObj, type Obj, type Value } from "./values.js";
 
 export type { Lock };
@@ -288,6 +289,10 @@ export class Runtime {
     const linked = verified.running;
     // The input is a value of the workflow's parameter types, as a model's answer is of its type: a Path in it keeps the Path rule (K68).
     const input = isObj(o.input ?? null) ? (o.input as Obj) : {};
+    // 0.6: what a run is started with holds none of the members the runtime's own values are known by, at any depth,
+    // as a person's answer holds none: a Verified value is made by a verify of the run, never handed in.
+    const given = isPackage06(o.pkg) ? givenValueProblem(input) : undefined;
+    if (given) throw new Violation(given.reason, `The input of ${o.workflow} is not taken. ${given.message}`);
     for (const p of wf.params) {
       if (!Object.hasOwn(input, p.name)) continue;
       const problems = schemaErrors(typeSchema(linked, p.type), input[p.name]!);
@@ -953,8 +958,21 @@ export class Runtime {
     // A person's approval rests on their signed decision (H04): the record it names must still be the one they signed.
     const decisions = new Map((await this.journal.decisions(runId)).map((d) => [d.decision_id, d]));
     const rule: AttestationRule = { keys: this.verifiers, inProcess: this.inProcess };
-    const declared = (record: EvidenceRecord): string[] | undefined => criterionMethods(Object.hasOwn(program.defs, record.contract) ? program.defs[record.contract] : undefined, record.criterion);
-    return (await this.journal.evidence(runId)).map((e) => ({
+    const contractOf = (name: string): Program["defs"][string] | undefined => (Object.hasOwn(program.defs, name) ? program.defs[name] : undefined);
+    const declared = (record: EvidenceRecord): string[] | undefined => criterionMethods(contractOf(record.contract), record.criterion);
+    const rows = await this.journal.evidence(runId);
+    // A waiver (0.6) is held to the review decision it names and the failed record it waives (review.ts); in a run of
+    // 0.1 to 0.5 one holds nothing.
+    const v06 = isProgram06(program);
+    const facts = v06 && rows.some((e) => e.method === WAIVER) ? await waiverFacts(this.journal, runId, { contract: contractOf, keys: this.decisionKeys, lock, trusted: this.trusted }) : undefined;
+    // A verify's own record (0.6) is of the contract whole, and no criterion's check: it holds by its signature.
+    const holds = (e: (typeof rows)[number], record: EvidenceRecord): boolean =>
+      record.method === WAIVER || e.method === WAIVER
+        ? !!facts && record.method === e.method && !waiverProblem(record, facts)
+        : record.method === VERIFY || e.method === VERIFY
+          ? v06 && record.method === e.method && record.criterion === WHOLE
+          : !recordProblem(record, { ...e, run: runId }, declared(record), rule) && !approvalProblem(record, decisions, this.decisionKeys, lock, signed);
+    return rows.map((e) => ({
       evidence_id: e.evidence_id,
       criterion: e.criterion,
       key_id: e.key_id,
@@ -965,8 +983,7 @@ export class Runtime {
         this.trusted.verify(e.record as unknown as EvidenceRecord, { key_id: e.key_id, signature: e.signature }) &&
         (e.record as unknown as EvidenceRecord).evidence_id === e.evidence_id &&
         (e.record as unknown as EvidenceRecord).passed === e.passed &&
-        !recordProblem(e.record as unknown as EvidenceRecord, { ...e, run: runId }, declared(e.record as unknown as EvidenceRecord), rule) &&
-        !approvalProblem(e.record as unknown as EvidenceRecord, decisions, this.decisionKeys, lock, signed),
+        holds(e, e.record as unknown as EvidenceRecord),
     }));
   }
 
@@ -978,6 +995,7 @@ export class Runtime {
     const run = await this.journal.run(runId);
     const { lock } = await this.loaded(run.package_hash);
     // A run under an envelope started on its owner's approval of the package: the decision its manifest lists comes first.
+    // A review's decision (0.6) is one like any other: its record, signature and the lock's binding of its key.
     const listed = isObj(run.manifest) && isObj(run.manifest["envelope_approval"] ?? null) ? (run.manifest["envelope_approval"] as Obj)["decision"] : undefined;
     const approval = typeof listed === "string" ? await this.journal.decision(listed) : undefined;
     return [...(approval ? [approval] : []), ...(await this.journal.decisions(runId))].map((d) => {
@@ -1007,7 +1025,7 @@ export class Runtime {
     const w = run.waiting;
     const commandId = run.state === "waiting" && isObj(w) && typeof w["command"] === "string" ? w["command"] : undefined;
     const [row] = commandId === undefined ? [] : await this.db.query<Row>("select kind, state, result, request_digest from commands where run_id = $1 and command_id = $2", [runId, commandId]);
-    if (!row || row["state"] !== "waiting" || (row["kind"] !== "input" && row["kind"] !== "decision" && row["kind"] !== "amendment")) throw new Violation("no_wait", `Run ${runId} is not waiting for a person.`);
+    if (!row || row["state"] !== "waiting" || (row["kind"] !== "input" && row["kind"] !== "decision" && row["kind"] !== "amendment" && row["kind"] !== REVIEW)) throw new Violation("no_wait", `Run ${runId} is not waiting for a person.`);
     return shownBy(run, commandId!, row);
   }
 
@@ -1066,7 +1084,14 @@ export class Runtime {
   async submitInput(runId: string, msg: Message, i: { commandId: string; revision: number; value: Value } | { value: Value; signed: SignedDecision }): Promise<RunRow> {
     const signed = "signed" in i ? i.signed : undefined;
     const at = "signed" in i ? named(i.signed) : i;
-    const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, "input", i as unknown as Value, { signed, kinds: ["answer"], payload: payloadOf.answer(i.value) }, async () => ({ state: "succeeded", result: i.value }));
+    // 0.6: an answer holds none of the members the runtime's own values are known by, at any depth: a person's answer
+    // that looked like a Verified value would otherwise reach a step that takes one. Refused by name, and the wait stays.
+    const v06 = isPackage06(await this.packaged((await this.journal.run(runId)).package_hash));
+    const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, "input", i as unknown as Value, { signed, kinds: ["answer"], payload: payloadOf.answer(i.value) }, async () => {
+      const why = v06 ? givenValueProblem(i.value) : undefined;
+      if (why) throw new Refused({ reason: why.reason, message: `The answer is not taken. ${why.message}` }, signed, at.commandId);
+      return { state: "succeeded", result: i.value };
+    });
     return fresh ? this.drive(runId) : this.journal.run(runId);
   }
 
@@ -1119,6 +1144,74 @@ export class Runtime {
       ]);
       await this.journal.event(tx, runId, "action_authorized", { authorization: id, digest: d.digest, by, ...who.signed });
       return { state: "succeeded", result: { approved: true, by, authorization_id: id, ...who.signed } };
+    });
+    return fresh ? this.drive(runId) : this.journal.run(runId);
+  }
+
+  /**
+   * A person's decision on a review's wait (0.6; spec/library.md "The wait and the decision"): a signed record of kind
+   * `review` whose command is the review's wait, whose subject is the digest of what the wait asks, made in the role
+   * the wait asks now, and whose payload is the digest of `{ waive, decline }`: the input indices of the open items
+   * it waives and of those it declines. It is held, in this order, to every rule of a decision (who signed, what the
+   * record is for, the role: `invalid_decision`), to the wait's deadline (`past_deadline`), to deciding every open
+   * item exactly once and nothing else (`incomplete_review`), and to its role being one that every failed criterion
+   * of each item it waives names in its `waive by` (`not_in_role`); the rules are review.ts's. A refused decision
+   * changes nothing: `decision_refused` is recorded, and the wait stays open.
+   *
+   * Taken, in the one transaction that takes it: for each failed record of each item it waives, a waiver record
+   * beside it, signed by the runtime (`criterion_waived`), then `review_decided`. The decision names indices and
+   * nothing else: what a waived item's value is, is what its verify journaled.
+   */
+  async decideReview(runId: string, msg: Message, d: { signed: SignedDecision; waive: number[]; decline: number[] }): Promise<RunRow> {
+    // Only these are taken from the caller: whatever else comes with them is no part of the decision. Nothing of them
+    // is read before who signed is: lists that are not lists are refused below, after the signature, and recorded.
+    // Lists of numbers alone: anything else (a BigInt among them, which no digest takes) is lists that are not lists.
+    const shaped = Array.isArray(d?.waive) && Array.isArray(d?.decline) && [...d.waive, ...d.decline].every((x) => typeof x === "number");
+    const lists = { waive: shaped ? [...d.waive] : [], decline: shaped ? [...d.decline] : [] };
+    const at = named(d?.signed);
+    const seen = await this.journal.run(runId);
+    const loaded = await this.loaded(seen.package_hash, seen);
+    const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, REVIEW, { signed: d?.signed ?? null, waive: shaped ? d.waive : null, decline: shaped ? d.decline : null } as unknown as Value, { signed: d?.signed, kinds: [REVIEW], payload: payloadOf.review(lists) }, async (tx, request, run, who) => {
+      // A review is decided by a signed record alone, whatever the runtime's mode.
+      const signer = isObj(who.signed as Value) && typeof who.signed.member === "string" ? (who.signed as { member: string; role: string | null; key: string; decision: string }) : undefined;
+      if (!signer) throw new Refused({ reason: "invalid_signature", message: "A review is decided by a signed decision, and this one carries no signature." }, d?.signed, at.commandId);
+      if (!shaped) throw new Refused({ reason: "incomplete_review", message: "A review's decision names the items it waives and those it declines, each as a list of indices." }, d.signed, at.commandId);
+      const req = isObj(request) ? request : {};
+      const q = questionIn(req);
+      // What the person signed is the digest the wait shows; the question it stands for is the one it is the digest of.
+      if (!q || questionDigest(q) !== req["subject_digest"]) throw new Violation("forged_evidence", `The review's wait at ${at.commandId} holds another question than the one its subject names.`);
+      const deadline = req["deadline"];
+      if (typeof deadline !== "number" || this.adapters.clock.now() >= deadline) {
+        throw new Refused({ reason: "past_deadline", message: "The review's deadline has passed: the wait is escalated or it expires, and nothing is decided on its own." }, d.signed, at.commandId);
+      }
+      const incomplete = listsRefusal(q, lists);
+      if (incomplete) throw new Refused(incomplete, d.signed, at.commandId);
+      const c = Object.hasOwn(loaded.program.defs, q.contract) ? loaded.program.defs[q.contract] : undefined;
+      const notInRole = waiveRoleRefusal(c, q, lists.waive as number[], signer.role ?? undefined);
+      if (notInRole) throw new Refused(notInRole, d.signed, at.commandId);
+      const decision = { id: signer.decision, member: signer.member, role: String(signer.role), key: signer.key };
+      const waived = q.items.filter((i) => (lists.waive as number[]).includes(i.index)).sort((a, b) => a.index - b.index);
+      const rows = new Map((await this.journal.evidence(runId, waived.flatMap((i) => i.unmet.flatMap((u) => u.failed)), tx)).map((r) => [r.evidence_id, r]));
+      for (const item of waived) {
+        for (const u of item.unmet) {
+          if (!u.failed.length) throw new Violation("forged_evidence", `Item ${item.index} of the review at ${at.commandId} failed ${q.contract}.${u.criterion} with no record to waive.`);
+          for (const id of u.failed) {
+            // The record waived is the failed check of this item's value that the review asked about, as it was signed.
+            const row = rows.get(id);
+            const failed = (row?.record ?? null) as EvidenceRecord | null;
+            const holds = !!row && !!failed && !!row.key_id && !!row.signature && this.trusted.verify(failed, { key_id: row.key_id, signature: row.signature }) && failed.evidence_id === id && !row.passed && failed.passed === false && failed.method !== WAIVER;
+            if (!holds || failed!.contract !== q.contract || failed!.criterion !== u.criterion || subjectValue(failed) !== item.value_digest) {
+              throw new Violation("forged_evidence", `${id}, which item ${item.index} of the review at ${at.commandId} failed, is not a signed failed record of ${q.contract}.${u.criterion} for that item's value.`);
+            }
+            const waiver = waiverRecord({ run: runId, package: run.package_hash, failed: failed!, decision, review: at.commandId, index: item.index, at: this.adapters.clock.now() });
+            await this.journal.recordEvidence(runId, { record: waiver, ...this.signer.sign(waiver) }, tx);
+            await this.journal.event(tx, runId, "criterion_waived", { command: at.commandId, index: item.index, contract: q.contract, criterion: u.criterion, waiver: waiver.evidence_id, failed: id, decision: decision.id });
+          }
+        }
+      }
+      const decided = { waive: [...(lists.waive as number[])].sort((a, b) => a - b), decline: [...(lists.decline as number[])].sort((a, b) => a - b) };
+      await this.journal.event(tx, runId, "review_decided", { command: at.commandId, ...decided, by: who.by, ...who.signed });
+      return { state: "succeeded", result: { subject: String(req["subject_digest"]), ...decided, by: who.by, ...who.signed } };
     });
     return fresh ? this.drive(runId) : this.journal.run(runId);
   }
@@ -1227,6 +1320,15 @@ export class Runtime {
     if (run.state !== "waiting" || !isObj(w)) return run;
     const req = w["request"];
     const deadline = isObj(req) ? req["deadline"] : null;
+    // A review (0.6) is escalated once, when it has a role to escalate to, and then expires; and a review that was
+    // decided while the drive after it did not run is driven now, whatever its deadline. One that waits within its
+    // deadline is left as it is, and nothing is asked of the host for it.
+    if (w["kind"] === REVIEW) {
+      const due = typeof deadline === "number" && this.adapters.clock.now() >= deadline;
+      const [row] = due ? [] : await this.db.query<Row>("select state from commands where run_id = $1 and command_id = $2", [runId, String(w["command"])]);
+      if (!due && (!row || row["state"] === "waiting")) return run;
+      return this.expireReview(runId, String(w["command"]));
+    }
     if (typeof deadline !== "number" || this.adapters.clock.now() < deadline) return run;
     if (w["kind"] === "timer") return this.drive(runId);
     // A decision expires, and so does an amendment nobody answered: the lead is told, and the envelope stays.
@@ -1246,12 +1348,60 @@ export class Runtime {
     return this.drive(runId);
   }
 
+  /**
+   * A review's wait past its deadline (0.6; spec/library.md "Escalation and expiry"). Nothing passes on its own:
+   *
+   * - with `escalate_to`, once: the same question is asked of that role, with a new deadline of the same length from
+   *   when it is escalated, so that role has a whole deadline of its own (`review_escalated`); a tick that comes late
+   *   escalates and nothing more. The run's revision moves and the wait asks the new role, so a decision for the first
+   *   role is refused;
+   * - else, or once the escalated deadline has passed too: every open item is declined, by nobody (`review_expired`,
+   *   `wait_expired`), and the run goes on.
+   *
+   * A run that waits on a review its decision has already ended (the drive after the decision did not run: a crash,
+   * a failure of the compiler) is driven, as a decision's expiry drives its run. A runtime that resumes the run itself
+   * checks its host first, as a decision's expiry does.
+   */
+  private async expireReview(runId: string, command: string): Promise<RunRow> {
+    if (!this.driver) await checkFitness((await this.packaged((await this.journal.run(runId)).package_hash)).lock, this.hostProbe);
+    const now = this.adapters.clock.now();
+    const done = await this.db.tx(async (tx): Promise<"escalated" | "expired" | "decided" | undefined> => {
+      const run = await this.journal.lock(tx, runId);
+      const w = isObj(run.waiting) ? run.waiting : {};
+      if (run.state !== "waiting" || w["command"] !== command) return undefined;
+      const [row] = await tx.query<Row>("select kind, state, result from commands where run_id = $1 and command_id = $2", [runId, command]);
+      if (row && row["kind"] === REVIEW && row["state"] !== "waiting") return "decided";
+      const req = row && isObj((row["result"] ?? null) as Value) ? (row["result"] as Obj) : undefined;
+      if (!row || row["kind"] !== REVIEW || row["state"] !== "waiting" || !req) return undefined;
+      const q = questionIn(req);
+      const deadline = req["deadline"];
+      const ms = req["deadline_ms"];
+      if (!q || typeof deadline !== "number" || typeof ms !== "number" || now < deadline) return undefined;
+      const role = String(req["role"]);
+      const to = req["escalate_to"];
+      if (typeof to === "string" && to !== role && req["escalated"] === undefined) {
+        const next: Obj = { ...req, role: to, deadline: now + ms, escalated: { from: role, at: now } };
+        await tx.query("update commands set result = $3 where run_id = $1 and command_id = $2 and state = 'waiting'", [runId, command, JSON.stringify(next)]);
+        await this.journal.event(tx, runId, "review_escalated", { command, from: role, to, deadline: now + ms });
+        await this.journal.setState(tx, runId, "waiting", { waiting: { ...w, request: next } });
+        return "escalated";
+      }
+      const open = q.items.map((i) => i.index).sort((a, b) => a - b);
+      const outcome: Obj = { subject: String(req["subject_digest"]), waive: [], decline: open, by: null, role, expired: true };
+      await tx.query("update commands set state = 'succeeded', result = $3, error = null where run_id = $1 and command_id = $2 and state = 'waiting'", [runId, command, JSON.stringify(outcome)]);
+      await this.journal.event(tx, runId, "review_expired", { command, role, declined: open });
+      await this.journal.event(tx, runId, "wait_expired", { command });
+      return "expired";
+    });
+    return done === "expired" || done === "decided" ? this.drive(runId) : this.journal.run(runId);
+  }
+
   private async resolveWait(
     runId: string,
     msg: Message,
     commandId: string,
     revision: number,
-    kind: "input" | "decision" | "amendment",
+    kind: "input" | "decision" | "amendment" | typeof REVIEW,
     payload: Value,
     from: { signed: SignedDecision | undefined; by?: string; kinds: DecisionKind[]; payload?: string },
     resolve: (tx: Tx, request: Value, run: RunRow, who: Decider) => Promise<{ state: "succeeded"; result: Value } | { state: "failed"; error: Value }>,
@@ -1667,10 +1817,15 @@ export interface HaltReport {
 /** What a waiting command shows to whoever decides on it: its digest and the role it asks (`Shown`). */
 function shownBy(run: RunRow, commandId: string, row: Row): Shown {
   const request = isObj((row["result"] ?? null) as Value) ? (row["result"] as Obj) : {};
-  // A decision wait shows the digest it is bound to; an amendment's, the hash of the package it asks for; a question
-  // shows the digest of the question as recorded.
+  // A decision wait shows the digest it is bound to; an amendment's, the hash of the package it asks for; a review's,
+  // the digest of what it asks, which its escalation leaves as it was (0.6); a question shows the digest of the
+  // question as recorded.
   const subject =
-    row["kind"] === "decision" ? String(request["subject_digest"] ?? request["action_digest"] ?? "") : row["kind"] === "amendment" ? String(request["package"] ?? "") : String(row["request_digest"]);
+    row["kind"] === "decision" || row["kind"] === REVIEW
+      ? String(request["subject_digest"] ?? request["action_digest"] ?? "")
+      : row["kind"] === "amendment"
+        ? String(request["package"] ?? "")
+        : String(row["request_digest"]);
   const role = typeof request["role"] === "string" && request["role"] !== "" ? request["role"] : undefined;
   return { package: run.package_hash, run: run.run_id, revision: run.revision, command: commandId, subject, ...(role !== undefined ? { role } : {}) };
 }

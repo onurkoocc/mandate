@@ -33,7 +33,8 @@ import { digest, isObj, type Value } from "./values.js";
 
 export const DECISION_FORMAT = "mandate/decision/0.1";
 
-export const DECISION_KINDS = ["approve", "decline", "answer", "raise_limits", "reconcile", "envelope", "amend", "cancel"] as const;
+/** `review` (0.6): a person's decision on a review's wait, naming each open item waived or declined (review.ts). */
+export const DECISION_KINDS = ["approve", "decline", "answer", "raise_limits", "reconcile", "envelope", "amend", "cancel", "review"] as const;
 export type DecisionKind = (typeof DECISION_KINDS)[number];
 
 export interface DecisionRecord {
@@ -65,8 +66,15 @@ export interface SignedDecision {
   signature: string;
 }
 
-/** Why a decision is refused (spec/envelope.md, event `decision_refused`). */
-export type RefusalReason = "invalid_signature" | "unknown_key" | "not_in_role" | "same_member" | "stale_revision" | "subject_mismatch";
+/**
+ * Why a decision is refused (spec/envelope.md, event `decision_refused`). Of a review (0.6, review.ts):
+ * `incomplete_review`, a decision that does not decide every open item exactly once; `past_deadline`, one that comes
+ * once its wait's deadline has passed, which only escalates or expires the wait. Of an answer in a run of 0.6:
+ * `reserved_value`, one that holds a member of the runtime's own values (`$verified`, `$evidence`, …) at any depth;
+ * `unkeepable_value`, one that holds what the journal would keep as another value (a number it cannot keep exactly, a
+ * text that is not well-formed).
+ */
+export type RefusalReason = "invalid_signature" | "unknown_key" | "not_in_role" | "same_member" | "stale_revision" | "subject_mismatch" | "incomplete_review" | "past_deadline" | "reserved_value" | "unkeepable_value";
 
 /**
  * What a run shows to whoever decides on it now. A decision record repeats
@@ -137,6 +145,11 @@ export const payloadOf = {
   /** The new limits by dimension, as the `limits_raised` event records them. */
   limits: (dims: Record<string, number>): string => digest("request", dims),
   reconcile: (operationKey: string): string => digest("request", { reconcile: operationKey }),
+  /**
+   * A review's decision (0.6): the request digest of `{ waive, decline }`, the input indices of the open items it
+   * waives and those it declines, each list in ascending order (spec/library.md "The wait and the decision").
+   */
+  review: (d: { waive: readonly number[]; decline: readonly number[] }): string => digest("request", { waive: [...d.waive].sort((a, b) => a - b), decline: [...d.decline].sort((a, b) => a - b) }),
 };
 
 const FIELDS = new Set(["format", "kind", "package", "run", "revision", "command", "subject", "role", "member", "key", "payload", "at"]);
@@ -190,14 +203,15 @@ export interface Refusal {
 /**
  * A decision the runtime refused (INV-16). Its code is `invalid_decision`,
  * with the reason first in the message; a decision on another revision keeps
- * the code it had before 0.4, `stale_revision`.
+ * the code it had before 0.4, `stale_revision`; a review's decision that does
+ * not decide every open item exactly once is `incomplete_review` (0.6).
  */
 export class InvalidDecision extends Violation {
   constructor(
     readonly reason: RefusalReason,
     detail: string,
   ) {
-    super(reason === "stale_revision" ? "stale_revision" : "invalid_decision", reason === "stale_revision" ? detail : `${reason}: ${detail}`);
+    super(reason === "stale_revision" || reason === "incomplete_review" ? reason : "invalid_decision", reason === "stale_revision" || reason === "incomplete_review" ? detail : `${reason}: ${detail}`);
   }
 }
 
