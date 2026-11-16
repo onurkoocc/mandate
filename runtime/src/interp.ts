@@ -63,7 +63,7 @@ import {
 import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter, ToolSpec } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationsRequired, recordProblem, type AttestationRule } from "./attestation.js";
-import { failureFacts, failureOf, type BoundTool, type Connectors } from "./connectors.js";
+import { failureFacts, failureOf, forbidden, type BoundTool, type Connectors } from "./connectors.js";
 import { criterionMethods, evidenceIdOf, needsPerson, partMethod, uncovered } from "./criteria.js";
 import { approvalProblem, type StoredDecision } from "./decisions.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
@@ -1007,7 +1007,7 @@ export class Interpreter {
    * `PolicyDenied(no_samples)`; a failure by kind and rule. The proxy's denial is recorded as the violation of `step`
    * and stops the run (`connectorDenied`).
    */
-  private async callRead(tool: BoundTool, args: Record<string, Value>, mode: RunMode, step: string, agent: string, delegate = step): Promise<Outcome> {
+  private async callRead(tool: BoundTool, args: Record<string, Value>, mode: RunMode, step: string, agent: string, delegate = step, signal?: AbortSignal): Promise<Outcome> {
     const c = this.o.connectors!;
     if (mode === "design") {
       const s = c.sample(tool);
@@ -1016,7 +1016,7 @@ export class Interpreter {
       return { ok: s.value, cost: {} };
     }
     try {
-      return { ok: await c.call(tool, args), cost: {} };
+      return { ok: await c.call(tool, args, signal), cost: {} };
     } catch (x) {
       if (x instanceof McpDenied) await this.connectorDenied(tool, x.reason, step, agent, delegate);
       if (!(x instanceof McpError)) throw x;
@@ -1167,7 +1167,8 @@ export class Interpreter {
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
     // The tier is read from the envelope the run has now. An `infer` records its request, which names no tier.
     const tier = this.tierFor(e.using, ctx);
-    const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
+    // 0.6 (B28): the adapter escapes `<` and `>` in the input it quotes for the model; an earlier package's request is the bytes it was.
+    const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}), ...(is06(this.o.program) ? { escape: true } : {}) };
     return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.checkedInfer(req), { siblings: ctx.siblings, label: "infer", ...this.limits("infer", tier) });
   }
 
@@ -1464,7 +1465,7 @@ export class Interpreter {
               ? {
                   extra: (cid, name, input, stepLabel) => {
                     const tool = toolOf(name);
-                    if (tool) return this.agentTool(tool, granted, input, { step: cid, label: stepLabel, delegate: id, agent: agentName, siblings: ctx.siblings, guard: overdue, tier: task.tier });
+                    if (tool) return this.agentTool(tool, granted, input, { step: cid, label: stepLabel, delegate: id, agent: agentName, siblings: ctx.siblings, guard: overdue, tier: task.tier, deadline });
                     if (!planner) throw new Violation("no_tool", `The runtime answers no tool ${name} for ${label}.`);
                     return planner.call(cid, name, input, stepLabel);
                   },
@@ -1518,7 +1519,7 @@ export class Interpreter {
     tool: BoundTool,
     granted: CapVal[],
     input: Record<string, unknown>,
-    o: { step: string; label: string; delegate: string; agent: string; siblings: Siblings | undefined; guard: (() => void) | undefined; tier: string },
+    o: { step: string; label: string; delegate: string; agent: string; siblings: Siblings | undefined; guard: (() => void) | undefined; tier: string; deadline?: number | undefined },
   ): Promise<{ content: string; is_error?: boolean }> {
     const c = this.o.connectors!;
     const args = c.args(tool, tool.def.params.map((p) => (Object.hasOwn(input, p.name) ? (input[p.name] as Value) : null)));
@@ -1526,9 +1527,14 @@ export class Interpreter {
       await this.violation({ kind: "authority_denied", delegate: o.delegate, agent: o.agent, step: o.step, detail: `${tool.connector}.${tool.name}: the delegation's grant gives no call of it` });
       return { content: "Refused: this tool is not in your grant.", is_error: true };
     }
+    // What a model passes is held as a server's answer is: no number or text the journal would keep as another, and none of the runtime's own members.
+    if (forbidden(args)) return { content: "Refused: an argument holds a value that cannot be sent (a number that is not finite, a text that is not well-formed, or a reserved member).", is_error: true };
     const mode = this.o.mode ?? "live";
+    // The call ends with the delegation's time, when it has one; each request has its own limit besides (connectors.ts).
+    const left = o.deadline === undefined ? undefined : o.deadline - this.o.adapters.clock.now();
+    const signal = left === undefined || this.o.replay ? undefined : AbortSignal.timeout(Math.max(1, Math.min(left, 0x7fffffff)));
     try {
-      const v = await this.command(o.step, "tool", { tool: tool.scope, input: args, mode }, undefined, () => this.callRead(tool, args, mode, o.step, o.agent, o.delegate), {
+      const v = await this.command(o.step, "tool", { tool: tool.scope, input: args, mode }, undefined, () => this.callRead(tool, args, mode, o.step, o.agent, o.delegate, signal), {
         siblings: o.siblings,
         label: o.label,
         within: o.delegate,

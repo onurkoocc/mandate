@@ -22,7 +22,7 @@ import type { ChatModel, Cost, InferRequest, ModelAdapter, Outcome, TurnBound, T
 import { denialOf } from "./gateway.js";
 import { typeSchema } from "./schema.js";
 import { Fault, Violation } from "./signals.js";
-import { canonical, show, type Value } from "./values.js";
+import { canonical, escapeAngles, show, type Value } from "./values.js";
 
 /** The part of the SDK client the adapter uses; tests pass a fake. */
 export interface AnthropicClient {
@@ -150,7 +150,8 @@ export class AnthropicModel implements ModelAdapter, ChatModel {
   private inferParams(req: InferRequest): { params: Anthropic.MessageCreateParamsNonStreaming; model: ModelLock; tariff: Tariff } {
     const { model, tariff } = this.pinned(req.tier);
     const schema = typeSchema(this.o.program, req.type);
-    const content = `<data>\n${typeof req.input === "string" ? req.input : show(req.input)}\n</data>`;
+    // 0.6 (B28): the input as JSON with `<` and `>` in JSON's own escapes, so no text in it closes the region or opens one.
+    const content = `<data>\n${req.escape ? escapeAngles(canonical(req.input)) : typeof req.input === "string" ? req.input : show(req.input)}\n</data>`;
     const params = this.request(model, INFER_SYSTEM, [{ role: "user", content }], {
       output_config: { format: { type: "json_schema", schema: forApi(wrap(schema)) as Record<string, unknown> } },
     });

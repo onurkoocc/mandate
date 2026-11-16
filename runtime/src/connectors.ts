@@ -25,7 +25,7 @@ import type { CapVal, ConnectorBinding, ConnectorDef, ConnectorTool, Lock, Progr
 import type { AuthorizationContext, PreparedAction, RunMode, ToolAdapter, ToolContract, ToolSpec } from "./adapters.js";
 import { connectorGateway, type ConnectorGateway } from "./gateway.js";
 import { McpClient, McpDenied, McpError, type ListedTool, type McpFetch } from "./mcp-client.js";
-import { isClosed, isRecord, schemaErrors, typeSchema, type JsonSchema } from "./schema.js";
+import { heldSchema, heldTo, isClosed, isRecord, typeSchema, type JsonSchema } from "./schema.js";
 import { Violation } from "./signals.js";
 import { digest, isObj, type Value } from "./values.js";
 
@@ -47,9 +47,18 @@ export type ToolSamples = (tool: string) => Value | undefined;
  * Members no result of a tool may hold, at any depth, whatever its declared type admits: `__proto__`, and the keys
  * the runtime's own values are known by (a verified value and its evidence, a capability, a prompt, a masked field).
  * A declared type names none of them, so a result that fits its type and holds one came through a member the type
- * leaves open (a map's keys).
+ * leaves open (a map's keys). There the schema a result is held to (schema.ts `heldSchema`) refuses every key that
+ * begins with `$`, so a variant's or money's keys are read only where the type declares them; these are refused
+ * everywhere.
  */
 const FORBIDDEN_MEMBERS: ReadonlySet<string> = new Set(["__proto__", "$verified", "$contract", "$evidence", "$capability", "$prompt", "$masked", "$range", "$call"]);
+
+/**
+ * The longest one request of a connector may take, its answer read to the end: a `tools/list`, or a `tools/call`.
+ * A server that answers slower, or a byte at a time, is cut off (`connector_protocol`, `aborted`); a write cut off is
+ * an unknown outcome, as every write without a checked answer is.
+ */
+export const CONNECTOR_REQUEST_MS = 120_000;
 
 /** The longest name a tool is offered to a model under. */
 const MAX_OFFERED_NAME = 64;
@@ -115,6 +124,8 @@ export interface ConnectorsOptions {
   lock: Lock;
   transport?: ConnectorTransport | undefined;
   samples?: ToolSamples | undefined;
+  /** The longest one request may take, in milliseconds; `CONNECTOR_REQUEST_MS` when absent. */
+  requestMs?: number | undefined;
 }
 
 /** The connectors of one package, bound by its lock. Building it reaches no server. */
@@ -188,7 +199,8 @@ export class Connectors {
     const result = carried(def.returns);
     if (!result || !isClosed(this.o.program, result)) throw new Violation("bad_connector", `connector ${b.full}: the result type of ${name} names a type the running program does not define, so nothing could be held to it.`);
     const wrapped = !isRecord(this.o.program, result);
-    const resultSchema = wrapped ? typeSchema(this.o.program, { record: { [RESULT_MEMBER]: result } }) : typeSchema(this.o.program, result);
+    const resultSchema = heldSchema(this.o.program, wrapped ? { record: { [RESULT_MEMBER]: result } } : result);
+    if (!resultSchema) throw new Violation("bad_connector", `connector ${b.full}: the result type of ${name} has a refinement the runtime cannot hold a server's answer to (it holds a bound of an Int, or of the len of a List or a Text, by a whole number, and such bounds joined by and).`);
     if (!read) {
       const keyParam = def.idempotency_key;
       if (typeof keyParam !== "string" || !def.params.some((p) => p.name === keyParam)) throw new Violation("bad_connector", `connector ${b.full}: ${name} names no parameter for its idempotency key (MDT-E1401).`);
@@ -219,9 +231,15 @@ export class Connectors {
     return new McpClient({ url: b.gateway.endpoint, fetch: this.fetchFor(b) });
   }
 
-  /** Whether `structuredContent` is a result of `tool`: it fits the declared type, and holds no forbidden member. */
+  /** Whether `structuredContent` is a result of `tool`: it holds nothing no result may hold (`forbidden`), and fits the declared type. */
   fits(tool: BoundTool, structured: Value): boolean {
-    return isObj(structured) && !forbidden(structured) && schemaErrors(tool.resultSchema, structured).length === 0;
+    return isObj(structured) && !forbidden(structured) && heldTo(tool.resultSchema, structured);
+  }
+
+  /** A signal that aborts a request after the longest it may take, or when `signal` does. */
+  private within(signal?: AbortSignal): AbortSignal {
+    const limit = AbortSignal.timeout(this.o.requestMs ?? CONNECTOR_REQUEST_MS);
+    return signal ? AbortSignal.any([signal, limit]) : limit;
   }
 
   /** The value a checked `structuredContent` carries. */
@@ -234,7 +252,7 @@ export class Connectors {
    * failure is an `McpError`: by kind and rule, never in the server's words.
    */
   async call(tool: BoundTool, args: Record<string, Value>, signal?: AbortSignal): Promise<Value> {
-    const structured = await this.client(tool.connector).callTool(tool.name, args, { validate: (v) => this.fits(tool, v), ...(signal ? { signal } : {}) });
+    const structured = await this.client(tool.connector).callTool(tool.name, args, { validate: (v) => this.fits(tool, v), signal: this.within(signal) });
     return this.valueOf(tool, structured);
   }
 
@@ -253,11 +271,13 @@ export class Connectors {
     const keyParam = tool.read ? undefined : tool.def.idempotency_key;
     const params = tool.def.params.filter((p) => p.name !== keyParam);
     if (values.length !== params.length) return undefined;
+    // Each argument is a member of its own, defined and not assigned: a parameter named `__proto__` is sent as one, and sets no prototype.
     const out: Record<string, Value> = {};
-    params.forEach((p, i) => (out[p.name] = values[i]!));
+    const put = (name: string, value: Value): void => void Object.defineProperty(out, name, { value, enumerable: true, writable: true, configurable: true });
+    params.forEach((p, i) => put(p.name, values[i]!));
     if (keyParam !== undefined) {
       if (key === undefined) return undefined;
-      out[keyParam] = key;
+      put(keyParam, key);
     }
     return out;
   }
@@ -268,8 +288,9 @@ export class Connectors {
    * is `tool_schema_mismatch`, naming the connector and the tool; a server that does not answer as the narrow
    * protocol allows is `connector_protocol`; a request the proxy denied is `egress_denied`. Nothing is called.
    */
-  async verifySchemas(): Promise<void> {
+  async verifySchemas(only?: string): Promise<void> {
     for (const b of [...this.bound.values()].sort((x, y) => (x.full < y.full ? -1 : x.full > y.full ? 1 : 0))) {
+      if (only !== undefined && b.name !== only) continue;
       const listed = await this.list(b);
       const differs: string[] = [];
       for (const name of Object.keys(b.def.tools).sort()) {
@@ -278,6 +299,10 @@ export class Connectors {
         if (typeof pinned !== "string") throw new Violation("bad_connector", `connector ${b.full}: the package's lock pins no schema digest for ${name} (MDT-E1407).`);
         if (!got) differs.push(`${name} (the server does not list it)`);
         else if (got.digest !== pinned) differs.push(`${name} (the server lists ${got.digest}, the lock pins ${pinned})`);
+        else {
+          const lacks = lacking(b.def.tools[name]!, got);
+          if (lacks) differs.push(`${name} (${lacks})`);
+        }
       }
       if (differs.length) throw new Violation("tool_schema_mismatch", `connector ${b.full}: ${differs.join("; ")}. Nothing was called. Pin the schemas again once they are reviewed (mandate connector pin).`);
     }
@@ -286,7 +311,7 @@ export class Connectors {
   /** What a connector's server lists, by tool name; a failure as the violation it is at a start, a resume and a pin. */
   private async list(b: Bound): Promise<Map<string, ListedTool>> {
     try {
-      return new Map((await new McpClient({ url: b.gateway.endpoint, fetch: this.fetchFor(b) }).listTools()).map((t) => [t.name, t]));
+      return new Map((await new McpClient({ url: b.gateway.endpoint, fetch: this.fetchFor(b) }).listTools({ signal: this.within() })).map((t) => [t.name, t]));
     } catch (e) {
       if (e instanceof McpDenied) throw new Violation("egress_denied", `connector ${b.full}: the egress proxy denied its tools/list (${e.reason}); it was not sent upstream.`);
       if (e instanceof McpError) throw new Violation(e.kind, `connector ${b.full}: ${e.message.slice(e.kind.length + 2)}`);
@@ -306,6 +331,8 @@ export class Connectors {
       for (const name of Object.keys(b.def.tools).sort()) {
         const got = listed.get(name);
         if (!got) throw new Violation("tool_schema_mismatch", `connector ${b.full}: its server does not list the declared tool ${name}. Nothing was written.`);
+        const lacks = lacking(b.def.tools[name]!, got);
+        if (lacks) throw new Violation("tool_schema_mismatch", `connector ${b.full}: ${name}: ${lacks}. Nothing was written.`);
         tools[name] = got.digest;
       }
       out[b.full] = tools;
@@ -412,6 +439,15 @@ export class ConnectorWrite implements ToolAdapter {
   }
 
   /**
+   * Holds the connector's schemas to the lock, as a start and a resume do, when `reconcile` would ask its server: a
+   * reconciliation a person asks for outside a resume calls no server whose tools are not the ones that were pinned
+   * (`tool_schema_mismatch`).
+   */
+  async verifyBeforeAsking(): Promise<void> {
+    if (this.tool.def.retry_class === "reconcilable") await this.connectors.verifySchemas(this.tool.connector);
+  }
+
+  /**
    * What happened to the operation, by the tool's retry class. `reconcilable`: its `reconcile by` tool is asked with
    * the key; a value says it was applied, none that it was not. `idempotent`: it may be sent again with the same key,
    * which the server applies once. `non_retryable`: nothing can be asked, and it stays unknown.
@@ -445,15 +481,47 @@ function carried(t: TypeExpr): TypeExpr | undefined {
   return t.args[0];
 }
 
-/** Whether a value holds, at any depth, a member no result may hold. Walked without recursion; the client bounds the depth. */
-function forbidden(v: Value): boolean {
+/**
+ * What the listed `inputSchema` of a declared tool lacks, in the declaration's own words, or undefined: every
+ * declared parameter is a property of it, and a write's idempotency key is a required one. A server that lists no
+ * key property ignores the key, and a tool sent again would be applied again. The digest says the listing is the one
+ * that was pinned; this says the pinned one can carry what the declaration sends.
+ */
+function lacking(def: ConnectorTool, listed: ListedTool): string | undefined {
+  const schema = isObj(listed.inputSchema) ? listed.inputSchema : {};
+  const properties = isObj(schema["properties"] ?? null) ? (schema["properties"] as Record<string, Value>) : {};
+  const missing = def.params.map((p) => p.name).filter((n) => !Object.hasOwn(properties, n));
+  if (missing.length) return `the schema its server lists has no property for the declared parameter ${missing.join(", ")}`;
+  const key = def.read_only === true ? undefined : def.idempotency_key;
+  const required = schema["required"];
+  if (typeof key === "string" && !(Array.isArray(required) && required.includes(key))) return `the schema its server lists does not require the idempotency key ${key}`;
+  return undefined;
+}
+
+/** Whether a text is kept as it is by the journal: well-formed UTF-16 (no lone surrogate) and no U+0000, as a jsonb column takes it. */
+function storable(s: string): boolean {
+  return (s as unknown as { isWellFormed(): boolean }).isWellFormed() && !s.includes(String.fromCharCode(0));
+}
+
+/**
+ * Whether a value holds, at any depth, what no result may hold, whatever its declared type admits: a member of
+ * `FORBIDDEN_MEMBERS`; a number that is not finite, or `-0` (JSON writes the first as `null` and the second as `0`,
+ * so the journal would hold another value than the run saw); a text or a member's name the journal cannot store
+ * (`storable`). The same holds of a sample, and of the arguments an agent gives a tool. Walked without recursion;
+ * the client bounds the depth.
+ */
+export function forbidden(v: Value): boolean {
   const stack: Value[] = [v];
   while (stack.length) {
     const x = stack.pop()!;
-    if (Array.isArray(x)) stack.push(...x);
+    if (typeof x === "number") {
+      if (!Number.isFinite(x) || Object.is(x, -0)) return true;
+    } else if (typeof x === "string") {
+      if (!storable(x)) return true;
+    } else if (Array.isArray(x)) for (const y of x) stack.push(y);
     else if (isObj(x)) {
       for (const k of Object.keys(x)) {
-        if (FORBIDDEN_MEMBERS.has(k)) return true;
+        if (FORBIDDEN_MEMBERS.has(k) || !storable(k)) return true;
         stack.push(x[k]!);
       }
     }

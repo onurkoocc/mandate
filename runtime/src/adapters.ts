@@ -72,6 +72,12 @@ export interface InferRequest {
   /** The model tier of the capability the call runs under; the lock file maps it to a model. */
   tier?: string;
   commandId: string;
+  /**
+   * 0.6 (spec/library.md "What reaches a model", B28): the input is quoted for the model with `<` and `>` escaped,
+   * so that no text in it closes the region it is quoted in. Absent for a package of 0.1 to 0.5, whose request is
+   * the bytes it was.
+   */
+  escape?: boolean;
 }
 
 export interface ModelAdapter {
