@@ -587,9 +587,12 @@ A version directory with no `index.json` was never published (`publish`
 writes it last, after the files): it is no candidate for `add` or
 `upgrade`, which name it as unpublished. A directory whose manifest has
 another name or version than the directory's, or a malformed `index.json`,
-is E1601, and is no candidate either. When nothing can be resolved, the
-reason named first is an empty range (E1606, `no_version`), then a
-revoked digest, then a waiting period (E1608).
+is E1601, and is no candidate either. Candidates are taken highest version first, and each one passed over is
+given one reason, in this order: outside the range, then revoked, then
+waiting (so a candidate both outside the range and revoked is outside it,
+and one both revoked and waiting is revoked). When none can be resolved,
+nothing in the range at all is E1606 (`no_version`); otherwise it is E1608,
+naming the reason of the candidates in the range.
 
 ### `mandate add`, `upgrade` and `publish`
 
@@ -656,7 +659,9 @@ Both executables, the Node `mandate` and the native `mandate` of
   too: when the lock pins libraries, each is read from the directory at
   the version the lock pins and handed to the check, and its modules to
   the views, and the configuration's `revoked` list is applied (E1608 on a
-  revoked pinned digest).
+  revoked pinned digest). For a 0.6 program the Node and the native
+  command agree on `view --format md|html` as well: both hand the document
+  the modules of the program and of the libraries the lock pins.
 
 ### The authority signature
 
@@ -1328,9 +1333,11 @@ Declined<T>   = { index: Int, value: Inferred<T>, unmet: List<Text>, by: Option<
   among the `waive by` roles of every criterion of `C` that has one, and
   `C` has at least one. A role that could waive nothing is E1508.
 - **Never in a map body.** `human.review` is a `human.*` step, so a map's
-  body holds none (E1708, INV-18). A batch asks once, after its map. A
-  connector named `human` that declares a tool `review` makes
-  `human.review(…)` a call of that tool first, and not a review.
+  body holds none (E1708, INV-18). A batch asks once, after its map. In
+  a 0.6 program no definition takes the name of a standard module's root
+  (`human`, `tool`, …: E0121, case E0121e), so a connector named `human`
+  cannot make `human.review(…)` a tool call; every call so written is held
+  to the review rules.
 - **Not counted against `time`.** A review's wait is counted against no
   budget's `time`, as a `human.approve`'s `deadline` is not today: the
   static bound adds up the time of what delegations and functions reserve,
@@ -1339,9 +1346,11 @@ Declined<T>   = { index: Int, value: Inferred<T>, unmet: List<Text>, by: Option<
   wait is its own deadline, fixed when the wait opens, and with
   `escalate_to` one more, which counts from the moment the runtime
   escalates and not from the first deadline: the first deadline, then one
-  more deadline from the escalation. The card shows the bound beside the
-  budget's `time` as the deadline, doubled with an escalation, which holds
-  when the escalation is on time.
+  more deadline from the escalation. The card states the longest a review
+  waits as the deadline, doubled when there is an `escalate_to`; the
+  runtime's bound is the first deadline, then one more from the moment it
+  escalates, so the card's figure is exact only for an escalation made at
+  the first deadline.
 - `Review` and `Declined` are built-in type names from 0.6; an earlier
   program that names one gets E0120, as before.
 
@@ -1988,13 +1997,10 @@ The three acceptance criteria of 0.6:
   that control a run (`run`, `status`, `review`, `connector pin`, `mcp`, …)
   are the Node command's alone, and it says so and exits with 2.
 - 0.6 in the TypeScript compiler: it stays frozen at 0.5.
-- What building 0.6 found in 0.5 and left as it was, for a later release:
-  the model and GitHub gateways follow redirects; a model's output that
-  holds U+0000 corrupts the journal; a sandboxed agent's tool output
-  reaches the model without the escaping of `<` and `>`; the old
-  verifier process ignores the `escape` member; and a `require` clause has
-  no evidence record of its own beyond the whole-verify record's list of
-  which held.
+- What 0.6 does not change from 0.5: the model and GitHub gateways follow
+  redirects; a model's output that holds U+0000 is journaled as it is; a
+  sandboxed agent's tool output reaches the model without the escaping of
+  `<` and `>`; and the older verifier process ignores the `escape` member.
 - Amending a package whose program applies a pattern or whose lock pins a
   library: the request is refused by name (`unsupported_language`), since
   an approved amendment would keep no new running program and carry no

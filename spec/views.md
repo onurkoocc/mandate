@@ -122,12 +122,12 @@ for every program of 0.1 to 0.5, unchanged.*
   all governance changes, and shows a changed library pin as `mandate
   upgrade` shows it. A connector's server, class or tools changed are
   governance changes too (`capability_added`).
-- **A review's bound.** The card gives the longest a review waits as its
-  deadline, doubled with `escalate_to`, and says that nothing passes on its
-  own; the review's wait is counted against no budget's `time`. The
-  escalated deadline counts from the moment the runtime escalates, so the
-  doubled figure holds when the escalation is on time, and a late one adds
-  its lateness ([`library.md`](library.md#humanreview)).
+- **A review's bound.** The card states the longest a review waits as its
+  deadline, doubled when there is an `escalate_to`, and says that nothing
+  passes on its own; the review's wait is counted against no budget's
+  `time`. The runtime's bound is the first deadline, then one more from the
+  moment it escalates, so the card's figure is exact only for an
+  escalation made at the first deadline ([`library.md`](library.md#humanreview)).
 
 ## What changed between two versions
 
