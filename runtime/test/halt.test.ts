@@ -3,7 +3,7 @@
 // a start or a resume in the scope is refused before it takes a lease; the adapters are told to revoke once the
 // runs have ended; a lift is recorded with who lifted it and brings no run back.
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Adapters, ToolAdapter } from "../src/adapters.js";
 import type { RunRow } from "../src/journal.js";
 import type { WorkerChecker } from "../src/plan.js";
@@ -239,6 +239,21 @@ describe("a halt of a tenant (G22, INV-26)", () => {
     expect(r.ended).toEqual([{ run: "stopped", tenant: "acme", state: "cancelled" }]);
     expect((await w.rt.journal.actions("stopped"))[0]!.state).toBe("cancelled");
     expect((await w.rt.verifyJournal("stopped")).status).toBe("verified");
+  });
+
+  it("asks the configured adapter to stop an action even when the action's adapter could not be read from the package", async () => {
+    const tool = new SimTool("git.comment", "non_retryable").then("timeout");
+    (tool as unknown as ToolAdapter).cancel = async () => ({ cancelled: "the comment was never posted" });
+    const w = await halting({ tool });
+    expect((await w.rt.startRun({ pkg: w.pkg, workflow: "Follow", input: ISSUE, runId: "unread", tenant: "acme" })).state).toBe("attention_required");
+    const [action] = await w.rt.journal.actions("unread");
+    const spy = vi.spyOn(w.rt as unknown as { toolOf(): Promise<unknown> }, "toolOf").mockRejectedValue(new Error("the package could not be read"));
+    try {
+      await w.rt.cancelAction("unread", action!.operation_key);
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await w.rt.journal.actions("unread"))[0]!.state).toBe("cancelled");
   });
 
   it("refuses a start and every resume in the tenant before a lease is taken, and leaves other tenants alone", async () => {

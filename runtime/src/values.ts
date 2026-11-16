@@ -86,6 +86,16 @@ export function digest(domain: HashDomain, v: Value): string {
   return `sha256:${createHash("sha256").update(`mandate/${domain}/0.1\n`, "utf8").update(canonical(v), "utf8").digest("hex")}`;
 }
 
+/**
+ * A JSON text with `<` and `>` written as JSON's own escapes (`\u003c`, `\u003e`): it reads back as the same value,
+ * and holds no tag. In a 0.6 package the data a task hands a model is written so (spec/library.md "What reaches a
+ * model", B28): a text in it cannot close the region it is quoted in, or open one of its own. Outside a string a JSON
+ * text holds neither character, so only strings change.
+ */
+export function escapeAngles(json: string): string {
+  return json.replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
+}
+
 export function money(micros: number, currency: string): Value {
   return { $money: micros, $currency: currency };
 }

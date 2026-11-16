@@ -219,15 +219,9 @@ function world06(src: string, o: { libraries?: LibrarySource[]; lock?: Lock; con
 
 describe("the table of what 0.6 has that this runtime does not run yet", () => {
   it("names each construct once, with the slice that releases it", () => {
-    expect(NOT_RUN_YET_06.map((r) => [r.name, r.slice])).toEqual([
-      ["connector", "B9"],
-      ["tool.call", "B9"],
-      ["lock.connectors", "B9"],
-      ["batch commit step", "B9"],
-      ["human.review", "B10"],
-      ["waive by", "B10"],
-      ["shapes", "B12"],
-    ]);
+    // Connectors, tool.call, a lock's connectors and the batch commit step run (B9; connectors.test.ts); so do
+    // human.review and waive by (B10; review.test.ts).
+    expect(NOT_RUN_YET_06.map((r) => [r.name, r.slice])).toEqual([["shapes", "B12"]]);
   });
 });
 
@@ -337,51 +331,50 @@ needs06("a package of 0.6 at load", () => {
   const namedIn = (message: string): string[] => /The package uses (.*) of mandate\/0\.6, which this runtime does not run yet \(spec\/library\.md\)\.$/.exec(message)?.[1]?.split(", ") ?? [`not a refusal by the table: ${message}`];
   const TABLE = NOT_RUN_YET_06.map((r) => `${r.name} (${r.slice})`);
 
-  it("refuses connectors and tool.call by name (B9); the library of connectors, whose module imports another, is no refusal", () => {
+  it("refuses nothing of connectors and tool.call by name (they run, B9): the program of connectors is verified with the lock that binds them", () => {
     const connectors = fixtureLibrary("acme.connectors");
     const program = load(read("fixtures/library/drafts.mdt"), "mdt").program!;
-    const { lock: _format, connectors: _bound, ...lock } = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
-    const message = refused(buildPackage(program, lock as Lock, {}, [connectors]));
-    expect(namedIn(message)).toEqual(["connector (B9)", "tool.call (B9)"]);
+    const { lock: _format, ...lock } = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
+    expect(refusal(buildPackage(program, lock as Lock, {}, [connectors]))).toBeUndefined();
   });
 
-  it("refuses the acceptance program by the table's lines alone: connectors (B9) and what its pattern holds, never what a door was missing for", () => {
+  it("loads the acceptance program: neither it nor its running program holds a line of the table (B10 runs its review)", () => {
     const connectors = fixtureLibrary("acme.connectors");
     const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock & { lock?: string };
     const program = check(read("fixtures/library/invoices.mdt"), "mdt", { libraries: [connectors], lock });
     expect(program.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const { lock: _format, ...packaged } = lock;
     const pkg = buildPackage(program.program!, packaged as Lock, {}, [connectors]);
-    const message = refused(pkg);
-    const names = namedIn(message);
-    // As written, before its check: what the program itself holds, and its lock.
-    expect(names).toEqual(["connector (B9)", "tool.call (B9)", "lock.connectors (B9)", "waive by (B10)"]);
-    for (const n of names) expect(TABLE).toContain(n);
-    for (const gone of ["imports another module", "cannot link", "std.patterns", "module the package does not carry"]) expect(message).not.toContain(gone);
-    // Its running program, as its check gives it, holds besides what the pattern of std.patterns brings: every
-    // name is still a line of the table.
+    expect(notRunYet06(pkg.program, { lock: packaged as Lock })).toEqual([]);
+    expect(refusal(pkg)).toBeUndefined();
+    // Its running program, as its check gives it, holds what the pattern of std.patterns brings: its review, and the
+    // criterion a person may waive. Nothing of it is a line of the table.
     const running = check(canonicalize(pkg.program as unknown as Json), "json", { libraries: [connectors], lock, linked: true }).linked!;
     expect(applications(running as unknown as Program)).toEqual([]);
     expect(running.defs["Batch"]).toMatchObject({ kind: "type" });
-    expect(notRunYet06(running as unknown as Program, { lock: packaged as Lock })).toEqual(["connector", "tool.call", "lock.connectors", "batch commit step", "human.review", "waive by"]);
+    expect(JSON.stringify(running.defs["MatchInvoices"])).toContain('"name":"review"');
+    expect(notRunYet06(running as unknown as Program, { lock: packaged as Lock })).toEqual([]);
+    expect(TABLE).toEqual(["shapes (B12)"]);
+    expect(namedIn("The package uses shapes (B12) of mandate/0.6, which this runtime does not run yet (spec/library.md).")).toEqual(["shapes (B12)"]);
   });
 
-  it("refuses a lock that binds connectors by name (lock.connectors, B9), the program aside", () => {
+  it("refuses no lock for binding connectors by name (lock.connectors runs, B9): what is wrong with a binding is the check's to say", () => {
     const lock = { modules: {}, connectors: { "example.library.minimal.store": { credential: "made-up", url: "https://store.example/mcp", tools: {} } } } as unknown as Lock;
-    expect(refused(buildPackage(checked(read("fixtures/library/minimal.mdt")), lock))).toMatch(/uses lock\.connectors \(B9\) of mandate\/0\.6/);
-    // An empty binding binds nothing, and is no refusal.
+    const e = refusal(buildPackage(checked(read("fixtures/library/minimal.mdt")), lock));
+    if (e) expect(e.code).not.toBe("unsupported_language");
     expect(refusal(buildPackage(checked(read("fixtures/library/minimal.mdt")), { modules: {}, connectors: {} } as unknown as Lock))).toBeUndefined();
   });
 
-  it("refuses a batch commit step by name (a critical effect in a map body, B9), though the program checks", () => {
+  it("refuses no batch commit step by name (a critical effect in a map body runs, B9)", () => {
     const text = read("conformance/E1708b/program.mdt")
       .replace(/\/\/\/ The ERP[\s\S]*?\n}\n\n/, "")
       .replace("capability ErpDraft = tool.call(erp, post_draft)\n", "")
       .replace("caps   ErpDraft, Files", "caps   Files")
       .replace(/  let posted = map d in drafts max 20 \{[\s\S]*?\n  \}\n/, "")
       .replace("use std.{fs, human, tool}", "use std.{fs, human}");
-    const message = refused(buildPackage(checked(text)));
-    expect(message).toMatch(/uses batch commit step \(B9\) of/);
+    expect(notRunYet06(checked(text), { lock: { modules: {} } as Lock })).toEqual([]);
+    // What is left to refuse it is the check's own: its roles have no members in this lock (E1502).
+    expect(refusal(buildPackage(checked(text)))).toMatchObject({ code: "load_verification_failed" });
   });
 
   const HEAD = `mandate @ 0.6
@@ -405,7 +398,7 @@ agent Worker {
 }
 `;
 
-  it("refuses waive by by name (B10), though the program checks", () => {
+  it("refuses waive by by no name (it runs, B10): what is left to refuse it is the check's own", () => {
     const text = `${HEAD}
 contract Fine(i: Item, o: Item) {
   accept same "The key is kept"
@@ -421,10 +414,12 @@ workflow W(i: Item) -> Item
   verify out against Fine(i, out)
 }
 `;
-    expect(refused(buildPackage(checked(text)))).toMatch(/uses waive by \(B10\) of/);
+    expect(notRunYet06(checked(text), { lock: { modules: {} } as Lock })).toEqual([]);
+    // Its roles have no members in this lock (E1502).
+    expect(refusal(buildPackage(checked(text)))).toMatchObject({ code: "load_verification_failed", message: expect.stringContaining("MDT-E1502") });
   });
 
-  it("refuses human.review by name (B10), though the program checks", () => {
+  it("refuses human.review by no name (it runs, B10): what is left to refuse it is the check's own", () => {
     const text = `${HEAD}
 contract Fine(i: Item, o: Item) {
   accept same "The key is kept"
@@ -444,8 +439,8 @@ workflow W(items: List<Item>) -> Int
   1
 }
 `;
-    const message = refused(buildPackage(checked(text)));
-    expect(message).toContain("human.review (B10)");
+    expect(notRunYet06(checked(text), { lock: { modules: {} } as Lock })).toEqual([]);
+    expect(refusal(buildPackage(checked(text)))).toMatchObject({ code: "load_verification_failed", message: expect.stringContaining("MDT-E1502") });
   });
 
   it("refuses shapes in an envelope by name (B12)", () => {
@@ -492,8 +487,8 @@ workflow W(i: Item) -> Inferred<Item>
     const running = { ...sub, defs: { ...expanded.defs, Sub: expanded.defs["Greet"]! } } as unknown as Program;
     expect(subprogramNotRunYet(sub, program, {}, running)).toEqual([]);
     // A running program that holds what the table names is refused by that name.
-    const reviewing = JSON.parse(JSON.stringify(running).replace('"op":"delegate"', '"op":"call","callee":{"op":"field","of":{"op":"var","name":"human"},"name":"review"},"was":"delegate"')) as Program;
-    expect(subprogramNotRunYet(sub, program, {}, reviewing)).toEqual(["human.review"]);
+    const shaped = { ...running, defs: { ...running.defs, Sub: { ...(running.defs["Sub"] as object), envelope: { shapes: ["FanOutMerge"] } } } } as unknown as Program;
+    expect(subprogramNotRunYet(sub, program, {}, shaped)).toEqual(["shapes"]);
     const plain = { ...sub, defs: { Sub: { kind: "workflow", params: [], returns: { ref: "Int" }, body: [{ op: "expr", value: { op: "int", value: 1 } }] } } } as unknown as Program;
     expect(subprogramNotRunYet(plain, program, {})).toEqual([]);
   });
@@ -608,12 +603,19 @@ needs06("a run of a program that imports a library of two modules and applies a 
     expect(run.state, JSON.stringify(run.attention ?? run.error)).toBe("succeeded");
     expect(run.result).toMatchObject({ $verified: "hello, Ada", $contract: "Said" });
     const evidence = await w.rt.verifyEvidence("t9");
-    expect(evidence.map((e) => [e.criterion, e.valid])).toEqual([["said", true]]);
+    // The criterion's record, and (0.6) the record of the verify as a whole, of the contract `*`.
+    expect(evidence.map((e) => [e.criterion, e.valid])).toEqual([
+      ["*", true],
+      ["said", true],
+    ]);
     // With a verifier of its own configured, a record holds only as a check of a criterion the program declares: the
     // program read is the run's running program, which has the contract.
     const signer = (w.rt as unknown as { signer: EvidenceSigner }).signer;
     const strict = new Runtime(w.db, w.adapters, undefined, undefined, { decisions: { mode: "signed" }, artifacts: w.rt.artifacts, trustedKeys: [signer.publicKeyPem()],trustedVerifiers: new TrustedKeys([EvidenceSigner.generate().publicKey]) });
-    expect((await strict.verifyEvidence("t9")).map((e) => [e.criterion, e.valid])).toEqual([["said", true]]);
+    expect((await strict.verifyEvidence("t9")).map((e) => [e.criterion, e.valid])).toEqual([
+      ["*", true],
+      ["said", true],
+    ]);
   });
 
   it("reads the components and the remote agents of the running program at a start: those a library brings", async () => {
@@ -743,9 +745,9 @@ needs06("the stored expansion", () => {
     expect(failing({ expanded: real.expanded, linked: { ...other, defs: { ...other.defs, Greet: w.pkg.program.defs["Greet"] } } })).toMatchObject({ code: "load_verification_failed", message: expect.stringContaining("still applies a pattern (Greet = Once)") });
     expect(failing({ expanded: real.expanded, linked: { ...other, defs: { Note: other.defs["Note"] } } })).toMatchObject({ code: "load_verification_failed", message: expect.stringContaining("lacks the program's") });
     // One whose expansion holds what the table names, which the program as written does not, is refused by that name.
-    const reviewing = JSON.parse(JSON.stringify(before.program).replace('"op":"delegate"', '"op":"call","callee":{"op":"field","of":{"op":"var","name":"human"},"name":"review"},"was":"delegate"')) as Program;
+    const shaped = { ...before.program, defs: { ...before.program.defs, Greet: { ...(before.program.defs["Greet"] as object), envelope: { shapes: ["FanOutMerge"] } } } } as unknown as Program;
     expect(notRunYet06(w.pkg.program, { lock: w.pkg.lock })).toEqual([]);
-    expect(failing({ expanded: real.expanded, linked: reviewing })).toMatchObject({ code: "unsupported_language", message: expect.stringContaining("uses human.review (B10) of mandate/0.6") });
+    expect(failing({ expanded: real.expanded, linked: shaped })).toMatchObject({ code: "unsupported_language", message: expect.stringContaining("uses shapes (B12) of mandate/0.6") });
     // A runtime of its own (nothing of the run in its memory) resumes and replays the run from the stored expansion.
     const again = new Runtime(w.db, w.adapters, undefined, undefined, { decisions: { mode: "signed" }, artifacts: w.rt.artifacts });
     const resumed = await withCompiler(compilerMode(), () => again.resume("x2"), { doors });

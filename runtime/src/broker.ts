@@ -191,13 +191,18 @@ export function evaluate(e: Expr, row: Obj, params: Record<string, Value>): Valu
 
 /** Sample rows for `design` runs, by `<environment>.<read>`: what the design is tried against, never production. */
 export class SampleReads implements ReadBroker {
-  constructor(private readonly samples: Record<string, Value[]>) {}
+  constructor(private readonly samples: Record<string, Value[] | Value>) {}
+  /** 0.6: a connector's read tool's sample, by `<module>.<connector>.<tool>`: an object, as `structuredContent` is. */
+  tool(name: string): Value | undefined {
+    const s = Object.hasOwn(this.samples, name) ? this.samples[name] : undefined;
+    return isObj(s as Value) ? (s as Value) : undefined;
+  }
   describe(): { id: string; digest: string } {
     return { id: "mandate-sample-reads@0.3", digest: digest("request", { samples: this.samples }) };
   }
   async query(req: ReadRequest): Promise<Outcome> {
     const rows = this.samples[`${req.environment}.${req.read}`];
-    if (!rows) return refused(`no sample rows for ${req.environment}.${req.read}`);
+    if (!Array.isArray(rows)) return refused(`no sample rows for ${req.environment}.${req.read}`);
     const masked = Object.entries(req.fields).filter(([, c]) => rank(c) > rank(req.maxClass)).map(([f]) => f).sort();
     const shown = rows.slice(0, req.maxRows).map((r) => Object.fromEntries(Object.keys(req.fields).map((f) => [f, masked.includes(f) ? { $masked: req.fields[f]! } : isObj(r) ? (r[f] ?? null) : null])));
     return { ok: { rows: shown, masked, as_of: 0, truncated: rows.length > req.maxRows, row_count: shown.length, sample: true }, cost: {} };

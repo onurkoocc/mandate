@@ -43,6 +43,8 @@ describe("FixBug runs end to end", () => {
     expect(wait.request).toMatchObject({ contract: "FixAccepted", criterion: "owner_approved", role: "code_owner" });
     // Tests before the review, as §10.4 orders them.
     expect(w.verifier.calls.map((c) => c.criterion)).toEqual(["regression_test", "suite_green", "no_blocking_review"]);
+    // A package before 0.6: the request names no escaping, as it never did.
+    expect(w.verifier.calls.every((c) => !("escape" in c))).toBe(true);
     expect(w.pr.prepares).toHaveLength(0);
 
     // A decision about some other subject is refused; the owner's approval is not.

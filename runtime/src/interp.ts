@@ -25,6 +25,7 @@ import {
   grant,
   hashProgram,
   inFlightOverlap,
+  isProgram06,
   leadClasses,
   mapScopes,
   modelTiers,
@@ -59,22 +60,27 @@ import {
   type Verifier,
   type WorkflowDef,
 } from "@mandate/bridge";
-import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter } from "./adapters.js";
+import type { ActionArtifact, Adapters, CheckSubject, Cost, Outcome, ReadRequest, RunComponents, RunMode, SystemFacts, ToolAdapter, ToolSpec } from "./adapters.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { attestationsRequired, recordProblem, type AttestationRule } from "./attestation.js";
+import { failureFacts, failureOf, forbidden, type BoundTool, type Connectors } from "./connectors.js";
 import { criterionMethods, evidenceIdOf, needsPerson, partMethod, uncovered } from "./criteria.js";
 import { approvalProblem, type StoredDecision } from "./decisions.js";
 import { EVIDENCE_FORMAT, type EvidenceRecord, type EvidenceSigner, type TrustedKeys } from "./evidence.js";
 import type { RateLimiter } from "./ratelimit.js";
 import type { Faults } from "./faults.js";
 import { runAgentLoop, type LoopTask } from "./loop.js";
+import { McpDenied, McpError } from "./mcp-client.js";
+import { MAX_TOOL_OUTPUT } from "./tools.js";
 import { PLAN_TOOLS, planBrief, Planner, programsInFlight, Shared, type PlanHost, type ProgramChecker } from "./plan.js";
+import { asVerdict, classify, decisionProblem, givenValueProblem, outcomeProblem, questionDigest, questionOf, REVIEW, reviewValue, subjectValue, valueDigest, VERDICT, VERIFY, verifyRecord, WAIVER, waiverFacts, waiverProblem, waiversOf, WHOLE, type Outcome as ReviewOutcome, type Question, type Split, type Verdict, type WaiverFacts } from "./review.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import type { ActionRow, Admission, CommandRow, Journal, ViolationKind } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
 import {
   canonical,
   digest,
+  escapeAngles,
   evidenceOf,
   isObj,
   money,
@@ -167,6 +173,11 @@ interface Ctx {
    * maps hand each delegation of the body.
    */
   item?: { given: CapVal[][]; handed: CapVal[] };
+  /**
+   * Inside a map's body: the map's node, as the run stands at it. A critical effect of a 0.6 program there is a
+   * batch commit step (spec/library.md "The batch commit step"), whose actions the map names, not the item.
+   */
+  map?: string;
 }
 
 /**
@@ -262,7 +273,21 @@ export interface InterpOptions {
    * nothing stops the run for them.
    */
   violationLimit?: number;
+  /**
+   * The connectors of a 0.6 package, bound by its lock (spec/library.md "Connectors"): a read-only tool is a read at
+   * its node or a tool of an agent's loop, a write tool an external action's adapter. Absent for a package of 0.1 to
+   * 0.5, which has none, and nothing of it is read then.
+   */
+  connectors?: Connectors;
 }
+
+/** Whether a program is of 0.6: what 0.6 adds at run time (the batch commit step, the escaping of a task's data) is read only then. */
+function is06(program: Program): boolean {
+  return isProgram06(program);
+}
+
+/** The turns of the actions of one operation (`Interpreter.alone`), by what the interpreters of one run share. */
+const TURNS = new WeakMap<Shared, Map<string, Promise<void>>>();
 
 const RESTARTABLE = new Set(["Timeout", "SkillFailed"]);
 
@@ -281,6 +306,19 @@ export class Interpreter {
    * sub-program's interpreter is given no `plan`, and what `held` guards is reached only under an envelope.
    */
   private readonly amendable: boolean;
+  /**
+   * The list of outcomes each map of this run's body gave, with the map's node as the run stands at it: a review is
+   * given such a list (0.6, `review`), and reads every item's verdict from the journal at that node. A list that is
+   * not one of these is no review's source, whatever it holds.
+   */
+  private readonly mapOutcomes = new WeakMap<Value[], { path: string; map: MapExpr }>();
+  /**
+   * What a waiver is held to (0.6, review.ts `waiverFacts`), read once for this interpreter's drive of the run and kept:
+   * a decision, its waivers and the failed records they waive are all written before a drive that reads them starts
+   * (a review is decided while the run waits, and the drive after it is a new interpreter), so what is read once is
+   * what the journal holds of them throughout the drive. A commit map over many waived items reads them once.
+   */
+  private waivers?: Promise<WaiverFacts>;
 
   constructor(private readonly o: InterpOptions) {
     this.defs = o.program.defs;
@@ -642,7 +680,7 @@ export class Interpreter {
     const scopes = mapScopes({ map: path, par, context, items: caps, complete: true });
     if ("refused" in scopes) throw refusal(scopes.refused);
     if ("partial" in scopes) throw new Error(`map ${path}: the bridge did not decide its items`);
-    const items = evaluated.map((item, i): Ctx => (scopes.items[i] ? { ...item, item: scopes.items[i] } : item));
+    const items = evaluated.map((item, i): Ctx => ({ ...item, map: path, ...(scopes.items[i] ? { item: scopes.items[i] } : {}) }));
     const writes = scopes.writes;
     const holder = (i: number): string => `${path}[${i}]`;
     const start = async (): Promise<void> => {
@@ -708,6 +746,8 @@ export class Interpreter {
       out.push("ok" in end ? tag("Ok", end.ok) : tag("Failed", end.fault.value()));
     }
     await ended();
+    // 0.6: the outcomes of this map, as a review of them finds the map they are of (`review`).
+    this.mapOutcomes.set(out, { path, map: e });
     return out;
   }
 
@@ -886,6 +926,13 @@ export class Interpreter {
         throw r;
       }
     }
+    // 0.6: `<connector>.<tool>(…)`, a read-only tool of a connector the program holds, unless a variable has the name.
+    if (this.o.connectors && e.callee.op === "field" && e.callee.of.op === "var" && this.o.connectors.has(e.callee.of.name) && !this.isLocal(e.callee.of.name, ctx)) {
+      return this.toolRead(e.callee.of.name, e.callee.name, e, ctx, path);
+    }
+    // 0.6: one wait for a person about the outcomes of a map that verifies; a connector's tool of that name is a tool
+    // call first (above), as the compiler reads it.
+    if (p === "human.review" && is06(this.o.program)) return this.review(e, ctx, path);
     if (p === "quote" || p === "peek") return this.expr(e.args[0]!.value, ctx, `${path}/args/0/value`);
     if (p === "len") {
       const v = unwrap(await this.expr(e.args[0]!.value, ctx, `${path}/args/0/value`));
@@ -935,6 +982,63 @@ export class Interpreter {
       return broker.query(req);
     }, { siblings: ctx.siblings, label: `read ${envName}.${first.name}` });
     return isObj(r) && Array.isArray(r["rows"]) ? r["rows"] : [];
+  }
+
+  private isLocal(name: string, ctx: Ctx): boolean {
+    for (let s: Scope | undefined = ctx.scope; s; s = s.parent) if (s.vars.has(name)) return true;
+    return false;
+  }
+
+  /**
+   * `<connector>.<tool>(args)` in a workflow's body (spec/library.md "Three uses", 1): a read-only tool, called
+   * through the connector's gateway as the command at its node, its request and its checked result journaled; a
+   * replay reads the journal. The call is held to what the context grants at run time. A `design` run answers from a
+   * sample and reaches no server. A failure is `Rejected(connector_protocol)` or `Rejected(tool_result_mismatch)`,
+   * with classified facts and none of the server's words; a request the proxy denied is a violation, and stops the run.
+   */
+  private async toolRead(connector: string, name: string, e: Extract<Expr, { op: "call" }>, ctx: Ctx, path: string): Promise<Value> {
+    const c = this.o.connectors!;
+    const tool = c.tool(connector, name);
+    if (!tool.read) throw new Violation("bad_connector", `${connector}.${name} at ${path} is a write tool: it is called only as an effect, through prepare, authorize and commit (MDT-E1405).`);
+    if (ctx.where !== "workflow") throw new Violation("bad_connector", `${connector}.${name} at ${path} is called in a contract: a tool is called in a workflow's body or by an agent's loop (MDT-E1405).`);
+    const { pos, named } = await this.args(e.args, ctx, path);
+    const args = Object.keys(named).length ? undefined : c.args(tool, plain(pos) as Value[]);
+    if (!args) throw new Violation("bad_connector", `${connector}.${name} at ${path} is not called with the parameters it declares.`);
+    if (!c.grantsRead(this.available(ctx), tool)) throw new Violation("authority_denied", `${connector}.${name} at ${path}: no capability of ${ctx.workflow} gives a call of ${tool.scope}.`);
+    const mode = this.o.mode ?? "live";
+    return this.command(path, "read", { tool: tool.scope, args, mode }, undefined, () => this.callRead(tool, args, mode, path, tool.full), { siblings: ctx.siblings, label: `tool ${connector}.${name}` });
+  }
+
+  /**
+   * One call of a read-only tool, as an outcome: its checked value; in a `design` run its sample, or
+   * `PolicyDenied(no_samples)`; a failure by kind and rule. The proxy's denial is recorded as the violation of `step`
+   * and stops the run (`connectorDenied`).
+   */
+  private async callRead(tool: BoundTool, args: Record<string, Value>, mode: RunMode, step: string, agent: string, delegate = step, signal?: AbortSignal): Promise<Outcome> {
+    const c = this.o.connectors!;
+    if (mode === "design") {
+      const s = c.sample(tool);
+      if ("none" in s) return { error: { tag: "PolicyDenied", args: [{ reason: "no_samples", tool: tool.scope }] }, cost: {} };
+      if ("mismatch" in s) return { error: { tag: "Rejected", args: ["tool_result_mismatch", { connector: tool.full, tool: tool.name, rule: "validator", sample: true }] }, cost: {} };
+      return { ok: s.value, cost: {} };
+    }
+    try {
+      return { ok: await c.call(tool, args, signal), cost: {} };
+    } catch (x) {
+      if (x instanceof McpDenied) await this.connectorDenied(tool, x.reason, step, agent, delegate);
+      if (!(x instanceof McpError)) throw x;
+      return { error: { tag: "Rejected", args: [x.kind, failureFacts(tool, failureOf(x))] }, cost: {} };
+    }
+  }
+
+  /**
+   * A connector's request the egress proxy denied (spec/library.md "Egress"): nothing of it was sent upstream. It is
+   * a violation, `egress_denied`, recorded once for its step and counted as every violation, and the run stops for a
+   * person.
+   */
+  private async connectorDenied(tool: BoundTool, reason: string, step: string, agent: string, delegate = step): Promise<never> {
+    await this.violation({ kind: "egress_denied", delegate, agent, step, detail: { connector: tool.full, tool: tool.name, reason } });
+    throw new Violation("egress_denied", `The egress proxy denied a request of connector ${tool.full} (${reason}) at ${step}; it was not sent upstream.`);
   }
 
   /** The data class of each field of a row type (§5.5): its named type's class, the highest along the way. */
@@ -1043,7 +1147,13 @@ export class Interpreter {
       // The request as first recorded: a resumed worker must not move its deadline.
       throw new Suspend({ kind, command: id, request: row?.result ?? request });
     }
-    return replayed(row, id);
+    const answer = replayed(row, id);
+    // 0.6: a person's answer is a value of their own, never one of the runtime's: it holds none of the members the
+    // runtime's own values are known by (a Verified value and its evidence among them), at any depth. The control API
+    // refuses one when it is given (`reserved_value`); one the journal holds anyway stops the run here.
+    const why = kind === "input" && is06(this.o.program) ? givenValueProblem(answer) : undefined;
+    if (why) throw new Violation(why.reason, `The answer at ${id} is not taken. ${why.message}`);
+    return answer;
   }
 
   /**
@@ -1070,7 +1180,8 @@ export class Interpreter {
     const using = e.using ? await this.expr(e.using, ctx, `${path}/using`) : undefined;
     // The tier is read from the envelope the run has now. An `infer` records its request, which names no tier.
     const tier = this.tierFor(e.using, ctx);
-    const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}) };
+    // 0.6 (B28): the adapter escapes `<` and `>` in the input it quotes for the model; an earlier package's request is the bytes it was.
+    const req = { type: e.type, input, commandId: path, ...(using !== undefined ? { using } : {}), ...(tier ? { tier } : {}), ...(is06(this.o.program) ? { escape: true } : {}) };
     return this.command(path, "infer", { type: e.type as unknown as Value, input, using: using ?? null }, async () => this.o.adapters.model.upperBound(req), () => this.checkedInfer(req), { siblings: ctx.siblings, label: "infer", ...this.limits("infer", tier) });
   }
 
@@ -1306,6 +1417,10 @@ export class Interpreter {
       // A bodiless skill runs as an agent loop in this process (§8.2, K7). The delegation reserves the
       // agent's budget less what its finished steps already spent, so a resumed loop is not charged twice.
       const tiers = [...new Set(granted.filter((c) => c.ctor === "model.infer" && c.tier).map((c) => c.tier!))];
+      // 0.6: the read-only tools of connectors this delegation's grant names are offered to the loop beside its
+      // other tools, and answered here, in the control plane (spec/library.md "Three uses", 2). A write tool never is.
+      const offered = this.o.connectors?.any ? this.o.connectors.offered(granted) : undefined;
+      const extra: ToolSpec[] = [...(lead ? PLAN_TOOLS : []), ...(offered?.specs ?? [])];
       const task: LoopTask = {
         id,
         agent: agentName,
@@ -1322,8 +1437,13 @@ export class Interpreter {
         ...(budget?.spend ? { spend: budget.spend } : {}),
         sandbox,
         program: this.o.program,
-        ...(lead ? { extra: PLAN_TOOLS, brief: planBrief(this.o.plan!.parent, under.envelope!) } : {}),
+        ...(extra.length ? { extra } : {}),
+        ...(lead ? { brief: planBrief(this.o.plan!.parent, under.envelope!) } : {}),
+        ...(offered?.refused.length ? { refused: offered.refused } : {}),
+        // 0.6 (B28): `<` and `>` are escaped in the data the task hands the model; an earlier package sends the bytes it sent.
+        ...(is06(this.o.program) ? { escape: true } : {}),
       };
+      const toolOf = (name: string): BoundTool | undefined => offered?.byName.get(name);
       const planner = lead?.planner(
         (cid, req, call, stepLabel) => this.command(cid, "tool", req, undefined, call, { siblings: ctx.siblings, label: stepLabel, within: id, ...(overdue ? { guard: overdue } : {}), ...this.limits("tool", task.tier) }),
         lead.aside,
@@ -1354,7 +1474,16 @@ export class Interpreter {
                 await this.o.journal.lock(tx, this.o.runId);
                 await this.o.journal.event(tx, this.o.runId, "sandbox_stopped", { delegate: id, agent: agentName, handle, result });
               }),
-            ...(planner && lead ? { extra: (cid, name, input, stepLabel) => planner.call(cid, name, input, stepLabel) } : {}),
+            ...((planner && lead) || offered?.specs.length
+              ? {
+                  extra: (cid, name, input, stepLabel) => {
+                    const tool = toolOf(name);
+                    if (tool) return this.agentTool(tool, granted, input, { step: cid, label: stepLabel, delegate: id, agent: agentName, siblings: ctx.siblings, guard: overdue, tier: task.tier, deadline });
+                    if (!planner) throw new Violation("no_tool", `The runtime answers no tool ${name} for ${label}.`);
+                    return planner.call(cid, name, input, stepLabel);
+                  },
+                }
+              : {}),
             violation: (kind, step, detail) => this.violation({ kind, delegate: id, agent: agentName, step, detail }),
             // A sandbox that reaches hosts has an egress session for this run and tenant, which a cancel or a halt revokes.
             owner: { run: this.o.runId, tenant: this.o.policy.tenant },
@@ -1390,6 +1519,49 @@ export class Interpreter {
       },
       { siblings: ctx.siblings, label, ...(overdue ? { guard: overdue } : {}), ...(atMostOnce ? { atMostOnce } : {}) },
     );
+  }
+
+  /**
+   * One call of a connector's read-only tool by an agent's loop (spec/library.md "Three uses", 2): the command
+   * `<delegate>/step/<n>/tool/<k>`, charged to the delegation, sent from the control plane through the connector's
+   * gateway. It is held to the agent's own grant when it is made, and a write tool is never an agent's: a call the
+   * grant does not give is a violation, and nothing is sent. The model is shown the checked result as data, its `<`
+   * and `>` escaped, or the call's failure by its code; never a word of the server's.
+   */
+  private async agentTool(
+    tool: BoundTool,
+    granted: CapVal[],
+    input: Record<string, unknown>,
+    o: { step: string; label: string; delegate: string; agent: string; siblings: Siblings | undefined; guard: (() => void) | undefined; tier: string; deadline?: number | undefined },
+  ): Promise<{ content: string; is_error?: boolean }> {
+    const c = this.o.connectors!;
+    const args = c.args(tool, tool.def.params.map((p) => (Object.hasOwn(input, p.name) ? (input[p.name] as Value) : null)));
+    if (!c.grantsRead(granted, tool) || !args) {
+      await this.violation({ kind: "authority_denied", delegate: o.delegate, agent: o.agent, step: o.step, detail: `${tool.connector}.${tool.name}: the delegation's grant gives no call of it` });
+      return { content: "Refused: this tool is not in your grant.", is_error: true };
+    }
+    // What a model passes is held as a server's answer is: no number or text the journal would keep as another, and none of the runtime's own members.
+    if (forbidden(args)) return { content: "Refused: an argument holds a value that cannot be sent (a number that is not finite, a text that is not well-formed, or a reserved member).", is_error: true };
+    const mode = this.o.mode ?? "live";
+    // The call ends with the delegation's time, when it has one; each request has its own limit besides (connectors.ts).
+    const left = o.deadline === undefined ? undefined : o.deadline - this.o.adapters.clock.now();
+    const signal = left === undefined || this.o.replay ? undefined : AbortSignal.timeout(Math.max(1, Math.min(left, 0x7fffffff)));
+    try {
+      const v = await this.command(o.step, "tool", { tool: tool.scope, input: args, mode }, undefined, () => this.callRead(tool, args, mode, o.step, o.agent, o.delegate, signal), {
+        siblings: o.siblings,
+        label: o.label,
+        within: o.delegate,
+        ...(o.guard ? { guard: o.guard } : {}),
+        ...this.limits("tool", o.tier),
+      });
+      const text = escapeAngles(canonical(v));
+      return { content: text.length > MAX_TOOL_OUTPUT ? `${text.slice(0, MAX_TOOL_OUTPUT)}\n[… ${text.length - MAX_TOOL_OUTPUT} more characters cut]` : text };
+    } catch (f) {
+      // The call's own failure reaches the model by its code. Anything else (a budget, a deadline, a stop) is not the tool's.
+      const code = f instanceof Fault ? (f.tag === "Rejected" ? f.args[0] : f.tag === "PolicyDenied" && isObj(f.args[0] ?? null) ? (f.args[0] as Obj)["reason"] : undefined) : undefined;
+      if (code !== "connector_protocol" && code !== "tool_result_mismatch" && code !== "no_samples") throw f;
+      return { content: `The call failed: ${code}.`, is_error: true };
+    }
   }
 
   /**
@@ -1471,10 +1643,15 @@ export class Interpreter {
     const vars = new Map<string, Value>();
     c.params.forEach((p, i) => vars.set(p.name, pos[i] ?? null));
     const cctx: Ctx = { scope: { vars }, where: "contract", workflow: ctx.workflow };
-    const unmet: string[] = [];
-    const evidence: string[] = [];
+    let unmet: string[] = [];
+    let evidence: string[] = [];
+    // 0.6 (B25): every record of this verify names, by its digest, the value it was given (`subject.value`).
+    const bound = is06(this.o.program) ? { value: valueDigest(subject), failed: {} as Record<string, string[]> } : undefined;
+    const requires: boolean[] = [];
     for (let i = 0; i < (c.require ?? []).length; i++) {
-      if (!truthy(unwrap(await this.expr(c.require![i]!, cctx, `${path}/contract/require/${i}`)))) unmet.push(`require/${i}`);
+      const held = truthy(unwrap(await this.expr(c.require![i]!, cctx, `${path}/contract/require/${i}`)));
+      requires.push(held);
+      if (!held) unmet.push(`require/${i}`);
     }
     // Criteria run in order of their method (§10.4): static, then tests,
     // then evals and reviews, then people; by name within each. A person is
@@ -1485,25 +1662,63 @@ export class Interpreter {
       .sort((a, b) => methodRank(a.by) - methodRank(b.by) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const k of criteria) {
       if (methodRank(k.by) === HUMAN_RANK && unmet.length) unmet.push(k.name);
-      else if (!(await this.criterion(k.by, e.contract, k.name, cctx, k.path, evidence))) unmet.push(k.name);
+      else if (!(await this.criterion(k.by, e.contract, k.name, cctx, k.path, evidence, k.path, bound && { value: bound.value, failed: (bound.failed[k.name] ??= []) }))) unmet.push(k.name);
     }
-    if (!unmet.length) return verified(subject, e.contract, evidence.sort());
+    // 0.6: against a contract a person may waive part of, the outcome is journaled, with the value it was given and
+    // the failed records of each criterion it did not meet: a review of the map this verify ends reads it there
+    // (review.ts), and never a value anyone else carries. A resumed run and a replay check again, and the verdict the
+    // journal holds must be the one its criteria give now: one that is not decides nothing, and stops the run.
+    // 0.6: the verify as a whole is a record of its own (review.ts `verifyRecord`), and a Verified value rests on it.
+    const whole = bound ? evidenceIdOf(this.o.runId, path, VERIFY, !unmet.length) : undefined;
+    const failed = bound ? Object.fromEntries(unmet.filter((u) => !u.startsWith("require/")).map((u) => [u, [...(bound.failed[u] ?? [])].sort()])) : {};
+    if (bound && whole && waiversOf(c).size) {
+      const verdict: Verdict = { contract: e.contract, value: subject, value_digest: bound.value, met: !unmet.length, unmet, failed, evidence: [...evidence].sort(), verify: whole };
+      const recorded = asVerdict(await this.command(`${path}/verdict`, VERDICT, { contract: e.contract, value: bound.value }, undefined, async () => ({ ok: verdict as unknown as Value, cost: {} }), { label: `verdict ${e.contract}` }), e.contract);
+      if (!recorded || canonical(recorded as unknown as Value) !== canonical(verdict as unknown as Value)) throw new Violation("nondeterministic_replay", `The verdict journaled at ${path} is not the one its criteria give for the value this verify is given.`);
+      unmet = recorded.unmet;
+      evidence = recorded.evidence;
+    }
+    // What the verify came to, signed: the value and the contract's arguments, which `require` held, what it did not
+    // meet, and the records of its criteria. A value whose `require` failed is never accepted, whatever it arrives as.
+    if (bound && whole && !this.o.replay) {
+      const record = verifyRecord({
+        id: whole,
+        run: this.o.runId,
+        package: this.o.packageHash,
+        contract: e.contract,
+        contract_hash: this.defHash(e.contract),
+        contract_args: this.subjectDigest(e.contract, cctx),
+        value: bound.value,
+        detail: { requires, unmet, evidence: [...evidence].sort(), failed },
+        producer: { kind: "runtime", handler: RUNTIME_HANDLER },
+        at: this.o.adapters.clock.now(),
+        ...(this.o.mode && this.o.mode !== "live" ? { mode: this.o.mode } : {}),
+      });
+      await this.o.journal.recordEvidence(this.o.runId, { record, ...this.o.signer.sign(record) });
+    }
+    if (!unmet.length) return verified(subject, e.contract, [...evidence, ...(whole ? [whole] : [])].sort());
     if (e.on_unmet) {
       return this.expr(e.on_unmet.then, { ...ctx, scope: { vars: new Map([[e.on_unmet.bind, unmet]]), parent: ctx.scope } }, `${path}/on_unmet/then`);
     }
     throw new Fault("Rejected", [{ contract: e.contract, unmet }]);
   }
 
-  /** One criterion of a contract, or one part of it under `and`; `root` is the criterion's own path, whichever part `path` is. */
-  private async criterion(v: Verifier, contract: string, name: string, ctx: Ctx, path: string, evidence: string[], root = path): Promise<boolean> {
+  /**
+   * One criterion of a contract, or one part of it under `and`; `root` is the criterion's own path, whichever part
+   * `path` is. With `bound` (0.6), its records name the verified value's digest, and the ids of those that fail are
+   * kept in `bound.failed`.
+   */
+  private async criterion(v: Verifier, contract: string, name: string, ctx: Ctx, path: string, evidence: string[], root = path, bound?: { value: string; failed: string[] }): Promise<boolean> {
     if ("all" in v) {
       let ok = true;
-      for (let i = 0; i < v.all.length; i++) ok = (await this.criterion(v.all[i]!, contract, name, ctx, `${path}/all/${i}`, evidence, root)) && ok;
+      for (let i = 0; i < v.all.length; i++) ok = (await this.criterion(v.all[i]!, contract, name, ctx, `${path}/all/${i}`, evidence, root, bound)) && ok;
       return ok;
     }
     let passed: boolean;
     // The method the record names, as the checks of evidence read it from the program (criteria.ts).
     const method = partMethod(v);
+    // 0.6: never one the runtime keeps for its own records (a package with one is not loaded: package.ts reservedMethods).
+    if (bound && (method === VERIFY || method === WAIVER)) throw new Violation("reserved_method", `${contract}.${name} at ${path} would write evidence of ${method}, a method the runtime keeps for records of its own.`);
     let detail: Value = null;
     let files: Obj | undefined;
     let producer: Value = { kind: "runtime", handler: RUNTIME_HANDLER };
@@ -1525,7 +1740,8 @@ export class Interpreter {
       const symbolic = call.op === "call" ? call.args.map((a) => (a.value.op === "var" && this.isModulePath(a.value, ctx) ? { ...a, value: { op: "text" as const, value: a.value.name } } : a)) : [];
       const { pos, named } = call.op === "call" ? await this.args(symbolic, ctx, `${path}/call`) : { pos: [], named: {} };
       const system = this.systemFacts();
-      const req = { method, args: pos, named, contract, criterion: name, ...(system ? { system } : {}) };
+      // 0.6 (B28): the verifier is told to escape what it quotes for a model; an earlier package's request is the bytes it was.
+      const req = { method, args: pos, named, contract, criterion: name, ...(system ? { system } : {}), ...(is06(this.o.program) ? { escape: true as const } : {}) };
       const verifier = this.o.adapters.verifier;
       const r = await this.command(
         `${path}/call`,
@@ -1561,8 +1777,9 @@ export class Interpreter {
       if (isObj(r) && Array.isArray(r["artifacts"])) outputs = r["artifacts"];
       if (isObj(r) && r["producer"] !== undefined) producer = r["producer"]!;
     }
-    // What the check was about: the contract's arguments, and for a check of the working copy, its files (§10.3).
-    const subject: Obj = { contract_args: this.subjectDigest(contract, ctx), ...(files ? { files } : {}) };
+    // What the check was about: the contract's arguments, and for a check of the working copy, its files (§10.3); in
+    // 0.6 also the value verified, by its digest (B25).
+    const subject: Obj = { contract_args: this.subjectDigest(contract, ctx), ...(files ? { files } : {}), ...(bound ? { value: bound.value } : {}) };
     if (files && !this.o.replay) subject["tree"] = (await this.o.artifacts.putTree(this.scope(), { format: "mandate/tree/0.1", files: files as Record<string, string> })).ref;
     const id = evidenceIdOf(this.o.runId, path, method, passed);
     if (!this.o.replay) {
@@ -1588,6 +1805,7 @@ export class Interpreter {
       await this.o.journal.recordEvidence(this.o.runId, { record, ...this.o.signer.sign(record) });
     }
     if (passed) evidence.push(id);
+    else bound?.failed.push(id);
     return passed;
   }
 
@@ -1634,9 +1852,117 @@ export class Interpreter {
     return isObj(decision) ? { ...decision, role } : { approved: false, role };
   }
 
+  // ── a review of a batch (0.6; spec/library.md "human.review") ──────────
+
+  /**
+   * `human.review(results, role: r, deadline: d [, escalate_to: r2])`: one wait for a person about the outcomes of a
+   * map whose body ends with a verify. What each item is, and its value, is read from the journal, as its verify
+   * recorded it (`<item's verify>/verdict`), never from the list the program holds; how they split, what is asked and
+   * every rule of a decision are review.ts's. With no open item no wait opens. Otherwise the run waits (`review`)
+   * until a signed decision decides every open item (runtime.ts `decideReview`), or the wait expires, after its
+   * escalation when it has one (`Runtime.tick`); then the review's value is made of what was decided.
+   *
+   * The compiler's rules for a review (E1506 to E1508, and INV-18: never in a map's body) are held here again: a
+   * review that breaks one stops the run for a person, and asks nobody.
+   */
+  private async review(e: Extract<Expr, { op: "call" }>, ctx: Ctx, path: string): Promise<Value> {
+    const { journal, runId } = this.o;
+    if (ctx.map !== undefined) throw new Violation("person_in_map", `human.review at ${path} is in the body of the map at ${ctx.map}: a batch asks once, after its map (INV-18, MDT-E1708).`);
+    if (ctx.where !== "workflow") throw new Violation("bad_review", `human.review at ${path} is not in a workflow's body (MDT-E1506).`);
+    // The source (E1506): the outcomes of a map of this run whose body ends with a verify with no `on unmet`.
+    const first = e.args[0];
+    const results = first && first.name === undefined && first.value.op === "var" ? await this.expr(first.value, ctx, `${path}/args/0/value`) : undefined;
+    const source = Array.isArray(results) ? this.mapOutcomes.get(results) : undefined;
+    const last = source ? source.map.body.length - 1 : -1;
+    const tail = source?.map.body[last];
+    const verifying = tail?.op === "expr" && tail.value.op === "verify" && !tail.value.on_unmet ? tail.value : undefined;
+    if (!source || !verifying || !Array.isArray(results)) throw new Violation("bad_review", `human.review at ${path} is not given the outcomes of a map whose body ends with a verify (MDT-E1506).`);
+    const contract = verifying.contract;
+    const c = this.def(contract);
+    // Its roles and deadline (E1507), and that each role may waive every criterion of the contract that may be waived (E1508).
+    const named = (n: string): number => e.args.findIndex((a) => a.name === n);
+    const roleOf = (i: number): string | undefined => {
+      const x = i < 0 ? undefined : e.args[i]!.value;
+      const n = x?.op === "var" && !this.isLocal(x.name, ctx) ? x.name : x?.op === "text" ? x.value : undefined;
+      return n !== undefined && this.def(n)?.kind === "role" ? n : undefined;
+    };
+    const role = roleOf(named("role"));
+    const escalate = named("escalate_to") < 0 ? null : (roleOf(named("escalate_to")) ?? "");
+    const at = named("deadline");
+    const ms = at < 0 ? NaN : Number(unwrap(await this.expr(e.args[at]!.value, ctx, `${path}/args/${at}/value`)));
+    if (role === undefined || escalate === "" || escalate === role || !Number.isSafeInteger(ms) || ms <= 0) {
+      throw new Violation("bad_review", `human.review at ${path} needs role: a role definition, deadline: a Duration above zero, and escalate_to, when given, another role definition (MDT-E1507).`);
+    }
+    const waivers = waiversOf(c);
+    const cannot = [role, ...(escalate ? [escalate] : [])].flatMap((r) => [...waivers].filter(([, roles]) => !roles.includes(r)).map(([k]) => `${r} may not waive ${contract}.${k}`));
+    if (!waivers.size || cannot.length) throw new Violation("bad_review", `human.review at ${path}: ${waivers.size ? cannot.join("; ") : `${contract} has no criterion a person may waive`} (MDT-E1508).`);
+    // Each item's verdict, as its verify journaled it. An item whose work faulted before its verify ended has none.
+    const verdicts: Array<Verdict | undefined> = [];
+    for (let i = 0; i < results.length; i++) {
+      const id = `${source.path}[${i}]/body/${last}/value/verdict`;
+      const row = await journal.command(runId, id);
+      const ok = tagOf(results[i] ?? null)?.tag === "Ok";
+      if (row?.payload_purged) throw this.purged(id);
+      const verdict = row ? (row.state === "succeeded" ? asVerdict(row.result, contract) : undefined) : undefined;
+      // What the map gave and what the journal holds of it are one: anything else is not this run's.
+      if (row ? !verdict || verdict.met !== ok : ok) throw new Violation("nondeterministic_replay", `Item ${i} of the map at ${source.path} ended otherwise than the verdict its verify journaled says.`);
+      verdicts.push(verdict);
+    }
+    const split = classify(verdicts, c, role);
+    const question = questionOf({ review: path, contract, map: source.path, role, escalate_to: escalate, deadline_ms: ms, c, verdicts, split });
+    if (!split.open.length) return reviewValue({ run: runId, contract, verdicts, split });
+    return reviewValue({ run: runId, contract, verdicts, split, outcome: await this.reviewWait(path, question, split) });
+  }
+
+  /**
+   * The wait of a review with open items (`review`), opened once with `review_requested`, and what it ended with.
+   * Its request is the question (its digest is the subject a decision is signed on), the role asked now and the
+   * deadline; an escalation changes those two and nothing of the question. Ended, its outcome is held to the question
+   * and to the stored decision it names (review.ts), so that what a later step reads is what a person signed.
+   */
+  private async reviewWait(id: string, q: Question, split: Split): Promise<ReviewOutcome> {
+    const { journal, runId, fence } = this.o;
+    const subject = questionDigest(q);
+    const deadline = this.o.adapters.clock.now() + q.deadline_ms;
+    const request: Obj = { question: q as unknown as Value, subject_digest: subject, role: q.role, escalate_to: q.escalate_to, deadline, deadline_ms: q.deadline_ms };
+    const requested: Obj = { node: id, contract: q.contract, map: q.map, role: q.role, escalate_to: q.escalate_to, deadline, open: split.open, declined: split.declined, failed: split.failed, accepted: split.accepted };
+    const row = this.o.replay ? await journal.command(runId, id) : await journal.openReview(runId, fence, { id, digest: digest("request", { kind: REVIEW, request }) }, request, requested);
+    if (row && row.kind !== REVIEW) throw new Violation("nondeterministic_replay", `The command at ${id} is a ${row.kind}, not a review's wait.`);
+    if (!row || row.state === "waiting") {
+      if (this.o.replay) throw new ReplayEnd(id, "no_result");
+      // The request as first recorded (a resumed worker must not move its deadline), as an escalation left it.
+      const held = row?.result ?? request;
+      // What it shows a person is the question its verdicts give, under the digest a decision is signed on.
+      if (!isObj(held) || held["subject_digest"] !== subject || questionDigest(held["question"] ?? null) !== subject) throw new Violation("nondeterministic_replay", `The review at ${id} would ask another question than the one its wait recorded.`);
+      throw new Suspend({ kind: REVIEW, command: id, request: held });
+    }
+    if (row.payload_purged) throw this.purged(id);
+    const why = row.state === "succeeded" ? outcomeProblem(row.result, q, subject) : `its wait ended ${row.state}`;
+    if (why) throw new Violation("invalid_decision", `The review at ${id} ended with what it did not ask: ${why}.`);
+    const outcome = row.result as Obj;
+    if (outcome["expired"] !== true) {
+      const d = this.o.decisions ? await journal.decision(String(outcome["decision"])) : undefined;
+      const bad = this.o.decisions ? decisionProblem(d, { run: runId, review: id, subject, outcome, keys: this.o.decisions.keys, lock: this.o.decisions.lock }) : "this run checks no signed decision";
+      if (bad) throw new Violation("invalid_decision", `The decision the review at ${id} rests on does not hold: ${bad}.`);
+    }
+    return outcome as unknown as ReviewOutcome;
+  }
+
+  /** What a review meets in a command whose payload retention purged (R14): a replay's end, and in a run a stop for a person. */
+  private purged(id: string): Error {
+    return this.o.replay ? new ReplayEnd(id, "payload_purged") : new Violation("payload_purged", `The review reads ${id}, whose payload is purged.`);
+  }
+
   // ── external effects: prepare → authorize → commit (§8.8) ─────────────
 
   private effectInfo(name: string): { critical: boolean; irreversible: boolean; params: TypeExpr[]; retryClass?: string } {
+    // 0.6: a connector's write tool is the critical effect `<connector>.<tool>`, never irreversible; the program
+    // does not pass its idempotency key, so that parameter is none of the effect's.
+    const tool = this.connectorWrite(name);
+    if (tool) {
+      const key = tool.def.idempotency_key;
+      return { critical: true, irreversible: false, params: tool.def.params.filter((p) => p.name !== key).map((p) => p.type), ...(tool.def.retry_class ? { retryClass: tool.def.retry_class } : {}) };
+    }
     const d = this.def(name);
     if (d?.kind === "effect") {
       const ed = d as EffectDef;
@@ -1647,28 +1973,81 @@ export class Interpreter {
     throw new Violation("unknown_effect", `No effect '${name}'.`);
   }
 
+  /** The write tool `name` names, `<connector>.<tool>`, when the package has connectors and it is one's (0.6). */
+  private connectorWrite(name: string): BoundTool | undefined {
+    const c = this.o.connectors;
+    const at = c?.splits(name);
+    if (!c || !at) return undefined;
+    const tool = c.tool(at.connector, at.tool);
+    if (tool.read) throw new Violation("bad_connector", `${name} is a read-only tool: it is called as an expression, never as an effect (MDT-E1405).`);
+    return tool;
+  }
+
+  /**
+   * Runs `fn` alone among the actions of one operation: two items of a batch commit step with one key are one
+   * action, and the second waits here until the first has settled it, so the action is never sent by both. One
+   * worker drives a run (R06), so the turn is kept in memory, by the run's interpreters together.
+   */
+  private async alone<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+    let turns = TURNS.get(this.shared);
+    if (!turns) TURNS.set(this.shared, (turns = new Map()));
+    const before = turns.get(operation) ?? Promise.resolve();
+    let done!: () => void;
+    const mine = new Promise<void>((r) => (done = r));
+    const next = before.then(() => mine);
+    turns.set(operation, next);
+    await before;
+    try {
+      return await fn();
+    } finally {
+      done();
+      if (turns.get(operation) === next) turns.delete(operation);
+    }
+  }
+
   private async effect(e: Extract<Expr, { op: "effect" }>, ctx: Ctx, path: string): Promise<Value> {
     const info = this.effectInfo(e.name);
     const { pos } = await this.args(e.args, ctx, path);
     const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
     const mode = this.o.mode ?? "live";
+    // 0.6: a write tool is held to what the context grants at run time, as a read is.
+    const write = this.connectorWrite(e.name);
+    if (write) {
+      if (ctx.where !== "workflow") throw new Violation("bad_connector", `${e.name} at ${path} is called in a contract: a write tool is an effect of a workflow's body (MDT-E1405).`);
+      if (!this.o.connectors!.grantsWrite(this.available(ctx), write)) throw new Violation("authority_denied", `${e.name} at ${path}: no capability of ${ctx.workflow} gives a call of ${write.scope}.`);
+    }
+    // 0.6: a critical effect in a map's body is a batch commit step (spec/library.md "The batch commit step").
+    const batch = ctx.map !== undefined && info.critical && is06(this.o.program) ? ctx.map : undefined;
     // A design run touches nothing: the effect is recorded as what it would have been (doc 9 §5.2).
     if (mode === "design") return this.simulated(e.name, plain(pos), path);
-    const p = await this.prepareAction(e.name, info, pos, plain(pos), key, ctx, path);
+    // An item of a batch commit step that was refused a person (`authorization`) is read as it was recorded.
+    if (batch !== undefined && this.o.replay) {
+      const refused = await this.o.journal.command(this.o.runId, `${path}/refused`);
+      if (refused) return replayed(refused, `${path}/refused`);
+    }
+    const p = await this.prepareAction(e.name, info, pos, plain(pos), key, ctx, path, {}, undefined, batch);
     if (!p.action) return p.receipt;
     // A read_only run goes as far as prepare: the action is frozen and recorded as what would apply, never committed.
     if (mode === "read_only") return this.wouldApply(p.action);
-    let action = p.action;
-    const { journal, runId, fence } = this.o;
-    let justCommitted = false;
-    if (action.state === "prepared") {
-      const authId = await this.authorization(e.name, info, action, path, undefined, this.environmentTier(e.name, e.args), this.governanceOf(action));
-      action = await journal.commit(runId, fence, action.operation_key, authId);
-      justCommitted = true;
-      this.o.faults.check("after_commit", { id: path, kind: "effect" });
-    }
-    if (action.state === "dispatched") return this.dispatchAction(p.tool, action, justCommitted);
-    return this.settledAction(action);
+    const settle = async (found: ActionRow): Promise<Value> => {
+      let action = found;
+      const { journal, runId, fence } = this.o;
+      let justCommitted = false;
+      if (action.state === "prepared") {
+        const authId = await this.authorization(e.name, info, action, path, undefined, this.environmentTier(e.name, e.args), this.governanceOf(action), batch);
+        const before = action.state;
+        action = await journal.commit(runId, fence, action.operation_key, authId);
+        // A commit that found the action already committed by another (never in one worker's turn) did not commit it.
+        justCommitted = batch === undefined || (before === "prepared" && action.state === "dispatched");
+        this.o.faults.check("after_commit", { id: path, kind: "effect" });
+      }
+      if (action.state === "dispatched") return this.dispatchAction(p.tool, action, justCommitted, write, path);
+      return this.settledAction(action);
+    };
+    // The items of a batch commit step that share a key share an action: each takes its turn, and reads it as it is then.
+    if (batch === undefined) return settle(p.action);
+    const operation = p.action.operation_key;
+    return this.alone(operation, async () => settle((await this.o.journal.action(operation)) ?? p.action!));
   }
 
   /**
@@ -1680,7 +2059,7 @@ export class Interpreter {
    */
   private async prepareAction(
     name: string,
-    info: { params: TypeExpr[]; retryClass?: string },
+    info: { params: TypeExpr[]; retryClass?: string; irreversible?: boolean },
     pos: Value[],
     params: Value,
     key: Value,
@@ -1689,18 +2068,39 @@ export class Interpreter {
     extra: Obj = {},
     /** A change set member's component: its files are checked against evidence keyed `<component>/<path>`. */
     component?: string,
+    /** The map whose batch commit step this is (0.6): the map names the action, with the effect and the key. */
+    batch?: string,
   ): Promise<{ tool: ToolAdapter; action: ActionRow; receipt?: undefined } | { tool: ToolAdapter; action?: undefined; receipt: Value }> {
     // INV-13: a parameter declared Verified<T, C> must carry evidence for C at run time too.
-    for (const [i, t] of info.params.entries()) {
-      if (!("ref" in t) || t.ref !== "Verified") continue;
-      const v = pos[i];
-      const want = t.args?.[1] && "ref" in t.args[1] ? t.args[1].ref : undefined;
-      if (!isObj(v) || !("$verified" in v) || (want && v["$contract"] !== want)) {
-        throw new Fault("PolicyDenied", [{ effect: name, parameter: i, reason: "unverified_parameter" }]);
+    if (!is06(this.o.program)) {
+      for (const [i, t] of info.params.entries()) {
+        if (!("ref" in t) || t.ref !== "Verified") continue;
+        const v = pos[i];
+        const want = t.args?.[1] && "ref" in t.args[1] ? t.args[1].ref : undefined;
+        if (!isObj(v) || !("$verified" in v) || (want && v["$contract"] !== want)) {
+          throw new Fault("PolicyDenied", [{ effect: name, parameter: i, reason: "unverified_parameter" }]);
+        }
+        if (!this.o.replay) await this.checkVerified(name, v);
       }
-      if (!this.o.replay) await this.checkVerified(name, v);
+    } else {
+      // 0.6: so must every value a parameter holds where its type says Verified<T, C>, nested in a list, an option, a
+      // record or a variant: what a person answered an escalation with keeps its verified type (H08), and is never
+      // taken for one. Each is held to its evidence, and a value that rests on a waiver never reaches an effect that
+      // cannot be undone (`checkVerified`).
+      for (const [i, t] of info.params.entries()) {
+        const found: Array<{ at: string; value: Value; contract: string | undefined }> = [];
+        this.verifiedIn(t, pos[i] ?? null, "", found, new Map(), 0);
+        for (const f of found) {
+          const v = f.value;
+          if (!isObj(v) || !("$verified" in v) || (f.contract && v["$contract"] !== f.contract)) {
+            throw new Fault("PolicyDenied", [{ effect: name, parameter: i, reason: "unverified_parameter", ...(f.at ? { at: f.at } : {}) }]);
+          }
+          if (!this.o.replay) await this.checkVerified(name, v, info.irreversible === true);
+        }
+      }
     }
-    const tool = this.o.adapters.tools[name];
+    // 0.6: a connector's write tool has the connector's adapter, and no other; the configuration's tools cannot stand in for it.
+    const tool = this.o.connectors?.write(name) ?? this.o.adapters.tools[name];
     if (!tool) throw new Violation("no_adapter", `No adapter for effect ${name}.`);
     const contract = tool.describe();
     // Prepare (§8.8): the adapter checks the parameters and reads the files the action will apply. They are frozen
@@ -1741,9 +2141,12 @@ export class Interpreter {
     // operation is named by the run, the plan, the effect and the key, and not by where the sub-program stands. A
     // second sub-program with the same effect and key finds the first one's action.
     const sub = this.o.sub;
-    const shared = sub !== undefined && key !== null && !component;
+    // A batch commit step (0.6) names an item's action by the map, the effect and the key, not by the item: two
+    // items with one key are one action. In a sub-program the rule of `plan` holds instead.
+    const named = sub !== undefined ? sub.plan : batch;
+    const shared = named !== undefined && key !== null && !component;
     const operationKey = shared
-      ? digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: sub.plan, effect: name, key })
+      ? digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: named, effect: name, key })
       : digest("operation", { tenant: this.o.policy.tenant, run: this.o.runId, node: path, action: actionDigest });
     const { journal, runId, fence } = this.o;
 
@@ -1796,7 +2199,9 @@ export class Interpreter {
     const plan = await this.expr(e.plan, ctx, `${path}/plan`);
     // INV-13 at run time: the plan was verified, and its evidence holds.
     if (!isObj(plan) || !("$verified" in plan)) throw new Fault("PolicyDenied", [{ changeset: path, reason: "unverified_plan" }]);
-    if (!this.o.replay) await this.checkVerified("changeset", plan);
+    // 0.6: a plan a person may waive part of never lets a set land that commits an effect that cannot be undone (E1505).
+    const undone = is06(this.o.program) && Object.values(e.members).some((m) => this.effectInfo(m.effect).irreversible);
+    if (!this.o.replay) await this.checkVerified("changeset", plan, undone);
     const key = e.idempotent_by ? plain(await this.expr(e.idempotent_by, ctx, `${path}/idempotent_by`)) : null;
     const mode = this.o.mode ?? "live";
     // What the set lands and why, for its view (doc 9 §3.4, §8.2): recorded with the set in every mode.
@@ -1978,9 +2383,14 @@ export class Interpreter {
    * (§8.9): idempotent adapters get the same operation key again, reconcilable
    * ones are asked first, non-retryable ones become unknown_outcome.
    */
-  private async dispatchAction(tool: ToolAdapter, action: ActionRow, fresh: boolean): Promise<Value> {
+  private async dispatchAction(tool: ToolAdapter, action: ActionRow, fresh: boolean, connector?: BoundTool, at?: string): Promise<Value> {
     const { journal, runId, fence, faults } = this.o;
     const op = action.operation_key;
+    // A connector's request the proxy denied (0.6) leaves the action `unknown_outcome`, never `rejected`, since a
+    // request the same operation sent before may have reached the server; it is a violation, and the run stops.
+    const denied = async (reason: string | undefined): Promise<void> => {
+      if (connector && reason !== undefined) await this.connectorDenied(connector, reason, at ?? action.command_id, connector.full);
+    };
     if (!fresh) {
       if (action.retry_class === "non_retryable") {
         await journal.finishAction(runId, fence, op, "unknown_outcome", { detail: "dispatched before a crash; not retryable" });
@@ -1994,13 +2404,17 @@ export class Interpreter {
         }
         if ("unknown" in r) {
           await journal.finishAction(runId, fence, op, "unknown_outcome", { detail: r.unknown });
+          await denied(r.denied);
           return this.settledAction({ ...action, state: "unknown_outcome" });
         }
       }
     }
     const auth = await this.authRow(action);
     const artifacts = await this.actionArtifacts(action);
-    const res = await tool.execute({ effect: action.effect, params: action.params, actionDigest: action.action_digest, operationKey: op, ...(artifacts.length ? { artifacts } : {}) }, auth, op);
+    const prepared = { effect: action.effect, params: action.params, actionDigest: action.action_digest, operationKey: op, ...(artifacts.length ? { artifacts } : {}) };
+    // A connector's adapter is told whether the operation was sent before: by a worker that died, or before a
+    // reconciliation that found it not applied. Only a first request's refusal proves the operation did nothing.
+    const res = connector ? await tool.execute(prepared, auth, op, { before: !fresh || (await this.sentBefore(op)) }) : await tool.execute(prepared, auth, op);
     faults.check("after_execute", { id: action.command_id, kind: "effect" });
     if ("confirmed" in res) {
       await journal.finishAction(runId, fence, op, "confirmed", { receipt: res.confirmed });
@@ -2011,7 +2425,14 @@ export class Interpreter {
       throw new Fault("Rejected", [res.rejected]);
     }
     await journal.finishAction(runId, fence, op, "unknown_outcome", { detail: res.unknown });
+    await denied(res.denied);
     return this.settledAction({ ...action, state: "unknown_outcome" });
+  }
+
+  /** Whether an operation's action was sent and answered for before: its outbox record counts each answer recorded. */
+  private async sentBefore(operationKey: string): Promise<boolean> {
+    const [row] = await this.o.journal.db.query("select attempts from outbox where operation_key = $1", [operationKey]);
+    return Number(row?.["attempts"] ?? 0) > 0;
   }
 
   /**
@@ -2025,44 +2446,207 @@ export class Interpreter {
    * needs a record of its own method. A model or an agent can produce JSON
    * that looks like a Verified value; it never has such evidence.
    */
-  private async checkVerified(effect: string, v: Obj): Promise<void> {
+  private async checkVerified(effect: string, v: Obj, irreversible = false): Promise<void> {
     const contract = String(v["$contract"] ?? "");
     const ids = Array.isArray(v["$evidence"]) ? v["$evidence"].map(String) : [];
     const rows = ids.length ? await this.o.journal.evidence(this.o.runId, ids) : [];
-    // A person's approval holds only while the decision it names is the one they signed (H04).
+    const c = this.def(contract);
+    const v06 = is06(this.o.program);
+    // 0.6: what a person may waive part of never reaches an effect that cannot be undone, nor is what makes one allowed
+    // (E1505): a value verified against such a contract, or one that rests on a waiver record, is refused here, before
+    // its evidence is read any further and before anything is prepared.
+    const waived = rows.some((r) => r.method === WAIVER);
+    if (v06 && irreversible && (waived || waiversOf(c).size > 0)) {
+      throw new Violation("waived_irreversible", `${effect} cannot be undone, and it received a value verified against ${contract}, which ${waived ? "rests on a person's waiver" : "a person may waive part of"}: a waiver does not clear what cannot be undone (MDT-E1505).`);
+    }
+    // A person's approval holds only while the decision it names is the one they signed (H04); so does a waiver (0.6).
     const approved = this.o.decisions;
     const decisions = approved && rows.some((r) => r.method === "human.approve") ? new Map((await this.o.journal.decisions(this.o.runId)).map((d) => [d.decision_id, d])) : new Map<string, StoredDecision>();
+    const facts = v06 && waived && approved ? await (this.waivers ??= waiverFacts(this.o.journal, this.o.runId, { contract: (n) => this.def(n), keys: approved.keys, lock: approved.lock, trusted: this.o.trusted })) : undefined;
+    // 0.6 (B25): every record the value rests on names, in its subject, the digest of the value the effect is given.
+    const value = v06 ? valueDigest(v["$verified"] ?? null) : undefined;
     const problems: string[] = [];
     const found = new Set(rows.map((r) => r.evidence_id));
     for (const id of ids) if (!found.has(id)) problems.push(`${id} is not evidence of this run`);
-    const c = this.def(contract);
     // Which checks need their verifier's attestation is the configuration's to say, and which methods a criterion
     // uses is the program's: never the record's (attestation.ts recordProblem).
     const rule: AttestationRule = { keys: this.o.verifiers, inProcess: this.o.inProcess ?? new Set() };
     for (const r of rows) {
       const record = r.record as unknown as EvidenceRecord | null;
-      if (!r.passed) problems.push(`${r.evidence_id} did not pass`);
+      // A verify's own record (0.6) says what it did not meet: one that met less rests on waivers, held below.
+      if (!r.passed && !(v06 && r.method === VERIFY)) problems.push(`${r.evidence_id} did not pass`);
       if (r.contract !== contract) problems.push(`${r.evidence_id} is evidence for ${r.contract}`);
       if (!record || !r.key_id || !r.signature || !this.o.trusted.verify(record, { key_id: r.key_id, signature: r.signature })) problems.push(`${r.evidence_id} is not signed by a trusted key`);
-      else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion) problems.push(`${r.evidence_id} does not match its signed record`);
+      else if (record.evidence_id !== r.evidence_id || record.passed !== r.passed || record.contract !== r.contract || record.criterion !== r.criterion || (v06 && record.method !== r.method)) problems.push(`${r.evidence_id} does not match its signed record`);
       else {
-        const why = recordProblem(record, { ...r, run: this.o.runId }, criterionMethods(c, record.criterion), rule) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined);
+        // A waiver is held to the review decision it names (review.ts); a run of 0.1 to 0.5 has none, and one in it covers nothing.
+        const why =
+          record.method === WAIVER
+            ? !v06
+              ? "a waiver covers nothing in a run of a package of 0.1 to 0.5"
+              : facts
+                ? waiverProblem(record, facts)
+                : "a waiver rests on a signed review decision, and this run checks none"
+            : v06 && record.method === VERIFY
+              ? record.criterion === WHOLE
+                ? undefined
+                : "a verify's record is of the contract whole"
+              : (recordProblem(record, { ...r, run: this.o.runId }, criterionMethods(c, record.criterion), rule) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined));
         if (why) problems.push(`${r.evidence_id}: ${why}`);
+        if (v06 && subjectValue(record) !== value) problems.push(`${r.evidence_id} is evidence for another value than the one ${effect} is given`);
+        // 0.6: every record, the verify's own and a waiver among them, is this run's, under a package it ran under,
+        // and of the mode it runs in: one copied from another run, or from a design run into a live one, holds nothing.
+        if (v06 && record.run !== this.o.runId) problems.push(`${r.evidence_id} is a record of another run`);
+        if (v06 && record.package !== this.o.packageHash && !(this.o.earlier ?? []).some((e) => e.hash === record.package)) problems.push(`${r.evidence_id} is a record of another package than this run's`);
+        if (v06 && (record.mode ?? "live") !== (this.o.mode ?? "live")) problems.push(`${r.evidence_id} is a record of a ${record.mode ?? "live"} run, and this run is ${this.o.mode ?? "live"}`);
       }
     }
     const criteria = c?.kind === "contract" ? [...Object.keys(c.accept), ...Object.keys(c.invariant ?? {})] : [];
     if (c?.kind !== "contract") problems.push(`${contract} is not a contract of this program`);
-    const covered = new Set(rows.filter((r) => r.passed).map((r) => r.criterion));
-    for (const k of criteria) {
-      if (!covered.has(k)) problems.push(`no evidence for ${contract}.${k}`);
-      // With a verifier of its own, every part of a criterion needs a passing record of its own method: under `and`,
-      // a static part's record does not stand for the verifier's check beside it.
-      else if (attestationsRequired(rule)) {
-        const passed = rows.filter((r) => r.passed && r.criterion === k).map((r) => r.method);
-        for (const m of uncovered(criterionMethods(c, k) ?? [], passed)) problems.push(`no evidence by ${m} for ${contract}.${k}`);
+    if (v06) {
+      // 0.6: the value rests on one verify of it, whose own record says what that verify came to: every `require`
+      // held, what it did not meet, and the records of its criteria. Every other record is one of that verify's, for
+      // the same contract arguments: passing records it lists, and waivers of failed records it lists. A criterion
+      // the verify met is covered by its passing records of every part the criterion declares; one it did not meet,
+      // by a waiver that holds alone (so never one nobody may waive); and a value whose `require` failed, never.
+      const whole = rows.filter((r) => r.method === VERIFY);
+      const own = whole.length === 1 ? (whole[0]!.record as unknown as EvidenceRecord | null) : null;
+      if (!own) problems.push(whole.length ? `it rests on ${whole.length} verifies of ${contract}, not on one` : `it rests on no verify of ${contract}`);
+      const vd = own && isObj(own.detail) ? own.detail : {};
+      const strings = (x: Value | undefined): string[] => (Array.isArray(x) ? x.filter((s): s is string => typeof s === "string") : []);
+      const unmet = strings(vd["unmet"]);
+      const listed = new Set(strings(vd["evidence"]));
+      const failedBy = isObj(vd["failed"] ?? null) ? (vd["failed"] as Obj) : {};
+      const args = own && isObj(own.subject) ? own.subject["contract_args"] : undefined;
+      if (own) {
+        const held = vd["requires"];
+        if (!Array.isArray(held) || held.some((x) => x !== true) || unmet.some((u) => u.startsWith("require/"))) problems.push(`${contract} was not met by it: ${unmet.filter((u) => u.startsWith("require/")).join(", ") || "a require"} failed`);
+        if (own.passed !== (unmet.length === 0)) problems.push(`${own.evidence_id} says it passed otherwise than what it did not meet`);
+      }
+      for (const r of rows) {
+        const record = r.record as unknown as EvidenceRecord | null;
+        if (r.method === VERIFY || !record) continue;
+        if (typeof args !== "string" || !isObj(record.subject) || record.subject["contract_args"] !== args) problems.push(`${r.evidence_id} is evidence of another verify than the one it rests on`);
+        if (r.method === WAIVER) {
+          const waives = isObj(record.detail) ? record.detail["waives"] : undefined;
+          if (!unmet.includes(r.criterion) || typeof waives !== "string" || !strings(failedBy[r.criterion]).includes(waives)) problems.push(`${r.evidence_id} waives what the verify it rests on did not fail`);
+        } else if (!listed.has(r.evidence_id)) problems.push(`${r.evidence_id} is not a record of the verify it rests on`);
+      }
+      for (const k of criteria) {
+        if (unmet.includes(k)) {
+          if (!rows.some((r) => r.method === WAIVER && r.criterion === k)) problems.push(`${contract}.${k} was not met, and no waiver covers it`);
+          continue;
+        }
+        const passed = rows.filter((r) => r.passed && r.criterion === k && r.method !== WAIVER && r.method !== VERIFY).map((r) => r.method);
+        if (!passed.length) problems.push(`no evidence for ${contract}.${k}`);
+        else for (const m of uncovered(criterionMethods(c, k) ?? [], passed)) problems.push(`no evidence by ${m} for ${contract}.${k}`);
+      }
+    } else {
+      const covered = new Set(rows.filter((r) => r.passed && r.method !== WAIVER).map((r) => r.criterion));
+      for (const k of criteria) {
+        if (!covered.has(k)) problems.push(`no evidence for ${contract}.${k}`);
+        // With a verifier of its own, every part of a criterion needs a passing record of its own method: under `and`,
+        // a static part's record does not stand for the verifier's check beside it.
+        else if (attestationsRequired(rule)) {
+          const passed = rows.filter((r) => r.passed && r.criterion === k).map((r) => r.method);
+          for (const m of uncovered(criterionMethods(c, k) ?? [], passed)) problems.push(`no evidence by ${m} for ${contract}.${k}`);
+        }
       }
     }
     if (problems.length) throw new Violation("forged_evidence", `${effect} received a Verified value whose evidence does not hold: ${[...new Set(problems)].sort().join("; ")}.`);
+  }
+
+  /**
+   * Each value `v` holds where its type `t` says `Verified<T, C>` (0.6), with the contract `C` it names, if any, at its
+   * place in `v` (`at`, a JSON pointer): through `Inferred`, `Untrusted` and `Option`, the items of a `List`, a `Set` or
+   * a `Map`, the fields of a record, the fields of a variant, an `Outcome`'s value, a `Result`'s either side, a
+   * `Review`'s accepted items, and the program's named types, generic ones with their arguments; any other type whose
+   * arguments say Verified is held as a Verified place itself. A Verified value's own value is read on as `T`.
+   * `generic` gives the type arguments of the named type being read. Nothing is taken from the value but its shape.
+   */
+  private verifiedIn(t: TypeExpr, v: Value, at: string, out: Array<{ at: string; value: Value; contract: string | undefined }>, generic: ReadonlyMap<string, TypeExpr>, depth: number): void {
+    // A type that names itself without a value in between ends here, as does a value nested beyond any program's: as
+    // a place that holds no Verified value, so that what is not read is never taken for checked.
+    if (depth > 256) return void out.push({ at, value: null, contract: undefined });
+    const next = depth + 1;
+    if ("record" in t) {
+      if (isObj(v)) for (const [k, ft] of Object.entries(t.record)) if (Object.hasOwn(v, k)) this.verifiedIn(ft, v[k]!, `${at}/${k}`, out, generic, next);
+      return;
+    }
+    if ("refine" in t) return this.verifiedIn(t.refine, v, at, out, generic, next);
+    if ("union" in t) {
+      const tv = tagOf(v);
+      const variant = tv ? t.union.find((x) => x.tag === tv.tag) : undefined;
+      (variant?.fields ?? []).forEach((f, j) => this.verifiedIn(f.type, tv!.args[j] ?? null, `${at}/$args/${j}`, out, generic, next));
+      return;
+    }
+    if (!("ref" in t)) return;
+    const bound = generic.get(t.ref);
+    if (bound && !t.args?.length) return this.verifiedIn(bound, v, at, out, new Map(), next);
+    const args = (t.args ?? []).map((a) => substituted(a, generic));
+    switch (t.ref) {
+      case "Verified":
+        out.push({ at, value: v, contract: args[1] && "ref" in args[1] ? args[1].ref : undefined });
+        if (args[0]) this.verifiedIn(args[0], unwrap(v), at, out, generic, next);
+        return;
+      case "Inferred":
+      case "Untrusted":
+      case "Decision":
+        if (args[0]) this.verifiedIn(args[0], v, at, out, generic, next);
+        return;
+      case "Option":
+        if (args[0] && v !== null) this.verifiedIn(args[0], v, at, out, generic, next);
+        return;
+      case "List":
+      case "Set":
+        if (args[0] && Array.isArray(v)) v.forEach((x, j) => this.verifiedIn(args[0]!, x, `${at}/${j}`, out, generic, next));
+        return;
+      case "Map":
+        if (args[1] && isObj(v)) for (const [k, x] of Object.entries(v)) this.verifiedIn(args[1], x, `${at}/${k}`, out, generic, next);
+        return;
+      case "Outcome": {
+        const tv = tagOf(v);
+        if (args[0] && tv?.tag === "Ok") this.verifiedIn(args[0], tv.args[0] ?? null, `${at}/$args/0`, out, generic, next);
+        return;
+      }
+      case "Result": {
+        // `Ok(T)` or `Err(E)`: either may hold a Verified value.
+        const tv = tagOf(v);
+        const held = tv?.tag === "Ok" ? args[0] : tv?.tag === "Err" ? args[1] : undefined;
+        if (held) this.verifiedIn(held, tv!.args[0] ?? null, `${at}/$args/0`, out, generic, next);
+        return;
+      }
+      case "Review":
+        if (args[0] && isObj(v) && Array.isArray(v["accepted"])) {
+          v["accepted"].forEach((x, j) => this.verifiedIn({ ref: "Verified", args: args.slice(0, 2) }, x, `${at}/accepted/${j}`, out, generic, next));
+        }
+        return;
+    }
+    const d = this.def(t.ref);
+    // Any other type with arguments that is not the program's (`Receipt`, `Declined`, `DecisionOutcome`, one of a later
+    // release) is not read here: when an argument says Verified anywhere, the place is held as one, and what is there
+    // must be a Verified value of its own, or the effect is refused. What is not read is never taken for checked.
+    if (d?.kind !== "type") {
+      if (args.some((a) => this.mentionsVerified(a, new Set()))) out.push({ at, value: v, contract: undefined });
+      return;
+    }
+    const names = (d as { generics?: unknown }).generics;
+    const own = new Map<string, TypeExpr>(Array.isArray(names) ? names.flatMap((n, j) => (typeof n === "string" && args[j] ? [[n, args[j]!] as const] : [])) : []);
+    this.verifiedIn(d.type, v, at, out, own, next);
+  }
+
+  /** Whether a type says `Verified` anywhere, through its arguments, fields and variants and the program's named types. */
+  private mentionsVerified(t: TypeExpr, seen: Set<string>): boolean {
+    if ("record" in t) return Object.values(t.record).some((f) => this.mentionsVerified(f, seen));
+    if ("refine" in t) return this.mentionsVerified(t.refine, seen);
+    if ("union" in t) return t.union.some((x) => (x.fields ?? []).some((f) => this.mentionsVerified(f.type, seen)));
+    if (!("ref" in t)) return false;
+    if (t.ref === "Verified") return true;
+    if ((t.args ?? []).some((a) => this.mentionsVerified(a, seen))) return true;
+    const d = this.def(t.ref);
+    if (d?.kind !== "type" || seen.has(t.ref)) return false;
+    seen.add(t.ref);
+    return this.mentionsVerified(d.type, seen);
   }
 
   /** The files frozen at prepare, read back from the artifact store (which checks their digests). */
@@ -2143,6 +2727,8 @@ export class Interpreter {
     member?: { role: string; changeset: string; component: string },
     env?: { environment: string; tier: Tier },
     gov?: { files: Array<{ file: string; kind: string }>; owner: string },
+    /** The map whose batch commit step the action is of (0.6): it is authorized by policy, and never asks a person. */
+    batch?: string,
   ): Promise<string> {
     const configured = this.o.policy.authorize?.[effect];
     // `approve E by r` in the run's envelope (spec/envelope.md): E is authorized only by a decision of role r, never by
@@ -2171,6 +2757,16 @@ export class Interpreter {
     // A governance-class file needs its owner (K70), and is never lowered: a policy becomes the owner's decision, and
     // another person's decision comes after the owner's own, both bound to the same action digest.
     const governance = gov ? (gov.files as unknown as Value) : undefined;
+    // Nothing in a map's body waits for a person: an item whose action would need one (the envelope's `approve`, an
+    // environment's tier, the runtime's policy for the effect, a governance-class file) is not asked about. It fails,
+    // and the other items go on (spec/library.md "The batch commit step").
+    // The refusal is recorded, as the failed command `<effect>/refused`, so that a resumed run and a replay read it
+    // there, whatever the runtime's policy is by then.
+    if (batch !== undefined && (pol.by === "human" || gov)) {
+      const f = new Fault("PolicyDenied", [{ reason: "person_in_map", effect, map: staticPath(batch), role: pol.by === "human" ? pol.role : gov!.owner }]);
+      await this.command(`${path}/refused`, "refusal", { refused: f.tag }, undefined, async () => ({ error: { tag: f.tag, args: f.args }, cost: {} }));
+      throw f;
+    }
     if (gov && pol.by === "policy") pol = { by: "human", role: gov.owner };
     else if (gov && pol.by === "human" && pol.role !== gov.owner) {
       const gate = await this.wait(`${path}/governance`, "decision", {
@@ -2213,6 +2809,18 @@ export class Interpreter {
  */
 function staticPath(path: string): string {
   return path.replace(/@\d+|#all\d+|\[\d+\]/g, "");
+}
+
+/** `t` with each name of a type parameter that `generic` gives an argument for replaced by that argument. */
+function substituted(t: TypeExpr, generic: ReadonlyMap<string, TypeExpr>): TypeExpr {
+  if (!generic.size) return t;
+  if ("record" in t) return { record: Object.fromEntries(Object.entries(t.record).map(([k, f]) => [k, substituted(f, generic)])) };
+  if ("refine" in t) return { ...t, refine: substituted(t.refine, generic) };
+  if ("union" in t) return { union: t.union.map((v) => ({ ...v, ...(v.fields ? { fields: v.fields.map((f) => ({ ...f, type: substituted(f.type, generic) })) } : {}) })) };
+  if (!("ref" in t)) return t;
+  const bound = generic.get(t.ref);
+  if (bound && !t.args?.length) return bound;
+  return t.args ? { ref: t.ref, args: t.args.map((a) => substituted(a, generic)) } : t;
 }
 
 /** A delegation's budget less what its finished steps spent; dimensions never go below zero. */

@@ -4,9 +4,10 @@
 // new worker with a higher fence that re-runs the body against the journal.
 
 import { randomUUID } from "node:crypto";
-import { atLeast, capsOf, check, domainHash, hashProgram, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { atLeast, capsOf, check, domainHash, hashProgram, isProgram06, link, linkedProgram, packageHash, references, SANDBOX_DENIALS_FORMAT, sandboxRequirements, workflowBounds, type DenialReport, type Envelope, type Json, type LibrariesConfig, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure } from "@mandate/bridge/mode";
-import type { Adapters, Cost, EgressNeed, RunComponents, RunMode } from "./adapters.js";
+import type { Adapters, Cost, EgressNeed, RunComponents, RunMode, ToolAdapter } from "./adapters.js";
+import { Connectors, ConnectorWrite, connectorsOf } from "./connectors.js";
 import type { WorkspaceComponent } from "./workspace.js";
 import { ArtifactStore, MemoryBlobs, type ArtifactRef } from "./artifacts.js";
 import { recordProblem, type AttestationRule } from "./attestation.js";
@@ -24,6 +25,7 @@ import { exportJournal, verifyExport, type JournalExport, type JournalReport } f
 import { buildPackage, isPackage06, isSigned04, libraryModules, refuseReference06, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
+import { givenValueProblem, listsRefusal, questionDigest, questionIn, REVIEW, subjectValue, VERIFY, WAIVER, waiverFacts, waiverProblem, waiverRecord, waiveRoleRefusal, WHOLE } from "./review.js";
 import { canonical, digest, isObj, type Obj, type Value } from "./values.js";
 
 export type { Lock };
@@ -168,8 +170,15 @@ export interface RuntimeOptions {
  */
 export const EXPANDED_MEDIA_TYPE = "application/vnd.mandate.expanded+json";
 
+/**
+ * What a connector's check at a resume stops a run with (spec/library.md "The lock binding and schema digests",
+ * "Egress"): a tool whose schema is not the one the lock pins, a server that does not answer as the narrow protocol
+ * allows, a request the proxy denied, a runtime with no way out for a connector, and a connector the lock does not bind.
+ */
+const CONNECTOR_STOPS = ["tool_schema_mismatch", "connector_protocol", "egress_denied", "no_egress_for_connector", "bad_connector"] as const;
+
 /** What stops a run at its resume for a person, as `attention_required`, rather than being thrown at the caller. */
-const STOPS_AT_RESUME = new Set(["library_revoked", "expansion_mismatch"]);
+const STOPS_AT_RESUME = new Set(["library_revoked", "expansion_mismatch", ...CONNECTOR_STOPS]);
 
 /** The violation limit of a 0.5 package's run when the configuration names none. */
 export const VIOLATION_LIMIT = 3;
@@ -280,6 +289,10 @@ export class Runtime {
     const linked = verified.running;
     // The input is a value of the workflow's parameter types, as a model's answer is of its type: a Path in it keeps the Path rule (K68).
     const input = isObj(o.input ?? null) ? (o.input as Obj) : {};
+    // 0.6: what a run is started with holds none of the members the runtime's own values are known by, at any depth,
+    // as a person's answer holds none: a Verified value is made by a verify of the run, never handed in.
+    const given = isPackage06(o.pkg) ? givenValueProblem(input) : undefined;
+    if (given) throw new Violation(given.reason, `The input of ${o.workflow} is not taken. ${given.message}`);
     for (const p of wf.params) {
       if (!Object.hasOwn(input, p.name)) continue;
       const problems = schemaErrors(typeSchema(linked, p.type), input[p.name]!);
@@ -293,6 +306,20 @@ export class Runtime {
     if (need.credentials.length && !this.adapters.egress) {
       throw new Violation("no_egress_proxy", `The package's lock binds ${need.credentials.map((c) => `${c.credential} to ${c.agent}'s requests to ${c.host}`).join(", ")}; a credential is put in only by the egress proxy, and this runtime's configuration names none (egress.admin).`);
     }
+    // 0.6: the connectors the package can call, bound by its lock. A run that reaches their servers (`read_only`,
+    // `live`) starts only where their requests have a way out, and the proxy is asked for their credentials too.
+    const connectors = isPackage06(o.pkg) ? this.connectorsFor(linked, o.pkg.lock, this.adapters) : undefined;
+    // Every declared tool is bound now, in every mode: one that cannot be (`bad_connector`) starts nothing.
+    connectors?.bindAll();
+    const reaches = connectors !== undefined && (o.mode ?? "live") !== "design" ? connectors : undefined;
+    if (reaches) {
+      if (!this.adapters.connectors) {
+        throw new Violation("no_egress_for_connector", `The package can call ${reaches.names().join(", ")}; a connector's requests leave only through the egress proxy, and this runtime's configuration names none (egress.admin).`);
+      }
+      need.connectors = reaches.credentials();
+    }
+    // A batch commit step is authorized by policy, never by a person: a policy that hands a person an effect a map's body commits starts nothing.
+    if (isPackage06(o.pkg)) refusePersonInMap(wf, o.authorize);
     await this.adapters.egress?.ready(need);
     await this.validateBindings(linked, o.workflow);
     await this.validateExecutor(o.pkg);
@@ -310,6 +337,11 @@ export class Runtime {
     // for a run that will not start; what decides is asked again where the run is created.
     const early = await this.journal.openHalt(policy.tenant);
     if (early) throw haltedRefusal(early, `Run ${runId} does not start`);
+    // 0.6: each connector's server is asked for its tools, and every declared tool's schema is held to the digest the
+    // lock pins: a difference starts nothing (`tool_schema_mismatch`), and nothing is called. A design run reaches no server.
+    if (reaches) {
+      await reaches.verifySchemas();
+    }
     // The components the program works on start from one base commit each, recorded in the run's manifest (B3).
     const components = await this.prepareWorkspace(runId, o.pkg, seen);
     // The manifest of a run under an envelope lists the approval it starts under; another run's manifest is as it was.
@@ -545,8 +577,12 @@ export class Runtime {
     try {
       refuseRevoked((await this.packaged(run.package_hash)).lock, this.load);
       const loaded = await this.loaded(run.package_hash, run);
+      // 0.6: every resume asks each connector's server for its tools again before the run goes on, and a schema that
+      // is not the one the lock pins stops the run for a person (`tool_schema_mismatch`); nothing is called. A design
+      // run reaches no server. (A start asks too, before the run exists: a difference there starts nothing.)
+      const connectors = await this.connectorsAtResume(run, loaded, fence);
       await this.write(runId, fence, async (tx) => this.journal.setState(tx, runId, "running"));
-      interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId), await this.earlier(run));
+      interp = this.interpreter(run, loaded, fence, false, this.adapters, await this.journal.startedAt(runId), await this.earlier(run), connectors);
     } catch (e) {
       if (!(e instanceof CompilerFailure) && !(e instanceof Violation && STOPS_AT_RESUME.has(e.code))) throw e;
       await this.settle(runId, fence, e);
@@ -696,8 +732,76 @@ export class Runtime {
     return out;
   }
 
-  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[]): Interpreter {
+  /**
+   * The connectors of a 0.6 package's running program, bound by its lock (spec/library.md "Connectors"); undefined for
+   * a package of 0.1 to 0.5, and for one that holds no connector. Building it reaches no server. Their requests leave
+   * by `adapters.connectors`, and a design run's samples come from `adapters.samples`.
+   */
+  private connectorsFor(program: Program, lock: Lock, adapters: Adapters): Connectors | undefined {
+    if (!isProgram06(program) || !connectorsOf(program).length) return undefined;
+    const samples = adapters.samples;
+    return new Connectors({ program, lock, transport: adapters.connectors, samples: samples?.tool ? (name) => samples.tool!(name) : undefined });
+  }
+
+  /**
+   * A resumed run's connectors, their schemas held to the lock again unless the run is a design run. A request of
+   * the check that the proxy denied is recorded as a violation of the run, as every denied request is, before the
+   * run stops.
+   */
+  private async connectorsAtResume(run: RunRow, loaded: Loaded, fence: number): Promise<Connectors | undefined> {
+    const connectors = this.connectorsFor(loaded.program, loaded.lock, this.adapters);
+    const mode = isObj(run.manifest) && typeof run.manifest["mode"] === "string" ? run.manifest["mode"] : "live";
+    // As at the start: every declared tool is bound before the run goes on, in every mode.
+    connectors?.bindAll();
+    if (!connectors || mode === "design") return connectors;
+    if (!this.adapters.connectors) throw new Violation("no_egress_for_connector", `Run ${run.run_id} can call ${connectors.names().join(", ")}; a connector's requests leave only through the egress proxy, and this runtime's configuration names none (egress.admin).`);
+    try {
+      await connectors.verifySchemas();
+    } catch (e) {
+      if (e instanceof Violation && e.code === "egress_denied") await this.journal.violation(run.run_id, fence, { kind: "egress_denied", delegate: "/connectors", agent: "connectors", step: `/connectors#${fence}`, detail: e.message });
+      throw e;
+    }
+    return connectors;
+  }
+
+  /**
+   * The adapter of an action's effect: the connector's, for a write tool of a 0.6 package's connector; else the
+   * configuration's. It is given in an object: an adapter may have a `then` of its own (a test's does), and must not
+   * be taken for a promise.
+   */
+  private async toolOf(runId: string, effect: string): Promise<{ tool: ToolAdapter | undefined }> {
+    const run = await this.journal.run(runId);
+    if (isPackage06(await this.packaged(run.package_hash))) {
+      const loaded = await this.loaded(run.package_hash, run);
+      const write = this.connectorsFor(loaded.program, loaded.lock, this.adapters)?.write(effect);
+      if (write) return { tool: write };
+    }
+    return { tool: this.adapters.tools[effect] };
+  }
+
+  /**
+   * Whether `effect` is `<connector>.<tool>` of a connector the run's 0.6 program holds; nothing is bound, and no
+   * server reached. When the package of 0.6 cannot be loaded, its connectors are not known (a library's are in the
+   * running program only): an effect of the form `<name>.<tool>` could be one's, and is taken for one, so that no
+   * configured adapter is asked about an operation a connector's server holds.
+   */
+  private async namesConnector(runId: string, effect: string): Promise<boolean> {
+    const run = await this.journal.run(runId);
+    if (!isPackage06(await this.packaged(run.package_hash))) return false;
+    const dot = effect.indexOf(".");
+    if (dot <= 0) return false;
+    let program: Program;
+    try {
+      program = (await this.loaded(run.package_hash, run)).program;
+    } catch {
+      return true;
+    }
+    return connectorsOf(program).some(([name]) => name === effect.slice(0, dot));
+  }
+
+  private interpreter(run: RunRow, loaded: Loaded, fence: number, replay: boolean, adapters: Adapters, startedAt: number, earlier: Epoch[], bound?: Connectors): Interpreter {
     const wf = Object.hasOwn(loaded.program.defs, run.workflow) ? loaded.program.defs[run.workflow] : undefined;
+    const connectors = bound ?? this.connectorsFor(loaded.program, loaded.lock, adapters);
     // The limit is the package's language's: a 0.5 program's run has one by default, an earlier one's only when configured.
     const violationLimit = this.violationLimit ?? (atLeast(loaded.source.language, "mandate/0.5") ? VIOLATION_LIMIT : undefined);
     return new Interpreter({
@@ -725,6 +829,7 @@ export class Runtime {
       durableTimers: this.durableTimers,
       ...(this.limiter ? { limiter: this.limiter } : {}),
       ...(violationLimit !== undefined ? { violationLimit } : {}),
+      ...(connectors ? { connectors } : {}),
     });
   }
 
@@ -853,8 +958,21 @@ export class Runtime {
     // A person's approval rests on their signed decision (H04): the record it names must still be the one they signed.
     const decisions = new Map((await this.journal.decisions(runId)).map((d) => [d.decision_id, d]));
     const rule: AttestationRule = { keys: this.verifiers, inProcess: this.inProcess };
-    const declared = (record: EvidenceRecord): string[] | undefined => criterionMethods(Object.hasOwn(program.defs, record.contract) ? program.defs[record.contract] : undefined, record.criterion);
-    return (await this.journal.evidence(runId)).map((e) => ({
+    const contractOf = (name: string): Program["defs"][string] | undefined => (Object.hasOwn(program.defs, name) ? program.defs[name] : undefined);
+    const declared = (record: EvidenceRecord): string[] | undefined => criterionMethods(contractOf(record.contract), record.criterion);
+    const rows = await this.journal.evidence(runId);
+    // A waiver (0.6) is held to the review decision it names and the failed record it waives (review.ts); in a run of
+    // 0.1 to 0.5 one holds nothing.
+    const v06 = isProgram06(program);
+    const facts = v06 && rows.some((e) => e.method === WAIVER) ? await waiverFacts(this.journal, runId, { contract: contractOf, keys: this.decisionKeys, lock, trusted: this.trusted }) : undefined;
+    // A verify's own record (0.6) is of the contract whole, and no criterion's check: it holds by its signature.
+    const holds = (e: (typeof rows)[number], record: EvidenceRecord): boolean =>
+      record.method === WAIVER || e.method === WAIVER
+        ? !!facts && record.method === e.method && !waiverProblem(record, facts)
+        : record.method === VERIFY || e.method === VERIFY
+          ? v06 && record.method === e.method && record.criterion === WHOLE
+          : !recordProblem(record, { ...e, run: runId }, declared(record), rule) && !approvalProblem(record, decisions, this.decisionKeys, lock, signed);
+    return rows.map((e) => ({
       evidence_id: e.evidence_id,
       criterion: e.criterion,
       key_id: e.key_id,
@@ -865,8 +983,7 @@ export class Runtime {
         this.trusted.verify(e.record as unknown as EvidenceRecord, { key_id: e.key_id, signature: e.signature }) &&
         (e.record as unknown as EvidenceRecord).evidence_id === e.evidence_id &&
         (e.record as unknown as EvidenceRecord).passed === e.passed &&
-        !recordProblem(e.record as unknown as EvidenceRecord, { ...e, run: runId }, declared(e.record as unknown as EvidenceRecord), rule) &&
-        !approvalProblem(e.record as unknown as EvidenceRecord, decisions, this.decisionKeys, lock, signed),
+        holds(e, e.record as unknown as EvidenceRecord),
     }));
   }
 
@@ -878,6 +995,7 @@ export class Runtime {
     const run = await this.journal.run(runId);
     const { lock } = await this.loaded(run.package_hash);
     // A run under an envelope started on its owner's approval of the package: the decision its manifest lists comes first.
+    // A review's decision (0.6) is one like any other: its record, signature and the lock's binding of its key.
     const listed = isObj(run.manifest) && isObj(run.manifest["envelope_approval"] ?? null) ? (run.manifest["envelope_approval"] as Obj)["decision"] : undefined;
     const approval = typeof listed === "string" ? await this.journal.decision(listed) : undefined;
     return [...(approval ? [approval] : []), ...(await this.journal.decisions(runId))].map((d) => {
@@ -907,7 +1025,7 @@ export class Runtime {
     const w = run.waiting;
     const commandId = run.state === "waiting" && isObj(w) && typeof w["command"] === "string" ? w["command"] : undefined;
     const [row] = commandId === undefined ? [] : await this.db.query<Row>("select kind, state, result, request_digest from commands where run_id = $1 and command_id = $2", [runId, commandId]);
-    if (!row || row["state"] !== "waiting" || (row["kind"] !== "input" && row["kind"] !== "decision" && row["kind"] !== "amendment")) throw new Violation("no_wait", `Run ${runId} is not waiting for a person.`);
+    if (!row || row["state"] !== "waiting" || (row["kind"] !== "input" && row["kind"] !== "decision" && row["kind"] !== "amendment" && row["kind"] !== REVIEW)) throw new Violation("no_wait", `Run ${runId} is not waiting for a person.`);
     return shownBy(run, commandId!, row);
   }
 
@@ -966,7 +1084,14 @@ export class Runtime {
   async submitInput(runId: string, msg: Message, i: { commandId: string; revision: number; value: Value } | { value: Value; signed: SignedDecision }): Promise<RunRow> {
     const signed = "signed" in i ? i.signed : undefined;
     const at = "signed" in i ? named(i.signed) : i;
-    const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, "input", i as unknown as Value, { signed, kinds: ["answer"], payload: payloadOf.answer(i.value) }, async () => ({ state: "succeeded", result: i.value }));
+    // 0.6: an answer holds none of the members the runtime's own values are known by, at any depth: a person's answer
+    // that looked like a Verified value would otherwise reach a step that takes one. Refused by name, and the wait stays.
+    const v06 = isPackage06(await this.packaged((await this.journal.run(runId)).package_hash));
+    const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, "input", i as unknown as Value, { signed, kinds: ["answer"], payload: payloadOf.answer(i.value) }, async () => {
+      const why = v06 ? givenValueProblem(i.value) : undefined;
+      if (why) throw new Refused({ reason: why.reason, message: `The answer is not taken. ${why.message}` }, signed, at.commandId);
+      return { state: "succeeded", result: i.value };
+    });
     return fresh ? this.drive(runId) : this.journal.run(runId);
   }
 
@@ -1019,6 +1144,74 @@ export class Runtime {
       ]);
       await this.journal.event(tx, runId, "action_authorized", { authorization: id, digest: d.digest, by, ...who.signed });
       return { state: "succeeded", result: { approved: true, by, authorization_id: id, ...who.signed } };
+    });
+    return fresh ? this.drive(runId) : this.journal.run(runId);
+  }
+
+  /**
+   * A person's decision on a review's wait (0.6; spec/library.md "The wait and the decision"): a signed record of kind
+   * `review` whose command is the review's wait, whose subject is the digest of what the wait asks, made in the role
+   * the wait asks now, and whose payload is the digest of `{ waive, decline }`: the input indices of the open items
+   * it waives and of those it declines. It is held, in this order, to every rule of a decision (who signed, what the
+   * record is for, the role: `invalid_decision`), to the wait's deadline (`past_deadline`), to deciding every open
+   * item exactly once and nothing else (`incomplete_review`), and to its role being one that every failed criterion
+   * of each item it waives names in its `waive by` (`not_in_role`); the rules are review.ts's. A refused decision
+   * changes nothing: `decision_refused` is recorded, and the wait stays open.
+   *
+   * Taken, in the one transaction that takes it: for each failed record of each item it waives, a waiver record
+   * beside it, signed by the runtime (`criterion_waived`), then `review_decided`. The decision names indices and
+   * nothing else: what a waived item's value is, is what its verify journaled.
+   */
+  async decideReview(runId: string, msg: Message, d: { signed: SignedDecision; waive: number[]; decline: number[] }): Promise<RunRow> {
+    // Only these are taken from the caller: whatever else comes with them is no part of the decision. Nothing of them
+    // is read before who signed is: lists that are not lists are refused below, after the signature, and recorded.
+    // Lists of numbers alone: anything else (a BigInt among them, which no digest takes) is lists that are not lists.
+    const shaped = Array.isArray(d?.waive) && Array.isArray(d?.decline) && [...d.waive, ...d.decline].every((x) => typeof x === "number");
+    const lists = { waive: shaped ? [...d.waive] : [], decline: shaped ? [...d.decline] : [] };
+    const at = named(d?.signed);
+    const seen = await this.journal.run(runId);
+    const loaded = await this.loaded(seen.package_hash, seen);
+    const fresh = await this.resolveWait(runId, msg, at.commandId, at.revision, REVIEW, { signed: d?.signed ?? null, waive: shaped ? d.waive : null, decline: shaped ? d.decline : null } as unknown as Value, { signed: d?.signed, kinds: [REVIEW], payload: payloadOf.review(lists) }, async (tx, request, run, who) => {
+      // A review is decided by a signed record alone, whatever the runtime's mode.
+      const signer = isObj(who.signed as Value) && typeof who.signed.member === "string" ? (who.signed as { member: string; role: string | null; key: string; decision: string }) : undefined;
+      if (!signer) throw new Refused({ reason: "invalid_signature", message: "A review is decided by a signed decision, and this one carries no signature." }, d?.signed, at.commandId);
+      if (!shaped) throw new Refused({ reason: "incomplete_review", message: "A review's decision names the items it waives and those it declines, each as a list of indices." }, d.signed, at.commandId);
+      const req = isObj(request) ? request : {};
+      const q = questionIn(req);
+      // What the person signed is the digest the wait shows; the question it stands for is the one it is the digest of.
+      if (!q || questionDigest(q) !== req["subject_digest"]) throw new Violation("forged_evidence", `The review's wait at ${at.commandId} holds another question than the one its subject names.`);
+      const deadline = req["deadline"];
+      if (typeof deadline !== "number" || this.adapters.clock.now() >= deadline) {
+        throw new Refused({ reason: "past_deadline", message: "The review's deadline has passed: the wait is escalated or it expires, and nothing is decided on its own." }, d.signed, at.commandId);
+      }
+      const incomplete = listsRefusal(q, lists);
+      if (incomplete) throw new Refused(incomplete, d.signed, at.commandId);
+      const c = Object.hasOwn(loaded.program.defs, q.contract) ? loaded.program.defs[q.contract] : undefined;
+      const notInRole = waiveRoleRefusal(c, q, lists.waive as number[], signer.role ?? undefined);
+      if (notInRole) throw new Refused(notInRole, d.signed, at.commandId);
+      const decision = { id: signer.decision, member: signer.member, role: String(signer.role), key: signer.key };
+      const waived = q.items.filter((i) => (lists.waive as number[]).includes(i.index)).sort((a, b) => a.index - b.index);
+      const rows = new Map((await this.journal.evidence(runId, waived.flatMap((i) => i.unmet.flatMap((u) => u.failed)), tx)).map((r) => [r.evidence_id, r]));
+      for (const item of waived) {
+        for (const u of item.unmet) {
+          if (!u.failed.length) throw new Violation("forged_evidence", `Item ${item.index} of the review at ${at.commandId} failed ${q.contract}.${u.criterion} with no record to waive.`);
+          for (const id of u.failed) {
+            // The record waived is the failed check of this item's value that the review asked about, as it was signed.
+            const row = rows.get(id);
+            const failed = (row?.record ?? null) as EvidenceRecord | null;
+            const holds = !!row && !!failed && !!row.key_id && !!row.signature && this.trusted.verify(failed, { key_id: row.key_id, signature: row.signature }) && failed.evidence_id === id && !row.passed && failed.passed === false && failed.method !== WAIVER;
+            if (!holds || failed!.contract !== q.contract || failed!.criterion !== u.criterion || subjectValue(failed) !== item.value_digest) {
+              throw new Violation("forged_evidence", `${id}, which item ${item.index} of the review at ${at.commandId} failed, is not a signed failed record of ${q.contract}.${u.criterion} for that item's value.`);
+            }
+            const waiver = waiverRecord({ run: runId, package: run.package_hash, failed: failed!, decision, review: at.commandId, index: item.index, at: this.adapters.clock.now() });
+            await this.journal.recordEvidence(runId, { record: waiver, ...this.signer.sign(waiver) }, tx);
+            await this.journal.event(tx, runId, "criterion_waived", { command: at.commandId, index: item.index, contract: q.contract, criterion: u.criterion, waiver: waiver.evidence_id, failed: id, decision: decision.id });
+          }
+        }
+      }
+      const decided = { waive: [...(lists.waive as number[])].sort((a, b) => a - b), decline: [...(lists.decline as number[])].sort((a, b) => a - b) };
+      await this.journal.event(tx, runId, "review_decided", { command: at.commandId, ...decided, by: who.by, ...who.signed });
+      return { state: "succeeded", result: { subject: String(req["subject_digest"]), ...decided, by: who.by, ...who.signed } };
     });
     return fresh ? this.drive(runId) : this.journal.run(runId);
   }
@@ -1127,6 +1320,15 @@ export class Runtime {
     if (run.state !== "waiting" || !isObj(w)) return run;
     const req = w["request"];
     const deadline = isObj(req) ? req["deadline"] : null;
+    // A review (0.6) is escalated once, when it has a role to escalate to, and then expires; and a review that was
+    // decided while the drive after it did not run is driven now, whatever its deadline. One that waits within its
+    // deadline is left as it is, and nothing is asked of the host for it.
+    if (w["kind"] === REVIEW) {
+      const due = typeof deadline === "number" && this.adapters.clock.now() >= deadline;
+      const [row] = due ? [] : await this.db.query<Row>("select state from commands where run_id = $1 and command_id = $2", [runId, String(w["command"])]);
+      if (!due && (!row || row["state"] === "waiting")) return run;
+      return this.expireReview(runId, String(w["command"]));
+    }
     if (typeof deadline !== "number" || this.adapters.clock.now() < deadline) return run;
     if (w["kind"] === "timer") return this.drive(runId);
     // A decision expires, and so does an amendment nobody answered: the lead is told, and the envelope stays.
@@ -1146,12 +1348,60 @@ export class Runtime {
     return this.drive(runId);
   }
 
+  /**
+   * A review's wait past its deadline (0.6; spec/library.md "Escalation and expiry"). Nothing passes on its own:
+   *
+   * - with `escalate_to`, once: the same question is asked of that role, with a new deadline of the same length from
+   *   when it is escalated, so that role has a whole deadline of its own (`review_escalated`); a tick that comes late
+   *   escalates and nothing more. The run's revision moves and the wait asks the new role, so a decision for the first
+   *   role is refused;
+   * - else, or once the escalated deadline has passed too: every open item is declined, by nobody (`review_expired`,
+   *   `wait_expired`), and the run goes on.
+   *
+   * A run that waits on a review its decision has already ended (the drive after the decision did not run: a crash,
+   * a failure of the compiler) is driven, as a decision's expiry drives its run. A runtime that resumes the run itself
+   * checks its host first, as a decision's expiry does.
+   */
+  private async expireReview(runId: string, command: string): Promise<RunRow> {
+    if (!this.driver) await checkFitness((await this.packaged((await this.journal.run(runId)).package_hash)).lock, this.hostProbe);
+    const now = this.adapters.clock.now();
+    const done = await this.db.tx(async (tx): Promise<"escalated" | "expired" | "decided" | undefined> => {
+      const run = await this.journal.lock(tx, runId);
+      const w = isObj(run.waiting) ? run.waiting : {};
+      if (run.state !== "waiting" || w["command"] !== command) return undefined;
+      const [row] = await tx.query<Row>("select kind, state, result from commands where run_id = $1 and command_id = $2", [runId, command]);
+      if (row && row["kind"] === REVIEW && row["state"] !== "waiting") return "decided";
+      const req = row && isObj((row["result"] ?? null) as Value) ? (row["result"] as Obj) : undefined;
+      if (!row || row["kind"] !== REVIEW || row["state"] !== "waiting" || !req) return undefined;
+      const q = questionIn(req);
+      const deadline = req["deadline"];
+      const ms = req["deadline_ms"];
+      if (!q || typeof deadline !== "number" || typeof ms !== "number" || now < deadline) return undefined;
+      const role = String(req["role"]);
+      const to = req["escalate_to"];
+      if (typeof to === "string" && to !== role && req["escalated"] === undefined) {
+        const next: Obj = { ...req, role: to, deadline: now + ms, escalated: { from: role, at: now } };
+        await tx.query("update commands set result = $3 where run_id = $1 and command_id = $2 and state = 'waiting'", [runId, command, JSON.stringify(next)]);
+        await this.journal.event(tx, runId, "review_escalated", { command, from: role, to, deadline: now + ms });
+        await this.journal.setState(tx, runId, "waiting", { waiting: { ...w, request: next } });
+        return "escalated";
+      }
+      const open = q.items.map((i) => i.index).sort((a, b) => a - b);
+      const outcome: Obj = { subject: String(req["subject_digest"]), waive: [], decline: open, by: null, role, expired: true };
+      await tx.query("update commands set state = 'succeeded', result = $3, error = null where run_id = $1 and command_id = $2 and state = 'waiting'", [runId, command, JSON.stringify(outcome)]);
+      await this.journal.event(tx, runId, "review_expired", { command, role, declined: open });
+      await this.journal.event(tx, runId, "wait_expired", { command });
+      return "expired";
+    });
+    return done === "expired" || done === "decided" ? this.drive(runId) : this.journal.run(runId);
+  }
+
   private async resolveWait(
     runId: string,
     msg: Message,
     commandId: string,
     revision: number,
-    kind: "input" | "decision" | "amendment",
+    kind: "input" | "decision" | "amendment" | typeof REVIEW,
     payload: Value,
     from: { signed: SignedDecision | undefined; by?: string; kinds: DecisionKind[]; payload?: string },
     resolve: (tx: Tx, request: Value, run: RunRow, who: Decider) => Promise<{ state: "succeeded"; result: Value } | { state: "failed"; error: Value }>,
@@ -1301,7 +1551,9 @@ export class Runtime {
   async cancelAction(runId: string, operationKey: string): Promise<RunRow> {
     const action = await this.journal.action(operationKey);
     if (!action || action.run_id !== runId) throw new Violation("unknown_action", `No action ${operationKey} in run ${runId}.`);
-    const tool = this.adapters.tools[action.effect];
+    // A connector's adapter (0.6) cannot cancel. When the adapter cannot be read (the package, its connectors), the
+    // effect is still the configuration's to cancel unless it names a tool of a connector the program holds.
+    const { tool } = await this.toolOf(runId, action.effect).catch(async () => ({ tool: (await this.namesConnector(runId, action.effect).catch(() => false)) ? undefined : this.adapters.tools[action.effect] }));
     if (tool?.cancel && (action.state === "unknown_outcome" || action.state === "prepared")) {
       const r = await tool.cancel(operationKey);
       if ("cancelled" in r) await this.journal.finishAction(runId, undefined, operationKey, "cancelled", { detail: { cancelled: r.cancelled } });
@@ -1454,7 +1706,7 @@ export class Runtime {
   async reconcileAction(runId: string, operationKey: string, signed?: SignedDecision): Promise<RunRow> {
     const action = await this.journal.action(operationKey);
     if (!action || action.run_id !== runId) throw new Violation("unknown_action", `No action ${operationKey} in run ${runId}.`);
-    const tool = this.adapters.tools[action.effect];
+    const { tool } = await this.toolOf(runId, action.effect);
     if (!tool) throw new Violation("no_adapter", `No adapter for effect ${action.effect}.`);
     // A reconciliation is a person's message too: signed, it names the action and the revision it was asked on.
     const loaded = await this.loaded((await this.journal.run(runId)).package_hash);
@@ -1466,7 +1718,22 @@ export class Runtime {
         await this.journal.event(tx, runId, "reconcile_requested", { operation: operationKey, ...who.signed });
       }));
     }
+    // A connector's tool (0.6): its server is asked only once its schemas are the ones the lock pins, as at a resume;
+    // and a request of either that the proxy denied is a violation of the run, recorded once for the action.
+    const denied = async (detail: string): Promise<void> => {
+      const run = await this.journal.run(runId);
+      await this.journal.violation(runId, run.fence, { kind: "egress_denied", delegate: action.command_id, agent: action.effect, step: `${action.command_id}#reconcile`, detail });
+    };
+    if (tool instanceof ConnectorWrite) {
+      try {
+        await tool.verifyBeforeAsking();
+      } catch (e) {
+        if (e instanceof Violation && e.code === "egress_denied") await denied(e.message);
+        throw e;
+      }
+    }
     const r = await tool.reconcile(operationKey);
+    if (tool instanceof ConnectorWrite && "unknown" in r && typeof (r as { denied?: unknown }).denied === "string") await denied(`The egress proxy denied the reconciliation of ${action.effect} (${(r as { denied: string }).denied}); it was not sent upstream.`);
     if ("applied" in r) await this.journal.finishAction(runId, undefined, operationKey, "confirmed", { receipt: r.applied });
     else if ("notApplied" in r) await this.journal.finishAction(runId, undefined, operationKey, "prepared", { detail: { not_applied: r.notApplied } });
     else return this.journal.run(runId);
@@ -1550,10 +1817,15 @@ export interface HaltReport {
 /** What a waiting command shows to whoever decides on it: its digest and the role it asks (`Shown`). */
 function shownBy(run: RunRow, commandId: string, row: Row): Shown {
   const request = isObj((row["result"] ?? null) as Value) ? (row["result"] as Obj) : {};
-  // A decision wait shows the digest it is bound to; an amendment's, the hash of the package it asks for; a question
-  // shows the digest of the question as recorded.
+  // A decision wait shows the digest it is bound to; an amendment's, the hash of the package it asks for; a review's,
+  // the digest of what it asks, which its escalation leaves as it was (0.6); a question shows the digest of the
+  // question as recorded.
   const subject =
-    row["kind"] === "decision" ? String(request["subject_digest"] ?? request["action_digest"] ?? "") : row["kind"] === "amendment" ? String(request["package"] ?? "") : String(row["request_digest"]);
+    row["kind"] === "decision" || row["kind"] === REVIEW
+      ? String(request["subject_digest"] ?? request["action_digest"] ?? "")
+      : row["kind"] === "amendment"
+        ? String(request["package"] ?? "")
+        : String(row["request_digest"]);
   const role = typeof request["role"] === "string" && request["role"] !== "" ? request["role"] : undefined;
   return { package: run.package_hash, run: run.run_id, revision: run.revision, command: commandId, subject, ...(role !== undefined ? { role } : {}) };
 }
@@ -1595,6 +1867,28 @@ function minLimits(a: Record<string, number>, b: Record<string, number>): Record
   const out: Record<string, number> = { ...a };
   for (const [k, v] of Object.entries(b)) out[k] = k in out ? Math.min(out[k]!, v) : v;
   return out;
+}
+
+/**
+ * 0.6, at a start (spec/library.md "The batch commit step"): a run whose policy hands a person an effect that a
+ * map's body of its workflow commits is refused at once, `person_in_map`; nothing in a map's body waits for a person.
+ * `authorize` is the override `StartRun` was given.
+ */
+function refusePersonInMap(wf: unknown, authorize: Policy["authorize"]): void {
+  const asked = Object.entries(authorize ?? {}).filter(([, a]) => a?.by === "human");
+  if (!asked.length) return;
+  const inMaps = new Set<string>();
+  const visit = (v: unknown, inMap: boolean, depth: number): void => {
+    if (depth > 512) return;
+    if (Array.isArray(v)) return v.forEach((x) => visit(x, inMap, depth + 1));
+    if (!v || typeof v !== "object") return;
+    const node = v as Record<string, unknown>;
+    if (inMap && node["op"] === "effect" && typeof node["name"] === "string") inMaps.add(node["name"]);
+    for (const [k, x] of Object.entries(node)) visit(x, inMap || (node["op"] === "map" && k === "body"), depth + 1);
+  };
+  visit(wf, false, 0);
+  const found = asked.filter(([name]) => inMaps.has(name)).map(([name, a]) => `${name} (${a.by === "human" ? a.role : ""})`);
+  if (found.length) throw new Violation("person_in_map", `The run's policy hands a person ${found.sort().join(", ")}, which a map's body commits: a batch commit step is authorized by policy, never by a person (spec/library.md).`);
 }
 
 /** Adapters that fail the test if replay ever reaches the outside world. */

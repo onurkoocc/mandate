@@ -3,6 +3,7 @@
 // before the program sees it, so replay never calls them again (INV-09).
 
 import type { Budget, Command, DataClass, RetryClass, SandboxRequirement, TypeExpr } from "@mandate/bridge";
+import type { ConnectorGateway } from "./gateway.js";
 import type { MxcAdapter } from "./sandbox.js";
 import type { WorkspaceAdapter } from "./workspace.js";
 import type { Value } from "./values.js";
@@ -71,6 +72,12 @@ export interface InferRequest {
   /** The model tier of the capability the call runs under; the lock file maps it to a model. */
   tier?: string;
   commandId: string;
+  /**
+   * 0.6 (spec/library.md "What reaches a model", B28): the input is quoted for the model with `<` and `>` escaped,
+   * so that no text in it closes the region it is quoted in. Absent for a package of 0.1 to 0.5, whose request is
+   * the bytes it was.
+   */
+  escape?: boolean;
 }
 
 export interface ModelAdapter {
@@ -161,6 +168,12 @@ export interface VerifyRequest {
    * (test.suite_each, test.contract, test.integration, test.ci) read it.
    */
   system?: SystemFacts;
+  /**
+   * 0.6 (spec/library.md "What reaches a model", B28): what the check quotes for a model (a review's diff) is quoted
+   * with `<` and `>` escaped, so that no file's text closes the region it is quoted in. Absent for a package of 0.1
+   * to 0.5, whose request, to a verifier in this process or another, is the bytes it was.
+   */
+  escape?: true;
 }
 
 export interface SystemFacts {
@@ -246,6 +259,11 @@ export interface ReadRequest {
 export interface ReadBroker {
   describe(): { id: string; digest: string };
   query(req: ReadRequest): Promise<Outcome>;
+  /**
+   * For sample reads (0.6, spec/library.md "Run modes and samples"): the sample result of a connector's read tool,
+   * by `<module>.<connector>.<tool>`, as `structuredContent` would carry it; undefined when there is none.
+   */
+  tool?(name: string): Value | undefined;
 }
 
 /** Read-only std calls (fs.read_text, net.https.get, …). */
@@ -305,8 +323,13 @@ export interface ToolAdapter {
    * so `execute` sends those bytes, whatever happens to the working copy.
    */
   prepare(params: Value): Promise<{ prepared: true; artifacts?: PreparedFile[] } | { rejected: string }>;
-  execute(action: PreparedAction, auth: AuthorizationContext, operationKey: string): Promise<{ confirmed: Value } | { rejected: string } | { unknown: string }>;
-  reconcile(operationKey: string): Promise<{ applied: Value } | { notApplied: string } | { unknown: string }>;
+  /**
+   * `sent.before` says whether this operation was sent before (a resend after a crash, or after a reconciliation):
+   * an adapter that could prove a first request did nothing cannot prove it of the operation then. `denied`, beside
+   * `unknown`, is the egress proxy's reason when it denied the request (a connector's adapter, spec/library.md "Egress").
+   */
+  execute(action: PreparedAction, auth: AuthorizationContext, operationKey: string, sent?: { before: boolean }): Promise<{ confirmed: Value } | { rejected: string } | { unknown: string; denied?: string }>;
+  reconcile(operationKey: string): Promise<{ applied: Value } | { notApplied: string } | { unknown: string; denied?: string }>;
   /** Stops an operation if it has not taken effect: Cancelled with proof, or TooLate with its receipt. */
   cancel?(operationKey: string): Promise<{ cancelled: string } | { tooLate: Value } | { unknown: string }>;
 }
@@ -356,6 +379,13 @@ export interface Adapters {
    * the sessions this runtime opened and its admin connection.
    */
   egress?: { ready(need?: EgressNeed): Promise<void>; close(): Promise<void> };
+  /**
+   * How a connector's requests leave (0.6, spec/library.md "Egress"): a `fetch` for the connector's gateway. The
+   * CLI's sends through the egress proxy, in a gateway session of the connector's own; a runtime built in code may
+   * give one of its own, as tests do. Without it a package that can call a connector does not start
+   * (`no_egress_for_connector`).
+   */
+  connectors?: { fetch(gateway: ConnectorGateway): (url: string, init: RequestInit) => Promise<Response> };
 }
 
 /**
@@ -365,4 +395,6 @@ export interface Adapters {
 export interface EgressNeed {
   hosts: boolean;
   credentials: Array<{ agent: string; host: string; credential: string }>;
+  /** 0.6: the credential the lock binds to each connector the package can call; absent when it has none. */
+  connectors?: Array<{ connector: string; host: string; credential: string }>;
 }

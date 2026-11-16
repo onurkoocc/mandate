@@ -43,6 +43,12 @@ export const EVENT_CLASSES: Readonly<Record<string, ViewClass>> = {
   package_amended: "S0",
   limits_raised: "S0",
   reconcile_requested: "S0",
+  // S0 of 0.6: a review of a batch, asked once of its role (spec/library.md "Runtime / Events").
+  review_requested: "S0",
+  review_decided: "S0",
+  review_escalated: "S0",
+  review_expired: "S0",
+  criterion_waived: "S0",
   // S1: how the run ended, and what stopped or bent it.
   run_succeeded: "S1",
   run_failed: "S1",
@@ -114,6 +120,8 @@ export const SECTION_CLASSES: Readonly<Record<string, ViewClass>> = {
   waiting: "S0",
   // Each decision a person made, shown to the role it was asked of.
   decisions: "S0",
+  // Each review of a batch (0.6): its items, open, waived or declined, and who decided, shown to the roles it asked.
+  reviews: "S0",
   // How the run ended and what stopped it, by the fields named: the fault's tag; of `attention`, the violation's code,
   // the halt, the reason's code and the open actions' effects and states; each violation but its detail; the halt.
   exceptions: "S1",
@@ -155,8 +163,8 @@ export function sectionClass(section: string): ViewClass {
 /** The kinds of command an agent loop's trace is made of: its session, its turns and its tool calls. */
 export const TRACE_KINDS: ReadonlySet<string> = new Set(["session", "turn", "tool"]);
 
-/** The kinds of command that wait for a person. */
-export const WAIT_KINDS: ReadonlySet<string> = new Set(["input", "decision", "amendment"]);
+/** The kinds of command that wait for a person; `review`, one wait about a batch (0.6). */
+export const WAIT_KINDS: ReadonlySet<string> = new Set(["input", "decision", "amendment", "review"]);
 
 /** The class of a command as a step of the run: its id, kind, label, state, reservation and cost. */
 export function stepClass(kind: string): ViewClass {

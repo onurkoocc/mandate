@@ -9,14 +9,18 @@
 //   mandate approve <run> --revision N --key FILE [--member NAME]
 //   mandate decline <run> --revision N --key FILE [--member NAME]
 //   mandate answer <run> --revision N --key FILE [--member NAME] <text>
+//   mandate review <run> --revision N --key FILE [--member NAME] [--waive I,J] [--decline K]
+//                                                         decide a review of a batch (0.6): every open item, by its
+//                                                         index, waived or declined, in one signed decision
 //   mandate cancel <run> [--key FILE]
 //   mandate reconcile <run> <operation> [--key FILE]      ask the system of record what an unknown outcome was
 //   mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
 //   mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
 //                                                         decide an amendment of the envelope a lead asked for
 //   mandate decision <run> <digest>                       a decision the run took, as its signed record
-//   mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
-//                                                         check a decision's signature; no configuration, no database
+//   mandate verify-decision <record.json> --key <public key.pem> [--lock FILE] [--waive I,J --decline K]
+//                                                         check a decision's signature (and a review's, that it decided
+//                                                         those items); no configuration, no database
 //   mandate journal export <run> [--out FILE]            the run's journal as an outsider checks it (spec/journal.md)
 //   mandate journal key [--out FILE]                      the public keys its anchors are signed with
 //   mandate journal verify <export.json> --key <public key.pem> [--key …] [--json]
@@ -57,10 +61,11 @@ import { execFileSync } from "node:child_process";
 import { randomUUID, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { check, kindOf, libraryVerify, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, pinnedLibraries, printProgram, toHtml, toMarkdown, type Doc, type LibrarySource, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { check, isProgram06, kindOf, libraryVerify, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, pinnedLibraries, printProgram, toHtml, toMarkdown, type Doc, type LibrarySource, type Lock, type Modules, type Program } from "@mandate/bridge";
 import { CompilerFailure, compilerMode } from "@mandate/bridge/mode";
 import type { Adapters } from "./adapters.js";
-import { adaptersFor, anthropicClient, connect, operatorAdapters, readConfig, replayAdapters, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
+import { Connectors } from "./connectors.js";
+import { adaptersFor, anthropicClient, connect, connectorEgress, operatorAdapters, readConfig, replayAdapters, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { credentialAdvice } from "./gateway.js";
 import { deployManagedAgents, sdkApi } from "./managed-agents.js";
 import { decisionId, isSignedDecision, keyFileName, memberOf, newDecisionKey, payloadOf, readDecisionKey, roleRefusal, shownPackage, signatureHolds, signDecision, signerRefusal, type DecisionKind, type SignedDecision } from "./decisions.js";
@@ -76,7 +81,7 @@ import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { runTests } from "./testing.js";
 import { auditDoc, roleDoc, runDoc, runView, shadowDiff } from "./views.js";
-import { isObj, show, type Obj, type Value } from "./values.js";
+import { canonical, isObj, show, tagOf, unwrap, type Obj, type Value } from "./values.js";
 
 interface Args {
   positional: string[];
@@ -89,7 +94,7 @@ interface Args {
   all: Record<string, string[]>;
 }
 
-const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run", "--libraries"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run", "--libraries", "--waive", "--decline"]);
 const PAIRS = new Set(["--component", "--host", "--repo"]);
 
 function parse(argv: string[]): Args {
@@ -134,12 +139,13 @@ const USAGE = `usage:
   mandate approve <run> --revision N --key FILE [--member NAME]
   mandate decline <run> --revision N --key FILE [--member NAME]
   mandate answer <run> --revision N --key FILE [--member NAME] <text>
+  mandate review <run> --revision N --key FILE [--member NAME] [--waive I,J] [--decline K]
   mandate cancel <run> [--key FILE]
   mandate reconcile <run> <operation> [--key FILE]
   mandate raise-limits <run> --revision N --key FILE [--member NAME] --limit spend=30USD
   mandate amend <run> --revision N --key FILE [--member NAME] (approve | decline)
   mandate decision <run> <digest>
-  mandate verify-decision <record.json> --key <public key.pem> [--lock FILE]
+  mandate verify-decision <record.json> --key <public key.pem> [--lock FILE] [--waive I,J --decline K]
   mandate journal export <run> [--out FILE]
   mandate journal key [--out FILE]
   mandate journal verify <export.json> --key <public key.pem> [--key FILE]… [--json]
@@ -157,11 +163,12 @@ const USAGE = `usage:
   mandate drift --module MODEL --component NAME=DIR… [--host HOST=NAME]… [--json]
   mandate deploy <program> --target managed-agents [--lock FILE] [--module FILE]… [--libraries DIR] [--agents A,B] [--name PREFIX] [--harness-tokens N]
   mandate egress serve [--config FILE (default ./mandate.egress.json)]
+  mandate connector pin <program> [--lock FILE] [--module FILE]… [--libraries DIR]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
 --libraries DIR is the directory of libraries a lock of 0.6 pins its libraries in (default: libraries.dir of the configuration)
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
-export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel"]);
+export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel", "connector", "review"]);
 
 /** Runs one control command; returns the exit status. */
 export async function main(argv: string[], out: (s: string) => void = (s) => process.stdout.write(s), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -181,6 +188,7 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     if (cmd === "verify-decision") return verifyDecision(a, out);
     if (cmd === "journal" && a.positional[0] === "verify") return journalVerify(a, out);
     if (cmd === "egress") return await egress(a, out, env);
+    if (cmd === "connector") return await connectorPin(a, out, env);
     if (!existsSync(configFile)) throw new Usage(`no runtime configuration at ${configFile} (see spec/runtime.md, "Control CLI")`);
     const config = readConfig(configFile);
     db = await connect(config);
@@ -276,6 +284,18 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         run = await rt.submitInput(runId, msg, key ? { value: text, signed: await sign("wait", "answer", payloadOf.answer(text)) } : { commandId: w.command, revision: rev, value: text });
         break;
       }
+      case "review": {
+        // A review of a batch (0.6; spec/library.md "The wait and the decision"): every open item `status` listed, by
+        // its index, waived or declined, in one decision signed for what the wait asks. The decision names indices
+        // and nothing else.
+        revision(a);
+        if (!key) throw new Usage("--key FILE is required: a review is decided with a signed decision");
+        const lists = { waive: itemIndices(a, "--waive"), decline: itemIndices(a, "--decline") };
+        const w = waitOf(await rt.getRun(runId));
+        if (w.kind !== "review") throw new Violation("no_wait", `Run ${runId} is not waiting for a review.`);
+        run = await rt.decideReview(runId, msg, { ...lists, signed: await sign("wait", "review", payloadOf.review(lists)) });
+        break;
+      }
       case "cancel":
         run = await rt.cancelRun(runId, key ? await sign("run", "cancel") : undefined);
         break;
@@ -316,7 +336,13 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         // A role's view or the audit view (spec/boundary.md "Views by role and the audit view"); with neither, as before.
         const role = a.flags["--role"];
         if (typeof role === "string" && a.flags["--audit"] !== undefined) throw new Usage("show takes --role R or --audit, not both");
-        const print = (view: object, doc: () => Doc): void => out(format === "json" ? JSON.stringify(view, null, 2) + "\n" : format === "html" ? toHtml(doc()) : toMarkdown(doc()));
+        // A run of 0.6: what a model, a person or a server wrote is in the document as it was given, and Markdown is
+        // printed to a terminal, HTML shown in a browser, both of which a control, format or bidirectional character
+        // would move, reorder or hide text in: every such character of the document is escaped (`terminalDocument`).
+        // JSON is the view's data, and stays as it is; an earlier run's document is as it was.
+        const v06 = isProgram06((await rt.runProgram(runId)).source);
+        const doc = (text: string): string => (v06 ? terminalDocument(text) : text);
+        const print = (view: object, made: () => Doc): void => out(format === "json" ? JSON.stringify(view, null, 2) + "\n" : doc(format === "html" ? toHtml(made()) : toMarkdown(made())));
         if (typeof role === "string") {
           const { view, program, modules } = await runView(rt, runId, { role });
           print(view, () => roleDoc(view, program, modules));
@@ -494,6 +520,21 @@ function revision(a: Args): number {
   return n;
 }
 
+/**
+ * The item indices a flag gives, `--waive 2,5`: the map's input indices, from 0, as `status` lists them; none when
+ * the flag is not given. Each is taken as written, twice included: whether they decide the review is the runtime's.
+ */
+function itemIndices(a: Args, flag: "--waive" | "--decline"): number[] {
+  const v = a.flags[flag];
+  if (v === undefined) return [];
+  if (typeof v !== "string") throw new Usage(`${flag} takes item indices, e.g. ${flag} 2,5`);
+  return v.split(",").map((s) => {
+    const t = s.trim();
+    if (!/^(0|[1-9][0-9]*)$/.test(t) || !Number.isSafeInteger(Number(t))) throw new Usage(`${flag} takes item indices, e.g. ${flag} 2,5; ${JSON.stringify(s)} is not one`);
+    return Number(t);
+  });
+}
+
 /** `spend=20USD,tokens=2M,steps=40,agents=30`. */
 function limits(text: string): Limits {
   const c: Limits = {};
@@ -638,6 +679,75 @@ async function deploy(a: Args, out: (s: string) => void, env: NodeJS.ProcessEnv)
 }
 
 /**
+ * `mandate connector pin <program>` (spec/library.md "The lock binding and schema digests"): asks each connector's
+ * server for its tools, through the egress proxy the configuration names and no other way, and writes the digest of
+ * every declared tool's schema into the lock entry the connector already has. The entry's credential, URL, header and
+ * template are the operator's and are left as they are: a credential is a name there, and no secret is read, sent
+ * or written by this command. A connector without an entry is refused (E1407); so is a declared tool the server does
+ * not list (`tool_schema_mismatch`), and then nothing is written. It prints each digest that changed.
+ *
+ * The program is checked without the lock, whose digests are what is being written, with the libraries the lock
+ * pins; and once more against the lock as it would be written, so that a lock the program does not bind its
+ * connectors with (E1407, E1408) is not written.
+ */
+async function connectorPin(a: Args, out: (s: string) => void, env: NodeJS.ProcessEnv): Promise<number> {
+  if (a.positional[0] !== "pin") throw new Usage("connector takes pin: mandate connector pin <program> [--lock FILE]");
+  const file = a.positional[1] ?? fail("connector pin needs a program file");
+  const lockPath = typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : join(dirname(file), "mandate.lock.json");
+  const raw = readLock(lockPath) ?? fail(`connector pin writes the digests into the lock file, and there is none at ${lockPath}`);
+  const configFile = typeof a.flags["--config"] === "string" ? a.flags["--config"] : "mandate.runtime.json";
+  if (!existsSync(configFile)) throw new Usage(`no runtime configuration at ${configFile}: a connector's server is asked through the egress proxy it names (egress.admin)`);
+  const config = readConfig(configFile);
+  const { modules, problems } = loadModules(a.modules.map((f) => ({ file: f, text: readFileSync(f, "utf8"), kind: kindOf(f) })));
+  if (problems.length) throw new Violation("load_verification_failed", problems.flatMap((p) => p.diagnostics.filter((d) => d.severity === "error").map((d) => `${p.file}: ${d.code} ${d.message}`)).join("\n"));
+  const { libraries } = pinned(raw, librariesFrom(a, config));
+  const read = { modules, ...(libraries.length ? { libraries } : {}) };
+  const text = readFileSync(file, "utf8");
+  const r = check(text, kindOf(file), { ...read, linked: true });
+  if (!r.ok) throw new Violation("load_verification_failed", r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`).join("\n"));
+  const linked = r.linked as unknown as Program | undefined;
+  if (!linked) throw new Violation("unsupported_language", `${file} is not a program of mandate/0.6: only a program of 0.6 holds connectors.`);
+  const entries = { ...(isObj(raw.connectors as unknown as Value) ? raw.connectors! : {}) };
+  const egress = connectorEgress(config, env);
+  let pins: Record<string, Record<string, string>>;
+  try {
+    // Binding refuses a connector the lock has no entry for (`bad_connector`, naming E1407: the operator writes its
+    // credential's name and URL first), and one whose entry names another URL than the one it declares.
+    const connectors = new Connectors({ program: linked, lock: raw, transport: egress.connectors });
+    if (!connectors.any) {
+      out("the program holds no connector; nothing to pin\n");
+      return 0;
+    }
+    await egress.ready(connectors.credentials());
+    pins = await connectors.pins();
+  } finally {
+    await egress.close();
+  }
+  const lines: string[] = [];
+  for (const [connector, tools] of Object.entries(pins)) {
+    const entry = entries[connector]!;
+    const before: Record<string, string> = isObj(entry.tools as unknown as Value) ? entry.tools : {};
+    for (const [tool, digest] of Object.entries(tools)) {
+      const had = Object.hasOwn(before, tool) ? before[tool] : undefined;
+      if (had !== digest) lines.push(`${connector}.${tool}: ${typeof had === "string" ? had : "(not pinned)"} -> ${digest}`);
+    }
+    for (const tool of Object.keys(before)) if (!Object.hasOwn(tools, tool)) lines.push(`${connector}.${tool}: ${String(before[tool])} -> (removed: the connector does not declare it)`);
+    entries[connector] = { ...entry, tools };
+  }
+  const next: Lock = { ...raw, connectors: entries };
+  const after = check(text, kindOf(file), { ...read, lock: next });
+  const refused = after.diagnostics.filter((d) => d.severity === "error" && (d.code === "MDT-E1407" || d.code === "MDT-E1408"));
+  if (refused.length) throw new Violation("load_verification_failed", `${refused.map((d) => `${d.code} ${d.message}`).join("\n")}\nNothing was written.`);
+  if (!lines.length) {
+    out(`every schema digest in ${lockPath} is the one its server lists; nothing changed\n`);
+    return 0;
+  }
+  writeFileSync(lockPath, JSON.stringify(next, null, 2) + "\n");
+  out(`${lines.join("\n")}\nthe digests are in ${lockPath}: the lock, and so the package hash, changed\n`);
+  return 0;
+}
+
+/**
  * The commands that only read a run: none of them calls an adapter, a tool, a model, a sandbox or the proxy, or
  * moves the run forward. They are built with `operatorAdapters`, as `halt` is: the process holds no adapter that could
  * use a secret, so the environment may hold one (no `credential_in_environment`). Add a command here only after reading
@@ -717,15 +827,21 @@ function verifyDecision(a: Args, out: (s: string) => void): number {
   }
   const keyId = keys.ids()[0]!;
   const lock = typeof a.flags["--lock"] === "string" ? (readLock(a.flags["--lock"]) ?? fail(`no lock file at ${a.flags["--lock"]}`)) : undefined;
+  // A review's decision (0.6) carries the digest of the items it waived and declined: given them, it is checked too.
+  const lists = a.flags["--waive"] !== undefined || a.flags["--decline"] !== undefined ? { waive: itemIndices(a, "--waive"), decline: itemIndices(a, "--decline") } : undefined;
   const problem = !isSignedDecision(signed)
     ? `${file} is not a signed decision record ({ "record": …, "signature": "ed25519:…" })`
     : signed.record.key !== keyId
       ? `the record names key ${signed.record.key}; ${keyFile} holds ${keyId}`
       : !signatureHolds(signed, keys)
         ? `the signature does not verify under key ${keyId}: the record is not what was signed`
-        : lock
-          ? (signerRefusal(signed, keys, lock) ?? roleRefusal(signed.record, lock, signed.record.role))?.message
-          : undefined;
+        : lists && signed.record.kind !== "review"
+          ? `the record is a decision of kind ${signed.record.kind}, which decides no items (--waive, --decline are for a review's)`
+          : lists && signed.record.payload !== payloadOf.review(lists)
+            ? `the review's decision did not waive ${lists.waive.join(",") || "nothing"} and decline ${lists.decline.join(",") || "nothing"}: its payload is the digest of other lists`
+            : lock
+              ? (signerRefusal(signed, keys, lock) ?? roleRefusal(signed.record, lock, signed.record.role))?.message
+              : undefined;
   if (problem || !isSignedDecision(signed)) {
     out(`invalid: ${problem}\n`);
     return 1;
@@ -738,6 +854,7 @@ function verifyDecision(a: Args, out: (s: string) => void): number {
       `  package ${r.package}`,
       ...(r.run !== undefined ? [`  run ${r.run}${r.revision !== undefined ? ` at revision ${r.revision}` : ""}${r.command !== undefined ? `, ${r.command}` : ""}`] : []),
       `  subject ${r.subject}${r.payload !== undefined ? `, payload ${r.payload}` : ""}`,
+      ...(r.kind === "review" ? [lists ? `  it waived ${lists.waive.join(",") || "nothing"} and declined ${lists.decline.join(",") || "nothing"}` : "  a review's decision: its payload is the digest of the items it waived and declined (--waive, --decline check them)"] : []),
       lock ? `  the lock binds the key to ${r.member}${r.role !== undefined ? `, who holds ${r.role}` : ""}` : "  the signature holds; whether the key is this member's is what the package's lock says (--lock)",
     ].join("\n") + "\n",
   );
@@ -991,6 +1108,55 @@ function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {
   return { kind, command: String(w["command"]), request: isObj(w["request"] ?? null) ? (w["request"] as Obj) : {} };
 }
 
+/**
+ * Untrusted text as a terminal shows it (0.6 output): every code point that is not printed as itself is written as
+ * JSON writes an escape, `\uXXXX` (each UTF-16 unit of it): controls (C0, DEL, C1), format characters (bidirectional
+ * overrides and isolates, zero-width characters, the byte order mark), line and paragraph separators, private-use,
+ * unassigned and lone surrogate code points. So no text a model or a person wrote can move the cursor, reorder or
+ * hide the lines a reviewer reads. Within a JSON text the result is still the same JSON value.
+ */
+export function terminalText(s: string): string {
+  return s.replace(UNPRINTED, escaped);
+}
+
+/** What a terminal does not print as itself: controls, format characters, separators, private-use, unassigned, lone surrogates. */
+const UNPRINTED = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Cs}]/gu;
+const escaped = (ch: string): string => Array.from({ length: ch.length }, (_, k) => `\\u${ch.charCodeAt(k).toString(16).toUpperCase().padStart(4, "0")}`).join("");
+
+/**
+ * A document (Markdown, HTML) as `terminalText` would write each fragment of it: the line feeds and tabs that lay it
+ * out stay, and every other code point a terminal does not print as itself is written `\uXXXX`. A renderer writes
+ * none of those itself, so what is escaped is what a fragment of the run brought.
+ */
+export function terminalDocument(s: string): string {
+  return s.replace(UNPRINTED, (ch) => (ch === "\n" || ch === "\t" ? ch : escaped(ch)));
+}
+
+/**
+ * What a review's wait asks (0.6), as `status` shows it: the role asked, its deadline and who it escalates to, each
+ * open item by its index with what it failed and who may waive that, and its value, which a model wrote; then the
+ * command that decides it.
+ */
+function reviewLines(run: RunRow, req: Obj, as: string): string[] {
+  const q = isObj(req["question"] ?? null) ? (req["question"] as Obj) : {};
+  const items = (Array.isArray(q["items"]) ? q["items"] : []).filter(isObj) as Obj[];
+  const until = typeof req["deadline"] === "number" ? new Date(req["deadline"]).toISOString() : "?";
+  const then = typeof req["escalate_to"] === "string" && req["escalated"] === undefined ? `; then ${req["escalate_to"]} is asked` : "; then every open item is declined";
+  const lines = [`waiting for: ${String(req["role"] ?? "a person")} to review ${items.length} item${items.length === 1 ? "" : "s"} that failed ${String(q["contract"] ?? "its contract")} only where a person may waive it (deadline ${until}${then})`];
+  for (const i of items) {
+    const unmet = (Array.isArray(i["unmet"]) ? i["unmet"] : []).filter(isObj) as Obj[];
+    lines.push(`  item ${String(i["index"])}: unmet ${unmet.map((u) => `${String(u["criterion"])} ("${terminalText(String(u["description"] ?? ""))}"; waivable by ${(Array.isArray(u["waive"]) ? u["waive"] : []).join(", ")})`).join(", ")}`);
+    lines.push(`    value (model output): ${terminalText(canonical((i["value"] ?? null) as Value))}`);
+  }
+  const declined = Array.isArray(q["declined"]) ? q["declined"].filter(isObj).map((d) => String((d as Obj)["index"])) : [];
+  if (declined.length) lines.push(`  declined without asking (they failed what no one may waive): ${declined.join(", ")}`);
+  const failed = Array.isArray(q["failed"]) ? q["failed"].map(String) : [];
+  if (failed.length) lines.push(`  failed (their work did not end): ${failed.join(", ")}`);
+  const all = items.map((i) => String(i["index"])).join(",");
+  lines.push(`  decide: mandate review ${run.run_id} --revision ${run.revision} ${as} --waive <indices> --decline <indices> (every open item once: ${all})`);
+  return lines;
+}
+
 /** What a person needs to see to decide: the run, what it waits for, the budget, the evidence and the actions. */
 async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeConfig): Promise<string> {
   const budget = await rt.budgetReport(run.run_id);
@@ -1001,6 +1167,10 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
   // How this configuration takes a decision: signed with a key, or by name.
   const as = config.decisions.mode === "unsigned" ? "--by <you>" : "--key <your key file>";
   if (json) return JSON.stringify({ run, budget, evidence: evidence.map((e) => ({ ...e, signature_valid: signed.get(e.evidence_id) ?? false })), actions, ...(decisions.length ? { decisions } : {}) }, null, 2) + "\n";
+  // In a run of 0.6 every value a model, a person or a server wrote is shown with its texts quoted, and with every
+  // code point a terminal does not print as itself escaped (`shownSafe`); an earlier run's lines are as they were.
+  const v06 = isProgram06((await rt.runProgram(run.run_id)).source);
+  const shown = (v: Value): string => (v06 ? shownSafe(v) : show(v));
   const lines = [`run ${run.run_id}  ${run.workflow}  ${run.state}  revision ${run.revision}`];
   if (run.state === "waiting" && isObj(run.waiting)) {
     const w = run.waiting;
@@ -1008,7 +1178,7 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
     if (w["kind"] === "decision" && "criterion" in req) {
       lines.push(`waiting for: ${req["role"] ?? "a person"} to approve ${req["contract"]}.${req["criterion"]}`);
       lines.push(`  subject digest ${req["subject_digest"]}${typeof req["deadline"] === "number" ? `, deadline ${new Date(req["deadline"]).toISOString()}` : ""}`);
-      lines.push(...subjectLines(req["subject"] ?? null));
+      lines.push(...subjectLines(req["subject"] ?? null, shown));
       if (config.verifier) lines.push(`  the change in ${config.verifier.workdir}: git -C ${config.verifier.workdir} diff ${config.verifier.base}`);
       lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} ${as}`, `  decline: mandate decline ${run.run_id} --revision ${run.revision} ${as}`);
     } else if (w["kind"] === "amendment") {
@@ -1018,42 +1188,62 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
       const changes = Array.isArray(req["changes"]) ? req["changes"] : [];
       for (const c of changes) if (isObj(c)) lines.push(`  ${String(c["text"])}`);
       if (!changes.length) lines.push("  the envelope's amounts and capabilities are as they were");
-      lines.push(`  the lead's reason (model output): ${JSON.stringify(String(req["reason"] ?? ""))}`);
+      const reason = JSON.stringify(String(req["reason"] ?? ""));
+      lines.push(`  the lead's reason (model output): ${v06 ? terminalText(reason) : reason}`);
       lines.push(`  approve: mandate amend ${run.run_id} --revision ${run.revision} ${as} approve`, `  decline: mandate amend ${run.run_id} --revision ${run.revision} ${as} decline`);
     } else if (w["kind"] === "timer") {
       lines.push(`waiting for: a timer until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "")}); the scheduler resumes the run then`);
+    } else if (w["kind"] === "review") {
+      lines.push(...reviewLines(run, req, as));
     } else if (w["kind"] === "decision") {
       lines.push(`waiting for: approval of action ${req["effect"] ?? ""} (digest ${req["action_digest"]})`);
       lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} ${as}`);
     } else {
       const q = req["question"] ?? req["escalation"] ?? (w["kind"] === "budget_exceeded" ? "Budget exceeded." : null);
-      lines.push(`waiting for: an answer${q !== null ? `: ${show(q as Value)}` : ""}`);
+      lines.push(`waiting for: an answer${q !== null ? `: ${shown(q as Value)}` : ""}`);
       if (w["kind"] === "budget_exceeded") lines.push(`  raise:  mandate raise-limits ${run.run_id} --revision ${run.revision} ${as} --limit spend=<amount>USD`);
       lines.push(`  answer: mandate answer ${run.run_id} --revision ${run.revision} ${as} <text>`);
     }
   }
-  if (run.state === "attention_required") lines.push(`attention: ${show(run.attention ?? null)}`);
-  if (run.state === "failed") lines.push(`error: ${show(run.error ?? null)}`);
-  if (run.state === "succeeded") lines.push(`result: ${show(run.result ?? null)}`);
+  if (run.state === "attention_required") lines.push(`attention: ${shown(run.attention ?? null)}`);
+  if (run.state === "failed") lines.push(`error: ${shown(run.error ?? null)}`);
+  if (run.state === "succeeded") lines.push(`result: ${shown(run.result ?? null)}`);
   for (const d of budget.dimensions) {
     const money = d.dimension.startsWith("spend:");
     const f = (n: number) => (money ? `${(n / 1_000_000).toFixed(4)} ${d.dimension.slice(6)}` : String(n));
     lines.push(`budget ${d.dimension}: limit ${f(d.limit)}, settled ${f(d.settled)}, reserved ${f(d.reserved)}, available ${f(d.available)}`);
   }
-  for (const e of evidence) lines.push(`evidence ${e.contract}.${e.criterion}: ${e.passed ? "met" : "not met"} (${e.method}; ${signed.get(e.evidence_id) ? "signed" : "SIGNATURE INVALID"})`);
+  // A waiver (0.6) is not a check that passed: it is shown as what it is, beside the failed check it waives.
+  for (const e of evidence) lines.push(`evidence ${e.contract}.${e.criterion}: ${e.method === "waiver" ? "waived" : e.passed ? "met" : "not met"} (${e.method}; ${signed.get(e.evidence_id) ? "signed" : "SIGNATURE INVALID"})`);
   for (const d of decisions) lines.push(`decision ${d.record.kind} by ${d.record.member}${d.record.role !== undefined ? ` as ${d.record.role}` : ""}: ${d.valid ? "signed" : "SIGNATURE INVALID"} (${d.decision_id})`);
-  for (const x of actions) lines.push(`action ${x.effect}: ${x.state}${x.receipt ? ` ${show(x.receipt)}` : ""}`);
+  for (const x of actions) lines.push(`action ${x.effect}: ${x.state}${x.receipt ? ` ${shown(x.receipt)}` : ""}`);
   return lines.join("\n") + "\n";
 }
 
-function subjectLines(subject: Value): string[] {
+/**
+ * A value as a status line of a 0.6 run shows it: as `show` writes it, with each text quoted as JSON writes it, so
+ * a reader sees where one ends, and with every code point a terminal does not print as itself escaped
+ * (`terminalText`), so no text a model, a person or a server wrote can move the cursor or clear the lines around it.
+ */
+export function shownSafe(v: Value): string {
+  const quoted = (x: Value): string => {
+    const t = tagOf(x);
+    if (t) return t.args.length ? `${t.tag}(${t.args.map(quoted).join(", ")})` : t.tag;
+    if (isObj(x) && "$money" in x) return show(x);
+    if (isObj(x) && "$verified" in x) return quoted(unwrap(x));
+    return typeof x === "string" ? JSON.stringify(x) : canonical(x);
+  };
+  return terminalText(quoted(v));
+}
+
+function subjectLines(subject: Value, shown: (v: Value) => string = show): string[] {
   const parts = Array.isArray(subject) ? subject : [subject];
   const out: string[] = [];
   for (const p of parts) {
     if (!isObj(p)) continue;
     for (const k of ["issue", "patch", "tests", "review"]) {
       const v = p[k];
-      if (v !== undefined) out.push(`  ${k}: ${show(v).slice(0, 600)}`);
+      if (v !== undefined) out.push(`  ${k}: ${shown(v).slice(0, 600)}`);
     }
   }
   return out;

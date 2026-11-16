@@ -144,6 +144,20 @@ describe("the Gate 3 verifier (K20)", () => {
     expect(r).toMatchObject({ passed: true, cost: { tokens: 1200 } });
     expect(seen[0]!.tier).toBe("standard");
     expect(String(seen[0]!.input)).toContain("Math.ceil");
+    // The request of a package of 0.1 to 0.5: the diff as it is, between the tags.
+    const between = (s: string): string => s.slice(s.indexOf("<diff>\n") + "<diff>\n".length, s.lastIndexOf("\n</diff>"));
+    const diff = between(String(seen[0]!.input));
+    expect(diff.startsWith("diff --git ")).toBe(true);
+    expect(String(seen[0]!.input)).not.toContain("JSON string");
+    expect(seen[0]!.escape).toBeUndefined();
+    // 0.6 (B28): the diff is one JSON string with < and > escaped; nothing in a file closes the region.
+    await v.check({ ...req, escape: true });
+    const escaped = String(seen[1]!.input);
+    const quoted = between(escaped);
+    expect(quoted).not.toMatch(/[<>\n]/);
+    expect(JSON.parse(quoted)).toBe(diff);
+    expect(diff).toMatch(/[<>]/);
+    expect(escaped.match(/<\/?diff>/g)).toEqual(["<diff>", "</diff>"]);
   });
 });
 

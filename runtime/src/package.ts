@@ -50,6 +50,8 @@ import {
   type Program,
 } from "@mandate/bridge";
 import { CompilerFailure, compilerMode } from "@mandate/bridge/mode";
+import { declaredMethods } from "./criteria.js";
+import { VERIFY, WAIVER } from "./review.js";
 import { Violation } from "./signals.js";
 
 /** An amendment as the runtime checks it: with the lock of the run's package, which the amended package keeps. */
@@ -160,8 +162,9 @@ function storesRunning(pkg: Pick<Package, "program" | "lock">): boolean {
 /**
  * The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes, `map` and `plan`; of
  * 0.5 the program and every field of its lock; of 0.6 what 0.5 has, `pub`, doc lines, closed imports, libraries
- * (a module of one may import another it reaches), `std.patterns`, and patterns whose expansion holds only what it
- * runs; see `notRunYet` and NOT_RUN_YET_06.
+ * (a module of one may import another it reaches), `std.patterns`, patterns whose expansion holds only what it
+ * runs, connectors with the lock that binds them, the batch commit step, `human.review` and `waive by` (review.ts);
+ * see `notRunYet` and NOT_RUN_YET_06.
  */
 export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4", "mandate/0.5", LANGUAGE_06];
 
@@ -229,8 +232,6 @@ interface NotRunYet06 {
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-/** `<name>.<member>` as a callee: `{ op: "field", of: { op: "var", name }, name: member }`. */
-const named = (o: Record<string, unknown>, name: string, member: string): boolean => o["op"] === "field" && o["name"] === member && isObj(o["of"]) && o["of"]["op"] === "var" && o["of"]["name"] === name;
 
 /**
  * Every construct of 0.6 this runtime does not run yet, with the slice that releases it (spec/library.md, the table
@@ -239,24 +240,6 @@ const named = (o: Record<string, unknown>, name: string, member: string): boolea
  * implements a construct takes its line out, and nothing else.
  */
 export const NOT_RUN_YET_06: readonly NotRunYet06[] = [
-  // Connectors at run time: the MCP client, connector gateways, schema digests, samples (spec/library.md "Connectors").
-  { name: "connector", slice: "B9", node: (o, at) => at.key !== "" && o["kind"] === "connector" && typeof o["mcp"] === "string" },
-  { name: "tool.call", slice: "B9", node: (o) => named(o, "tool", "call") },
-  { name: "lock.connectors", slice: "B9", pkg: (p) => isObj(p.lock.connectors) && Object.keys(p.lock.connectors).length > 0 },
-  // The batch commit step (spec/library.md "The batch commit step"): a critical effect in a map body, which 0.6
-  // allows. An effect there that is not a definition this runtime knows not to be critical is taken as one.
-  {
-    name: "batch commit step",
-    slice: "B9",
-    node: (o, at) => {
-      if (!at.inMap || o["op"] !== "effect" || typeof o["name"] !== "string") return false;
-      const d = Object.hasOwn(at.defs, o["name"]) ? at.defs[o["name"]] : undefined;
-      return !isObj(d) || d["kind"] !== "effect" || d["critical"] === true;
-    },
-  },
-  // `human.review` and waivers (spec/library.md "`human.review` and waivers").
-  { name: "human.review", slice: "B10", node: (o) => named(o, "human", "review") },
-  { name: "waive by", slice: "B10", node: (o, at) => at.key !== "" && Array.isArray(o["waive"]) && o["by"] !== undefined },
   // `shapes` in an envelope (spec/library.md "`shapes`").
   { name: "shapes", slice: "B12", node: (o, at) => at.key === "envelope" && o["shapes"] !== undefined },
 ];
@@ -275,6 +258,29 @@ export function notRunYet06(program: Program, p: Read06): string[] {
   for (const [name, d] of Object.entries(defs)) walk(d, name, false, 0);
   for (const row of NOT_RUN_YET_06) if (row.pkg?.(p)) found.add(row.name);
   return NOT_RUN_YET_06.map((r) => r.name).filter((n) => found.has(n));
+}
+
+/**
+ * The criteria of a program (linked: those its contracts reach too) a check of which would write an evidence record
+ * under a method the runtime keeps for its own records (review.ts `VERIFY`, `WAIVER`), as `<contract>.<criterion>`.
+ * A record's method is its verifier's callee path (criteria.ts `partMethod`), so a verifier called `verify` or
+ * `waiver` would write records read as a verify's own or as a waiver.
+ */
+export function reservedMethods(program: Program): string[] {
+  const out: string[] = [];
+  for (const [name, d] of Object.entries(program.defs)) {
+    if (d.kind !== "contract") continue;
+    for (const group of [d.accept, d.invariant ?? {}]) {
+      for (const [k, c] of Object.entries(group)) if (declaredMethods(c.by).some((m) => m === VERIFY || m === WAIVER)) out.push(`${name}.${k}`);
+    }
+  }
+  return out.sort();
+}
+
+/** 0.6: a package whose program has a criterion of a method the runtime keeps for its own is not loaded (`reserved_method`). */
+function refuseReservedMethods(program: Program): void {
+  const reserved = reservedMethods(program);
+  if (reserved.length) throw new Violation("reserved_method", `${reserved.join(", ")} would write evidence of a method the runtime keeps for records of its own (${VERIFY}, ${WAIVER}): a record of it would be read as a verify's own or as a waiver, so the package is not loaded.`);
 }
 
 /** The refusal of a package of 0.6 that holds what this runtime does not run yet, naming each and its slice. */
@@ -400,6 +406,7 @@ function verified(pkg: Package, o: LoadOptions): Verified {
   if (v06) {
     const unrun = notRunYet06(plain, { lock: pkg.lock });
     if (unrun.length) throw refusal06(unrun);
+    refuseReservedMethods(plain);
   }
   // A lock that pins models (spec/lock.md) must be well formed and pin every tier the program names.
   // A lock without models is for simulated models only; the Anthropic adapter refuses to run without one.
@@ -417,6 +424,7 @@ function verified(pkg: Package, o: LoadOptions): Verified {
   const stored = checked && storesRunning(pkg) ? checked : undefined;
   const running = stored ?? plain;
   if (stored) {
+    refuseReservedMethods(stored);
     const unrun = notRunYet06(stored, { lock: pkg.lock });
     if (unrun.length) throw refusal06(unrun);
   }
