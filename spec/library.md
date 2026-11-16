@@ -9,9 +9,8 @@ implementation does: where the first draft of a rule and the rule as built
 differed, the page was brought to the built one. Each part landed with the
 slice named in the table. Language 0.6 is read by the Rust compiler alone:
 the TypeScript compiler stays frozen at 0.5 and does not read `mandate @
-0.6` (E0103), and a 0.6 package is refused by name when the runtime is set
-to that compiler (`MANDATE_COMPILER=ts`, `unsupported_language`; [The
-bridge](#the-bridge)).
+0.6` (E0103); the runtime's compiler is the Rust compiler's module and no
+other ([The bridge](#the-bridge)).
 
 | Part | Slice | State |
 |---|---|---|
@@ -404,10 +403,11 @@ agent, tool, effect, role and capability the expansion reaches (INV-21).
   imports by name (the form stored before the running program was linked)
   is not run. A resume stops the run as `attention_required` with
   `expansion_mismatch`; a replay reports it and runs nothing.
-- **A 0.6 run needs the Rust compiler.** Under `MANDATE_COMPILER=ts` a 0.6
-  package is refused at load, and a resume or a replay of a 0.6 run is
-  refused by name (`unsupported_language`): a run that was started on the
-  Rust compiler is never driven on the reference.
+- **A 0.6 run needs the Rust compiler.** It is the runtime's only
+  compiler: a run is driven, resumed and replayed on it. (Through 0.6 the
+  bridge could be set to the TypeScript compiler, which refused a 0.6
+  package and a resume or a replay of a 0.6 run by name; the setting is
+  gone.)
 - **A sub-program** that applies a pattern is run as its check gave it:
   `check_subprogram` returns `running`, the running program of the
   sub-program (its expansion, with all its parent sees linked in), with
@@ -1732,8 +1732,12 @@ The compiler runs in the runtime's process as a WebAssembly module
   an absolute path only. The bridge can say which module answers: its
   SHA-256, its length and where it came from.
 
-The modes are `MANDATE_COMPILER=ts|rust|both`; the default is `rust`, and
-`both` runs the TypeScript compiler as well and compares every call.
+There is one compiler behind the bridge, the Rust compiler's module; a
+process without it fails by name (`module_missing`) and never falls back to
+another compiler. The TypeScript compiler is held to the Rust's by the
+vectors the Rust crates are tested against, by the parity job and by the
+bridge's own tests, which compare the two outside the product; it is not
+asked at run time.
 
 Whether a module instance serves one call or many is not part of this
 contract: every rule above holds either way.
@@ -1772,7 +1776,7 @@ the wait left open.
 
 | Name | When |
 |---|---|
-| `unsupported_language` | At load, a 0.6 package under the TypeScript compiler (`MANDATE_COMPILER=ts`), which only the Rust compiler reads; at a resume or a replay of a 0.6 run under it; a lead's amendment of a package that applies a pattern or pins a library ([`shapes`](#shapes)). Nothing of 0.6 is refused for not being run yet: the runtime runs every construct of this page |
+| `unsupported_language` | At load, a package whose language is not one this runtime runs; a lead's amendment of a package that applies a pattern or pins a library ([`shapes`](#shapes)). Nothing of 0.6 is refused for not being run yet: the runtime runs every construct of this page |
 | `library_digest_mismatch` | At load: a library the package carries does not hash to the lock's digest, or the lock does not pin it |
 | `library_revoked` | At load: the package carries a revoked library digest. At a resume: the run stops as `attention_required` |
 | `expansion_mismatch` | At a resume or a replay: the stored running program is missing or does not hash to the manifest's `expanded`; at the admission of a sub-program: its running program does not hash to the one its admission names |

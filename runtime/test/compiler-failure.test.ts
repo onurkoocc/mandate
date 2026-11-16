@@ -95,7 +95,7 @@ async function asked(): Promise<SubprogramInput> {
 describe("loading a package, when the compiler fails", () => {
   it("refuses the package (load_verification_failed) and starts no run", async () => {
     const w = await world(FIX);
-    const start = withCompiler("rust", () => w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: ISSUE, runId: "trapped" }), { module: TRAP });
+    const start = withCompiler(() => w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: ISSUE, runId: "trapped" }), { module: TRAP });
     await expect(start).rejects.toMatchObject({ code: "load_verification_failed" });
     await expect(start).rejects.toThrow(/the Rust compiler failed .*\(trap\)/);
     expect(await w.db.query("select run_id from runs")).toEqual([]);
@@ -104,7 +104,7 @@ describe("loading a package, when the compiler fails", () => {
 
   it("refuses an envelope's approval the same way", async () => {
     const w = await planned([]);
-    const approve = withCompiler("rust", () => w.rt.approveEnvelope(w.pkg, {} as never), { module: TRAP });
+    const approve = withCompiler(() => w.rt.approveEnvelope(w.pkg, {} as never), { module: TRAP });
     await expect(approve).rejects.toMatchObject({ code: "load_verification_failed" });
   });
 });
@@ -112,14 +112,14 @@ describe("loading a package, when the compiler fails", () => {
 needsModule("loading a package, when one door fails and the Rust compiler answers the others", () => {
   it.each(["check", "hash_program", "package_hash", "linked_program", "sandbox_lock_checks", "role_lock_checks"])("%s traps: the package is refused", async (door) => {
     const w = await world(FIX);
-    const start = withCompiler("rust", () => w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: ISSUE, runId: `trapped-${door}` }), { doors: { [door]: TRAP } });
+    const start = withCompiler(() => w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: ISSUE, runId: `trapped-${door}` }), { doors: { [door]: TRAP } });
     await expect(start).rejects.toMatchObject({ code: "load_verification_failed" });
     expect(await w.db.query("select run_id from runs")).toEqual([]);
   });
 
   it("and with nothing failing, the same package runs on the Rust compiler", async () => {
     const w = await world(FIX);
-    const r = await withCompiler("rust", () => w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: ISSUE, runId: "untrapped" }));
+    const r = await w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: ISSUE, runId: "untrapped" });
     expect(r.state).toBe("succeeded");
   });
 });
@@ -127,21 +127,21 @@ needsModule("loading a package, when one door fails and the Rust compiler answer
 describe("a lead's sub-program, when the compiler fails", () => {
   it("is check_failed when the module traps in the worker", async () => {
     const input = await asked();
-    const r = await withCompiler("rust", () => checker.check(input, 5000), { module: TRAP });
+    const r = await withCompiler(() => checker.check(input, 5000), { module: TRAP });
     expect(r).toMatchObject({ failed: expect.stringMatching(/the Rust compiler failed .*\(trap\)/) });
     expect(r).not.toHaveProperty("ok");
   });
 
   it("is check_limit (memory) when the module reaches its ceiling", async () => {
     const input = await asked();
-    const r = await withCompiler("rust", () => checker.check(input, 5000), { module: OOM });
+    const r = await withCompiler(() => checker.check(input, 5000), { module: OOM });
     expect(r).toEqual({ limit: "memory", max: 256 });
   });
 
   it("is check_limit (time) when the module does not end: the worker is stopped", async () => {
     const started = Date.now();
     const input = await asked();
-    const r = await withCompiler("rust", () => checker.check(input, 500), { module: LOOP });
+    const r = await withCompiler(() => checker.check(input, 500), { module: LOOP });
     expect(r).toEqual({ limit: "time", max: 500 });
     expect(Date.now() - started).toBeLessThan(10_000);
   });
@@ -151,7 +151,7 @@ describe("a lead's sub-program, when the compiler fails", () => {
     const before = process.env["MANDATE_WASM"];
     process.env["MANDATE_WASM"] = join(work, "missing.wasm");
     try {
-      const r = await withCompiler("rust", () => checker.check(input, 5000));
+      const r = await checker.check(input, 5000);
       expect(r).toMatchObject({ failed: expect.stringContaining("(module_missing)") });
     } finally {
       if (before === undefined) delete process.env["MANDATE_WASM"];
@@ -163,7 +163,7 @@ describe("a lead's sub-program, when the compiler fails", () => {
 needsModule("a lead's sub-program and amendment, when their door fails and the Rust compiler answers the rest of the run", () => {
   it("the lead is told check_failed, nothing is admitted, and the run goes on", async () => {
     const w = await planned([check(1, fixes(["a"])), finish("went on")]);
-    const r = await withCompiler("rust", () => run(w, "sub-trapped"), { doors: { check_subprogram: TRAP } });
+    const r = await withCompiler(() => run(w, "sub-trapped"), { doors: { check_subprogram: TRAP } });
     expect(state(r)).toBe("succeeded null");
     expect(refusals(w.told[0])).toEqual([["check_failed", null, { reason: expect.stringMatching(/the Rust compiler failed on check_subprogram \(trap\)/) }]]);
     expect(w.told[0]).toMatchObject({ ok: false });
@@ -173,7 +173,7 @@ needsModule("a lead's sub-program and amendment, when their door fails and the R
     const w = await planned([]);
     const parent = w.pkg.program;
     const envelope = (parent.defs["W"] as { envelope: unknown }).envelope;
-    const r = await withCompiler("rust", () => checker.amendment({ parent, modules: {}, workflow: "W", envelope, lock: w.pkg.lock }, 5000), { doors: { check_amendment: TRAP } });
+    const r = await withCompiler(() => checker.amendment({ parent, modules: {}, workflow: "W", envelope, lock: w.pkg.lock }, 5000), { doors: { check_amendment: TRAP } });
     expect(r).toMatchObject({ failed: expect.stringMatching(/check_amendment \(trap\)/) });
   });
 
@@ -189,7 +189,7 @@ needsModule("a lead's sub-program and amendment, when their door fails and the R
     ["grant", true],
   ])("a map whose %s traps hands its items nothing: no item's delegation is dispatched, and the run stops for a person (compiler_failed)", async (door, started) => {
     const w = await mapWorld();
-    const r = await withCompiler("rust", () => w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { repos: [{ name: "a", root: "a" }, { name: "b", root: "b" }] }, runId: `map-${door}` }), { doors: { [door]: TRAP } });
+    const r = await withCompiler(() => w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { repos: [{ name: "a", root: "a" }, { name: "b", root: "b" }] }, runId: `map-${door}` }), { doors: { [door]: TRAP } });
     stoppedOn(r, door);
     expect(w.agents.calls).toEqual([]);
     // The map's own decisions come before it starts; a delegation's grant, inside an item, after.
@@ -198,7 +198,7 @@ needsModule("a lead's sub-program and amendment, when their door fails and the R
 
   it("an authority decision that traps grants nothing: the delegation does not start, and the run stops for a person (compiler_failed)", async () => {
     const w = await world(FIX);
-    const r = await withCompiler("rust", () => w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: ISSUE, runId: "grant-trapped" }), { doors: { grant: TRAP } });
+    const r = await withCompiler(() => w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: ISSUE, runId: "grant-trapped" }), { doors: { grant: TRAP } });
     stoppedOn(r, "grant");
     expect(w.agents.calls).toEqual([]);
   });
@@ -207,13 +207,13 @@ needsModule("a lead's sub-program and amendment, when their door fails and the R
     const w = await mapWorld();
     const id = "narrow-resumed";
     const input = { repos: [{ name: "a", root: "a" }] };
-    await withCompiler("rust", async () => {
+    await withCompiler(async () => {
       stoppedOn(await w.rt.startRun({ pkg: w.pkg, workflow: "W", input, runId: id }), "narrow");
       for (let i = 0; i < 3; i++) stoppedOn(await w.rt.resume(id), "narrow");
     }, { doors: { narrow: TRAP } });
     expect(w.agents.calls).toEqual([]);
     // With the compiler answering again, the same run goes on from where it stopped.
-    const after = await withCompiler("rust", () => w.rt.resume(id));
+    const after = await w.rt.resume(id);
     expect(after.state).toBe("succeeded");
     expect(w.agents.calls).toHaveLength(1);
   });
@@ -223,7 +223,7 @@ needsModule("a lead's sub-program and amendment, when their door fails and the R
     const id = "narrow-temporal";
     const activities = createActivities(w.rt);
     const env = new MockActivityEnvironment();
-    await withCompiler("rust", async () => {
+    await withCompiler(async () => {
       stoppedOn(await w.rt.startRun({ pkg: w.pkg, workflow: "W", input: { repos: [{ name: "a", root: "a" }] }, runId: id }), "narrow");
       // The activity answers (it does not throw, which Temporal would retry without end): the run is parked.
       expect(await env.run(activities.drive, id)).toMatchObject({ runId: id, state: "attention_required" });
@@ -237,8 +237,8 @@ needsModule("a journal's verification, when the compiler fails", () => {
     const w = await world(FIX);
     const r = await w.rt.startRun({ pkg: w.pkg, workflow: "Fix", input: ISSUE, runId: "verified" });
     expect(r.state).toBe("succeeded");
-    expect((await withCompiler("rust", () => w.rt.verifyJournal("verified"))).status).toBe("verified");
-    await expect(withCompiler("rust", () => w.rt.verifyJournal("verified"), { doors: { package_hash: TRAP } })).rejects.toBeInstanceOf(CompilerFailure);
+    expect((await w.rt.verifyJournal("verified")).status).toBe("verified");
+    await expect(withCompiler(() => w.rt.verifyJournal("verified"), { doors: { package_hash: TRAP } })).rejects.toBeInstanceOf(CompilerFailure);
   });
 });
 
@@ -251,7 +251,7 @@ describe("the runtime's command line, when the compiler fails", () => {
     process.stderr.write = ((s: string) => (err.push(String(s)), true)) as typeof process.stderr.write;
     let code: number;
     try {
-      code = await withCompiler("rust", () => main(["test", file], () => undefined), { module: TRAP });
+      code = await withCompiler(() => main(["test", file], () => undefined), { module: TRAP });
     } finally {
       process.stderr.write = write;
     }

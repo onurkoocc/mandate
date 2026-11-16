@@ -22,7 +22,7 @@ import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
 import { costDims, haltedRefusal, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
-import { buildPackage, isPackage06, isSigned04, libraryModules, refuseReference06, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
+import { buildPackage, isPackage06, isSigned04, libraryModules, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { givenValueProblem, listsRefusal, questionDigest, questionIn, REVIEW, subjectValue, VERIFY, WAIVER, waiverFacts, waiverProblem, waiverRecord, waiveRoleRefusal, WHOLE } from "./review.js";
@@ -563,9 +563,6 @@ export class Runtime {
     // Every resume checks the host against the package's lock before it takes the lease. An unfit host takes nothing
     // and writes nothing: the run stays as it was, for a fit host to resume (unfit_host). A finished run runs nothing.
     const current = await this.journal.run(runId);
-    // A run of 0.6 is driven on the Rust compiler alone: on the reference it is refused by name before anything is
-    // taken or written, and stays as it was.
-    if (!TERMINAL.has(current.state)) refuseReference06(await this.packaged(current.package_hash));
     if (!TERMINAL.has(current.state)) await checkFitness((await this.packaged(current.package_hash)).lock, this.hostProbe);
     const { run, fence } = await this.journal.acquire(runId);
     if (TERMINAL.has(run.state)) return run;
@@ -861,8 +858,6 @@ export class Runtime {
    */
   private async loaded(packageHash: string, run?: RunRow): Promise<Loaded> {
     const p = await this.packaged(packageHash);
-    // The program of a run of 0.6 is read on the Rust compiler alone (a resume, a replay, its evidence).
-    if (run) refuseReference06(p);
     const modules = await this.linking(packageHash);
     const stored = run ? await this.storedExpansion(run) : undefined;
     if (stored) {

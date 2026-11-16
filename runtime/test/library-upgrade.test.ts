@@ -13,14 +13,11 @@
 // published). Here those commands are steps, and what is held is what a run of the program does across them: it
 // keeps running under the old lock after the widening release is published, and it does not start under a lock that
 // names the new release without the upgrade having been accepted.
-//
-// The Rust compiler alone reads a program of 0.6: with MANDATE_COMPILER=ts these tests are skipped by name.
 
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { check, libraryVerify, pinnedLibraries, type LibrarySource, type Lock } from "@mandate/bridge";
-import { compilerMode } from "@mandate/bridge/mode";
 import { afterAll, describe, expect, it } from "vitest";
 import { libraryCommand, Stop, type LibraryArgs } from "../../bridge/src/cli-library.js";
 import { Files } from "../../bridge/src/libraries.js";
@@ -30,9 +27,6 @@ import { Crash, Violation } from "../src/signals.js";
 import { closeAll, world, type World } from "./helpers.js";
 
 afterAll(closeAll);
-
-const rust = compilerMode() !== "ts";
-const needs06 = rust ? describe : describe.skip;
 
 const OPS = new URL("../../fixtures/library/upgrade/acme.ops/", import.meta.url);
 const dirs: string[] = [];
@@ -147,7 +141,7 @@ async function refusal(p: Promise<unknown>): Promise<Violation> {
   throw new Error("the run started");
 }
 
-needs06("a program across an upgrade of its library that widens a workflow's authority", () => {
+describe("a program across an upgrade of its library that widens a workflow's authority", () => {
   it("keeps running under its old lock once the widening release is published, starts under no lock that names it unaccepted, and runs under the accepted one", async () => {
     const desk = new Desk();
     expect(desk.mandate("add", "acme.ops@1.0.0", "--libraries", "libs"), desk.err).toBe(0);

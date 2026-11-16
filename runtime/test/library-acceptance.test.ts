@@ -13,12 +13,9 @@
 // The runs about the review's deadline, a lost answer and a crash have the matcher answer as an agent of its own,
 // with the match the model would give, so that their time goes to what they are about.
 // No network beyond the in-process fakes, no live model; the secrets are made-up words.
-//
-// The Rust compiler alone reads a program of 0.6: with MANDATE_COMPILER=ts these tests are skipped by name.
 
 import { readFileSync } from "node:fs";
 import { card, cardDoc, check, load, toMarkdown, type LibrarySource, type Lock, type Modules } from "@mandate/bridge";
-import { compilerMode } from "@mandate/bridge/mode";
 import { afterAll, describe, expect, it } from "vitest";
 import type { TurnRequest } from "../src/adapters.js";
 import { WAIT_KINDS } from "../src/classes.js";
@@ -37,9 +34,6 @@ import { declaredErp, declaredMailbox, INJECTION, type FakeMcp } from "./fake-mc
 import { closeAll, world, type World } from "./helpers.js";
 
 afterAll(closeAll);
-
-const rust = compilerMode() !== "ts";
-const needs06 = rust ? describe : describe.skip;
 
 const read = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
@@ -296,7 +290,7 @@ const declinedOf = (decline: number[], by: string | null): Array<[number, string
 
 // ── 1. the modes ────────────────────────────────────────────────────────
 
-needs06("the acceptance program in the runtime's three modes (design, read_only, live)", () => {
+describe("the acceptance program in the runtime's three modes (design, read_only, live)", () => {
   it("design answers from samples, and no request leaves for any server", HEAVY, async () => {
     const w = await acceptance();
     w.adapters.samples = { tool: (name: string) => (name === `${MAIL}.list_invoices` ? { result: INVOICES } : name === `${ERP}.list_open_orders` ? { result: ORDERS } : undefined) } as never;
@@ -332,7 +326,7 @@ needs06("the acceptance program in the runtime's three modes (design, read_only,
 
 // ── 2. the live run ─────────────────────────────────────────────────────
 
-needs06("the live run of the acceptance program, through the egress proxy", () => {
+describe("the live run of the acceptance program, through the egress proxy", () => {
   it("asks once, posts a draft for each accepted invoice, keeps the secrets and the servers' words from every model, replays, and stays within its card", HEAVY, async () => {
     const eg: EgressWorld = await egressWorld({
       credentials: {
@@ -505,7 +499,7 @@ needs06("the live run of the acceptance program, through the egress proxy", () =
 
 // ── 3. the deadline ─────────────────────────────────────────────────────
 
-needs06("the acceptance program's review past its deadline", () => {
+describe("the acceptance program's review past its deadline", () => {
   it("goes to the finance lead once the accountant's deadline passes, and the finance lead decides", HEAVY, async () => {
     const w = await acceptance({ matcher: "agent" });
     const r = await start(w, "esc");
@@ -547,7 +541,7 @@ needs06("the acceptance program's review past its deadline", () => {
 
 // ── 4. a lost answer ────────────────────────────────────────────────────
 
-needs06("a draft whose answer was lost (lose_response)", () => {
+describe("a draft whose answer was lost (lose_response)", () => {
   it("is an unknown outcome; its reconciliation finds the draft, and each such invoice has exactly one draft after the run", HEAVY, async () => {
     const w = await acceptance({ matcher: "agent" });
     // The 5th and the 20th post are applied by the ERP, and their answers lost.
@@ -583,7 +577,7 @@ needs06("a draft whose answer was lost (lose_response)", () => {
 
 // ── 5. crash and resume ─────────────────────────────────────────────────
 
-needs06("the acceptance program across stopped workers", () => {
+describe("the acceptance program across stopped workers", () => {
   it("resumes in a fresh runtime while it waits for the review and in the middle of the commit map: the ERP ends as an uninterrupted run leaves it", HEAVY, async () => {
     const w = await acceptance({ matcher: "agent" });
     // The first worker stops once the last verdict of the map is recorded, before the review is asked.
@@ -641,7 +635,7 @@ function libraryModules(): Modules {
 /** What a card of 0.6 adds (`library`), which the card's type of the reference compiler, frozen at 0.5, does not name. */
 const libraryOf = (c: ReturnType<typeof card>): { reviews: Obj[]; commits: Obj[] } => (c as unknown as { library: { reviews: Obj[]; commits: Obj[] } }).library;
 
-needs06("the acceptance program's card", () => {
+describe("the acceptance program's card", () => {
   it("states the most items, the spend bound against the budget, one batch decision, and an action per accepted invoice", () => {
     const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock;
     const r = check(SOURCE, "mdt", { libraries: [LIB], lock });
@@ -664,7 +658,7 @@ needs06("the acceptance program's card", () => {
 
 // ── 7. the budget ───────────────────────────────────────────────────────
 
-needs06("the acceptance program's budget", () => {
+describe("the acceptance program's budget", () => {
   it("a budget too small for 60 items is refused: by the check (E0501), and by the runtime at load for a package changed past it; nothing is sent", async () => {
     const lock = JSON.parse(read("fixtures/library/invoices.lock.json")) as Lock;
     const small = check(SOURCE.replace("spend: 20 USD", "spend: 17 USD"), "mdt", { libraries: [LIB], lock });

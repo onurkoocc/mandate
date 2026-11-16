@@ -64,9 +64,8 @@ jobs:
       - run: npm run build
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
-      # The command line (the bridge's) and the runtime behind it check the program with the Rust compiler's module
-      # unless MANDATE_COMPILER says otherwise; they find it in the bridge's own wasm/. It is built before the steps
-      # that have a secret.
+      # The command line (the bridge's) and the runtime behind it check the program with the Rust compiler's module;
+      # they find it in the bridge's own wasm/. It is built before the steps that have a secret.
       - name: Build the Rust compiler's WebAssembly module
         run: npm run build:wasm
       - name: Build verify-journal

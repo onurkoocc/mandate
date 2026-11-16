@@ -50,36 +50,15 @@ jobs:
       # The Rust compiler as the WebAssembly module the bridge runs in process (bridge/src/wasm/), linked with its
       # memory ceiling and stack (the root's build:wasm). rustup is on the runner; with no argument it installs the
       # toolchain rust-toolchain.toml pins, with the wasm32-wasip1 target. The module is built, never committed.
-      # The bridge answers with it unless MANDATE_COMPILER says otherwise, so every step below that loads the bridge
-      # needs it.
+      # The bridge answers with it and with no other compiler, so every step below that loads the bridge needs it.
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
       - name: Build the Rust compiler's WebAssembly module
         run: npm run build:wasm
-      # The default: MANDATE_COMPILER is not set, so the bridge answers with the Rust compiler's module. The compiler's
-      # own tests (workspace compiler) call the reference compiler directly and do not load the bridge.
+      # The compiler's own tests (workspace compiler) call the reference compiler directly and do not load the bridge;
+      # the bridge's and the runtime's tests answer with the Rust compiler's module (the reference compiler is held to it
+      # by the parity job, the vectors of the rust job, and the bridge's roundtrip test).
       - run: npm test
-      # During 0.6 the bridge and the runtime are also tested on the reference compiler alone, so that the runtime
-      # stays shown to work on it (MANDATE_COMPILER=ts needs no module).
-      - name: The bridge's tests, on the reference compiler alone
-        run: npm test -w bridge
-        env:
-          MANDATE_COMPILER: ts
-      - name: The runtime's tests, on the reference compiler alone
-        run: npm test -w runtime
-        env:
-          MANDATE_COMPILER: ts
-      # The bridge and the runtime with both compilers asked on every call and compared (bridge/src/compare.ts): a
-      # difference fails the test that made the call, and each run prints how many calls each named exemption of
-      # vectors/README.md excused.
-      - name: The bridge's tests, with the TypeScript and the Rust compilers compared on every call
-        run: npm test -w bridge
-        env:
-          MANDATE_COMPILER: both
-      - name: The runtime's tests, with the TypeScript and the Rust compilers compared on every call
-        run: npm test -w runtime
-        env:
-          MANDATE_COMPILER: both
       # The compiled corpus (vectors/corpus/) is complete: the suite runs again with every call it makes to a front door
       # of the compiler recorded, and corpus.test.ts fails if that is not exactly what the corpus holds, so a new test
       # that calls a door cannot leave the corpus incomplete (vectors/README.md, "corpus/", "How it is made").
@@ -87,12 +66,11 @@ jobs:
         run: npm test -w compiler
         env:
           MANDATE_CORPUS: "1"
-      # In the default mode, the Rust compiler's module.
       - name: Runtime tests on PostgreSQL
         run: npm test -w runtime
         env:
           MANDATE_TEST_DATABASE_URL: postgresql://mandate:mandate@localhost:5432/mandate_test
-      # The `mandate` command line of the bridge (bridge/dist/cli.js), in the default mode: the Rust compiler's module
+      # The `mandate` command line of the bridge (bridge/dist/cli.js): the Rust compiler's module
       # answers the first three commands (the fourth, `test`, is the runtime's and runs the program's tests).
       - name: Check the FixBug fixture with the CLI
         run: |
@@ -202,9 +180,8 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           bwrap --version
       - run: npm ci --ignore-scripts
-      # The runtime's tests below load the bridge, which answers with the Rust compiler's module unless
-      # MANDATE_COMPILER says otherwise: the pinned toolchain and the module are built before them (the toolchain is
-      # also what verify-journal is built with, further down).
+      # The runtime's tests below load the bridge, which answers with the Rust compiler's module: the pinned toolchain
+      # and the module are built before them (the toolchain is also what verify-journal is built with, further down).
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
       - name: Build the Rust compiler's WebAssembly module
@@ -267,8 +244,8 @@ jobs:
           node-version: 24.22.1
           cache: npm
       - run: npm ci --ignore-scripts
-      # The runtime's tests below load the bridge, which answers with the Rust compiler's module unless
-      # MANDATE_COMPILER says otherwise. rustup is on the Windows runner too; build:wasm starts `cargo` without a shell,
+      # The runtime's tests below load the bridge, which answers with the Rust compiler's module. rustup is on the
+      # Windows runner too; build:wasm starts `cargo` without a shell,
       # and finds the cargo.exe that rustup puts on the path.
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
@@ -312,6 +289,10 @@ jobs:
         run: node docker/check.mjs
       - run: npm ci --ignore-scripts
       - run: npm run build
+      # The runtime that makes the run below loads the bridge, which answers with the Rust compiler's module (built here,
+      # in the bridge's own place, with its digest; the toolchain is installed above).
+      - name: Build the Rust compiler's WebAssembly module
+        run: npm run build:wasm
       # The Rust verifier against the TypeScript runtime on a run made now: a
       # fresh export of a real run (PGlite, in process) must be verified, and
       # the same export with one event changed must be chain_broken at that

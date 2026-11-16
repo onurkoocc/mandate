@@ -29,7 +29,7 @@ export const DIGEST_FILE = join(MODULE_DIR, "mandate-wasm.digest.json");
 export const DIGEST_FORMAT = "mandate/wasm-digest/0.1";
 
 /** How to build the module, as a failure that finds none says. */
-export const BUILD_HINT = "build it with `npm run build:wasm`, which builds the Rust compiler's module and puts it, with its digest, in the bridge's wasm/, or name a built module by an absolute path with MANDATE_WASM; MANDATE_COMPILER=ts runs the reference compiler, which needs no module";
+export const BUILD_HINT = "build it with `npm run build:wasm`, which builds the Rust compiler's module and puts it, with its digest, in the bridge's wasm/, or name a built module by an absolute path with MANDATE_WASM";
 
 /** Where a module came from: the bridge's own place, the operator's MANDATE_WASM, or bytes a caller gave. */
 export type ModuleSource = "bridge" | "MANDATE_WASM" | "given";

@@ -68,7 +68,7 @@ import {
   type SubprogramCheck06,
   type SubprogramInput,
 } from "@mandate/bridge";
-import { addCounts, CompilerDivergence, CompilerFailure, compilerForWorker, keepDivergence, type WorkerCompiler } from "@mandate/bridge/mode";
+import { CompilerFailure, compilerForWorker, type WorkerCompiler } from "@mandate/bridge/mode";
 import type { Outcome, ToolSpec } from "./adapters.js";
 import { refOf, sha256Of, type ArtifactScope, type ArtifactStore } from "./artifacts.js";
 import type { Admission, CommandRow, Journal } from "./journal.js";
@@ -208,8 +208,8 @@ export interface ProgramChecker {
  * Only a worker that is not there is the runtime's fault (`no_checker`). A worker that fails on its input, or
  * ends, has checked nothing, and says so.
  *
- * The worker checks with this thread's compiler (`@mandate/bridge/mode`): in `rust` and `both` mode it is handed the
- * Rust compiler's module, compiled, and runs it in its own thread under the same time limit. The module's memory is
+ * The worker checks with this thread's compiler (`@mandate/bridge/mode`): it is handed the Rust compiler's module,
+ * compiled, and runs it in its own thread under the same time limit. The module's memory is
  * its own, at most 256 MiB, and a check that reaches that ceiling is `check_limit` too; a module that is missing,
  * traps or answers what is not an answer has checked nothing (`check_failed`).
  */
@@ -235,8 +235,8 @@ export class WorkerChecker implements ProgramChecker {
   /** One check in the worker: `what` says which, and the answer is its result. */
   private async ask<T>(what: { input: SubprogramInput } | { amendment: AmendedInput }, ms: number): Promise<T | OverLimit | CheckFailed> {
     if (!existsSync(this.entry)) throw new Violation("no_checker", `The sub-program checker's worker is not at ${this.entry}.`);
-    // The compiler the worker checks with is this thread's (`rust` and `both` hand it the compiled module). One that
-    // is missing or refused has checked nothing.
+    // The compiler the worker checks with is this thread's (it is handed the compiled module). One that is missing or
+    // refused has checked nothing.
     let compiler: WorkerCompiler;
     try {
       compiler = compilerForWorker();
@@ -244,14 +244,14 @@ export class WorkerChecker implements ProgramChecker {
       if (e instanceof CompilerFailure) return { failed: e.shown };
       throw e;
     }
-    for (const other of this.idle.filter((i) => i.compiler.mode !== compiler.mode || i.compiler.module !== compiler.module || i.compiler.doors !== compiler.doors)) {
+    for (const other of this.idle.filter((i) => i.compiler.module !== compiler.module || i.compiler.doors !== compiler.doors)) {
       this.idle.splice(this.idle.indexOf(other), 1);
       void other.worker.terminate();
     }
     const worker = this.idle.pop()?.worker ?? new Worker(this.entry, { resourceLimits: { maxOldGenerationSizeMb: this.maxMb }, workerData: { compiler } });
     worker.unref();
     const id = ++this.seq;
-    return new Promise<T | OverLimit | CheckFailed>((done, fail) => {
+    return new Promise<T | OverLimit | CheckFailed>((done) => {
       const end = (keep: boolean): void => {
         clearTimeout(timer);
         worker.removeAllListeners("message");
@@ -264,16 +264,9 @@ export class WorkerChecker implements ProgramChecker {
         end(false);
         done({ limit: "time", max: ms });
       }, ms);
-      worker.on("message", (m: { id: number; result?: T; error?: string; limit?: OverLimit; divergences?: Array<{ fn: string; where: string; typescript: string; rust: string }>; counts?: Record<string, number> }) => {
+      worker.on("message", (m: { id: number; result?: T; error?: string; limit?: OverLimit; }) => {
         if (m.id !== id) return;
         end(true);
-        if (m.counts) addCounts(m.counts);
-        // A difference between the two compilers (`both`) is the test's failure, never a check's answer.
-        if (m.divergences?.length) {
-          const found = m.divergences.map((d) => new CompilerDivergence(d.fn, d.where, d.typescript, d.rust));
-          found.forEach(keepDivergence);
-          return fail(found[0]);
-        }
         done(m.result ?? m.limit ?? { failed: m.error ?? "the checker gave no result" });
       });
       worker.on("error", (e) => {

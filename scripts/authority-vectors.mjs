@@ -43,15 +43,14 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const root = new URL("..", import.meta.url);
-// The vectors are what the TypeScript gives, whatever compiler the bridge answers with unless told (the Rust
-// compiler's module is its default, and it is what these vectors hold the Rust to): the reference compiler, and no
-// module, whatever the operator's environment says.
-process.env["MANDATE_COMPILER"] = "ts";
+// The vectors are what the TypeScript gives, not what the Rust compiler's module gives (the bridge's own entry
+// answers with it, and it is what these vectors hold the Rust to): the reference compiler's functions, which the
+// bridge has an entry for, `@mandate/bridge/reference` (bridge/src/reference.ts), for writing test data only.
 let bridge;
 try {
-  bridge = await import(new URL("bridge/dist/index.js", root).href);
+  bridge = await import(new URL("bridge/dist/reference.js", root).href);
 } catch (e) {
-  throw new Error(`cannot load bridge/dist/index.js: build it first (npm ci --ignore-scripts && npm run build): ${e.message}`);
+  throw new Error(`cannot load bridge/dist/reference.js: build it first (npm ci --ignore-scripts && npm run build): ${e.message}`);
 }
 const FNS = { grant: bridge.grant, narrow: bridge.narrow, mapScopes: bridge.mapScopes, inFlightOverlap: bridge.inFlightOverlap };
 for (const [name, f] of Object.entries(FNS)) if (typeof f !== "function") throw new Error(`the bridge exports no function ${name}`);

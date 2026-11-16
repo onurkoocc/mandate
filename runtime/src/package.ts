@@ -49,7 +49,7 @@ import {
   type Modules,
   type Program,
 } from "@mandate/bridge";
-import { CompilerFailure, compilerMode } from "@mandate/bridge/mode";
+import { CompilerFailure } from "@mandate/bridge/mode";
 import { declaredMethods } from "./criteria.js";
 import { VERIFY, WAIVER } from "./review.js";
 import { Violation } from "./signals.js";
@@ -351,21 +351,8 @@ export function verifyPackage(pkg: Package, o: LoadOptions = {}): Verified {
   }
 }
 
-/**
- * Refuses a package of 0.6 where the compiler is the reference (MANDATE_COMPILER=ts), by name: only the Rust compiler
- * reads 0.6, and the reference, frozen at 0.5, verifies nothing of it. At load, and again wherever a run of such a
- * package would be driven or read by its program (a resume, a replay): a run that was started on the Rust compiler
- * is never driven on the reference.
- */
-export function refuseReference06(pkg: Pick<Package, "program" | "lock" | "modules" | "libraries">): void {
-  if (isPackage06(pkg) && compilerMode() === "ts") {
-    throw new Violation("unsupported_language", `The package is of mandate/0.6, which only the Rust compiler reads; this runtime's compiler is the TypeScript reference (MANDATE_COMPILER=ts), frozen at mandate/0.5, so it is not run.`);
-  }
-}
-
 function verified(pkg: Package, o: LoadOptions): Verified {
   const v06 = isPackage06(pkg);
-  refuseReference06(pkg);
   // The program and every module it was packaged with: a module's definitions run as the program's do.
   for (const p of [pkg.program, ...Object.values(pkg.modules ?? {})]) {
     if (!RUNTIME_LANGUAGES.includes(p?.language)) throw new Violation("unsupported_language", `Package language ${String(p?.language)} is not one of ${RUNTIME_LANGUAGES.join(", ")}.`);
