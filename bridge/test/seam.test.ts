@@ -10,14 +10,15 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const src = join(dirname(dirname(fileURLToPath(import.meta.url))), "src");
-const FILES = ["cli.ts", "mcp.ts", "util.ts"];
+// cli-library.ts and libraries.ts are the command line's library commands and their reading of files: part of it, and held as it is.
+const FILES = ["cli.ts", "cli-library.ts", "libraries.ts", "mcp.ts", "util.ts"];
 const BUILTINS = new Set([...builtinModules, ...builtinModules.map((m) => `node:${m}`)]);
 /**
  * What a file may name: Node's built-ins, each other, the bridge's entry point, and the class of the compiler's
  * failures (wasm/errors.ts, which imports nothing: held below), by which the command line exits 2 when the compiler
  * fails.
  */
-const SIBLINGS = new Set(["./index.js", "./cli.js", "./mcp.js", "./util.js", "./wasm/errors.js"]);
+const SIBLINGS = new Set(["./index.js", "./cli.js", "./cli-library.js", "./libraries.js", "./mcp.js", "./util.js", "./wasm/errors.js"]);
 /** The one hand-off that is not an import of the compiler: the runtime's command line, loaded when a control command is run. */
 const RUNTIME = "@mandate/runtime/cli";
 
@@ -67,7 +68,7 @@ describe("the seam between the command line, the MCP server and the compiler", (
     for (const f of FILES) expect(existsSync(join(src, f)), f).toBe(true);
   });
 
-  it("is the bridge's entry point: cli.ts, mcp.ts and util.ts import only Node built-ins, each other and ./index.js", () => {
+  it("is the bridge's entry point: cli.ts, its library commands, mcp.ts and util.ts import only Node built-ins, each other and ./index.js", () => {
     const breached = FILES.flatMap((f) => breaches(f, importsOf(f, readFileSync(join(src, f), "utf8"))));
     expect(breached, `reach the compiler through ./index.js:\n${breached.join("\n")}`).toEqual([]);
   });

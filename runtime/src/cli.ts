@@ -57,8 +57,8 @@ import { execFileSync } from "node:child_process";
 import { randomUUID, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { check, kindOf, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, printProgram, toHtml, toMarkdown, type Doc, type Lock, type Modules, type Program } from "@mandate/bridge";
-import { CompilerFailure } from "@mandate/bridge/mode";
+import { check, kindOf, libraryVerify, linkedProgram, loadModules, LOCK_FORMAT, packagedLock, parseStrictJson, pinnedLibraries, printProgram, toHtml, toMarkdown, type Doc, type LibrarySource, type Lock, type Modules, type Program } from "@mandate/bridge";
+import { CompilerFailure, compilerMode } from "@mandate/bridge/mode";
 import type { Adapters } from "./adapters.js";
 import { adaptersFor, anthropicClient, connect, operatorAdapters, readConfig, replayAdapters, runtimeOptions, trustedKeyTexts, trustedKeysDir, type RuntimeConfig } from "./control.js";
 import { credentialAdvice } from "./gateway.js";
@@ -71,6 +71,7 @@ import { costDims, type HaltRow, type HaltScope, type Limits, type RunRow } from
 import { exportJournal, parseExportJson, publicKeysIn, readExport, verifyExport, type FindingCode } from "./journal-chain.js";
 import { draft, drift, scan, type RepoFacts } from "./onboard.js";
 import { otelEndpoint, otelExport, type OtelReport } from "./otel.js";
+import { libraryModules, refuseRevoked } from "./package.js";
 import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { runTests } from "./testing.js";
@@ -88,7 +89,7 @@ interface Args {
   all: Record<string, string[]>;
 }
 
-const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run"]);
+const VALUED = new Set(["--mode", "--priority", "--config", "--workflow", "--input", "--run-id", "--limit", "--revision", "--by", "--lock", "--message-id", "--format", "--name", "--target", "--agents", "--harness-tokens", "--key", "--member", "--out", "--tenant", "--reason", "--role", "--endpoint", "--run", "--libraries"]);
 const PAIRS = new Set(["--component", "--host", "--repo"]);
 
 function parse(argv: string[]): Args {
@@ -125,11 +126,11 @@ class Usage extends Error {}
 class Unchecked extends Error {}
 
 const USAGE = `usage:
-  mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M] [--lock FILE] [--module FILE]… [--priority high|normal] [--mode design|read_only|live]
+  mandate run <program> --workflow W --input <json|file> [--run-id ID] [--limit spend=20USD,tokens=2M] [--lock FILE] [--module FILE]… [--libraries DIR] [--priority high|normal] [--mode design|read_only|live]
   mandate shadow-diff <run> <other run>
   mandate status <run> [--json]
   mandate key new [--out FILE]
-  mandate approve-envelope <program> --key FILE [--member NAME] [--workflow W] [--lock FILE] [--module FILE]… [--json]
+  mandate approve-envelope <program> --key FILE [--member NAME] [--workflow W] [--lock FILE] [--module FILE]… [--libraries DIR] [--json]
   mandate approve <run> --revision N --key FILE [--member NAME]
   mandate decline <run> --revision N --key FILE [--member NAME]
   mandate answer <run> --revision N --key FILE [--member NAME] <text>
@@ -151,12 +152,13 @@ const USAGE = `usage:
   mandate otel export --endpoint URL [--run R | --tenant T] [--follow] [--json]
   mandate denials <run>
   mandate rotate-key
-  mandate test <program> [--json] [--lock FILE]
+  mandate test <program> [--json] [--lock FILE] [--libraries DIR]
   mandate onboard --component NAME=DIR… [--host HOST=NAME]… [--repo NAME=OWNER/REPO]… [--name MODULE]
   mandate drift --module MODEL --component NAME=DIR… [--host HOST=NAME]… [--json]
-  mandate deploy <program> --target managed-agents [--lock FILE] [--module FILE]… [--agents A,B] [--name PREFIX] [--harness-tokens N]
+  mandate deploy <program> --target managed-agents [--lock FILE] [--module FILE]… [--libraries DIR] [--agents A,B] [--name PREFIX] [--harness-tokens N]
   mandate egress serve [--config FILE (default ./mandate.egress.json)]
 options: --config FILE (default ./mandate.runtime.json), --json, --message-id ID
+--libraries DIR is the directory of libraries a lock of 0.6 pins its libraries in (default: libraries.dir of the configuration)
 a decision is signed with --key; in unsigned mode (decisions.mode in the configuration) it takes --by NAME instead`;
 
 export const CONTROL_COMMANDS = new Set(["run", "status", "approve", "decline", "answer", "cancel", "reconcile", "shadow-diff", "raise-limits", "replay", "artifact", "show", "denials", "rotate-key", "test", "onboard", "drift", "deploy", "key", "decision", "verify-decision", "approve-envelope", "amend", "journal", "egress", "halt", "otel"]);
@@ -194,12 +196,12 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     if (cmd === "run") {
       const file = a.positional[0] ?? fail("run needs a program file");
       const workflow = str(a, "--workflow");
-      const { program, lock, modules } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined, a.modules);
+      const { program, lock, modules, libraries, seen } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined, a.modules, undefined, librariesFrom(a, config));
       // The run's id is chosen here, so that the gateways' sessions are opened for it (and a revocation of it cuts them).
       const runId = typeof a.flags["--run-id"] === "string" ? a.flags["--run-id"] : randomUUID();
-      const rt = (made = new Runtime(db, adaptersFor(config, linkedProgram(program, modules), lock, env, undefined, { tenant: "default", run: runId }), undefined, undefined, runtimeOptions(config, db)));
+      const rt = (made = new Runtime(db, adaptersFor(config, linkedProgram(program, seen), lock, env, undefined, { tenant: "default", run: runId }), undefined, undefined, runtimeOptions(config, db)));
       const run = await rt.startRun({
-        pkg: buildPackage(program, lock, modules),
+        pkg: buildPackage(program, lock, modules, libraries),
         workflow,
         input: input(str(a, "--input")),
         runId,
@@ -218,13 +220,13 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
     if (cmd === "approve-envelope") {
       // A member of the envelope's owner role signs for the package hash its card shows (`mandate view --card`).
       const file = a.positional[0] ?? fail("approve-envelope needs a program file");
-      const { program, lock, modules } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined, a.modules);
+      const { program, lock, modules, libraries, seen } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined, a.modules, undefined, librariesFrom(a, config));
       const owner = envelopeOwner(program, file, typeof a.flags["--workflow"] === "string" ? a.flags["--workflow"] : undefined);
       const key = readDecisionKey(str(a, "--key"));
       const member = typeof a.flags["--member"] === "string" ? a.flags["--member"] : memberOf(lock, key.keyId);
       if (member === undefined) throw new Violation("invalid_decision", `unknown_key: the lock of ${file} lists key ${key.keyId} under no member.`);
-      const pkg = buildPackage(program, lock, modules);
-      const rt = (made = new Runtime(db, adaptersFor(config, linkedProgram(program, modules), lock, env), undefined, undefined, runtimeOptions(config, db)));
+      const pkg = buildPackage(program, lock, modules, libraries);
+      const rt = (made = new Runtime(db, adaptersFor(config, linkedProgram(program, seen), lock, env), undefined, undefined, runtimeOptions(config, db)));
       const signed = signDecision(key, shownPackage(pkg.hash, owner), { kind: "envelope", member, at: new Date() });
       const decision = await rt.approveEnvelope(pkg, signed);
       out(json ? JSON.stringify({ package: pkg.hash, decision, member, role: owner, key: key.keyId, record: signed.record, signature: signed.signature }, null, 2) + "\n" : `package  ${pkg.hash}\napproved by ${member} as ${owner}\ndecision ${decision}\n`);
@@ -382,10 +384,10 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
 /** Runs a program's tests against their handlers, on an in-process database of their own; exit 1 if any fails. */
 async function test(a: Args, out: (s: string) => void): Promise<number> {
   const file = a.positional[0] ?? fail("test needs a program file");
-  const { program, lock } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined);
+  const { program, lock, libraries } = load(file, typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : undefined, [], undefined, librariesFrom(a));
   const db = await openDb();
   try {
-    const results = await runTests(program, { db, dir: dirname(file), lock });
+    const results = await runTests(program, { db, dir: dirname(file), lock, ...(libraries.length ? { libraries } : {}) });
     if (a.flags["--json"] === true) out(JSON.stringify(results, null, 2) + "\n");
     else {
       for (const r of results) out(`${r.ok ? "ok  " : "FAIL"} ${r.test}: ${r.workflow} expected ${r.expected}, ${r.ok ? "got it" : `got ${r.state}${r.detail !== undefined ? ` (${show(r.detail).slice(0, 300)})` : ""}`}\n`);
@@ -524,14 +526,78 @@ function readLock(lockPath: string): Lock | undefined {
   return parsed.value.value as unknown as Lock;
 }
 
-/** The program, checked, and its lock: --lock, or mandate.lock.json next to it (or `given`, already read). */
-function load(file: string, lockFile: string | undefined, moduleFiles: string[] = [], given?: Lock): { program: Program; lock: Lock; modules: Modules } {
+/** Where a command reads libraries from, and what the configuration says of them (its `libraries` member). */
+interface LibrariesFrom {
+  /** The directory of libraries: `--libraries`, or else `libraries.dir` of the configuration. */
+  dir?: string;
+  config?: RuntimeConfig["libraries"];
+}
+
+/**
+ * Where `a` reads libraries from: `--libraries <dir>`, or the configuration's `libraries.dir`; and the
+ * configuration's `libraries` member, whose `revoked` digests are never loaded. A command that reads no
+ * configuration of its own (`test`, `deploy`) reads the one `--config` names, or `mandate.runtime.json` when it is
+ * there, and only when it is asked: for a lock that pins a library.
+ */
+function librariesFrom(a: Args, config?: RuntimeConfig): () => LibrariesFrom {
+  return () => {
+    const file = typeof a.flags["--config"] === "string" ? a.flags["--config"] : "mandate.runtime.json";
+    const c = config ?? (typeof a.flags["--config"] === "string" || existsSync(file) ? readConfig(file) : undefined);
+    const dir = typeof a.flags["--libraries"] === "string" ? a.flags["--libraries"] : c?.libraries?.dir;
+    return { ...(dir !== undefined ? { dir } : {}), ...(c?.libraries ? { config: c.libraries } : {}) };
+  };
+}
+
+/** A program as a command loads it: checked, with its lock, the modules it was given, and the libraries its lock pins. */
+interface Loaded {
+  program: Program;
+  lock: Lock;
+  /** The modules `--module` gave: what the package carries as its modules. */
+  modules: Modules;
+  /** The libraries the lock pins, read from the directory of libraries: what the package carries as its libraries. */
+  libraries: LibrarySource[];
+  /** Every module the program sees: the ones it was given, and those of its libraries. */
+  seen: Modules;
+}
+
+/**
+ * The libraries `lock` pins, read from the directory `from` names (spec/library.md "At load"), each held to the
+ * lock before the program is checked with it: a digest the configuration revokes is never loaded
+ * (`library_revoked`), and a library that does not hash to the digest the lock pins is not the one that was pinned
+ * (`library_digest_mismatch`). Whatever else is wrong with one is the check's to say. A lock that pins none reads
+ * nothing; nor does the reference compiler (MANDATE_COMPILER=ts), which reads no library and says so itself.
+ */
+function pinned(lock: Lock | undefined, from: () => LibrariesFrom): { libraries: LibrarySource[]; given: LibrariesFrom } {
+  const pins = lock && isObj(lock.libraries as unknown as Value) ? lock.libraries! : {};
+  if (!Object.keys(pins).length || compilerMode() === "ts") return { libraries: [], given: {} };
+  const given = from();
+  const held = { libraries: given.config ?? {} };
+  refuseRevoked(lock!, held);
+  const libraries = given.dir !== undefined ? pinnedLibraries(lock, given.dir) : [];
+  const verified = libraries.map((l) => libraryVerify(l, libraries.filter((x) => x !== l)));
+  refuseRevoked(lock!, held, verified.map((v) => [v.name ?? "a library of the directory", v.digest] as const));
+  for (const v of verified) {
+    const pin = v.name !== undefined && Object.hasOwn(pins, v.name) ? pins[v.name] : undefined;
+    if (pin && v.digest !== undefined && pin.digest !== v.digest) throw new Violation("library_digest_mismatch", `Library ${v.name} in ${given.dir} hashes to ${v.digest}; the lock pins ${pin.digest}.`);
+  }
+  return { libraries, given };
+}
+
+/**
+ * The program, checked, and its lock: --lock, or mandate.lock.json next to it (or `given`, already read). With the
+ * libraries its lock pins (0.6), read from the directory `from` names: the check is given them, and the package
+ * carries them.
+ */
+function load(file: string, lockFile: string | undefined, moduleFiles: string[] = [], given?: Lock, from: () => LibrariesFrom = () => ({})): Loaded {
   const lock = given ?? readLock(lockFile ?? join(dirname(file), "mandate.lock.json"));
   const { modules, problems } = loadModules(moduleFiles.map((f) => ({ file: f, text: readFileSync(f, "utf8"), kind: kindOf(f) })));
   if (problems.length) throw new Violation("load_verification_failed", problems.flatMap((p) => p.diagnostics.filter((d) => d.severity === "error").map((d) => `${p.file}: ${d.code} ${d.message}`)).join("\n"));
-  const r = check(readFileSync(file, "utf8"), kindOf(file), { modules, ...(lock ? { lock } : {}) });
+  const { libraries, given: lib } = pinned(lock, from);
+  const config = lib.dir !== undefined ? { config: { dir: lib.dir, ...(lib.config?.wait_days !== undefined ? { wait_days: lib.config.wait_days } : {}), ...(lib.config?.revoked ? { revoked: lib.config.revoked } : {}) } } : {};
+  const r = check(readFileSync(file, "utf8"), kindOf(file), { modules, ...(lock ? { lock } : {}), ...(libraries.length ? { libraries } : {}), ...config });
   if (!r.ok) throw new Violation("load_verification_failed", r.diagnostics.filter((d) => d.severity === "error").map((d) => `${d.code} ${d.message}`).join("\n"));
-  return { program: r.program!, lock: packagedLock(lock), modules };
+  const packaged = packagedLock(lock);
+  return { program: r.program!, lock: packaged, modules, libraries, seen: libraries.length ? { ...modules, ...libraryModules({ lock: packaged, libraries }) } : modules };
 }
 
 /**
@@ -546,12 +612,12 @@ async function deploy(a: Args, out: (s: string) => void, env: NodeJS.ProcessEnv)
   const lockPath = typeof a.flags["--lock"] === "string" ? a.flags["--lock"] : join(dirname(file), "mandate.lock.json");
   const raw = readLock(lockPath) ?? fail(`deploy writes the binding into the lock file, and there is none at ${lockPath}`);
   const { bindings: _old, ...unbound } = raw;
-  const { program, modules } = load(file, undefined, a.modules, unbound);
+  const { program, seen } = load(file, undefined, a.modules, unbound, librariesFrom(a));
   const agents = typeof a.flags["--agents"] === "string" ? a.flags["--agents"].split(",").map((x) => x.trim()).filter(Boolean) : undefined;
   const harness = typeof a.flags["--harness-tokens"] === "string" ? Number(a.flags["--harness-tokens"]) : undefined;
   if (harness !== undefined && (!Number.isInteger(harness) || harness < 0)) throw new Usage("--harness-tokens takes a whole number");
   const binding = await deployManagedAgents({
-    program: linkedProgram(program, modules),
+    program: linkedProgram(program, seen),
     lock: raw,
     api: sdkApi(anthropicClient(env, "deploy talks to Managed Agents")),
     ...(agents ? { agents } : {}),
@@ -591,7 +657,7 @@ const READ_ONLY_COMMANDS: ReadonlySet<string> = new Set(["status", "show", "deni
  *   message also says what to do instead.
  */
 async function runtimeFor(db: Db, config: RuntimeConfig, cmd: string, runId: string, env: NodeJS.ProcessEnv): Promise<{ rt: Runtime; lock: Lock }> {
-  const [row] = await db.query<{ program: Program; lock: Lock; modules: Modules | null; tenant: string }>("select p.program, p.lock, p.modules, r.tenant from runs r join packages p on p.package_hash = r.package_hash where r.run_id = $1", [runId]);
+  const [row] = await db.query<{ program: Program; lock: Lock; modules: Modules | null; libraries: LibrarySource[] | null; tenant: string }>("select p.program, p.lock, p.modules, p.libraries, r.tenant from runs r join packages p on p.package_hash = r.package_hash where r.run_id = $1", [runId]);
   if (!row) throw new Violation("unknown_run", `No run ${runId}.`);
   // The gateways' sessions, if any are opened, are for this run and its tenant.
   const scope = { tenant: row.tenant, run: runId };
@@ -600,7 +666,7 @@ async function runtimeFor(db: Db, config: RuntimeConfig, cmd: string, runId: str
   else if (cmd === "replay") adapters = replayAdapters(config, env, scope);
   else {
     try {
-      adapters = adaptersFor(config, linkedProgram(row.program, row.modules ?? {}), row.lock, env, undefined, scope);
+      adapters = adaptersFor(config, linkedProgram(row.program, row.libraries?.length ? { ...(row.modules ?? {}), ...libraryModules({ lock: row.lock, libraries: row.libraries }) } : (row.modules ?? {})), row.lock, env, undefined, scope);
     } catch (e) {
       const advice = e instanceof Violation && e.code === "credential_in_environment" ? credentialAdvice(cmd, runId, row.tenant) : undefined;
       if (advice === undefined || !(e instanceof Violation)) throw e;

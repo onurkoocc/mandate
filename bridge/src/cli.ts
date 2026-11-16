@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// mandate — the command line (language 0.1 to 0.5), written over the bridge's entry point (./index.js), so that it
+// mandate — the command line (language 0.1 to 0.6), written over the bridge's entry point (./index.js), so that it
 // follows the bridge to whichever compiler stands behind it. The TypeScript compiler keeps its own copy as `mandate-ts`.
 //
-//   mandate check <file> [--json] [--lock <lock.json>] [--denials <report.json>] [--module <file>]…
+//   mandate check <file> [--json] [--lock <lock.json>] [--denials <report.json>] [--module <file>]… [--libraries <dir>] [--config <file>]
 //                                          validate, resolve names, print hashes
 //   mandate ir <file> [--canonical]        print canonical IR (pretty, or the exact JCS bytes)
 //   mandate fmt <file>                     print the .mdt projection of the IR
@@ -22,6 +22,17 @@
 //                                          the card a person reads before approving a
 //                                          workflow's envelope, with the package hash
 //                                          the approval binds to (spec/views.md)
+//   mandate add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]
+//                                          pin a library of the operator's directory in the lock, and
+//                                          show its authority signature (language 0.6, spec/library.md)
+//   mandate upgrade <library>[@<range>] [--accept-governance] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]
+//                                          pin a newer version; a change that widens the authority
+//                                          signature is shown as a governance change, and the lock is
+//                                          written only with --accept-governance
+//   mandate publish <source dir> [--libraries <dir>] [--config <file>] [--json]
+//                                          copy a library into the operator's directory and write its
+//                                          index.json; a version that widens and is not a major one is
+//                                          refused (MDT-E1607)
 //
 //   mandate run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key
 //                                          control a run (the runtime's CLI, @mandate/runtime/cli)
@@ -40,7 +51,12 @@
 // §2.1); `check`, `patch`, `sandbox` and `view` link it in. `check` and `sandbox` read the
 // lock file named by --lock, or else mandate.lock.json next to <file> if there
 // is one. `view --against` reads the old version's lock the same way, from
-// --against-lock or else mandate.lock.json next to the old file. Exit status is 1 when any error diagnostic is reported, 2 on usage
+// --against-lock or else mandate.lock.json next to the old file. A lock of 0.6 that pins libraries has them read from
+// the operator's directory, `<dir>/<name>/<version>/`: the one --libraries names, or else `libraries.dir` of the
+// configuration (--config, or mandate.runtime.json of the working directory), whose revoked digests the check holds
+// the pins to (MDT-E1608); `check`, `sandbox`, `target acs` and `view` hand them to the compiler. The library commands
+// and these two options are as the native command line (crates/mandate-cli) has them: the same arguments give the
+// same standard output, exit status and files. Exit status is 1 when any error diagnostic is reported, 2 on usage
 // errors and when the compiler behind the bridge fails (a CompilerFailure: its module missing, trapping, out of
 // memory, or answering what is not an answer), which is never read as a program that checks.
 
@@ -79,38 +95,76 @@ import {
   type Modules,
   type PatchOp,
 } from "./index.js";
+import { given, givenOptions, libraryCommand, Stop, withModules, type Given, type Io, type LibraryArgs } from "./cli-library.js";
+import { Files } from "./libraries.js";
 import { serveStdio } from "./mcp.js";
 import { viewModules } from "./util.js";
 import { CompilerFailure } from "./wasm/errors.js";
 
-function usage(): never {
-  process.stderr.write(
+/** What the command prints when it is not used as it is meant. */
+function usageText(): string {
+  return (
     [
       "usage: mandate <command> [options]",
-      "  check <file> [--json] [--lock <lock.json>] [--denials <report.json>] [--module <file>]…",
+      "  check <file> [--json] [--lock <lock.json>] [--denials <report.json>] [--module <file>]… [--libraries <dir>] [--config <file>]",
       "  ir <file> [--canonical]",
       "  fmt <file>",
       "  hash <file>",
       "  patch <program> <patch.json> [--json]   patch.json: { \"base\": \"sha256:…\", \"ops\": [ … ] }",
-      "  sandbox <file> [--agent <name>] [--lock <lock.json>] [--module <file>]…",
-      "  target acs <file> [--out <dir>] [--json] [--lock <lock.json>] [--module <file>]…",
+      "  sandbox <file> [--agent <name>] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]",
+      "  target acs <file> [--out <dir>] [--json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]",
       "  explain <code>",
-      "  view <file> [--against <old file>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>] [--module <file>]…",
-      "  view <file> --card [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]…",
+      "  view <file> [--against <old file>] [--against-lock <old lock.json>] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]",
+      "  view <file> --card [--workflow W] [--format md|html|json] [--lock <lock.json>] [--module <file>]… [--libraries <dir>] [--config <file>]",
+      "  add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]",
+      "  upgrade <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]",
+      "  publish <source dir> [--libraries <dir>] [--config <file>] [--json]",
       "  mcp [--module <file>]…   (an MCP server on stdio)",
       "  run | status | approve | decline | answer | cancel | raise-limits | replay | artifact | show | denials | rotate-key   (see `mandate status`)",
       "  key new [--out FILE] | decision <run> <digest> | verify-decision <record.json> --key <public key.pem> [--lock FILE]",
-      "  approve-envelope <file> --key FILE [--member NAME] [--workflow W] [--lock <lock.json>] [--module <file>]…",
+      "  approve-envelope <file> --key FILE [--member NAME] [--workflow W] [--lock <lock.json>] [--module <file>]… [--libraries <dir>]",
       "  amend <run> --revision N --key FILE [--member NAME] (approve | decline)",
       "  journal export <run> [--out FILE] | journal key [--out FILE] | journal verify <export.json> --key <public key.pem>…",
       "  halt (--tenant T | --all) [--reason TEXT] [--by WHO] | halt --lift (--tenant T | --all) --by WHO | halt --list",
       "  otel export --endpoint <url> [--run R | --tenant T] [--follow] [--json]",
       "  egress serve --config <mandate.egress.json>   (the reference egress proxy)",
-      "  test <file> [--json]",
+      "  test <file> [--json] [--libraries <dir>]",
       "",
-    ].join("\n"),
+    ].join("\n")
   );
+}
+
+function usage(): never {
+  process.stderr.write(usageText());
   process.exit(2);
+}
+
+/** The process as a library command is run with it: its working directory, its clock and its two streams. */
+const io: Io = {
+  fs: new Files(),
+  now: () => Math.floor(Date.now() / 1000),
+  out: (text) => void process.stdout.write(text),
+  err: (text) => void process.stderr.write(text),
+};
+
+/** What a check of a program with `lock` is given of the libraries the lock pins (0.6); a refusal ends the command. */
+function givenFor(a: LibraryArgs, lock: Lock | undefined): Given {
+  try {
+    return given(io, a, lock);
+  } catch (e) {
+    if (e instanceof Stop) process.exit(e.code);
+    throw e;
+  }
+}
+
+/** The lock `readLock` would give, or none when there is none or it cannot be read: nothing is reported. */
+function peekLock(file: string, named: string | undefined): Lock | undefined {
+  try {
+    const parsed = parseStrictJson(readFileSync(named ?? join(dirname(file), "mandate.lock.json"), "utf8"));
+    return parsed.ok ? (parsed.value.value as unknown as Lock) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function read(file: string): string {
@@ -177,16 +231,27 @@ function main(argv: string[]): void {
   const denials = option(plain, "--denials");
   const workflow = option(plain, "--workflow");
   const format = option(plain, "--format") ?? "md";
+  const librariesDir = option(plain, "--libraries");
+  const configFile = option(plain, "--config");
   const flags = new Set(plain.filter((a) => a.startsWith("--")));
   const args = plain.filter((a) => !a.startsWith("--"));
   const asJson = flags.has("--json");
   const modules = readModules(moduleFiles, asJson);
+  /** The arguments the libraries are read by (0.6): the lock they are pinned in is each command's own. */
+  const library: LibraryArgs = {
+    positional: args,
+    json: asJson,
+    ...(lockFile !== undefined ? { lock: lockFile } : {}),
+    ...(librariesDir !== undefined ? { libraries: librariesDir } : {}),
+    ...(configFile !== undefined ? { config: configFile } : {}),
+    acceptGovernance: flags.has("--accept-governance"),
+  };
 
   switch (cmd) {
     case "check": {
       const file = args[0] ?? usage();
       const lock = readLock(file, lockFile, asJson);
-      const r = check(read(file), kindOf(file), { modules, ...(lock ? { lock } : {}) });
+      const r = check(read(file), kindOf(file), { modules, ...(lock ? { lock } : {}), ...givenOptions(givenFor(library, lock)) });
       // W0311: what sandboxes denied in learning mode, as feedback on the policies (§11.3).
       if (denials !== undefined && r.program && r.ok) {
         const parsed = parseStrictJson(read(denials));
@@ -263,12 +328,13 @@ function main(argv: string[]): void {
     case "sandbox": {
       const file = args[0] ?? usage();
       const lock = readLock(file, lockFile, asJson);
-      const r = check(read(file), kindOf(file), { modules, ...(lock ? { lock } : {}) });
+      const g = givenFor(library, lock);
+      const r = check(read(file), kindOf(file), { modules, ...(lock ? { lock } : {}), ...givenOptions(g) });
       if (!r.ok) {
         report(r.diagnostics, file, asJson);
         process.exit(1);
       }
-      const all = sandboxRequirements(r.program!, modules, lock);
+      const all = sandboxRequirements(r.program!, withModules(g, modules), lock);
       if (agent !== undefined && !Object.hasOwn(all, agent)) {
         process.stderr.write(`mandate: no local agent ${agent} in ${file}\n`);
         process.exit(2);
@@ -282,12 +348,13 @@ function main(argv: string[]): void {
       if (args[0] !== "acs") usage();
       const file = args[1] ?? usage();
       const lock = readLock(file, lockFile, asJson);
-      const r = check(read(file), kindOf(file), { modules, ...(lock ? { lock } : {}) });
+      const g = givenFor(library, lock);
+      const r = check(read(file), kindOf(file), { modules, ...(lock ? { lock } : {}), ...givenOptions(g) });
       if (!r.ok) {
         report(r.diagnostics, file, asJson);
         process.exit(1);
       }
-      const t = acsTarget(r.program!, modules, lock);
+      const t = acsTarget(r.program!, withModules(g, modules), lock);
       const dir = outDir ?? "acs";
       mkdirSync(dir, { recursive: true });
       for (const [name, a] of Object.entries(t.agents)) {
@@ -306,8 +373,8 @@ function main(argv: string[]): void {
     case "view": {
       const file = args[0] ?? usage();
       if (!["md", "html", "json"].includes(format)) usage();
-      const loadChecked = (f: string, lock?: Lock) => {
-        const r = check(read(f), kindOf(f), { modules, ...(lock ? { lock } : {}) });
+      const loadChecked = (f: string, g: Given, lock?: Lock) => {
+        const r = check(read(f), kindOf(f), { modules, ...(lock ? { lock } : {}), ...givenOptions(g) });
         if (!r.ok) {
           report(r.diagnostics, f, false);
           process.exit(1);
@@ -315,7 +382,10 @@ function main(argv: string[]): void {
         return r.program!;
       };
       const lock = readLock(file, lockFile, false);
-      const program = loadChecked(file, lock);
+      const g = givenFor(library, lock);
+      const program = loadChecked(file, g, lock);
+      // The modules a view is given: the caller's, and those of the libraries the lock pins (0.6).
+      const linked = withModules(g, modules);
       if (flags.has("--card")) {
         if (against !== undefined) usage();
         // The card is of one workflow with an envelope: the only one, or the one --workflow names.
@@ -330,24 +400,28 @@ function main(argv: string[]): void {
           process.exit(2);
         }
         const name = workflow ?? all[0]!;
-        const opts = { modules, ...(lock ? { lock } : {}) };
+        const opts = { modules: linked, ...(lock ? { lock } : {}) };
         process.stdout.write(format === "json" ? JSON.stringify(card(program, name, opts), null, 2) + "\n" : format === "html" ? toHtml(cardDoc(program, name, opts)!) : toMarkdown(cardDoc(program, name, opts)!));
       } else if (against !== undefined) {
-        const before = loadChecked(against);
+        // The old version is checked without its lock, as before 0.6, but with the libraries that lock pins (0.6).
+        const old = givenFor(library, peekLock(against, againstLock));
+        const before = loadChecked(against, old);
         // The old version's lock, for who could decide before; none next to the old file is no lock, not an error.
         const beforeLock = readLock(against, againstLock, false);
         const locks = { ...(beforeLock ? { before: beforeLock } : {}), ...(lock ? { after: lock } : {}) };
         // 0.6: what a workflow that applies a pattern of a module commits, read from its expansion.
-        const m = viewModules(modules, before, program);
+        const m = viewModules({ ...withModules(old, modules), ...linked }, before, program);
         const v = semanticDiff(before, program, locks, m);
         process.stdout.write(format === "json" ? JSON.stringify(v, null, 2) + "\n" : format === "html" ? toHtml(diffDoc(before, program, locks, m)) : toMarkdown(diffDoc(before, program, locks, m)));
       } else if (format === "json") {
         // 0.6: a workflow that applies a pattern of a module is shown as its expansion.
-        const m = viewModules(modules, program);
+        const m = viewModules(linked, program);
         const views = { architecture: architecture(program, m, m ? lock : undefined), authority: authority(program, m), cost: cost(program, lock, m) };
         process.stdout.write(JSON.stringify(views, null, 2) + "\n");
       } else {
-        process.stdout.write(format === "html" ? toHtml(programDoc(program, lock)) : toMarkdown(programDoc(program, lock)));
+        // 0.6: the document of a program is given the modules too, as its views are; before 0.6, the program alone.
+        const m = viewModules(linked, program);
+        process.stdout.write(format === "html" ? toHtml(programDoc(program, lock, m)) : toMarkdown(programDoc(program, lock, m)));
       }
       process.exit(0);
     }
@@ -367,6 +441,16 @@ function main(argv: string[]): void {
       else process.stdout.write(`${code} ${entry.title}\n\n${entry.explain}\n`);
       process.exit(0);
     }
+    // falls through
+    case "add":
+    case "upgrade":
+    case "publish":
+      process.exit(
+        libraryCommand(cmd, library, io, () => {
+          process.stderr.write(usageText());
+          return new Stop(2);
+        }),
+      );
     // falls through
     default:
       usage();

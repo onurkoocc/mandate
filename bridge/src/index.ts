@@ -28,7 +28,10 @@ export * from "@mandate/compiler";
 export type { AuthorityContext, GrantDelegation, GrantInput, GrantOutput, InFlightOverlapInput, InFlightOverlapOutput, ItemScopes, MapScopesInput, MapScopesOutput, NarrowInput, NarrowOutput, Refusal } from "./authority.js";
 // Language 0.6 (library.ts): its versions, `atLeast` over them, its shapes, its lock, and the Rust-only doors. The
 // reference compiler's LanguageVersion and Lock, which know nothing of 0.6, are these in the bridge.
-export { atLeast, BRIDGE_LANGUAGE_VERSIONS, isProgram06, LANGUAGE_06, LIBRARY_FORMAT, libraryVerify, LOCK_FORMAT_06, NoReference } from "./library.js";
+export { atLeast, authoritySignature, BRIDGE_LANGUAGE_VERSIONS, isProgram06, LANGUAGE_06, librariesConfigProblems, LIBRARY_FORMAT, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, LOCK_FORMAT_06, NoReference } from "./library.js";
+// The file-system side of the libraries (libraries.ts) gives the entry point one name: the libraries a lock pins.
+export { pinnedLibraries } from "./libraries.js";
+export type { LibraryChange, LibraryPublished, LibraryRequest, LibraryResolved, PublishedAgainst, PublishedVersion } from "./library.js";
 export type { Apply, Check06, CheckOptions06, CheckResult06, CheckSubprogram06, SubprogramCheck06, ConnectorBinding, ConnectorDef, ConnectorTool, Criterion06, Def06, Documented, Envelope06, LanguageVersion, LibrariesConfig, LibraryPin, LibrarySource, LibraryVerified, Lock, PatternDef, Program06, Slot, SlotArg, WorkflowDef06 } from "./library.js";
 
 /**
@@ -90,7 +93,7 @@ export let architectureBlocks = ts.architectureBlocks;
 export let authority: WithModules<typeof ts.authority> = ts.authority;
 export let authorityBlocks = ts.authorityBlocks;
 export let cost: WithModules<typeof ts.cost> = ts.cost;
-export let programDoc = ts.programDoc;
+export let programDoc: WithModules<typeof ts.programDoc> = ts.programDoc;
 export let diffDoc: WithModules<typeof ts.diffDoc> = ts.diffDoc;
 export let envelopeWorkflows = ts.envelopeWorkflows;
 export let card = ts.card;

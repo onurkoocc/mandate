@@ -50,7 +50,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
-import { calleePath, rolesNamed, type Expr, type Lock, type Program, type Stmt } from "@mandate/bridge";
+import { calleePath, rolesNamed, type Expr, type LibrarySource, type Lock, type Program, type Stmt } from "@mandate/bridge";
 import type { Adapters, Outcome } from "./adapters.js";
 import type { Db } from "./db.js";
 import { payloadOf, shownPackage, signDecision, type SignedDecision } from "./decisions.js";
@@ -75,6 +75,8 @@ export interface TestOptions {
   /** Where the program lives: handler files and fixtures are relative to it. */
   dir: string;
   lock?: Lock;
+  /** The libraries the lock pins (0.6), as the package of each run carries them. */
+  libraries?: LibrarySource[];
 }
 
 const STATES: Record<string, string> = { ok: "succeeded", failed: "failed", waiting: "waiting", attention_required: "attention_required", cancelled: "cancelled" };
@@ -208,7 +210,7 @@ async function runOne(program: Program, o: TestOptions, h: Handlers, workflow: s
   // An earlier program's test decides by name, as it always did; a 0.4 program's test signs.
   const people = isSigned04(program) ? testPeople(program, given) : undefined;
   const rt = new Runtime(o.db, h.adapters, undefined, undefined, { decisions: people ? { keys: people.keys } : { mode: "unsigned" } });
-  const pkg = buildPackage(program, people ? people.lock : given);
+  const pkg = buildPackage(program, people ? people.lock : given, {}, o.libraries ?? []);
   const signed = async (kind: "approve" | "decline" | "answer", req: Obj, payload?: string): Promise<SignedDecision | undefined> => {
     const shown = await rt.shown(runId, "wait");
     const who = people!.sign(shown.role, typeof req["distinct_from"] === "string");

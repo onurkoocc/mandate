@@ -86,6 +86,14 @@ export type DoorBacked = keyof typeof DOOR_BACKED;
  */
 export const RUST_ONLY = {
   libraryVerify: { door: "library_verify", params: ["library", "libraries"] },
+  // `mandate add`, `upgrade` and `publish`: each takes its door's input as one request, whose members are these.
+  libraryAdd: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now"] },
+  libraryUpgrade: { door: "library_upgrade", params: ["library", "range", "lock", "versions", "pinned", "libraries", "config", "now", "accept_governance"] },
+  libraryPublish: { door: "library_publish", params: ["source", "published", "libraries", "now"] },
+  authoritySignature: { door: "authority_signature", params: ["library", "libraries"] },
+  // Whether a value is the `libraries` member of a configuration: asked of the door that reads one before it resolves
+  // anything, in a request that resolves nothing.
+  librariesConfigProblems: { door: "library_add", params: ["library", "range", "lock", "versions", "libraries", "config", "now"] },
 } as const satisfies Record<string, { door: string; params: readonly string[] }>;
 
 /**
@@ -119,6 +127,10 @@ export const KEPT: Record<string, Kept> = {
   isLanguageVersion: { helper: "whether a value is one of LANGUAGE_VERSIONS, the TypeScript's list (the constants stay the TypeScript's, see index.ts)" },
   isPath: { helper: "whether a text is a relative, normalized, portable path (PATH_PATTERN)" },
   pathProblem: { helper: "what makes a text not a path, for a message" },
+  pinnedLibraries: {
+    helper:
+      "the libraries a lock pins, read from a directory of libraries (libraries.ts): files, found by the names and the versions of the lock, each held to the form the compiler gives a name and a version before a path is made of it. What the files hold is the compiler's to read (library_verify, check)",
+  },
   globRegExp: {
     helper:
       "a governance glob as a RegExp, which JSON cannot carry; the runtime tests it against each path of a workspace, and a door per path would cost a call each. The door glob_match, which answers globRegExp(glob).test(text), is held to it by crates/mandate-check/tests/json_doors",

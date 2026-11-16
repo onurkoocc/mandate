@@ -177,6 +177,26 @@ const CASES: Record<string, string[][]> = {
 /** The same message with the one place a path differs between the two trees (the runtime's address, in the hand-off's failure). */
 const comparable = (s: string, dir: string): string => s.replaceAll(dir.replaceAll("\\", "/"), "<tree>").replaceAll(dir, "<tree>");
 
+/**
+ * The bridge's usage text as it was before the libraries of 0.6: the compiler's own command line is frozen at 0.5,
+ * and has neither `add`, `upgrade` and `publish` nor `--libraries` and `--config`. Nothing else is taken out: every
+ * other line of the two usage texts is compared as it is (cli-library.test.ts holds the lines of 0.6).
+ */
+const LINES_06 = [
+  "  add <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--json]\n",
+  "  upgrade <library>[@<range>] [--lock <lock.json>] [--libraries <dir>] [--config <file>] [--accept-governance] [--json]\n",
+  "  publish <source dir> [--libraries <dir>] [--config <file>] [--json]\n",
+];
+function before06(s: string): string {
+  if (!s.startsWith("usage: mandate <command> [options]\n")) return s;
+  let out = s;
+  for (const line of LINES_06) out = out.replace(line, "");
+  return out
+    .split("\n")
+    .map((line) => (/^  (check|view|sandbox|target acs|approve-envelope|test) </.test(line) ? line.replace(/ \[--libraries <dir>\]( \[--config <file>\])?$/, "") : line))
+    .join("\n");
+}
+
 /** The exit status of every invocation compared, by command. */
 const seen: Record<string, Array<number | null>> = {};
 
@@ -197,8 +217,8 @@ describe("the mandate command line equals the compiler's own", () => {
             const [ts, br] = await Promise.all([run(tree.compilerCli, args, a), run(tree.bridgeCli, args, b)]);
             const label = `mandate ${args.join(" ").replaceAll(repoRoot.replaceAll("\\", "/"), "")}`;
             expect({ label, code: br.code }).toEqual({ label, code: ts.code });
-            expect({ label, out: comparable(br.out, tree.dir) }).toEqual({ label, out: comparable(ts.out, tree.dir) });
-            expect({ label, err: comparable(br.err, tree.dir) }).toEqual({ label, err: comparable(ts.err, tree.dir) });
+            expect({ label, out: before06(comparable(br.out, tree.dir)) }).toEqual({ label, out: comparable(ts.out, tree.dir) });
+            expect({ label, err: before06(comparable(br.err, tree.dir)) }).toEqual({ label, err: comparable(ts.err, tree.dir) });
             expect({ label, written: files(b) }).toEqual({ label, written: files(a) });
             runs.push(ts.code);
           }),
