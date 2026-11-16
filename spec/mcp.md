@@ -100,3 +100,22 @@ holds as it was.*
   MCP over HTTP and is specified with connectors
   ([`library.md`](library.md#the-mcp-the-runtime-speaks)); it has nothing
   to do with this server.
+
+## 0.7
+
+*Added 2026-11-17. Specified in [`attention.md`](attention.md#the-mcp-server);
+0.7, not implemented yet. Everything above holds as it is.*
+
+- **Two servers, one tool list.** A native `mandate mcp`, in
+  `crates/mandate-cli`, serves the same tools as the Node server: a JSON-RPC
+  loop on stdio that reads bounded lines, with the limits and the two
+  protocol eras above, and the core specification embedded. The tool list of
+  0.7 is data from one door of the Rust compiler, `mcp_tools`; the same
+  recorded conversations run against both servers.
+- **The tools.** `check` takes `libraries`, and finds the embedded
+  `std.patterns` by default; `project` offers the card and the attention
+  view, with the `lock`; `spec` gains the topics `patterns` and `attention`.
+- **Still only computing.** No tool signs, approves or promotes. A card
+  approval, a decision and a promotion are a person's, made with their own
+  key on the command line (`approve-envelope`, `decide`, `promote`), never by
+  an agent through this server.

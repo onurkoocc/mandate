@@ -132,6 +132,35 @@ for every program of 0.1 to 0.5, unchanged.*
   moment it escalates, so the card's figure is exact only for an
   escalation made at the first deadline ([`library.md`](library.md#humanreview)).
 
+### The card in 0.7
+
+*Added 2026-11-17. Specified in
+[`attention.md`](attention.md#the-card-of-a-07-program); 0.7, not
+implemented yet. What is above holds for every program of 0.1 to 0.6,
+unchanged; in particular the 0.6 card keeps its doubled deadline, and the
+note on its bound above is its correction.*
+
+For a 0.7 program the card says what it does by its stages; builds "When it
+asks whom" from the attention view, stating a review's two deadlines exactly
+(the escalated question's deadline counts from the escalation, which happens
+at the first tick after the first deadline); adds "What it tells whom", each
+report with its fields, their class and how each is known; and states the
+owner who approves it, the `asks` bound, and, with `promotion: "required"` in
+the lock, that each `read_only` and `live` run needs a signed promotion.
+
+## The attention view (0.7)
+
+*Added 2026-11-17. Specified in
+[`attention.md`](attention.md#the-attention-view); 0.7, not implemented
+yet.*
+
+A fourth view of a program, made from the compiler's attention facts and the
+lock: for each role, when the workflow can ask it something, about what, at
+most how many times, by when, and what happens when nobody answers; and
+which reports each role receives. `mandate view <program> --attention` prints
+it, in the Node and the native command; a 0.7 program's view document holds
+it; a program of 0.1 to 0.6 has none.
+
 ## What changed between two versions
 
 `mandate view <new> --against <old>` shows the semantic diff of §15.3 in
@@ -328,7 +357,10 @@ test fails on an event type the runtime writes that has no class).
 | S4 | A trace: an agent loop's turns, tool calls and outputs; what a lead wrote |
 
 A role's view shows S1 and S2, and S0 where it was asked of that role. The
-audit view shows S0 to S4. Nothing is masked by data class in 0.5.
+audit view shows S0 to S4. Nothing is masked by data class in 0.5. (In 0.7,
+not implemented yet, a role sees a `report` event only when it is addressed
+to that role, and values in a 0.7 run are masked by class:
+[`attention.md`](attention.md#masking-and-how-a-value-is-known).)
 
 - **By role** (`kind: "run_role"`). `R` is a role the run's program names, in
   a `role` definition or anywhere it names one, with the modules it imports;
@@ -357,6 +389,14 @@ audit view shows S0 to S4. Nothing is masked by data class in 0.5.
 
   It never holds the run's result or error whole, its evidence, actions,
   change sets, plans or input, a command's result, the trace or the events.
+
+  *0.7, not implemented yet (added 2026-11-17;
+  [`attention.md`](attention.md#a-roles-view)):* a role's view of a 0.7 run
+  gains three sections, `stages`, `reports` (only the reports addressed to
+  the role) and `programs`, and its `waiting`, `reviews` and `reports` show
+  each value with its class and how it is known, masked when its class is
+  above the role's class in the lock's `role_classes`. A run of 0.1 to 0.6
+  has none of these, and its views do not change.
 - **For an audit** (`kind: "run_audit"`). The run's view whole, with:
   - the run's `input`;
   - the exceptions as a role's, with each violation's `detail`;
