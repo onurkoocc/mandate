@@ -16,7 +16,7 @@ import { InvalidDecision, payloadOf, signDecision, type DecisionKind, type Shown
 import { EvidenceSigner, TrustedKeys, type EvidenceRecord } from "../src/evidence.js";
 import type { RunRow } from "../src/journal.js";
 import { NOT_RUN_YET_06 } from "../src/package.js";
-import { classify, listsRefusal, questionOf as askOf, waiveRoleRefusal, waiversOf, type Question, type Verdict } from "../src/review.js";
+import { classify, listsRefusal, outcomeProblem, questionOf as askOf, waiverFacts, waiverProblem, waiveRoleRefusal, waiversOf, type Question, type Verdict, type WaiverFacts } from "../src/review.js";
 import { Crash } from "../src/signals.js";
 import { SimAgents, SimTool } from "../src/sim.js";
 import { digest, isObj, plain, type Obj, type Value } from "../src/values.js";
@@ -602,6 +602,124 @@ needs06("what a Verified value is accepted on (H09)", () => {
     expect(run.state, state(run)).toBe("attention_required");
     expect(run.attention).toMatchObject({ violation: "invalid_decision" });
     expect(w.tool.executions).toEqual([]);
+  });
+
+  it("a waived value without the passing records of what it met is not accepted: a waiver covers its own criterion and no other", async () => {
+    const w = await rworld();
+    await start(w, "v10", [inv("I1")]);
+    w.faults.arm("after_dispatch", (i) => i.kind === "prepare");
+    await expect(decide(w, "v10", w.who.ana, { waive: [0], decline: [] })).rejects.toBeInstanceOf(Crash);
+    // The verdict the review reads loses the passing records of the criteria the item met.
+    const id = `${MAP_AT}[0]/body/1/value/verdict`;
+    const [row] = await w.db.query<{ result: Obj }>("select result from commands where run_id = 'v10' and command_id = $1", [id]);
+    await w.db.query("update commands set result = $3 where run_id = $1 and command_id = $2", ["v10", id, JSON.stringify({ ...row!.result, evidence: [] })]);
+    const run = await w.rt.resume("v10");
+    expect(run.state, state(run)).toBe("attention_required");
+    expect(run.attention).toMatchObject({ violation: "forged_evidence" });
+    expect(String((run.attention as Obj)["message"])).toMatch(/no evidence for Matched\.same_invoice; no evidence for Matched\.vendor/);
+    expect(w.tool.executions).toEqual([]);
+  });
+
+  it("holds a waiver record to each of its rules (review.ts waiverProblem), one change at a time", async () => {
+    const w = await rworld();
+    await start(w, "v11");
+    await decide(w, "v11", w.who.ana, { waive: [1, 4], decline: [] });
+    const { program } = await w.rt.runProgram("v11");
+    const base = await waiverFacts(w.rt.journal, "v11", { contract: (n) => program.defs[n], keys: w.who.keys, lock: w.pkg.lock, trusted: w.rt.trusted });
+    const [row] = await w.db.query<{ record: EvidenceRecord }>("select record from evidence where run_id = 'v11' and method = 'waiver' and detail->>'index' = '1'");
+    const record = row!.record;
+    expect(waiverProblem(record, base)).toBeUndefined();
+    const other = (await w.db.query<{ record: EvidenceRecord }>("select record from evidence where run_id = 'v11' and method = 'waiver' and detail->>'index' = '4'"))[0]!.record;
+    const failed = base.evidence.get(String((record.detail as Obj)["waives"]))!;
+    /** The record changed as `change` says, with the facts changed as `facts` says; why it does not hold. */
+    const why = (change: (r: Obj) => void, facts: (f: WaiverFacts) => WaiverFacts = (f) => f): string | undefined => {
+      const r = structuredClone(record) as unknown as Obj;
+      change(r);
+      return waiverProblem(r as unknown as EvidenceRecord, facts(base));
+    };
+    const at = (k: string) => (r: Obj) => r[k] as Obj;
+    // 1. Who may waive the criterion is the program's to say.
+    expect(why((r) => void (at("producer")(r)["role"] = "clerk"))).toBe("Matched.totals may be waived by accountant, finance_lead, not by clerk");
+    expect(why((r) => void (r["criterion"] = "vendor"))).toBe("Matched.vendor is not a criterion a person may waive (waive by)");
+    // 2. The decision.
+    expect(why((r) => void (at("producer")(r)["decision"] = "sha256:none"))).toBe("decision sha256:none is not recorded");
+    expect(why((r) => void (at("producer")(r)["member"] = "dee"))).toMatch(/was not made by the member, key and role the waiver names/);
+    expect(why((r) => void (r["package"] = "sha256:another"))).toMatch(/is not a review's decision of this run/);
+    expect(why((r) => void (at("detail")(r)["review"] = "/another/review"))).toMatch(/did not decide the review the waiver names/);
+    expect(why((r) => void (at("detail")(r)["waive"] = [1]))).toMatch(/did not decide the items the waiver names/);
+    expect(why((r) => void (at("detail")(r)["index"] = 2))).toMatch(/does not waive item 2/);
+    expect(why(() => undefined, (f) => ({ ...f, questions: new Map([[REVIEW_AT, { ...(f.questions.get(REVIEW_AT) as Obj), deadline_ms: 1 }]]) }))).toMatch(/was not made on what review .* asked/);
+    // 3. The failed record: one the review asked about for this item, signed, failed, of this contract, criterion and subject.
+    expect(why((r) => void (at("detail")(r)["waives"] = (other.detail as Obj)["waives"]!))).toMatch(/did not ask about .* for item 1/);
+    expect(why(() => undefined, (f) => ({ ...f, evidence: new Map([...f.evidence].filter(([id]) => id !== failed.evidence_id)) }))).toMatch(/is not a record of this run signed by a trusted key/);
+    expect(why(() => undefined, (f) => ({ ...f, trusted: new TrustedKeys() }))).toMatch(/is not a record of this run signed by a trusted key/);
+    // 4. The value: with its failed record forged to the same other value, signed by the runtime's own key.
+    const elsewhere = digest("request", { another: "value" });
+    const forgedFailed = { ...(failed.record as unknown as EvidenceRecord), subject: { ...((failed.record as Obj)["subject"] as Obj), value: elsewhere } };
+    const signedAgain = { ...failed, record: forgedFailed as unknown as Value, ...w.rt.signer.sign(forgedFailed) };
+    expect(why((r) => void (at("subject")(r)["value"] = elsewhere), (f) => ({ ...f, evidence: new Map([...f.evidence, [failed.evidence_id, signedAgain]]) }))).toMatch(/is a waiver of another value than the one review .* asked about for item 1/);
+    // And its own shape: a waiver passes, of this run, under the id its decision and failed record give.
+    expect(why((r) => void (r["passed"] = false))).toBe("a waiver that does not pass waives nothing");
+    expect(why((r) => void (r["run"] = "another run"))).toBe("it is a waiver of another run");
+    expect(why((r) => void (r["evidence_id"] = "sha256:another"))).toBe("its id is not the one its decision and its failed record give");
+  });
+
+  it("holds the outcome a review's wait ends with to what it asked (review.ts outcomeProblem)", async () => {
+    const w = await rworld();
+    const r = await start(w, "v12");
+    const q = questionOf(r) as unknown as Question;
+    const subject = digest("request", q as unknown as Value);
+    const decided = { subject, waive: [1], decline: [4], by: "ana", role: "accountant", member: "ana", key: "k", decision: "d" };
+    expect(outcomeProblem(decided, q, subject)).toBeUndefined();
+    expect(outcomeProblem({ ...decided, subject: "sha256:other" }, q, subject)).toMatch(/another question/);
+    expect(outcomeProblem({ ...decided, waive: [1, 2] }, q, subject)).toMatch(/item 2/);
+    expect(outcomeProblem({ ...decided, decline: [] }, q, subject)).toMatch(/leaves open item 4 undecided/);
+    expect(outcomeProblem({ ...decided, decision: undefined } as unknown as Value, q, subject)).toMatch(/names no signed decision/);
+    expect(outcomeProblem({ subject, waive: [], decline: [1, 4], by: null, role: "accountant", expired: true }, q, subject)).toBeUndefined();
+    expect(outcomeProblem({ subject, waive: [1], decline: [4], by: null, role: "accountant", expired: true }, q, subject)).toMatch(/an expired review waived items/);
+  });
+});
+
+// ── what the journal holds of a review, changed under it ────────────────
+
+needs06("a review whose journal was changed under it", () => {
+  it("a question changed while it waits: the decision is not taken (forged_evidence), and a resume stops for a person", async () => {
+    const w = await rworld();
+    await start(w, "j1");
+    const [row] = await w.db.query<{ result: Obj }>("select result from commands where run_id = 'j1' and command_id = $1", [REVIEW_AT]);
+    const changed = structuredClone(row!.result);
+    ((changed["question"] as Obj)["items"] as Obj[])[0]!["value"] = inv("I1", 1000);
+    await w.db.query("update commands set result = $3 where run_id = $1 and command_id = $2", ["j1", REVIEW_AT, JSON.stringify(changed)]);
+    const before = await snapshot(w, "j1");
+    await expect(decide(w, "j1", w.who.ana, { waive: [1, 4], decline: [] })).rejects.toMatchObject({ code: "forged_evidence" });
+    expect(await snapshot(w, "j1")).toEqual(before);
+    const resumed = await w.rt.resume("j1");
+    expect(resumed.state, state(resumed)).toBe("attention_required");
+    expect(resumed.attention).toMatchObject({ violation: "nondeterministic_replay" });
+  });
+
+  it("a failed record changed under the decision: the decision is not taken (forged_evidence)", async () => {
+    const w = await rworld();
+    const r = await start(w, "j2");
+    const failedId = (((questionOf(r)["items"] as Obj[])[0]!["unmet"] as Obj[])[0]!["failed"] as string[])[0]!;
+    const [row] = await w.db.query<{ record: Obj }>("select record from evidence where evidence_id = $1", [failedId]);
+    const record = { ...row!.record, subject: { ...(row!.record["subject"] as Obj), value: digest("request", { another: "value" }) } } as unknown as EvidenceRecord;
+    const sig = w.rt.signer.sign(record);
+    await w.db.query("update evidence set record = $2, signature = $3 where evidence_id = $1", [failedId, JSON.stringify(record), sig.signature]);
+    const before = await snapshot(w, "j2");
+    await expect(decide(w, "j2", w.who.ana, { waive: [1, 4], decline: [] })).rejects.toMatchObject({ code: "forged_evidence" });
+    expect(await snapshot(w, "j2")).toEqual(before);
+  });
+
+  it("a verdict that says an item passed which the map failed: the resumed run stops for a person, and asks nobody", async () => {
+    const w = await rworld();
+    await start(w, "j3");
+    const id = `${MAP_AT}[1]/body/1/value/verdict`;
+    const [row] = await w.db.query<{ result: Obj }>("select result from commands where run_id = 'j3' and command_id = $1", [id]);
+    await w.db.query("update commands set result = $3 where run_id = $1 and command_id = $2", ["j3", id, JSON.stringify({ ...row!.result, met: true, unmet: [], failed: {} })]);
+    const resumed = await w.rt.resume("j3");
+    expect(resumed.state, state(resumed)).toBe("attention_required");
+    expect(resumed.attention).toMatchObject({ violation: "nondeterministic_replay" });
   });
 });
 

@@ -1900,7 +1900,8 @@ export class Interpreter {
       if (this.o.replay) throw new ReplayEnd(id, "no_result");
       // The request as first recorded (a resumed worker must not move its deadline), as an escalation left it.
       const held = row?.result ?? request;
-      if (!isObj(held) || held["subject_digest"] !== subject) throw new Violation("nondeterministic_replay", `The review at ${id} would ask another question than the one its wait recorded.`);
+      // What it shows a person is the question its verdicts give, under the digest a decision is signed on.
+      if (!isObj(held) || held["subject_digest"] !== subject || questionDigest(held["question"] ?? null) !== subject) throw new Violation("nondeterministic_replay", `The review at ${id} would ask another question than the one its wait recorded.`);
       throw new Suspend({ kind: REVIEW, command: id, request: held });
     }
     if (row.payload_purged) throw this.purged(id);

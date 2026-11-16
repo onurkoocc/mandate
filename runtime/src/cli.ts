@@ -81,7 +81,7 @@ import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { runTests } from "./testing.js";
 import { auditDoc, roleDoc, runDoc, runView, shadowDiff } from "./views.js";
-import { isObj, show, type Obj, type Value } from "./values.js";
+import { canonical, isObj, show, type Obj, type Value } from "./values.js";
 
 interface Args {
   positional: string[];
@@ -1116,7 +1116,7 @@ function reviewLines(run: RunRow, req: Obj, as: string): string[] {
   for (const i of items) {
     const unmet = (Array.isArray(i["unmet"]) ? i["unmet"] : []).filter(isObj) as Obj[];
     lines.push(`  item ${String(i["index"])}: unmet ${unmet.map((u) => `${String(u["criterion"])} ("${String(u["description"] ?? "")}"; waivable by ${(Array.isArray(u["waive"]) ? u["waive"] : []).join(", ")})`).join(", ")}`);
-    lines.push(`    value (model output): ${JSON.stringify(i["value"] ?? null)}`);
+    lines.push(`    value (model output): ${canonical((i["value"] ?? null) as Value)}`);
   }
   const declined = Array.isArray(q["declined"]) ? q["declined"].filter(isObj).map((d) => String((d as Obj)["index"])) : [];
   if (declined.length) lines.push(`  declined without asking (they failed what no one may waive): ${declined.join(", ")}`);
