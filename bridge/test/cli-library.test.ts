@@ -690,9 +690,13 @@ needs06("the mandate executable with libraries", () => {
   it("shows the views, the card, the diff, the sandbox requirements and the ACS target with the modules of the libraries", async () => {
     const lib = ["--lock", INVOICES_LOCK, "--libraries", "libs"];
     for (const format of ["md", "html", "json"]) {
-      // The program is checked with its libraries before its card is asked for: it has no envelope, and that is what is said.
+      // The program is checked with its libraries before its card is asked for. In 0.6 a workflow without an envelope
+      // has a card too (its caps and budget stand in for the envelope's), given the modules of the libraries.
       const card = await mandate("view", INVOICES, ...lib, "--card", "--format", format);
-      expect(card, format).toEqual({ code: 1, out: "", err: `mandate: ${INVOICES} has no workflow with an envelope, so it has no card\n` });
+      expect(card.code, `${format}: ${card.err}`).toBe(0);
+      expect(card.err).toBe("");
+      expect(card.out, format).toContain("MatchInvoices");
+      if (format === "md") expect(card.out).toContain("Spend bound of map it: 60 × 0.30 USD = 18 USD ≤ 20 USD.");
       const view = await mandate("view", INVOICES, ...lib, "--format", format);
       expect(view.code, `${format}: ${view.err}`).toBe(0);
       expect(view.out, format).toContain("MatchInvoices");
@@ -776,6 +780,8 @@ needs06("the mandate executable with libraries", () => {
       "fixtures/library/drafts.mdt": connectors,
       "fixtures/library/review.mdt": connectors,
       "fixtures/library/invoices.mdt": [],
+      // The shaped migration imports nothing but std and std.patterns (crates/mandate-testkit/tests/outputs).
+      "fixtures/library/migrate-all.mdt": [],
       "fixtures/library/batch.mdt": [...connectors, "fixtures/library/batch.patterns.mdt"],
     };
     const commands: Array<[name: string, locked: boolean, withModules: boolean, args: string[]]> = [
