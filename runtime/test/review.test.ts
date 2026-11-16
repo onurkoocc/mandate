@@ -1193,7 +1193,7 @@ needs06("the acceptance program (invoices.mdt)", () => {
     });
     const w = await world(read("fixtures/library/invoices.mdt"), { agents, libraries: [connectors], lock, decisions: { keys: who.keys } });
     w.adapters.samples = { tool: (name: string) => (name === "acme.connectors.mailbox.list_invoices" ? { result: invoices } : undefined) } as never;
-    expect(NOT_RUN_YET_06.map((r) => r.name)).toEqual(["shapes"]);
+    expect(NOT_RUN_YET_06.map((r) => r.name)).toEqual([]);
     const r = await w.rt.startRun({ pkg: w.pkg, workflow: "MatchInvoices", input: {}, runId: "acc1", mode: "design" });
     expect(r.state, state(r)).toBe("waiting");
     expect(r.waiting).toMatchObject({ kind: "review" });

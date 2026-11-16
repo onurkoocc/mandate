@@ -32,7 +32,7 @@ export { atLeast, authoritySignature, BRIDGE_LANGUAGE_VERSIONS, isProgram06, LAN
 // The file-system side of the libraries (libraries.ts) gives the entry point one name: the libraries a lock pins.
 export { pinnedLibraries } from "./libraries.js";
 export type { LibraryChange, LibraryPublished, LibraryRequest, LibraryResolved, PublishedAgainst, PublishedVersion } from "./library.js";
-export type { Apply, Check06, CheckOptions06, CheckResult06, CheckSubprogram06, SubprogramCheck06, ConnectorBinding, ConnectorDef, ConnectorTool, Criterion06, Def06, Documented, Envelope06, LanguageVersion, LibrariesConfig, LibraryPin, LibrarySource, LibraryVerified, Lock, PatternDef, Program06, Slot, SlotArg, WorkflowDef06 } from "./library.js";
+export type { Apply, Check06, CheckOptions06, CheckResult06, CheckSubprogram06, SubprogramCheck06, ConnectorBinding, ConnectorDef, ConnectorTool, Criterion06, Def06, Documented, Envelope06, LanguageVersion, LibrariesConfig, LibraryPin, LibrarySource, LibraryVerified, Lock, PatternDef, Program06, Shape06, Slot, SlotArg, WorkflowDef06 } from "./library.js";
 
 /**
  * A view or a diff of a program that takes the modules besides, last (doors.ts): the Rust's alone, for a program of

@@ -2,10 +2,10 @@
 // `library_verify` in each mode (the Rust's in `rust` and `both`, a named refusal in `ts`), and what the `check`
 // door gives a program of 0.6 that applies a pattern of a library: its expanded program.
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import * as compiler from "../../compiler/src/index.js";
-import { atLeast, check, LANGUAGE_06, libraryVerify, LOCK_FORMAT_06, NoReference, type LibrarySource } from "../src/index.js";
+import { atLeast, check, checkSubprogram, hashProgram, LANGUAGE_06, libraryVerify, load, LOCK_FORMAT_06, NoReference, skeleton, type LibrarySource, type Program06, type Shape06, type SubprogramCheck06 } from "../src/index.js";
 import { exemptionCounts } from "../src/compare.js";
 import { withCompiler } from "../src/mode.js";
 import { modulePath } from "../src/wasm/module.js";
@@ -159,3 +159,45 @@ needs("library_verify and the check of 0.6 on the Rust compiler", () => {
   });
 });
 
+
+needs("check_subprogram of a parent whose envelope has `shapes` (B12)", () => {
+  const read = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
+  const parent = (): Program06 => withCompiler("rust", () => check(read("fixtures/library/migrate-all.mdt"), "mdt", {}).program!) as Program06;
+  /** What a lead's patch is: the definitions of a file of migrate-all.plans/, each added. */
+  const ops = (file: string): never => {
+    const r = withCompiler("rust", () => load(read(`fixtures/library/migrate-all.plans/${file}`), "mdt"));
+    return Object.entries(r.program!.defs).map(([name, d]) => ({ op: "add", path: `/defs/${name}`, value: d })) as never;
+  };
+  const room = { left: { tokens: 80_000_000, steps: 2000, agents: 200, "spend:USD": 120_000_000 }, writes: [] } as never;
+  const submit = (p: Program06, file: string, number: number): SubprogramCheck06 =>
+    withCompiler("rust", () => checkSubprogram({ parent: p, modules: {}, workflow: "MigrateAll", number, base: hashProgram(skeleton(p.module, number, p.language as never) as never).program, ops: ops(file), lead: "internal", room } as never)) as SubprogramCheck06;
+
+  it("names the shape an admitted sub-program applies, beside its running program, as the typed result's `shape`", () => {
+    const p = parent();
+    const fan = submit(p, "fan-out.mdt", 1);
+    expect(fan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(fan.ok).toBe(true);
+    const shape: Shape06 | undefined = fan.shape;
+    expect(shape).toEqual({ pattern: "FanOutMerge", module: "std.patterns" });
+    expect(fan.running_hash).toMatch(/^sha256:/);
+    expect(submit(p, "maker-checker.mdt", 3).shape).toEqual({ pattern: "MakerChecker", module: "std.patterns" });
+  });
+
+  it("refuses a sub-program written out (E1710) and names no shape for it", () => {
+    const r = submit(parent(), "written-out.mdt", 2);
+    expect(r.ok).toBe(false);
+    expect(r.diagnostics.filter((d) => d.severity === "error").map((d) => d.code)).toEqual(["MDT-E1710"]);
+    expect(r).not.toHaveProperty("shape");
+  });
+
+  it("gives no `shape` for a parent whose envelope has none: the result is what it was", () => {
+    const p = parent();
+    const wf = p.defs["MigrateAll"] as unknown as { envelope: Record<string, unknown> };
+    const { shapes: _shapes, ...bare } = wf.envelope;
+    const plain = { ...p, defs: { ...p.defs, MigrateAll: { ...wf, envelope: bare } } } as unknown as Program06;
+    const r = submit(plain, "fan-out.mdt", 1);
+    expect(r.ok).toBe(true);
+    expect(r).not.toHaveProperty("shape");
+    expect(Object.keys(r)).toEqual(["ok", "diagnostics", "program", "hash", "workflow", "running", "running_hash"]);
+  });
+});
