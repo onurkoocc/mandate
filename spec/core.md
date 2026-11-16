@@ -34,7 +34,7 @@ A program is one module: a canonical JSON IR document, closed by
 
 - The IR is the source of truth. The `.mdt` text is a projection: it
   lowers into IR, IR prints back as text, and both keep the hash.
-- `language` is `mandate/0.1` to `0.5`; 0.2 adds an agent's `loop` and
+- `language` is `mandate/0.1` to `0.6`; 0.2 adds an agent's `loop` and
   `progress` (§5), 0.3 the system model and change sets (§10), 0.4 roles and
   envelopes, 0.5 `methods` of `net.https`, 0.6 (`library.md`) patterns,
   libraries and connectors. In text, a file names its version first:

@@ -98,11 +98,22 @@ mandate @ 0.6
 
 module acme.connectors.types @ 2.3
 
-/// An invoice as the mailbox holds it.
+/// An invoice as the mailbox holds it. Its total is in cents.
 pub type Invoice = { invoice_no: Text, vendor_id: Text, total_cents: Int }
-pub type Order   = { order_no: Text, vendor_id: Text, total_cents: Int }
-pub type Match   = { invoice_no: Text, order: Order }
-pub type DraftId = Text
+
+/// An open order of a vendor, as the ERP lists it.
+pub type Order = { order_no: Text, vendor_id: Text, total_cents: Int }
+
+/// An invoice matched to an open order of its vendor.
+pub type Match = { invoice_no: Text, order: Order }
+
+/// A draft invoice in the ERP, which a person still finalizes there.
+pub type DraftId = { draft_id: Text }
+
+/// Whether `a` is within `pct` percent of `b`.
+pub fn near(a: Int, b: Int, pct: Int) -> Bool ! {} {
+  a * 100 <= b * (100 + pct) and a * 100 >= b * (100 - pct)
+}
 ```
 
 - **Every kind.** In a 0.6 module `pub` may stand before every definition
@@ -1126,7 +1137,9 @@ the lock is E0140.
   the connector does not declare.
 - **The digest** of a tool's schema is `sha256:<hex>` of the JCS bytes of
   `{ "name", "inputSchema", "outputSchema" }` as the server's `tools/list`
-  gives that tool. Its title, description and annotations are not in it:
+  gives that tool, as the runtime's canonical JSON writes it; a tool that
+  lists no `outputSchema` is digested without that member, not with a null.
+  Its title, description and annotations are not in it:
   they never reach a model. The runtime computes it (`schemaDigest`,
   `runtime/src/mcp-client.ts`): there is no compiler door for it, and the
   lock's digest is held to the server's listing by the runtime alone.
@@ -1140,31 +1153,53 @@ the lock is E0140.
   `header` and `template` are the operator's: the command reads and sends
   no secret and leaves them as they are, so an entry is first written
   with its credential and URL, and pinned after. A connector without an
-  entry is E1407; a declared tool the server does not list is refused,
-  `tool_schema_mismatch`, and then nothing is written; a lock that, with
-  the digests, would not bind the program's connectors (E1407, E1408) is
-  not written. It prints each digest that changed, `<module>.<connector>.<tool>:
-  <old> -> <new>`, or says that nothing changed.
+  entry is refused by name, `bad_connector` (its message names E1407);
+  a declared tool the server does not list, or whose listed
+  `inputSchema` lacks what the declaration sends (a property for each
+  declared parameter, and for a write the idempotency key among its
+  required ones), is `tool_schema_mismatch`, and then nothing is written.
+  The entry's `tools` is replaced by the declared tools' digests: a
+  pinned tool the connector no longer declares is dropped and printed as
+  removed. The lock as it would be written is checked once more, and E1407
+  and E1408 are codes of that re-check alone (it refuses with
+  `load_verification_failed` and writes nothing). It prints each digest
+  that changed, `<module>.<connector>.<tool>: <old> -> <new>` (`(not
+  pinned)` before a new one, `(removed: the connector does not declare
+  it)` after a dropped one), or says that nothing changed.
 - **At start and at resume.** Before a `read_only` or `live` run starts,
   `StartRun` asks each connector's server for its tools and compares each
   digest with the lock's: a tool whose schema differs, or that the server
-  does not list, refuses the start (`tool_schema_mismatch`, naming the
+  does not list, or whose digest matches but whose listed `inputSchema`
+  has no property for a declared parameter or, for a write tool, does not
+  require its idempotency key (a server that ignores the key would apply a
+  repeated write again), refuses the start (`tool_schema_mismatch`, naming the
   connector and the tool), and so does a server that does not answer as
   [below](#the-mcp-the-runtime-speaks) (`connector_protocol`). Every
   resume asks again before the run goes on, and a difference stops the
   run as `attention_required` with `tool_schema_mismatch`. A `design` run
-  reaches no server, and a replay reaches none.
+  reaches no server, asks for no proxy and starts without one, and a
+  replay reaches none.
 - **Every declared tool is bound at start, in every mode.** A run binds
   each tool of each connector its running program holds before anything
   is called, a `design` run included, so that a package that cannot call
   a tool refuses the start and not the call in the middle of the run
   (`bad_connector`): a connector without a lock entry (E1407), a tool
   without a pinned digest, a tool the connector does not declare, a result
-  type nothing could hold a server's answer to, a name no model could be
-  offered (at most 64 letters, digits, `_` and `-`), or a type name of a
+  type nothing could hold a server's answer to, or a type name of a
   tool's signature that the running program does not hold as the
   connector's module means it (E0120). A `design` run needs the lock's
-  digests for this, though it asks no server.
+  digests for this, though it asks no server. Which connectors need a lock
+  entry differs on the two sides: the runtime binds every connector in the
+  running program (its own, and those of the libraries it links), so each
+  needs an entry (`bad_connector` otherwise); the compiler's check with
+  the lock (E1407) asks for an entry for the connectors the package can
+  call, those a `tool.call` capability of a workflow or an agent names.
+- **A tool's name for a model.** A read tool is offered to an agent's loop
+  as `<connector>__<tool>`, and that is checked when it is offered, not at
+  a start: a name with a character other than a letter, a digit, `_` or
+  `-`, or of more than 64 characters, is `bad_connector` then, and so is
+  one name for two tools or a parameter of a type the program does not
+  define.
 - **A connector's URL.** A lock entry that names another URL than the
   connector declares is `egress_denied`: a call leaves only to the URL
   both name.
@@ -1180,9 +1215,10 @@ header and template. The proxy puts the secret in; the runtime and the
 adapter hold the placeholder only (INV-23). A session is opened at a
 connector's first request, as a gateway's is ([`boundary.md`](boundary.md#the-control-planes-gateways)).
 
-- **`no_egress_for_connector`.** A package that can call a connector does
-  not start on a runtime whose configuration names no egress proxy. The
-  one exception is a runtime built in code with a `fetch` of its own for
+- **`no_egress_for_connector`.** A `read_only` or `live` run of a package
+  that holds a connector does not start, and does not resume, on a runtime
+  whose configuration names no egress proxy. A `design` run reaches no
+  server and needs none. The one exception is a runtime built in code with a `fetch` of its own for
   connectors, as tests build one; the CLI never builds such a runtime.
 - **A refused call.** A request the proxy denied was not sent upstream.
   It is a violation, `egress_denied`, with the reason, counted as every
@@ -1210,7 +1246,9 @@ part of MCP over HTTP, and refuses the rest by name.
   `2026-07-28` has it ([`mcp.md`](mcp.md#protocol)), so no session is
   opened. Only `tools/list` and `tools/call` are sent. A `tools/list`
   answer with `nextCursor` is followed; a cursor seen twice is
-  `connector_protocol`.
+  `connector_protocol`. Three limits are held, each refused as
+  `connector_protocol`: at most 32 `tools/list` pages, at most 4 MiB in
+  one answer, and JSON nested no deeper than 128 levels.
 - **Answers.** One JSON-RPC response to the request's id: a `200` with
   `application/json`, or `text/event-stream` with exactly one event that
   carries it. Anything else (another status, more events, a notification
@@ -1381,7 +1419,9 @@ A person's answer, and the input a run is started with, may not hold a
 member of the runtime's own values (`$verified`, `$contract`, `$evidence`,
 `$capability`, `$prompt`, `$masked`, `$range`, `$call`, or `__proto__`) at
 any depth, nor what the journal would keep as another value (a number it
-cannot keep exactly): the answer or the start is refused,
+cannot keep exactly): a person's answer is refused as a decision is,
+`invalid_decision` with the reason `reserved_value` or `unkeepable_value`
+first in its message, and the start of a run is refused with the violation
 `reserved_value` or `unkeepable_value`, so that no answer is ever taken
 for a `Verified` value.
 
@@ -1410,14 +1450,21 @@ digest of `{ "waive": [indices], "decline": [indices] }`. It decides
 every open item, each once, in one list or the other; one that leaves an
 open item out, names one twice or in both lists, or names an item that is
 not open, or whose lists are not lists of indices, is refused,
-`incomplete_review`, and the wait stays open. A decision is held, in this
-order, to every rule of a decision (who signed, what the record is for,
-the role: `invalid_decision` otherwise); to the wait's deadline (a
+`incomplete_review`, and the wait stays open. The code of a refused
+decision is `invalid_decision`, with the reason first in its message
+(`past_deadline`, `not_in_role`, `reserved_value`, …); only
+`stale_revision` and `incomplete_review` are codes of their own. A decision
+is held to these, in this order: who signed (`invalid_signature`,
+`unknown_key`); the revision it was made on (`stale_revision`) and that the
+wait is the review's (`subject_mismatch`); what the record is for, its
+member and its role, as for every decision (`invalid_decision`); that it
+carries lists (`incomplete_review`); that the wait still holds the question
+its subject names (`forged_evidence`, a violation); the wait's deadline (a
 decision that comes at or after it is refused, `past_deadline`: the wait is
-escalated or expires, and nothing is decided on its own); to the two
-lists; and to its role being one that every failed criterion of each item
-it waives names in its `waive by` (`invalid_decision`, `not_in_role`). A
-refused decision is recorded (`decision_refused`) and changes nothing. A
+escalated or expires, and nothing is decided on its own); the two lists
+(`incomplete_review`); and its role being one that every failed criterion of
+each item it waives names in its `waive by` (`not_in_role`). A refused
+decision is recorded (`decision_refused`) and changes nothing. A
 waive is whole: it waives every unmet criterion of that item, and 0.6 has
 no waiver of part of an item. The decision names indices and nothing
 else: the value of a waived item is the one its verify journaled.
@@ -1470,8 +1517,8 @@ second record beside it, in the evidence format `mandate/evidence/0.1`:
   digest, as a `human.approve` record names its decision;
 - signed by the runtime like every record.
 
-One record is written for each waived criterion of each waived item, and
-`criterion_waived` names it. "Passed" and "waived" are two methods, so an
+One record is written, and one `criterion_waived` event, for each failed
+record of each waived criterion of each waived item, and the event names it. "Passed" and "waived" are two methods, so an
 audit sees them apart.
 
 **The value binding (B25).** In a 0.6 run every evidence record's
@@ -1539,7 +1586,7 @@ The `condition` in E1708's facts names which failed: `irreversible`,
 `change_set` or `workflow`. The rest of E1708 is as in 0.4: nothing in a
 map body waits for a person, `human.review` included (E1708l). A program
 of 0.1 to 0.5 keeps E1708 exactly (cases E1708, E1708a); the 0.6 cases are
-E1708b (a commit step that checks) and E1708c to E1708l (each refused
+E1708b (a commit step that checks) and E1708c to E1708o (each refused
 condition).
 
 - **The operation key.** An item's action is named by the map, not by the
@@ -1633,7 +1680,9 @@ The compiler runs in the runtime's process as a WebAssembly module
 - **A door is a pure function from JSON to JSON.** A request names a door
   and its input, `{ "door": "<name>", "input": <JSON> }`; the answer is
   `{ "ok": true, "output": <JSON> }`, or `{ "ok": false, "error": { "kind":
-  "unknown_door" | "bad_input" | "too_large", "message": "…" } }`. For a
+  "unknown_door" | "bad_input" | "bad_request" | "too_large", "message": "…" } }`
+  (`bad_request`: the request is not UTF-8, not strict JSON, or not exactly
+  `{ door, input }`). For a
   door that stands for a function of 0.5, the output is the object that
   function returns today. A door's answer depends on its input alone: the
   same request gives the same answer, every time.
@@ -1726,9 +1775,9 @@ the wait left open.
 | `library_revoked` | At load: the package carries a revoked library digest. At a resume: the run stops as `attention_required` |
 | `expansion_mismatch` | At a resume or a replay: the stored running program is missing or does not hash to the manifest's `expanded`; at the admission of a sub-program: its running program does not hash to the one its admission names |
 | `compiler_failed` | While a run is driven: the compiler behind the bridge failed (module missing or refused, a trap, the memory ceiling, an answer that is not one); the run stops for a person |
-| `tool_schema_mismatch` | At a start: a tool's schema differs from the lock's digest, or the server does not list it. At a resume: the run stops as `attention_required`. Also `mandate connector pin` for a declared tool the server does not list |
-| `no_egress_for_connector` | At a start: the package can call a connector and no egress proxy is configured |
-| `bad_connector` | At a start, or at a call: a connector or tool that cannot be bound (no lock entry or digest, a tool it does not declare, an unheldable result type, a type the program does not hold as the connector's module means it), a read tool called as an effect |
+| `tool_schema_mismatch` | At a start: a tool's schema differs from the lock's digest, the server does not list it, or the listed schema lacks a property for a declared parameter or the required idempotency key. At a resume: the run stops as `attention_required`. Also `mandate connector pin` for such a tool |
+| `no_egress_for_connector` | At a `read_only` or `live` start or resume: the package holds a connector and no egress proxy is configured (a `design` run needs none) |
+| `bad_connector` | At a start, a resume or `connector pin`: a connector or tool that cannot be bound (no lock entry or digest, a tool it does not declare, an unheldable result type, a type the program does not hold as the connector's module means it). When a read tool is offered to an agent: a name `<connector>__<tool>` that is too long or has other characters. At a call: a read tool called as an effect |
 | `connector_protocol` | The server's answer is not what the narrow protocol allows, or takes more than 120 seconds; at a start it refuses the start |
 | `tool_result_mismatch` | A tool's result has no `structuredContent`, does not fit the declared type, holds a member no result may hold, or is an error |
 | `egress_denied` | The proxy denied a connector's request, or the lock binds another URL than the connector declares: a violation; the run stops for a person |
@@ -1736,10 +1785,9 @@ the wait left open.
 | `PolicyDenied(no_samples)` | A design run's read tool has no sample |
 | `PolicyDenied(person_in_map)` | An item's action in a batch commit step would need a person; at `StartRun`, `person_in_map` refuses the run |
 | `Rejected(idempotency_conflict)` | Two items of a commit step with one key and other parameters |
-| `incomplete_review` | A review decision that does not decide every open item exactly once, or whose lists are not lists of indices (the decision is refused) |
-| `past_deadline` | A review decision that comes at or after the wait's deadline (the decision is refused) |
-| `invalid_decision` | A review decision that fails the rules of every decision, or whose role is not among those the failed criteria of what it waives name |
-| `reserved_value`, `unkeepable_value` | A person's answer, or the input of a run, that holds a member of the runtime's own values, or what the journal would keep as another value (refused) |
+| `incomplete_review` | A review decision that does not decide every open item exactly once, or whose lists are not lists of indices (the decision is refused, with this code) |
+| `invalid_decision` | A refused decision, with its reason first in the message: the rules of every decision, `past_deadline` (at or after the wait's deadline), `not_in_role` (a role that is not among those the failed criteria of what it waives name), `reserved_value` or `unkeepable_value` (an answer that holds a member of the runtime's own values, or what the journal would keep as another value) |
+| `reserved_value`, `unkeepable_value` | The violation that refuses the input a run is started with when it holds such a member or value |
 | `reserved_method` | At load: a contract whose criterion names the method `verify` or `waiver` |
 | `bad_review` | A `human.review` that does not meet E1506 to E1508 when it runs: not in a workflow's body, not given the outcomes of a verifying map, malformed arguments, a role that cannot waive (the run stops) |
 | `forged_evidence` | A `Verified` value whose waiver or verify record does not hold ([above](#what-verified-accepts)) |
@@ -1851,7 +1899,8 @@ checks how many it skipped:
 | H06 | A review over a verifying map checks; one wait | — |
 | H07 | A review role outside the `waive by` roles | E1508 |
 | E1504 to E1507 | One mutation each | each code |
-| E1708b, E1708c to E1708l | A batch commit step checks; each refused condition | —, E1708 |
+| E1708b, E1708c to E1708o | A batch commit step checks; each refused condition | —, E1708 |
+| H08 | A `verify` whose `on unmet` handler is an escalation, and one whose handler is a pause, each keeping the verified value's type | — |
 | L01 | A library whose digest differs from the lock's | E1605 |
 | L02 | An upgrade that widens a workflow's and a connector's authority signature is a governance change | — (`upgrade` writes no lock) |
 | L03 | A minor version that widens the signature | E1607 |
@@ -1859,18 +1908,18 @@ checks how many it skipped:
 | E1601, E1606 | One mutation each | each code |
 | N11 | A sub-program that is not an application of a listed shape; a shape that is not a pattern; an amendment that drops a shape | E1710, E1711, E1709 |
 
-Runtime cases:
+Runtime tests (in `runtime/test`, with no case ids of their own):
 
-| Case | Rule | Code or event |
+| Test file | Rule | Code or event |
 |---|---|---|
-| T03 | A tool's schema changed on the server: the start is refused, and a resume stops | `tool_schema_mismatch` |
-| T04 | A connector's call leaves only through the proxy; one the proxy refuses is a violation | `no_egress_for_connector`, `egress_denied` |
-| T05 | The model sees only the declared name and schema; after a lost response, each draft is posted once | INV-22, INV-06 |
-| H08 | Past the deadline the review goes once to `escalate_to`; past the second, every open item is declined | `review_escalated`, `review_expired` |
-| H09 | A decision that leaves an open item out; a waiver from a role the criterion does not name, or with a changed decision | `incomplete_review`, `invalid_decision`, `forged_evidence` |
-| — | An item's action that needs a person | `person_in_map` |
-| — | A stored expansion that does not hash to the manifest | `expansion_mismatch` |
-| — | A revoked library, at a start and at a resume | `library_revoked` |
+| `connectors.test.ts` | A tool's schema changed on the server: the start is refused, and a resume stops; each draft is posted once after a lost response; the model sees only the declared name and schema | `tool_schema_mismatch`, INV-22, INV-06 |
+| `egress-connector.test.ts` | A connector's call leaves only through the proxy; one the proxy refuses is a violation | `no_egress_for_connector`, `egress_denied` |
+| `review.test.ts` | Past the deadline the review goes once to `escalate_to`; past the second, every open item is declined; a decision that leaves an open item out; a waiver from a role the criterion does not name, or with a changed decision | `review_escalated`, `review_expired`, `incomplete_review`, `invalid_decision`, `forged_evidence` |
+| `cli-review.test.ts` | `mandate review` from the command line | the decision's codes |
+| `library-acceptance.test.ts` | The acceptance program in `design`, `read_only` and `live`, with a replay | — |
+| `library-upgrade.test.ts` | An upgrade's diff catches widened authority | — |
+| `shapes.test.ts` | A sub-program's shape under an envelope with `shapes` | `shape` |
+| the same files | An item's action that needs a person; a stored expansion that does not hash to the manifest; a revoked library, at a start and at a resume | `person_in_map`, `expansion_mismatch`, `library_revoked` |
 
 ## The acceptance program
 

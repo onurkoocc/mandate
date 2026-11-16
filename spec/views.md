@@ -120,8 +120,11 @@ for every program of 0.1 to 0.5, unchanged.*
   authorized by policy and idempotent by its key.
 - The diff gains `waiver_added`, `waiver_removed` and `application_changed`,
   all governance changes, and shows a changed library pin as `mandate
-  upgrade` shows it. A connector's server, class or tools changed are
-  governance changes too (`capability_added`).
+  upgrade` shows it. A connector's server or class changed, a tool added, a
+  read-only tool made a write, and a tool's parameters, result or write
+  attributes (class, retry class, `reconcile by`, `compensation`) changed
+  are governance changes too (`capability_added`); a tool removed, a write
+  made read-only and another `version` are behavior changes.
 - **A review's bound.** The card states the longest a review waits as its
   deadline, doubled when there is an `escalate_to`, and says that nothing
   passes on its own; the review's wait is counted against no budget's
