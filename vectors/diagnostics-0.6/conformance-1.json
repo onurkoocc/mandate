@@ -10208,7 +10208,1059 @@
           }
         },
         "hash": "sha256:5a63648485b7e1562fae41e4594f5902c33b268b92b33f39becec801cda9011c",
-        "workflow": "Move"
+        "workflow": "Move",
+        "running": {
+          "language": "mandate/0.6",
+          "module": "example.fleet.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.fleet"
+            }
+          ],
+          "defs": {
+            "Move": {
+              "kind": "workflow",
+              "params": [],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "Summary"
+                  }
+                ]
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                },
+                {
+                  "op": "var",
+                  "name": "RepoRead"
+                },
+                {
+                  "op": "var",
+                  "name": "SrcWrite"
+                }
+              ],
+              "body": [
+                {
+                  "op": "let",
+                  "name": "done",
+                  "value": {
+                    "op": "map",
+                    "bind": "it",
+                    "over": {
+                      "op": "list",
+                      "items": [
+                        {
+                          "op": "record",
+                          "type": "Repo",
+                          "fields": {
+                            "name": {
+                              "op": "text",
+                              "value": "api"
+                            },
+                            "root": {
+                              "op": "text",
+                              "value": "api"
+                            }
+                          }
+                        },
+                        {
+                          "op": "record",
+                          "type": "Repo",
+                          "fields": {
+                            "name": {
+                              "op": "text",
+                              "value": "web"
+                            },
+                            "root": {
+                              "op": "text",
+                              "value": "web"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "agent": "Migrator",
+                          "skill": "migrate",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "it"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2,
+                    "par": 2,
+                    "caps": [
+                      {
+                        "op": "call",
+                        "callee": {
+                          "op": "field",
+                          "of": {
+                            "op": "var",
+                            "name": "SrcWrite"
+                          },
+                          "name": "narrow"
+                        },
+                        "args": [
+                          {
+                            "value": {
+                              "op": "field",
+                              "of": {
+                                "op": "var",
+                                "name": "it"
+                              },
+                              "name": "root"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "delegate",
+                    "agent": "Reporter",
+                    "skill": "sum",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "done"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "budget": {
+                "tokens": 200000,
+                "time": {
+                  "ms": 3600000
+                },
+                "spend": {
+                  "micros": 5000000,
+                  "currency": "USD"
+                },
+                "steps": 100,
+                "agents": 10
+              }
+            },
+            "FanOutMerge": {
+              "kind": "pattern",
+              "generics": [
+                "Item",
+                "Out",
+                "M"
+              ],
+              "slots": [
+                {
+                  "name": "items",
+                  "kind": "const",
+                  "type": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Item"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "work",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "Item"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Out"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "scope",
+                  "kind": "capability"
+                },
+                {
+                  "name": "part",
+                  "kind": "field",
+                  "type": {
+                    "ref": "Item"
+                  }
+                },
+                {
+                  "name": "merge",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "List",
+                      "args": [
+                        {
+                          "ref": "Outcome",
+                          "args": [
+                            {
+                              "ref": "Inferred",
+                              "args": [
+                                {
+                                  "ref": "Out"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "M"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "max_items",
+                  "kind": "const",
+                  "type": {
+                    "ref": "Int"
+                  }
+                },
+                {
+                  "name": "concurrency",
+                  "kind": "const",
+                  "type": {
+                    "ref": "Int"
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "M"
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "done",
+                  "value": {
+                    "op": "map",
+                    "bind": "it",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "slot": "work",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "it"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": "max_items",
+                    "par": "concurrency",
+                    "caps": [
+                      {
+                        "op": "call",
+                        "callee": {
+                          "op": "field",
+                          "of": {
+                            "op": "var",
+                            "name": "scope"
+                          },
+                          "name": "narrow"
+                        },
+                        "args": [
+                          {
+                            "value": {
+                              "op": "field",
+                              "of": {
+                                "op": "var",
+                                "name": "it"
+                              },
+                              "name": "part"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "delegate",
+                    "slot": "merge",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "done"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "pub": true,
+              "doc": "Works on disjoint parts side by side, then merges the results: `items`,\na constant list the applying workflow writes, a part each. Each item\nis handed `scope` narrowed to its own `part`, so no two items write the\nsame place."
+            },
+            "MakerChecker": {
+              "kind": "pattern",
+              "generics": [
+                "In",
+                "Out"
+              ],
+              "slots": [
+                {
+                  "name": "input",
+                  "kind": "const",
+                  "type": {
+                    "ref": "In"
+                  }
+                },
+                {
+                  "name": "make",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "In"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Out"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "check",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "In"
+                    },
+                    {
+                      "ref": "Inferred",
+                      "args": [
+                        {
+                          "ref": "Out"
+                        }
+                      ]
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Out"
+                      }
+                    ]
+                  },
+                  "read_only": true
+                },
+                {
+                  "name": "accepted",
+                  "kind": "contract",
+                  "params": [
+                    {
+                      "ref": "In"
+                    },
+                    {
+                      "ref": "Out"
+                    }
+                  ]
+                },
+                {
+                  "name": "owner",
+                  "kind": "role"
+                }
+              ],
+              "returns": {
+                "ref": "Verified",
+                "args": [
+                  {
+                    "ref": "Out"
+                  },
+                  {
+                    "ref": "accepted"
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "made",
+                  "value": {
+                    "op": "delegate",
+                    "slot": "make",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "input"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "let",
+                  "name": "checked",
+                  "value": {
+                    "op": "delegate",
+                    "slot": "check",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "input"
+                        }
+                      },
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "made"
+                        }
+                      }
+                    ],
+                    "isolated": true
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "verify",
+                    "value": {
+                      "op": "var",
+                      "name": "checked"
+                    },
+                    "contract": "accepted",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "input"
+                        }
+                      },
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "checked"
+                        }
+                      }
+                    ],
+                    "on_unmet": {
+                      "bind": "c",
+                      "then": {
+                        "op": "escalate",
+                        "to": {
+                          "op": "call",
+                          "callee": {
+                            "op": "var",
+                            "name": "human"
+                          },
+                          "args": [
+                            {
+                              "value": {
+                                "op": "template",
+                                "parts": [
+                                  {
+                                    "text": "Open criteria: "
+                                  },
+                                  {
+                                    "expr": {
+                                      "op": "var",
+                                      "name": "c"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "name": "role",
+                              "value": {
+                                "op": "var",
+                                "name": "owner"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "pub": true,
+              "doc": "One agent makes from `input`, a constant the applying workflow writes;\nanother, isolated and holding no write capability,\nlooks for a counterexample. What it finds is held to the contract, and\nthe criteria left open go to the owner."
+            },
+            "Brief": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "topic": {
+                    "ref": "Text"
+                  }
+                }
+              }
+            },
+            "Draft": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "title": {
+                    "ref": "Text"
+                  },
+                  "words": {
+                    "ref": "Int"
+                  }
+                }
+              }
+            },
+            "Lead": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                }
+              ],
+              "skills": {
+                "finish": {
+                  "params": [
+                    {
+                      "name": "n",
+                      "type": {
+                        "ref": "Int"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Summary"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Plans the work that is left.",
+              "budget": {
+                "tokens": 5000,
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 20
+              }
+            },
+            "ModelStd": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "model"
+                  },
+                  "name": "infer"
+                },
+                "args": [
+                  {
+                    "name": "tier",
+                    "value": {
+                      "op": "var",
+                      "name": "standard"
+                    }
+                  }
+                ]
+              }
+            },
+            "Summary": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "moved": {
+                    "ref": "Int"
+                  }
+                }
+              }
+            },
+            "Migrator": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                },
+                {
+                  "op": "var",
+                  "name": "RepoRead"
+                },
+                {
+                  "op": "var",
+                  "name": "SrcWrite"
+                }
+              ],
+              "skills": {
+                "migrate": {
+                  "params": [
+                    {
+                      "name": "repo",
+                      "type": {
+                        "ref": "Repo"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Summary"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Fs.Write"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Moves one repository.",
+              "budget": {
+                "tokens": 40000,
+                "spend": {
+                  "micros": 500000,
+                  "currency": "USD"
+                },
+                "steps": 12
+              }
+            },
+            "Repo": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "name": {
+                    "ref": "Text"
+                  },
+                  "root": {
+                    "ref": "Path"
+                  }
+                }
+              }
+            },
+            "RepoRead": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "read"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work/repos"
+                    }
+                  }
+                ]
+              }
+            },
+            "SrcWrite": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "write"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work/repos"
+                    }
+                  }
+                ]
+              }
+            },
+            "Notes": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "read"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work/notes"
+                    }
+                  }
+                ]
+              }
+            },
+            "Reader": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                },
+                {
+                  "op": "var",
+                  "name": "Notes"
+                }
+              ],
+              "skills": {
+                "review": {
+                  "params": [
+                    {
+                      "name": "b",
+                      "type": {
+                        "ref": "Brief"
+                      }
+                    },
+                    {
+                      "name": "d",
+                      "type": {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Draft"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Draft"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Looks for what is wrong with a draft. Writes nothing.",
+              "budget": {
+                "tokens": 20000,
+                "spend": {
+                  "micros": 200000,
+                  "currency": "USD"
+                },
+                "steps": 4
+              }
+            },
+            "Reporter": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                }
+              ],
+              "skills": {
+                "sum": {
+                  "params": [
+                    {
+                      "name": "done",
+                      "type": {
+                        "ref": "List",
+                        "args": [
+                          {
+                            "ref": "Outcome",
+                            "args": [
+                              {
+                                "ref": "Inferred",
+                                "args": [
+                                  {
+                                    "ref": "Summary"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Summary"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Sums up what was moved.",
+              "budget": {
+                "tokens": 20000,
+                "spend": {
+                  "micros": 200000,
+                  "currency": "USD"
+                },
+                "steps": 4
+              }
+            },
+            "Run": {
+              "kind": "workflow",
+              "params": [
+                {
+                  "name": "n",
+                  "type": {
+                    "ref": "Int"
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "Summary"
+                  }
+                ]
+              },
+              "caps": [],
+              "body": [
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "plan",
+                    "agent": "Lead",
+                    "skill": "finish",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "n"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "envelope": {
+                "owner": "platform_lead",
+                "caps": [
+                  {
+                    "op": "var",
+                    "name": "ModelStd"
+                  },
+                  {
+                    "op": "var",
+                    "name": "Notes"
+                  },
+                  {
+                    "op": "var",
+                    "name": "RepoRead"
+                  },
+                  {
+                    "op": "var",
+                    "name": "SrcWrite"
+                  }
+                ],
+                "budget": {
+                  "tokens": 1000000,
+                  "time": {
+                    "ms": 7200000
+                  },
+                  "spend": {
+                    "micros": 40000000,
+                    "currency": "USD"
+                  },
+                  "steps": 500,
+                  "agents": 40
+                },
+                "spawn": {
+                  "max_concurrent": 8
+                }
+              }
+            },
+            "Short": {
+              "kind": "contract",
+              "params": [
+                {
+                  "name": "b",
+                  "type": {
+                    "ref": "Brief"
+                  }
+                },
+                {
+                  "name": "d",
+                  "type": {
+                    "ref": "Draft"
+                  }
+                }
+              ],
+              "accept": {
+                "short": {
+                  "description": "The draft is at most 800 words",
+                  "by": {
+                    "static": {
+                      "op": "binary",
+                      "bop": "<=",
+                      "left": {
+                        "op": "field",
+                        "of": {
+                          "op": "var",
+                          "name": "d"
+                        },
+                        "name": "words"
+                      },
+                      "right": {
+                        "op": "int",
+                        "value": 800
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Writer": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                },
+                {
+                  "op": "var",
+                  "name": "Notes"
+                }
+              ],
+              "skills": {
+                "draft": {
+                  "params": [
+                    {
+                      "name": "b",
+                      "type": {
+                        "ref": "Brief"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Draft"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Drafts a text.",
+              "budget": {
+                "tokens": 40000,
+                "spend": {
+                  "micros": 400000,
+                  "currency": "USD"
+                },
+                "steps": 8
+              }
+            },
+            "editor": {
+              "kind": "role",
+              "description": "Editor"
+            },
+            "platform_lead": {
+              "kind": "role",
+              "description": "Platform lead"
+            }
+          }
+        },
+        "running_hash": "sha256:435cc8214013f0936915545866ebad713c78407f860be8c7b3bd18ea66e959ac"
       }
     },
     {
@@ -10327,7 +11379,1078 @@
           }
         },
         "hash": "sha256:35e98e81cb5b2a5e54a2b7cbe595bf1a0f5b3711b75fe705db89ea7fcf01d787",
-        "workflow": "Write"
+        "workflow": "Write",
+        "running": {
+          "language": "mandate/0.6",
+          "module": "example.fleet.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.fleet"
+            }
+          ],
+          "defs": {
+            "Write": {
+              "kind": "workflow",
+              "params": [],
+              "returns": {
+                "ref": "Verified",
+                "args": [
+                  {
+                    "ref": "Draft"
+                  },
+                  {
+                    "ref": "Short"
+                  }
+                ]
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                },
+                {
+                  "op": "var",
+                  "name": "Notes"
+                }
+              ],
+              "body": [
+                {
+                  "op": "let",
+                  "name": "made",
+                  "value": {
+                    "op": "delegate",
+                    "agent": "Writer",
+                    "skill": "draft",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "record",
+                          "type": "Brief",
+                          "fields": {
+                            "topic": {
+                              "op": "text",
+                              "value": "the release"
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "let",
+                  "name": "checked",
+                  "value": {
+                    "op": "delegate",
+                    "agent": "Reader",
+                    "skill": "review",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "record",
+                          "type": "Brief",
+                          "fields": {
+                            "topic": {
+                              "op": "text",
+                              "value": "the release"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "made"
+                        }
+                      }
+                    ],
+                    "isolated": true
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "verify",
+                    "value": {
+                      "op": "var",
+                      "name": "checked"
+                    },
+                    "contract": "Short",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "record",
+                          "type": "Brief",
+                          "fields": {
+                            "topic": {
+                              "op": "text",
+                              "value": "the release"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "checked"
+                        }
+                      }
+                    ],
+                    "on_unmet": {
+                      "bind": "c",
+                      "then": {
+                        "op": "escalate",
+                        "to": {
+                          "op": "call",
+                          "callee": {
+                            "op": "var",
+                            "name": "human"
+                          },
+                          "args": [
+                            {
+                              "value": {
+                                "op": "template",
+                                "parts": [
+                                  {
+                                    "text": "Open criteria: "
+                                  },
+                                  {
+                                    "expr": {
+                                      "op": "var",
+                                      "name": "c"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "name": "role",
+                              "value": {
+                                "op": "var",
+                                "name": "editor"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "budget": {
+                "tokens": 200000,
+                "time": {
+                  "ms": 3600000
+                },
+                "spend": {
+                  "micros": 5000000,
+                  "currency": "USD"
+                },
+                "steps": 100,
+                "agents": 10
+              }
+            },
+            "FanOutMerge": {
+              "kind": "pattern",
+              "generics": [
+                "Item",
+                "Out",
+                "M"
+              ],
+              "slots": [
+                {
+                  "name": "items",
+                  "kind": "const",
+                  "type": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Item"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "work",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "Item"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Out"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "scope",
+                  "kind": "capability"
+                },
+                {
+                  "name": "part",
+                  "kind": "field",
+                  "type": {
+                    "ref": "Item"
+                  }
+                },
+                {
+                  "name": "merge",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "List",
+                      "args": [
+                        {
+                          "ref": "Outcome",
+                          "args": [
+                            {
+                              "ref": "Inferred",
+                              "args": [
+                                {
+                                  "ref": "Out"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "M"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "max_items",
+                  "kind": "const",
+                  "type": {
+                    "ref": "Int"
+                  }
+                },
+                {
+                  "name": "concurrency",
+                  "kind": "const",
+                  "type": {
+                    "ref": "Int"
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "M"
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "done",
+                  "value": {
+                    "op": "map",
+                    "bind": "it",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "slot": "work",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "it"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": "max_items",
+                    "par": "concurrency",
+                    "caps": [
+                      {
+                        "op": "call",
+                        "callee": {
+                          "op": "field",
+                          "of": {
+                            "op": "var",
+                            "name": "scope"
+                          },
+                          "name": "narrow"
+                        },
+                        "args": [
+                          {
+                            "value": {
+                              "op": "field",
+                              "of": {
+                                "op": "var",
+                                "name": "it"
+                              },
+                              "name": "part"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "delegate",
+                    "slot": "merge",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "done"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "pub": true,
+              "doc": "Works on disjoint parts side by side, then merges the results: `items`,\na constant list the applying workflow writes, a part each. Each item\nis handed `scope` narrowed to its own `part`, so no two items write the\nsame place."
+            },
+            "MakerChecker": {
+              "kind": "pattern",
+              "generics": [
+                "In",
+                "Out"
+              ],
+              "slots": [
+                {
+                  "name": "input",
+                  "kind": "const",
+                  "type": {
+                    "ref": "In"
+                  }
+                },
+                {
+                  "name": "make",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "In"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Out"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "check",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "In"
+                    },
+                    {
+                      "ref": "Inferred",
+                      "args": [
+                        {
+                          "ref": "Out"
+                        }
+                      ]
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Out"
+                      }
+                    ]
+                  },
+                  "read_only": true
+                },
+                {
+                  "name": "accepted",
+                  "kind": "contract",
+                  "params": [
+                    {
+                      "ref": "In"
+                    },
+                    {
+                      "ref": "Out"
+                    }
+                  ]
+                },
+                {
+                  "name": "owner",
+                  "kind": "role"
+                }
+              ],
+              "returns": {
+                "ref": "Verified",
+                "args": [
+                  {
+                    "ref": "Out"
+                  },
+                  {
+                    "ref": "accepted"
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "made",
+                  "value": {
+                    "op": "delegate",
+                    "slot": "make",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "input"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "let",
+                  "name": "checked",
+                  "value": {
+                    "op": "delegate",
+                    "slot": "check",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "input"
+                        }
+                      },
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "made"
+                        }
+                      }
+                    ],
+                    "isolated": true
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "verify",
+                    "value": {
+                      "op": "var",
+                      "name": "checked"
+                    },
+                    "contract": "accepted",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "input"
+                        }
+                      },
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "checked"
+                        }
+                      }
+                    ],
+                    "on_unmet": {
+                      "bind": "c",
+                      "then": {
+                        "op": "escalate",
+                        "to": {
+                          "op": "call",
+                          "callee": {
+                            "op": "var",
+                            "name": "human"
+                          },
+                          "args": [
+                            {
+                              "value": {
+                                "op": "template",
+                                "parts": [
+                                  {
+                                    "text": "Open criteria: "
+                                  },
+                                  {
+                                    "expr": {
+                                      "op": "var",
+                                      "name": "c"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "name": "role",
+                              "value": {
+                                "op": "var",
+                                "name": "owner"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "pub": true,
+              "doc": "One agent makes from `input`, a constant the applying workflow writes;\nanother, isolated and holding no write capability,\nlooks for a counterexample. What it finds is held to the contract, and\nthe criteria left open go to the owner."
+            },
+            "Brief": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "topic": {
+                    "ref": "Text"
+                  }
+                }
+              }
+            },
+            "Draft": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "title": {
+                    "ref": "Text"
+                  },
+                  "words": {
+                    "ref": "Int"
+                  }
+                }
+              }
+            },
+            "Lead": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                }
+              ],
+              "skills": {
+                "finish": {
+                  "params": [
+                    {
+                      "name": "n",
+                      "type": {
+                        "ref": "Int"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Summary"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Plans the work that is left.",
+              "budget": {
+                "tokens": 5000,
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 20
+              }
+            },
+            "ModelStd": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "model"
+                  },
+                  "name": "infer"
+                },
+                "args": [
+                  {
+                    "name": "tier",
+                    "value": {
+                      "op": "var",
+                      "name": "standard"
+                    }
+                  }
+                ]
+              }
+            },
+            "Summary": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "moved": {
+                    "ref": "Int"
+                  }
+                }
+              }
+            },
+            "Migrator": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                },
+                {
+                  "op": "var",
+                  "name": "RepoRead"
+                },
+                {
+                  "op": "var",
+                  "name": "SrcWrite"
+                }
+              ],
+              "skills": {
+                "migrate": {
+                  "params": [
+                    {
+                      "name": "repo",
+                      "type": {
+                        "ref": "Repo"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Summary"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Fs.Write"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Moves one repository.",
+              "budget": {
+                "tokens": 40000,
+                "spend": {
+                  "micros": 500000,
+                  "currency": "USD"
+                },
+                "steps": 12
+              }
+            },
+            "Repo": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "name": {
+                    "ref": "Text"
+                  },
+                  "root": {
+                    "ref": "Path"
+                  }
+                }
+              }
+            },
+            "RepoRead": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "read"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work/repos"
+                    }
+                  }
+                ]
+              }
+            },
+            "SrcWrite": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "write"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work/repos"
+                    }
+                  }
+                ]
+              }
+            },
+            "Notes": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "read"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work/notes"
+                    }
+                  }
+                ]
+              }
+            },
+            "Reader": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                },
+                {
+                  "op": "var",
+                  "name": "Notes"
+                }
+              ],
+              "skills": {
+                "review": {
+                  "params": [
+                    {
+                      "name": "b",
+                      "type": {
+                        "ref": "Brief"
+                      }
+                    },
+                    {
+                      "name": "d",
+                      "type": {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Draft"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Draft"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Looks for what is wrong with a draft. Writes nothing.",
+              "budget": {
+                "tokens": 20000,
+                "spend": {
+                  "micros": 200000,
+                  "currency": "USD"
+                },
+                "steps": 4
+              }
+            },
+            "Reporter": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                }
+              ],
+              "skills": {
+                "sum": {
+                  "params": [
+                    {
+                      "name": "done",
+                      "type": {
+                        "ref": "List",
+                        "args": [
+                          {
+                            "ref": "Outcome",
+                            "args": [
+                              {
+                                "ref": "Inferred",
+                                "args": [
+                                  {
+                                    "ref": "Summary"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Summary"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Sums up what was moved.",
+              "budget": {
+                "tokens": 20000,
+                "spend": {
+                  "micros": 200000,
+                  "currency": "USD"
+                },
+                "steps": 4
+              }
+            },
+            "Run": {
+              "kind": "workflow",
+              "params": [
+                {
+                  "name": "n",
+                  "type": {
+                    "ref": "Int"
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "Summary"
+                  }
+                ]
+              },
+              "caps": [],
+              "body": [
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "plan",
+                    "agent": "Lead",
+                    "skill": "finish",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "n"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "envelope": {
+                "owner": "platform_lead",
+                "caps": [
+                  {
+                    "op": "var",
+                    "name": "ModelStd"
+                  },
+                  {
+                    "op": "var",
+                    "name": "Notes"
+                  },
+                  {
+                    "op": "var",
+                    "name": "RepoRead"
+                  },
+                  {
+                    "op": "var",
+                    "name": "SrcWrite"
+                  }
+                ],
+                "budget": {
+                  "tokens": 1000000,
+                  "time": {
+                    "ms": 7200000
+                  },
+                  "spend": {
+                    "micros": 40000000,
+                    "currency": "USD"
+                  },
+                  "steps": 500,
+                  "agents": 40
+                },
+                "spawn": {
+                  "max_concurrent": 8
+                }
+              }
+            },
+            "Short": {
+              "kind": "contract",
+              "params": [
+                {
+                  "name": "b",
+                  "type": {
+                    "ref": "Brief"
+                  }
+                },
+                {
+                  "name": "d",
+                  "type": {
+                    "ref": "Draft"
+                  }
+                }
+              ],
+              "accept": {
+                "short": {
+                  "description": "The draft is at most 800 words",
+                  "by": {
+                    "static": {
+                      "op": "binary",
+                      "bop": "<=",
+                      "left": {
+                        "op": "field",
+                        "of": {
+                          "op": "var",
+                          "name": "d"
+                        },
+                        "name": "words"
+                      },
+                      "right": {
+                        "op": "int",
+                        "value": 800
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Writer": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "ModelStd"
+                },
+                {
+                  "op": "var",
+                  "name": "Notes"
+                }
+              ],
+              "skills": {
+                "draft": {
+                  "params": [
+                    {
+                      "name": "b",
+                      "type": {
+                        "ref": "Brief"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Draft"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Drafts a text.",
+              "budget": {
+                "tokens": 40000,
+                "spend": {
+                  "micros": 400000,
+                  "currency": "USD"
+                },
+                "steps": 8
+              }
+            },
+            "editor": {
+              "kind": "role",
+              "description": "Editor"
+            },
+            "platform_lead": {
+              "kind": "role",
+              "description": "Platform lead"
+            }
+          }
+        },
+        "running_hash": "sha256:899b41194be0c693f2d2e1006af5266350a93ceae97899a79a890301be6525b4"
       }
     },
     {
@@ -10549,7 +12672,998 @@
         "shape": {
           "pattern": "Each",
           "module": "example.shaped"
-        }
+        },
+        "running": {
+          "language": "mandate/0.6",
+          "module": "example.shaped.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.shaped"
+            }
+          ],
+          "defs": {
+            "Look": {
+              "kind": "workflow",
+              "params": [],
+              "returns": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Outcome",
+                    "args": [
+                      {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Text"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "body": [
+                {
+                  "op": "let",
+                  "name": "items",
+                  "value": {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "a"
+                          }
+                        }
+                      },
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "b"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "map",
+                    "bind": "i",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "agent": "Worker",
+                          "skill": "look",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "i"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2,
+                    "par": 2
+                  }
+                }
+              ],
+              "budget": {
+                "tokens": 2000,
+                "time": {
+                  "ms": 600000
+                },
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 10,
+                "agents": 2
+              }
+            },
+            "Batch": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "posted": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Outcome",
+                        "args": [
+                          {
+                            "ref": "Receipt",
+                            "args": [
+                              {
+                                "ref": "R"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "declined": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Declined",
+                        "args": [
+                          {
+                            "ref": "Out"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "failed": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Int"
+                      }
+                    ]
+                  }
+                }
+              },
+              "generics": [
+                "Out",
+                "R"
+              ],
+              "pub": true,
+              "doc": "The result of a batch: each commit's outcome, what was declined, and the\nindices of the items whose work failed."
+            },
+            "FanOutMerge": {
+              "kind": "pattern",
+              "generics": [
+                "Item",
+                "Out",
+                "M"
+              ],
+              "slots": [
+                {
+                  "name": "items",
+                  "kind": "const",
+                  "type": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Item"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "work",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "Item"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Out"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "scope",
+                  "kind": "capability"
+                },
+                {
+                  "name": "part",
+                  "kind": "field",
+                  "type": {
+                    "ref": "Item"
+                  }
+                },
+                {
+                  "name": "merge",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "List",
+                      "args": [
+                        {
+                          "ref": "Outcome",
+                          "args": [
+                            {
+                              "ref": "Inferred",
+                              "args": [
+                                {
+                                  "ref": "Out"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "M"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "max_items",
+                  "kind": "const",
+                  "type": {
+                    "ref": "Int"
+                  }
+                },
+                {
+                  "name": "concurrency",
+                  "kind": "const",
+                  "type": {
+                    "ref": "Int"
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "M"
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "done",
+                  "value": {
+                    "op": "map",
+                    "bind": "it",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "slot": "work",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "it"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": "max_items",
+                    "par": "concurrency",
+                    "caps": [
+                      {
+                        "op": "call",
+                        "callee": {
+                          "op": "field",
+                          "of": {
+                            "op": "var",
+                            "name": "scope"
+                          },
+                          "name": "narrow"
+                        },
+                        "args": [
+                          {
+                            "value": {
+                              "op": "field",
+                              "of": {
+                                "op": "var",
+                                "name": "it"
+                              },
+                              "name": "part"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "delegate",
+                    "slot": "merge",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "done"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "pub": true,
+              "doc": "Works on disjoint parts side by side, then merges the results: `items`,\na constant list the applying workflow writes, a part each. Each item\nis handed `scope` narrowed to its own `part`, so no two items write the\nsame place."
+            },
+            "MakerChecker": {
+              "kind": "pattern",
+              "generics": [
+                "In",
+                "Out"
+              ],
+              "slots": [
+                {
+                  "name": "input",
+                  "kind": "const",
+                  "type": {
+                    "ref": "In"
+                  }
+                },
+                {
+                  "name": "make",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "In"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Out"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "check",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "In"
+                    },
+                    {
+                      "ref": "Inferred",
+                      "args": [
+                        {
+                          "ref": "Out"
+                        }
+                      ]
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Out"
+                      }
+                    ]
+                  },
+                  "read_only": true
+                },
+                {
+                  "name": "accepted",
+                  "kind": "contract",
+                  "params": [
+                    {
+                      "ref": "In"
+                    },
+                    {
+                      "ref": "Out"
+                    }
+                  ]
+                },
+                {
+                  "name": "owner",
+                  "kind": "role"
+                }
+              ],
+              "returns": {
+                "ref": "Verified",
+                "args": [
+                  {
+                    "ref": "Out"
+                  },
+                  {
+                    "ref": "accepted"
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "made",
+                  "value": {
+                    "op": "delegate",
+                    "slot": "make",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "input"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "let",
+                  "name": "checked",
+                  "value": {
+                    "op": "delegate",
+                    "slot": "check",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "input"
+                        }
+                      },
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "made"
+                        }
+                      }
+                    ],
+                    "isolated": true
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "verify",
+                    "value": {
+                      "op": "var",
+                      "name": "checked"
+                    },
+                    "contract": "accepted",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "input"
+                        }
+                      },
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "checked"
+                        }
+                      }
+                    ],
+                    "on_unmet": {
+                      "bind": "c",
+                      "then": {
+                        "op": "escalate",
+                        "to": {
+                          "op": "call",
+                          "callee": {
+                            "op": "var",
+                            "name": "human"
+                          },
+                          "args": [
+                            {
+                              "value": {
+                                "op": "template",
+                                "parts": [
+                                  {
+                                    "text": "Open criteria: "
+                                  },
+                                  {
+                                    "expr": {
+                                      "op": "var",
+                                      "name": "c"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "name": "role",
+                              "value": {
+                                "op": "var",
+                                "name": "owner"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "pub": true,
+              "doc": "One agent makes from `input`, a constant the applying workflow writes;\nanother, isolated and holding no write capability,\nlooks for a counterexample. What it finds is held to the contract, and\nthe criteria left open go to the owner."
+            },
+            "Each": {
+              "kind": "pattern",
+              "slots": [
+                {
+                  "name": "work",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "Item"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "width",
+                  "kind": "const",
+                  "type": {
+                    "ref": "Int"
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Outcome",
+                    "args": [
+                      {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Text"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "items",
+                  "value": {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "a"
+                          }
+                        }
+                      },
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "b"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "map",
+                    "bind": "i",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "slot": "work",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "i"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2,
+                    "par": "width"
+                  }
+                }
+              ],
+              "doc": "The two items, each looked at by `work`, `width` at a time."
+            },
+            "Item": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "name": {
+                    "ref": "Text"
+                  }
+                }
+              }
+            },
+            "Lead": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "skills": {
+                "finish": {
+                  "params": [
+                    {
+                      "name": "items",
+                      "type": {
+                        "ref": "List",
+                        "args": [
+                          {
+                            "ref": "Item"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Plans what is left.",
+              "budget": {
+                "tokens": 5000,
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 20
+              }
+            },
+            "M": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "model"
+                  },
+                  "name": "infer"
+                },
+                "args": [
+                  {
+                    "name": "tier",
+                    "value": {
+                      "op": "var",
+                      "name": "standard"
+                    }
+                  }
+                ]
+              }
+            },
+            "R": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "read"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work"
+                    }
+                  }
+                ]
+              }
+            },
+            "Run": {
+              "kind": "workflow",
+              "params": [
+                {
+                  "name": "items",
+                  "type": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Item"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "Text"
+                  }
+                ]
+              },
+              "caps": [],
+              "body": [
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "plan",
+                    "agent": "Lead",
+                    "skill": "finish",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "items"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "envelope": {
+                "owner": "owner_role",
+                "caps": [
+                  {
+                    "op": "var",
+                    "name": "M"
+                  },
+                  {
+                    "op": "var",
+                    "name": "R"
+                  }
+                ],
+                "budget": {
+                  "tokens": 100000,
+                  "time": {
+                    "ms": 3600000
+                  },
+                  "spend": {
+                    "micros": 20000000,
+                    "currency": "USD"
+                  },
+                  "steps": 200,
+                  "agents": 20
+                },
+                "spawn": {
+                  "max_concurrent": 4
+                },
+                "shapes": [
+                  "Each",
+                  "FanOutMerge"
+                ]
+              }
+            },
+            "Spare": {
+              "kind": "pattern",
+              "slots": [
+                {
+                  "name": "work",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "Item"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Outcome",
+                    "args": [
+                      {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Text"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "items",
+                  "value": {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "a"
+                          }
+                        }
+                      },
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "b"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "map",
+                    "bind": "i",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "slot": "work",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "i"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2
+                  }
+                }
+              ],
+              "doc": "The same two items, one at a time: a pattern the envelope does not list."
+            },
+            "Worker": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "skills": {
+                "look": {
+                  "params": [
+                    {
+                      "name": "i",
+                      "type": {
+                        "ref": "Item"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Looks at one item.",
+              "budget": {
+                "tokens": 1000,
+                "spend": {
+                  "micros": 1000000,
+                  "currency": "USD"
+                },
+                "steps": 5
+              }
+            },
+            "owner_role": {
+              "kind": "role",
+              "description": "Owner"
+            }
+          }
+        },
+        "running_hash": "sha256:abfd6b600c873d8b575ef9be139e66a3a2e5b520a0aa969fba6958dd1951153a"
       }
     },
     {
@@ -12037,7 +15151,555 @@
           }
         },
         "hash": "sha256:e0f27377ddcf1fad0c9ad04a7683a56efe0face62e3040a22d17a59cfb20e0ff",
-        "workflow": "Look"
+        "workflow": "Look",
+        "running": {
+          "language": "mandate/0.6",
+          "module": "example.lead.plan_1",
+          "version": "0.1",
+          "uses": [
+            {
+              "module": "example.lead"
+            }
+          ],
+          "defs": {
+            "Look": {
+              "kind": "workflow",
+              "params": [],
+              "returns": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Outcome",
+                    "args": [
+                      {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Text"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "body": [
+                {
+                  "op": "let",
+                  "name": "items",
+                  "value": {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "a"
+                          }
+                        }
+                      },
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "b"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "map",
+                    "bind": "i",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "agent": "Worker",
+                          "skill": "look",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "i"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2,
+                    "par": 2
+                  }
+                }
+              ],
+              "budget": {
+                "tokens": 2000,
+                "time": {
+                  "ms": 600000
+                },
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 10,
+                "agents": 2
+              }
+            },
+            "Each": {
+              "kind": "pattern",
+              "slots": [
+                {
+                  "name": "work",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "Item"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "width",
+                  "kind": "const",
+                  "type": {
+                    "ref": "Int"
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Outcome",
+                    "args": [
+                      {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Text"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "let",
+                  "name": "items",
+                  "value": {
+                    "op": "list",
+                    "items": [
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "a"
+                          }
+                        }
+                      },
+                      {
+                        "op": "record",
+                        "type": "Item",
+                        "fields": {
+                          "name": {
+                            "op": "text",
+                            "value": "b"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "map",
+                    "bind": "i",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "slot": "work",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "i"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2,
+                    "par": "width"
+                  }
+                }
+              ],
+              "doc": "The two items, each looked at by `work`, `width` at a time."
+            },
+            "Item": {
+              "kind": "type",
+              "type": {
+                "record": {
+                  "name": {
+                    "ref": "Text"
+                  }
+                }
+              }
+            },
+            "Lead": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "skills": {
+                "finish": {
+                  "params": [
+                    {
+                      "name": "items",
+                      "type": {
+                        "ref": "List",
+                        "args": [
+                          {
+                            "ref": "Item"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Plans what is left.",
+              "budget": {
+                "tokens": 5000,
+                "spend": {
+                  "micros": 2000000,
+                  "currency": "USD"
+                },
+                "steps": 20
+              }
+            },
+            "M": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "model"
+                  },
+                  "name": "infer"
+                },
+                "args": [
+                  {
+                    "name": "tier",
+                    "value": {
+                      "op": "var",
+                      "name": "standard"
+                    }
+                  }
+                ]
+              }
+            },
+            "R": {
+              "kind": "capability",
+              "value": {
+                "op": "call",
+                "callee": {
+                  "op": "field",
+                  "of": {
+                    "op": "var",
+                    "name": "fs"
+                  },
+                  "name": "read"
+                },
+                "args": [
+                  {
+                    "value": {
+                      "op": "text",
+                      "value": "/work"
+                    }
+                  }
+                ]
+              }
+            },
+            "Over": {
+              "kind": "pattern",
+              "slots": [
+                {
+                  "name": "work",
+                  "kind": "skill",
+                  "params": [
+                    {
+                      "ref": "Item"
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "params": [
+                {
+                  "name": "items",
+                  "type": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Item"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "List",
+                "args": [
+                  {
+                    "ref": "Outcome",
+                    "args": [
+                      {
+                        "ref": "Inferred",
+                        "args": [
+                          {
+                            "ref": "Text"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "body": [
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "map",
+                    "bind": "i",
+                    "over": {
+                      "op": "var",
+                      "name": "items"
+                    },
+                    "body": [
+                      {
+                        "op": "expr",
+                        "value": {
+                          "op": "delegate",
+                          "slot": "work",
+                          "args": [
+                            {
+                              "value": {
+                                "op": "var",
+                                "name": "i"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "max": 2
+                  }
+                }
+              ],
+              "doc": "The items it is run with, each looked at by `work`: a pattern with a run\nparameter, which a sub-program's workflow cannot take (P06b)."
+            },
+            "Run": {
+              "kind": "workflow",
+              "params": [
+                {
+                  "name": "items",
+                  "type": {
+                    "ref": "List",
+                    "args": [
+                      {
+                        "ref": "Item"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returns": {
+                "ref": "Inferred",
+                "args": [
+                  {
+                    "ref": "Text"
+                  }
+                ]
+              },
+              "caps": [],
+              "body": [
+                {
+                  "op": "expr",
+                  "value": {
+                    "op": "plan",
+                    "agent": "Lead",
+                    "skill": "finish",
+                    "args": [
+                      {
+                        "value": {
+                          "op": "var",
+                          "name": "items"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "envelope": {
+                "owner": "owner_role",
+                "caps": [
+                  {
+                    "op": "var",
+                    "name": "M"
+                  },
+                  {
+                    "op": "var",
+                    "name": "R"
+                  }
+                ],
+                "budget": {
+                  "tokens": 100000,
+                  "time": {
+                    "ms": 3600000
+                  },
+                  "spend": {
+                    "micros": 20000000,
+                    "currency": "USD"
+                  },
+                  "steps": 200,
+                  "agents": 20
+                },
+                "spawn": {
+                  "max_concurrent": 4
+                }
+              }
+            },
+            "Worker": {
+              "kind": "agent",
+              "caps": [
+                {
+                  "op": "var",
+                  "name": "M"
+                },
+                {
+                  "op": "var",
+                  "name": "R"
+                }
+              ],
+              "skills": {
+                "look": {
+                  "params": [
+                    {
+                      "name": "i",
+                      "type": {
+                        "ref": "Item"
+                      }
+                    }
+                  ],
+                  "returns": {
+                    "ref": "Inferred",
+                    "args": [
+                      {
+                        "ref": "Text"
+                      }
+                    ]
+                  },
+                  "effects": [
+                    {
+                      "effect": "Fs.Read"
+                    },
+                    {
+                      "effect": "Model"
+                    }
+                  ]
+                }
+              },
+              "role": "Looks at one item.",
+              "budget": {
+                "tokens": 1000,
+                "spend": {
+                  "micros": 1000000,
+                  "currency": "USD"
+                },
+                "steps": 5
+              }
+            },
+            "owner_role": {
+              "kind": "role",
+              "description": "Owner"
+            }
+          }
+        },
+        "running_hash": "sha256:e4325df3b35bb3e9af71b983cf7f379ac301d95c1fea653495fc96e0b4884b2e"
       }
     },
     {

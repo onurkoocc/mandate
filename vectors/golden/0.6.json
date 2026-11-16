@@ -91,9 +91,9 @@
     "view --card --format json": "sha256:39ee82b5b24d38d4e05017572058f76b53af02c67c7130f9b4fffe979a2eece1",
     "view --card --format md": "sha256:2ad0ca2f1ee76c615906434ad796efc747b28dc23fa1355b308a0abac491bab0",
     "view --card --format html": "sha256:993461878f8e5c2681d6abf7774466ceda6b8269885bd173581e9c3024e534d1",
-    "check_subprogram migrate-all.plans/fan-out.mdt": "sha256:5b8fa20e83f7839970008d1e8c0f0c92a6e82459effe904f53cb62ae174c11ef",
+    "check_subprogram migrate-all.plans/fan-out.mdt": "sha256:f12030f1487707e9990bb5baf962eb38ea7d51b79d45fabb129b80f28efe1657",
     "check_subprogram migrate-all.plans/written-out.mdt": "sha256:ec0834a65c7fdb8786a1afc1c5a59a70cbabd6f5a460a20cf78158dc39d70513",
-    "check_subprogram migrate-all.plans/maker-checker.mdt": "sha256:f340b1729d04e884474079341ae1140f5a9489bb80b56e0dd0b334f36bf33de4"
+    "check_subprogram migrate-all.plans/maker-checker.mdt": "sha256:6f2cc3ec4a86f8b82a88f610e2d616e8c5358dbe9ca74b0be7b1fc77dc6d8902"
   },
   "fixtures/library/minimal.mdt": {
     "check": "sha256:32a94dc9ae9be1d764f908f122d77530f69ca951b9bf4f8c121759b3e3726175",

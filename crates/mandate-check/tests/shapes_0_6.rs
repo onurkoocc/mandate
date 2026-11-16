@@ -258,10 +258,15 @@ fn an_admitted_sub_program_names_the_shape_it_applies() {
         })
     );
     let js = mandate_ir::stringify(&r.to_js()).unwrap();
+    // The shape follows the workflow; the running program of the sub-program,
+    // which applies a pattern, follows the shape.
     assert!(
-        js.ends_with(r#","workflow":"Look","shape":{"pattern":"Each","module":"example.shaped"}}"#),
+        js.contains(
+            r#","workflow":"Look","shape":{"pattern":"Each","module":"example.shaped"},"running":{"#
+        ),
         "{js}"
     );
+    assert!(r.running_hash.is_some());
     // As the interpreter runs it, it sees what its parent imports of the
     // built-in std.patterns, which nobody hands in.
     let linked = mandate_check::subprogram_linked(r.program.as_ref().unwrap(), &parent, None);

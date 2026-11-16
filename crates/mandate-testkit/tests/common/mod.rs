@@ -308,6 +308,7 @@ pub fn applied_source(
             ok: false,
             hashes: None,
             expanded: None,
+            linked: None,
         }))),
     }
 }

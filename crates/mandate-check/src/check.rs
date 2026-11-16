@@ -61,6 +61,10 @@ pub struct CheckOptions<'a> {
     /// is read besides, and linking follows the modules' imports into
     /// those they reach ([`crate::link_reaching`]).
     pub reach: Option<&'a crate::modules::Reach>,
+    /// 0.6: asks for the running program ([`CheckResult::linked`]) of a
+    /// program of 0.6 that checks. A program of 0.1 to 0.5 is given none,
+    /// asked or not.
+    pub linked: bool,
 }
 
 /// What [`check`] gives: `CheckResult`, `LoadResult` with `ok` and
@@ -85,6 +89,17 @@ pub struct CheckResult {
     /// the program's. `None` for every other program, and for one that does
     /// not check.
     pub expanded: Option<Value>,
+    /// 0.6: when it was asked for ([`CheckOptions::linked`]) and the
+    /// program is of 0.6 and checks (`ok`), the running program: the
+    /// program a run of it runs, which is the expanded program when it
+    /// applies a pattern and the program itself when not, with the linked
+    /// definitions as its `defs`: its own, then every definition it sees of
+    /// the given modules and of its libraries' modules, each linked through
+    /// what its library reaches, the built-in `std.patterns` among them.
+    /// They are the very definitions the static checks and the lock checks
+    /// read, and no other. Never the program's hash: a run stores it, and
+    /// names it by the hash of this value. `None` otherwise.
+    pub linked: Option<Value>,
 }
 
 impl CheckResult {
@@ -244,6 +259,7 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
                 ok: false,
                 hashes: None,
                 expanded: None,
+                linked: None,
             };
         }
     };
@@ -256,6 +272,7 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
             ok: false,
             hashes: None,
             expanded: None,
+            linked: None,
         };
     };
     // 0.6: the libraries the program reads (`crate::library`), whose
@@ -395,6 +412,10 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
     // expansion is given only for a program that checks, as the hash is: a
     // caller never holds an expanded program that was refused.
     let hashes = ok.then(|| hash_program(program_value));
+    // 0.6: the running program, when it is asked for: what was checked,
+    // with the definitions the checks read.
+    let running =
+        (ok && opts.linked && reads_0_6(program)).then(|| running_program(target, target_linked));
     CheckResult {
         program: loaded.program.clone(),
         spans: loaded.spans,
@@ -402,7 +423,27 @@ pub fn check(text: &str, kind: SourceKind, opts: &CheckOptions<'_>) -> CheckResu
         ok,
         hashes,
         expanded: expanded.filter(|_| ok),
+        linked: running,
     }
+}
+
+/// Whether `program` is of language 0.6 or later.
+pub(crate) fn reads_0_6(program: Program<'_>) -> bool {
+    program
+        .language()
+        .is_some_and(|l| l.at_least(mandate_ir::Language::V0_6))
+}
+
+/// The running program of a check ([`CheckResult::linked`]): `target`, the
+/// program that was checked (its expansion, when it applies a pattern),
+/// with the definitions it was checked with as its `defs`, `{ ...target,
+/// defs: linked.defs }`. Apart from [`check`], so that its frame stays
+/// small.
+#[inline(never)]
+fn running_program(target: Program<'_>, linked: &crate::modules::Linked) -> Value {
+    let mut out = target.members().clone();
+    out.insert("defs", linked.defs.clone());
+    Value::Object(out)
 }
 
 /// The stages before the static checks, run again on what the expansion

@@ -99,9 +99,19 @@ pub(super) const CHECK: &[&str] = &["text", "kind", "opts"];
 /// members the TypeScript does not read: `libraries`, the libraries the lock
 /// pins as `[{ manifest, files }]` (as the library doors take them), and
 /// `config`, the `libraries` member of the runtime's configuration, whose
-/// revoked digests a pin is held to (E1608).
+/// revoked digests a pin is held to (E1608); and a third, `linked`, a
+/// boolean that asks for the running program of a program of 0.6. For a
+/// program of 0.1 to 0.5 the member is not read at all, as the TypeScript
+/// does not read it: whatever it holds, the answer is what it was. For a
+/// program of 0.6 that loads, one that is not a boolean is `bad_input`.
 /// Output: `CheckResult`, `{ program?, spans, diagnostics, ok, hashes? }`,
-/// `spans` as [`load`] gives it and `hashes` `{ program, defs }`.
+/// `spans` as [`load`] gives it and `hashes` `{ program, defs }`. Language
+/// 0.6 adds, after them, `expanded` (the expanded program of a program that
+/// applies a pattern and checks) and, only when `opts.linked` is true and
+/// the program is of 0.6 and checks, `linked`: the running program
+/// ([`crate::CheckResult::linked`]), a program whose `defs` are the linked
+/// definitions the checks read. A program of 0.1 to 0.5 is given neither,
+/// whatever `opts` says.
 pub(super) fn check(input: &Value) -> Result<JsValue, DoorError> {
     let a = args(input, CHECK)?;
     let text = a.str("text")?;
@@ -109,6 +119,7 @@ pub(super) fn check(input: &Value) -> Result<JsValue, DoorError> {
     let mut opts = CheckOptions::default();
     let mut libraries = Vec::new();
     let mut config = None;
+    let mut linked_wrong = None;
     if let Some(o) = a.opt_members("opts", "opts.")? {
         opts.lock = o.opt_lock("lock");
         opts.modules = o.opt_modules("modules")?;
@@ -117,12 +128,26 @@ pub(super) fn check(input: &Value) -> Result<JsValue, DoorError> {
         // configuration's `libraries` member (its revoked digests).
         libraries = super::library::sources_of(o, "libraries")?;
         config = super::library::config_of(o)?;
+        // Held until the program's language is known: a program of 0.1
+        // to 0.5 is answered as before, whatever this member holds.
+        match o.opt_bool("linked") {
+            Ok(asked) => opts.linked = asked.unwrap_or(false),
+            Err(e) => linked_wrong = Some(e),
+        }
     }
     if !libraries.is_empty() {
         opts.libraries = Some(&libraries);
     }
     opts.revoked = config.as_ref().map(mandate_lib::LibrariesConfig::revoked);
     let r = crate::check::check(text, kind, &opts);
+    if let Some(e) = linked_wrong
+        && r.program
+            .as_ref()
+            .and_then(mandate_ir::Program::of)
+            .is_some_and(crate::check::reads_0_6)
+    {
+        return Err(e);
+    }
     Ok(JsObject::new()
         .with_some("program", r.program.as_ref().map(ir))
         .with("spans", spans_js(text, kind, &r.spans))
@@ -131,6 +156,8 @@ pub(super) fn check(input: &Value) -> Result<JsValue, DoorError> {
         .with_some("hashes", r.hashes.as_ref().map(ProgramHashes::to_js))
         // 0.6: only for a program that applies a pattern and checks.
         .with_some("expanded", r.expanded.as_ref().map(ir))
+        // 0.6: only when it was asked for, for a program of 0.6 that checks.
+        .with_some("linked", r.linked.as_ref().map(ir))
         .into())
 }
 

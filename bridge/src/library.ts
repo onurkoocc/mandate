@@ -8,13 +8,15 @@
 //   and `doc` on a definition, a pattern and its application, a connector and its tools, a criterion's `waive`,
 //   an envelope's `shapes`; the lock's `libraries` and `connectors`;
 // - what the `check` door takes and gives besides what the reference's `check` does: the libraries the lock pins,
-//   the configuration's `libraries` member, and the expanded program;
+//   the configuration's `libraries` member, and the expanded program; and, when it is asked (`linked`), the running
+//   program, expanded and linked through what each library reaches, which a run runs and stores;
+// - what the `check_subprogram` door gives besides: the running program of a sub-program that applies a pattern;
 // - the Rust-only doors the runtime calls (doors.ts, RUST_ONLY): `library_verify`.
 //
 // In `ts` mode a call of a Rust-only door has no reference to answer it: it throws NoReference, by name, and never
 // passes. A program of 0.6 given to the reference compiler is refused by it on its own (E0103).
 
-import { LANGUAGE_VERSIONS, type CheckOptions, type CheckResult, type Criterion, type Def, type Diagnostic, type Envelope, type Expr, type LanguageVersion as ReferenceLanguage, type Lock as ReferenceLock, type Param, type SourceKind, type Stmt, type TestDef, type TypeExpr, type Use, type WorkflowDef } from "@mandate/compiler";
+import { LANGUAGE_VERSIONS, type CheckOptions, type CheckResult, type Criterion, type Def, type Diagnostic, type Envelope, type Expr, type LanguageVersion as ReferenceLanguage, type Lock as ReferenceLock, type Param, type SourceKind, type Stmt, type SubprogramCheck, type SubprogramInput, type TestDef, type TypeExpr, type Use, type WorkflowDef } from "@mandate/compiler";
 import { countLanguage06 } from "./compare.js";
 import { compilerMode } from "./mode.js";
 import { rustCall } from "./wasm/call.js";
@@ -180,15 +182,36 @@ export interface CheckOptions06 extends Omit<CheckOptions, "lock"> {
   lock?: Lock;
   libraries?: LibrarySource[];
   config?: LibrariesConfig;
+  /** Asks for the running program (`linked`) of a program of 0.6 that checks. A program of 0.1 to 0.5 is given none. */
+  linked?: boolean;
 }
 
-/** What the `check` door gives besides: the expanded program, for a program of 0.6 that applies a pattern and checks. */
+/**
+ * What the `check` door gives besides: the expanded program, for a program of 0.6 that applies a pattern and checks;
+ * and, only when `linked` was asked for and the program is of 0.6 and checks, the running program: the program a run
+ * of it runs (its expansion, when it applies a pattern), with the linked definitions as its `defs`: its own, and
+ * every definition it sees of the given modules and of its libraries' modules, each linked through what its library
+ * reaches, the built-in `std.patterns` among them. They are the very definitions the checks read. It is never
+ * linked again, and is named by its own hash (`hashProgram` of it), never by the program's.
+ */
 export interface CheckResult06 extends CheckResult {
   expanded?: Program06;
+  linked?: Program06;
 }
 
 /** `check` as the bridge exports it: the reference's, which a call of 0.6 reaches only in the Rust (compare.ts). */
 export type Check06 = (text: string, kind: SourceKind, opts?: CheckOptions06) => CheckResult06;
+
+/**
+ * What `check_subprogram` gives besides, for a sub-program of 0.6 that applies a pattern and is admitted: `running`,
+ * the sub-program as a run runs it (expanded, with its own definitions and all its parent sees as its `defs`, linked
+ * through what the parent's libraries reach), and `running_hash`, the hash of that. `program` and `hash` stay the
+ * sub-program as the lead wrote it. A sub-program that applies none is given neither.
+ */
+export type SubprogramCheck06 = SubprogramCheck & { running?: Program06; running_hash?: string };
+
+/** `checkSubprogram` as the bridge exports it: the reference's, which a parent of 0.6 reaches only in the Rust. */
+export type CheckSubprogram06 = (i: SubprogramInput) => SubprogramCheck06;
 
 /** What `library_verify` gives: whether the library reads and checks, and its name, version, digest and pin. */
 export interface LibraryVerified {

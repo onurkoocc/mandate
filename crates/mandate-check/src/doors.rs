@@ -152,7 +152,9 @@ pub struct SubprogramInput<'a> {
 }
 
 /// What [`check_subprogram`] gives: `SubprogramCheck`, `{ ok, diagnostics,
-/// program?, hash?, workflow?, shape? }`.
+/// program?, hash?, workflow? }`, and, 0.6, `{ running?, running_hash? }`
+/// for a sub-program that applies a pattern and `shape?` for one whose
+/// parent has `shapes`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SubprogramCheck {
     /// The sub-program passed every check and fits what is left of the
@@ -166,6 +168,18 @@ pub struct SubprogramCheck {
     pub hash: Option<String>,
     /// When `ok`: the name of its one workflow.
     pub workflow: Option<String>,
+    /// 0.6, when `ok` and the sub-program applies a pattern: the
+    /// sub-program as a run runs it, `{ ...sub, defs }` with the linked
+    /// definitions of its expansion as its `defs`: its own, expanded, and
+    /// all its parent sees, linked through what the parent's libraries
+    /// reach: the very definitions its check read. `program` stays the
+    /// sub-program as the lead wrote it, with `apply`, and `hash` its hash.
+    /// `None` for a sub-program that applies none, which runs as
+    /// [`subprogram_linked`] links it.
+    pub running: Option<Value>,
+    /// The hash of `running` ([`hash_program`]), when there is one: what a
+    /// run names the stored running program by.
+    pub running_hash: Option<String>,
     /// 0.6, when `ok` and the envelope has `shapes`: the shape its workflow
     /// applies (spec/library.md "`shapes`"), which the runtime journals.
     /// Rust only; none for every other parent, so the result of a parent
@@ -175,7 +189,8 @@ pub struct SubprogramCheck {
 
 impl SubprogramCheck {
     /// The result as the TypeScript writes it: `{ ok, diagnostics, program?,
-    /// hash?, workflow? }`, and `shape` after them when there is one (0.6).
+    /// hash?, workflow? }`, then, 0.6, `shape` and `{ running?, running_hash? }`,
+    /// each when there is one.
     #[must_use]
     pub fn to_js(&self) -> JsValue {
         JsObject::new()
@@ -191,6 +206,8 @@ impl SubprogramCheck {
             .with_some("hash", self.hash.as_deref())
             .with_some("workflow", self.workflow.as_deref())
             .with_some("shape", self.shape.as_ref().map(Shape::to_js))
+            .with_some("running", self.running.as_ref().map(JsValue::from))
+            .with_some("running_hash", self.running_hash.as_deref())
             .into()
     }
 
@@ -201,6 +218,8 @@ impl SubprogramCheck {
             program: None,
             hash: None,
             workflow: None,
+            running: None,
+            running_hash: None,
             shape: None,
         }
     }
@@ -216,6 +235,15 @@ fn workflow_with_envelope<'a>(parent: &'a Value, name: &str) -> Option<&'a Value
         .and_then(|d| d.get(name))
         .filter(|wf| Definition::of(wf).kind() == Some(DefKind::Workflow))
         .filter(|wf| wf.get("envelope").is_some_and(Value::is_truthy))
+}
+
+/// Whether a workflow of `program` applies a pattern (0.6: a definition
+/// with `apply`).
+fn applies_a_pattern(program: &Value) -> bool {
+    program
+        .get("defs")
+        .and_then(Value::as_object)
+        .is_some_and(|defs| defs.iter().any(|(_, d)| d.get("apply").is_some()))
 }
 
 /// Checks a lead's sub-program and whether it fits what is left of the
@@ -310,6 +338,9 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
             modules: Some(&modules),
             claim: Some(&claim),
             reach: reach.as_ref(),
+            // 0.6: the running program, for a sub-program that applies a
+            // pattern; for any other it would be built and dropped.
+            linked: reach.is_some() && applies_a_pattern(&sub),
             ..CheckOptions::default()
         },
     );
@@ -412,12 +443,28 @@ pub fn check_subprogram(i: &SubprogramInput<'_>) -> Result<SubprogramCheck, Stri
         return Ok(SubprogramCheck::refused(diagnostics));
     }
     let hash = hash_program(&sub).program;
+    // 0.6: a sub-program that applies a pattern runs as its expansion, with
+    // the definitions its check read; any other as it is written.
+    let running = checked
+        .expanded
+        .as_ref()
+        .and(checked.linked.as_ref())
+        .map(|linked| {
+            let mut out = sub.as_object().cloned().unwrap_or_default();
+            if let Some(defs) = linked.get("defs") {
+                out.insert("defs", defs.clone());
+            }
+            Value::Object(out)
+        });
+    let running_hash = running.as_ref().map(|r| hash_program(r).program);
     Ok(SubprogramCheck {
         ok: true,
         diagnostics,
         program: Some(sub),
         hash: Some(hash),
         workflow: Some(workflow),
+        running,
+        running_hash,
         shape,
     })
 }

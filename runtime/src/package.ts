@@ -4,9 +4,12 @@
 // amended package (spec/envelope.md "Amendments") passes it like any other.
 //
 // From 0.6 (spec/library.md "At load") a package also carries the libraries
-// its lock pins, and a program that applies a pattern runs its expansion,
-// which `verifyPackage` gives back for the run to store. What 0.6 has that
-// this runtime does not run yet is refused here by name (NOT_RUN_YET_06).
+// its lock pins. A program of 0.6 runs as its running program: expanded,
+// when it applies a pattern, and linked through what each library reaches,
+// the compiler's own `std.patterns` among them. The compiler's check gives
+// it (`linked`), with the very definitions it checked, and `verifyPackage`
+// gives it back for the run to store. What 0.6 has that this runtime does
+// not run yet is refused here by name (NOT_RUN_YET_06).
 
 import {
   atLeast,
@@ -132,18 +135,33 @@ export interface LoadOptions {
 
 /** What `verifyPackage` gives a package that passes: what a run of it runs. */
 export interface Verified {
-  /** The program as a run runs it: the expansion, for a program that applies a pattern (0.6); else the program. */
+  /**
+   * The program as a run runs it, linked: every definition it sees is among its `defs`, and it is never linked
+   * again. For a program of 0.6 that applies a pattern, or whose lock pins a library, the running program the
+   * compiler's check gave (`stored`): expanded, and linked through what each library reaches. For any other, the
+   * package's program with the package's modules linked in (`linkedProgram`), as a resume links it again.
+   */
   running: Program;
-  /** The expanded program, for a program that applies a pattern: what a run stores at its start. */
-  expanded?: Program;
-  /** The modules a run links: the package's, and those of its libraries. */
+  /**
+   * What a run stores at its start, and runs from then on (0.6): the running program, for a program that applies a
+   * pattern or whose lock pins a library, which plain linking of the package would not give. The run's manifest
+   * names it by its hash, `expanded`.
+   */
+  stored?: Program;
+  /** The modules of the package: its own, and those of its libraries. `running` already holds what it sees of them. */
   modules: Modules;
+}
+
+/** Whether a run of the package stores its running program: its program applies a pattern, or its lock pins a library. */
+function storesRunning(pkg: Pick<Package, "program" | "lock">): boolean {
+  return applications(pkg.program).length > 0 || Object.keys(isObj(pkg.lock.libraries) ? pkg.lock.libraries : {}).length > 0;
 }
 
 /**
  * The language versions this runtime runs. Of 0.4 it runs roles, signed decisions, envelopes, `map` and `plan`; of
- * 0.5 the program and every field of its lock; of 0.6 what 0.5 has, `pub`, doc lines, closed imports, libraries,
- * and patterns whose expansion holds only what it runs; see `notRunYet` and NOT_RUN_YET_06.
+ * 0.5 the program and every field of its lock; of 0.6 what 0.5 has, `pub`, doc lines, closed imports, libraries
+ * (a module of one may import another it reaches), `std.patterns`, and patterns whose expansion holds only what it
+ * runs; see `notRunYet` and NOT_RUN_YET_06.
  */
 export const RUNTIME_LANGUAGES: readonly LanguageVersion[] = ["mandate/0.1", "mandate/0.2", "mandate/0.3", "mandate/0.4", "mandate/0.5", LANGUAGE_06];
 
@@ -198,8 +216,6 @@ interface At {
 /** What a package of 0.6 is, as NOT_RUN_YET_06 reads it. */
 interface Read06 {
   lock: Lock;
-  /** Each module of its libraries, by name, as loaded. */
-  libraryModules: Modules;
 }
 
 /** One construct of 0.6 this runtime does not run yet: its name, the slice that releases it, and how it is found. */
@@ -243,10 +259,6 @@ export const NOT_RUN_YET_06: readonly NotRunYet06[] = [
   { name: "waive by", slice: "B10", node: (o, at) => at.key !== "" && Array.isArray(o["waive"]) && o["by"] !== undefined },
   // `shapes` in an envelope (spec/library.md "`shapes`").
   { name: "shapes", slice: "B12", node: (o, at) => at.key === "envelope" && o["shapes"] !== undefined },
-  // Linking through a library's reach: a module of a library that imports another module. The check links it
-  // through the library's reach; the linking door the runtime has (linked_program) takes no reach, so what such a
-  // module names of another would not be linked into the program a run runs. Released with a door that links so.
-  { name: "a library module that imports another module", slice: "a door that links through a library's reach", pkg: (p) => Object.values(p.libraryModules).some((m) => (m.uses ?? []).some((u) => u.module !== "std")) },
 ];
 
 /** The names of NOT_RUN_YET_06 that `program` (linked: the definitions it sees) and the package hold, in the table's order. */
@@ -272,15 +284,22 @@ function refusal06(names: string[]): Violation {
 }
 
 /**
- * What a lead's sub-program of a 0.6 parent holds that this runtime does not run in a sub-program yet: an
- * application of a pattern (the check of a sub-program gives it as written, with no expansion, so its run would meet
- * `apply`), and every construct of NOT_RUN_YET_06 that it, as linked into its parent, holds.
+ * What a lead's sub-program of a 0.6 parent holds that this runtime does not run in a sub-program yet: every
+ * construct of NOT_RUN_YET_06 that it holds as it would run: `running`, the running program its check gave when it
+ * applies a pattern (expanded, with all its parent sees linked in), or else the sub-program linked into its parent.
+ *
+ * A sub-program that applies a pattern and was given no running program, or one in which a workflow of its own
+ * still applies one, would meet `apply` in its run: it is refused by name, whatever the compiler said.
  */
-export function subprogramNotRunYet(sub: Program, parent: Program, modules: Modules): string[] {
+export function subprogramNotRunYet(sub: Program, parent: Program, modules: Modules, running?: Program): string[] {
   if (!isProgram06(sub) && !isProgram06(parent)) return [];
-  const applied = applications(sub).length ? ["a pattern applied in a sub-program"] : [];
-  // What the package holds beside its program was held to the table when the run started.
-  const inSub = notRunYet06(subprogramLinked(sub, parent, modules), { lock: { modules: {} }, libraryModules: {} });
+  const own = (p: Program): Program => ({ ...p, defs: Object.fromEntries(Object.keys(sub.defs).flatMap((n) => (Object.hasOwn(p.defs, n) ? [[n, p.defs[n]!]] : []))) });
+  const applies = applications(sub).length > 0;
+  const unexpanded = applies && (!running || applications(own(running)).length > 0 || Object.keys(sub.defs).some((n) => !Object.hasOwn(running.defs, n)));
+  const applied = unexpanded ? ["a pattern applied in a sub-program"] : [];
+  // What the package holds beside its program was held to the table when the run started. A running program is read
+  // only for a sub-program that applies a pattern: any other runs linked into its parent, and is read so.
+  const inSub = notRunYet06(running && applies && !unexpanded ? running : subprogramLinked(sub, parent, modules), { lock: { modules: {} } });
   return [...applied, ...inSub];
 }
 
@@ -315,7 +334,8 @@ export function isPackage06(pkg: Pick<Package, "program" | "lock" | "modules" | 
  * A compiler that fails while it is asked (a CompilerFailure of the bridge: its module missing, trapping, out of
  * memory, answering what is not an answer) has verified nothing: the package is refused, `load_verification_failed`.
  *
- * Gives what a run of the package runs: the program, or its expansion (0.6), and the modules it links.
+ * Gives what a run of the package runs: its program linked, which for a program of 0.6 that applies a pattern or
+ * whose lock pins a library is the running program its check gave, and the run stores.
  */
 export function verifyPackage(pkg: Package, o: LoadOptions = {}): Verified {
   try {
@@ -327,12 +347,21 @@ export function verifyPackage(pkg: Package, o: LoadOptions = {}): Verified {
   }
 }
 
-function verified(pkg: Package, o: LoadOptions): Verified {
-  const v06 = isPackage06(pkg);
-  // Only the Rust compiler reads 0.6: the reference compiler, frozen at 0.5, verifies nothing of it.
-  if (v06 && compilerMode() === "ts") {
+/**
+ * Refuses a package of 0.6 where the compiler is the reference (MANDATE_COMPILER=ts), by name: only the Rust compiler
+ * reads 0.6, and the reference, frozen at 0.5, verifies nothing of it. At load, and again wherever a run of such a
+ * package would be driven or read by its program (a resume, a replay): a run that was started on the Rust compiler
+ * is never driven on the reference.
+ */
+export function refuseReference06(pkg: Pick<Package, "program" | "lock" | "modules" | "libraries">): void {
+  if (isPackage06(pkg) && compilerMode() === "ts") {
     throw new Violation("unsupported_language", `The package is of mandate/0.6, which only the Rust compiler reads; this runtime's compiler is the TypeScript reference (MANDATE_COMPILER=ts), frozen at mandate/0.5, so it is not run.`);
   }
+}
+
+function verified(pkg: Package, o: LoadOptions): Verified {
+  const v06 = isPackage06(pkg);
+  refuseReference06(pkg);
   // The program and every module it was packaged with: a module's definitions run as the program's do.
   for (const p of [pkg.program, ...Object.values(pkg.modules ?? {})]) {
     if (!RUNTIME_LANGUAGES.includes(p?.language)) throw new Violation("unsupported_language", `Package language ${String(p?.language)} is not one of ${RUNTIME_LANGUAGES.join(", ")}.`);
@@ -364,10 +393,12 @@ function verified(pkg: Package, o: LoadOptions): Verified {
     if (!mr.ok) throw new Violation("load_verification_failed", `Module ${name} does not pass the compiler's checks: ${mr.diagnostics.filter((d) => d.severity === "error").map((d) => d.code).join(", ")}.`);
   }
   const linking: Modules = { ...modules, ...libraryModules };
+  // The package's program with the package's modules linked in: what a run of it runs, unless it stores another.
+  const plain = linkedProgram(pkg.program, v06 ? linking : modules);
   // 0.6: what the package holds that this runtime does not run yet, in the program as written, before anything is
-  // asked of it; and once more below, in the expansion the run would run.
+  // asked of it; and once more below, in the running program the run would run.
   if (v06) {
-    const unrun = notRunYet06(linkedProgram(pkg.program, linking), { lock: pkg.lock, libraryModules });
+    const unrun = notRunYet06(plain, { lock: pkg.lock });
     if (unrun.length) throw refusal06(unrun);
   }
   // A lock that pins models (spec/lock.md) must be well formed and pin every tier the program names.
@@ -378,24 +409,26 @@ function verified(pkg: Package, o: LoadOptions): Verified {
     if (bad.length) throw new Violation("malformed_lock", `The package's lock is malformed: ${bad.map((d) => d.message).join(" ")}`);
   }
   // 0.6: the program is checked here, with its libraries, its lock (whose pins of the libraries the check holds the
-  // libraries to, E1605) and the configuration, and gives its expansion, which every check below reads in its place.
-  const expanded = v06 ? checked06(pkg, modules, o) : undefined;
-  const running = expanded ?? pkg.program;
-  if (expanded) {
-    const linked = linkedProgram(expanded, linking);
-    const unrun = notRunYet06(linked, { lock: pkg.lock, libraryModules });
+  // libraries to, E1605, the compiler's own std.patterns among them) and the configuration, and gives its running
+  // program: expanded, and linked through what each library reaches, with the very definitions that were checked.
+  // A run of a program that applies a pattern, or whose lock pins a library, runs that one and stores it; any other
+  // runs its program as plain linking gives it, which every resume gives again. Every check below reads what runs.
+  const checked = v06 ? checked06(pkg, modules, o) : undefined;
+  const stored = checked && storesRunning(pkg) ? checked : undefined;
+  const running = stored ?? plain;
+  if (stored) {
+    const unrun = notRunYet06(stored, { lock: pkg.lock });
     if (unrun.length) throw refusal06(unrun);
   }
-  if (v06) unlinkable(running, pkg.program, linking);
   // What the lock asks of a sandbox applies to the program (E1802, E1803): a floor in the lock of a program whose
   // requirements carry no isolation level would not be enforced, so it is not run with.
-  const misfit = sandboxLockChecks(linkedProgram(running, v06 ? linking : modules), pkg.lock).filter((d) => d.severity === "error");
+  const misfit = sandboxLockChecks(running, pkg.lock).filter((d) => d.severity === "error");
   if (misfit.length) throw new Violation("load_verification_failed", `The package's lock does not apply to its program: ${misfit.map((d) => `${d.code} ${d.message}`).join(" ")}`);
   if (pkg.lock.models || pkg.lock.tariffs || pkg.lock.bindings) {
-    const missing = [...modelTiers(v06 ? linkedProgram(running, linking) : pkg.program)].filter((t) => !Object.hasOwn(pkg.lock.models ?? {}, t)).sort();
+    const missing = [...modelTiers(v06 ? running : pkg.program)].filter((t) => !Object.hasOwn(pkg.lock.models ?? {}, t)).sort();
     if (missing.length) throw new Violation("unlocked_model_tier", `Model tiers are not locked: ${missing.join(", ")} (MDT-E0141).`);
     // An executor binding that no longer fits the program and the lock is not run with (E0903–E0905, K45).
-    const unfit = bindingChecks(linkedProgram(running, v06 ? linking : modules), pkg.lock).filter((d) => d.severity === "error");
+    const unfit = bindingChecks(running, pkg.lock).filter((d) => d.severity === "error");
     if (unfit.length) throw new Violation("unfit_binding", `The package's executor binding does not fit: ${unfit.map((d) => `${d.code} ${d.message}`).join(" ")}`);
   }
   if (!v06) {
@@ -405,12 +438,15 @@ function verified(pkg: Package, o: LoadOptions): Verified {
     }
   }
   // Every role a 0.4 package names has a member in its lock (E1502): a wait for a role nobody holds could never end.
-  const unbound = roleLockChecks(running, link(running, v06 ? linking : modules), formatted(pkg.lock, v06));
+  // A stored running program holds every definition it sees: they are its linked definitions, with nothing to add.
+  const unbound = stored
+    ? roleLockChecks(stored, { defs: stored.defs, origin: {} }, formatted(pkg.lock, v06))
+    : roleLockChecks(pkg.program, link(pkg.program, v06 ? linking : modules), formatted(pkg.lock, v06));
   if (unbound.length) {
     const roles = [...new Set(unbound.map((d) => String((d.facts as { role?: unknown } | undefined)?.role)))].sort();
     throw new Violation("unbound_role", `The package's lock binds no member to ${roles.length === 1 ? "role" : "roles"} ${roles.join(", ")} (MDT-E1502).`);
   }
-  return { running, ...(expanded ? { expanded } : {}), modules: v06 ? linking : modules };
+  return { running, ...(stored ? { stored } : {}), modules: v06 ? linking : modules };
 }
 
 /**
@@ -497,8 +533,12 @@ export function libraryModules(pkg: Pick<Package, "lock" | "libraries">): Module
 /**
  * The check of a program of 0.6 at load: with the modules the package carries, its libraries, its lock and the
  * configuration's `libraries`, so that the libraries are held to the lock's pins (E1605, E1606, E1608) and every
- * other check runs as it would for `mandate check` with that lock. Gives the expanded program when the program
- * applies a pattern; a program that applies one and is given no expansion is refused, as a failure of the compiler.
+ * other check runs as it would for `mandate check` with that lock. Gives the running program of a program of 0.6
+ * (the check's `linked`): expanded, when it applies a pattern, and linked through what each library reaches. A
+ * program of 0.6 that is given none, or one that applies a pattern and is given no expansion, or a running program
+ * in which a workflow of the program's own still applies one, is refused, as a failure of the compiler: nothing half
+ * expanded runs. A
+ * package of 0.6 whose program is of an earlier language is given none, and runs as it is linked.
  *
  * A lock that pins no models is for simulated models only (as before 0.6, where the check is not given the lock):
  * with it the check holds every tier to the lock (E0141), and a program that does not check is given no expansion.
@@ -509,8 +549,9 @@ export function libraryModules(pkg: Pick<Package, "lock" | "libraries">): Module
 function checked06(pkg: Package, modules: Modules, o: LoadOptions): Program | undefined {
   const text = canonicalize(pkg.program as unknown as Json);
   const config = o.libraries?.dir !== undefined ? { config: { dir: o.libraries.dir, ...(o.libraries.wait_days !== undefined ? { wait_days: o.libraries.wait_days } : {}), ...(o.libraries.revoked ? { revoked: o.libraries.revoked } : {}) } } : {};
-  const given = { modules, ...(pkg.libraries?.length ? { libraries: pkg.libraries } : {}), ...config };
+  const read = { modules, ...(pkg.libraries?.length ? { libraries: pkg.libraries } : {}), ...config };
   const refused = (ds: Diagnostic[]): Violation => new Violation("load_verification_failed", `The program does not pass the compiler's checks: ${[...new Set(ds.map((d) => d.code))].join(", ")}.`);
+  const given = { ...read, linked: true };
   const withLock = check(text, "json", { ...given, lock: formatted(pkg.lock, true) });
   const simulated = !pkg.lock.models && !pkg.lock.tariffs && !pkg.lock.bindings;
   const errors = withLock.diagnostics.filter((d) => d.severity === "error" && !(simulated && d.code === "MDT-E0141"));
@@ -520,17 +561,15 @@ function checked06(pkg: Package, modules: Modules, o: LoadOptions): Program | un
   const applying = applications(pkg.program);
   if (applying.length && !r.expanded) throw new Violation("load_verification_failed", `The program applies a pattern (${applying.join(", ")}), and the compiler gave no expansion of it.`);
   if (!applying.length && r.expanded) throw new Violation("load_verification_failed", "The program applies no pattern, and the compiler gave an expansion of it.");
-  return r.expanded as unknown as Program | undefined;
-}
-
-/**
- * What the program a run runs (its expansion, when it applies a pattern) names of a module the package does not carry, which a run could not link: a module of
- * `std.patterns`, the compiler's own, whose text the runtime is not given. A name the program imports from it that
- * its own applications name is a pattern, which the expansion has replaced; any other (a type a pattern's body
- * names) would be linked as nothing, so the package is refused by name until a door gives that module.
- */
-function unlinkable(running: Program, program: Program, modules: Modules): void {
-  const patterns = new Set(applications(program).map((a) => a.slice(a.indexOf(" = ") + 3).split(".").pop()!));
-  const names = (running.uses ?? []).filter((u) => u.module !== "std" && !Object.hasOwn(modules, u.module)).flatMap((u) => (u.names ?? []).filter((n) => !patterns.has(n)).map((n) => `${u.module}.${n}`));
-  if (names.length) throw new Violation("unsupported_language", `The program names ${names.sort().join(", ")}, of a module the package does not carry (std.patterns is the compiler's own), which this runtime cannot link yet (spec/library.md "std.patterns").`);
+  const linked = r.linked as unknown as Program | undefined;
+  if (!isProgram06(pkg.program)) return undefined;
+  if (!linked || !isObj(linked.defs)) throw new Violation("load_verification_failed", "The program is of mandate/0.6, and the compiler gave no running program of it.");
+  // The program's own workflows: a run starts one of these and no other. A workflow the program only imports, which
+  // a library may write as an application, is linked as it is written: nothing starts or calls it (0.6), and the
+  // interpreter refuses to run a workflow that still applies a pattern, whatever led to it.
+  const left = applications({ ...linked, defs: Object.fromEntries(Object.keys(pkg.program.defs).flatMap((n) => (Object.hasOwn(linked.defs, n) ? [[n, linked.defs[n]!]] : []))) });
+  if (left.length) throw new Violation("load_verification_failed", `The running program the compiler gave still applies a pattern (${left.join(", ")}).`);
+  const missing = Object.keys(pkg.program.defs).filter((n) => !Object.hasOwn(linked.defs, n));
+  if (missing.length) throw new Violation("load_verification_failed", `The running program the compiler gave lacks the program's ${missing.sort().join(", ")}.`);
+  return linked;
 }

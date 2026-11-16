@@ -21,7 +21,7 @@ import { schemaErrors, typeSchema } from "./schema.js";
 import { Interpreter, ReplayEnd, type Epoch, type Policy } from "./interp.js";
 import { costDims, haltedRefusal, Journal, TERMINAL, type ActionRow, type BudgetReport, type EvidenceRow, type HaltRow, type HaltScope, type Limits, type RunRow } from "./journal.js";
 import { exportJournal, verifyExport, type JournalExport, type JournalReport } from "./journal-chain.js";
-import { buildPackage, isSigned04, libraryModules, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
+import { buildPackage, isPackage06, isSigned04, libraryModules, refuseReference06, refuseRevoked, verifyPackage, type LoadOptions, type Package } from "./package.js";
 import { CHECK_MS, WorkerChecker, type ProgramChecker } from "./plan.js";
 import { Attention, Cancelled, Crash, Fault, StaleFence, Suspend, Violation } from "./signals.js";
 import { canonical, digest, isObj, type Obj, type Value } from "./values.js";
@@ -44,6 +44,25 @@ export function egressNeed(pkg: Package, running: { program: Program; modules: M
     .flatMap(([agent, bound]) => Object.entries(bound ?? {}).map(([host, credential]) => ({ agent, host, credential })))
     .sort((a, b) => (a.agent < b.agent ? -1 : a.agent > b.agent ? 1 : a.host < b.host ? -1 : a.host > b.host ? 1 : 0));
   return { hosts, credentials };
+}
+
+/**
+ * A stored running program as a view reads a program: the definitions the packaged program has, as the running
+ * program holds them, and nothing it only sees of a module. A connector of its own is as its text declares it: the
+ * marks a table of linked definitions puts on one (`module`, `unbound`) are no part of a program.
+ */
+function ownDefinitions(stored: Program, source: Program): Program {
+  const defs = Object.fromEntries(
+    Object.keys(source.defs)
+      .filter((n) => Object.hasOwn(stored.defs, n))
+      .map((n) => {
+        const d = stored.defs[n] as unknown as Record<string, unknown>;
+        if (d["kind"] !== "connector") return [n, d];
+        const { module: _module, unbound: _unbound, ...declared } = d;
+        return [n, declared];
+      }),
+  );
+  return { ...stored, defs } as unknown as Program;
 }
 
 export interface StartOptions {
@@ -143,7 +162,10 @@ export interface RuntimeOptions {
   libraries?: Partial<LibrariesConfig>;
 }
 
-/** The media type of a run's stored expansion (spec/library.md "Hashes, and what the runtime stores"). */
+/**
+ * The media type of a run's stored running program (spec/library.md "Hashes, and what the runtime stores"): the
+ * expansion of its program, linked through what each library reaches, as the compiler's check gave it at the start.
+ */
 export const EXPANDED_MEDIA_TYPE = "application/vnd.mandate.expanded+json";
 
 /** What stops a run at its resume for a person, as `attention_required`, rather than being thrown at the caller. */
@@ -241,7 +263,8 @@ export class Runtime {
     // as something else, and the run would live under a name it was not started with (spec/journal.md).
     if (o.runId !== undefined && (o.runId === "" || !storable(o.runId))) throw new Violation("invalid_run_id", "A run id is non-empty, well-formed Unicode without U+0000; this one would be stored as another, or as none.");
     if (o.tenant !== undefined && !storable(o.tenant)) throw new Violation("invalid_tenant", "A tenant is well-formed Unicode without U+0000; this one would be stored as another.");
-    // What a run of the package runs: its program, or (0.6) the expansion of it, which the run stores at its start.
+    // What a run of the package runs: its program linked, or (0.6) the running program its check gave (expanded, and
+    // linked through what each library reaches), which the run stores at its start.
     const verified = verifyPackage(o.pkg, this.load);
     if (this.decisionMode === "unsigned" && isSigned04(o.pkg.program, o.pkg.modules)) {
       throw new Violation("signed_decisions_required", "A mandate/0.4 package does not run in unsigned mode: its decisions are signed records (spec/envelope.md). Take decisions.mode out of the runtime configuration.");
@@ -250,9 +273,11 @@ export class Runtime {
     // With a scheduler this process only records the run and starts its workflow; the worker that takes the run
     // checks its own host when it resumes it.
     if (!this.driver) await checkFitness(o.pkg.lock, this.hostProbe);
-    const wf = Object.hasOwn(verified.running.defs, o.workflow) ? verified.running.defs[o.workflow] : undefined;
+    // A run starts a workflow of the package's own program, as the running program holds it (its expansion, when it
+    // applies a pattern): never one the program only imports.
+    const wf = Object.hasOwn(o.pkg.program.defs, o.workflow) && Object.hasOwn(verified.running.defs, o.workflow) ? verified.running.defs[o.workflow] : undefined;
     if (!wf || wf.kind !== "workflow") throw new Violation("unknown_workflow", `No workflow '${o.workflow}'.`);
-    const linked = linkedProgram(verified.running, verified.modules);
+    const linked = verified.running;
     // The input is a value of the workflow's parameter types, as a model's answer is of its type: a Path in it keeps the Path rule (K68).
     const input = isObj(o.input ?? null) ? (o.input as Obj) : {};
     for (const p of wf.params) {
@@ -263,7 +288,8 @@ export class Runtime {
     // A package whose lock binds credentials needs the egress proxy; with none configured it starts nothing. With the
     // control plane's gateways on, or a package whose sandboxes reach hosts, a proxy that does not answer, or lacks a
     // gateway's credential or one the lock binds, starts nothing either.
-    const need = egressNeed(o.pkg, { program: verified.running, modules: verified.modules });
+    // A stored running program holds every definition it sees, the agents of its libraries among them.
+    const need = egressNeed(o.pkg, verified.stored ? { program: verified.stored, modules: {} } : { program: o.pkg.program, modules: verified.modules });
     if (need.credentials.length && !this.adapters.egress) {
       throw new Violation("no_egress_proxy", `The package's lock binds ${need.credentials.map((c) => `${c.credential} to ${c.agent}'s requests to ${c.host}`).join(", ")}; a credential is put in only by the egress proxy, and this runtime's configuration names none (egress.admin).`);
     }
@@ -273,7 +299,10 @@ export class Runtime {
     // A workflow with an envelope starts only once a member of its owner role approved this package (H03).
     const approval = wf.envelope ? await this.envelopeApproval(o.pkg, o.workflow, wf.envelope) : undefined;
     const approved = approval ? { package: o.pkg.hash, member: approval.record.member, role: approval.record.role ?? null, key: approval.record.key, decision: approval.decision_id } : undefined;
-    const lowered = this.remoteGuarantees(o.pkg.program);
+    // 0.6: what the run runs, so that a remote agent or a component a library or an expansion brings is seen; before
+    // 0.6, the program as packaged, as it was.
+    const seen = isPackage06(o.pkg) ? verified.running : undefined;
+    const lowered = this.remoteGuarantees(seen ?? o.pkg.program);
     const runId = o.runId ?? randomUUID();
     const limits = minLimits(costDims(workflowBounds(wf).budget), costDims(o.limits));
     const policy: Policy = { tenant: o.tenant ?? "default", ...(o.authorize ? { authorize: o.authorize } : {}), ...(o.authorizationTtlMs ? { authorizationTtlMs: o.authorizationTtlMs } : {}), ...(o.priority ? { priority: o.priority } : {}) };
@@ -282,10 +311,11 @@ export class Runtime {
     const early = await this.journal.openHalt(policy.tenant);
     if (early) throw haltedRefusal(early, `Run ${runId} does not start`);
     // The components the program works on start from one base commit each, recorded in the run's manifest (B3).
-    const components = await this.prepareWorkspace(runId, o.pkg);
+    const components = await this.prepareWorkspace(runId, o.pkg, seen);
     // The manifest of a run under an envelope lists the approval it starts under; another run's manifest is as it was.
-    // A run of a program that applies a pattern names its expansion by its program hash; it stores it with the run.
-    const expanded = verified.expanded ? { program: verified.expanded, hash: hashProgram(verified.expanded as unknown as Json).program } : undefined;
+    // A run that stores its running program (0.6: its program applies a pattern, or its lock pins a library) names it
+    // by its hash, as `expanded`; it stores it with the run.
+    const expanded = verified.stored ? { program: verified.stored, hash: hashProgram(verified.stored as unknown as Json).program } : undefined;
     const manifest = {
       format: RUN_MANIFEST_FORMAT,
       package: o.pkg.hash,
@@ -306,7 +336,7 @@ export class Runtime {
         if (halt) throw haltedRefusal(halt, `Run ${runId} does not start`);
         await this.keep(tx, o.pkg);
         await this.journal.createRun(tx, { runId, tenant: policy.tenant, packageHash: o.pkg.hash, workflow: o.workflow, input: o.input, policy: policy as unknown as Value, limits, manifest, manifestHash });
-        // The expansion the run runs from here on, its resumes and its replays: never one made again (spec/library.md).
+        // The running program the run runs from here on, its resumes and its replays: never one made again (spec/library.md).
         if (expanded) await this.artifacts.put({ tenant: policy.tenant, runId }, canonical(expanded.program as unknown as Value), EXPANDED_MEDIA_TYPE, tx);
         if (approved) await this.journal.event(tx, runId, "envelope_approved", approved);
         for (const agent of lowered) await this.journal.event(tx, runId, "guarantee_lowered", { agent, delivery: "at_most_once", reason: "the remote agent's server does not deduplicate messages" });
@@ -394,8 +424,8 @@ export class Runtime {
    * at its base commit. A program that works on components and a runtime
    * without a workspace adapter do not start (INV-11).
    */
-  private async prepareWorkspace(runId: string, pkg: Package): Promise<RunComponents> {
-    const wanted = componentsOf(pkg);
+  private async prepareWorkspace(runId: string, pkg: Package, running?: Program): Promise<RunComponents> {
+    const wanted = componentsOf(pkg, running);
     if (!wanted.length) return {};
     const ws = this.adapters.workspace;
     if (!ws) throw new Violation("no_workspace", `The program works on components (${wanted.map((c) => c.name).join(", ")}), and this runtime has no workspace adapter.`);
@@ -501,6 +531,9 @@ export class Runtime {
     // Every resume checks the host against the package's lock before it takes the lease. An unfit host takes nothing
     // and writes nothing: the run stays as it was, for a fit host to resume (unfit_host). A finished run runs nothing.
     const current = await this.journal.run(runId);
+    // A run of 0.6 is driven on the Rust compiler alone: on the reference it is refused by name before anything is
+    // taken or written, and stays as it was.
+    if (!TERMINAL.has(current.state)) refuseReference06(await this.packaged(current.package_hash));
     if (!TERMINAL.has(current.state)) await checkFitness((await this.packaged(current.package_hash)).lock, this.hostProbe);
     const { run, fence } = await this.journal.acquire(runId);
     if (TERMINAL.has(run.state)) return run;
@@ -718,18 +751,32 @@ export class Runtime {
 
   /**
    * A package as a run uses it. Its decisions are signed in signed mode, and always when it is a 0.4 package. With
-   * `run`, the program is the run's: the expansion it stored at its start, when its manifest names one (0.6).
+   * `run`, the program is the run's: the running program it stored at its start, when its manifest names one (0.6),
+   * which holds every definition it sees and is not linked again.
    */
   private async loaded(packageHash: string, run?: RunRow): Promise<Loaded> {
     const p = await this.packaged(packageHash);
+    // The program of a run of 0.6 is read on the Rust compiler alone (a resume, a replay, its evidence).
+    if (run) refuseReference06(p);
     const modules = await this.linking(packageHash);
-    const expanded = run ? await this.storedExpansion(run) : undefined;
-    return { program: linkedProgram(expanded ?? p.program, modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules), source: p.program, modules };
+    const stored = run ? await this.storedExpansion(run) : undefined;
+    if (stored) {
+      // A running program holds every definition its program imports by name from a module the run links. One that
+      // lacks such a definition is an expansion that was stored without them (the form before the running program
+      // was stored): the run would meet a name with no definition, so it is not run.
+      const missing = (stored.uses ?? []).flatMap((u) => (Object.hasOwn(modules, u.module) ? (u.names ?? []).filter((n) => !Object.hasOwn(stored.defs, n)) : []));
+      if (missing.length) {
+        throw new Violation("expansion_mismatch", `Run ${run!.run_id} stored an expansion without the definitions its program imports (${[...new Set(missing)].sort().join(", ")}): it is not a running program, and is not run (spec/library.md).`);
+      }
+    }
+    return { program: stored ?? linkedProgram(p.program, modules), lock: p.lock, signed: this.decisionMode === "signed" || isSigned04(p.program, p.modules), source: p.program, modules };
   }
 
   /**
-   * What the views of a run's program are given: the program as packaged (`source`), the program the run runs (its
-   * stored expansion, when it applies a pattern, 0.6; else the same), and the modules it links (with its libraries').
+   * What the views of a run's program are given: the program as packaged (`source`), the program the run runs as a
+   * view reads one (`program`), and the modules it links (with its libraries'). For a run that stored its running
+   * program (0.6), `program` is the program's own definitions as that one holds them (its expansion, when it applies
+   * a pattern), with its `use`s: what it sees of its modules a view links itself. For any other, the same as `source`.
    */
   async runProgram(runId: string): Promise<{ source: Program; program: Program; modules: Modules }> {
     const run = await this.journal.run(runId);
@@ -739,12 +786,13 @@ export class Runtime {
     const source = row["program"] as Program;
     const libraries = (row["libraries"] ?? undefined) as Package["libraries"];
     const modules = { ...((row["modules"] ?? {}) as Modules), ...(libraries?.length ? libraryModules({ lock: row["lock"] as Lock, libraries }) : {}) };
-    return { source, program: (await this.storedExpansion(run)) ?? source, modules };
+    const stored = await this.storedExpansion(run);
+    return { source, program: stored ? ownDefinitions(stored, source) : source, modules };
   }
 
   /**
-   * The expansion a run stored at its start (spec/library.md "Hashes, and what the runtime stores"), or undefined
-   * for a run whose manifest names none. One that is missing, or whose bytes do not hash to what the manifest names,
+   * The running program a run stored at its start (spec/library.md "Hashes, and what the runtime stores"): the
+   * expansion of its program, with every definition it sees linked in. Undefined for a run whose manifest names none. One that is missing, or whose bytes do not hash to what the manifest names,
    * is not run: `expansion_mismatch`. It is never made again: a compiler that expands the package otherwise now
    * cannot move the command ids of a run that is going on.
    */
@@ -800,7 +848,8 @@ export class Runtime {
    */
   async verifyEvidence(runId: string): Promise<Array<{ evidence_id: string; criterion: string; valid: boolean; key_id: string | null }>> {
     const run = await this.journal.run(runId);
-    const { lock, signed, program } = await this.loaded(run.package_hash);
+    // The run's program: the running program it stored (0.6), which holds the contracts a pattern of a library names.
+    const { lock, signed, program } = await this.loaded(run.package_hash, run);
     // A person's approval rests on their signed decision (H04): the record it names must still be the one they signed.
     const decisions = new Map((await this.journal.decisions(runId)).map((d) => [d.decision_id, d]));
     const rule: AttestationRule = { keys: this.verifiers, inProcess: this.inProcess };
@@ -1456,6 +1505,8 @@ export class Runtime {
       if (e instanceof ReplayEnd) return e.reason === "payload_purged" ? { status: "incomplete_replay", missing: e.commandId } : { status: "partial", stoppedAt: e.commandId };
       if (e instanceof Fault) return { status: "failed", error: e.value() };
       if (e instanceof Attention) return { status: "attention_required", reason: e.reason };
+      // A sub-program's stored running program that is missing or another: reported as the run's own is, above.
+      if (e instanceof Violation && e.code === "expansion_mismatch") return { status: "attention_required", reason: { violation: e.code, message: e.message } };
       throw e;
     }
   }
@@ -1569,11 +1620,15 @@ export function refusingAdapters(real: Adapters): Adapters {
 /** The format of a run's manifest: what it started from (design doc 9 §12). */
 export const RUN_MANIFEST_FORMAT = "mandate/run-manifest/0.1";
 
-/** The components of the package's system model that its program refers to, by name. */
-export function componentsOf(pkg: Package): WorkspaceComponent[] {
-  const defs = link(pkg.program, pkg.modules).defs;
+/**
+ * The components of the package's system model that its program refers to, by name. With `running` (0.6), the
+ * program a run of the package runs, which holds every definition it sees: the components any of them refers to,
+ * those a library's definition or a pattern's expansion names among them.
+ */
+export function componentsOf(pkg: Package, running?: Program): WorkspaceComponent[] {
+  const defs = running ? running.defs : link(pkg.program, pkg.modules).defs;
   const names = new Set<string>();
-  for (const d of Object.values(pkg.program.defs)) for (const r of references(d)) if (Object.hasOwn(defs, r) && defs[r]!.kind === "component") names.add(r);
+  for (const d of Object.values(running ? running.defs : pkg.program.defs)) for (const r of references(d)) if (Object.hasOwn(defs, r) && defs[r]!.kind === "component") names.add(r);
   return [...names].sort().map((name) => {
     const c = defs[name] as Extract<(typeof defs)[string], { kind: "component" }>;
     return { name, repo: c.repo, root: c.root };
