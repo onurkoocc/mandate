@@ -158,6 +158,44 @@ export interface Outcome {
   expired?: true;
 }
 
+/**
+ * The members the runtime's own values are known by: a Verified value and its evidence, a capability, a prompt, a
+ * masked field, a range, a call. The same list as connectors.ts `forbidden` refuses in a server's answer
+ * (review.test.ts holds the two to each other).
+ */
+export const RESERVED_MEMBERS: ReadonlySet<string> = new Set(["__proto__", "$verified", "$contract", "$evidence", "$capability", "$prompt", "$masked", "$range", "$call"]);
+
+/**
+ * Why a value a person or a caller gives a run of 0.6 (an answer, what a run is started with) is not taken, or
+ * undefined: it holds one of `RESERVED_MEMBERS`, at any depth (`reserved_value`), so that no answer is ever taken for
+ * a Verified value; or it holds what the journal would keep as another value (`unkeepable_value`): a number that is
+ * not finite, negative zero, a whole number past 2^53 (read already rounded), a text or a member's name that is not
+ * well-formed Unicode or holds U+0000. A reserved member is named first.
+ */
+export function givenValueProblem(v: Value): { reason: "reserved_value" | "unkeepable_value"; message: string } | undefined {
+  const storable = (s: string): boolean => (s as unknown as { isWellFormed(): boolean }).isWellFormed() && !s.includes("\u0000");
+  let unkeepable: string | undefined;
+  const stack: Value[] = [v];
+  while (stack.length) {
+    const x = stack.pop()!;
+    if (typeof x === "number") {
+      if (!Number.isFinite(x)) unkeepable ??= `the number ${String(x)}, which is not finite`;
+      else if (Object.is(x, -0)) unkeepable ??= "the number -0, which the journal keeps as 0";
+      else if (Number.isInteger(x) && !Number.isSafeInteger(x)) unkeepable ??= `the number ${String(x)}, a whole number past 2^53, which cannot be kept exactly (it was rounded when it was read): give it as text`;
+    } else if (typeof x === "string") {
+      if (!storable(x)) unkeepable ??= "a text that is not well-formed Unicode or holds U+0000, which the journal cannot keep as it is";
+    } else if (Array.isArray(x)) for (const y of x) stack.push(y);
+    else if (isObj(x)) {
+      for (const k of Object.keys(x)) {
+        if (RESERVED_MEMBERS.has(k)) return { reason: "reserved_value", message: `It holds ${k}, a member of the runtime's own values ($verified, $contract, $evidence, …), which a person's answer, or what a run is started with, never holds.` };
+        if (!storable(k)) unkeepable ??= "a member's name that is not well-formed Unicode or holds U+0000, which the journal cannot keep as it is";
+        stack.push(x[k]!);
+      }
+    }
+  }
+  return unkeepable === undefined ? undefined : { reason: "unkeepable_value", message: `It holds ${unkeepable}.` };
+}
+
 /** The ids a list holds when it is a list of integers, each at least 0. */
 export function indices(v: Value | undefined): number[] | undefined {
   return Array.isArray(v) && v.every((x) => typeof x === "number" && Number.isSafeInteger(x) && x >= 0) ? (v as number[]) : undefined;

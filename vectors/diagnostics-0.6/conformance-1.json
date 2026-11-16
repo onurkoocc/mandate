@@ -12669,6 +12669,10 @@
         },
         "hash": "sha256:ffc5a888f33463441914fad2bbf938cfdadd7e13b94b6f51dadd83fd2dfdd53d",
         "workflow": "Look",
+        "shape": {
+          "pattern": "Each",
+          "module": "example.shaped"
+        },
         "running": {
           "language": "mandate/0.6",
           "module": "example.shaped.plan_1",
@@ -13659,11 +13663,7 @@
             }
           }
         },
-        "running_hash": "sha256:abfd6b600c873d8b575ef9be139e66a3a2e5b520a0aa969fba6958dd1951153a",
-        "shape": {
-          "pattern": "Each",
-          "module": "example.shaped"
-        }
+        "running_hash": "sha256:abfd6b600c873d8b575ef9be139e66a3a2e5b520a0aa969fba6958dd1951153a"
       }
     },
     {

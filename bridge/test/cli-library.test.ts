@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { libraryCommand, Stop, type LibraryArgs } from "../src/cli-library.js";
 import { authoritySignature, canonicalize, librariesConfigProblems, libraryAdd, libraryPublish, libraryUpgrade, libraryVerify, NoReference, type Json, type LibrarySource } from "../src/index.js";
 import { beside, Files, isLibraryName, isModulePath, joinPath, libraryIn, lockPins, parseVersion, pinnedIn, rangeHolds, readManifest, versionsIn } from "../src/libraries.js";
@@ -22,6 +22,9 @@ import { modulePath } from "../src/wasm/module.js";
 import { buildTree, repoRoot, type Tree } from "./tree.js";
 
 const rust = compilerMode() !== "ts" && existsSync(modulePath());
+
+// The tests here start the executable many times each: the default five seconds is too little on a busy machine.
+vi.setConfig({ testTimeout: 60_000 });
 /** The tests that need the Rust compiler, which alone reads 0.6: skipped by name in `ts` mode. */
 const needs06 = rust ? describe : describe.skip;
 

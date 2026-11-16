@@ -257,17 +257,16 @@ fn an_admitted_sub_program_names_the_shape_it_applies() {
             module: "example.shaped".to_owned(),
         })
     );
-    // `shape` comes last, after the running program a sub-program that
-    // applies a pattern carries.
     let js = mandate_ir::stringify(&r.to_js()).unwrap();
-    let running_hash = r.running_hash.as_deref().unwrap();
-    assert!(js.contains(r#","workflow":"Look","running":{"#), "{js}");
+    // The shape follows the workflow; the running program of the sub-program,
+    // which applies a pattern, follows the shape.
     assert!(
-        js.ends_with(&format!(
-            r#","running_hash":"{running_hash}","shape":{{"pattern":"Each","module":"example.shaped"}}}}"#
-        )),
+        js.contains(
+            r#","workflow":"Look","shape":{"pattern":"Each","module":"example.shaped"},"running":{"#
+        ),
         "{js}"
     );
+    assert!(r.running_hash.is_some());
     // As the interpreter runs it, it sees what its parent imports of the
     // built-in std.patterns, which nobody hands in.
     let linked = mandate_check::subprogram_linked(r.program.as_ref().unwrap(), &parent, None);

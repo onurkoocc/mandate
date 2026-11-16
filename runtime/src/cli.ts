@@ -81,7 +81,7 @@ import { buildPackage, Runtime } from "./runtime.js";
 import { Violation } from "./signals.js";
 import { runTests } from "./testing.js";
 import { auditDoc, roleDoc, runDoc, runView, shadowDiff } from "./views.js";
-import { canonical, isObj, show, type Obj, type Value } from "./values.js";
+import { canonical, isObj, show, tagOf, unwrap, type Obj, type Value } from "./values.js";
 
 interface Args {
   positional: string[];
@@ -336,7 +336,13 @@ export async function main(argv: string[], out: (s: string) => void = (s) => pro
         // A role's view or the audit view (spec/boundary.md "Views by role and the audit view"); with neither, as before.
         const role = a.flags["--role"];
         if (typeof role === "string" && a.flags["--audit"] !== undefined) throw new Usage("show takes --role R or --audit, not both");
-        const print = (view: object, doc: () => Doc): void => out(format === "json" ? JSON.stringify(view, null, 2) + "\n" : format === "html" ? toHtml(doc()) : toMarkdown(doc()));
+        // A run of 0.6: what a model, a person or a server wrote is in the document as it was given, and Markdown is
+        // printed to a terminal, HTML shown in a browser, both of which a control, format or bidirectional character
+        // would move, reorder or hide text in: every such character of the document is escaped (`terminalDocument`).
+        // JSON is the view's data, and stays as it is; an earlier run's document is as it was.
+        const v06 = isProgram06((await rt.runProgram(runId)).source);
+        const doc = (text: string): string => (v06 ? terminalDocument(text) : text);
+        const print = (view: object, made: () => Doc): void => out(format === "json" ? JSON.stringify(view, null, 2) + "\n" : doc(format === "html" ? toHtml(made()) : toMarkdown(made())));
         if (typeof role === "string") {
           const { view, program, modules } = await runView(rt, runId, { role });
           print(view, () => roleDoc(view, program, modules));
@@ -1110,7 +1116,20 @@ function waitOf(run: RunRow): { kind: string; command: string; request: Obj } {
  * hide the lines a reviewer reads. Within a JSON text the result is still the same JSON value.
  */
 export function terminalText(s: string): string {
-  return s.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Cs}]/gu, (ch) => Array.from({ length: ch.length }, (_, k) => `\\u${ch.charCodeAt(k).toString(16).toUpperCase().padStart(4, "0")}`).join(""));
+  return s.replace(UNPRINTED, escaped);
+}
+
+/** What a terminal does not print as itself: controls, format characters, separators, private-use, unassigned, lone surrogates. */
+const UNPRINTED = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Cs}]/gu;
+const escaped = (ch: string): string => Array.from({ length: ch.length }, (_, k) => `\\u${ch.charCodeAt(k).toString(16).toUpperCase().padStart(4, "0")}`).join("");
+
+/**
+ * A document (Markdown, HTML) as `terminalText` would write each fragment of it: the line feeds and tabs that lay it
+ * out stay, and every other code point a terminal does not print as itself is written `\uXXXX`. A renderer writes
+ * none of those itself, so what is escaped is what a fragment of the run brought.
+ */
+export function terminalDocument(s: string): string {
+  return s.replace(UNPRINTED, (ch) => (ch === "\n" || ch === "\t" ? ch : escaped(ch)));
 }
 
 /**
@@ -1148,6 +1167,10 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
   // How this configuration takes a decision: signed with a key, or by name.
   const as = config.decisions.mode === "unsigned" ? "--by <you>" : "--key <your key file>";
   if (json) return JSON.stringify({ run, budget, evidence: evidence.map((e) => ({ ...e, signature_valid: signed.get(e.evidence_id) ?? false })), actions, ...(decisions.length ? { decisions } : {}) }, null, 2) + "\n";
+  // In a run of 0.6 every value a model, a person or a server wrote is shown with its texts quoted, and with every
+  // code point a terminal does not print as itself escaped (`shownSafe`); an earlier run's lines are as they were.
+  const v06 = isProgram06((await rt.runProgram(run.run_id)).source);
+  const shown = (v: Value): string => (v06 ? shownSafe(v) : show(v));
   const lines = [`run ${run.run_id}  ${run.workflow}  ${run.state}  revision ${run.revision}`];
   if (run.state === "waiting" && isObj(run.waiting)) {
     const w = run.waiting;
@@ -1155,7 +1178,7 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
     if (w["kind"] === "decision" && "criterion" in req) {
       lines.push(`waiting for: ${req["role"] ?? "a person"} to approve ${req["contract"]}.${req["criterion"]}`);
       lines.push(`  subject digest ${req["subject_digest"]}${typeof req["deadline"] === "number" ? `, deadline ${new Date(req["deadline"]).toISOString()}` : ""}`);
-      lines.push(...subjectLines(req["subject"] ?? null));
+      lines.push(...subjectLines(req["subject"] ?? null, shown));
       if (config.verifier) lines.push(`  the change in ${config.verifier.workdir}: git -C ${config.verifier.workdir} diff ${config.verifier.base}`);
       lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} ${as}`, `  decline: mandate decline ${run.run_id} --revision ${run.revision} ${as}`);
     } else if (w["kind"] === "amendment") {
@@ -1165,9 +1188,8 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
       const changes = Array.isArray(req["changes"]) ? req["changes"] : [];
       for (const c of changes) if (isObj(c)) lines.push(`  ${String(c["text"])}`);
       if (!changes.length) lines.push("  the envelope's amounts and capabilities are as they were");
-      // In a run of 0.6 every code point a terminal does not print as itself is escaped too; an earlier run's lines are as they were.
       const reason = JSON.stringify(String(req["reason"] ?? ""));
-      lines.push(`  the lead's reason (model output): ${isProgram06((await rt.runProgram(run.run_id)).source) ? terminalText(reason) : reason}`);
+      lines.push(`  the lead's reason (model output): ${v06 ? terminalText(reason) : reason}`);
       lines.push(`  approve: mandate amend ${run.run_id} --revision ${run.revision} ${as} approve`, `  decline: mandate amend ${run.run_id} --revision ${run.revision} ${as} decline`);
     } else if (w["kind"] === "timer") {
       lines.push(`waiting for: a timer until ${typeof req["until"] === "number" ? new Date(req["until"]).toISOString() : "?"} (${String(req["reason"] ?? "")}); the scheduler resumes the run then`);
@@ -1178,14 +1200,14 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
       lines.push(`  approve: mandate approve ${run.run_id} --revision ${run.revision} ${as}`);
     } else {
       const q = req["question"] ?? req["escalation"] ?? (w["kind"] === "budget_exceeded" ? "Budget exceeded." : null);
-      lines.push(`waiting for: an answer${q !== null ? `: ${show(q as Value)}` : ""}`);
+      lines.push(`waiting for: an answer${q !== null ? `: ${shown(q as Value)}` : ""}`);
       if (w["kind"] === "budget_exceeded") lines.push(`  raise:  mandate raise-limits ${run.run_id} --revision ${run.revision} ${as} --limit spend=<amount>USD`);
       lines.push(`  answer: mandate answer ${run.run_id} --revision ${run.revision} ${as} <text>`);
     }
   }
-  if (run.state === "attention_required") lines.push(`attention: ${show(run.attention ?? null)}`);
-  if (run.state === "failed") lines.push(`error: ${show(run.error ?? null)}`);
-  if (run.state === "succeeded") lines.push(`result: ${show(run.result ?? null)}`);
+  if (run.state === "attention_required") lines.push(`attention: ${shown(run.attention ?? null)}`);
+  if (run.state === "failed") lines.push(`error: ${shown(run.error ?? null)}`);
+  if (run.state === "succeeded") lines.push(`result: ${shown(run.result ?? null)}`);
   for (const d of budget.dimensions) {
     const money = d.dimension.startsWith("spend:");
     const f = (n: number) => (money ? `${(n / 1_000_000).toFixed(4)} ${d.dimension.slice(6)}` : String(n));
@@ -1194,18 +1216,34 @@ async function report(rt: Runtime, run: RunRow, json: boolean, config: RuntimeCo
   // A waiver (0.6) is not a check that passed: it is shown as what it is, beside the failed check it waives.
   for (const e of evidence) lines.push(`evidence ${e.contract}.${e.criterion}: ${e.method === "waiver" ? "waived" : e.passed ? "met" : "not met"} (${e.method}; ${signed.get(e.evidence_id) ? "signed" : "SIGNATURE INVALID"})`);
   for (const d of decisions) lines.push(`decision ${d.record.kind} by ${d.record.member}${d.record.role !== undefined ? ` as ${d.record.role}` : ""}: ${d.valid ? "signed" : "SIGNATURE INVALID"} (${d.decision_id})`);
-  for (const x of actions) lines.push(`action ${x.effect}: ${x.state}${x.receipt ? ` ${show(x.receipt)}` : ""}`);
+  for (const x of actions) lines.push(`action ${x.effect}: ${x.state}${x.receipt ? ` ${shown(x.receipt)}` : ""}`);
   return lines.join("\n") + "\n";
 }
 
-function subjectLines(subject: Value): string[] {
+/**
+ * A value as a status line of a 0.6 run shows it: as `show` writes it, with each text quoted as JSON writes it, so
+ * a reader sees where one ends, and with every code point a terminal does not print as itself escaped
+ * (`terminalText`), so no text a model, a person or a server wrote can move the cursor or clear the lines around it.
+ */
+export function shownSafe(v: Value): string {
+  const quoted = (x: Value): string => {
+    const t = tagOf(x);
+    if (t) return t.args.length ? `${t.tag}(${t.args.map(quoted).join(", ")})` : t.tag;
+    if (isObj(x) && "$money" in x) return show(x);
+    if (isObj(x) && "$verified" in x) return quoted(unwrap(x));
+    return typeof x === "string" ? JSON.stringify(x) : canonical(x);
+  };
+  return terminalText(quoted(v));
+}
+
+function subjectLines(subject: Value, shown: (v: Value) => string = show): string[] {
   const parts = Array.isArray(subject) ? subject : [subject];
   const out: string[] = [];
   for (const p of parts) {
     if (!isObj(p)) continue;
     for (const k of ["issue", "patch", "tests", "review"]) {
       const v = p[k];
-      if (v !== undefined) out.push(`  ${k}: ${show(v).slice(0, 600)}`);
+      if (v !== undefined) out.push(`  ${k}: ${shown(v).slice(0, 600)}`);
     }
   }
   return out;

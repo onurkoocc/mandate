@@ -73,7 +73,7 @@ import { runAgentLoop, type LoopTask } from "./loop.js";
 import { McpDenied, McpError } from "./mcp-client.js";
 import { MAX_TOOL_OUTPUT } from "./tools.js";
 import { PLAN_TOOLS, planBrief, Planner, programsInFlight, Shared, type PlanHost, type ProgramChecker } from "./plan.js";
-import { asVerdict, classify, decisionProblem, outcomeProblem, questionDigest, questionOf, REVIEW, reviewValue, subjectValue, valueDigest, VERDICT, VERIFY, verifyRecord, WAIVER, waiverFacts, waiverProblem, waiversOf, WHOLE, type Outcome as ReviewOutcome, type Question, type Split, type Verdict, type WaiverFacts } from "./review.js";
+import { asVerdict, classify, decisionProblem, givenValueProblem, outcomeProblem, questionDigest, questionOf, REVIEW, reviewValue, subjectValue, valueDigest, VERDICT, VERIFY, verifyRecord, WAIVER, waiverFacts, waiverProblem, waiversOf, WHOLE, type Outcome as ReviewOutcome, type Question, type Split, type Verdict, type WaiverFacts } from "./review.js";
 import { schemaErrors, typeSchema } from "./schema.js";
 import type { ActionRow, Admission, CommandRow, Journal, ViolationKind } from "./journal.js";
 import { Attention, Cancelled, Fault, Suspend, Violation } from "./signals.js";
@@ -1151,7 +1151,8 @@ export class Interpreter {
     // 0.6: a person's answer is a value of their own, never one of the runtime's: it holds none of the members the
     // runtime's own values are known by (a Verified value and its evidence among them), at any depth. The control API
     // refuses one when it is given (`reserved_value`); one the journal holds anyway stops the run here.
-    if (kind === "input" && is06(this.o.program) && forbidden(answer)) throw new Violation("reserved_value", `The answer at ${id} holds a member of the runtime's own values ($verified, $evidence, …): a person's answer is never one of those.`);
+    const why = kind === "input" && is06(this.o.program) ? givenValueProblem(answer) : undefined;
+    if (why) throw new Violation(why.reason, `The answer at ${id} is not taken. ${why.message}`);
     return answer;
   }
 
@@ -1716,6 +1717,8 @@ export class Interpreter {
     let passed: boolean;
     // The method the record names, as the checks of evidence read it from the program (criteria.ts).
     const method = partMethod(v);
+    // 0.6: never one the runtime keeps for its own records (a package with one is not loaded: package.ts reservedMethods).
+    if (bound && (method === VERIFY || method === WAIVER)) throw new Violation("reserved_method", `${contract}.${name} at ${path} would write evidence of ${method}, a method the runtime keeps for records of its own.`);
     let detail: Value = null;
     let files: Obj | undefined;
     let producer: Value = { kind: "runtime", handler: RUNTIME_HANDLER };
@@ -2491,6 +2494,11 @@ export class Interpreter {
               : (recordProblem(record, { ...r, run: this.o.runId }, criterionMethods(c, record.criterion), rule) ?? (approved ? approvalProblem(record, decisions, approved.keys, approved.lock, approved.required) : undefined));
         if (why) problems.push(`${r.evidence_id}: ${why}`);
         if (v06 && subjectValue(record) !== value) problems.push(`${r.evidence_id} is evidence for another value than the one ${effect} is given`);
+        // 0.6: every record, the verify's own and a waiver among them, is this run's, under a package it ran under,
+        // and of the mode it runs in: one copied from another run, or from a design run into a live one, holds nothing.
+        if (v06 && record.run !== this.o.runId) problems.push(`${r.evidence_id} is a record of another run`);
+        if (v06 && record.package !== this.o.packageHash && !(this.o.earlier ?? []).some((e) => e.hash === record.package)) problems.push(`${r.evidence_id} is a record of another package than this run's`);
+        if (v06 && (record.mode ?? "live") !== (this.o.mode ?? "live")) problems.push(`${r.evidence_id} is a record of a ${record.mode ?? "live"} run, and this run is ${this.o.mode ?? "live"}`);
       }
     }
     const criteria = c?.kind === "contract" ? [...Object.keys(c.accept), ...Object.keys(c.invariant ?? {})] : [];

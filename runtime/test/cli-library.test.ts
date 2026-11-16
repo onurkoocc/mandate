@@ -213,7 +213,7 @@ needs06("mandate run of a program whose lock pins a library", () => {
     expect(started.code, started.err).toBe(0);
     expect(started.out).toContain("run d1  Ask  waiting");
     // The question is the library's function of the input, asked by the library's pattern.
-    expect(started.out).toContain("waiting for: an answer: The spring list");
+    expect(started.out).toContain("waiting for: an answer: \"The spring list");
     const revision = revisionOf(started.out);
     const status = await mandate("status", "d1");
     expect(status.code, status.err).toBe(0);
@@ -227,7 +227,7 @@ needs06("mandate run of a program whose lock pins a library", () => {
       const answered = await mandate("answer", "d1", "--revision", revision, "--key", key, "it", "is", "fine");
       expect(answered.code, answered.err).toBe(0);
       expect(answered.out).toContain("run d1  Ask  succeeded");
-      expect(answered.out).toContain("result: it is fine");
+      expect(answered.out).toContain("result: \"it is fine\"");
       const replayed = await mandate("replay", "d1");
       expect(replayed.code, replayed.err).toBe(0);
       expect(replayed.out).toContain("complete");
@@ -250,7 +250,7 @@ needs06("mandate run of a program whose lock pins a library", () => {
     const done = await mandateWith(bare, "run", PROGRAM, "--lock", LOCK, "--workflow", "Title", "--input", INPUT, "--run-id", "d2", "--libraries", LIBS);
     expect(done.code, done.err).toBe(0);
     expect(done.out).toContain("run d2  Title  succeeded");
-    expect(done.out).toContain("result: The spring list");
+    expect(done.out).toContain("result: \"The spring list");
     expect((await mandateWith(bare, "replay", "d2")).out).toContain("The spring list");
     // With neither, the library is not read: E1605, and no run.
     const none = await mandateWith(bare, "run", PROGRAM, "--lock", LOCK, "--workflow", "Title", "--input", INPUT, "--run-id", "d2-none");
